@@ -2,6 +2,8 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.4 - a tray icon's or running application's picture that comes after its button
+//                  replaces the initial instead of sitting beside it
 // Version: 0.8.3 - the settings button's menu has a title, "UltraDesktop"
 // Version: 0.8.2 - the tool group gains UltraToDo; the tool applications'
 //                  windows stay off the taskbar unless toolAppsOnTaskbar; the
@@ -2442,8 +2444,18 @@ void UltraDesktopWindow::RefreshWindows() {
             };
             button->onHoverEnter = [this, key]() { HoverRunning(key); };
             button->onHoverLeave = [this, key]() { UnhoverRunning(key); };
+            group.iconFile = iconFile;
         } else {
             button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(group.itemId));
+            // An icon that is found after the button was made (a Store
+            // application's, resolved a moment later) replaces the letter,
+            // and the letter comes back if it goes.
+            if (button && iconFile != group.iconFile) {
+                group.iconFile = iconFile;
+                button->SetIcon(iconFile);
+                button->SetText(iconFile.empty() ? group.letter : std::string());
+                button->SetUseIconAsMask(iconFile.empty());
+            }
         }
 
         // The windows keep the order they came in, not the stacking order,
@@ -3329,7 +3341,17 @@ void UltraDesktopWindow::RefreshTray() {
         } else {
             button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget(itemId));
             if (button && known->second != icon.iconFile) {
+                // The picture came (or went) after the button was made: the
+                // initial stands in only while there is none. It used to stay
+                // beside the picture ("W" beside WhatsApp's icon).
+                std::string text;
+                if (icon.iconFile.empty() && !icon.appClass.empty()) {
+                    text = icon.appClass.substr(0, 1);
+                    std::transform(text.begin(), text.end(), text.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+                }
                 button->SetIcon(icon.iconFile);
+                button->SetText(text);
                 known->second = icon.iconFile;
             }
         }

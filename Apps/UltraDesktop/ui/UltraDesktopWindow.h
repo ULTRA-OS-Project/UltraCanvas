@@ -507,6 +507,7 @@ private:
         std::string itemId;
         std::string name;        // the application, for the tooltip
         std::string letter;      // the button's text when there is no icon
+        std::string iconFile;    // the picture the button shows, "" for the letter
         std::vector<RunningWindow> windows;
         int badge = 0;           // the count the button shows, 0 for none
         bool active = false;     // one of them has the focus
