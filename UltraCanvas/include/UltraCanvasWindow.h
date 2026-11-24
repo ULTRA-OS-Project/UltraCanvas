@@ -1,5 +1,6 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.12.4 - iOS: an #error naming the missing backend, not an include of OS/iOS/
 // Version: 2.12.3 - WindowType::Overlay documented: the screen-area picker's window, keyable above the
 //                   menu bar on macOS
 // Version: 2.12.2 - alwaysOnTop and SetTransientParent say what each is for: a dialog is
@@ -803,11 +804,10 @@ namespace UltraCanvas {
             using UltraCanvasWindow = UltraCanvasMacOSWindow;
         }
     #elif TARGET_OS_IPHONE
-        // iOS
-        #include "../OS/iOS/UltraCanvasiOSWindow.h"
-        namespace UltraCanvas {
-            using UltraCanvasWindow = UltraCanvasiOSWindow;
-        }
+        // iOS: no backend is written yet (there is no OS/iOS/) - say so here
+        // rather than fail on a missing include. What one needs:
+        // Docs/UltraCanvas/iOSPortInvestigation.md.
+        #error "iOS backend not implemented yet - see Docs/UltraCanvas/iOSPortInvestigation.md"
     #else
         #error "Unsupported Apple platform"
     #endif

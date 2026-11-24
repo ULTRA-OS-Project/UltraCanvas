@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.19.1 - iOS: an #error naming the missing backend, not an include of OS/iOS/
 // Version: 1.19.0 - Appearance.conf over the host, the settings watcher (a change reaches a running application)
 // Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
 // Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
@@ -728,9 +729,10 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplica
         #include "../OS/MacOS/UltraCanvasMacOSApplication.h"
         namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasMacOSApplication; }
     #elif TARGET_OS_IPHONE
-        // iOS
-        #include "../OS/iOS/UltraCanvasiOSApplication.h"
-        namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasiOSApplication; }
+        // iOS: no backend is written yet (there is no OS/iOS/) - say so here
+        // rather than fail on a missing include. What one needs:
+        // Docs/UltraCanvas/iOSPortInvestigation.md.
+        #error "iOS backend not implemented yet - see Docs/UltraCanvas/iOSPortInvestigation.md"
     #else
         #error "Unsupported Apple platform"
     #endif
