@@ -1454,6 +1454,28 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
+- **UltraCanvasEmbeddedWindowManager** (`UltraCanvasEmbeddedWindowManager.h`)
+  — a window manager inside the program, for a backend that draws many
+  windows onto one surface: stacking bands, focus, placement, title bars kept
+  with their windows (`AttachFrame`; the bar itself is
+  `UltraCanvasEmbeddedWindowFrame`, a borderless window of an
+  `UltraCanvasLabel` and three `UltraCanvasButton`s), moving and resizing,
+  maximize into the work area reserved edges leave, pointer routing with the
+  button grab, damage, and compositing with a drawn pointer. Platform-neutral;
+  the Android backend's desktop mode (`OS/Android/UltraCanvasAndroidDesktop`,
+  MobilePC) runs on it, and through it answers `UltraCanvasDesktopShell` as
+  its embedded host. Core in `core/UltraCanvasEmbeddedWindowManager.cpp` and
+  `core/UltraCanvasEmbeddedWindowFrame.cpp`; tested by
+  `Tests/EmbeddedWindowManagerTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md`.
+
+- **UltraCanvasHostedApps** (`UltraCanvasHostedApps.h`) — applications that
+  run inside their host program (MobilePC's): registered with an entry
+  point, listed by `UltraCanvasDesktopShell::ListApplications` where the
+  platform has none of its own, started in the process by
+  `LaunchApplication`. Core in `core/UltraCanvasHostedApps.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
+
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
   operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
   Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,
@@ -8192,7 +8214,17 @@ keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
 opening and saving, APK asset extraction). The dependency sysroot builds in
 CI, and DemoApp links against it into `libUltraCanvasDemo.so`, the app library
 an APK carries, and CI packages that into a debug-signed APK for `arm64-v8a`
-and `x86_64`; nothing has installed one yet, so none of it has run on a device — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
+and `x86_64`. The x86_64 APK is installed and run on an emulator in CI
+(`scripts/android-emulator-smoke.sh`, at 160 and 420 dpi): the first frame
+with content, a tap landing on the element under it, typed text reaching the
+focused field, and an in-place rotation are observed there; ChatCube builds
+the same way, and MobilePC's desktop mode is run on the emulator with a
+simulated second display (`scripts/android-mobilepc-smoke.sh`). Dialogs, the
+IME's composing path and gestures are still designed and reviewed rather than
+seen working, and nothing has run on a physical device yet. The backend's
+[README](../../UltraCanvas/OS/Android/README.md) keeps the current state;
+`UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding
+and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -28185,13 +28217,35 @@ the shell they are free.
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
 | Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. `CaptureWindowImage` is the compositor's copy of the window through `ext-image-copy-capture-v1` (with `ext-image-capture-source-v1` and `ext-foreign-toplevel-list-v1`, the three XML files carried under `OS/Linux/Wayland/protocols/`), into a `wl_shm` buffer, each step given a second and a half. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, an exclusive one (`StartExclusive`) and the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
-| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` (except on macOS, below), `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
+| macOS, Android, WebAssembly | `null` (on Android in desktop mode the embedded host below answers the windows, the screen and the applications): `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` (except on macOS, below), `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 | macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
 | macOS: the screen capture | `OS/MacOS/UltraCanvasMacOSScreenCapture.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE`): `CaptureScreen`, `CaptureScreenImage` and `CaptureScreenArea` through ScreenCaptureKit's `SCScreenshotManager` (macOS 14; `CGDisplayCreateImage` is obsolete from the macOS 15 SDK on). The main display - the one with the menu bar - whole, at its own pixels (a Retina display at twice its points), without the pointer, its top-left corner 0,0; other displays are not captured yet. macOS asks the person once for *Screen & System Audio Recording* (Privacy & Security): until it is allowed the capture fails with that reason, the first try opens the system's request, and the program needs starting again once it is granted. The call waits for ScreenCaptureKit (ten seconds at most), so it may be made from the UI thread. `ListScreens` stays empty on macOS. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
 fallback when it is absent.
+
+### Inside one program
+
+Where there is no native backend, the fallback can still answer: a window
+manager running inside the program installs itself as the
+`DesktopShellBackend::EmbeddedHost` (`SetEmbeddedHost`, in the internal
+`UltraCanvasDesktopShellBackend.h`), and the fallback forwards the window
+list, `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`, `CloseWindow`,
+`GetWindowBounds`, `MoveWindow`, `GetScreenSize`, `ListScreens`,
+`ReserveScreenEdges`, the application list and `LaunchApplication` of a
+`hosted:` entry to it. Its `NotifyEmbeddedChange()` wakes the shell monitor,
+so a taskbar follows windows opening, closing and taking the focus as it does
+on X11. `BackendName()` is the host's name then, and `IsAvailable()` true.
+
+The Android backend's desktop mode is that host (`UltraCanvasAndroidDesktop`,
+on [UltraCanvasEmbeddedWindowManager](UltraCanvasEmbeddedWindowManager.md)):
+its windows are the window manager's, the one screen is the desktop's output
+(an external display, else the phone's), and the applications are the ones
+the program carries ([UltraCanvasHostedApps](UltraCanvasHostedApps.md)) - so
+UltraDesktop runs there unchanged, as MobilePC shows it on a TV. The screen
+capture, the virtual desktops, the devices, the session's end and the
+loudspeaker stay the `null` backend's.
 
 ## See also
 
@@ -32129,6 +32183,180 @@ one known way for that to happen - a DLL in the package carrying a Windows
 system DLL's name, which the loader then answers imports of that name with -
 is kept out of the package by `package-win.sh`; see [*"Entry point not found"
 in a Windows DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md
+==============================================================================
+
+# UltraCanvasEmbeddedWindowManager — a window manager inside the program
+
+<!-- doc-check: cairo_surface_t* output; cairo_surface_t* SurfaceOf(uint64_t id); float scale; void ResizeWindow(uint64_t id, int width, int height); void DeliverMouseMove(uint64_t id, UltraCanvas::Point2Di local); -->
+
+Where a platform gives a program one surface and no window manager - an
+Android app drawing on a TV through a `Presentation`, a web page's canvas -
+the windows of that program still need stacking, focus, title bars, moving,
+resizing and a pointer. `UltraCanvasEmbeddedWindowManager` is that window
+manager: it keeps the windows of one output and composites their surfaces
+into it.
+
+```cpp
+#include "UltraCanvasEmbeddedWindowManager.h"
+using namespace UltraCanvas;
+
+UltraCanvasEmbeddedWindowManager wm;
+wm.SetOutputSize(1920, 1080);                       // logical px
+
+EmbeddedWindowSpec desktop;
+desktop.layer = EmbeddedWindowLayer::Desktop;
+desktop.fillsOutput = true;                         // always the whole output
+wm.AddWindow(1, desktop);
+wm.Show(1);
+
+EmbeddedWindowSpec editor;
+editor.rect = Rect2Di(-1, -1, 900, 640);            // -1: the manager places it
+editor.title = "Texter";
+wm.AddWindow(2, editor);
+wm.Show(2);                                         // shown, raised, focused
+
+wm.onGeometryChanged = [](uint64_t id, const Rect2Di& r) { ResizeWindow(id, r.width, r.height); };
+wm.Compose(output, scale, [](uint64_t id) { return SurfaceOf(id); }, wm.TakeDamage());
+```
+
+It is the Android backend's desktop mode underneath
+([`OS/Android/README.md`](../../UltraCanvas/OS/Android/README.md#desktop-mode-a-tv-or-monitor),
+`UltraCanvasAndroidDesktop`), which MobilePC uses to put UltraDesktop on a TV.
+It knows nothing of the platform and nothing of elements: windows are ids, a
+rectangle each, and a cairo image surface the caller hands it when it
+composites. `Tests/EmbeddedWindowManagerTest` exercises all of it with no
+display.
+
+## Contents
+
+- [What it keeps](#what-it-keeps)
+- [Bands](#bands)
+- [Title bars](#title-bars)
+- [The pointer](#the-pointer)
+- [Compositing](#compositing)
+- [API](#api)
+- [Related](#related)
+
+## What it keeps
+
+Every rectangle is the window's **content** in the output's logical pixels.
+
+- **Placement.** A window whose `rect` has `x` or `y` below 0 is placed: a
+  dialog (`transientFor`) centred over its window, anything else cascaded from
+  the work area's top left - centred when it is too big to step. Nothing is
+  larger than the work area, and part of every window stays on the output.
+- **The work area** is the output less the strips windows reserve with
+  `ReserveEdges` - a desktop's bars. Maximize fills it (title bar included).
+- **Focus.** Showing a window focuses it; a press in a window raises and
+  focuses it; minimizing, hiding or removing the focused window passes the
+  focus to the window a dialog belongs to, else the topmost one.
+  `onFocusChanged` reports each change. A frame, a popup, a tooltip and a
+  notification never take it (`focusable` false).
+- **State.** `Minimize`, `Maximize`, `Restore`, `ToggleMaximize`; a dialog is
+  raised with its window. `onStateChanged` reports a change the manager made.
+
+## Bands
+
+The stack is ordered by band, bottom first, and `Raise` moves a window to the
+top of its own band only - a click on the desktop never brings it above the
+windows, a dialog never covers a menu:
+
+| `EmbeddedWindowLayer` | For |
+|---|---|
+| `Desktop` | the desktop's window (wallpaper, bars) |
+| `Normal` | application windows and their dialogs |
+| `AlwaysOnTop` | a recording bar, a floating palette |
+| `Notification` | toasts |
+| `Popup` | a menu's or a list's own window |
+| `Tooltip` | tooltips |
+| `Lock` | a lock screen, over everything |
+
+`ListApplicationWindows()` is what a taskbar lists: the focusable windows of
+the `Normal` and `AlwaysOnTop` bands, without frames.
+
+## Title bars
+
+A decorated window gets its title bar as a **window of its own**, attached with
+`AttachFrame(clientId, frameId)`: the manager keeps it just above the window,
+as wide as it, and moves, raises, shows, hides and minimizes it with it. The
+backend draws it like any window; the framework's is
+`UltraCanvasEmbeddedWindowFrame` - an `UltraCanvasLabel` and three
+`UltraCanvasButton`s in a borderless window, so it behaves and looks like
+every other control (hover, theme, scale). A press on its title calls
+`BeginMove(clientId)`; a double click there maximizes or restores.
+
+Resizing needs no window: the edges and corners just **outside** a decorated,
+resizable, unmaximized window take the pointer (`resizeGrip`, 6 px), with the
+resize pointer shapes.
+
+## The pointer
+
+The pointer is the manager's, drawn by `Compose`. A backend feeds it either
+absolute positions (`PointerMove`, `PointerButton`) or relative motion
+(`MovePointerBy`, from a touchpad or a captured mouse). Each call returns an
+`EmbeddedPointerRoute`: the window to deliver the event to, the point in that
+window's own coordinates, and the window the pointer just left (to send it a
+`MouseLeave`). A button pressed in a window keeps the pointer there until the
+last button is released, as on a desktop. During a move or a resize the
+manager uses the events itself and routes nothing.
+
+```cpp
+EmbeddedPointerRoute route = wm.PointerMove(Point2Di(640, 400));
+if (route.windowId) DeliverMouseMove(route.windowId, route.local);
+```
+
+The shape is the window's own choice (`SetWindowCursor`, which a backend calls
+from `SelectMouseCursorNative`) over its content, and the manager's over an
+edge it resizes by. The shapes are drawn as vectors (`DrawPointer`), white
+with a dark outline, at the output's scale.
+
+## Compositing
+
+Every change adds **damage** - a window presented (`WindowPresented`), moved,
+raised, shown or hidden, the pointer moved - in logical pixels, merged as it
+comes. `Compose` draws only the damaged rectangles of the output: the
+background (`backgroundRgb`), every shown window bottom first with a soft
+shadow under the decorated ones, and the pointer. Each window's surface is
+copied pixel for pixel: a surface with a device scale (the framework's
+windows have one) is drawn at that scale, so a window rendered at the
+output's scale is never resampled. `Compose` returns the physical rectangle
+it drew, which is what a backend copies to the screen.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `SetOutputSize(w, h)` / `GetOutputSize()` | the output, logical px; windows that fill it follow, maximized ones re-maximize, the rest are kept on it |
+| `ReserveEdges(id, l, r, t, b)` / `GetWorkArea()` | strips kept free for a window; four zeros release them |
+| `AddWindow(id, spec)` → `Rect2Di` | joins hidden; the rectangle it was placed at |
+| `RemoveWindow(id)`, `HasWindow(id)`, `GetInfo(id, out)` | |
+| `AttachFrame(clientId, frameId)` | a title bar window for a window |
+| `ListWindows()` / `ListApplicationWindows()` | stacking order, bottom first |
+| `Show`, `Hide`, `SetTitle`, `SetRect`, `Raise`, `Activate` | `SetRect` is the window's own request: kept on the output and in its limits |
+| `Minimize`, `Maximize`, `Restore`, `ToggleMaximize` | |
+| `GetFocused()`, `GetKeyboardTarget()`, `TopmostFocusable(except)` | |
+| `SetPointerPosition`, `MovePointerBy`, `SetPointerVisible`, `SetWindowCursor` | |
+| `HitTest(point, &id)` → `EmbeddedWindowPart` | `Content`, a resize edge, or `Nothing` |
+| `PointerMove(point)`, `PointerButton(point, down)` → `EmbeddedPointerRoute` | |
+| `BeginMove(clientId)`, `IsMovingOrResizing()` | |
+| `AddDamage`, `DamageAll`, `WindowPresented`, `HasDamage`, `TakeDamage` | |
+| `Compose(output, scale, surfaceOf, damage)` → `Rect2Di` | |
+| `onGeometryChanged`, `onFocusChanged`, `onStateChanged` | callbacks to the backend |
+| `titleBarHeight` (32), `resizeGrip` (6), `keepVisible` (48), `backgroundRgb` | logical px; the colour as `0xRRGGBB` |
+
+Single-threaded: every call on the thread that owns the windows.
+
+## Related
+
+- [UltraCanvasDesktopShell](UltraCanvasDesktopShell.md) - a desktop's window
+  list, screens and applications, answered from this manager where the
+  platform has no window manager of its own (*Inside one program*).
+- [UltraCanvasHostedApps](UltraCanvasHostedApps.md) - applications that run
+  inside their host program, as MobilePC's do.
+- [MobilePC](../MobilePC/README.md) - UltraDesktop on a TV, on this manager.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasEmojiSettings.md
@@ -44847,6 +45075,79 @@ never blocks on a lookup.
 [`UltraCanvasFilerWidget.md`](UltraCanvasFilerWidget.md)). The widget holds
 its own cache keyed by `HostFileIconKey` plus the icon size, resolved on one
 background thread, and draws its simple icons until an answer lands.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasHostedApps.md
+==============================================================================
+
+# UltraCanvasHostedApps — applications inside their host program
+
+<!-- doc-check: bool OpenViewer(const std::vector<std::string>& files); -->
+
+On a desktop every application is a program of its own, started by the
+desktop as a process. On Android one app carries everything - MobilePC is
+UltraDesktop *and* the applications its Apps window starts, in one process -
+so "start an application" has to mean "call its entry point". This registry
+is where such applications are listed, and what a desktop's Apps window
+starts them through.
+
+```cpp
+#include "UltraCanvasHostedApps.h"
+using namespace UltraCanvas;
+
+UltraCanvasHostedApps::Register({
+    "ultraviewer", "UltraViewer", "Pictures, videos, music and documents",
+    "media/appicon/UltraViewer.png", {"Graphics", "Viewer"},
+    [](const std::vector<std::string>& files) { return OpenViewer(files); }});
+
+std::string error;
+UltraCanvasHostedApps::Launch("ultraviewer", {}, &error);
+```
+
+## Contents
+
+- [Registering an application](#registering-an-application)
+- [How a desktop sees them](#how-a-desktop-sees-them)
+- [API](#api)
+
+## Registering an application
+
+A `HostedAppInfo` is an id (stable, lower case), the name a launcher shows, a
+comment, an icon file, freedesktop categories (UltraDesktop's Apps window
+groups by them) and `launch`: the code an application's own `main()` runs
+between `app.Initialize(...)` and `app.Run()` - make the main window, open the
+files. It must not run a loop of its own and must not end the process: the
+host runs one loop for all its applications, and closing an application's
+windows is how it quits. An application whose window class opens its own
+windows (UltraPaint's and ArtCreator's `OpenWindow`) needs nothing else; one
+that keeps its windows in `main()` moves that into a class first.
+
+`Launching()` names the application whose `launch` is running, so the windows
+it makes can be told apart from the host's (the Android desktop mode files
+each window under it, and a taskbar groups them).
+
+## How a desktop sees them
+
+Where the platform keeps no applications of its own to list (Android),
+`UltraCanvasDesktopShell::ListApplications` lists the registered ones - through
+the desktop shell's embedded host, see
+[UltraCanvasDesktopShell](UltraCanvasDesktopShell.md#inside-one-program) - each
+as a `UCDesktopEntry` whose `shortcutPath` is `hosted:<id>`, and
+`LaunchApplication` with that entry calls `Launch`. A desktop written for
+desktop platforms, like UltraDesktop, therefore lists and starts them
+unchanged.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `Register(info)` | adds it, or replaces the one with that id |
+| `List()`, `Has(id)` | |
+| `Launch(id, files, &error)` | runs its entry point on the calling (UI) thread; false with the reason |
+| `Launching()` | the id whose `Launch` is running, `""` outside one |
+| `PathFor(id)` / `IdFromPath(path)` | `"hosted:<id>"` and back |
+
+Header: `UltraCanvasHostedApps.h`; core in `core/UltraCanvasHostedApps.cpp`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasIconResource.md
@@ -115683,9 +115984,11 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
-(the framework's `media/images/landscape.jpg` where a package lacks it or
-cannot read AVIF). An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`.
+Each of ULTRA OS's pictures there has a JPEG beside it (`ULTRA OS A.jpg`):
+a build that cannot read AVIF (no libheif - Android's, whose APK carries only
+the JPEGs) shows that, and the framework's `media/images/landscape.jpg` only
+where neither can be read. An
 empty `ramDiscPath` leaves the RAM disc button out; `"ultrafiler"`, the
 default, asks UltraFiler for its RAM disc (with another `filerProgram` the
 button just opens it), and a folder opens that folder. A file holding the
@@ -115859,6 +116162,15 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/builds-without-the-message-centre.md
+==============================================================================
+
+- **UltraDesktop builds without the message centre.** Its window kept the
+  notification toasts' host as a member whatever the build had, so a build
+  without UltraMessage (Android's, MobilePC's) did not compile; the member is
+  now there only when the toasts are.
+
+==============================================================================
 FILE: Docs/UltraDesktop/changelog.d/panel-switches-fit-translations.md
 ==============================================================================
 
@@ -115876,6 +116188,16 @@ FILE: Docs/UltraDesktop/changelog.d/panel-switches-fit-translations.md
 - **The clipboard panel's "Open UltraClipboard" ran past the edge** in
   Czech, Greek, Hungarian and Romanian, beside the recording switch. The
   panel is 420 px wide instead of 386.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/wallpaper-jpeg-beside-avif.md
+==============================================================================
+
+- **ULTRA OS's wallpapers as JPEG too.** A build that cannot read AVIF -
+  Android's (MobilePC), or a desktop build without libheif - showed the
+  framework's landscape instead of ULTRA OS's picture. Each picture in
+  `media/images/desktop` now has a JPEG beside it, which the desktop shows
+  when the AVIF cannot be read or is not there.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
