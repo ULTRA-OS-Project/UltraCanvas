@@ -50,7 +50,9 @@ on:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/vcpkg_seed_gnu_sources.py'
       - 'scripts/android-package-apk.sh'
+      - 'scripts/strip_method_parameters.py'
       - 'scripts/android-emulator-smoke.sh'
       - 'scripts/android-mobilepc-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
@@ -73,7 +75,9 @@ on:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/vcpkg_seed_gnu_sources.py'
       - 'scripts/android-package-apk.sh'
+      - 'scripts/strip_method_parameters.py'
       - 'scripts/android-emulator-smoke.sh'
       - 'scripts/android-mobilepc-smoke.sh'
       - 'UltraCanvas/OS/Android/**'

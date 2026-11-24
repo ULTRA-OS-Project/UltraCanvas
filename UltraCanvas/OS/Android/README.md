@@ -541,11 +541,13 @@ from the NDK sysroot itself (no pkg-config probing), wired through
 
 `.github/workflows/android-build.yml` builds that sysroot for `arm64-v8a` and
 compiles the core library against it with exactly that configure line, for
-`x86_64` as well, then packages the demo into an APK. **No APK has been run
-yet, so none of this has run on a device.** Everything here
-is compiled in CI against the real NDK, and the Java against `android.jar`, so
-the code is type-checked continuously — but treat the runtime behaviour
-described in this file as designed and reviewed, not as observed. `packaging/`
+`x86_64` as well, then packages the demo into an APK, which its emulator
+jobs install and run (the top of this file says what they observe; MobilePC
+is run the same way with a second display). **Nothing has run on a physical
+device yet.** Everything here is compiled in CI against the real NDK, and the
+Java against `android.jar`, so the code is type-checked continuously — but
+treat the runtime behaviour this file describes beyond what the emulator jobs
+check as designed and reviewed, not as observed. `packaging/`
 holds the manifest, the Gradle scaffolding and the sysroot's vcpkg manifest.
 
 ## Still to come (phases 2–3, investigation §7)

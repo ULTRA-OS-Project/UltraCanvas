@@ -2,6 +2,7 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.4 - the wallpaper's JPEG beside an AVIF where the AVIF cannot be read (Android); builds without the message centre
 // Version: 0.8.3 - the settings button's menu has a title, "UltraDesktop"
 // Version: 0.8.2 - the tool group gains UltraToDo; the tool applications'
 //                  windows stay off the taskbar unless toolAppsOnTaskbar; the
@@ -433,19 +434,42 @@ std::string UltraDesktopWindow::WallpaperPath() const {
     return DefaultWallpaperPath();
 }
 
+namespace {
+// The JPEG beside an AVIF of ULTRA OS's own pictures (media/images/desktop
+// ships both): what a build without libheif shows - Android's, whose APK
+// carries only the JPEGs. "" for any other file.
+std::string JpegTwin(const std::string& path) {
+    const fs::path p = PathFromUtf8(path);
+    std::string ext = PathToUtf8(p.extension());
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (ext != ".avif") return std::string();
+    fs::path twin = p;
+    twin.replace_extension(".jpg");
+    std::error_code ec;
+    return fs::is_regular_file(twin, ec) ? PathToUtf8(twin) : std::string();
+}
+} // namespace
+
 std::string UltraDesktopWindow::DefaultWallpaperPath() {
-    // ULTRA OS's own picture; the framework's landscape where it is missing.
+    // ULTRA OS's own picture - as AVIF, else its JPEG - and the framework's
+    // landscape where both are missing.
     const std::string own = NormalizePath(GetResourcesDir() + kDefaultWallpaper);
     std::error_code ec;
     if (fs::is_regular_file(PathFromUtf8(own), ec)) return own;
+    fs::path jpeg = PathFromUtf8(own);
+    jpeg.replace_extension(".jpg");
+    if (fs::is_regular_file(jpeg, ec)) return PathToUtf8(jpeg);
     return NormalizePath(GetResourcesDir() + kFallbackWallpaper);
 }
 
 void UltraDesktopWindow::LoadWallpaper(UltraCanvasImageElement& wallpaper) const {
     const std::string path = WallpaperPath();
     if (wallpaper.LoadFromFile(path)) return;
-    // A picture this build cannot read (an AVIF without libheif): the
-    // framework's landscape rather than an empty desktop.
+    // An AVIF this build cannot read (no libheif): the same picture as JPEG.
+    const std::string twin = JpegTwin(path);
+    if (!twin.empty() && wallpaper.LoadFromFile(twin)) return;
+    // Anything else unreadable: the framework's landscape rather than an
+    // empty desktop.
     const std::string fallback = NormalizePath(GetResourcesDir() + kFallbackWallpaper);
     debugOutput << "UltraDesktop: the wallpaper \"" << path << "\" could not be read, showing " << fallback
                 << std::endl;

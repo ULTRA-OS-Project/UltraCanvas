@@ -14,8 +14,12 @@ media/icons
 media/appicon
 # The cursor images the framework names.
 media/lib
-# The desktop's wallpapers, and the picture it falls back to.
-media/images/desktop
+# The desktop's wallpapers as JPEG - Android's libvips reads no AVIF, and
+# UltraDesktop takes the JPEG beside a missing AVIF - and the picture it
+# falls back to.
+media/images/desktop/ULTRA OS A.jpg
+media/images/desktop/ULTRA OS H.jpg
+media/images/desktop/ULTRA OS K.jpg
 media/images/landscape.jpg
 # Every language's texts (Tr): the applications' catalogues and the standard set.
 media/locale
