@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetCell.h
 // Spreadsheet cell data structure with value, formatting, and formula support
+// Version: 1.1.0 - ValidateValue checks the cell's rule (it accepted everything); CheckDataValidation
 // Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.0.0
 // Last Modified: 2026-10-08
@@ -248,7 +249,9 @@ public:
     void SetValidation(const DataValidation& validation);
     void RemoveValidation() { validation_.reset(); }
     
-    // Validate current value against validation rules
+    // True when the cell's value passes its own validation rule (always,
+    // when it has none). On false, `errorMessage` gets the rule's error
+    // message, or a default one. See CheckDataValidation below.
     bool ValidateValue(std::string* errorMessage = nullptr) const;
     
     // ===== MERGE =====
@@ -295,6 +298,22 @@ private:
     // Default style singleton
     static const CellStyle& GetDefaultStyle();
 };
+
+// Checks `cell` (null: an empty cell) against `validation`, as a spreadsheet
+// application does when a value is entered:
+// - an empty cell passes when the rule allows blanks;
+// - WholeNumber, Decimal, Date and Time need a number (a date or time is its
+//   serial number) compared with formula1 / formula2 by the rule's operator;
+//   WholeNumber also needs it whole. The bounds are dot-decimal numbers; a
+//   Date bound may also be "YYYY-MM-DD" and a Time bound "HH:MM[:SS]";
+// - TextLength compares the number of characters (not bytes) of the shown text;
+// - List needs the shown text to be one of formula1's comma- or
+//   semicolon-separated items (surrounding spaces and quotes ignored);
+// - Custom (a formula) is not evaluated and passes, as does Any.
+// A bound that cannot be read fails the check rather than passing it.
+// On false, `errorMessage` gets the rule's errorMessage, or a default one.
+bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell* cell,
+                         std::string* errorMessage = nullptr);
 
 // ============================================================================
 // IMPLEMENTATION
@@ -800,14 +819,9 @@ inline void SpreadsheetCell::SetValidation(const DataValidation& validation) {
     validation_ = std::make_unique<DataValidation>(validation);
 }
 
-inline bool SpreadsheetCell::ValidateValue(std::string* errorMessage) const {
-    (void)errorMessage;
-    if (!validation_) return true;
-    
-    // TODO: Implement validation logic based on ValidationType and ValidationOperator
-    // For now, return true
-    return true;
-}
+// ValidateValue is defined in core/UltraCanvasSpreadsheetSheet.cpp, beside
+// CheckDataValidation, which does the work for it and for
+// SpreadsheetSheet::ValidateCell.
 
 // ===== COMPARISON =====
 

@@ -2696,6 +2696,8 @@ target_include_directories(SpreadsheetColumnSizingTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(SpreadsheetColumnSizingTest PRIVATE cxx_std_20)
+# Data validation's default messages go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpreadsheetColumnSizingTest PRIVATE UltraLocalisation)
 set_target_properties(SpreadsheetColumnSizingTest PROPERTIES
     OUTPUT_NAME "SpreadsheetColumnSizingTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -2721,6 +2723,8 @@ target_include_directories(SpreadsheetRangeSortTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(SpreadsheetRangeSortTest PRIVATE cxx_std_20)
+# Data validation's default messages go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpreadsheetRangeSortTest PRIVATE UltraLocalisation)
 set_target_properties(SpreadsheetRangeSortTest PROPERTIES
     OUTPUT_NAME "SpreadsheetRangeSortTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -2746,6 +2750,8 @@ target_include_directories(SpreadsheetAutoFillTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(SpreadsheetAutoFillTest PRIVATE cxx_std_20)
+# Data validation's default messages go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpreadsheetAutoFillTest PRIVATE UltraLocalisation)
 set_target_properties(SpreadsheetAutoFillTest PROPERTIES
     OUTPUT_NAME "SpreadsheetAutoFillTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -2770,6 +2776,8 @@ target_include_directories(SpreadsheetSheetNameTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(SpreadsheetSheetNameTest PRIVATE cxx_std_20)
+# Data validation's default messages go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpreadsheetSheetNameTest PRIVATE UltraLocalisation)
 set_target_properties(SpreadsheetSheetNameTest PROPERTIES
     OUTPUT_NAME "SpreadsheetSheetNameTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -2780,6 +2788,32 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: SpreadsheetSheetNameTest")
+
+# ===== SPREADSHEET VALIDATION TEST =====
+# Data validation rules - whole numbers, decimals, dates, times, text length
+# and lists, set on a cell or on a range - through CheckDataValidation. The
+# cell's own ValidateValue accepted everything until 2026-11. No UI stack.
+message(STATUS "  Building SpreadsheetValidationTest...")
+add_executable(SpreadsheetValidationTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetValidationTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetValidationTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetValidationTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetValidationTest PRIVATE UltraLocalisation)
+set_target_properties(SpreadsheetValidationTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetValidationTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetValidationTest
+    COMMAND SpreadsheetValidationTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetValidationTest")
 
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the

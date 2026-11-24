@@ -1,15 +1,24 @@
 // core/UltraCanvasSpreadsheetSheet.cpp
 // Spreadsheet worksheet implementation (non-inline members)
+// Version: 1.1.0 - data validation: one checker (CheckDataValidation) for range and cell rules; text is
+//                  not a number, unreadable bounds fail, Date/Time bounds as YYYY-MM-DD / HH:MM
 // Version: 1.0.0
 // Last Modified: 2026-05-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheetSheet.h"
+#include "UltraCanvasSpreadsheetMetrics.h"      // SpreadsheetUtf8Length
+#include "UltraCanvasTextUtils.h"               // ParseFloatClassic
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <climits>
+#include <cstdio>
+#include <optional>
 #include <set>
+#include <variant>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -594,91 +603,154 @@ const DataValidation* SpreadsheetSheet::GetValidation(int row, int col) const {
     return nullptr;
 }
 
-bool SpreadsheetSheet::ValidateCell(int row, int col, std::string* errorMessage) const {
-    const DataValidation* validation = GetValidation(row, col);
-    if (!validation || validation->type == ValidationType::Any) {
-        return true;
+namespace {
+
+// A validation bound: a dot-decimal number (what ODS and XLSX store, a date
+// or time as its serial number), and for a Date or Time rule also
+// "YYYY-MM-DD" or "HH:MM[:SS]", which a person setting a rule types.
+std::optional<double> ReadValidationBound(const std::string& text, ValidationType type) {
+    std::string t = text;
+    const size_t a = t.find_first_not_of(" \t");
+    const size_t b = t.find_last_not_of(" \t");
+    t = (a == std::string::npos) ? std::string() : t.substr(a, b - a + 1);
+    if (t.empty()) return std::nullopt;
+
+    // The whole bound must be the number: TryParseFloat would read
+    // "2026-01-01" as 2026 and ignore the rest.
+    double number = 0.0;
+    const char* first = t.c_str();
+    const char* last = first + t.size();
+    if (*first == '+') ++first;
+    if (ParseFloatClassic(first, last, number) == last && first != last) return number;
+
+    int p1 = 0, p2 = 0, p3 = 0;
+    char c1 = 0, c2 = 0, rest = 0;
+    if (type == ValidationType::Date &&
+        std::sscanf(t.c_str(), "%d%c%d%c%d%c", &p1, &c1, &p2, &c2, &p3, &rest) == 5 &&
+        c1 == '-' && c2 == '-' && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31) {
+        return DateTimeValue::FromDate(p1, p2, p3).serialNumber;
+    }
+    if (type == ValidationType::Time) {
+        p3 = 0;
+        const int n = std::sscanf(t.c_str(), "%d%c%d%c%d%c", &p1, &c1, &p2, &c2, &p3, &rest);
+        if ((n == 3 && c1 == ':') || (n == 5 && c1 == ':' && c2 == ':')) {
+            if (p1 >= 0 && p1 <= 24 && p2 >= 0 && p2 < 60 && p3 >= 0 && p3 < 60) {
+                return DateTimeValue::FromTime(p1, p2, p3).serialNumber;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// The items of a list rule: "a,b,c" as typed, or ODF's "\"a\";\"b\"".
+std::vector<std::string> ReadValidationList(const std::string& source) {
+    const char separator = source.find(';') != std::string::npos ? ';' : ',';
+    std::vector<std::string> items;
+    size_t start = 0;
+    while (start <= source.size()) {
+        const size_t sep = source.find(separator, start);
+        std::string item = source.substr(start, sep == std::string::npos ? std::string::npos : sep - start);
+        const size_t a = item.find_first_not_of(" \t");
+        const size_t b = item.find_last_not_of(" \t");
+        item = (a == std::string::npos) ? std::string() : item.substr(a, b - a + 1);
+        if (item.size() >= 2 && item.front() == '"' && item.back() == '"') {
+            item = item.substr(1, item.size() - 2);
+        }
+        items.push_back(item);
+        if (sep == std::string::npos) break;
+        start = sep + 1;
+    }
+    return items;
+}
+
+bool CompareByOperator(double subject, ValidationOperator op, double v1, double v2) {
+    switch (op) {
+        case ValidationOperator::Between:        return subject >= v1 && subject <= v2;
+        case ValidationOperator::NotBetween:     return subject < v1 || subject > v2;
+        case ValidationOperator::Equal:          return subject == v1;
+        case ValidationOperator::NotEqual:       return subject != v1;
+        case ValidationOperator::GreaterThan:    return subject > v1;
+        case ValidationOperator::LessThan:       return subject < v1;
+        case ValidationOperator::GreaterOrEqual: return subject >= v1;
+        case ValidationOperator::LessOrEqual:    return subject <= v1;
+    }
+    return true;
+}
+
+bool OperatorNeedsSecondBound(ValidationOperator op) {
+    return op == ValidationOperator::Between || op == ValidationOperator::NotBetween;
+}
+
+} // namespace
+
+bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell* cell,
+                         std::string* errorMessage) {
+    if (validation.type == ValidationType::Any || validation.type == ValidationType::Custom) {
+        return true;   // Custom: a formula, not evaluated here
     }
 
-    const SpreadsheetCell* cell = GetCellIfExists(row, col);
-    bool isBlank = !cell || cell->IsEmpty();
-
-    if (isBlank) {
-        if (validation->allowBlank) return true;
+    auto fail = [&](const std::string& fallback) {
         if (errorMessage) {
-            *errorMessage = validation->errorMessage.empty() ? "Value required" : validation->errorMessage;
+            *errorMessage = validation.errorMessage.empty() ? fallback : validation.errorMessage;
         }
         return false;
-    }
-
-    std::string text = cell->GetDisplayValue();
-    double value = cell->GetNumber();
-
-    auto parseNum = [](const std::string& s) -> double {
-        try { return std::stod(s); } catch (...) { return 0.0; }   // locale-ok: compares against what the user typed into the filter
     };
 
-    bool valid = true;
+    // Empty, or a formula or text that shows nothing.
+    const bool isBlank = !cell || cell->IsEmpty() || cell->GetDisplayValue().empty();
+    if (isBlank) {
+        return validation.allowBlank ? true : fail(Tr("A value is required in this cell."));
+    }
+    const std::string invalid = Tr("The value does not match the rule for this cell.");
 
-    switch (validation->type) {
-        case ValidationType::List: {
-            // formula1 holds a comma-separated list of allowed values.
-            valid = false;
-            std::string source = validation->formula1;
-            size_t start = 0;
-            while (start <= source.size()) {
-                size_t comma = source.find(',', start);
-                std::string item = source.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
-                // Trim surrounding whitespace.
-                size_t a = item.find_first_not_of(" \t");
-                size_t b = item.find_last_not_of(" \t");
-                if (a != std::string::npos) item = item.substr(a, b - a + 1);
-                else item.clear();
-                if (item == text) { valid = true; break; }
-                if (comma == std::string::npos) break;
-                start = comma + 1;
-            }
-            break;
+    if (validation.type == ValidationType::List) {
+        const std::string text = cell->GetDisplayValue();
+        for (const auto& item : ReadValidationList(validation.formula1)) {
+            if (item == text) return true;
         }
-        case ValidationType::WholeNumber:
-        case ValidationType::Decimal:
-        case ValidationType::Date:
-        case ValidationType::Time:
-        case ValidationType::TextLength: {
-            double subject = value;
-            if (validation->type == ValidationType::TextLength) {
-                subject = static_cast<double>(text.length());
-            }
-            double v1 = parseNum(validation->formula1);
-            double v2 = parseNum(validation->formula2);
-            switch (validation->op) {
-                case ValidationOperator::Between:        valid = (subject >= v1 && subject <= v2); break;
-                case ValidationOperator::NotBetween:     valid = (subject < v1 || subject > v2); break;
-                case ValidationOperator::Equal:          valid = (subject == v1); break;
-                case ValidationOperator::NotEqual:       valid = (subject != v1); break;
-                case ValidationOperator::GreaterThan:    valid = (subject > v1); break;
-                case ValidationOperator::LessThan:       valid = (subject < v1); break;
-                case ValidationOperator::GreaterOrEqual: valid = (subject >= v1); break;
-                case ValidationOperator::LessOrEqual:    valid = (subject <= v1); break;
-            }
-            if (validation->type == ValidationType::WholeNumber && value != std::floor(value)) {
-                valid = false;
-            }
-            break;
-        }
-        case ValidationType::Custom:
-            // Custom formula evaluation requires the formula engine; accept.
-            valid = true;
-            break;
-        default:
-            valid = true;
-            break;
+        return fail(invalid);
     }
 
-    if (!valid && errorMessage) {
-        *errorMessage = validation->errorMessage.empty() ? "Invalid value" : validation->errorMessage;
+    // The value the rule compares.
+    double subject = 0.0;
+    if (validation.type == ValidationType::TextLength) {
+        subject = static_cast<double>(SpreadsheetUtf8Length(cell->GetDisplayValue()));
+    } else {
+        const CellValueVariant& raw = cell->GetRawValue();
+        if (const auto* number = std::get_if<double>(&raw)) {
+            subject = *number;
+        } else if (const auto* currency = std::get_if<CurrencyValue>(&raw)) {
+            subject = currency->amount;
+        } else {
+            return fail(invalid);   // text, a truth value or an error is not a number
+        }
+        if (validation.type == ValidationType::WholeNumber && subject != std::floor(subject)) {
+            return fail(invalid);
+        }
     }
-    return valid;
+
+    const auto v1 = ReadValidationBound(validation.formula1, validation.type);
+    const auto v2 = OperatorNeedsSecondBound(validation.op)
+                        ? ReadValidationBound(validation.formula2, validation.type)
+                        : std::optional<double>(0.0);
+    if (!v1 || !v2) return fail(invalid);   // a bound that cannot be read
+
+    return CompareByOperator(subject, validation.op, *v1, *v2) ? true : fail(invalid);
+}
+
+bool SpreadsheetCell::ValidateValue(std::string* errorMessage) const {
+    if (!validation_) return true;
+    return CheckDataValidation(*validation_, this, errorMessage);
+}
+
+bool SpreadsheetSheet::ValidateCell(int row, int col, std::string* errorMessage) const {
+    // A rule set on the range (SetValidation) comes first; a rule a cell
+    // carries itself (SpreadsheetCell::SetValidation) applies otherwise.
+    const SpreadsheetCell* cell = GetCellIfExists(row, col);
+    if (const DataValidation* validation = GetValidation(row, col)) {
+        return CheckDataValidation(*validation, cell, errorMessage);
+    }
+    return cell ? cell->ValidateValue(errorMessage) : true;
 }
 
 // ============================================================================

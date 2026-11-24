@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.0.1 - ValidateCell falls back to the cell's own rule
 // Version: 1.0.0
 // Last Modified: 2026-01-09
 // Author: UltraCanvas Framework
@@ -415,6 +416,8 @@ public:
     void RemoveValidation(const CellRange& range);
     void ClearAllValidations();
     const DataValidation* GetValidation(int row, int col) const;
+    // True when the cell's value passes the rule set on its range, or, with
+    // none, the cell's own rule (CheckDataValidation, UltraCanvasSpreadsheetCell.h).
     bool ValidateCell(int row, int col, std::string* errorMessage = nullptr) const;
     
     // ===== NAMED RANGES =====

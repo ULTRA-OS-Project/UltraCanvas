@@ -279,16 +279,17 @@ namespace UltraCanvas {
 
         // Opens the native file dialog and parses the chosen word-processing
         // document into a UCRichDocument (see Plugins/Documents/Word). Formats:
-        // .odt and .docx are fully parsed (detection is signature-based, so
-        // renamed files still load); .tex is imported by the LaTeX document
+        // .odt and .docx are fully parsed, and a legacy Word 97-2003 .doc is
+        // read by the DOC reader (read-only: it is saved as .docx or .odt);
+        // detection is signature-based, so renamed files still load. A .doc
+        // the reader cannot make sense of fails with a loadError that
+        // asks for it to be saved as .docx or .odt. .tex is imported by the LaTeX document
         // reader (article subset, formulas kept for the math engine);
         // a PowerPoint deck (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm) and an
         // OpenDocument presentation (.odp, .otp, .fodp) read as an outline of
         // their slides (UltraCanvasPresentationPptx.h, UltraCanvasPresentationOdp.h);
         // .md/.markdown parse as Markdown; anything
-        // else readable as text becomes plain paragraphs. Legacy Word 97-2003
-        // .doc files are detected and rejected with a clear loadError telling
-        // the user to convert to .docx. A password-protected .docx asks for
+        // else readable as text becomes plain paragraphs. A password-protected .docx asks for
         // its password first (RequestDocumentPassword); cancelling that
         // reports Cancel, like the file dialog. If the caller supplies no filters,
         // AddTextDocumentLoadTypes' are offered. On cancel, onResult fires

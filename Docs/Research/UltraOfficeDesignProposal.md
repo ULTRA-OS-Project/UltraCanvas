@@ -142,8 +142,12 @@ Gaps, each checked in the source:
 
   A grep of the two files finds none of them. XLS import is the only path
   that reads hidden rows and columns, and names.
-- **Data validation is a stub.** `SpreadsheetCell::ValidateValue` always
-  returns true (`include/UltraCanvasSpreadsheetCell.h:803-809`).
+- **Data validation is checked but not enforced.** The rules are checked in
+  the model (`CheckDataValidation`, `include/UltraCanvasSpreadsheetCell.h`).
+  Until 2026-11, `SpreadsheetCell::ValidateValue` was a stub that accepted
+  everything. But nothing in the grid calls the check: an entry that fails
+  its rule is accepted, a list rule shows no dropdown, and neither ODS nor
+  XLSX reads or writes rules.
 - **Conditional formats** are stored on the sheet
   (`core/UltraCanvasSpreadsheetSheet.cpp:472-493`), but the renderer and the
   readers and writers never refer to them.
@@ -409,7 +413,8 @@ how quickly a user meets it:
      (`conditionalFormatting`);
    - add a rules dialog.
 5. **Data validation:**
-   - implement `ValidateValue`;
+   - refuse, or warn about, an entry that fails its rule when it is
+     committed (`CommitEdit`), as the rule's `alertStyle` says;
    - show list validation as an `UltraCanvasDropdown` in the cell;
    - add read and write.
 6. **Comments and hyperlinks:**
