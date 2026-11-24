@@ -23,6 +23,7 @@
 // roles, its fonts - from what UltraCanvasHostAppearance read; the
 // application's theme policy (ThemePolicy, UltraCanvasApplication) applies
 // it at start and on every host change.
+// Version: 1.4.0 - ForDarkLook: a colour chosen for the light look, its lightness turned over
 // Version: 1.3.0 - TakeHostFonts: the host's fonts and scale onto a theme, for an Own provider
 // Version: 1.2.0 - ThemeFonts and ThemeTextRole; LightHighContrast / DarkHighContrast;
 //                  FromHost with DeriveAccent; ThemePolicy (T3 of the host theme proposal)
@@ -124,6 +125,18 @@ public:
     // host's; named "Host Light", "Host Dark", "Host Light High Contrast",
     // "Host Dark High Contrast".
     static UltraCanvasTheme FromHost(const HostAppearance& host);
+
+    // A colour an element or a page chose for the light look - a pale
+    // panel, a grey caption, an unlit segment - for a dark one: its
+    // lightness turned over into the dark look's range (white lands near
+    // the panel, black near white ink), its hue kept and a pale tint's
+    // saturation softened, so a pale green panel becomes a dark green one
+    // and dark grey text light grey. Alpha is kept. Pure.
+    static Color ForDarkLook(const Color& lightLookColour);
+    // ForDarkLook under a dark theme, the colour unchanged under a light one
+    Color ForThisLook(const Color& lightLookColour) const {
+        return dark ? ForDarkLook(lightLookColour) : lightLookColour;
+    }
     // The host's fonts and text scale onto this theme, as FromHost puts
     // them: the interface font and the monospace font where the host names
     // one, the scale where it is positive; the theme's own stay otherwise.
