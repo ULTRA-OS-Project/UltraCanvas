@@ -28,6 +28,7 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.http import Http404
+from django.http.request import split_domain_port
 from django.shortcuts import redirect
 from django.urls import reverse
 
@@ -48,10 +49,22 @@ def split() -> bool:
     return urlsplit(account_root()).netloc.lower() != urlsplit(store_root()).netloc.lower()
 
 
+def _host_and_port(host: str, scheme: str) -> tuple[str, str]:
+    """A host as it is compared: lower case, without the dot a full name
+    may end in, and with the port its scheme has when it names none - so
+    account.ultraos.eu, account.ultraos.eu:443 and account.ultraos.eu. are
+    one host, as they are to the web server."""
+    domain, port = split_domain_port(host.lower())
+    return domain.rstrip("."), port or ("443" if scheme == "https" else "80")
+
+
 def on_account_host(request) -> bool:
     """Whether this request is one the account answers: always with one
     host, and with two only when it came to the account's."""
-    return not split() or request.get_host().lower() == urlsplit(account_root()).netloc.lower()
+    if not split():
+        return True
+    account = urlsplit(account_root())
+    return _host_and_port(request.get_host(), account.scheme) == _host_and_port(account.netloc, account.scheme)
 
 
 def account_url(name: str, *args, **kwargs) -> str:

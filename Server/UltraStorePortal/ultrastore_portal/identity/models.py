@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import timedelta
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -47,16 +46,29 @@ def new_secret() -> str:
     return secrets.token_urlsafe(32)
 
 
+def split_uri(uri: str):
+    """urlsplit, or None for what it will not read (an unclosed bracket, a
+    host no address can have): such an address is nobody's, not a crash."""
+    try:
+        parts = urlsplit(uri)
+        parts.hostname, parts.port   # these read the host, and refuse a bad one
+        return parts
+    except ValueError:
+        return None
+
+
 def is_loopback(uri: str) -> bool:
-    parts = urlsplit(uri)
-    return parts.scheme == "http" and (parts.hostname or "") in LOOPBACK_HOSTS
+    parts = split_uri(uri)
+    return parts is not None and parts.scheme == "http" and (parts.hostname or "") in LOOPBACK_HOSTS
 
 
 def check_redirect_uri(uri: str) -> None:
     """Where a person may be sent back to: an https address, or http on this
     machine for an application that listens on a port of its own (RFC 8252).
     Never with a fragment, never anything a browser would not open as a page."""
-    parts = urlsplit(uri)
+    parts = split_uri(uri)
+    if parts is None:
+        raise ValidationError(f"This is not an address: {uri}")
     if parts.fragment or "#" in uri:
         raise ValidationError(f"A redirect address has no fragment: {uri}")
     if not parts.hostname:
@@ -111,6 +123,8 @@ class Client(models.Model):
             raise ValidationError({"scopes": "The scopes are openid and any of profile, email, offline_access."})
         if self.kind == self.PUBLIC:
             self.require_pkce = True
+            if self.resource_server:
+                raise ValidationError({"resource_server": "A service that asks about tokens proves itself with a secret: it cannot be a public client."})
 
     def new_secret(self) -> str:
         """A new secret, shown once: only its hash is kept."""
@@ -128,10 +142,22 @@ class Client(models.Model):
             if uri == registered:
                 return True
             if is_loopback(registered) and is_loopback(uri):
-                a, b = urlsplit(registered), urlsplit(uri)
+                a, b = split_uri(registered), split_uri(uri)
                 if (a.hostname, a.path, a.query) == (b.hostname, b.path, b.query) and not b.fragment and not b.username:
                     return True
         return False
+
+    def save(self, *args, **kwargs):
+        # What a person's subject is made for is fixed when the client is
+        # made: were it read from the addresses each time, putting them in
+        # another order would make every person a stranger to the service.
+        # An application on the person's own machine has no host of its own
+        # (they would all share 127.0.0.1), so its id stands in.
+        if not self.sector and lines(self.redirect_uris):
+            first = lines(self.redirect_uris)[0]
+            host = (split_uri(first).hostname if split_uri(first) else "") or ""
+            self.sector = self.client_id if (not host or is_loopback(first)) else host
+        super().save(*args, **kwargs)
 
     def allowed_scopes(self) -> set[str]:
         return set(self.scopes.split())
@@ -139,9 +165,7 @@ class Client(models.Model):
     def subject_sector(self) -> str:
         """Our own services share one subject for a person; every other
         service gets one of its own, so two of them cannot compare."""
-        if self.trusted:
-            return ""
-        return self.sector or (urlsplit(lines(self.redirect_uris)[0]).hostname or self.client_id)
+        return "" if self.trusted else (self.sector or self.client_id)
 
 
 class SignIn(models.Model):
@@ -161,7 +185,7 @@ class SignIn(models.Model):
 
     @property
     def over(self) -> bool:
-        return self.ended is not None or self.created + timedelta(seconds=settings.SESSION_COOKIE_AGE) < timezone.now()
+        return self.ended is not None
 
 
 class Consent(models.Model):
@@ -243,7 +267,8 @@ class Token(models.Model):
 
     @property
     def live(self) -> bool:
-        return self.revoked is None and self.used is None and self.expires > timezone.now() and self.grant.revoked is None
+        return (self.revoked is None and self.used is None and self.expires > timezone.now()
+                and self.grant.revoked is None and self.grant.client.active)
 
 
 class SigningKey(models.Model):

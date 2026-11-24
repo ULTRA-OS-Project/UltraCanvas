@@ -34,15 +34,27 @@ def _at_the_account(request) -> bool:
 
 @receiver(user_logged_in)
 def started(sender, request, user, **kwargs) -> None:
-    if _at_the_account(request):
+    """A sign-in at the account. The same person giving the password again
+    in a session that is signed in (a service asked for it) is the same
+    sign-in, a moment later - not a second one, which would leave the first
+    without an end and everything hanging on it signed in for good."""
+    if not _at_the_account(request):
+        return
+    sid = request.session.get(SID)
+    if not (sid and SignIn.objects.filter(sid=sid, user=user, ended__isnull=True).exists()):
         request.session[SID] = SignIn.objects.create(user=user).sid
-        request.session[AUTH_TIME] = int(time.time())
+    request.session[AUTH_TIME] = time.time()   # to the fraction: "after the account asked" is decided by it
+
+
+def end(sid: str) -> None:
+    if sid:
+        SignIn.objects.filter(sid=sid, ended__isnull=True).update(ended=timezone.now())
 
 
 @receiver(user_logged_out)
 def ended(sender, request, user, **kwargs) -> None:
-    if _at_the_account(request) and request.session.get(SID):
-        SignIn.objects.filter(sid=request.session[SID], ended__isnull=True).update(ended=timezone.now())
+    if _at_the_account(request):
+        end(request.session.get(SID, ""))
 
 
 def current(request) -> tuple[str, datetime]:
@@ -52,7 +64,7 @@ def current(request) -> tuple[str, datetime]:
     if not sid or not auth_time or not SignIn.objects.filter(sid=sid, user=request.user, ended__isnull=True).exists():
         last = request.user.last_login or timezone.now()
         sid = SignIn.objects.create(user=request.user, created=last).sid
-        auth_time = int(last.timestamp())
+        auth_time = last.timestamp()
         request.session[SID], request.session[AUTH_TIME] = sid, auth_time
     return sid, datetime.fromtimestamp(auth_time, utc.utc)
 

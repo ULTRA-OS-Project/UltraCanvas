@@ -329,7 +329,9 @@ the **issuer** every token names.
 Set it **before the first service is registered and never change it**: the
 issuer is inside every token and in every client's configuration. Each host
 keeps its own session cookie; none is shared across `ultraos.eu`, so no
-other host under that name is ever sent a session.
+other host under that name is ever sent a session - and under https they
+are `__Host-` cookies, which no other host under that name can set either.
+Neither host is told to trust the other's forms.
 
 **What a service does** (any OpenID Connect client library does it from the
 first address alone):
@@ -363,7 +365,7 @@ number, and it never changes.
 ultrastore-portal oidc client ultracloud --name UltraCloud --trusted \
     --redirect-uri https://cloud.ultraos.eu/callback --post-logout-redirect-uri https://cloud.ultraos.eu/
 ultrastore-portal oidc client chatcube --name ChatCube --trusted --public \
-    --redirect-uri http://127.0.0.1/callback --scopes "openid profile offline_access"
+    --redirect-uri http://127.0.0.1/callback --scopes "openid profile offline_access"   # asked for each time: it is on the person's machine
 ultrastore-portal oidc client chat-relay --name "Chat relay" --resource-server --redirect-uri https://chat.ultraos.eu/unused
 ultrastore-portal oidc clients | issuer | rotate-key | retire-key <kid> | cleanup
 ```
@@ -373,8 +375,11 @@ another); only its hash is kept. `--public` is an application or a page
 that cannot keep one. A redirect address is `https`, matched exactly - or
 `http://127.0.0.1/…` for an application on the person's own machine, which
 stands for whatever port it got (UltraNet's `UltraNetOAuth2.h` signs in
-that way). `--trusted` is one of ours: no consent page. Every registration
-is a row in the audit log.
+that way). `--trusted` is one of ours: no consent page - **except for an
+application on the person's own machine, which is asked for every time**,
+ours or not: anything running there can claim to be that application, and
+only the person can say it is the one they started. Every registration is a
+row in the audit log.
 
 **What is refused, and what is taken back.**
 
@@ -384,12 +389,24 @@ is a row in the audit log.
   nowhere; every other mistake is told to the service at its own address.
 - A code is good once and for two minutes. Shown twice, it takes back what
   the first showing got. A refresh token is spent by its use; shown twice,
-  its whole grant ends.
+  its whole grant ends. A refresh may ask for less than was granted; the
+  next one has the whole grant again.
+- `prompt=login` means the password, typed after the account asked: the way
+  back from the sign-in page carries the account's signed note of when it
+  asked, and only a sign-in newer than the note goes on.
+- A thing named twice in a request (two return addresses, say) is refused.
+- Guessing at a client's secret is slowed down, by the client that is
+  named. A refused code or token is not counted: nobody guesses 256 random
+  bits, and counting them would let anyone shut a service's sign-in.
 - Codes, tokens and secrets are stored as their SHA-256, never as handed out.
-- A new password ends every grant and every other sign-in. An account
-  switched off has no good tokens.
+- A new password ends every grant and every other sign-in, wherever it is
+  set - the account's pages, the admin site, the command line. An account
+  switched off has no good tokens, and neither has a client switched off.
 - On their account's page a person sees the services they signed in to, with
-  what each was told, and takes the access back.
+  what each was told - ours that hold a refresh token included - and takes
+  the access back.
+- The mailed confirmation link proves the address once and signs in only
+  then, and never replaces whoever is signed in.
 - Signing out at the account signs the store out; the store's *Sign out*
   signs both out.
 
@@ -403,9 +420,12 @@ backup: without it every service sees every person as a stranger.
 
 **Not yet.** Written to the OpenID Connect Core, Discovery and RP-Initiated
 Logout texts and RFC 6749, 7636, 7009, 7662, 8252 and 9207, and tested
-through its own endpoints; **not yet run against the OpenID Foundation's
-conformance suite, and not reviewed by a second pair of eyes** - both
-before a service that is not ours is let in. Also not built: a second
+through its own endpoints. One independent review of the code was made
+and what it found is fixed, each finding with a test; it is **not yet run
+against the OpenID Foundation's conformance suite and not reviewed from
+outside the project** - both before a service that is not ours is let in.
+In two-host mode the admin site's own sign-in (`/admin/login/` on the
+store's host) still takes a password directly. Also not built: a second
 factor at the sign-in, passkeys, telling a service's server that a person
 signed out (back-channel logout), a service registering itself.
 

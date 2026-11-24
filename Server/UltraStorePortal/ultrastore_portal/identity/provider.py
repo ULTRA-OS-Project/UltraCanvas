@@ -28,7 +28,6 @@ Version: 0.4.0
 from __future__ import annotations
 
 import base64
-import binascii
 import hashlib
 import hmac
 import re
@@ -42,9 +41,9 @@ from django.conf import settings
 from django.utils import timezone
 
 from . import hosts, keys
-from .models import Client, Code, Grant, SignIn, Token, digest, new_secret
+from .models import Client, Code, Consent, Grant, SignIn, Token, digest, new_secret
 
-PKCE_VALUE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
+PKCE_VALUE = re.compile(r"[A-Za-z0-9._~-]{43,128}")   # used with fullmatch: no trailing newline slips through
 PROMPTS = {"none", "login", "consent", "select_account"}
 
 
@@ -87,6 +86,8 @@ def issuer() -> str:
 # -- the authorization request ------------------------------------------------
 
 def read_request(params) -> AuthRequest:
+    if any("\x00" in str(value) for value in params.values()):
+        raise Refused("This request is not one a service would send.")
     client = Client.objects.filter(client_id=params.get("client_id", ""), active=True).first()
     if client is None:
         raise Refused("This service is not known to the account.")
@@ -114,7 +115,7 @@ def read_request(params) -> AuthRequest:
     if challenge:
         if params.get("code_challenge_method") != "S256":
             raise request.fail("invalid_request", "The code challenge method is S256.")
-        if not PKCE_VALUE.match(challenge):
+        if not PKCE_VALUE.fullmatch(challenge):
             raise request.fail("invalid_request", "The code challenge is 43 to 128 characters of base64url.")
         request.code_challenge = challenge
     elif client.require_pkce or client.kind == Client.PUBLIC:
@@ -150,17 +151,29 @@ def authorize(request: AuthRequest, user, sid: str, auth_time) -> str:
 
 # -- the client at the token endpoint ----------------------------------------
 
+def presented_client_id(authorization: str, form) -> str:
+    """The client a request names, proven or not: what guessing is counted by."""
+    if authorization.lower().startswith("basic "):
+        try:
+            return unquote_plus(base64.b64decode(authorization[6:].strip(), validate=True).decode().partition(":")[0])[:64]
+        except ValueError:
+            return ""
+    return str(form.get("client_id", ""))[:64]
+
+
 def authenticate_client(authorization: str, form) -> Client:
     """Who is asking: the secret in the Authorization header or in the
     form, never both; a public client names itself and proves nothing here
     (its proof is the code verifier)."""
+    if any("\x00" in str(value) for value in form.values()):
+        raise OAuthError("invalid_request", "A value holds a character no value has.")
     client_id, secret, basic = form.get("client_id", ""), form.get("client_secret"), False
     if authorization.lower().startswith("basic "):
         if secret is not None:
             raise OAuthError("invalid_request", "The client's secret is sent once: in the header or in the form.")
         try:
             user, _, password = base64.b64decode(authorization[6:].strip(), validate=True).decode().partition(":")
-        except (binascii.Error, UnicodeDecodeError):
+        except ValueError:   # not base64, not ASCII, not UTF-8
             raise OAuthError("invalid_client", "The Authorization header is not Basic credentials.", 401) from None
         if client_id and client_id != unquote_plus(user):
             raise OAuthError("invalid_request", "Two different clients are named.")
@@ -177,7 +190,7 @@ def authenticate_client(authorization: str, form) -> Client:
 # -- codes and tokens ----------------------------------------------------------
 
 def _pkce_matches(challenge: str, verifier: str) -> bool:
-    if not PKCE_VALUE.match(verifier or ""):
+    if not PKCE_VALUE.fullmatch(verifier or ""):
         return False
     made = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
     return secrets.compare_digest(made, challenge)
@@ -200,6 +213,10 @@ def redeem_code(client: Client, code: str, redirect_uri: str, verifier: str) -> 
     if redirect_uri != row.redirect_uri:
         raise invalid
     if row.code_challenge and not _pkce_matches(row.code_challenge, verifier):
+        raise invalid
+    if verifier and not row.code_challenge:
+        # A verifier for a code that was asked for without a challenge: the
+        # challenge was taken out of the request on its way here.
         raise invalid
     return grant
 
@@ -247,14 +264,17 @@ def _new_token(grant: Grant, kind: str, scope: str, seconds: int) -> str:
 
 
 def issue_tokens(grant: Grant, scope: str | None = None, with_nonce: bool = True) -> dict:
+    """The tokens of a grant. `scope` is what this access token is for - a
+    refresh may ask for less than was granted - while the refresh token
+    always stands for the whole grant, so asking for less once does not
+    lose the rest (RFC 6749, 6)."""
     scope = grant.scope if scope is None else scope
     access = _new_token(grant, Token.ACCESS, scope, settings.OIDC_ACCESS_TOKEN_TTL)
-    answer = {
-        "access_token": access, "token_type": "Bearer", "expires_in": settings.OIDC_ACCESS_TOKEN_TTL, "scope": scope,
-        "id_token": id_token(grant, access, scope, with_nonce),
-    }
-    if "offline_access" in scope.split():
-        answer["refresh_token"] = _new_token(grant, Token.REFRESH, scope, settings.OIDC_REFRESH_TOKEN_TTL)
+    answer = {"access_token": access, "token_type": "Bearer", "expires_in": settings.OIDC_ACCESS_TOKEN_TTL, "scope": scope}
+    if "openid" in scope.split():
+        answer["id_token"] = id_token(grant, access, scope, with_nonce)
+    if "offline_access" in grant.scope.split():
+        answer["refresh_token"] = _new_token(grant, Token.REFRESH, grant.scope, settings.OIDC_REFRESH_TOKEN_TTL)
     return answer
 
 
@@ -298,7 +318,7 @@ def userinfo(access_token: str) -> dict:
 def introspect(client: Client, value: str) -> dict:
     """Whether a token is good, for a service that is handed other
     services' tokens (RFC 7662). Only a client marked as such may ask."""
-    if not client.resource_server:
+    if not client.resource_server or client.kind != Client.CONFIDENTIAL:
         raise OAuthError("unauthorized_client", "This client may not ask about tokens.", 403)
     row = find_token(value)
     if row is None or not row.live or not row.grant.user.is_active:
@@ -330,6 +350,21 @@ def forget(user, client: Client) -> None:
     grant, with all their tokens."""
     client.consents.filter(user=user).delete()
     Grant.objects.filter(user=user, client=client, revoked__isnull=True).update(revoked=timezone.now())
+
+
+def services_of(user) -> list[dict]:
+    """The services that hold something of this person: the ones they
+    allowed on a consent page, and ours that still hold a refresh token -
+    which were never asked for, and must be as easy to sign out of."""
+    found: dict[int, dict] = {}
+    for consent in Consent.objects.filter(user=user, client__active=True).select_related("client"):
+        found[consent.client_id] = {"client": consent.client, "told": consent.scope_labels, "since": consent.granted}
+    held = Token.objects.filter(grant__user=user, grant__revoked__isnull=True, grant__client__active=True, kind=Token.REFRESH,
+                                used__isnull=True, revoked__isnull=True, expires__gt=timezone.now()).select_related("grant__client")
+    for token in held:
+        grant = token.grant
+        found.setdefault(grant.client_id, {"client": grant.client, "told": ["Stays signed in while you are away"], "since": grant.created})
+    return sorted(found.values(), key=lambda row: row["client"].name.lower())
 
 
 def password_changed(user, keep_sid: str = "") -> None:

@@ -21,8 +21,8 @@ from django.urls import reverse, reverse_lazy
 
 from django.views.decorators.http import require_POST
 
-from ..identity import hosts, provider
-from ..identity.models import Client, Consent
+from ..identity import hosts, provider, sessions
+from ..identity.models import Client
 from .forms import EmailForm, ProfileForm, SignInForm, SignUpForm
 from .utils import too_many
 
@@ -67,15 +67,26 @@ def signup(request):
 
 
 def verify(request, token: str):
+    """The mailed link proves the address, once. It signs the person in
+    only as it does so - the first time, and when nobody else is signed in
+    here: a link that kept signing in would be a second password with two
+    days of life, and one that replaced whoever is signed in would let its
+    sender put a person into the sender's account without their noticing."""
     user = User.from_verification_token(token)
     if user is None or not user.is_active:
         return render(request, "account/verify_failed.html", status=400)
-    if not user.email_verified:
+    first = not user.email_verified
+    if first:
         user.email_verified = True
         user.save(update_fields=["email_verified"])
-    login(request, user, backend=BACKEND)
-    messages.success(request, "Your email address is confirmed.")
-    return redirect(hosts.store_url("console:home"))
+    if first and not request.user.is_authenticated:
+        login(request, user, backend=BACKEND)
+        messages.success(request, "Your email address is confirmed.")
+        return redirect(hosts.store_url("console:home"))
+    if request.user.is_authenticated and request.user.pk == user.pk:
+        return redirect(hosts.store_url("console:home"))
+    messages.success(request, "Your email address is confirmed. Sign in to go on." if first else "This address is already confirmed. Sign in to go on.")
+    return redirect("account:signin")
 
 
 def resend(request):
@@ -112,6 +123,15 @@ class SignIn(auth_views.LoginView):
     def get_default_redirect_url(self):
         return reverse("account:profile") if hosts.split() else super().get_default_redirect_url()
 
+    def form_valid(self, form):
+        # Someone else signing in where a person is signed in: the first
+        # one's sign-in ends here, and with it what followed it elsewhere.
+        before = self.request.user
+        earlier = self.request.session.get(sessions.SID, "") if before.is_authenticated and before.pk != form.get_user().pk else ""
+        response = super().form_valid(form)
+        sessions.end(earlier)
+        return response
+
     def post(self, request, *args, **kwargs):
         if too_many(request, "signin", 10, 900, key=request.POST.get("username", "").strip().lower()):
             form = self.get_form()
@@ -143,9 +163,7 @@ class PasswordResetConfirm(auth_views.PasswordResetConfirmView):
 
     def form_valid(self, form):
         messages.success(self.request, "The password is changed. Sign in with the new one.")
-        response = super().form_valid(form)
-        provider.password_changed(form.user)
-        return response
+        return super().form_valid(form)   # every grant and sign-in ends with it (accounts.User.save)
 
 
 class PasswordChange(auth_views.PasswordChangeView):
@@ -155,9 +173,10 @@ class PasswordChange(auth_views.PasswordChangeView):
 
     def form_valid(self, form):
         messages.success(self.request, "The password is changed.")
-        response = super().form_valid(form)
-        provider.password_changed(form.user, keep_sid=self.request.session.get("sso_sid", ""))
-        return response
+        # Everything the old password started ends (accounts.User.save) -
+        # but for the sign-in it is being changed in.
+        form.user.keep_sign_in = self.request.session.get(sessions.SID, "")
+        return super().form_valid(form)
 
 
 class SignOut(auth_views.LogoutView):
@@ -173,8 +192,7 @@ def profile(request):
         messages.success(request, "Saved.")
         return redirect("account:profile")
     return render(request, "account/profile.html", {
-        "form": form, "console_url": hosts.store_url("console:home"),
-        "consents": Consent.objects.filter(user=request.user, client__active=True).select_related("client").order_by("client__name")})
+        "form": form, "console_url": hosts.store_url("console:home"), "services": provider.services_of(request.user)})
 
 
 @login_required

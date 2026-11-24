@@ -137,15 +137,15 @@ def verify(token: str, include_retired: bool = False) -> dict | None:
     try:
         header_b64, claims_b64, signature_b64 = token.split(".")
         header = json.loads(unb64(header_b64))
-        if header.get("alg") != ALGORITHM:
+        if not isinstance(header, dict) or header.get("alg") != ALGORITHM or not isinstance(header.get("kid"), str):
             return None
-        key = _all_keys(include_retired).get(header.get("kid", ""))
+        key = _all_keys(include_retired).get(header["kid"])
         if key is None:
             return None
         key.public_key().verify(unb64(signature_b64), (header_b64 + "." + claims_b64).encode(), padding.PKCS1v15(), hashes.SHA256())
         claims = json.loads(unb64(claims_b64))
         return claims if isinstance(claims, dict) else None
-    except (ValueError, TypeError, InvalidSignature):
+    except (ValueError, TypeError, RecursionError, InvalidSignature):   # whatever was sent, it is not one of ours
         return None
 
 

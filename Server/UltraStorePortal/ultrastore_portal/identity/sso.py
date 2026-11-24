@@ -59,8 +59,11 @@ def client() -> Client:
 
 
 def _next(request) -> str:
+    # A path on this host and nothing else: "foo" would be taken for the
+    # name of a page later on, and "//host" for another host.
     target = request.GET.get("next", "")
-    if target and url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+    if (target.startswith("/") and not target.startswith("//")
+            and url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}, require_https=request.is_secure())):
         return target
     return resolve_url(settings.LOGIN_REDIRECT_URL)
 
@@ -86,7 +89,7 @@ def callback(request):
         raise Http404
     pending = request.session.pop(PENDING, None)
     state = request.GET.get("state", "")
-    if not pending or not state or not secrets.compare_digest(state, pending["state"]):
+    if not pending or not state or not secrets.compare_digest(state.encode(), pending["state"].encode()):
         messages.error(request, "That sign-in was not started here, or it was started twice. Try again.")
         return redirect("store:home")
     if request.GET.get("iss") != provider.issuer() or request.GET.get("error"):

@@ -85,16 +85,27 @@ _base = urlsplit(BASE_URL)
 ACCOUNT_URL = env("ACCOUNT_URL").rstrip("/")
 ACCOUNT_NAME = env("ACCOUNT_NAME", "ULTRA OS account")
 _account = urlsplit(ACCOUNT_URL or BASE_URL)
-if _account.scheme not in ("http", "https") or not _account.hostname or _account.path.strip("/"):
-    raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_ACCOUNT_URL is a host's root (https://account.ultraos.eu): {ACCOUNT_URL}")
-if _account.scheme != _base.scheme:
-    raise ImproperlyConfigured("ULTRASTORE_PORTAL_ACCOUNT_URL and ULTRASTORE_PORTAL_BASE_URL are both https, or both http on a developer's machine")
+if ACCOUNT_URL:
+    if _account.scheme not in ("http", "https") or not _account.hostname or _account.path.strip("/"):
+        raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_ACCOUNT_URL is a host's root (https://account.ultraos.eu): {ACCOUNT_URL}")
+    if _account.scheme != _base.scheme:
+        raise ImproperlyConfigured("ULTRASTORE_PORTAL_ACCOUNT_URL and ULTRASTORE_PORTAL_BASE_URL are both https, or both http on a developer's machine")
+TWO_HOSTS = _account.netloc.lower() != _base.netloc.lower()
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS") or sorted({_base.hostname or "localhost", _account.hostname})
 if DEBUG or RUNNING_TESTS:
     ALLOWED_HOSTS += ["localhost", "127.0.0.1", "testserver"]
 HTTPS = _base.scheme == "https"
 if HTTPS:
-    CSRF_TRUSTED_ORIGINS = sorted({f"https://{_base.netloc}", f"https://{_account.netloc}"})
+    # With two hosts neither is told to trust the other: no form is posted
+    # from one to the other, and each host's own origin needs no listing
+    # (the web server passes Host and X-Forwarded-Proto on, deploy/nginx.conf).
+    # Their cookies are __Host- cookies then: bound to the one host that set
+    # them, which no other host under ultraos.eu can set or overwrite.
+    if TWO_HOSTS:
+        SESSION_COOKIE_NAME = "__Host-sessionid"
+        CSRF_COOKIE_NAME = "__Host-csrftoken"
+    else:
+        CSRF_TRUSTED_ORIGINS = [f"https://{_base.netloc}"]
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

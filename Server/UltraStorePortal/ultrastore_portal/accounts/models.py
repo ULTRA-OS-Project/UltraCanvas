@@ -3,6 +3,7 @@ link before the first sign-in. A publisher's people and the operator's
 staff are the same kind of account; what one may do comes from the
 publisher memberships (store.PublisherMember) and from is_staff.
 
+Version: 0.4.0 - a new password ends every grant and sign-in (save)
 Version: 0.1.0
 """
 
@@ -62,6 +63,17 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.email
+
+    def save(self, *args, **kwargs):
+        """A new password ends what the old one started, wherever it was
+        set - the account's pages, the admin site, the command line: every
+        service's grant with its tokens, and every sign-in (but the one the
+        change is made in, which a page names in `keep_sign_in`)."""
+        changed = self._password is not None and self.pk is not None
+        super().save(*args, **kwargs)
+        if changed:
+            from ..identity import provider   # the identity app's models name this one
+            provider.password_changed(self, keep_sid=getattr(self, "keep_sign_in", ""))
 
     @property
     def display_name(self) -> str:

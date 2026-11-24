@@ -232,12 +232,24 @@ class IdentityCase(TestCase):
         self.sign_in()
         self.code_for()
         self.assertIn("code", query_of(self.client.get("/oauth/authorize", self.request(prompt="none"))))
-        # prompt=login: the password again, although signed in; then on, without the prompt.
+        # prompt=login: the password again, although signed in.
         response = self.client.get("/oauth/authorize", self.request(prompt="login"))
         self.assertIn("reauth=1", response["Location"])
         self.assertContains(self.client.get(response["Location"]), "Sign in")   # the page, not a redirect past it
+        # The way back, opened by hand without the password, leads to the password again...
+        way_back = parse_qs(urlsplit(response["Location"]).query)["next"][0]
+        self.assertIn("reauth=1", self.client.get(way_back)["Location"])
+        # ... and so does one with a note of the person's own making.
+        forged = way_back.split("&login_asked=")[0] + "&login_asked=" + str(int(time.time()) - 600)
+        self.assertIn("reauth=1", self.client.get(forged)["Location"])
         back = self.client.post(response["Location"], {"username": "dana@example.org", "password": PASSWORD})
-        self.assertNotIn("prompt", back["Location"])
+        self.assertIn("code", query_of(self.client.get(back["Location"])))
+        self.assertEqual(SignIn.objects.count(), 1)   # the same sign-in, a moment later
+        # Asked of someone who is not signed in at all, it is one sign-in, not two.
+        self.client.logout()
+        response = self.client.get("/oauth/authorize", self.request(prompt="login"))
+        self.assertNotIn("reauth", response["Location"])
+        back = self.client.post(response["Location"], {"username": "dana@example.org", "password": PASSWORD})
         self.assertIn("code", query_of(self.client.get(back["Location"])))
         # max_age: a sign-in older than that is not enough.
         session = self.client.session
@@ -315,10 +327,20 @@ class IdentityCase(TestCase):
         self.assertEqual(self.client.post("/oauth/token", {"grant_type": "password", "client_id": "ultracloud-test", "client_secret": self.secret}).json()["error"], "unsupported_grant_type")
         self.assertEqual(self.client.get("/oauth/token").status_code, 405)
 
-    def test_guessing_is_slowed_down(self):
+    def test_guessing_a_secret_is_slowed_down_and_junk_codes_shut_nobody_out(self):
+        self.sign_in()
+        # Junk codes - what anyone can feed a service's callback - are refused and not counted.
+        for _ in range(40):
+            self.assertEqual(self.exchange("junk").status_code, 400)
+        self.assertEqual(self.exchange(self.code_for()).status_code, 200)
+        # Wrong secrets are counted, by the client they are tried on, however it is named.
+        other, other_secret = self.make_client("other", "Other")
         for _ in range(30):
             self.assertEqual(self.exchange("guess", secret="guess").status_code, 401)
         self.assertEqual(self.exchange("guess", secret=self.secret).status_code, 429)
+        form = {"grant_type": "authorization_code", "code": "x", "client_id": "ultracloud-test", "client_secret": self.secret}
+        self.assertEqual(self.client.post("/oauth/token", form).status_code, 429)
+        self.assertEqual(self.exchange("junk", other, other_secret).status_code, 400)   # another client is not shut out with it
 
     def test_an_application_on_the_persons_machine(self):
         """A public client: no secret, the code verifier is its proof, and it
@@ -328,14 +350,28 @@ class IdentityCase(TestCase):
         self.assertTrue(Client.objects.get(pk=app.pk).require_pkce)   # a public client cannot switch it off
         self.sign_in()
         params = self.request(app, redirect_uri="http://127.0.0.1:49152/callback", scope="openid profile offline_access")
-        response = self.client.get("/oauth/authorize", params)
+        # Ours or not, the person is asked - and asked every time: anything
+        # running on the machine can claim to be this application.
+        page = self.client.get("/oauth/authorize", params)
+        self.assertContains(page, "Sign in to ChatCube?")
+        self.assertEqual(query_of(self.client.get("/oauth/authorize", {**params, "prompt": "none"}))["error"], "consent_required")
+        response = self.client.post("/oauth/authorize/decide", {"request": page.context["key"], "decision": "allow"})
         self.assertTrue(response["Location"].startswith("http://127.0.0.1:49152/callback?code="))
+        self.assertEqual(self.client.get("/oauth/authorize", params).status_code, 200)   # again the next time
         self.assertEqual(self.client.get("/oauth/authorize", {**params, "redirect_uri": "http://127.0.0.1:49152/other"}).status_code, 400)
         self.assertEqual(self.client.get("/oauth/authorize", {**params, "redirect_uri": "http://10.0.0.5:49152/callback"}).status_code, 400)
         data = {"grant_type": "authorization_code", "client_id": "chatcube", "code": query_of(response)["code"],
                 "redirect_uri": "http://127.0.0.1:49152/callback", "code_verifier": VERIFIER}
         tokens = self.client.post("/oauth/token", data).json()
         self.assertIn("refresh_token", tokens)
+        # What nobody can read as an address is refused, not a crash.
+        for bad in ("http://[::1/callback", "http://127.0.0.1\uff0f@evil.example/callback", "http://127.0.0.1:99999999/callback"):
+            self.assertEqual(self.client.get("/oauth/authorize", {**params, "redirect_uri": bad}).status_code, 400, bad)
+        # On the account's page the person sees it holds a way to stay signed in, and takes it back.
+        self.assertContains(self.client.get("/account/"), "ChatCube")
+        self.client.post("/account/services/chatcube/forget/")
+        refused = self.client.post("/oauth/token", {"grant_type": "refresh_token", "client_id": "chatcube", "refresh_token": tokens["refresh_token"]})
+        self.assertEqual(refused.json()["error"], "invalid_grant")
 
     # -- refresh, revoke, introspect --------------------------------------
     def offline(self):
@@ -354,12 +390,16 @@ class IdentityCase(TestCase):
         claims = self.claims(second["id_token"])
         self.assertNotIn("nonce", claims)
         self.assertEqual(claims["sub"], self.claims(first["id_token"])["sub"])
-        # Less may be asked for, never more.
+        # Less may be asked for, never more - and asking for less once loses nothing of the grant.
         narrower = self.refresh(client, second["refresh_token"], scope="openid").json()
         self.assertEqual(narrower["scope"], "openid")
-        self.assertNotIn("refresh_token", narrower)
+        self.assertNotIn("email", self.claims(narrower["id_token"]))
+        whole = self.refresh(client, narrower["refresh_token"]).json()
+        self.assertEqual(whole["scope"], "openid email offline_access")
+        self.assertEqual(self.refresh(client, whole["refresh_token"], scope="openid email profile").json()["error"], "invalid_scope")
+        # An access token that is not for openid comes without an identity token.
         third = self.tokens(client, scope="openid email offline_access")
-        self.assertEqual(self.refresh(client, third["refresh_token"], scope="openid email profile").json()["error"], "invalid_scope")
+        self.assertNotIn("id_token", self.refresh(client, third["refresh_token"], scope="email").json())
 
     def test_a_refresh_token_shown_twice_ends_the_grant(self):
         client, first = self.offline()
@@ -446,6 +486,78 @@ class IdentityCase(TestCase):
         self.assertEqual(self.refresh(client, tokens["refresh_token"]).json()["error"], "invalid_grant")
         self.assertEqual(self.client.get("/oauth/userinfo", headers={"Authorization": "Bearer " + tokens["access_token"]}).status_code, 401)
         self.assertEqual(SignIn.objects.filter(ended__isnull=True).count(), 1)
+
+    def test_a_password_set_anywhere_ends_what_the_old_one_started(self):
+        client, tokens = self.offline()
+        user = User.objects.get(pk=self.user.pk)
+        user.set_password("set-by-the-operator-in-the-admin")
+        user.save()
+        self.assertEqual(self.refresh(client, tokens["refresh_token"]).json()["error"], "invalid_grant")
+        self.assertEqual(SignIn.objects.filter(ended__isnull=True).count(), 0)
+
+    def test_a_client_switched_off_holds_nothing_good(self):
+        client, tokens = self.offline()
+        relay, relay_secret = self.make_client("chat-relay", "Chat relay", resource_server=True)
+        Client.objects.filter(pk=client.pk).update(active=False)
+        self.assertEqual(self.client.get("/oauth/userinfo", headers={"Authorization": "Bearer " + tokens["access_token"]}).status_code, 401)
+        self.assertEqual(self.client.post("/oauth/introspect", {"token": tokens["access_token"]}, headers=basic("chat-relay", relay_secret)).json(), {"active": False})
+        self.assertEqual(self.refresh(client, tokens["refresh_token"]).status_code, 401)
+
+    def test_what_is_malformed_is_refused_not_a_crash(self):
+        self.sign_in()
+        # A token hint that is not a token of ours, in several shapes.
+        deep = base64.urlsafe_b64encode(("[" * 5000 + "]" * 5000).encode()).decode().rstrip("=")
+        for hint in ("W10.e30.x", "IngI.e30.x", "MQ.e30.x", "not-a-token", deep + ".e30.x", "é.é.é"):
+            self.assertContains(self.client.get("/oauth/logout", {"id_token_hint": hint}), "Sign out of your account?")
+        # Credentials that are not credentials.
+        for header in ("Basic é", "Basic !!!", "Basic " + base64.b64encode(b"\xff\xfe").decode()):
+            answer = self.client.post("/oauth/token", {"grant_type": "authorization_code", "code": "x"}, headers={"Authorization": header})
+            self.assertEqual((answer.status_code, answer.json()["error"]), (401, "invalid_client"), header)
+        # A thing named twice, and a character no value has.
+        twice = "/oauth/authorize?" + urlencode(self.request()) + "&redirect_uri=https%3A%2F%2Fevil.example%2Fcb"
+        self.assertEqual(self.client.get(twice).status_code, 400)
+        self.assertEqual(self.client.get("/oauth/authorize", self.request(nonce="a\x00b")).status_code, 400)
+        self.assertEqual(self.client.post("/oauth/token", {"client_id": "a\x00b", "grant_type": "authorization_code"}).json()["error"], "invalid_request")
+        # A challenge with a line end after it is not a challenge.
+        self.assertEqual(query_of(self.client.get("/oauth/authorize", self.request(code_challenge=challenge() + "\n")))["error"], "invalid_request")
+        # The documents answer HEAD as they answer GET.
+        self.assertEqual(self.client.head("/.well-known/openid-configuration").status_code, 200)
+        self.assertEqual(self.client.head("/oauth/jwks").status_code, 200)
+
+    def test_a_challenge_taken_out_on_the_way_is_noticed(self):
+        self.cloud.require_pkce = False
+        self.cloud.save()
+        self.sign_in()
+        code = self.code_for(code_challenge=None, code_challenge_method=None)
+        self.assertEqual(self.exchange(code).json()["error"], "invalid_grant")   # the client sent a verifier: it had sent a challenge
+        code = self.code_for(code_challenge=None, code_challenge_method=None)
+        self.assertEqual(self.exchange(code, code_verifier="").status_code, 200)   # a client that uses none at all
+
+    def test_a_subject_is_made_for_the_client_and_stays(self):
+        one, _ = self.make_client("app-one", "App one", kind=Client.PUBLIC, redirect_uris="http://127.0.0.1/cb")
+        two, _ = self.make_client("app-two", "App two", kind=Client.PUBLIC, redirect_uris="http://127.0.0.1/cb")
+        self.assertNotEqual(provider.subject(self.user, one), provider.subject(self.user, two))   # not both "127.0.0.1"
+        before = provider.subject(self.user, self.cloud)
+        self.cloud.redirect_uris = "https://other.example/cb\n" + CALLBACK
+        self.cloud.save()
+        self.assertEqual(provider.subject(self.user, Client.objects.get(pk=self.cloud.pk)), before)
+        # A public client is not one that may ask about tokens.
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            Client(client_id="x", name="X", kind=Client.PUBLIC, resource_server=True, redirect_uris=CALLBACK).full_clean()
+
+    def test_the_mailed_link_proves_an_address_and_is_no_second_password(self):
+        eve = User.objects.create_user("eve@example.org", PASSWORD, name="Eve")
+        link = "/account/verify/" + eve.verification_token() + "/"
+        # Opened by someone who is signed in as another person: confirmed, and nobody is switched.
+        self.sign_in()
+        self.client.get(link)
+        self.assertTrue(User.objects.get(pk=eve.pk).email_verified)
+        self.assertEqual(self.client.get("/account/").wsgi_request.user, self.user)
+        # Opened again, signed out: it signs nobody in.
+        self.client.logout()
+        self.assertEqual(self.client.get(link)["Location"], "/account/signin/")
+        self.assertFalse(self.client.get("/account/signin/").wsgi_request.user.is_authenticated)
 
     # -- keys, the registry -----------------------------------------------
     def test_a_new_key_signs_and_the_old_one_still_verifies(self):
@@ -610,8 +722,42 @@ class TwoHostsCase(TestCase):
     def test_signing_out_at_the_account_signs_the_store_out(self):
         self.sign_in_from_the_store()
         self.assertTrue(self.store.get("/").wsgi_request.user.is_authenticated)
+        # The password given again in between (a service asked) is the same sign-in...
+        self.account.post("/signin/?reauth=1", {"username": "dana@example.org", "password": PASSWORD})
+        self.assertEqual(SignIn.objects.count(), 1)
+        # ... so signing out at the account still signs the store out.
         self.assertEqual(self.account.post("/signout/")["Location"], "/signin/")
         self.assertFalse(self.store.get("/").wsgi_request.user.is_authenticated)
+
+    def test_someone_else_signing_in_at_the_account_ends_the_first_ones_sign_in(self):
+        User.objects.create_user("eve@example.org", PASSWORD, name="Eve", email_verified=True)
+        self.sign_in_from_the_store()
+        self.account.post("/signin/?reauth=1", {"username": "eve@example.org", "password": PASSWORD})
+        self.assertEqual(self.account.get("/").wsgi_request.user.email, "eve@example.org")
+        self.assertFalse(self.store.get("/").wsgi_request.user.is_authenticated)   # not left signed in as the first
+
+    def test_an_old_sign_in_is_no_loop(self):
+        """The account's session can outlive two weeks; the store's sign-in
+        through it must still end somewhere."""
+        self.sign_in_from_the_store()
+        SignIn.objects.update(created=timezone.now() - timezone.timedelta(days=40))
+        fresh = Browser(HTTP_HOST="store.ultraos.eu")
+        self.store = fresh
+        browser, response = self.follow(fresh, fresh.get("/console/"))
+        self.assertEqual((browser is fresh, response.status_code, response.wsgi_request.user), (True, 200, self.user))
+        self.assertTrue(fresh.get("/console/apply/").wsgi_request.user.is_authenticated)
+
+    def test_a_host_is_the_same_host_however_it_is_written(self):
+        for host in ("account.ultraos.eu:443", "account.ultraos.eu.", "ACCOUNT.ultraos.eu"):
+            with self.settings(ALLOWED_HOSTS=["*"]):
+                self.assertEqual(Browser(HTTP_HOST=host).get("/.well-known/openid-configuration").status_code, 200, host)
+                self.assertEqual(Browser(HTTP_HOST=host).get("/apps/").status_code, 404, host)
+        # A next that is no path is not followed - and is no crash at the end of the sign-in.
+        browser, response = self.follow(self.store, self.store.get("/account/signin/?next=foo"))
+        posted = self.account.post(response.wsgi_request.get_full_path(), {"username": "dana@example.org", "password": PASSWORD})
+        browser, response = self.follow(self.account, posted)
+        self.assertEqual((browser is self.store, response.status_code), (True, 200))
+        self.assertEqual(self.store.get("/sso/callback?state=\u00e9&code=x")["Location"], "/")
 
     def test_a_callback_nobody_started_signs_nobody_in(self):
         self.assertEqual(self.account.get("/sso/callback").status_code, 404)

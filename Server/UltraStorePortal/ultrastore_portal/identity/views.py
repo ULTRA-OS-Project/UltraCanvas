@@ -23,9 +23,11 @@ Version: 0.4.0
 from __future__ import annotations
 
 import secrets
+import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.contrib.auth import logout as end_session
+from django.core import signing
 from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
@@ -33,15 +35,18 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
 from ..web.utils import client_address
 from . import hosts, keys, provider, sessions
-from .models import SCOPES, Client, Consent
+from .models import SCOPES, Client, Consent, is_loopback
 
 PENDING = "oidc_pending"
 FAILURES, FAILURE_WINDOW = 30, 300
 JUST_SIGNED_IN = 30
+# The note on a request that the password was asked for again, and how long
+# the way back from the sign-in page is good.
+DEMAND, DEMAND_SALT, DEMAND_AGE = "login_asked", "ultrastore-portal.oidc.login-asked", 3600
 
 
 class Redirect(HttpResponseRedirect):
@@ -113,7 +118,7 @@ def _endpoint(name: str) -> str:
 
 
 @hosts.issuer_only
-@require_GET
+@require_safe
 def discovery(request):
     methods = ["client_secret_basic", "client_secret_post", "none"]
     response = _json({
@@ -147,7 +152,7 @@ def discovery(request):
 
 
 @hosts.issuer_only
-@require_GET
+@require_safe
 def jwks(request):
     response = _json(keys.jwks())
     response["Cache-Control"] = "public, max-age=3600"
@@ -157,19 +162,31 @@ def jwks(request):
 
 # -- a service asks to sign a person in ----------------------------------------
 
-def _sign_in_first(request, params: dict, auth_request: provider.AuthRequest, again: bool) -> HttpResponse:
-    """To the sign-in page, and from there back to this request - without
-    the prompt the sign-in answers, or the two would take turns for ever."""
-    params = dict(params)
-    prompt = " ".join(word for word in params.pop("prompt", "").split() if word not in ("login", "select_account"))
-    if prompt:
-        params["prompt"] = prompt
+def _sign_in_first(request, params: dict, auth_request: provider.AuthRequest, again: bool, asked: bool) -> HttpResponse:
+    """To the sign-in page, and from there back to this request. When the
+    password is asked for again (prompt=login), the way back carries a note
+    the account signed - when it asked - and the request goes on only for a
+    sign-in that is newer than the note. Without it, opening the way back
+    by hand would pass for having signed in."""
+    params = {key: value for key, value in params.items() if key != DEMAND}
+    if asked:
+        params[DEMAND] = signing.dumps(time.time(), salt=DEMAND_SALT)
     query = {"next": reverse("oidc:authorize") + "?" + urlencode(params)}
     if again:
         query["reauth"] = "1"
     if auth_request.login_hint:
         query["login_hint"] = auth_request.login_hint
     return HttpResponseRedirect(reverse("account:signin") + "?" + urlencode(query))
+
+
+def _signed_in_since_asked(request, params: dict) -> bool:
+    """Whether the person gave the password after the account asked for it
+    on this request's behalf."""
+    try:
+        asked = signing.loads(params.get(DEMAND, ""), salt=DEMAND_SALT, max_age=DEMAND_AGE)
+    except signing.BadSignature:
+        return False
+    return isinstance(asked, (int, float)) and request.session.get(sessions.AUTH_TIME, 0) > asked
 
 
 def _grant(request, auth_request: provider.AuthRequest) -> HttpResponse:
@@ -183,7 +200,12 @@ def _grant(request, auth_request: provider.AuthRequest) -> HttpResponse:
 @never_cache
 @require_http_methods(["GET", "POST"])
 def authorize(request):
-    params = (request.POST if request.method == "POST" else request.GET).dict()
+    sent = request.POST if request.method == "POST" else request.GET
+    if any(len(values) > 1 for _, values in sent.lists()):
+        # Two return addresses, say: which one was checked and which one is
+        # used must never be a question (RFC 6749, 3.1).
+        return _problem(request, "This request names something twice. A service sends each thing once.")
+    params = sent.dict()
     try:
         auth_request = provider.read_request(params)
     except provider.Refused as refused:
@@ -200,15 +222,21 @@ def authorize(request):
         # never end. The token's auth_time says when it was, either way.
         _, auth_time = sessions.current(request)
         stale = (timezone.now() - auth_time).total_seconds() > max(auth_request.max_age, JUST_SIGNED_IN)
-    if not signed_in or stale or prompt & {"login", "select_account"}:
+    asked = bool(prompt & {"login", "select_account"})
+    if not signed_in or stale or (asked and not _signed_in_since_asked(request, params)):
         if "none" in prompt:
             return _back(auth_request.redirect_uri, error="login_required", state=auth_request.state)
-        return _sign_in_first(request, params, auth_request, again=signed_in)
+        return _sign_in_first(request, params, auth_request, again=signed_in, asked=asked)
 
+    # Who is asked: everyone a service that is not ours has not asked
+    # before - and always, ours or not, when the answer goes to a port on
+    # the person's own machine. Anything running there can claim to be that
+    # application, so the person says yes each time (RFC 8252, 8.6).
     scopes = set(auth_request.scope)
-    if not client.trusted:
+    local = is_loopback(auth_request.redirect_uri)
+    if local or not client.trusted:
         consent = Consent.objects.filter(user=request.user, client=client).first()
-        if "consent" in prompt or consent is None or not consent.covers(scopes):
+        if local or "consent" in prompt or consent is None or not consent.covers(scopes):
             if "none" in prompt:
                 return _back(auth_request.redirect_uri, error="consent_required", state=auth_request.state)
             key = secrets.token_urlsafe(16)
@@ -250,13 +278,19 @@ def decide(request):
 # -- what a service's server asks ----------------------------------------------
 
 def _client(request) -> Client:
-    client_id = request.POST.get("client_id", "")
+    """The client, proven. What is counted and slowed down is guessing at a
+    client's secret, by the client that is named - never a code or a token
+    that was refused: those are 256 random bits nobody guesses, and counting
+    them would let anyone who feeds a service junk codes shut its sign-in."""
+    authorization = request.headers.get("Authorization", "")
+    client_id = provider.presented_client_id(authorization, request.POST)
     if _too_many_failures(request, client_id):
-        raise provider.OAuthError("slow_down", "Too many refused requests. Wait a few minutes.", 429)
+        raise provider.OAuthError("slow_down", "Too many wrong secrets for this client. Wait a few minutes.", 429)
     try:
-        return provider.authenticate_client(request.headers.get("Authorization", ""), request.POST)
-    except provider.OAuthError:
-        _count_failure(request, client_id)
+        return provider.authenticate_client(authorization, request.POST)
+    except provider.OAuthError as error:
+        if error.error == "invalid_client":
+            _count_failure(request, client_id)
         raise
 
 
@@ -269,15 +303,11 @@ def token(request):
     try:
         client = _client(request)
         grant_type = request.POST.get("grant_type", "")
-        try:
-            if grant_type == "authorization_code":
-                grant = provider.redeem_code(client, request.POST.get("code", ""), request.POST.get("redirect_uri", ""), request.POST.get("code_verifier", ""))
-                return _json(provider.issue_tokens(grant))
-            if grant_type == "refresh_token":
-                return _json(provider.refresh(client, request.POST.get("refresh_token", ""), request.POST.get("scope", "")))
-        except provider.OAuthError:
-            _count_failure(request, client.client_id)
-            raise
+        if grant_type == "authorization_code":
+            grant = provider.redeem_code(client, request.POST.get("code", ""), request.POST.get("redirect_uri", ""), request.POST.get("code_verifier", ""))
+            return _json(provider.issue_tokens(grant))
+        if grant_type == "refresh_token":
+            return _json(provider.refresh(client, request.POST.get("refresh_token", ""), request.POST.get("scope", "")))
         raise provider.OAuthError("unsupported_grant_type", "The grant is authorization_code or refresh_token.")
     except provider.OAuthError as error:
         return _error(error)
@@ -337,7 +367,10 @@ def logout(request):
     which sign-in it means with the identity token it was given; without
     that proof the person is asked first, so that no page can sign anyone
     out by linking here."""
-    params = (request.POST if request.method == "POST" else request.GET).dict()
+    sent = request.POST if request.method == "POST" else request.GET
+    if any(len(values) > 1 for _, values in sent.lists()):
+        return _problem(request, "This request names something twice. A service sends each thing once.")
+    params = sent.dict()
     claims = keys.verify(params.get("id_token_hint", ""), include_retired=True) if params.get("id_token_hint") else None
     if claims is not None and claims.get("iss") != provider.issuer():
         claims = None
