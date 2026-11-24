@@ -13,7 +13,8 @@ name: iOS build
 # backend in UltraCanvas/OS/iOS) and DemoApp as UltraCanvasDemo.app are
 # built, the app is installed on a booted simulator and launched, and the run
 # keeps its screenshot and output (the UltraCanvasDemo-ios-simulator
-# artifact). It fails when the app is not running a while after launch.
+# artifact). It fails when the app is not running a while after launch, or
+# when its screenshot is one colour (scripts/ios-check-screenshot.py).
 #
 # Runs on a pull request, and on a push to main, that touches what the iOS
 # sysroot is made of (the paths below), and by hand from the Actions tab
@@ -27,6 +28,7 @@ on:
       - '.github/workflows/ios-build.yml'
       - 'scripts/ios-bootstrap-sysroot.sh'
       - 'scripts/ios-check-sysroot.sh'
+      - 'scripts/ios-check-screenshot.py'
       - 'UltraCanvas/OS/iOS/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'Apps/DemoApp/**'
@@ -38,6 +40,7 @@ on:
       - '.github/workflows/ios-build.yml'
       - 'scripts/ios-bootstrap-sysroot.sh'
       - 'scripts/ios-check-sysroot.sh'
+      - 'scripts/ios-check-screenshot.py'
       - 'UltraCanvas/OS/iOS/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'Apps/DemoApp/**'
@@ -265,6 +268,9 @@ jobs:
           echo "--- stderr"; tail -n 80 ios-run/stderr.txt || true
           xcrun simctl spawn "$udid" log show --last 2m --style compact \
             --predicate 'process == "UltraCanvasDemo"' > ios-run/system-log.txt 2>&1 || true
+          # The app's own log lines go to the unified log, not to stdout: the
+          # tail goes into this job's log too, readable without the artifact.
+          echo "--- system log (last 80 lines)"; tail -n 80 ios-run/system-log.txt || true
           if [ "$running" != 1 ]; then
             echo "::error::UltraCanvasDemo is not running 45 s after launch (see the artifact's logs)"
             ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i UltraCanvas || true
@@ -272,6 +278,12 @@ jobs:
             exit 1
           fi
           echo "UltraCanvasDemo is running"
+          # Running is not drawing: a frame that never reached the screen
+          # leaves it one colour (the root view's black).
+          if ! python3 scripts/ios-check-screenshot.py ios-run/screenshot.png; then
+            echo "::error::UltraCanvasDemo runs but its screen is empty (screenshot in the artifact)"
+            exit 1
+          fi
 
       - name: Upload the simulator run
         if: always() && matrix.kind == 'simulator'
