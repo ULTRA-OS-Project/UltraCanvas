@@ -27,6 +27,15 @@
     "tinyxml2",
     "fmt",
     {
+      "$comment": "librsvg's image loader, for the bitmaps an SVG embeds: PNG and JPEG are what those are. Not its default TIFF loader: its tools failed to link on iOS with 'library tiff not found', and libvips reads TIFF itself.",
+      "name": "gdk-pixbuf",
+      "default-features": false,
+      "features": [
+        "jpeg",
+        "png"
+      ]
+    },
+    {
       "name": "libvips",
       "features": [
         "cplusplus",

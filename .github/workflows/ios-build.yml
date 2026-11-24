@@ -162,6 +162,22 @@ jobs:
             echo "$(find "$prefix/lib" -maxdepth 1 -name '*.a' | wc -l | tr -d ' ') static archives, $(du -sh "$prefix/lib" | cut -f1)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # What the sysroot holds when something failed: which libraries and
+      # pkg-config files each port really installed, for a link that says a
+      # library is "not found".
+      - name: List the sysroot on failure
+        if: failure()
+        run: |
+          for dir in "$RUNNER_TEMP"/ios-sysroot/*/lib "$RUNNER_TEMP"/ios-sysroot/*/lib/pkgconfig; do
+            [ -d "$dir" ] || continue
+            echo "== $dir"
+            ls -la "$dir" | head -200
+          done
+          for pc in "$RUNNER_TEMP"/ios-sysroot/*/lib/pkgconfig/libtiff-4.pc; do
+            [ -f "$pc" ] && { echo "== $pc"; cat "$pc"; }
+          done
+          true
+
       # What vcpkg's logs say when a port fails: the build trees hold them.
       - name: Upload vcpkg logs
         if: failure()

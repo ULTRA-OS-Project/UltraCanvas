@@ -26,3 +26,10 @@ set(VCPKG_MESON_CROSS_FILE "${CMAKE_CURRENT_LIST_DIR}/ios-meson-cross.txt")
 # glib's tools failed to link with undefined _CFLocaleCopyPreferredLanguages
 # and friends. Every link of every port gets it here.
 set(VCPKG_LINKER_FLAGS "-framework CoreFoundation")
+
+# libcroco's configure insists on GNU ld's -Bsymbolic, which Apple's linker
+# lacks; vcpkg turns it off for macOS only ("-Bsymbolic requested but not
+# supported by ld"). PORT is set while vcpkg reads a triplet for a port.
+if(PORT STREQUAL "libcroco")
+    set(VCPKG_MAKE_CONFIGURE_OPTIONS "--disable-Bsymbolic")
+endif()
