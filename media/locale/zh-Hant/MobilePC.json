@@ -1,0 +1,20 @@
+{
+  "@language": "zh-Hant",
+  "@translated-by": "machine draft 2026-11-24, reviewed by -",
+  "Apps": "應用程式",
+  "Connect a TV or monitor": "連接電視或顯示器",
+  "Files and folders": "檔案和資料夾",
+  "Keyboard": "鍵盤",
+  "Left click": "左鍵按一下",
+  "Move one finger to move the pointer. Tap to click, tap with two fingers for the right button, move two fingers to scroll.": "移動一根手指即可移動指標。輕觸即按一下，以兩根手指輕觸即右鍵，移動兩根手指即可捲動。",
+  "Paint and edit pictures": "繪製和編輯圖片",
+  "Pictures, videos, music and documents": "圖片、影片、音樂和文件",
+  "Right click": "右鍵按一下",
+  "Switch on the access for MobilePC on the phone's screen and come back. UltraFiler then shows the files: open the folder again or use Refresh.": "請在手機螢幕上為 MobilePC 開啟存取權，然後返回。UltraFiler 隨後會顯示檔案：請重新開啟資料夾或使用「重新整理」。",
+  "The desktop is on the TV or monitor": "桌面顯示在電視或顯示器上",
+  "The phone's files": "手機上的檔案",
+  "This phone offers no way to allow it.": "此手機無法允許此操作。",
+  "UltraFiler can show all of the phone's files - pictures, downloads, documents - once MobilePC may read and change them. Allow it on the phone's screen now?": "MobilePC 獲准讀取和變更手機上的檔案後，UltraFiler 即可顯示所有檔案（圖片、下載項目、文件）。現在在手機螢幕上允許嗎？",
+  "Vector drawings and illustrations": "向量繪圖和插畫",
+  "Write and edit texts and code": "撰寫和編輯文字與程式碼"
+}

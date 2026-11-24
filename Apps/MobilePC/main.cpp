@@ -16,6 +16,7 @@
 //                   ultrapaint, artcreator)
 //   --debug         the framework's diagnostics, to logcat
 //
+// Version: 0.3.0 - the Vector plug-in registered: ArtCreator opens and saves drawings
 // Version: 0.2.0 - UltraFiler: its catalogue, its teardown after the loop
 // Version: 0.1.0
 // Last Modified: 2026-11-24
@@ -34,6 +35,9 @@
 #include "UltraDesktopSettings.h"
 #include "UltraDesktopWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+#include "UltraCanvasVectorFormatsPlugin.h"
+#endif
 
 #include <android/log.h>
 
@@ -69,6 +73,12 @@ extern "C" int ultracanvas_app_main(int argc, char** argv) {
     // TV with the window that asks.
     UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+    // The drawing formats, as ArtCreator's main() registers them: its Open
+    // and Save, and UltraFiler's Edit in ArtCreator, which asks whether a
+    // file is one.
+    RegisterVectorFormatsPlugin();
+#endif
     MobilePC::RegisterHostedApps();
 
     // From here on every window is one of the desktop's - except the

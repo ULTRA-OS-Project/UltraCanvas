@@ -1,0 +1,20 @@
+{
+  "@language": "ko",
+  "@translated-by": "machine draft 2026-11-24, reviewed by -",
+  "Apps": "앱",
+  "Connect a TV or monitor": "TV 또는 모니터를 연결하세요",
+  "Files and folders": "파일 및 폴더",
+  "Keyboard": "키보드",
+  "Left click": "왼쪽 클릭",
+  "Move one finger to move the pointer. Tap to click, tap with two fingers for the right button, move two fingers to scroll.": "손가락 하나를 움직여 포인터를 이동합니다. 탭하면 클릭, 두 손가락으로 탭하면 오른쪽 버튼, 두 손가락을 움직이면 스크롤됩니다.",
+  "Paint and edit pictures": "그림 그리기 및 편집",
+  "Pictures, videos, music and documents": "사진, 동영상, 음악 및 문서",
+  "Right click": "오른쪽 클릭",
+  "Switch on the access for MobilePC on the phone's screen and come back. UltraFiler then shows the files: open the folder again or use Refresh.": "휴대폰 화면에서 MobilePC의 접근 권한을 켠 후 돌아오세요. 그러면 UltraFiler에 파일이 표시됩니다. 폴더를 다시 열거나 새로 고침을 사용하세요.",
+  "The desktop is on the TV or monitor": "데스크톱이 TV 또는 모니터에 있습니다",
+  "The phone's files": "휴대폰의 파일",
+  "This phone offers no way to allow it.": "이 휴대폰에서는 허용할 방법이 없습니다.",
+  "UltraFiler can show all of the phone's files - pictures, downloads, documents - once MobilePC may read and change them. Allow it on the phone's screen now?": "MobilePC가 휴대폰의 파일을 읽고 변경할 수 있게 되면 UltraFiler에서 모든 파일(사진, 다운로드, 문서)을 볼 수 있습니다. 지금 휴대폰 화면에서 허용하시겠습니까?",
+  "Vector drawings and illustrations": "벡터 드로잉 및 일러스트레이션",
+  "Write and edit texts and code": "텍스트와 코드 작성 및 편집"
+}

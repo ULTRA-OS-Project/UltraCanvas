@@ -1,0 +1,20 @@
+{
+  "@language": "zh-Hans",
+  "@translated-by": "machine draft 2026-11-24, reviewed by -",
+  "Apps": "应用",
+  "Connect a TV or monitor": "连接电视或显示器",
+  "Files and folders": "文件和文件夹",
+  "Keyboard": "键盘",
+  "Left click": "左键单击",
+  "Move one finger to move the pointer. Tap to click, tap with two fingers for the right button, move two fingers to scroll.": "移动一根手指可移动指针。轻点即单击，用两根手指轻点即右键，移动两根手指可滚动。",
+  "Paint and edit pictures": "绘制和编辑图片",
+  "Pictures, videos, music and documents": "图片、视频、音乐和文档",
+  "Right click": "右键单击",
+  "Switch on the access for MobilePC on the phone's screen and come back. UltraFiler then shows the files: open the folder again or use Refresh.": "请在手机屏幕上为 MobilePC 打开访问权限，然后返回。UltraFiler 随后会显示文件：请重新打开文件夹或使用“刷新”。",
+  "The desktop is on the TV or monitor": "桌面显示在电视或显示器上",
+  "The phone's files": "手机上的文件",
+  "This phone offers no way to allow it.": "此手机无法允许此操作。",
+  "UltraFiler can show all of the phone's files - pictures, downloads, documents - once MobilePC may read and change them. Allow it on the phone's screen now?": "MobilePC 获准读取和更改手机上的文件后，UltraFiler 即可显示所有文件（图片、下载内容、文档）。现在在手机屏幕上允许吗？",
+  "Vector drawings and illustrations": "矢量绘图和插画",
+  "Write and edit texts and code": "编写和编辑文本与代码"
+}

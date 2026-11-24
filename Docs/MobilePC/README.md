@@ -81,7 +81,7 @@ The desktop's scale on a TV or monitor follows its resolution: 100 % up to
 | UltraTexter | the Apps window (Office) - its windows kept by `TexterWindowManager.h`, as its own `main()` keeps them; a file's creation time shows as *Not available* (no `statx` before API 30) |
 | UltraViewer | the Apps window (Graphics) |
 | UltraPaint | the Apps window (Graphics) |
-| ArtCreator | the Apps window (Graphics) - drawing; opening and saving files need the Vector plug-in, not built for Android yet |
+| ArtCreator | the Apps window (Graphics), and UltraFiler's *Edit in ArtCreator* on a drawing - opens and saves SVG, AI, DXF, DWG, EMF, WMF and ODG through the framework's Vector plug-in, built for Android and registered by MobilePC's `main()`; CDR, XAR and EPS stay out (their plug-ins are not built for Android) |
 
 Each is the application's own window code, unchanged, started by the entry
 its desktop `main()` uses. Their texts come from their own catalogues

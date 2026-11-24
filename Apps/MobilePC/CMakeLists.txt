@@ -10,6 +10,7 @@
 # (MobilePCHostedApps.cpp); Texter's window manager is in TexterWindowManager.h
 # for that.
 #
+# Version: 0.3.0 - the Vector plug-in: ArtCreator opens and saves drawings
 # Version: 0.2.0 - UltraFiler
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -62,6 +63,14 @@ target_include_directories(MobilePC PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/OS/Android)
 
 target_link_libraries(MobilePC PRIVATE ${ULTRACANVAS_LIBRARY})
+# The Vector plug-in: SVG, AI, DXF, DWG, EMF, WMF, ODG for ArtCreator's Open
+# and Save and for UltraFiler's Edit in ArtCreator. Linking it defines
+# ULTRACANVAS_HAS_VECTOR_PLUGIN, so main.cpp registers it, as ArtCreator's
+# own main() does. Only this one: the other format plug-ins have not been
+# built for Android yet.
+if(TARGET UltraCanvasVectorPlugin)
+    target_link_libraries(MobilePC PRIVATE UltraCanvasVectorPlugin)
+endif()
 # The clipboard history UltraDesktop records and its quick panel shows.
 if(TARGET UltraClipboardHistory)
     target_link_libraries(MobilePC PRIVATE UltraClipboardHistory)
@@ -164,5 +173,10 @@ if("MediaViewer" IN_LIST _mpc_widgets)
 endif()
 
 string(REPLACE ";" ", " _mpc_apps_text "${_mpc_apps}")
+if(TARGET UltraCanvasVectorPlugin)
+    set(_mpc_vector "drawings open and save (Vector plugin)")
+else()
+    set(_mpc_vector "no Vector plugin: ArtCreator draws but opens and saves nothing")
+endif()
 message(STATUS "  [✓] MobilePC - ENABLED (Android library libMobilePC.so; with UltraDesktop and ${_mpc_apps_text})")
-message(STATUS "      Version ${MOBILEPC_VERSION} (Docs/MobilePC/CHANGELOG.md)")
+message(STATUS "      Version ${MOBILEPC_VERSION} (Docs/MobilePC/CHANGELOG.md); ${_mpc_vector}")
