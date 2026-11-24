@@ -40,7 +40,7 @@ namespace UltraCanvas {
         headerContainer->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         mainContainer->AddChild(headerContainer);
 
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("pmMainTitle", 30, 15, 640, 35);
+        auto mainTitle = std::make_shared<UltraCanvasLabel>("pmMainTitle", 30, 12, 640, 40);   // 40: a CJK title line is taller than a Latin one
         mainTitle->SetText(Tr("Performance Matrix"));
         mainTitle->SetFontSize(22);
         mainTitle->SetFontWeight(FontWeight::Bold);
