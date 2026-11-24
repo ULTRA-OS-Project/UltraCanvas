@@ -1632,6 +1632,10 @@ namespace {
         placement.ptMinPosition.y = -32000;
         placement.showCmd = SW_SHOWMINNOACTIVE;
         SetWindowPlacement(hwnd, &placement);
+        // The placement only says where the next minimize goes; a window
+        // minimized already is moved there now.
+        SetWindowPos(hwnd, nullptr, -32000, -32000, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         return TRUE;
     }
 }
