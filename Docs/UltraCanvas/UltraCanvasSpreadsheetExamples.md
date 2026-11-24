@@ -511,6 +511,16 @@ SeedSampleData(sheet.get());
 
 Set formula cells with `SetCellFormula`, then call `Recalculate()` so the engine evaluates dependencies. Formulas use A1 notation and are 1-based in text (`B2:B8` is rows 1..7).
 
+`Recalculate()` calculates every formula whose result may have changed since
+the last call: formulas set or changed, formulas reading a cell that changed,
+directly or through other formulas, on any sheet, the formulas that name a
+range, and the volatile ones (`NOW`, `TODAY`, `RAND`, `RANDBETWEEN`). It
+finds the changes itself, however a cell was changed: through the grid
+(typing, paste, fill, clear, sort, undo) or by writing into a sheet directly
+(`GetActiveSheet()->SetCellValue(...)`). A change that has not been
+recalculated yet is calculated before the grid draws. Inserting or deleting
+rows or columns recalculates everything; so does `RecalculateAll()`.
+
 ```cpp
 const int totalRow = 9;
 sheet->SetCellValue(totalRow, 0, std::string("07 to 12/2016"));
@@ -1145,7 +1155,7 @@ so they are set from code.
 
 - **Create with the factory.** Use `CreateSpreadsheetElement(...)` so the element is a `shared_ptr` (matching the rest of the framework). Capture that `shared_ptr` in async callbacks (file dialogs) so the grid stays alive, and call `RequestRedraw()` after mutating it from a callback.
 - **Set values, then format.** `SetCellValue` / `SetCellFormula` define the value; use `GetCell(row, col)->SetNumberFormat(...)` / `SetBold(...)` to style. Number formats are factories (`NumberFormat::Currency`, `NumberFormat::Percentage`).
-- **Call `Recalculate()` after setting formulas** when you need results immediately (e.g. right after seeding data); the engine recalculates dirty cells automatically during normal editing when auto-calculate is enabled.
+- **Call `Recalculate()` after writing into a sheet directly** when you need the results at once (e.g. right after seeding data). The grid's own setters (`SetCellValue`, `SetCellFormula`, ...) recalculate as they go while auto-calculate is enabled.
 - **Mind coordinate systems.** The API is 0-based `(row, col)`; formula text and `CellAddress::ToString()` are 1-based A1 notation (`SetCellFormula(9, 1, "=SUM(B2:B8)")`).
 - **Prefer the auto-detecting loaders for a quick "Open"** (`LoadFromFile`, single-arg `LoadCSV`); use the `*WithOptions` variants plus the import/export dialogs when the user needs to choose charset, separators, or quoting.
 - **Always check the return value and `GetLastError()`** after any `Load*`/`Save*` call to surface a clear reason to the user.

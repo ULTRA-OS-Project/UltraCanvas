@@ -5309,6 +5309,24 @@ add_test(NAME SpreadsheetValidationGridTest COMMAND SpreadsheetValidationGridTes
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetValidationGridTest")
 
+# ===== SPREADSHEET RECALC TEST =====
+# Formulas follow their inputs - through chains, ranges, other sheets and
+# names - however a cell changes: typing, clearing, paste, undo, inserting a
+# row, sorting, a write into the sheet itself. No window.
+message(STATUS "  Building SpreadsheetRecalcTest...")
+add_executable(SpreadsheetRecalcTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetRecalcTest.cpp
+)
+target_include_directories(SpreadsheetRecalcTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetRecalcTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetRecalcTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetRecalcTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetRecalcTest COMMAND SpreadsheetRecalcTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetRecalcTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

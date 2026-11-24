@@ -2,6 +2,8 @@
 // Formula engine implementation - parser, evaluator, and function library.
 // The Excel-compatible functions added in 1.1.0 live in
 // UltraCanvasSpreadsheetFormulaFunctions.cpp.
+// Version: 1.2.0 - Recalculate follows changes to every formula that reads them, through chains and
+//                  across sheets (it recalculated only formulas already marked dirty)
 // Version: 1.1.0
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
@@ -18,6 +20,7 @@
 #include "UltraCanvasSpreadsheetCell.h"
 #include <cctype>
 #include <cmath>
+#include <unordered_map>
 #include <algorithm>
 #include <numeric>
 #include <random>
@@ -1342,18 +1345,169 @@ FormulaValue SpreadsheetFormulaEngine::EvaluateCell(SpreadsheetCell* cell, Sprea
     return result;
 }
 
+namespace {
+
+// A cell or a block of cells on one sheet.
+struct SheetArea {
+    const SpreadsheetSheet* sheet = nullptr;
+    CellRange range;
+    long long CellCount() const {
+        return static_cast<long long>(range.RowCount()) * static_cast<long long>(range.ColCount());
+    }
+};
+
+struct SheetCellKey {
+    const SpreadsheetSheet* sheet;
+    int row;
+    int col;
+    bool operator==(const SheetCellKey& o) const { return sheet == o.sheet && row == o.row && col == o.col; }
+};
+
+struct SheetCellKeyHash {
+    size_t operator()(const SheetCellKey& k) const {
+        size_t h = std::hash<const void*>()(k.sheet);
+        h ^= std::hash<long long>()((static_cast<long long>(k.row) << 20) ^ k.col) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+} // namespace
+
 void SpreadsheetFormulaEngine::Recalculate() {
     if (!spreadsheet_ || !autoCalculate_) return;
+    if (recalculateAllPending_) {
+        RecalculateAll();
+        return;
+    }
+
+    // Where each formula is, and what it reads. A reference without a sheet
+    // name reads the formula's own sheet; one naming a sheet that does not
+    // exist reads nothing that can change.
+    struct Watched {
+        const SpreadsheetSheet* sheet;
+        CellAddress at;
+        bool dirty;
+    };
+    std::vector<Watched> formulas;
+    std::unordered_map<SheetCellKey, int, SheetCellKeyHash> formulaAt;
+    std::unordered_map<SheetCellKey, std::vector<int>, SheetCellKeyHash> readersOfCell;
+    std::vector<std::pair<int, SheetArea>> rangeReaders;
+    std::vector<int> nameReaders;
 
     for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
-        auto* sheet = spreadsheet_->GetSheet(s);
+        SpreadsheetSheet* sheet = spreadsheet_->GetSheet(s);
         if (!sheet) continue;
-
-        sheet->ForEachCell([this, sheet](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
-            if (cell.HasFormula() && cell.IsFormulaDirty()) {
-                EvaluateCell(&cell, sheet);
+        auto sheetOf = [this, sheet](const std::string& name) -> const SpreadsheetSheet* {
+            return name.empty() ? sheet : spreadsheet_->GetSheetByName(name);
+        };
+        sheet->ForEachCell([&](int row, int col, SpreadsheetCell& cell) {
+            if (!cell.HasFormula()) return;
+            if (!cell.GetFormula()) cell.SetParsedFormula(ParseFormula(cell.GetFormulaText(), CellAddress(row, col)));
+            const int index = static_cast<int>(formulas.size());
+            bool dirty = cell.IsFormulaDirty();
+            if (auto formula = cell.GetFormula(); formula && formula->IsValid()) {
+                for (const auto& dep : formula->GetDependencies()) {
+                    if (const auto* from = sheetOf(dep.sheetName)) {
+                        readersOfCell[SheetCellKey{from, dep.row, dep.col}].push_back(index);
+                    }
+                }
+                for (const auto& range : formula->GetRangeDependencies()) {
+                    if (const auto* from = sheetOf(range.start.sheetName)) {
+                        rangeReaders.push_back({index, SheetArea{from, CellRange(range.start.row, range.start.col,
+                                                                                  range.end.row, range.end.col)}});
+                    }
+                }
+                if (formula->ReadsNamedRanges()) nameReaders.push_back(index);
+                for (const auto& name : formula->GetFunctionNames()) {
+                    const FunctionDefinition* def = functionLibrary_.GetFunction(name);
+                    if (def && def->isVolatile) dirty = true;   // NOW, TODAY, RAND ...
+                }
             }
+            formulas.push_back({sheet, CellAddress(row, col), dirty});
+            formulaAt[SheetCellKey{sheet, row, col}] = index;
         });
+    }
+
+    // From the changed cells to everything that reads them: a formula that
+    // becomes dirty is itself a change for the formulas that read it.
+    std::vector<SheetArea> pending;
+    for (const auto& [name, range] : changedRanges_) {
+        if (const auto* sheet = spreadsheet_->GetSheetByName(name)) pending.push_back({sheet, range});
+    }
+    changedRanges_.clear();
+    for (const auto& f : formulas) {
+        if (f.dirty) pending.push_back({f.sheet, CellRange(f.at.row, f.at.col, f.at.row, f.at.col)});
+    }
+    const bool anyChange = !pending.empty();
+
+    auto mark = [&](int index) {
+        Watched& f = formulas[static_cast<size_t>(index)];
+        if (f.dirty) return;
+        f.dirty = true;
+        pending.push_back({f.sheet, CellRange(f.at.row, f.at.col, f.at.row, f.at.col)});
+    };
+    if (anyChange) {
+        for (int index : nameReaders) mark(index);   // a name may cover any cell
+    }
+    while (!pending.empty()) {
+        const SheetArea area = pending.back();
+        pending.pop_back();
+        const long long cells = area.CellCount();
+
+        // Formulas standing in the area (pasted, filled, restored by undo),
+        // and formulas reading one of its cells: through the cell indexes
+        // when the area is small, by walking the indexes when it is large.
+        if (cells <= static_cast<long long>(formulaAt.size() + readersOfCell.size())) {
+            for (int row = area.range.start.row; row <= area.range.end.row; ++row) {
+                for (int col = area.range.start.col; col <= area.range.end.col; ++col) {
+                    const SheetCellKey key{area.sheet, row, col};
+                    if (auto it = formulaAt.find(key); it != formulaAt.end()) mark(it->second);
+                    if (auto it = readersOfCell.find(key); it != readersOfCell.end()) {
+                        for (int index : it->second) mark(index);
+                    }
+                }
+            }
+        } else {
+            for (const auto& [key, index] : formulaAt) {
+                if (key.sheet == area.sheet && area.range.Contains(key.row, key.col)) mark(index);
+            }
+            for (const auto& [key, readers] : readersOfCell) {
+                if (key.sheet == area.sheet && area.range.Contains(key.row, key.col)) {
+                    for (int index : readers) mark(index);
+                }
+            }
+        }
+        for (const auto& [index, read] : rangeReaders) {
+            if (read.sheet == area.sheet && read.range.Intersects(area.range)) mark(index);
+        }
+    }
+
+    auto markCells = [&formulas]() {
+        for (const auto& f : formulas) {
+            if (!f.dirty) continue;
+            auto* sheet = const_cast<SpreadsheetSheet*>(f.sheet);
+            if (SpreadsheetCell* cell = sheet->GetCellIfExists(f.at.row, f.at.col)) cell->MarkFormulaDirty();
+        }
+    };
+
+    // Calculate them. A reference to a dirty formula calculates it first
+    // (FormulaEvaluator's resolver), so the order of the walk does not
+    // matter. A chain deeper than one nested calculation follows leaves the
+    // cells above the limit calculated from a value not yet current, so
+    // another pass marks the same set again and reaches further, as
+    // RecalculateAll does.
+    constexpr int kMaxPasses = 16;
+    for (int pass = 0; pass < kMaxPasses; ++pass) {
+        markCells();
+        nestingLimitReached_ = false;
+        for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
+            auto* sheet = spreadsheet_->GetSheet(s);
+            if (!sheet) continue;
+            sheet->ForEachCell([this, sheet](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
+                if (cell.HasFormula() && cell.IsFormulaDirty()) EvaluateCell(&cell, sheet);
+            });
+        }
+        if (!nestingLimitReached_) break;
     }
 
     dirtyCells_.clear();
@@ -1388,6 +1542,8 @@ void SpreadsheetFormulaEngine::RecalculateAll() {
     }
 
     dirtyCells_.clear();
+    changedRanges_.clear();
+    recalculateAllPending_ = false;
 }
 
 void SpreadsheetFormulaEngine::UpdateDependencies(SpreadsheetCell* cell, const std::string& sheetName) {

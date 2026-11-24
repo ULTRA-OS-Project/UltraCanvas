@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.7.0 - every change a sheet reports reaches the formula engine; Paste recalculates
 // Version: 1.6.0 - data validation on a typed entry (dialog or onValidationFailed), the list rule's arrow
 //                  and Alt+Down; a typed plain value is an undo step and fires onCellChange
 // Version: 1.5.0 - a cell set to the Top vertical alignment draws at the top of its row
@@ -85,6 +86,10 @@ void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
             if (sheet) sheet->AutoFitUnsizedColumns(measure);
         }
     }
+
+    // Changes the engine was told about and nobody recalculated yet (an
+    // application writing into a sheet directly): before they are drawn.
+    if (formulaEngine_ && formulaEngine_->HasPendingChanges()) formulaEngine_->Recalculate();
 
     ctx->PushState();
 
@@ -2801,7 +2806,8 @@ void UltraCanvasSpreadsheet::PasteSpecial(const PasteOptions& options) {
         }
         ClearClipboard();
     }
-    
+
+    Recalculate();   // pasted formulas, and the formulas that read the pasted cells
     Invalidate();
 }
 
@@ -2876,9 +2882,19 @@ void UltraCanvasSpreadsheet::InitializeDefaultSheet() {
 }
 
 void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
-    sheet->onCellChange = [this](int row, int col) {
+    // Whatever changes a sheet's cells tells the formula engine, so the next
+    // Recalculate reaches the formulas that read them - however the change
+    // was made (typing, paste, fill, undo, an application's own writes).
+    // The sheet is held raw: it owns these callbacks.
+    sheet->onCellChange = [this, sheet](int row, int col) {
+        if (formulaEngine_) formulaEngine_->MarkDirty(CellAddress(row, col), sheet->GetName());
         Invalidate();
         if (onCellChange) onCellChange(row, col);
+    };
+
+    sheet->onRangeChange = [this, sheet](const CellRange& range) {
+        if (formulaEngine_) formulaEngine_->MarkRangeDirty(range, sheet->GetName());
+        Invalidate();
     };
     
     sheet->onSelectionChange = [this]() {
@@ -2888,6 +2904,7 @@ void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
     };
     
     sheet->onStructureChange = [this]() {
+        if (formulaEngine_) formulaEngine_->MarkAllDirty();   // rows or columns moved
         Invalidate();
         if (onStructureChange) onStructureChange();
     };

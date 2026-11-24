@@ -1,5 +1,8 @@
 // include/UltraCanvasSpreadsheetFormula.h
 // Formula parser and evaluation engine (OpenFormula compatible)
+// Version: 1.2.0 - Recalculate follows a change to every formula that reads it (directly or through
+//                  others): MarkRangeDirty, MarkAllDirty, HasPendingChanges; GetFunctionNames,
+//                  ReadsNamedRanges
 // Version: 1.1.0
 // Last Modified: 2026-10-09
 // V1.1.0: error literals (#N/A, #DIV/0!, ...) tokenize instead of stalling the
@@ -342,6 +345,8 @@ private:
     std::unique_ptr<FormulaNode> ast_;
     std::vector<CellAddress> dependencies_;  // Cells this formula depends on
     std::vector<CellRange> rangeDependencies_;
+    std::vector<std::string> functionNames_;  // every function it calls, as written
+    bool readsNamedRanges_ = false;
     bool valid_ = false;
     std::string errorMessage_;
     CellAddress ownerCell_;
@@ -366,6 +371,11 @@ public:
     // Check if depends on cell
     bool DependsOn(const CellAddress& cell) const;
     bool DependsOnRange(const CellRange& range) const;
+
+    // The functions it calls (NOW, SUM ...), and whether it names a range -
+    // which may cover any cell, so such a formula is recalculated on any change.
+    const std::vector<std::string>& GetFunctionNames() const { return functionNames_; }
+    bool ReadsNamedRanges() const { return readsNamedRanges_; }
     
     // Get AST (for evaluation)
     const FormulaNode* GetAST() const { return ast_.get(); }
@@ -573,6 +583,14 @@ private:
     // Dirty cells that need recalculation
     std::unordered_set<std::string> dirtyCells_;
 
+    // What changed since the last Recalculate, by sheet name: Recalculate
+    // starts from these and follows every formula that reads them. Past
+    // kMaxChangedRanges entries (a file loaded cell by cell), or after a
+    // structural change, everything is recalculated instead.
+    static constexpr size_t kMaxChangedRanges = 4096;
+    std::vector<std::pair<std::string, CellRange>> changedRanges_;
+    bool recalculateAllPending_ = false;
+
     // The cells being calculated right now, outermost first: a formula that
     // reaches one of them again is circular and reads its current value.
     std::unordered_set<const SpreadsheetCell*> evaluating_;
@@ -602,8 +620,20 @@ public:
     
     // Mark cell as dirty (needs recalculation)
     void MarkDirty(const CellAddress& cell, const std::string& sheetName);
+    // Cells of `sheetName` whose content changed: the formulas among them,
+    // and every formula that reads them (directly or through others), are
+    // recalculated by the next Recalculate.
+    void MarkRangeDirty(const CellRange& range, const std::string& sheetName);
+    // Rows or columns moved, or a sheet was replaced: the next Recalculate
+    // recalculates everything (RecalculateAll).
+    void MarkAllDirty() { recalculateAllPending_ = true; changedRanges_.clear(); }
+    // Something was marked and not recalculated yet.
+    bool HasPendingChanges() const { return recalculateAllPending_ || !changedRanges_.empty(); }
     
-    // Recalculate dirty cells
+    // Recalculates the formulas whose result may have changed: those marked
+    // (or set) since the last call, those that read a changed cell - through
+    // any chain of other formulas, on any sheet - those that name a range,
+    // and the volatile ones (NOW, TODAY, RAND ...).
     void Recalculate();
     
     // Recalculate all
@@ -1028,6 +1058,8 @@ inline bool SpreadsheetFormula::Parse() {
     // Collect dependencies
     dependencies_.clear();
     rangeDependencies_.clear();
+    functionNames_.clear();
+    readsNamedRanges_ = false;
     CollectDependencies(ast_.get());
     
     valid_ = true;
@@ -1043,6 +1075,12 @@ inline void SpreadsheetFormula::CollectDependencies(const FormulaNode* node) {
             break;
         case FormulaNodeType::RangeRef:
             rangeDependencies_.push_back(node->rangeRef);
+            break;
+        case FormulaNodeType::NamedRef:
+            readsNamedRanges_ = true;
+            break;
+        case FormulaNodeType::FunctionCall:
+            functionNames_.push_back(node->functionName);
             break;
         default:
             break;
@@ -1113,6 +1151,20 @@ inline void SpreadsheetFormulaEngine::MarkDirty(const CellAddress& cell, const s
     std::string key = MakeCellKey(cell, sheetName);
     dirtyCells_.insert(key);
     PropagateChange(key);
+    MarkRangeDirty(CellRange(cell.row, cell.col, cell.row, cell.col), sheetName);
+}
+
+inline void SpreadsheetFormulaEngine::MarkRangeDirty(const CellRange& range, const std::string& sheetName) {
+    if (recalculateAllPending_) return;
+    if (!changedRanges_.empty() && changedRanges_.back().first == sheetName &&
+        changedRanges_.back().second == range) {
+        return;   // the grid and the sheet both report a single edit
+    }
+    if (changedRanges_.size() >= kMaxChangedRanges) {
+        MarkAllDirty();
+        return;
+    }
+    changedRanges_.emplace_back(sheetName, range);
 }
 
 inline void SpreadsheetFormulaEngine::PropagateChange(const std::string& cellKey) {

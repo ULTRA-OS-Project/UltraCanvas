@@ -999,6 +999,8 @@ void UltraCanvasSpreadsheet::SortSelection(const std::vector<SortCriteria>& crit
     if (!sheet) return;
     if (recordingUndo_) RecordRangeChange(GetSelection());
     sheet->Sort(GetSelection(), criteria);
+    // Sorting moves cells without telling anyone.
+    if (formulaEngine_) formulaEngine_->MarkRangeDirty(GetSelection(), sheet->GetName());
     Recalculate();
 }
 
