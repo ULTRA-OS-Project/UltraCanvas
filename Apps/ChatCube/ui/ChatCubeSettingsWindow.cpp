@@ -315,8 +315,12 @@ std::shared_ptr<UltraCanvasSwitch> MakeSwitch(const std::string& id, const std::
         style.base.textHoverColor = L().ink;
         toggle.SetVisualStyle(style);
     });
+    // A longer translation wraps onto a second line instead of being cut off.
+    sw->SetLabelWrap(true);
     sw->size.width = CSSLayout::Dimension::Px(kTextWidth);
-    sw->size.height = CSSLayout::Dimension::Px(kControlHeight);
+    sw->size.height = CSSLayout::Dimension::Auto();
+    sw->boxConstraints = CSSLayout::BoxConstraints{};
+    sw->boxConstraints->minHeight = CSSLayout::Dimension::Px(kControlHeight);
     sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     sw->onStateChanged = [onChange](CheckedState, CheckedState now) {
         if (onChange) onChange(now == CheckedState::Checked);
