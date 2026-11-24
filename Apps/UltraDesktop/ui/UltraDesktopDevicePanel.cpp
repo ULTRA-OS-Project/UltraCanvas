@@ -23,6 +23,8 @@ namespace {
 constexpr int kPanelWidth = 340;
 constexpr int kPanelHeight = 380;
 constexpr int kInnerWidth = kPanelWidth - 28;
+// The least a button is wide; it grows to its text (SetGrowToFitText).
+constexpr int kButtonMinWidth = 60;
 } // namespace
 
 UltraDesktopDevicePanel::UltraDesktopDevicePanel(std::string title, std::function<DevicePanelContent()> read,
@@ -123,8 +125,11 @@ void UltraDesktopDevicePanel::Build(UltraCanvasWindow& window) {
         footer->layoutItem.SetFlexShrink(0.0f);
         int index = 0;
         for (const DevicePanelAction& action : actions_) {
-            const int width = 24 + static_cast<int>(action.label.size()) * 7;
-            auto button = CreateButton("dev.action" + std::to_string(index++), 0, 0, width, 26, action.label);
+            // A small least width: the button grows to its text (a guess from
+            // the label's length in bytes made a Cyrillic, Thai or Hindi
+            // button two or three times too wide, past the panel's edge).
+            auto button = CreateButton("dev.action" + std::to_string(index++), 0, 0, kButtonMinWidth, 26,
+                                       action.label);
             button->layoutItem.SetFlexShrink(0.0f);
             if (!action.tooltip.empty()) button->SetTooltip(action.tooltip);
             const std::function<void()> run = action.run;
@@ -236,8 +241,7 @@ void UltraDesktopDevicePanel::Apply(const DevicePanelContent& content) {
         }
         row->AddChild(texts);
         if (entry.action && !entry.actionLabel.empty()) {
-            const int width = 24 + static_cast<int>(entry.actionLabel.size()) * 7;
-            auto button = CreateButton(id + ".action", 0, 0, width, 26, entry.actionLabel);
+            auto button = CreateButton(id + ".action", 0, 0, kButtonMinWidth, 26, entry.actionLabel);
             button->layoutItem.SetFlexShrink(0.0f);
             button->SetDisabled(busy_);
             const DevicePanelEntry copy = entry;

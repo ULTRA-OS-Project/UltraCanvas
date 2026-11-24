@@ -30,7 +30,10 @@ using namespace UltraCanvas;
 namespace UltraDesktop {
 namespace {
 
-constexpr int kPanelWidth = 386;
+// Wide enough for the recording switch and "Open UltraClipboard" side by
+// side in every language (Greek needs 411 px; at 386 the button ran past
+// the edge in Czech, Greek, Hungarian and Romanian).
+constexpr int kPanelWidth = 420;
 constexpr int kPanelHeight = 484;
 constexpr size_t kRecentShown = 10;   // unpinned entries when nothing is searched
 constexpr size_t kFoundShown = 40;
