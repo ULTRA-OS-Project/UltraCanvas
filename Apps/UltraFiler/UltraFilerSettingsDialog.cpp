@@ -2349,10 +2349,15 @@ namespace {
             themed.base.textHoverColor = TextColor();
             s.SetVisualStyle(themed);
         });
-        // Explicit sizes: content measuring needs a render context, which the
-        // dialog does not have while it is first laid out.
+        // An explicit width: content measuring needs a render context, which
+        // the dialog does not have while it is first laid out. A longer
+        // translation wraps onto a second line instead of being cut off
+        // (German needs 620 px for the disk-cache switch).
+        sw->SetLabelWrap(true);
         sw->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        sw->size.height = CSSLayout::Dimension::Px(kControlHeight);
+        sw->size.height = CSSLayout::Dimension::Auto();
+        sw->boxConstraints = CSSLayout::BoxConstraints{};
+        sw->boxConstraints->minHeight = CSSLayout::Dimension::Px(kControlHeight);
         sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         sw->onStateChanged = [onChange](CheckedState, CheckedState now) {
             if (onChange) onChange(now == CheckedState::Checked);
