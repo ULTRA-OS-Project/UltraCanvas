@@ -444,6 +444,10 @@ void UltraCanvasDesktopShell::HideWindowThumbnail(uint64_t thumbnail) {
     if (thumbnail != 0) DesktopShellBackend::HideWindowThumbnail(thumbnail);
 }
 
+bool UltraCanvasDesktopShell::KeepMinimizedWindowsHidden() {
+    return DesktopShellBackend::KeepMinimizedWindowsHidden();
+}
+
 bool UltraCanvasDesktopShell::CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
                                                  std::string* error) {
     std::string reason;
@@ -1220,6 +1224,7 @@ namespace DesktopShellBackend {
     }
     uint64_t ShowWindowThumbnail(uint64_t, uint64_t, int, int, int, int) { return 0; }
     void HideWindowThumbnail(uint64_t) {}
+    bool KeepMinimizedWindowsHidden() { return false; }
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
     bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out) {

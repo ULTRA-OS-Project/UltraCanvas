@@ -548,6 +548,9 @@ std::vector<DesktopScreenInfo> ListScreens() {
     return distinct;
 }
 
+// A minimized window is the window manager's to show or not.
+bool KeepMinimizedWindowsHidden() { return false; }
+
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     std::lock_guard<std::mutex> lock(g_queryMutex);
     Display* d = QueryDisplay();

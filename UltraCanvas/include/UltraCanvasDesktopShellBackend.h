@@ -112,6 +112,8 @@ namespace DesktopShellBackend {
     // Every monitor, any order; empty when the platform tells none apart.
     std::vector<DesktopScreenInfo> ListScreens();
     bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom);
+    // UltraCanvasDesktopShell::KeepMinimizedWindowsHidden; false where there is nothing to do.
+    bool KeepMinimizedWindowsHidden();
     bool CaptureScreen(const std::string& pngPath, std::string& error);
     bool CaptureScreenImage(DesktopScreenImage& out, std::string& error);
     // One rectangle of the screen, in the pixels of ListScreens, clipped to
