@@ -8,15 +8,17 @@
 //     extern "C" int ultracanvas_app_main(int argc, char** argv);
 //
 // (a thin #if around the existing main body), and the framework provides
-// main() here. When the application has finished launching, the delegate
-// puts the root view in the key window and schedules ultracanvas_app_main()
+// main() here. When the app's scene connects, the scene delegate puts the
+// root view in its window and schedules ultracanvas_app_main()
 // with performSelector:afterDelay: - a run-loop timer, not a dispatch block,
 // so the nested run loop Run() pumps (CollectAndProcessNativeEvents) still
 // services the main dispatch queue, and the launch callback itself returns,
-// as iOS requires. By then HOME/XDG_* point into the app's container and the
+// as iOS requires. By then (the application delegate's launch callback ran
+// first) HOME/XDG_* point into the app's container and the
 // resources are the bundle's share/ (core/UltraCanvasConfig.cpp's
 // exeDir + "/share/"), so path-based resource, settings and font code works
 // unchanged. See Docs/UltraCanvas/iOSPortInvestigation.md 3.2 (option A).
+// Version: 1.2.0 - the UIScene lifecycle: a scene delegate owns the window and the foreground events
 // Version: 1.1.0 - the view takes the software keyboard (UIKeyInput) and hardware keys
 // Version: 1.0.0
 // Last Modified: 2026-11-24
@@ -332,25 +334,82 @@ namespace {
 
 // ===== THE APPLICATION DELEGATE =====
 
+// ===== THE SCENE DELEGATE: the window, and the app's foreground life =====
+// iOS 13 moved the window and the foreground/background events from the
+// application delegate to the scene, and from iOS 26 an app without the
+// scene lifecycle is warned that it "will soon be required" (an assert later).
+// UltraCanvas has one window, so one scene: UIApplicationSupportsMultipleScenes
+// is false (OS/iOS/packaging/Info.plist.in), and the configuration that names
+// this class comes from the application delegate below.
+
 @interface UltraCanvasiOSAppDelegate : UIResponder <UIApplicationDelegate>
+// Runs the application's main body (ultracanvas_app_main) and ends the
+// process when it returns; scheduled once, by the first scene to connect.
+- (void)runApplication;
+@end
+
+@interface UltraCanvasiOSSceneDelegate : UIResponder <UIWindowSceneDelegate>
 @property (strong, nonatomic) UIWindow* window;
 @end
+
+@implementation UltraCanvasiOSSceneDelegate
+
+- (void)scene:(UIScene*)scene willConnectToSession:(UISceneSession*)session
+      options:(UISceneConnectionOptions*)connectionOptions {
+    if (![scene isKindOfClass:[UIWindowScene class]]) return;
+    self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
+    UltraCanvasiOSViewController* controller = [[UltraCanvasiOSViewController alloc] init];
+    self.window.rootViewController = controller;
+    [self.window makeKeyAndVisible];
+    UltraCanvas::SetiOSRootView((__bridge void*)controller.view);
+
+    // The application's main body, once: after this callback has returned
+    // (see the head of the file). A scene that connects again later - after
+    // the system discarded it - only gets a window; the body runs on.
+    static bool started = false;
+    if (!started) {
+        started = true;
+        auto* delegate = (UltraCanvasiOSAppDelegate*)[UIApplication sharedApplication].delegate;
+        [delegate performSelector:@selector(runApplication) withObject:nil afterDelay:0];
+    }
+}
+
+- (void)sceneDidEnterBackground:(UIScene*)scene {
+    if (auto* app = App()) app->HandleDidEnterBackground();
+}
+
+- (void)sceneWillEnterForeground:(UIScene*)scene {
+    if (auto* app = App()) app->HandleWillEnterForeground();
+}
+
+- (void)sceneDidBecomeActive:(UIScene*)scene {
+    if (auto* app = App()) app->HandleDidBecomeActive();
+}
+
+- (void)sceneWillResignActive:(UIScene*)scene {
+    if (auto* app = App()) app->HandleWillResignActive();
+}
+
+@end
+
+// ===== THE APPLICATION DELEGATE =====
 
 @implementation UltraCanvasiOSAppDelegate
 
 - (BOOL)application:(UIApplication*)application
         didFinishLaunchingWithOptions:(NSDictionary*)launchOptions {
     ExportSandboxEnvironment();
-
-    self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    UltraCanvasiOSViewController* controller = [[UltraCanvasiOSViewController alloc] init];
-    self.window.rootViewController = controller;
-    [self.window makeKeyAndVisible];
-    UltraCanvas::SetiOSRootView((__bridge void*)controller.view);
-
-    // After this callback has returned: see the head of the file.
-    [self performSelector:@selector(runApplication) withObject:nil afterDelay:0];
     return YES;
+}
+
+// The one scene's configuration, in code: Info.plist only opts into scenes.
+- (UISceneConfiguration*)application:(UIApplication*)application
+        configurationForConnectingSceneSession:(UISceneSession*)session
+                                       options:(UISceneConnectionOptions*)options {
+    UISceneConfiguration* configuration =
+            [[UISceneConfiguration alloc] initWithName:@"Default" sessionRole:session.role];
+    configuration.delegateClass = [UltraCanvasiOSSceneDelegate class];
+    return configuration;
 }
 
 - (void)runApplication {
@@ -359,22 +418,6 @@ namespace {
     // An iOS app does not quit itself; when its main body is over there is
     // nothing left to show.
     std::exit(status);
-}
-
-- (void)applicationDidEnterBackground:(UIApplication*)application {
-    if (auto* app = App()) app->HandleDidEnterBackground();
-}
-
-- (void)applicationWillEnterForeground:(UIApplication*)application {
-    if (auto* app = App()) app->HandleWillEnterForeground();
-}
-
-- (void)applicationDidBecomeActive:(UIApplication*)application {
-    if (auto* app = App()) app->HandleDidBecomeActive();
-}
-
-- (void)applicationWillResignActive:(UIApplication*)application {
-    if (auto* app = App()) app->HandleWillResignActive();
 }
 
 @end
