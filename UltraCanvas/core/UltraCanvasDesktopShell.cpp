@@ -6,6 +6,9 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.14.0 - LaunchProgram starts an application hosted in this
+//                  program (UltraCanvasHostedApps::IdForProgram) before
+//                  looking for an executable
 // Version: 1.13.0 - CanCaptureScreen; macOS takes its screen capture from
 //                  OS/MacOS/UltraCanvasMacOSScreenCapture.mm (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.12.0 - OpenDisplaySettings, CanOpenDisplaySettings
@@ -23,7 +26,7 @@
 // Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
 // Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
 // Version: 1.2.0 - the platform's own application list; shortcut entries launch
-// Last Modified: 2026-11-23
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -31,6 +34,7 @@
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasHardwareInfo.h"
+#include "UltraCanvasHostedApps.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
@@ -746,6 +750,10 @@ std::string UltraCanvasDesktopShell::FindProgram(const std::string& program) {
 bool UltraCanvasDesktopShell::LaunchProgram(const std::string& program,
                                             const std::vector<std::string>& arguments,
                                             std::string* error) {
+    // An application this program carries (MobilePC's UltraFiler) is started
+    // here, with the program's arguments: there is no executable to find.
+    const std::string hosted = UltraCanvasHostedApps::IdForProgram(program);
+    if (!hosted.empty()) return UltraCanvasHostedApps::Launch(hosted, arguments, error);
     const std::string path = FindProgram(program);
     if (path.empty()) {
         if (error) *error = "\"" + program + "\" is not installed next to this application or on the PATH.";

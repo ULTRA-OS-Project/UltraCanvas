@@ -65,6 +65,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.50.0 - IsOpen (MobilePC hands a later start's folders to an open window)
 // Version: 1.49.1 - the preview pane is left as it is while a selection rectangle is drawn in the
 //                  folder display, and follows the selection once it is let go
 // Version: 1.49.0 - the path bar in the colours of Settings > Display > Path bar: #E4E6E9 for the
@@ -160,7 +161,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -1833,6 +1834,10 @@ void UltraFilerWindow::Show() {
     // The first fit: the text is measured with the window's render context,
     // which is there once the window is.
     ScheduleTreeFit();
+}
+
+bool UltraFilerWindow::IsOpen() const {
+    return window && window->GetState() != WindowState::Closed;
 }
 
 void UltraFilerWindow::OpenFolders(const std::vector<std::string>& paths) {

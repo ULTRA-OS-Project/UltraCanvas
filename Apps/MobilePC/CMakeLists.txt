@@ -10,6 +10,7 @@
 # (MobilePCHostedApps.cpp); Texter's window manager is in TexterWindowManager.h
 # for that.
 #
+# Version: 0.2.0 - UltraFiler
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -135,6 +136,31 @@ if("ColorPaletteManager" IN_LIST _mpc_widgets AND "VectorCanvas" IN_LIST _mpc_wi
     target_compile_definitions(MobilePC PRIVATE MOBILEPC_WITH_ARTCREATOR=1
                                ARTCREATOR_VERSION="${ARTCREATOR_VERSION}")
     list(APPEND _mpc_apps ArtCreator)
+endif()
+
+# UltraFiler: every source but its main.cpp. Its remote drives (UltraCloud)
+# and RAM discs (VirtualFS) are left out - the "+ Drive" button says this build
+# adds none - and so is the elevated "Delete as administrator" helper, which
+# Android has no way to start.
+if("MediaViewer" IN_LIST _mpc_widgets)
+    target_sources(MobilePC PRIVATE
+        ${_mpc_root}/UltraFiler/UltraFilerWindow.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerSettingsDialog.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerPrompt.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerRunWindowsDialog.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerFindTextDialog.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerFolderExport.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerPropertiesDialogs.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerShare.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerRemoteDrives.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerDeviceProvider.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerConnectionLogWindow.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerRamDisks.cpp
+        ${_mpc_root}/UltraFiler/UltraFilerRamDiskDialog.cpp)
+    target_include_directories(MobilePC PRIVATE ${_mpc_root}/UltraFiler)
+    target_compile_definitions(MobilePC PRIVATE MOBILEPC_WITH_ULTRAFILER=1
+                               ULTRAFILER_VERSION="${ULTRAFILER_VERSION}")
+    list(APPEND _mpc_apps UltraFiler)
 endif()
 
 string(REPLACE ";" ", " _mpc_apps_text "${_mpc_apps}")

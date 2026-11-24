@@ -45,6 +45,8 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.17.0 - LaunchProgram starts an application hosted in this
+//                   program (UltraCanvasHostedApps) that stands in for it
 // Version: 1.16.0 - CanCaptureScreen; macOS captures the screen (ScreenCaptureKit, the main
 //                   display, in its pixels with 0,0 at its top-left corner)
 // Version: 1.15.0 - UltraCanvasGlobalShortcut::StartExclusive: the key reaches nothing else
@@ -74,7 +76,7 @@
 // Version: 1.4.0 - instead of the system's desktop (DesktopReplacement::Instead),
 //                  the notification area (UltraCanvasTrayHost), EndSession
 // Version: 1.3.0 - in place of the system's desktop (ReplaceSystemDesktop)
-// Last Modified: 2026-11-23
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -417,7 +419,9 @@ namespace UltraCanvas {
         // executable first (a build tree, a bundle), then on PATH. On macOS,
         // where every application is a bundle of its own, the <name>.app
         // beside this application's bundle and in ~/Applications and
-        // /Applications are tried before PATH.
+        // /Applications are tried before PATH. An application hosted in this
+        // program that stands in for `program` (UltraCanvasHostedApps,
+        // HostedAppInfo::programs) is started instead, with the arguments.
         static bool LaunchProgram(const std::string& program,
                                   const std::vector<std::string>& arguments = {},
                                   std::string* error = nullptr);

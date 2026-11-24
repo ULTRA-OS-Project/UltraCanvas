@@ -77,6 +77,7 @@ The desktop's scale on a TV or monitor follows its resolution: 100 % up to
 
 | Application | Started from |
 |---|---|
+| UltraFiler | the taskbar's UltraFiler button, the RAM disc button and the Apps window (System) - opens the phone's storage (`/storage/emulated/0`); asks once, at its first start, for *All files access* (Android 11 on, switched on in Settings on the phone; the storage permission before), without which it sees the folders but few of the files; no remote drives and no RAM discs in this build |
 | UltraTexter | the Apps window (Office) - its windows kept by `TexterWindowManager.h`, as its own `main()` keeps them; a file's creation time shows as *Not available* (no `statx` before API 30) |
 | UltraViewer | the Apps window (Graphics) |
 | UltraPaint | the Apps window (Graphics) |
@@ -84,7 +85,11 @@ The desktop's scale on a TV or monitor follows its resolution: 100 % up to
 
 Each is the application's own window code, unchanged, started by the entry
 its desktop `main()` uses. Their texts come from their own catalogues
-(`UltraLocalisation::AddSet`). UltraFiler is next.
+(`UltraLocalisation::AddSet`). Each also answers its program's name
+(`HostedAppInfo::programs`): UltraDesktop's taskbar button starts
+"UltraFiler" with `UltraCanvasDesktopShell::LaunchProgram`, and UltraFiler
+starts "UltraViewer" for a picture that is double-clicked, so both reach the
+hosted applications without a change to either.
 
 ## Starting it
 
@@ -97,12 +102,14 @@ adb shell am start -n org.ultraos.mobilepc/org.ultraos.ultracanvas.UltraCanvasAc
 
 | Argument | Does |
 |---|---|
-| `--launch <id>` | starts that application once the desktop is up: `texter`, `ultraviewer`, `ultrapaint`, `artcreator` |
+| `--launch <id>` | starts that application once the desktop is up: `ultrafiler`, `texter`, `ultraviewer`, `ultrapaint`, `artcreator`; give it again for another |
 | `--debug` | the framework's diagnostics to logcat |
 
 ## Not yet
 
-- UltraFiler (storage permissions, volumes, trash).
+- UltraFiler's remote drives (UltraCloud is not built for Android), RAM discs,
+  and the SD card and USB sticks as drives of their own (they are reachable
+  under `/storage`).
 - Keeping the session alive while the phone is locked (a foreground service).
 - The wireless stream for phones without a second-screen display, and the TV
   and browser receivers.
