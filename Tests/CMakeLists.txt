@@ -3656,6 +3656,38 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutAutoExpandTest")
 
+# ===== CSS LAYOUT CROSS MARGIN TEST =====
+# A flex item is measured at the cross extent it is arranged at: the
+# container's less its own cross margins (a wrapping caption with side
+# margins in a column was measured a line short). Pure geometry.
+message(STATUS "  Building CSSLayoutCrossMarginTest...")
+add_executable(CSSLayoutCrossMarginTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutCrossMarginTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutCrossMarginTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutCrossMarginTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutCrossMarginTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutCrossMarginTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutCrossMarginTest
+    COMMAND CSSLayoutCrossMarginTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutCrossMarginTest")
+
 # ===== CSS LAYOUT GROW FROM ZERO TEST =====
 # A row measured "at most this wide" gives an item that grows from a zero
 # basis the width it will be arranged at, so a wrapping text in it is not
