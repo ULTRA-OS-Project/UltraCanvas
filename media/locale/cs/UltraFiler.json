@@ -396,6 +396,8 @@
   "UltraFiler - Settings": "UltraFiler – Nastavení",
   "UltraFiler simple - the drawn folder and sheet icons": "Jednoduché UltraFiler – kreslené ikony složek a listů",
   "UltraViewer could not be started: {0}": "UltraViewer nelze spustit: {0}",
+  "Edit in {0}": "Upravit v aplikaci {0}",
+  "{0} could not be started: {1}": "{0} nelze spustit: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer zobrazí obrázek, zvukový soubor nebo video v plné velikosti a zbytek jeho složky je na stisk klávesy. Když UltraViewer není nainstalován nebo je tato volba vypnutá, zachází se s takovým souborem jako s každým jiným, podle volby pod ní.",
   "Upload: the name is already taken": "Nahrávání: název je již obsazen",
   "Uploaded: {0}": "Nahráno: {0}",

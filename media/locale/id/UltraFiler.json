@@ -388,6 +388,8 @@
   "UltraFiler - Settings": "UltraFiler - Pengaturan",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler sederhana - ikon folder dan lembar yang digambar",
   "UltraViewer could not be started: {0}": "UltraViewer tidak dapat dijalankan: {0}",
+  "Edit in {0}": "Edit di {0}",
+  "{0} could not be started: {1}": "{0} tidak dapat dijalankan: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer menampilkan gambar, file audio, atau video dalam ukuran penuh, dengan sisa foldernya hanya sejauh satu tekanan tombol. Jika UltraViewer tidak terpasang, atau opsi ini dimatikan, file seperti itu ditangani seperti file lainnya, sesuai pilihan di bawahnya.",
   "Upload: the name is already taken": "Unggah: nama sudah dipakai",
   "Uploaded: {0}": "Diunggah: {0}",

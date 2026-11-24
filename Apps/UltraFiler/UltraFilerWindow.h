@@ -81,6 +81,7 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.42.0 - BuildOpenMenuItems: "Edit in ArtCreator" on a drawing's context menu too
 // Version: 1.41.0 - BuildOpenMenuItems: "Edit in UltraPaint" on a picture's context menu
 // Version: 1.40.0 - IsOpen: whether the window is still open (a host that
 //                  carries UltraFiler hands a later start's folders to it)
@@ -1213,7 +1214,9 @@ private:
     // file the way it would have.
     bool OpenInUltraViewer(const FilerEntry& entry);
     // The folder displays' openMenuProvider: "Edit in UltraPaint" when every
-    // target is a picture on the disk and UltraPaint can be started.
+    // target is a picture on the disk, "Edit in ArtCreator" when every one is
+    // a drawing a vector reader takes - each only where that editor can be
+    // started.
     std::vector<MenuItemData> BuildOpenMenuItems(const std::vector<FilerEntry>& targets);
     // The tail the file display hangs under Display > Thumbnails and
     // Display > Detail view: "File formats...", which opens the matching

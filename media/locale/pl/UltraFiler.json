@@ -396,6 +396,8 @@
   "UltraFiler - Settings": "UltraFiler – Ustawienia",
   "UltraFiler simple - the drawn folder and sheet icons": "Proste UltraFiler – rysowane ikony folderów i arkuszy",
   "UltraViewer could not be started: {0}": "Nie można uruchomić UltraViewer: {0}",
+  "Edit in {0}": "Edytuj w {0}",
+  "{0} could not be started: {1}": "Nie można uruchomić {0}: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer pokazuje obraz, plik dźwiękowy lub wideo w pełnym rozmiarze, a resztę folderu w zasięgu jednego naciśnięcia klawisza. Gdy UltraViewer nie jest zainstalowany lub ta opcja jest wyłączona, taki plik jest obsługiwany jak każdy inny, zgodnie z wyborem poniżej.",
   "Upload: the name is already taken": "Przesyłanie: nazwa jest już zajęta",
   "Uploaded: {0}": "Przesyłany: {0}",

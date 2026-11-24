@@ -65,6 +65,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.52.0 - Edit in ArtCreator: a drawing's context menu starts ArtCreator with it
 // Version: 1.51.0 - Edit in UltraPaint: a picture's context menu starts UltraPaint with it
 //                  (BuildOpenMenuItems, on every folder display's openMenuProvider)
 // Version: 1.50.0 - IsOpen (MobilePC hands a later start's folders to an open window)
@@ -177,11 +178,11 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
-#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files, UltraPaint to edit a picture
-#include "UltraCanvasHostedApps.h"     // UltraPaint carried by the same program (MobilePC)
+#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files, UltraPaint / ArtCreator to edit
+#include "UltraCanvasHostedApps.h"     // an editor carried by the same program (MobilePC)
 #include "UltraCanvasDiskCache.h"         // the cache entry of Extras > Open location
 #include "UltraCanvasFileAssociations.h"
-#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
+#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon; CanLoadVectorDocument
 #include "UltraCanvasMacBundle.h"      // a pinned application bundle, by path
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
@@ -2076,31 +2077,44 @@ bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
 }
 
 std::vector<MenuItemData> UltraFilerWindow::BuildOpenMenuItems(const std::vector<FilerEntry>& targets) {
-    // Pictures only - every one of the selection, each a file on the disk
-    // (an entry inside an archive or on a remote drive is a path UltraPaint
-    // cannot open) - and only where UltraPaint can be started: installed
-    // beside UltraFiler or on the PATH, or carried by the same program
-    // (MobilePC).
+    // Every target a file on the disk: an entry inside an archive or on a
+    // remote drive is a path no other program can open.
     if (targets.empty()) return {};
     std::vector<std::string> paths;
+    bool pictures = true;   // all of them raster pictures: UltraPaint
+    bool drawings = true;   // all of them drawings a vector reader takes: ArtCreator
     for (const FilerEntry& entry : targets) {
-        if (entry.isDirectory || entry.isShortcut || entry.category != FilerFileCategory::Image) return {};
+        if (entry.isDirectory || entry.isShortcut) return {};
         std::error_code ec;
         if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) || ec) return {};
         paths.push_back(entry.path);
+        if (entry.category != FilerFileCategory::Image) pictures = false;
+        // What ArtCreator opens is what the framework's vector readers read
+        // (SVG, EPS, DXF, CDR, ... - whichever plug-ins this build has); a
+        // raster picture is UltraPaint's even where a reader would take it.
+        if (entry.category == FilerFileCategory::Image ||
+            !UltraCanvasFileLoader::CanLoadVectorDocument(entry.path))
+            drawings = false;
     }
-    if (UltraCanvasHostedApps::IdForProgram("UltraPaint").empty() &&
-        UltraCanvasDesktopShell::FindProgram("UltraPaint").empty())
-        return {};
-    MenuItemData edit = MenuItemData::Action(
-            Tr("Edit in UltraPaint"),
-            NormalizePath(GetResourcesDir() + "media/appicon/UltraPaint.png"),
-            [this, paths]() {
-                std::string error;
-                if (!UltraCanvasDesktopShell::LaunchProgram("UltraPaint", paths, &error) && statusLabel)
-                    statusLabel->SetText(TrF("UltraPaint could not be started: {0}", error));
-            });
-    return {edit};
+    // Only where the editor can be started: installed beside UltraFiler or
+    // on the PATH, or carried by the same program (MobilePC).
+    auto editIn = [this, &paths](const char* program, const char* icon) -> std::vector<MenuItemData> {
+        if (UltraCanvasHostedApps::IdForProgram(program).empty() &&
+            UltraCanvasDesktopShell::FindProgram(program).empty())
+            return {};
+        const std::string name = program;
+        return {MenuItemData::Action(
+                TrF("Edit in {0}", name),
+                NormalizePath(GetResourcesDir() + "media/appicon/" + icon),
+                [this, name, paths]() {
+                    std::string error;
+                    if (!UltraCanvasDesktopShell::LaunchProgram(name, paths, &error) && statusLabel)
+                        statusLabel->SetText(TrF("{0} could not be started: {1}", name, error));
+                })};
+    };
+    if (pictures) return editIn("UltraPaint", "UltraPaint.png");
+    if (drawings) return editIn("ArtCreator", "ArtCreator.png");
+    return {};
 }
 
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {

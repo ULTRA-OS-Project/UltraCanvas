@@ -472,7 +472,8 @@ Open with      >  clicking the entry opens the selection with the OS default
                   entries added via AddOpenWithApp(), then "Other
                   application…" (file dialog)
 (host entries)    what openMenuProvider returns for the selection — in the
-                  UltraFiler: "Edit in UltraPaint" on pictures
+                  UltraFiler: "Edit in UltraPaint" on pictures, "Edit in
+                  ArtCreator" on drawings
 Extract and Run   (only on a program inside an archive — see below)
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
@@ -3394,7 +3395,7 @@ reports what the system hides, not what the host asked for.
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)); a folder drawn as the shape shows the first pictures inside it (see [Folder previews](#folder-previews)) |
 | `SetFavoriteMarkProvider(fn(entry) -> bool)` | Per entry while it is drawn — `true` draws the red favorite heart at the entry's left (see [Favorite mark](#favorite-mark)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
-| `openMenuProvider(targets) -> vector<MenuItemData>` | Called on every context-menu open of a file or selection, with the entries the menu acts on; the items go right after *Open with* - offer one only where it applies (UltraFiler's *Edit in UltraPaint* for pictures). Not asked for the folder background's menu |
+| `openMenuProvider(targets) -> vector<MenuItemData>` | Called on every context-menu open of a file or selection, with the entries the menu acts on; the items go right after *Open with* - offer one only where it applies (UltraFiler's *Edit in UltraPaint* for pictures, *Edit in ArtCreator* for drawings). Not asked for the folder background's menu |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
 | `onOpenPath(entry)` | Open Path item (default: `SetPath(parent)`) |

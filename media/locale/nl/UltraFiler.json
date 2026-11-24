@@ -392,6 +392,8 @@
   "UltraFiler - Settings": "UltraFiler - Instellingen",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler eenvoudig - de getekende map- en bladpictogrammen",
   "UltraViewer could not be started: {0}": "UltraViewer kon niet worden gestart: {0}",
+  "Edit in {0}": "Bewerken in {0}",
+  "{0} could not be started: {1}": "{0} kon niet worden gestart: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer toont de afbeelding, het audiobestand of de video op volledige grootte, met de rest van de map een toetsaanslag verderop. Als UltraViewer niet is geïnstalleerd of dit is uitgeschakeld, wordt zo'n bestand behandeld als elk ander, volgens de keuze eronder.",
   "Upload: the name is already taken": "Uploaden: de naam is al in gebruik",
   "Uploaded: {0}": "Geüpload: {0}",

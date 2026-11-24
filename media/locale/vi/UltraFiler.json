@@ -388,6 +388,8 @@
   "UltraFiler - Settings": "UltraFiler - Cài đặt",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler đơn giản - biểu tượng thư mục và trang giấy được vẽ",
   "UltraViewer could not be started: {0}": "Không thể khởi động UltraViewer: {0}",
+  "Edit in {0}": "Chỉnh sửa bằng {0}",
+  "{0} could not be started: {1}": "Không thể khởi động {0}: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer hiển thị ảnh, tệp âm thanh hoặc video ở kích thước đầy đủ, với phần còn lại của thư mục chỉ cách một lần nhấn phím. Khi UltraViewer chưa được cài, hoặc tùy chọn này bị tắt, tệp như vậy được xử lý như mọi tệp khác, theo lựa chọn bên dưới.",
   "Upload: the name is already taken": "Tải lên: tên đã được sử dụng",
   "Uploaded: {0}": "Tệp tải lên: {0}",

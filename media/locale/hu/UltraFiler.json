@@ -392,6 +392,8 @@
   "UltraFiler - Settings": "UltraFiler – Beállítások",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler egyszerű – a rajzolt mappa- és lapikonok",
   "UltraViewer could not be started: {0}": "Az UltraViewer nem indítható el: {0}",
+  "Edit in {0}": "Szerkesztés ebben: {0}",
+  "{0} could not be started: {1}": "{0} nem indítható el: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "Az UltraViewer teljes méretben mutatja a képet, a hangfájlt vagy a videót, a mappája többi része pedig egy billentyűnyomásnyira van. Ha az UltraViewer nincs telepítve, vagy ez ki van kapcsolva, az ilyen fájlt a program úgy kezeli, mint bármely mást, az alatta lévő választás szerint.",
   "Upload: the name is already taken": "Feltöltés: a név már foglalt",
   "Uploaded: {0}": "Feltöltött: {0}",

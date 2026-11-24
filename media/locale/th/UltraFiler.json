@@ -388,6 +388,8 @@
   "UltraFiler - Settings": "UltraFiler - การตั้งค่า",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler แบบง่าย - ไอคอนโฟลเดอร์และแผ่นกระดาษที่วาดขึ้น",
   "UltraViewer could not be started: {0}": "ไม่สามารถเริ่ม UltraViewer ได้: {0}",
+  "Edit in {0}": "แก้ไขใน {0}",
+  "{0} could not be started: {1}": "ไม่สามารถเริ่ม {0} ได้: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer แสดงรูปภาพ ไฟล์เสียง หรือวิดีโอแบบเต็มขนาด โดยไฟล์อื่นในโฟลเดอร์อยู่ห่างไปเพียงการกดแป้นครั้งเดียว เมื่อไม่ได้ติดตั้ง UltraViewer หรือปิดตัวเลือกนี้ ไฟล์ดังกล่าวจะได้รับการจัดการเหมือนไฟล์อื่นๆ ตามตัวเลือกด้านล่าง",
   "Upload: the name is already taken": "อัปโหลด: ชื่อนี้ถูกใช้แล้ว",
   "Uploaded: {0}": "ที่อัปโหลด: {0}",
