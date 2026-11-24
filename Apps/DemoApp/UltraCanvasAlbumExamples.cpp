@@ -341,7 +341,7 @@ namespace UltraCanvas {
                 cfg.resizable = true;
                 window = CreateWindow(cfg);
                 if (!window) return;
-                window->SetBackgroundColor(Color(245, 245, 247, 255));
+                window->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 247, 255)));
                 window->layout.SetFlexColumn().SetFlexGap(8)
                               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
                 window->SetPadding(16, 18, 16, 18);
@@ -350,7 +350,7 @@ namespace UltraCanvas {
                 titleLbl->SetText(item.title.empty() ? Tr("Audio") : item.title);
                 titleLbl->SetFontSize(16);
                 titleLbl->SetFontWeight(FontWeight::Bold);
-                titleLbl->SetTextColor(Color(30, 30, 40, 255));
+                titleLbl->SetTextColor(DemoKit::Themed(Color(30, 30, 40, 255)));
                 titleLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                 window->AddChild(titleLbl);
 
@@ -358,7 +358,7 @@ namespace UltraCanvas {
                     auto subLbl = std::make_shared<UltraCanvasLabel>("AudioSubtitle", 0, 0, 0, 16);
                     subLbl->SetText(item.subtitle);
                     subLbl->SetFontSize(11);
-                    subLbl->SetTextColor(Color(110, 110, 110, 255));
+                    subLbl->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
                     subLbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                     window->AddChild(subLbl);
                 }

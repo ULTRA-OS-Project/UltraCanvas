@@ -49,7 +49,7 @@ namespace UltraCanvas {
                                           Tr("A press and release on the surface fires onClick; a press on a button is the button's."));
         auto clickRow = DemoKit::AddRow(clickCard, "CdClickRow", 12);
         auto clickOut = DemoKit::CreateText("CdClickOut", Tr("Nothing clicked yet"));
-        clickOut->SetBackgroundColor(Color(240, 240, 240));
+        clickOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         clickOut->SetPadding(3);
         for (int i = 0; i < 3; ++i) {
             const std::string name = i == 0 ? "UltraPaint" : (i == 1 ? "UltraFiler" : "Texter");

@@ -147,7 +147,7 @@ namespace UltraCanvas {
 
         auto fileLabel = DemoKit::CreateText("WaveformFile", "");
         fileLabel->SetFontSize(11);
-        fileLabel->SetTextColor(Color(90, 90, 90));
+        fileLabel->SetTextColor(DemoKit::Themed(Color(90, 90, 90)));
 
         // Strip any directory part for display.
         auto baseName = [](const std::string& p) -> std::string {
@@ -173,7 +173,7 @@ namespace UltraCanvas {
                 if (UltraCanvasAudioDevices::IsAvailable()) {
                     status->SetText(TrF("Loaded: {0}  ({1} Hz, {2} ch)", trackName,
                                         audio->GetSampleRate(), audio->GetChannels()));
-                    status->SetTextColor(Color(40, 120, 40));
+                    status->SetTextColor(DemoKit::Themed(Color(40, 120, 40)));
                 }
             } else {
                 status->SetText(TrF("Could not decode sample track: {0}", trackName));

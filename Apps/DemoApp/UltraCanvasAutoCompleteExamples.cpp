@@ -36,7 +36,7 @@ namespace UltraCanvas {
         auto addStatus = [](const std::shared_ptr<UltraCanvasContainer>& column, const std::string& id,
                             const std::string& text) {
             auto label = DemoKit::AddText(column, id, text);
-            label->SetTextColor(Color(0, 100, 0, 255));
+            label->SetTextColor(DemoKit::Themed(Color(0, 100, 0, 255)));
             return label;
         };
 
@@ -256,7 +256,7 @@ namespace UltraCanvas {
         auto eventInfo = fieldRow(card5, "InteractiveAC", interactiveAC);
         auto eventLog = DemoKit::AddText(eventInfo, "ACEventLog", Tr("Event log: No events yet"));
         eventLog->SetFontSize(11);
-        eventLog->SetBackgroundColor(Color(245, 245, 245, 255));
+        eventLog->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
         eventLog->SetBorders(1.0f);
         eventLog->SetBordersColor(Color(180, 180, 180, 255));
         eventLog->SetPadding(5.0f);

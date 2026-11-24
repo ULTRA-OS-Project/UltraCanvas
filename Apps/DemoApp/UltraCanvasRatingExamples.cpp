@@ -35,7 +35,7 @@ namespace UltraCanvas {
         auto readout = [](const std::shared_ptr<UltraCanvasContainer>& row,
                           const std::string& id, const std::string& initial) {
             auto l = DemoKit::CreateText(id, initial);
-            l->SetBackgroundColor(Color(240, 240, 240));
+            l->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
             l->SetPadding(3);
             l->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
             DemoKit::Add(row, l);

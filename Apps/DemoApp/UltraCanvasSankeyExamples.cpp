@@ -331,7 +331,7 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> AddSankeyControls(const std::shared_ptr<UltraCanvasContainer>& parent,
                                                                    const std::string& id) {
         auto row = DemoKit::AddRow(parent, id, 10);
-        row->SetBackgroundColor(Color(250, 250, 250));
+        row->SetBackgroundColor(DemoKit::Themed(Color(250, 250, 250)));
         row->SetPadding(8);
         row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
         return row;
@@ -384,7 +384,7 @@ namespace UltraCanvas {
         auto statusLabel = DemoKit::AddText(mainContainer, "SankeyStatus",
                 Tr("Hover over nodes and links to see details\nDrag nodes to adjust layout"));
         statusLabel->SetFontSize(10);
-        statusLabel->SetBackgroundColor(Color(245, 245, 245));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245)));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
         statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -566,7 +566,7 @@ namespace UltraCanvas {
 
         // Control panel for custom diagram: the link inputs, then the presets
         auto customControls = DemoKit::CreateColumn("CustomControls", 6);
-        customControls->SetBackgroundColor(Color(250, 250, 250));
+        customControls->SetBackgroundColor(DemoKit::Themed(Color(250, 250, 250)));
         DemoKit::Add(customContainer, customControls);
         auto linkRow = AddSankeyControls(customControls, "CustomLinkRow");
         auto presetRow = AddSankeyControls(customControls, "CustomPresetRow");

@@ -25,7 +25,7 @@ namespace UltraCanvas {
             const std::string& id, const std::string& text, const Color& bgColor, int w = 550, int h = 180) {
 
         auto content = std::make_shared<UltraCanvasContainer>(id, 0, 0, w, h);
-        content->SetBackgroundColor(bgColor);
+        content->SetBackgroundColor(DemoKit::ThemedFill(bgColor));
         content->SetPadding(15);
         content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         // A text taller than the tab (a longer translation) scrolls.
@@ -36,7 +36,7 @@ namespace UltraCanvas {
 
         // The first child: the Pill examples recolour it.
         auto label = DemoKit::CreateText(id + "_label", text);
-        label->SetTextColor(Colors::Black);
+        label->SetTextColor(DemoKit::Themed(Colors::Black));
         DemoKit::Add(content, label);
 
         return content;
@@ -279,7 +279,7 @@ namespace UltraCanvas {
             auto page = [&](const std::string& id, const std::string& text) {
                 auto content = CreateSampleTabContent(id, text, cw.content, 550, first ? 180 : 70);
                 if (auto label = std::dynamic_pointer_cast<UltraCanvasLabel>(content->GetChildren().front()))
-                    label->SetTextColor(pageText);
+                    label->SetTextColor(DemoKit::ThemedInk(pageText));
                 return content;
             };
             pillTabs->AddTab(Tr("Inbox"), page("Pill" + suffix + "a", first ?

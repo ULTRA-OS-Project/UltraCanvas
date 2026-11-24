@@ -82,7 +82,7 @@ std::shared_ptr<UltraCanvasContainer> AddControlRow(const std::shared_ptr<UltraC
 void AddControlLabel(const std::shared_ptr<UltraCanvasContainer>& row,
                      const std::string& id, const std::string& text) {
     auto label = DemoKit::CreateText(id, text);
-    label->SetTextColor(Color(60, 60, 60, 255));
+    label->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
     DemoKit::Add(row, label);
 }
 

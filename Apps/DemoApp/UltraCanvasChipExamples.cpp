@@ -48,7 +48,7 @@ namespace UltraCanvas {
         auto filterRow = DemoKit::AddRow(filterCard, "ChFilterRow", 10);
 
         auto filterReadout = DemoKit::CreateText("ChFilterOut", Tr("Selected: (none)"));
-        filterReadout->SetBackgroundColor(Color(240, 240, 240));
+        filterReadout->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         filterReadout->SetPadding(3);
 
         std::vector<std::string> filters = {Tr("Design"), Tr("Engineering"), Tr("Sales"), Tr("Support"), Tr("Research")};
@@ -83,7 +83,7 @@ namespace UltraCanvas {
         DemoKit::AddStretched(tagCard, tagInput);
 
         auto tagReadout = DemoKit::AddText(tagCard, "ChTagOut", Tr("3 tags"));
-        tagReadout->SetBackgroundColor(Color(240, 240, 240));
+        tagReadout->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         tagReadout->SetPadding(3);
         tagInput->onTagsChanged = [tagReadout](const std::vector<std::string>& tags) {
             std::ostringstream oss;

@@ -588,7 +588,7 @@ std::shared_ptr<EngineBarChart> MakeCityChart(const std::string& id) {
 // A tab's caption: wraps to the tab's width and is as tall as its lines.
 std::shared_ptr<UltraCanvasLabel> MakeCaption(const std::string& id, const std::string& text) {
     auto caption = DemoKit::CreateText(id, text);
-    caption->SetTextColor(Color(90, 90, 100, 255));
+    caption->SetTextColor(DemoKit::Themed(Color(90, 90, 100, 255)));
     return caption;
 }
 

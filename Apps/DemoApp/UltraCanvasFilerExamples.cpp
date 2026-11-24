@@ -356,7 +356,7 @@ namespace UltraCanvas {
         // ===== Status line (pinned, below the filer) =====
         auto status = DemoKit::AddText(card, "FilerStatus", "");
         status->SetFontSize(11);
-        status->SetTextColor(Color(110, 110, 110, 255));
+        status->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
 
         // ===== Wire the filer to the page =====
         {

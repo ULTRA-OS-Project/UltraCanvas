@@ -503,7 +503,7 @@ UltraCanvasDemoApplication::CreateMindMapExamples() {
     // The read-out every tab reports to, above the tabs.
     auto statusLabel = DemoKit::CreateText("MindMapStatus", Tr("Click a topic to inspect it."));
     statusLabel->SetFontSize(10);
-    statusLabel->SetBackgroundColor(Color(245, 245, 245));
+    statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245)));
     statusLabel->SetBorders(1.0f);
     statusLabel->SetPadding(6.0f);
     statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);

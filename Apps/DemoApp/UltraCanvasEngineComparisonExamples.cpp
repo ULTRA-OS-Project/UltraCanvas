@@ -28,7 +28,7 @@ namespace {
 // stretching column, so it gets the tab's width).
 std::shared_ptr<UltraCanvasLabel> MakeCaption(const std::string& id, const std::string& text) {
     auto caption = DemoKit::CreateText(id, text);
-    caption->SetTextColor(Color(90, 90, 100, 255));
+    caption->SetTextColor(DemoKit::Themed(Color(90, 90, 100, 255)));
     caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return caption;
 }
@@ -40,7 +40,7 @@ std::shared_ptr<UltraCanvasLabel> MakeSideHeading(const std::string& id, const s
     heading->SetFontSize(11);
     heading->SetFontWeight(FontWeight::Bold);
     heading->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-    heading->SetBackgroundColor(background);
+    heading->SetBackgroundColor(DemoKit::ThemedFill(background));
     heading->SetPadding(3, 4);
     heading->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return heading;

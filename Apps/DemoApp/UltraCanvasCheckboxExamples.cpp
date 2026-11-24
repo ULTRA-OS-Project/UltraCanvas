@@ -148,7 +148,7 @@ namespace UltraCanvas {
 
         // Status display for tri-state
         auto triStateStatus = DemoKit::CreateText("TriStateStatus", Tr("State: Indeterminate (2 of 3 selected)"));
-        triStateStatus->SetTextColor(Color(100, 100, 100, 255));
+        triStateStatus->SetTextColor(DemoKit::Themed(Color(100, 100, 100, 255)));
         DemoKit::Add(triRow, triStateStatus, 1);
 
         // Update status label
@@ -201,23 +201,23 @@ namespace UltraCanvas {
 
         // Switch status labels
         auto switchStatus1 = DemoKit::CreateText("SwitchStatus1", Tr("ON"));
-        switchStatus1->SetTextColor(Color(0, 150, 0, 255));
+        switchStatus1->SetTextColor(DemoKit::Themed(Color(0, 150, 0, 255)));
 
         auto switchStatus2 = DemoKit::CreateText("SwitchStatus2", Tr("OFF"));
-        switchStatus2->SetTextColor(Color(150, 0, 0, 255));
+        switchStatus2->SetTextColor(DemoKit::Themed(Color(150, 0, 0, 255)));
 
         auto switchStatus3 = DemoKit::CreateText("SwitchStatus3", Tr("ON"));
-        switchStatus3->SetTextColor(Color(0, 150, 0, 255));
+        switchStatus3->SetTextColor(DemoKit::Themed(Color(0, 150, 0, 255)));
 
         // Switch callbacks
         switch1->onStateChanged = [switchStatus1](CheckedState oldState, CheckedState newState) {
             if (newState == CheckedState::Checked) {
                 switchStatus1->SetText(Tr("ON"));
-                switchStatus1->SetTextColor(Color(0, 150, 0, 255));
+                switchStatus1->SetTextColor(DemoKit::Themed(Color(0, 150, 0, 255)));
                 debugOutput << "Notifications enabled" << std::endl;
             } else {
                 switchStatus1->SetText(Tr("OFF"));
-                switchStatus1->SetTextColor(Color(150, 0, 0, 255));
+                switchStatus1->SetTextColor(DemoKit::Themed(Color(150, 0, 0, 255)));
                 debugOutput << "Notifications disabled" << std::endl;
             }
         };
@@ -225,11 +225,11 @@ namespace UltraCanvas {
         switch2->onStateChanged = [switchStatus2](CheckedState oldState, CheckedState newState) {
             if (newState == CheckedState::Checked) {
                 switchStatus2->SetText(Tr("ON"));
-                switchStatus2->SetTextColor(Color(0, 150, 0, 255));
+                switchStatus2->SetTextColor(DemoKit::Themed(Color(0, 150, 0, 255)));
                 debugOutput << "Dark mode enabled" << std::endl;
             } else {
                 switchStatus2->SetText(Tr("OFF"));
-                switchStatus2->SetTextColor(Color(150, 0, 0, 255));
+                switchStatus2->SetTextColor(DemoKit::Themed(Color(150, 0, 0, 255)));
                 debugOutput << "Dark mode disabled" << std::endl;
             }
         };
@@ -237,11 +237,11 @@ namespace UltraCanvas {
         switch3->onStateChanged = [switchStatus3](CheckedState oldState, CheckedState newState) {
             if (newState == CheckedState::Checked) {
                 switchStatus3->SetText(Tr("ON"));
-                switchStatus3->SetTextColor(Color(0, 150, 0, 255));
+                switchStatus3->SetTextColor(DemoKit::Themed(Color(0, 150, 0, 255)));
                 debugOutput << "Auto-save enabled" << std::endl;
             } else {
                 switchStatus3->SetText(Tr("OFF"));
-                switchStatus3->SetTextColor(Color(150, 0, 0, 255));
+                switchStatus3->SetTextColor(DemoKit::Themed(Color(150, 0, 0, 255)));
                 debugOutput << "Auto-save disabled" << std::endl;
             }
         };
@@ -253,7 +253,7 @@ namespace UltraCanvas {
         // The hints under the switches below
         auto makeHint = [](const std::string& id, const std::string& text) {
             auto hint = DemoKit::CreateText(id, text);
-            hint->SetTextColor(Color(100, 100, 100, 255));
+            hint->SetTextColor(DemoKit::Themed(Color(100, 100, 100, 255)));
             return hint;
         };
 
@@ -370,10 +370,10 @@ namespace UltraCanvas {
 
         // Selected option display
         auto selectedTheme = DemoKit::CreateText("SelectedTheme", TrF("Selected Theme: {0}", Tr("Light")));
-        selectedTheme->SetTextColor(Color(0, 100, 200, 255));
+        selectedTheme->SetTextColor(DemoKit::Themed(Color(0, 100, 200, 255)));
 
         auto selectedQuality = DemoKit::CreateText("SelectedQuality", TrF("Selected Quality: {0}", Tr("Medium")));
-        selectedQuality->SetTextColor(Color(0, 100, 200, 255));
+        selectedQuality->SetTextColor(DemoKit::Themed(Color(0, 100, 200, 255)));
 
         // Radio group callbacks
         radioRow->themeRadioGroup->onSelectionChanged = [selectedTheme](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -457,7 +457,7 @@ namespace UltraCanvas {
 
         // Feature checkboxes
         auto featureContainer = DemoKit::CreateColumn("FeatureContainer", 6);
-        featureContainer->SetBackgroundColor(Color(230, 240, 250, 255));
+        featureContainer->SetBackgroundColor(DemoKit::Themed(Color(230, 240, 250, 255)));
         featureContainer->SetBorders(1, Color(180, 180, 180, 255));
         featureContainer->SetPadding(10);
         DemoKit::Add(interactiveRow, featureContainer);
@@ -541,7 +541,7 @@ namespace UltraCanvas {
 
         // Feature status display
         auto featureStatus = DemoKit::CreateText("FeatureStatus", Tr("Selected Features:\nNone"));
-        featureStatus->SetBackgroundColor(Color(255, 255, 255, 255));
+        featureStatus->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         featureStatus->SetBorders(1.0f, Color(200, 200, 200, 255));
         featureStatus->SetPadding(5.0f);
 
@@ -586,7 +586,7 @@ namespace UltraCanvas {
 
         // Info panel at bottom
         auto infoPanel = DemoKit::AddCard(page, "InfoPanel");
-        infoPanel->SetBackgroundColor(Color(240, 248, 255, 255));
+        infoPanel->SetBackgroundColor(DemoKit::Themed(Color(240, 248, 255, 255)));
         DemoKit::AddText(infoPanel, "InfoText",
                 Tr("ℹ️ This demo showcases the UltraCanvasCheckbox component with various styles and configurations. "
                 "Click checkboxes to see console output. Try the interactive controls to manipulate checkbox states programmatically."));

@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.28 - the shell follows the theme: header, legend, page area and scrollbars take a
+//                  dark (or high-contrast) theme's roles and change with it; the light look is kept
 // Version: 1.0.27 - Info Graphics: the "Waves info graphic" placeholder removed (Timeline Diagram > Wave)
 // Version: 1.0.26 - Charts > Ridgeline Chart (UltraCanvasRidgelineChart)
 // Version: 1.0.25 - Modules > Theme (UltraCanvasThemeExamples.cpp)
@@ -60,7 +62,7 @@ namespace UltraCanvas {
     // area is on screen, and it reacts to hover and drag via the thumb color states
     // below. (Drawing the grip from an SVG would instead show a fixed-size centered
     // capsule that hides the proportional length and can't change color on hover.)
-    static ScrollbarStyle DemoScrollbarStyle() {
+    static ScrollbarStyle DemoScrollbarStyle(const UltraCanvasTheme& theme = UltraCanvasTheme::Current()) {
         ScrollbarStyle s;
         s.trackSize         = 8;
         s.trackColor        = Color(238, 238, 238, 255);
@@ -69,12 +71,53 @@ namespace UltraCanvas {
         s.thumbPressedColor = Color(128, 128, 128, 255);
         s.thumbCornerRadius = s.trackSize / 2;          // fully rounded ends
         s.trackCornerRadius = s.trackSize / 2;
+        // The same slim bar in a dark or a high-contrast theme's colours
+        if (theme.dark || theme.highContrast) s = ScrollbarStyle::FromTheme(theme, s);
         return s;
+    }
+
+    // The grey of the header and the legend: the light look's, or the
+    // theme's panel
+    static Color ShellBackground(const UltraCanvasTheme& theme) {
+        if (!theme.dark && !theme.highContrast) return Color(245, 245, 245, 255);
+        return theme.roles.panel;
+    }
+
+    namespace {
+        // The page area: the page kit's page colour behind a page, and the
+        // demo's slim scrollbars, both again when the theme changes.
+        class DemoDisplayArea : public UltraCanvasContainer {
+        public:
+            explicit DemoDisplayArea(const std::string& identifier) : UltraCanvasContainer(identifier) {
+                PaintThemeColours(UltraCanvasTheme::Current());
+            }
+            void OnThemeChanged(const UltraCanvasTheme& theme) override {
+                UltraCanvasContainer::OnThemeChanged(theme);
+                PaintThemeColours(theme);
+                if (onThemeChanged) onThemeChanged();
+            }
+            // The page shown is built again (its own colours are chosen
+            // when it is built: DemoKit::Themed)
+            std::function<void()> onThemeChanged;
+        private:
+            void PaintThemeColours(const UltraCanvasTheme& theme) {
+                SetBackgroundColor(DemoKit::ColourOf(DemoKit::KitColour::Page, theme));
+                // Containers stopped scrolling by default in 0.9.22, so a
+                // scroll view has to ask: without this every example page
+                // taller than the window was cut off at the window edge.
+                ContainerStyle style = GetContainerStyle();
+                style.autoShowScrollbars = true;
+                style.scrollbarStyle = DemoScrollbarStyle(theme);
+                SetContainerStyle(style);
+                // Elements made from now on take the same bars
+                SetDefaultScrollbarStyle(style.scrollbarStyle);
+                RequestRedraw();
+            }
+        };
     }
 
     DemoLegendContainer::DemoLegendContainer(const std::string& identifier)
         : UltraCanvasContainer(identifier) {
-        SetBackgroundColor(Color(245, 245, 245, 255));
         // A column of rows - the title, then icon and text per status - each as
         // tall as its text, so a longer translation wraps instead of being cut.
         layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -83,7 +126,7 @@ namespace UltraCanvas {
         legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", Tr("Component Status Legend"));
         legendTitle->SetFontSize(12);
         legendTitle->SetFontWeight(FontWeight::Bold);
-        legendTitle->SetTextColor(Color(80, 80, 80, 255));
+        legendTitle->SetTextColor(DemoKit::Themed(Color(80, 80, 80, 255)));
         legendTitle->SetWrap(TextWrap::WrapWord);
         AddChild(legendTitle);
 
@@ -107,6 +150,27 @@ namespace UltraCanvas {
         addRow("Partial", partialIcon, partialLabel, Tr("Partially Implemented"), Color(0x21, 0x96, 0xf3, 255));
         addRow("NotImplemented", notImplementedIcon, notImplementedLabel, Tr("Not Implemented Yet"),
                Color(200, 0, 0, 255));
+        PaintThemeColours(UltraCanvasTheme::Current());
+    }
+
+    void DemoLegendContainer::PaintThemeColours(const UltraCanvasTheme& theme) {
+        const bool light = !theme.dark && !theme.highContrast;
+        SetBackgroundColor(ShellBackground(theme));
+        // On a dark panel the three status colours are lighter, to keep
+        // their contrast
+        if (legendTitle) legendTitle->SetTextColor(light ? Color(80, 80, 80, 255) : theme.roles.inkMuted);
+        if (implementedLabel) implementedLabel->SetTextColor(light ? Color(0, 150, 0, 255) : Color(95, 205, 120, 255));
+        if (partialLabel) partialLabel->SetTextColor(light ? Color(0x21, 0x96, 0xf3, 255) : theme.roles.accent);
+        if (notImplementedLabel) notImplementedLabel->SetTextColor(light ? Color(200, 0, 0, 255) : theme.roles.danger);
+        RequestRedraw();
+    }
+
+    void DemoHeaderContainer::PaintThemeColours(const UltraCanvasTheme& theme) {
+        SetBackgroundColor(ShellBackground(theme));
+        if (titleLabel) {
+            titleLabel->SetTextColor(theme.roles.ink);
+        }
+        RequestRedraw();
     }
 
     void DemoLegendContainer::SetupLegend(const std::string& implementedIconPath,
@@ -184,7 +248,7 @@ namespace UltraCanvas {
         containerStyle.autoShowScrollbars = false;
         SetContainerStyle(containerStyle);
 
-        SetBackgroundColor(Color(245, 245, 245, 255));
+        PaintThemeColours(UltraCanvasTheme::Current());
         SetPadding(5,10,5,10);
         SetBorderBottom(2, Colors::Gray);
 
@@ -463,18 +527,23 @@ namespace UltraCanvas {
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer");
 
         // Create display container (below header)
-        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea");
-        displayContainer->SetBackgroundColor(Colors::White);
-        // displayContainer is the demo's main scroll region — give its scrollbars
-        // the shared slim, round-ended demo style. Containers stopped scrolling
-        // by default in 0.9.22, so a scroll view has to ask: without this every
-        // example page taller than the window was cut off at the window edge.
-        {
-            ContainerStyle dcStyle = displayContainer->GetContainerStyle();
-            dcStyle.autoShowScrollbars = true;
-            dcStyle.scrollbarStyle = DemoScrollbarStyle();
-            displayContainer->SetContainerStyle(dcStyle);
-        }
+        // displayContainer is the demo's main scroll region, with the shared
+        // slim, round-ended demo scrollbars, in the theme's colours
+        auto displayArea = std::make_shared<DemoDisplayArea>("DisplayArea");
+        // A theme switch rebuilds the page shown, once the switch has reached
+        // every element (the page may be the one that asked for it: the
+        // Theme page's own picker)
+        displayArea->onThemeChanged = [this]() {
+            if (pageRebuildPending || currentSelectedId.empty()) return;
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (!app) return;
+            pageRebuildPending = true;
+            app->PostToUIThread([this]() {
+                pageRebuildPending = false;
+                if (!currentSelectedId.empty()) DisplayDemoItem(currentSelectedId);
+            });
+        };
+        displayContainer = displayArea;
 
         // Register all demo items
         RegisterAllDemoItems();
@@ -2751,7 +2820,7 @@ namespace UltraCanvas {
             auto placeholder = std::make_shared<UltraCanvasLabel>("placeholder", 20, 20, 600, 200);
             placeholder->SetText(Tr("This component is not yet implemented.\nPlanned for future release."));
             placeholder->SetAlignment(TextAlignment::Center);
-            placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
+            placeholder->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 200, 100)));
             placeholder->SetBorders(2.0f);
             placeholder->SetBordersColor(Color(200, 200, 0, 255));
             placeholder->SetPadding(10);

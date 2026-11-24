@@ -76,7 +76,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     auto header = DemoKit::AddRow(card, "EBookDemoHeader", 8);
     header->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     header->SetPadding(4, 8);
-    header->SetBackgroundColor(Color(235, 235, 235, 255));
+    header->SetBackgroundColor(DemoKit::Themed(Color(235, 235, 235, 255)));
 
     auto openBtn = std::make_shared<UltraCanvasButton>("EBookDemoOpen", Tr("Open"));
     openBtn->size.width = CSSLayout::Dimension::Px(90);
@@ -85,7 +85,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
 
     auto statusLabel = DemoKit::CreateText("EBookDemoStatus", Tr("Opening sample book\xE2\x80\xA6"));
     statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    statusLabel->SetTextColor(Color(90, 90, 90, 255));
+    statusLabel->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
     DemoKit::Add(header, statusLabel, 1);
 
     // ---- zoom controls (pushed to the right by the growing status label) ----
@@ -100,7 +100,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     auto zoomOutBtn = makeZoomButton("EBookDemoZoomOut", "\xE2\x88\x92", 34.f);   // −
     auto zoomLabel = DemoKit::CreateText("EBookDemoZoomLevel", Tr("100%"));
     zoomLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-    zoomLabel->SetTextColor(Color(90, 90, 90, 255));
+    zoomLabel->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
     DemoKit::Add(header, zoomLabel);
     auto zoomInBtn = makeZoomButton("EBookDemoZoomIn", "+", 34.f);
     auto fitWidthBtn = makeZoomButton("EBookDemoFitWidth", Tr("Fit Width"), 78.f);

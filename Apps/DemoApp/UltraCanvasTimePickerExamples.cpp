@@ -38,7 +38,7 @@ namespace UltraCanvas {
 
         auto addReadout = [&](const std::string& id, const std::string& initial) {
             auto lbl = DemoKit::AddText(line, id, initial);
-            lbl->SetBackgroundColor(Color(240, 240, 240));
+            lbl->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
             lbl->SetPadding(3);
             lbl->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
             return lbl;

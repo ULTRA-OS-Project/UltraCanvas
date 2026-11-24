@@ -45,7 +45,7 @@ namespace UltraCanvas {
         auto headerLabel = std::make_shared<UltraCanvasLabel>("HeaderLabel", Tr("Header Label Example"));
         headerLabel->SetFontSize(24);
         headerLabel->SetFontWeight(FontWeight::Bold);
-        headerLabel->SetTextColor(Color(0, 100, 200, 255));
+        headerLabel->SetTextColor(DemoKit::Themed(Color(0, 100, 200, 255)));
         headerLabel->SetWrap(TextWrap::WrapWord);
         DemoKit::Add(basicCard, headerLabel);
 
@@ -54,22 +54,22 @@ namespace UltraCanvas {
         auto statusRow = DemoKit::AddRow(statusCard, "LabelStatusRow", 10);
 
         auto successLabel = std::make_shared<UltraCanvasLabel>("SuccessLabel", Tr("Success"));
-        successLabel->SetBackgroundColor(Color(200, 255, 200, 255));
-        successLabel->SetTextColor(Color(0, 150, 0, 255));
+        successLabel->SetBackgroundColor(DemoKit::Themed(Color(200, 255, 200, 255)));
+        successLabel->SetTextColor(DemoKit::Themed(Color(0, 150, 0, 255)));
         successLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         SetMinimumSize(successLabel, 150, 25);
         DemoKit::Add(statusRow, successLabel);
 
         auto warningLabel = std::make_shared<UltraCanvasLabel>("WarningLabel", Tr("Warning"));
-        warningLabel->SetBackgroundColor(Color(255, 255, 200, 255));
-        warningLabel->SetTextColor(Color(200, 150, 0, 255));
+        warningLabel->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 200, 255)));
+        warningLabel->SetTextColor(DemoKit::Themed(Color(200, 150, 0, 255)));
         warningLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         SetMinimumSize(warningLabel, 150, 25);
         DemoKit::Add(statusRow, warningLabel);
 
         auto errorLabel = std::make_shared<UltraCanvasLabel>("ErrorLabel", Tr("Error"));
-        errorLabel->SetBackgroundColor(Color(255, 200, 200, 255));
-        errorLabel->SetTextColor(Color(200, 0, 0, 255));
+        errorLabel->SetBackgroundColor(DemoKit::Themed(Color(255, 200, 200, 255)));
+        errorLabel->SetTextColor(DemoKit::Themed(Color(200, 0, 0, 255)));
         errorLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         SetMinimumSize(errorLabel, 150, 25);
         DemoKit::Add(statusRow, errorLabel);
@@ -80,7 +80,7 @@ namespace UltraCanvas {
                 Tr("This is a multi-line label that demonstrates\nhow text wrapping works with longer content.\nIt supports multiple lines and proper alignment."));
         multiLabel->SetWrap(TextWrap::WrapWord);
         multiLabel->SetAlignment(TextAlignment::Left);
-        multiLabel->SetBackgroundColor(Color(245, 245, 245, 255));
+        multiLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
 //        multiLabel->SetBorderStyle(BorderStyle::Solid);
         multiLabel->SetBorders(1.0f);
         multiLabel->SetPadding(10.0f);
@@ -100,8 +100,8 @@ namespace UltraCanvas {
 
         // Filled, rounded, with a coloured border.
         auto roundedFilled = std::make_shared<UltraCanvasLabel>("RoundedFilledBorder", Tr("Rounded + Border"));
-        roundedFilled->SetBackgroundColor(Color(225, 240, 255, 255));
-        roundedFilled->SetTextColor(Color(0, 90, 170, 255));
+        roundedFilled->SetBackgroundColor(DemoKit::Themed(Color(225, 240, 255, 255)));
+        roundedFilled->SetTextColor(DemoKit::Themed(Color(0, 90, 170, 255)));
         roundedFilled->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         roundedFilled->SetBorders(1.5f, Color(0, 120, 215, 255), 10.0f);
         SetMinimumSize(roundedFilled, 200, 32);
@@ -109,7 +109,7 @@ namespace UltraCanvas {
 
         // Outline-only pill: transparent background, visible border, large radius.
         auto roundedOutline = std::make_shared<UltraCanvasLabel>("RoundedOutlinePill", Tr("Outlined Pill"));
-        roundedOutline->SetTextColor(Color(120, 60, 160, 255));
+        roundedOutline->SetTextColor(DemoKit::Themed(Color(120, 60, 160, 255)));
         roundedOutline->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         roundedOutline->SetBorders(2.0f, Color(150, 90, 200, 255), 16.0f); // radius >= h/2 -> pill
         SetMinimumSize(roundedOutline, 200, 32);
@@ -154,7 +154,7 @@ namespace UltraCanvas {
                 Tr("This is a rounded card with a visible border.\nThe border radius rounds every corner while\nthe stroke colour stays visible."));
         roundedCard->SetWrap(TextWrap::WrapWord);
         roundedCard->SetAlignment(TextAlignment::Left);
-        roundedCard->SetBackgroundColor(Color(248, 249, 250, 255));
+        roundedCard->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         roundedCard->SetBorders(1.0f, Color(190, 190, 190, 255), 12.0f);
         roundedCard->SetPadding(12.0f);
         DemoKit::Add(roundedCardRow, roundedCard, 1);
@@ -164,7 +164,7 @@ namespace UltraCanvas {
                 Tr("This rounded card has no visible border —\njust a soft filled background with rounded\ncorners for a modern, flat look."));
         roundedCardNoBorder->SetWrap(TextWrap::WrapWord);
         roundedCardNoBorder->SetAlignment(TextAlignment::Left);
-        roundedCardNoBorder->SetBackgroundColor(Color(232, 244, 253, 255));
+        roundedCardNoBorder->SetBackgroundColor(DemoKit::Themed(Color(232, 244, 253, 255)));
         roundedCardNoBorder->SetBorders(1.0f, Colors::Transparent, 12.0f);
         roundedCardNoBorder->SetPadding(12.0f);
         DemoKit::Add(roundedCardRow, roundedCardNoBorder, 1);

@@ -49,7 +49,7 @@ namespace UltraCanvas {
         auto status = DemoKit::AddText(page, "VideoStatus", "");
         if (UltraCanvasVideoDevices::IsAvailable()) {
             status->SetText(TrF("Backend: {0} — ready", UltraCanvasVideoDevices::GetBackendName()));
-            status->SetTextColor(Color(40, 120, 40));
+            status->SetTextColor(DemoKit::Themed(Color(40, 120, 40)));
         } else {
 #if defined(_WIN32)
             const std::string framework = Tr("Media Foundation (ships with Windows)");
@@ -78,7 +78,7 @@ namespace UltraCanvas {
         // placeholder until Play() is called.
         player->onFileOpened = [status, playerWeak](const std::string& path) {
             status->SetText(TrF("Playing: {0}", path));
-            status->SetTextColor(Color(40, 120, 40));
+            status->SetTextColor(DemoKit::Themed(Color(40, 120, 40)));
             if (auto p = playerWeak.lock()) p->Play();
         };
         DemoKit::AddFixed(playCard, player);
@@ -126,7 +126,7 @@ namespace UltraCanvas {
         };
         recorder->onSaved = [status](const std::string& path) {
             status->SetText(TrF("Saved to {0}", path));
-            status->SetTextColor(Color(40, 120, 40));
+            status->SetTextColor(DemoKit::Themed(Color(40, 120, 40)));
         };
         // Surface backend failures (camera can't open, caps negotiation fails, etc.)
         // so the status line reflects reality instead of a stale "preview" message.
@@ -169,7 +169,7 @@ namespace UltraCanvas {
                 }
                 if (b) b->SetText(Tr("Stop camera"));
                 status->SetText(Tr("Live camera preview."));
-                status->SetTextColor(Color(40, 120, 40));
+                status->SetTextColor(DemoKit::Themed(Color(40, 120, 40)));
             }
         };
 

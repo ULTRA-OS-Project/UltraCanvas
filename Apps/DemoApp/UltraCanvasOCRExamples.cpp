@@ -68,7 +68,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
 
     auto imageFrame = std::make_shared<UltraCanvasContainer>(
         "OCRImageFrame", 0, 0, frameW, frameH);
-    imageFrame->SetBackgroundColor(Color(241, 245, 249, 255));
+    imageFrame->SetBackgroundColor(DemoKit::Themed(Color(241, 245, 249, 255)));
     imageFrame->SetBorders(1, Color(203, 213, 225, 255));
     DemoKit::AddFixed(imageCard, imageFrame);
 

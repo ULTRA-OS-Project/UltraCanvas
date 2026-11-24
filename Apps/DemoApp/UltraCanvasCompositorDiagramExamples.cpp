@@ -1505,13 +1505,13 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     auto statusLabel = DemoKit::CreateCaption("compStatus",
         Tr("Ready - Wheel zoom, drag to pan, shift+drag for selection box. "
         "Tab in canvas opens palette."));
-    statusLabel->SetTextColor(Color(90, 90, 100, 255));
+    statusLabel->SetTextColor(DemoKit::Themed(Color(90, 90, 100, 255)));
 
     // ---- Tab 1: Recreate Images ----
     const int SUBBAR_H = 32;
     auto tab1 = std::make_shared<UltraCanvasContainer>(
         "compTab1", 0, 0, INNER_W, INNER_H);
-    tab1->SetBackgroundColor(Color(255, 255, 255, 255));
+    tab1->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     tab1->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     auto diag1 = CreateCompositorDiagram("compDiag1", 0, 0, INNER_W, INNER_H - SUBBAR_H);
@@ -1554,7 +1554,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     // ---- Tab 2: Subgraph / Groups ----
     auto tab2 = std::make_shared<UltraCanvasContainer>(
         "compTab2", 0, 0, INNER_W, INNER_H);
-    tab2->SetBackgroundColor(Color(255, 255, 255, 255));
+    tab2->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     tab2->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     auto diag2 = CreateCompositorDiagram("compDiag2", 0, 0, INNER_W, INNER_H);
     BuildSubgraphScene(*diag2);
@@ -1563,7 +1563,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     // ---- Tab 3: Visual Scripting ----
     auto tab3 = std::make_shared<UltraCanvasContainer>(
         "compTab3", 0, 0, INNER_W, INNER_H);
-    tab3->SetBackgroundColor(Color(255, 255, 255, 255));
+    tab3->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     tab3->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     auto diag3 = CreateCompositorDiagram("compDiag3", 0, 0, INNER_W, INNER_H);
     BuildVisualScripting(*diag3);
@@ -1572,7 +1572,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     // ---- Tab 4: Feature Playground ----
     auto tab4 = std::make_shared<UltraCanvasContainer>(
         "compTab4", 0, 0, INNER_W, INNER_H);
-    tab4->SetBackgroundColor(Color(255, 255, 255, 255));
+    tab4->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     tab4->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     auto diag4 = CreateCompositorDiagram("compDiag4", 0, 0, INNER_W, INNER_H);
     BuildPlayground(*diag4);

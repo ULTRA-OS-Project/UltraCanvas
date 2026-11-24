@@ -24,7 +24,7 @@ namespace UltraCanvas {
         // grey box keeps it apart from the strip.
         auto makeReadout = [](const std::string& id, const std::string& text) {
             auto readout = DemoKit::CreateText(id, text);
-            readout->SetBackgroundColor(Color(240, 240, 240));
+            readout->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
             readout->SetPadding(3);
             return readout;
         };

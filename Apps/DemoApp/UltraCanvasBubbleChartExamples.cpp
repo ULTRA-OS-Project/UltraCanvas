@@ -195,12 +195,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
     DemoKit::Add(chartBlock, chartRow);
 
     auto yAxis = DemoKit::CreateText("TravelYAxis", Tr("Safety"));
-    yAxis->SetTextColor(Color(80, 80, 80, 255));
+    yAxis->SetTextColor(DemoKit::Themed(Color(80, 80, 80, 255)));
     DemoKit::Add(chartRow, yAxis);
     DemoKit::AddFixed(chartRow, chart);
 
     auto xAxis = DemoKit::AddText(chartBlock, "TravelXAxis", Tr("Cost"));
-    xAxis->SetTextColor(Color(80, 80, 80, 255));
+    xAxis->SetTextColor(DemoKit::Themed(Color(80, 80, 80, 255)));
     xAxis->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
     AddInfo(page.content, "TravelInfo",
@@ -905,7 +905,7 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
         "This build was compiled without OpenGL support. "
         "Rebuild with -DULTRACANVAS_ENABLE_GL=ON to see the OpenGL "
         "3D bubble chart (spheres with risk/reward/time axes)."));
-    placeholder->SetTextColor(Color(120, 60, 60, 255));
+    placeholder->SetTextColor(DemoKit::Themed(Color(120, 60, 60, 255)));
     return tab;
 }
 

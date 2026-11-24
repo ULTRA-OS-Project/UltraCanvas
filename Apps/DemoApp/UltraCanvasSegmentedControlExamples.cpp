@@ -26,7 +26,7 @@ namespace UltraCanvas {
         auto statusCard = DemoKit::AddCard(page, "StatusCard", Tr("Selection feedback"));
         auto statusLabel = DemoKit::AddText(statusCard, "StatusLabel", Tr("Click any segment to see selection feedback"));
         statusLabel->SetFontSize(11);
-        statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
 
