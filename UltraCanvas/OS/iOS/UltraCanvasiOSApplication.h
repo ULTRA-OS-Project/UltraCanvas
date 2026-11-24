@@ -6,6 +6,7 @@
 // CollectAndProcessNativeEvents runs the main run loop one turn at a time, so
 // UIKit's touch and lifecycle callbacks arrive inside it
 // (Docs/UltraCanvas/iOSPortInvestigation.md 3.2, option A).
+// Version: 1.1.0 - the software and hardware keyboards, host appearance
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
@@ -72,6 +73,20 @@ namespace UltraCanvas {
         // callback is a handled source, so the turn returns anyway; this
         // also covers one delivered outside it.)
         void WakeUpEventLoopFromView() { WakeUpEventLoop(); }
+        // ===== KEYBOARD (main thread) =====
+        // A key of a hardware keyboard (UIPress): `text` is what it types,
+        // "" for a key that types nothing (an arrow) or a shortcut.
+        void HandleKey(bool down, UCKeys key, int nativeKeyCode, bool shift, bool ctrl,
+                       bool alt, bool meta, const std::string& text);
+        // The software keyboard typed text (UIKeyInput insertText:), which
+        // belongs to no single key: a letter, an autocompleted word, an
+        // emoji. "\n" is the Return key.
+        void HandleInsertText(const std::string& utf8);
+        // The software keyboard's backspace (UIKeyInput deleteBackward).
+        void HandleDeleteBackward();
+        // The trait collection changed (dark mode, contrast, Dynamic Type).
+        void HandleTraitsChanged();
+
         // Application lifecycle (UIApplicationDelegate).
         void HandleDidEnterBackground();
         void HandleWillEnterForeground();
@@ -97,10 +112,17 @@ namespace UltraCanvas {
         void ShutdownWakeUp() override;
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
+        HostAppearance DetectHostAppearanceNative() override;
         void LoadBundledFontsNative() override;
         bool RegisterFontFileNative(const std::string& fontFilePath) override;
 
     private:
+        // Caret-driven software keyboard: a widget claiming the caret shows
+        // it; a release hides it on the next loop turn, so focus moving
+        // between two text fields does not flicker it (the Android rule).
+        void OnTextEditingChanged(bool active);
+        bool pendingKeyboardHide = false;
+
         void PushWindowEvent(UCEventType type);
         void PushPointerEvent(UltraCanvasiOSWindow* win, UCEventType type, int x, int y,
                               float pressure, int fingerId, int fingersDown);

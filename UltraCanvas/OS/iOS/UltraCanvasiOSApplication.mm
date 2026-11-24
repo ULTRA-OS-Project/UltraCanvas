@@ -1,5 +1,6 @@
 // OS/iOS/UltraCanvasiOSApplication.mm
 // iOS platform implementation for UltraCanvas Framework.
+// Version: 1.1.0 - the software and hardware keyboards, host appearance
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
@@ -12,6 +13,9 @@
 #include "UltraCanvasiOSApplication.h"
 #include "UltraCanvasiOSWindow.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasCaret.h"
+#include "UltraCanvasHostAppearance.h"
+#include "UltraCanvasUIElement.h"
 
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -19,6 +23,7 @@
 #include <fontconfig/fontconfig.h>
 #include <pango/pangocairo.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -51,6 +56,11 @@ namespace UltraCanvas {
             return false;
         }
         InitializeWakeUp();
+        // A widget claiming or releasing the caret is the framework's signal
+        // that text editing started or stopped: the software keyboard
+        // follows it.
+        UltraCanvasCaret::GetInstance().onTextEditingChanged =
+                [this](bool active) { OnTextEditingChanged(active); };
         // What Run() checks, as every other backend sets it here.
         initialized = true;
         running = false;
@@ -58,6 +68,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasiOSApplication::ShutdownNative() {
+        UltraCanvasCaret::GetInstance().onTextEditingChanged = nullptr;
+        SetiOSKeyboardWanted(false);
         ShutdownWakeUp();
         running = false;
     }
@@ -65,6 +77,12 @@ namespace UltraCanvas {
     // ===== MAIN LOOP =====
 
     void UltraCanvasiOSApplication::CollectAndProcessNativeEvents() {
+        // Text editing stopped last turn and nothing claimed the caret since:
+        // lower the keyboard now.
+        if (pendingKeyboardHide) {
+            pendingKeyboardHide = false;
+            SetiOSKeyboardWanted(false);
+        }
         @autoreleasepool {
             // One turn of the main run loop: UIKit's touch, lifecycle and
             // layout sources fire inside it and queue UCEvents through the
@@ -266,6 +284,115 @@ namespace UltraCanvas {
                 PushPointerEvent(win, UCEventType::MouseUp, px, py, pressure, fingerId, fingersDown);
                 break;
         }
+    }
+
+    // ===== KEYBOARD =====
+
+    void UltraCanvasiOSApplication::OnTextEditingChanged(bool active) {
+        if (active) {
+            pendingKeyboardHide = false;
+            SetiOSKeyboardWanted(true);
+        } else {
+            pendingKeyboardHide = true;
+        }
+    }
+
+    void UltraCanvasiOSApplication::HandleKey(bool down, UCKeys key, int nativeKeyCode, bool shift,
+                                              bool ctrl, bool alt, bool meta,
+                                              const std::string& text) {
+        auto* win = GetPrimaryWindow();
+        if (!win) return;
+        UCEvent event;
+        event.type = down ? UCEventType::KeyDown : UCEventType::KeyUp;
+        event.targetWindow = win->GetWindowWeakPtr();
+        event.nativeWindowHandle = win->GetNativeHandle();
+        event.nativeKeyCode = nativeKeyCode;
+        event.virtualKey = key;
+        event.shift = shift;
+        event.ctrl = ctrl;
+        event.alt = alt;
+        event.meta = meta;
+        // Text only on the press, and not for a shortcut (Ctrl or Command
+        // held): as the desktop backends deliver it.
+        if (down && !ctrl && !meta && !text.empty()) {
+            event.text = text;
+            if (text.size() == 1 && static_cast<unsigned char>(text[0]) < 0x80) {
+                event.character = text[0];
+            }
+        }
+        PushEvent(event);
+    }
+
+    void UltraCanvasiOSApplication::HandleInsertText(const std::string& utf8) {
+        if (utf8.empty()) return;
+        if (utf8 == "\n" || utf8 == "\r") {
+            HandleKey(true, UCKeys::Return, 0, false, false, false, false, "");
+            HandleKey(false, UCKeys::Return, 0, false, false, false, false, "");
+            return;
+        }
+        auto* win = GetPrimaryWindow();
+        if (!win) return;
+        // What the keyboard settled on belongs to no single key, so
+        // virtualKey stays Unknown and only `text` means anything - the shape
+        // the Linux backend delivers for its input method, which every text
+        // widget already handles.
+        UCEvent event;
+        event.type = UCEventType::KeyDown;
+        event.targetWindow = win->GetWindowWeakPtr();
+        event.nativeWindowHandle = win->GetNativeHandle();
+        event.text = utf8;
+        if (utf8.size() == 1 && static_cast<unsigned char>(utf8[0]) < 0x80) {
+            event.character = utf8[0];
+        }
+        PushEvent(event);
+    }
+
+    void UltraCanvasiOSApplication::HandleDeleteBackward() {
+        // The framework has no "delete one character" event; text widgets
+        // implement Backspace, so the deletion is a press of it.
+        HandleKey(true, UCKeys::Backspace, 0, false, false, false, false, "");
+        HandleKey(false, UCKeys::Backspace, 0, false, false, false, false, "");
+    }
+
+    // ===== HOST APPEARANCE =====
+    //   dark          UITraitCollection userInterfaceStyle
+    //   high contrast accessibilityContrast, or Darken Colors
+    //   motion        Reduce Motion
+    //   accent        the app's tint colour (iOS has no system-wide accent)
+    //   text scale    Dynamic Type: the body font's size over its 17 pt default
+    //   fonts         the bundled families (DetectSystemFontStyleNative)
+
+    HostAppearance UltraCanvasiOSApplication::DetectHostAppearanceNative() {
+        HostAppearance host = DefaultHostAppearance();
+        host.source = "ios-uikit";
+        @autoreleasepool {
+            UIView* view = (__bridge UIView*)GetiOSRootView();
+            UITraitCollection* traits = view ? view.traitCollection
+                                             : [UITraitCollection currentTraitCollection];
+            host.dark = traits.userInterfaceStyle == UIUserInterfaceStyleDark;
+            host.highContrast = traits.accessibilityContrast == UIAccessibilityContrastHigh ||
+                                UIAccessibilityDarkerSystemColorsEnabled();
+            host.reduceMotion = UIAccessibilityIsReduceMotionEnabled();
+            UIColor* tint = view.tintColor;
+            CGFloat r = 0, g = 0, b = 0, a = 0;
+            if (tint && [tint getRed:&r green:&g blue:&b alpha:&a]) {
+                host.accent = Color(static_cast<uint8_t>(std::clamp(r, 0.0, 1.0) * 255.0 + 0.5),
+                                    static_cast<uint8_t>(std::clamp(g, 0.0, 1.0) * 255.0 + 0.5),
+                                    static_cast<uint8_t>(std::clamp(b, 0.0, 1.0) * 255.0 + 0.5), 255);
+            }
+            UIFont* body = [UIFont preferredFontForTextStyle:UIFontTextStyleBody
+                                 compatibleWithTraitCollection:traits];
+            if (body && body.pointSize > 0) host.textScale = body.pointSize / 17.0;
+        }
+        const FontStyle ui = DetectSystemFontStyleNative();
+        const FontStyle mono = DetectMonospacedFontStyleNative();
+        if (!ui.fontFamily.empty() && ui.fontSize > 0) host.uiFont = ui;
+        if (!mono.fontFamily.empty() && mono.fontSize > 0) host.monoFont = mono;
+        return host;
+    }
+
+    void UltraCanvasiOSApplication::HandleTraitsChanged() {
+        ScheduleHostAppearanceRefresh();
     }
 
     // ===== FONTS =====

@@ -5,6 +5,7 @@
 // ApplicationServices, which iOS lacks
 // (Docs/UltraCanvas/iOSPortInvestigation.md 3.3). The window always covers
 // the whole view; desktop window-management calls are accepted no-ops.
+// Version: 1.1.0 - SetiOSKeyboardWanted
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
@@ -29,6 +30,9 @@ namespace UltraCanvas {
     // opaque so this header compiles as plain C++. Null before launch.
     void* GetiOSRootView();
     void SetiOSRootView(void* view);
+    // Raise (true) or lower (false) the software keyboard: the root view
+    // becomes or stops being the first responder (OS/iOS/UltraCanvasiOSMain.mm).
+    void SetiOSKeyboardWanted(bool wanted);
 
     // ===== iOS WINDOW CLASS =====
     class UltraCanvasiOSWindow : public UltraCanvasWindowBase {

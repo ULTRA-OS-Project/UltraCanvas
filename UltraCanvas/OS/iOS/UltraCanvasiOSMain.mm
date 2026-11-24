@@ -17,6 +17,7 @@
 // resources are the bundle's share/ (core/UltraCanvasConfig.cpp's
 // exeDir + "/share/"), so path-based resource, settings and font code works
 // unchanged. See Docs/UltraCanvas/iOSPortInvestigation.md 3.2 (option A).
+// Version: 1.1.0 - the view takes the software keyboard (UIKeyInput) and hardware keys
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
@@ -59,11 +60,79 @@ namespace {
     UltraCanvas::UltraCanvasiOSApplication* App() {
         return UltraCanvas::UltraCanvasiOSApplication::GetInstance();
     }
+
+    std::string ToUtf8(NSString* text) {
+        const char* utf8 = text.UTF8String;
+        return utf8 ? std::string(utf8) : std::string();
+    }
+
+    // A hardware key (its USB HID usage, UIKeyboardHIDUsage) as a UCKeys.
+    UltraCanvas::UCKeys KeyForHidUsage(long usage) {
+        using UltraCanvas::UCKeys;
+        if (usage >= 0x04 && usage <= 0x1D) return static_cast<UCKeys>(UCKeys::A + (usage - 0x04));
+        if (usage >= 0x1E && usage <= 0x26) return static_cast<UCKeys>(UCKeys::Key1 + (usage - 0x1E));
+        if (usage >= 0x3A && usage <= 0x45) return static_cast<UCKeys>(UCKeys::F1 + (usage - 0x3A));
+        switch (usage) {
+            case 0x27: return UCKeys::Key0;
+            case 0x28: return UCKeys::Return;
+            case 0x29: return UCKeys::Escape;
+            case 0x2A: return UCKeys::Backspace;
+            case 0x2B: return UCKeys::Tab;
+            case 0x2C: return UCKeys::Space;
+            case 0x2D: return UCKeys::Minus;
+            case 0x2E: return UCKeys::Equal;
+            case 0x2F: return UCKeys::LeftBracket;
+            case 0x30: return UCKeys::RightBracket;
+            case 0x31: return UCKeys::Backslash;
+            case 0x33: return UCKeys::Semicolon;
+            case 0x34: return UCKeys::Quote;
+            case 0x35: return UCKeys::Grave;
+            case 0x36: return UCKeys::Comma;
+            case 0x37: return UCKeys::Period;
+            case 0x38: return UCKeys::Slash;
+            case 0x39: return UCKeys::CapsLock;
+            case 0x46: return UCKeys::PrintScreen;
+            case 0x47: return UCKeys::ScrollLock;
+            case 0x48: return UCKeys::Pause;
+            case 0x49: return UCKeys::Insert;
+            case 0x4A: return UCKeys::Home;
+            case 0x4B: return UCKeys::PageUp;
+            case 0x4C: return UCKeys::Delete;
+            case 0x4D: return UCKeys::End;
+            case 0x4E: return UCKeys::PageDown;
+            case 0x4F: return UCKeys::Right;
+            case 0x50: return UCKeys::Left;
+            case 0x51: return UCKeys::Down;
+            case 0x52: return UCKeys::Up;
+            case 0xE0: return UCKeys::LeftCtrl;
+            case 0xE1: return UCKeys::LeftShift;
+            case 0xE2: return UCKeys::LeftAlt;
+            case 0xE3: return UCKeys::LeftMeta;
+            case 0xE4: return UCKeys::RightCtrl;
+            case 0xE5: return UCKeys::RightShift;
+            case 0xE6: return UCKeys::RightAlt;
+            case 0xE7: return UCKeys::RightMeta;
+            default:   return UCKeys::Unknown;
+        }
+    }
 }
 
 // ===== THE VIEW: touches and size changes =====
 
-@interface UltraCanvasiOSView : UIView
+// The view is also the software keyboard's editor: UIKeyInput gives it the
+// typed text and the backspace, and it is first responder (which is what
+// raises the keyboard) only while a text widget holds the caret. No
+// UITextInput yet, so the keyboard has no marked text to compose into: CJK
+// input methods and autocorrection need it, and are switched off meanwhile
+// (iOSPortInvestigation.md 3.1).
+@interface UltraCanvasiOSView : UIView <UIKeyInput>
+@property (nonatomic) BOOL wantsKeyboard;
+@property (nonatomic) UITextAutocorrectionType autocorrectionType;
+@property (nonatomic) UITextAutocapitalizationType autocapitalizationType;
+@property (nonatomic) UITextSpellCheckingType spellCheckingType;
+@property (nonatomic) UITextSmartQuotesType smartQuotesType;
+@property (nonatomic) UITextSmartDashesType smartDashesType;
+@property (nonatomic) UIKeyboardType keyboardType;
 @end
 
 @implementation UltraCanvasiOSView {
@@ -79,8 +148,97 @@ namespace {
         self.opaque = YES;
         self.backgroundColor = [UIColor blackColor];
         _lastSize = CGSizeZero;
+        // Text arrives as typed: the framework's widgets do their own
+        // editing, and an autocorrection would replace text behind them.
+        self.autocorrectionType = UITextAutocorrectionTypeNo;
+        self.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        self.spellCheckingType = UITextSpellCheckingTypeNo;
+        self.smartQuotesType = UITextSmartQuotesTypeNo;
+        self.smartDashesType = UITextSmartDashesTypeNo;
+        self.keyboardType = UIKeyboardTypeDefault;
     }
     return self;
+}
+
+// ===== The software keyboard =====
+
+- (BOOL)canBecomeFirstResponder {
+    return self.wantsKeyboard;
+}
+
+- (BOOL)hasText {
+    // Always: the backspace must reach the widget, which knows whether it
+    // has anything to delete.
+    return YES;
+}
+
+- (void)insertText:(NSString*)text {
+    if (auto* app = App()) {
+        app->HandleInsertText(ToUtf8(text));
+        app->WakeUpEventLoopFromView();
+    }
+}
+
+- (void)deleteBackward {
+    if (auto* app = App()) {
+        app->HandleDeleteBackward();
+        app->WakeUpEventLoopFromView();
+    }
+}
+
+// ===== A hardware keyboard =====
+// Every press is the framework's: none reaches the text system (no super
+// call), so a typed letter arrives once, as the key's own text, and never a
+// second time through insertText:.
+
+- (BOOL)deliverPresses:(NSSet<UIPress*>*)presses down:(BOOL)down {
+    auto* app = App();
+    BOOL handled = NO;
+    for (UIPress* press in presses) {
+        UIKey* key = press.key;
+        if (!key) continue;
+        const UltraCanvas::UCKeys ucKey = KeyForHidUsage(static_cast<long>(key.keyCode));
+        const UIKeyModifierFlags flags = key.modifierFlags;
+        const bool ctrl = (flags & UIKeyModifierControl) != 0;
+        const bool meta = (flags & UIKeyModifierCommand) != 0;
+        std::string text;
+        // The key's text as the layout makes it; the keys that type
+        // nothing (arrows, F-keys) give the private-use characters UIKit
+        // names them with, which are not text.
+        NSString* characters = key.characters;
+        if (characters.length > 0 && [characters characterAtIndex:0] >= 0x20 &&
+            !([characters characterAtIndex:0] >= 0xF700 && [characters characterAtIndex:0] <= 0xF8FF)) {
+            text = ToUtf8(characters);
+        }
+        if (ucKey == UltraCanvas::UCKeys::Unknown && text.empty()) continue;
+        if (app) {
+            app->HandleKey(down, ucKey, static_cast<int>(key.keyCode),
+                           (flags & UIKeyModifierShift) != 0, ctrl,
+                           (flags & UIKeyModifierAlternate) != 0, meta, text);
+        }
+        handled = YES;
+    }
+    if (handled && app) app->WakeUpEventLoopFromView();
+    return handled;
+}
+
+- (void)pressesBegan:(NSSet<UIPress*>*)presses withEvent:(UIPressesEvent*)event {
+    if (![self deliverPresses:presses down:YES]) [super pressesBegan:presses withEvent:event];
+}
+
+- (void)pressesEnded:(NSSet<UIPress*>*)presses withEvent:(UIPressesEvent*)event {
+    if (![self deliverPresses:presses down:NO]) [super pressesEnded:presses withEvent:event];
+}
+
+- (void)pressesCancelled:(NSSet<UIPress*>*)presses withEvent:(UIPressesEvent*)event {
+    if (![self deliverPresses:presses down:NO]) [super pressesCancelled:presses withEvent:event];
+}
+
+// ===== Appearance =====
+
+- (void)traitCollectionDidChange:(UITraitCollection*)previous {
+    [super traitCollectionDidChange:previous];
+    if (auto* app = App()) app->HandleTraitsChanged();
 }
 
 - (int)idForTouch:(UITouch*)touch create:(BOOL)create {
@@ -220,6 +378,21 @@ namespace {
 }
 
 @end
+
+namespace UltraCanvas {
+
+    void SetiOSKeyboardWanted(bool wanted) {
+        UltraCanvasiOSView* view = (__bridge UltraCanvasiOSView*)GetiOSRootView();
+        if (!view || view.wantsKeyboard == wanted) return;
+        view.wantsKeyboard = wanted;
+        if (wanted) {
+            [view becomeFirstResponder];
+        } else {
+            [view resignFirstResponder];
+        }
+    }
+
+} // namespace UltraCanvas
 
 int main(int argc, char* argv[]) {
     g_argc = argc;

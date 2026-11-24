@@ -4,12 +4,15 @@
 // Messages, questions and text input are UIAlertControllers. UIKit answers
 // them through a callback, while this API returns the answer, so - as the
 // Android backend does - the call presents the alert and pumps the main run
-// loop until a button was tapped. Opening and saving files through
-// UIDocumentPickerViewController are phase 3 of
-// Docs/UltraCanvas/iOSPortInvestigation.md; until then they return Cancel
-// and say so. SaveContent is the shared definition in
-// core/UltraCanvasFileLoader.cpp (SaveFile, then the bytes), so it fails the
-// same way.
+// loop until a button was tapped. Opening a file is the document picker
+// (UIDocumentPickerViewController), the same way: the picked documents are
+// copied into the app's sandbox (asCopy), so the caller gets plain paths it
+// can read, as Android's SAF copies do. Saving through the picker's export
+// mode, and choosing a folder, are still to come (iOSPortInvestigation.md
+// phase 3); they return Cancel and say so. SaveContent is the shared
+// definition in core/UltraCanvasFileLoader.cpp (SaveFile, then the bytes),
+// so it fails the same way for now.
+// Version: 1.1.0 - OpenFile and OpenMultipleFiles through the document picker
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
@@ -21,9 +24,28 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #import <UIKit/UIKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <string>
 #include <vector>
+
+// The document picker's answer: the picked documents' paths, or none.
+@interface UltraCanvasiOSPickerDelegate : NSObject <UIDocumentPickerDelegate>
+@property (nonatomic) BOOL done;
+@property (nonatomic, strong) NSArray<NSURL*>* urls;
+@end
+
+@implementation UltraCanvasiOSPickerDelegate
+- (void)documentPicker:(UIDocumentPickerViewController*)controller
+        didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
+    self.urls = urls;
+    self.done = YES;
+}
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller {
+    self.urls = @[];
+    self.done = YES;
+}
+@end
 
 namespace UltraCanvas {
 
@@ -108,6 +130,53 @@ namespace UltraCanvas {
             }
         }
 
+        // The content types a filter list allows: each extension's type, or
+        // any item when the list is empty or has an "all files" entry.
+        NSArray<UTType*>* ContentTypesFor(const std::vector<FileFilter>& filters) {
+            NSMutableArray<UTType*>* types = [NSMutableArray array];
+            for (const FileFilter& filter : filters) {
+                for (std::string ext : filter.extensions) {
+                    if (ext.rfind("*.", 0) == 0) ext = ext.substr(2);
+                    else if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+                    if (ext.empty() || ext == "*") return @[ UTTypeItem ];
+                    UTType* type = [UTType typeWithFilenameExtension:ToNS(ext)];
+                    if (type && ![types containsObject:type]) [types addObject:type];
+                }
+            }
+            if (types.count == 0) return @[ UTTypeItem ];
+            return types;
+        }
+
+        // Show the document picker and wait for its answer: the copied
+        // documents' paths (UTF-8), none when cancelled.
+        std::vector<std::string> PickDocuments(const std::vector<FileFilter>& filters, bool multiple) {
+            std::vector<std::string> paths;
+            @autoreleasepool {
+                UIViewController* presenter = PresentingController();
+                if (!presenter) {
+                    debugOutput << "UltraCanvas iOS: no view controller to present the "
+                                   "document picker from" << std::endl;
+                    return paths;
+                }
+                UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc]
+                        initForOpeningContentTypes:ContentTypesFor(filters) asCopy:YES];
+                picker.allowsMultipleSelection = multiple;
+                UltraCanvasiOSPickerDelegate* delegate = [[UltraCanvasiOSPickerDelegate alloc] init];
+                picker.delegate = delegate;   // weak: `delegate` lives to the end of this scope
+                [presenter presentViewController:picker animated:YES completion:nil];
+                while (!delegate.done) {
+                    @autoreleasepool {
+                        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, true);
+                    }
+                }
+                for (NSURL* url in delegate.urls) {
+                    const char* path = url.isFileURL ? url.path.fileSystemRepresentation : nullptr;
+                    if (path && *path) paths.emplace_back(path);
+                }
+            }
+            return paths;
+        }
+
         std::string NotYet(const char* what) {
             debugOutput << "UltraCanvas iOS: native dialog '" << what
                         << "' is not available yet (the document picker is phase 3 of "
@@ -178,28 +247,28 @@ namespace UltraCanvas {
                            DialogButtons::YesNo, parent) == DialogResult::Yes;
     }
 
-// ===== FILE DIALOGS (phase 3) =====
+// ===== FILE DIALOGS =====
 
     std::string UltraCanvasNativeDialogs::OpenFile(
-            const std::string&, const std::vector<FileFilter>&,
+            const std::string&, const std::vector<FileFilter>& filters,
             const std::string&, UltraCanvasWindowBase*) {
-        return NotYet("OpenFile");
+        const std::vector<std::string> paths = PickDocuments(filters, false);
+        return paths.empty() ? std::string() : paths.front();
     }
 
-    std::string UltraCanvasNativeDialogs::OpenFile(const FileDialogOptions&) {
-        return NotYet("OpenFile");
+    std::string UltraCanvasNativeDialogs::OpenFile(const FileDialogOptions& options) {
+        const std::vector<std::string> paths = PickDocuments(options.filters, false);
+        return paths.empty() ? std::string() : paths.front();
     }
 
     std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
-            const std::string&, const std::vector<FileFilter>&,
+            const std::string&, const std::vector<FileFilter>& filters,
             const std::string&, UltraCanvasWindowBase*) {
-        NotYet("OpenMultipleFiles");
-        return {};
+        return PickDocuments(filters, true);
     }
 
-    std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(const FileDialogOptions&) {
-        NotYet("OpenMultipleFiles");
-        return {};
+    std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(const FileDialogOptions& options) {
+        return PickDocuments(options.filters, true);
     }
 
     std::string UltraCanvasNativeDialogs::SaveFile(
