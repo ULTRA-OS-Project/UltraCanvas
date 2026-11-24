@@ -622,11 +622,14 @@ namespace {
 }
 
 // The one scene's configuration, in code: Info.plist only opts into scenes.
+// Nameless: a named one is looked up in Info.plist first, and UIKit logs an
+// error when it is not there ("contained no UIScene configuration
+// dictionary"), though it then uses this one anyway.
 - (UISceneConfiguration*)application:(UIApplication*)application
         configurationForConnectingSceneSession:(UISceneSession*)session
                                        options:(UISceneConnectionOptions*)options {
     UISceneConfiguration* configuration =
-            [[UISceneConfiguration alloc] initWithName:@"Default" sessionRole:session.role];
+            [[UISceneConfiguration alloc] initWithName:nil sessionRole:session.role];
     configuration.delegateClass = [UltraCanvasiOSSceneDelegate class];
     return configuration;
 }

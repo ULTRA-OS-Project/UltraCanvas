@@ -1,5 +1,6 @@
 // OS/iOS/UltraCanvasiOSWindow.mm
 // iOS window implementation for UltraCanvas Framework.
+// Version: 1.0.1 - the bitmap info's two enums combined without a mixed-enum warning
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
@@ -175,7 +176,7 @@ namespace UltraCanvas {
             CGContextRef ctx = CGBitmapContextCreate(
                     data, static_cast<size_t>(w), static_cast<size_t>(h), 8,
                     static_cast<size_t>(stride), space,
-                    kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little);
+                    static_cast<CGBitmapInfo>(kCGImageAlphaNoneSkipFirst) | kCGBitmapByteOrder32Little);
             CGColorSpaceRelease(space);
             if (!ctx) {
                 debugOutput << "UltraCanvas iOS: CGBitmapContextCreate failed ("

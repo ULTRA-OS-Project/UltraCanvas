@@ -9,3 +9,5 @@
   - `Info.plist.in` opts into scenes with a single scene. The application's
     main body still starts once, after the first scene connects.
   - Not yet run: the next simulator run of `ios-build.yml` is its first.
+  - The scene configuration is nameless. A named one is looked up in
+    Info.plist first, and UIKit logged an error when it was not there.
