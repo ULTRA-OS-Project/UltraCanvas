@@ -19,6 +19,13 @@
 #include <algorithm>
 #include <cmath>
 
+// The image as the layer's contents. A function of its own, outside the
+// window's methods: in there `id` is the element's identifier member, not
+// Objective-C's object type.
+static void SetLayerContents(CALayer* layer, CGImageRef image) {
+    layer.contents = (__bridge id)image;
+}
+
 namespace UltraCanvas {
 
     namespace {
@@ -182,7 +189,7 @@ namespace UltraCanvas {
             [CATransaction begin];
             [CATransaction setDisableActions:YES];   // no cross-fade between frames
             view.layer.contentsScale = deviceScale;
-            view.layer.contents = (__bridge id)image;
+            SetLayerContents(view.layer, image);
             [CATransaction commit];
             CGImageRelease(image);
         }

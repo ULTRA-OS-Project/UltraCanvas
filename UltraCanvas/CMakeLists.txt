@@ -1859,6 +1859,13 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS" OR ULTRACANVAS_PLATFORM STREQUAL "iOS")
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
     )
     list(APPEND ULTRACANVAS_PLATFORM_SOURCES ${ULTRACANVAS_OBJCPP_SOURCES})
+    # The iOS backend is written for ARC (strong properties, __weak, blocks
+    # holding Objective-C objects). The glob-pattern property below names no
+    # real file, so it sets nothing: ARC goes on the files themselves.
+    if(ULTRACANVAS_PLATFORM STREQUAL "iOS")
+        set_source_files_properties(${ULTRACANVAS_OBJCPP_SOURCES}
+                PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    endif()
 
     set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
