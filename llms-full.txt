@@ -113944,6 +113944,16 @@ change is kept in the settings folder and shows at the next start.
 | `main.cpp` | The command line and the single instance |
 
 ==============================================================================
+FILE: Docs/UltraSnip/changelog.d/recording-bar-fits.md
+==============================================================================
+
+- **The recording bar cut its time in every language.** At 280 px, an hour's
+  paused recording read "1:02:05 …" in English and "1:02:…" in German, and
+  the red dot shrank to "..". The bar is now as wide as its content at its
+  widest - the time with "paused", the longer of Pause and Resume - and is
+  placed with that width.
+
+==============================================================================
 FILE: Docs/UltraToDo/README.md
 ==============================================================================
 
@@ -115847,6 +115857,25 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/panel-switches-fit-translations.md
+==============================================================================
+
+- **The loudspeaker, Wi-Fi and Bluetooth panels cut their switch labels in
+  longer languages.** The mute switch was 80 px wide, so German showed
+  "Stumm" for "Stummschalten" (Italian "Disattiva audio" likewise), and the
+  power switches were 70 px, too narrow for Polish "Włączone". The switches
+  now take the width of their text; the volume slider fills what is left.
+- **Device panel buttons ran past the panel's edge in Cyrillic, Greek, Thai,
+  Hindi, Japanese, Vietnamese and French.** A button's width was guessed from
+  its label's length in bytes, so a Cyrillic letter counted twice and a Thai
+  or Devanagari one three times: Ukrainian "Task Manager" ended at 453 px in
+  a 340 px panel, and Hindi "Safely remove" pushed the USB list out with it.
+  The buttons now take the width of their text.
+- **The clipboard panel's "Open UltraClipboard" ran past the edge** in
+  Czech, Greek, Hungarian and Romanian, beside the recording switch. The
+  panel is 420 px wide instead of 386.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

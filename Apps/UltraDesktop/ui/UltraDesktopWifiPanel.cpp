@@ -69,7 +69,7 @@ void UltraDesktopWifiPanel::Build(UltraCanvasWindow& window) {
     title->SetTextColor(PanelColors().text);
     title->layoutItem.SetFlexGrow(1.0f);
     header->AddChild(title);
-    power_ = std::make_shared<UltraCanvasSwitch>("wifi.power", 0, 0, 70, 26, Tr("On"));
+    power_ = UltraCanvasSwitch::Create("wifi.power", 0, 0, Tr("On")); // content-sized for long translations
     power_->layoutItem.SetFlexShrink(0.0f);
     power_->onStateChanged = [this](CheckedState, CheckedState now) {
         if (loading_) return;

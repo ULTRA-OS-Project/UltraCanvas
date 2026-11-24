@@ -56,7 +56,8 @@ void UltraDesktopVolumePanel::Build(UltraCanvasWindow& window) {
     auto row = std::make_shared<UltraCanvasContainer>("vol.row");
     row->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     row->layoutItem.SetFlexShrink(0.0f);
-    slider_ = CreateHorizontalSlider("vol.slider", 0, 0, 190, 28, 0.0f, 100.0f);
+    // A small basis that grows: the slider takes whatever the switch leaves.
+    slider_ = CreateHorizontalSlider("vol.slider", 0, 0, 80, 28, 0.0f, 100.0f);
     slider_->SetStep(1.0f);
     // The percentage is said in the status line: the slider's own label
     // would sit over the device's name.
@@ -67,7 +68,9 @@ void UltraDesktopVolumePanel::Build(UltraCanvasWindow& window) {
         ScheduleVolume(static_cast<int>(value + 0.5f));
     };
     row->AddChild(slider_);
-    mute_ = std::make_shared<UltraCanvasSwitch>("vol.mute", 0, 0, 80, 28, Tr("Mute"));
+    // Content-sized: a fixed width cut the longer translations
+    // ("Stummschalten", "Disattiva audio").
+    mute_ = UltraCanvasSwitch::Create("vol.mute", 0, 0, Tr("Mute"));
     mute_->layoutItem.SetFlexShrink(0.0f);
     mute_->onStateChanged = [this](CheckedState, CheckedState now) {
         if (loading_) return;
