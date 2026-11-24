@@ -18,5 +18,6 @@ def portal(request):
         "account_site": hosts.split() and hosts.on_account_host(request),
         "brand": hosts.brand(),
         "store_root": hosts.store_root(),
+        "promote_on": settings.PROMOTE,
         "my_publisher": SimpleLazyObject(lambda: services.publisher_of(request.user)),
     }

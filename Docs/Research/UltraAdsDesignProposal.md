@@ -1,9 +1,10 @@
 # UltraAds — the advertising service of the ULTRA OS shops and services (Investigation and Proposal)
 
 **Date:** 2026-11-24
-**Status:** Proposal — no implementation of the advertising service yet.
-The one sign-in of §4.6 is built (`Server/UltraStorePortal` 0.4.0, same
-date); §4.6 says what of it stands and what remains.
+**Status:** Proposal, with its first two pieces built on the same date in
+`Server/UltraStorePortal`: the one sign-in of §4.6 (0.4.0) and **phase 1,
+sponsored listings in the app store** (0.5.0, the portal's README,
+*Advertising*; §10 says what of the phase is built and what is left).
 **Scope:** a new service, **UltraAds**, with which a merchant advertises in
 the shops and services of ULTRA OS - the app store, the games shop, the
 marketplace, B2B trade, the video portal, music and podcasts, e-books and
@@ -685,7 +686,19 @@ OpenID Connect (§4.6: the provider is built; the account service's extras
 and the native applications have still to move to it). Tax invoices in the
 portal (its own next step). The decisions of §12.
 
-**Phase 1 - sponsored listings in the app store.** The only shop that
+**Phase 1 - sponsored listings in the app store.** *Built in the portal
+(0.5.0), behind a switch that is off:* the *Promote* page with every place
+listed, campaigns, the prepaid balance with vouchers and (a second switch)
+top-ups, the choice with floors, the counts and the orders counted, the
+mark and *Why this ad?*, the report, the operator's page. *Left of the
+phase:* the native store and the web store as clients - the service they
+would ask is there, they do not ask it yet. What was built differs from the
+text below in four things, each the smaller: counts are kept per **day**,
+not per hour; a top-up is a record of its own beside the orders, paid by
+the provider's same signed report; search and category lists are two
+placements, and the row on the front page a third and the detail page a
+fourth; and a browser page does not cap how often one advertisement is
+shown (a client that sends what it has seen does). The only shop that
 exists. *Promote* on an app's console page; a campaign with its scope fixed
 to the app store; the prepaid balance; the context of §4.7; the choice of
 §4.8 with floors; the counts of §4.9 and the orders counted; the mark and

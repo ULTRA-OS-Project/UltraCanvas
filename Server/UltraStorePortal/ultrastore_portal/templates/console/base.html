@@ -12,6 +12,7 @@
           {% if my_publisher.approved %}
             <a class="nav-link{% if name == 'app_new' %} active{% endif %}" href="{% url 'console:app_new' %}">Create an app</a>
             <a class="nav-link{% if name == 'sales' %} active{% endif %}" href="{% url 'console:sales' %}">Sales</a>
+            {% if promote_on %}<a class="nav-link{% if request.resolver_match.namespace == 'promote' or name == 'promote' %} active{% endif %}" href="{% url 'promote:home' %}">Advertising</a>{% endif %}
             <a class="nav-link{% if name == 'publisher' %} active{% endif %}" href="{% url 'console:publisher' %}">Publisher profile</a>
           {% endif %}
           {% if app %}

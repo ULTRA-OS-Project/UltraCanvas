@@ -2,6 +2,8 @@
 which are here too while the account has no host of its own, and in
 urls_account.py when it has (identity/hosts.py).
 
+Version: 0.5.0 - advertising: promote/, console apps/<id>/promote/,
+                 operator promote/, v1/promote/
 Version: 0.4.0 - the OpenID Connect endpoints; the account's pages on the
                  account's host; sso/callback
 Version: 0.3.0 - console: icon/, packages/<n>/edit/
@@ -14,11 +16,12 @@ from django.urls import include, path, register_converter
 from django.views.static import serve
 
 from .api import billing as buying
+from .api import promote as ads
 from .api import views as api
 from .identity import sso
 from .identity import views as oidc
 from .identity.hosts import account_page
-from .web import account, console, operator, pay, storefront
+from .web import account, console, operator, pay, promote, storefront
 
 
 class AppId:
@@ -101,6 +104,7 @@ console_patterns = ([
     path("apps/<appid:app_id>/icon/", console.icon_upload, name="icon_upload"),
     path("apps/<appid:app_id>/screenshots/", console.screenshot_add, name="screenshot_add"),
     path("apps/<appid:app_id>/screenshots/<int:pk>/delete/", console.screenshot_delete, name="screenshot_delete"),
+    path("apps/<appid:app_id>/promote/", promote.promote_app, name="promote"),
     path("apps/<appid:app_id>/releases/new/", console.release_new, name="release_new"),
     path("apps/<appid:app_id>/releases/<int:pk>/", console.release_detail, name="release"),
     path("apps/<appid:app_id>/releases/<int:pk>/packages/", console.package_add, name="package_add"),
@@ -121,6 +125,7 @@ operator_patterns = ([
     path("orders/", operator.orders, name="orders"),
     path("orders/<int:pk>/", operator.order, name="order"),
     path("publish/", operator.publish, name="publish"),
+    path("promote/", promote.operator_home, name="promote"),
     path("audit/", operator.audit, name="audit"),
 ], "operator")
 
@@ -144,7 +149,30 @@ api_patterns = ([
     path("keys", buying.keys, name="keys"),
     path("skrill/status", buying.skrill_status, name="skrill_status"),
     path("skrill/recurring", buying.skrill_recurring, name="skrill_recurring"),
+    path("promote/decide", ads.decide, name="promote_decide"),
+    path("promote/events", ads.events, name="promote_events"),
+    path("promote/why/<str:token>", ads.why, name="promote_why"),
+    path("promote/skrill/status", ads.skrill_status, name="promote_skrill_status"),
 ], "api")
+
+# Advertising (UltraAds): a publisher's campaigns and balance, and what
+# everyone reaches from an advertisement. The addresses say "promote", not
+# "ads": content blockers refuse the latter by pattern, and a publisher who
+# runs one must still reach the console.
+promote_patterns = ([
+    path("", promote.home, name="home"),
+    path("campaigns/<int:pk>/", promote.campaign, name="campaign"),
+    path("campaigns/<int:pk>/edit/", promote.campaign_edit, name="campaign_edit"),
+    path("campaigns/<int:pk>/<slug:state>/", promote.campaign_state, name="campaign_state"),
+    path("balance/", promote.balance, name="balance"),
+    path("topup/<str:public_id>/", promote.topup, name="topup"),
+    path("topup/<str:public_id>/test/", promote.topup_test, name="topup_test"),
+    path("topup/<str:public_id>/return/", promote.topup_return, name="topup_return"),
+    path("topup/<str:public_id>/cancel/", promote.topup_cancel, name="topup_cancel"),
+    path("go/<str:token>/", promote.go, name="go"),
+    path("why/<str:token>/", promote.why, name="why"),
+    path("report/<str:token>/", promote.report_ad, name="report"),
+], "promote")
 
 urlpatterns = [
     path("", include(store_patterns)),
@@ -153,6 +181,7 @@ urlpatterns = [
     path("", include(oidc_patterns)),
     path("sso/callback", sso.callback, name="sso_callback"),
     path("console/", include(console_patterns)),
+    path("promote/", include(promote_patterns)),
     path("operator/", include(operator_patterns)),
     path("v1/", include(api_patterns)),
     path("healthz", api.healthz, name="healthz"),

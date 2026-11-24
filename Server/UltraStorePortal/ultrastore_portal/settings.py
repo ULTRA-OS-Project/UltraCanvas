@@ -1,6 +1,7 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.5.0 - advertising (PROMOTE, PROMOTE_TOPUPS, PROMOTE_CURRENCY)
 Version: 0.4.0 - the account's own address (ACCOUNT_URL) and the OpenID
                  Connect provider's settings (OIDC_...)
 Version: 0.3.0 - the portal_ui template library, messages as Bootstrap alerts;
@@ -127,6 +128,7 @@ INSTALLED_APPS = [
     "ultrastore_portal.identity",
     "ultrastore_portal.store",
     "ultrastore_portal.billing",
+    "ultrastore_portal.promote",
 ]
 
 MIDDLEWARE = [
@@ -290,6 +292,15 @@ RESTRICTED_TTL = int(env("RESTRICTED_TTL", "600"))
 # Where a visitor without the native store gets it (the app page's link): a
 # path under the root as well.
 STORE_DOWNLOAD_URL = _under_root("STORE_DOWNLOAD_PATH")
+
+# Advertising (promote/, UltraAds): sponsored listings in the store. Off
+# unless switched on: with it off there is no Promote button, no page of it
+# and no advertisement anywhere. Paying into an advertising balance is a
+# second switch, off until the store writes tax invoices: until then a
+# balance comes from the operator's vouchers. One currency for balances.
+PROMOTE = env("PROMOTE", "0") == "1"
+PROMOTE_TOPUPS = env("PROMOTE_TOPUPS", "0") == "1"
+PROMOTE_CURRENCY = (env("PROMOTE_CURRENCY") or "EUR").upper()
 
 # Mail: smtp://user:password@host:587 or smtps://...:465; empty prints the
 # mail to the log, which is what a developer's machine wants.

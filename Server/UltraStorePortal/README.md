@@ -24,13 +24,19 @@ project that is, in one place, what a store like Google Play is in two:
   another service (the store itself, cloud storage, the chat, advertising,
   a merchant's own site) signs a person in without ever seeing the password
   (*One sign-in for every service*). It can have an address of its own,
-  `https://account.ultraos.eu`, served by this same application.
+  `https://account.ultraos.eu`, served by this same application;
+- **advertising** (UltraAds, its first phase) - a publisher promotes an app,
+  whose own card then appears marked *Sponsored* in the store's search, its
+  lists and beside similar apps; paid per click from a prepaid balance,
+  chosen from what is on the page and never from who is looking
+  (*Advertising*). Off until it is switched on.
 
 It is built to replace the store's small services (`Server/UltraStoreMarket`,
 `UltraStoreAccount`, `UltraStorePay`) and the two desktop tools on them
 (`ultrastoreadmin`, `ultrastoreop`). 0.1.0 was the essential path - register
 a publisher, publish an app, show and serve the catalog; 0.2.0 sells; 0.4.0
-is the account for every service; *What comes next* names the rest.
+is the account for every service; 0.5.0 is advertising's first phase; *What
+comes next* names the rest.
 
 ## Decisions
 
@@ -59,6 +65,7 @@ is the account for every service; *What comes next* names the rest.
 | `/account/…` | sign up, the mailed confirmation link, sign in, password reset, the profile. With the account at its own address these are that host's root (`https://account.ultraos.eu/signin/`), and the store's `/account/…` leads there |
 | `/.well-known/openid-configuration`, `/oauth/…` | the OpenID Connect provider, at the account's host (*One sign-in for every service*) |
 | `/sso/callback` | where the account sends a person back to the store, with two hosts |
+| `/promote/…`, `/console/apps/<app id>/promote/`, `/operator/promote/` | advertising: a publisher's campaigns and balance, the *Promote* page of a listing, the operator's prices and stops; `/promote/go/<token>/` a click on an advertisement, `/promote/why/<token>/` who paid for it and why it was shown (*Advertising*) |
 | `/console/…` | the developer console |
 | `/operator/…` | the operator's pages (staff only) |
 | `/admin/` | Django's admin site: every record as it is (staff only) |
@@ -429,6 +436,104 @@ store's host) still takes a password directly. Also not built: a second
 factor at the sign-in, passkeys, telling a service's server that a person
 signed out (back-channel logout), a service registering itself.
 
+## Advertising
+
+UltraAds, phase 1 of
+[its design](../../Docs/Research/UltraAdsDesignProposal.md): **sponsored
+listings in the app store**. A publisher promotes one of its apps; the
+app's own card then appears, marked *Sponsored*, where the page calls for
+it; the publisher pays when someone clicks.
+
+**Switched off unless switched on.** `ULTRASTORE_PORTAL_PROMOTE=1` turns
+advertising on. Without it there is no *Promote* button, none of its pages
+exists, the JSON service answers an empty list, and no page shows an
+advertisement. `ULTRASTORE_PORTAL_PROMOTE_TOPUPS=1` is a second switch for
+paying money into a balance - **leave it off until the store writes tax
+invoices** (*What comes next*, 2); until then a balance comes from the
+operator's vouchers.
+
+**The rules, which the code holds to and the tests check:**
+
+- **Chosen from the page, never from the person** (decided 2026-11-24).
+  The search words, the category, the app being looked at, the system: that
+  is all `promote/decide.py` is ever handed. It takes no request, no session
+  and no account, so it could not use one. There is no profile and no
+  history, and the *Why this ad?* page says so with what matched.
+- **Always marked.** Every advertisement carries *Sponsored*, dark on
+  light, above the card, with *Why this ad?* beside it: who paid, what it
+  matched, and *Report this advertisement*.
+- **Money moves no unpaid result.** The store's search and its order are
+  made first (`store/queries.py`) and left as they are; advertisements are
+  placed before them. Editor's picks, *New and updated* and the rest are
+  never sold.
+- **Relevant or not shown.** In a search an advertisement must answer the
+  search by the store's own rule; in a category be of the category; beside
+  an app be of its category. Below that it is not shown at any price. A
+  short list does not repeat above itself an app it already shows.
+- **An auction on top of a price list.** Rank is the offer times how often
+  the listing is clicked in that place. The winner pays what it took to stay
+  ahead of the next publisher's - never more than it offered, never less
+  than the placement's floor, which the operator sets. With one advertiser
+  that is the floor. A publisher's own campaigns never bid against each
+  other.
+- **Prepaid, charged once.** A click draws the balance down; at zero the
+  campaigns wait and the publisher was mailed before. A click is charged
+  once however often it is told. Not charged: the publisher's own click, a
+  burst from one address, a click on a campaign that ended meanwhile, and
+  what the operator credits back.
+- **Counted, not followed.** Shown, clicked, spent, installed and ordered
+  are numbers per campaign, place, country and day. A click row holds no
+  account and no address and is removed after a month
+  (`ultrastore-portal promote cleanup`, a daily timer). An order counts for
+  a campaign only through the token the buyer's own store kept from the
+  click and sent with the checkout (`POST /v1/checkout`, `promote`); a
+  publisher reads "3 orders, 59.70 EUR", never who.
+
+**The publisher's pages.** *Promote* on an app's console page
+(`/console/apps/<id>/promote/`) is the shop's door: **where** - every shop
+and marketplace with its places (search, lists, the front page, beside
+similar apps), this shop's ticked, every other one listed to tick (decided
+2026-11-24); a shop that is not built yet is listed as *not open yet* -
+**how much** a day and, if wanted, the most for a click, and **how long**.
+`/promote/` lists the campaigns with what each cost and brought;
+`/promote/campaigns/<n>/` is one campaign's report by place, day and
+country, with *Change*, *Pause* and *End*; `/promote/balance/` the balance,
+what went in and what was spent by day. A publisher new to advertising has
+a ceiling per day for its first weeks.
+
+**The operator's page** (`/operator/promote/`): the placements with how
+many advertisements each holds, the least a click costs there and open or
+switched off; every campaign with *Stop* (the reason is the publisher's to
+read) and *Let it run*; a voucher into a publisher's balance; the recent
+clicks with *Did not count - credit*; revenue by place; and the settings
+(one advertisement per so many results, the days an order counts back, the
+burst rule, the ceiling for a new publisher, the threshold under which a
+country is folded into "other" in a report). Every action is a row in the
+audit log. **The floors in the table are starting values, not decided
+prices.**
+
+**For a store's client that draws its own pages** (the native store, the
+web store - neither uses it yet):
+
+| | |
+|---|---|
+| `POST /v1/promote/decide` | `{placement, count?, results?, context: {q, category, listing, os, country}, seen: [campaign ids]}` → `{ads: [{token, kind, id, name, campaign, label, payer: {id, name}, why: [...], why_url}]}`. Asked **without saying who asks**: a request with an `Authorization` header is refused, and nothing reads a session. `seen` is how a device keeps one advertisement from being shown forty times, without the server learning who saw what |
+| `POST /v1/promote/events` | `{events: [{token, type: shown \| clicked \| installed}]}` → `{accepted}` |
+| `GET /v1/promote/why/<token>` | who paid, and what it matched |
+| `POST /v1/checkout` | takes `promote`, the token of the advertisement last clicked, beside `code` |
+
+Placements: `store-search`, `store-category`, `store-home`, `store-detail`.
+The pages the portal draws itself ask the same function in the same request.
+
+**Not in this phase.** The native store and the web store showing
+advertisements (the catalog names no `promote_url` until one of them reads
+it); search words of the publisher's choosing, several listings in a
+campaign, banners and fixed slots, invoices, the public library of
+advertisements; every shop but the app store - their placements are listed
+and cannot be opened; an order refunded later is not taken out of a report;
+the page a browser is on is not kept from showing the same advertisement
+often (only a client that sends `seen` is).
+
 ## What is where on disk
 
 Under `ULTRASTORE_PORTAL_DATA_DIR` (`./var` on a developer's machine):
@@ -488,6 +593,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 | `BASE_URL` | the one root; `https://store.ultraos.eu` unless set |
 | `ACCOUNT_URL`, `ACCOUNT_NAME` | the account's own root and the issuer (`https://account.ultraos.eu`); unset, the account lives under the store's root. What the account calls itself there (`ULTRA OS account`) |
 | `OIDC_KEY_FILE`, `OIDC_SUBJECT_SECRET` | the identity tokens' key as a PEM file, and the secret the subjects are derived with; unset, each is made once and kept in the database |
+| `PROMOTE`, `PROMOTE_TOPUPS`, `PROMOTE_CURRENCY` (EUR) | advertising on (`1`); paying into a balance on (`1` - not before tax invoices); the one currency of balances |
 | `OIDC_CODE_TTL` (120), `OIDC_ACCESS_TOKEN_TTL` (3600), `OIDC_ID_TOKEN_TTL` (3600), `OIDC_REFRESH_TOKEN_TTL` (90 days) | how long each lasts, in seconds |
 | `SECRET_KEY` | Django's secret; required outside `DEBUG` |
 | `DB` | `mysql://…` (production), `postgresql://…`, `sqlite:///path` |
@@ -519,6 +625,11 @@ ultrastore_portal/
     sessions.py    a sign-in as a record; the store's session ends with it
     sso.py         the store signing in through the account
     management/commands/oidc.py   clients, keys, cleanup
+  promote/         advertising: UltraAds, phase 1
+    models.py      Placement, Campaign, Balance, LedgerEntry, TopUp, DayCount, Click, Attribution
+    decide.py      which advertisement goes where: from the page, never from the person
+    services.py    campaigns, the balance, counting and charging a click, an order counted back, reports
+    management/commands/promote.py   cleanup, voucher, placements
   store/           the records and the rules
     models.py      Publisher, PublisherMember, TermsVersion, App, Screenshot, Release, Package,
                    Report, AuditEntry, CatalogSnapshot
@@ -533,9 +644,9 @@ ultrastore_portal/
     services.py    an order opened, the provider's report believed or not, the licence, renewals, refunds, the signed link
     licence.py     the ULIC1 token
     skrill.py      Quick Checkout's form and signature, the refund and recurring API
-  web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, forms.py,
+  web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, promote.py, forms.py,
                    ui.py (a form's field with Bootstrap's classes)
-  api/             the JSON service: views.py (the catalog, the apps), billing.py (the checkout)
+  api/             the JSON service: views.py (the catalog, the apps), billing.py (the checkout), promote.py (advertising)
   templates/       the pages; console/_*.html are the parts a page draws again in place
   static/portal/   portal.css (the look of Docs/UltraStore/design/README.md, on Bootstrap),
                    portal.js (dependent fields, forms sent in place, uploads), vendor/ (Bootstrap, Dropzone)
@@ -561,19 +672,23 @@ In the order the store needs it:
    orders and licences hung on the person.
 4. **Review of listing changes.** Today an edit to a public app's listing is
    live at once; only releases are reviewed.
-5. **The provider, proven**: the OpenID Foundation's conformance suite and
+5. **Advertising, its next steps**: the native store and the web store
+   showing advertisements (and `promote_url` in the catalog); a daily timer
+   for `promote cleanup`; search words, banners and the public library
+   (the design's phase 2). Paying into a balance waits for step 2.
+6. **The provider, proven**: the OpenID Foundation's conformance suite and
    an outside review before a service that is not ours is registered;
    back-channel logout; a daily timer for `oidc cleanup`.
-6. **Two-factor sign-in** for operators and publishers, and operator
+7. **Two-factor sign-in** for operators and publishers, and operator
    **roles** (reviewer, support, auditor) - Django's groups and permissions
    are there, the pages check only *staff* today.
-7. **More people per publisher** - the membership table has the roles, the
+8. **More people per publisher** - the membership table has the roles, the
    console has no page to invite anyone.
-8. **Automatic checks on a build**: a malware scan and a smoke run; today
+9. **Automatic checks on a build**: a malware scan and a smoke run; today
    the reviewer downloads the build and checks by hand.
-9. **Translations** of listings (the catalog carries a text per language;
+10. **Translations** of listings (the catalog carries a text per language;
    the portal stores the one the publisher wrote) and of the portal's own
    pages; picture variants (`icon_variants`, `screenshot_variants`).
-10. Discount and affiliate codes (a `code` sent with a checkout is kept on
+11. Discount and affiliate codes (a `code` sent with a checkout is kept on
    the order and takes nothing off), strikes and notices to publishers, a
    hash chain over the audit log, statistics for publishers.

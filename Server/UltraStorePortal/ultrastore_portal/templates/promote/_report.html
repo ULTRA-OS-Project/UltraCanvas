@@ -1,0 +1,14 @@
+{# One table of a report: rows of promote.services._line. #}
+<div class="table-responsive">
+<table class="table align-middle">
+  <thead><tr><th>{{ head }}</th><th class="text-end">Shown</th><th class="text-end">Clicks</th><th class="text-end">Click rate</th><th class="text-end">Spent</th><th class="text-end">Per click</th><th class="text-end">Installs</th><th class="text-end">Orders</th><th class="text-end">Order value</th><th class="text-end">Per order</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr><td>{% if row.label.year %}{{ row.label|date:"j M Y" }}{% else %}{{ row.label }}{% endif %}</td><td class="text-end">{{ row.shown }}</td><td class="text-end">{{ row.clicks }}</td>
+    <td class="text-end">{% if row.rate is not None %}{{ row.rate }} %{% else %}-{% endif %}</td><td class="text-end">{{ row.spent|floatformat:2 }}</td>
+    <td class="text-end">{% if row.per_click is not None %}{{ row.per_click }}{% else %}-{% endif %}</td><td class="text-end">{{ row.installs }}</td>
+    <td class="text-end">{{ row.orders }}</td><td class="text-end">{{ row.revenue|floatformat:2 }}</td><td class="text-end">{% if row.per_order is not None %}{{ row.per_order }}{% else %}-{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
