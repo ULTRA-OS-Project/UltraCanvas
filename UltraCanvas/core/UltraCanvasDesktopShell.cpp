@@ -338,10 +338,6 @@ std::vector<DesktopScreenInfo> UltraCanvasDesktopShell::ListScreens() {
     return screens;
 }
 
-bool UltraCanvasDesktopShell::KeepMinimizedWindowsHidden() {
-    return DesktopShellBackend::KeepMinimizedWindowsHidden();
-}
-
 bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom) {
     if (windowId == 0 || left < 0 || right < 0 || top < 0 || bottom < 0) return false;
     return DesktopShellBackend::ReserveScreenEdges(windowId, left, right, top, bottom);
@@ -443,6 +439,10 @@ uint64_t UltraCanvasDesktopShell::ShowWindowThumbnail(uint64_t destinationId, ui
 
 void UltraCanvasDesktopShell::HideWindowThumbnail(uint64_t thumbnail) {
     if (thumbnail != 0) DesktopShellBackend::HideWindowThumbnail(thumbnail);
+}
+
+bool UltraCanvasDesktopShell::KeepMinimizedWindowsHidden() {
+    return DesktopShellBackend::KeepMinimizedWindowsHidden();
 }
 
 bool UltraCanvasDesktopShell::CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
@@ -1134,7 +1134,6 @@ namespace DesktopShellBackend {
     bool GetScreenSize(int&, int&) { return false; }
     std::vector<DesktopScreenInfo> ListScreens() { return {}; }
     bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
-    bool KeepMinimizedWindowsHidden() { return false; }
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE
     bool CaptureScreen(const std::string&, std::string& error) {
         error = "Screenshots are not available on this platform yet.";
@@ -1158,6 +1157,7 @@ namespace DesktopShellBackend {
     }
     uint64_t ShowWindowThumbnail(uint64_t, uint64_t, int, int, int, int) { return 0; }
     void HideWindowThumbnail(uint64_t) {}
+    bool KeepMinimizedWindowsHidden() { return false; }
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
     bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
