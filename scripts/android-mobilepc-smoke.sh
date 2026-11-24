@@ -78,7 +78,10 @@ adb shell setprop debug.ultracanvas.log 1
 # The second display first, so it is there when the desktop starts.
 adb shell settings put global overlay_display_devices "$display_spec"
 sleep 3
-adb shell am start -W -n "$package/$activity" -e ultracanvas.args "--launch ultrapaint"
+# adb shell hands one string to the device's shell, which splits it again:
+# the value is quoted for that shell too, or "ultrapaint" becomes am's
+# package argument and the app gets "--launch" alone.
+adb shell am start -W -n "$package/$activity" -e ultracanvas.args "'--launch ultrapaint'"
 
 wait_for 'desktop mode enabled' "$timeout"
 wait_for 'desktop output: the external display' 60
