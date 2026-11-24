@@ -52,12 +52,6 @@
   with it when the theme switches while a page is shown
   (`DemoKit::ColourOf`, `KitContainer`, `KitLabel`). Pages that paint their
   own fixed colours still do.
-- **The demo app speaks every language of its catalogue.** Each of the 29
-  languages had 841 of the demo's 7475 texts, so most of every page showed
-  in English. All 6571 missing texts are drafted in all 29 (machine drafts,
-  marked for review like the rest of the catalogue), with the plural forms
-  each language needs; the layout audit passes in Russian and Arabic, and
-  the Performance Matrix title is tall enough for a Japanese line.
 - **DemoApp: the example pages follow a dark theme too.** About 90 example
   files painted their own light panels, readouts and grey captions with fixed
   colours, so with a dark theme they stayed light, or showed the theme's
@@ -70,3 +64,5 @@
   go through them; charts and diagrams drawn on their own white paper,
   colour swatches, coloured buttons and status pills keep their colours. The
   page shown is rebuilt when the theme switches, so its colours follow.
+- DemoApp: the Performance Matrix page's title is 40 px tall, room for a
+  Japanese or Chinese line (it had 35 and needed 37).
