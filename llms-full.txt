@@ -36967,6 +36967,20 @@ auto-scrolls at the viewport edge, Escape abandons it (the previous
 selection returns), and a press-and-release without movement keeps its old
 meaning — a plain click on empty space clears the selection (a Ctrl click
 leaves it alone).
+While the band is drawn, `onSelectionChanged` fires with every entry it takes
+in or lets go. A host that follows the selection with something that opens,
+closes or reflows - a preview pane beside the list - waits for the drag to
+end: `IsDragInProgress()` is true while a band is drawn or entries are
+dragged, and letting the band go fires `onSelectionChanged` once more with it
+false, so the host sees where the band ended.
+
+```cpp
+std::function<void(const std::vector<FilerEntry>&)> showInPreview;   // the host's preview
+filer->onSelectionChanged = [&](const std::vector<FilerEntry>& selected) {
+    if (filer->IsDragInProgress()) return;   // the band's last state comes on release
+    showInPreview(selected);
+};
+```
 Double-clicking an entry with the **left** button opens/activates it (folders
 and archives are entered, files fire `onFileActivated`); the right and middle
 buttons do not, although Windows reports a double-click for those too — a
@@ -113930,17 +113944,6 @@ change is kept in the settings folder and shows at the next start.
 | `main.cpp` | The command line and the single instance |
 
 ==============================================================================
-FILE: Docs/UltraSnip/changelog.d/picker-in-framework.md
-==============================================================================
-
-- **The selection over the screen is the framework's now.** UltraSnip's
-  overlay - the frozen, dimmed screen with the rectangle or the lit window -
-  moved into UltraCanvas (`UltraCanvasScreenAreaPicker`), so ChatCube's
-  screenshot button uses the same one. Nothing changes in how a snip is
-  taken. On a Mac the selection now opens, above the menu bar, now that the
-  framework captures the screen there.
-
-==============================================================================
 FILE: Docs/UltraToDo/README.md
 ==============================================================================
 
@@ -114216,51 +114219,6 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/close-tab-shows-it-first.md
-==============================================================================
-
-- **Closing a tab that is not on show brings it to the front first.** The
-  tab's **×** now shows the image it closes and asks "Close *name*?" before
-  it goes, so a click on the wrong tab's cross loses nothing. The tab on
-  show, without changes, still closes at once, as does *File ▸ Close Tab*
-  (`Ctrl+W`) on it.
-- **Closing an image with unsaved changes offers to save it.** The question
-  is now *Save the changes to name before closing it?* with **Save**, **Don't
-  save** and **Cancel**, where it used to offer only to discard them. Save
-  writes the image to its file - or asks where, through *Save As*, for an
-  untitled one - and closes the tab once it is saved; a save cancelled or
-  failed leaves the tab open.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/close-window-save-each.md
-==============================================================================
-
-- **Closing the window or quitting asks about each unsaved image.** Instead
-  of "N images have unsaved changes. Close anyway?", each image with unsaved
-  changes is brought to the front in turn and asks **Save**, **Don't save**
-  or **Cancel**. Save writes it (Save As for an untitled one) and goes on to
-  the next; Cancel - or a save cancelled or failed - keeps the window open,
-  with every image as it was. *File ▸ Quit* does this window by window.
-- **Files dropped on the start page open.** While no image is open, a file
-  dropped anywhere on the window opens as a drop on the canvas does; it used
-  to be ignored.
-- **The start page, the clipboard history picker and the save question are
-  translated** into the 30 languages UltraPaint ships.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/start-page.md
-==============================================================================
-
-- **A start page instead of a blank canvas.** A window started without files,
-  and one whose last tab has closed, shows three buttons one under the other
-  in the middle of the canvas area, each in a pastel of its own: **Create new
-  bitmap** (the New Image dialog), **Paste image** (the clipboard's picture as
-  a new image) and **Clipboard history**, which shows the 20 images copied
-  last as thumbnails - a click opens one as a new image. `Ctrl+V` on the start
-  page pastes as a new image. The commands that need an image do nothing
-  until one is open.
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md
@@ -115889,19 +115847,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/window-previews-of-minimized-windows.md
-==============================================================================
-
-- **The taskbar's window previews show minimized windows.** Resting the
-  pointer on a running application's button showed only the icon for a
-  window that was minimized - LINE in the tray, say - until it had been
-  opened once, because a minimized window cannot be asked to draw itself.
-  On Windows the previews are now DWM's live thumbnails, which show a
-  minimized window as it last looked, also one minimized before the desktop
-  started, and follow a window that changes while the strip is open.
-  Elsewhere a minimized window shows the last picture captured of it.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
@@ -117890,40 +117835,6 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/no-reply-codes.md
-==============================================================================
-
-- **"Always trust" works for senders that put a code in their no-reply
-  address.** Claude's sign-in mails come from
-  `no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com`, the next one from
-  another code - so *Always trust this sender*, *Block this sender* and
-  *Show images – Always from this sender* only ever applied to the one
-  message they were chosen on. Such an address is now one sender
-  (`no-reply@mail.anthropic.com`): chosen once, it holds for all its mail.
-  The same goes for a "+tag" on a mailbox: `orders+Q7x2Lm@shop.example` is
-  `orders@shop.example`.
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/stranger-replies.md
-==============================================================================
-
-- **A "Re:" or "Fw:" from someone you never wrote to is flagged as likely
-  fraud.** Fake invoices arrive as "WG: Rechnung 373115" forwarded by a
-  stranger, and sales spam as "Re: your sales" to a mail you never answered:
-  the prefix makes a first message look like part of a conversation. A
-  message whose subject starts with a reply or forward prefix (Re, AW, SV, VS,
-  Fw, Fwd, WG, TR, RV, ...; read past a tag such as "*** VIRUS ***" or
-  "[SPAM]") gets the *Likely spam* badge and a warning strip that says
-  *fraud* (`unsolicited-reply`) - more so when it names no message it
-  answers, when the thread it names is another company's, and when it is
-  about a bill. It counts only for strangers: everyone you write to is in
-  your address book, and a contact's replies are never flagged for it. The
-  warning strip has an **Add to contacts** button for a sender you do know;
-  once added, the message is shown again without the warning. A mailing
-  list's post (List-Id) is not flagged, nor a proven known service's help
-  desk. It has its own switch in *Settings > Warnings > Spam/scam warnings*.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
