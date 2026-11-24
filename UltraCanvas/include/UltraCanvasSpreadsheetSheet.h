@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.2.0 - inserting / deleting rows and columns moves the references in formulas
+//                  (MoveFormulaReferencesForRowsColumns)
 // Version: 1.1.0 - GetEffectiveValidation; SetCellValueFromString (a typed entry, notified)
 // Version: 1.0.1 - ValidateCell falls back to the cell's own rule
 // Version: 1.0.0
@@ -98,6 +100,23 @@ std::string RenameSheetInFormula(const std::string& formula, const std::string& 
 // #REF!, as a spreadsheet does when a sheet is deleted: =Sales.A1*2 becomes
 // =#REF!*2. Case-insensitive; text in "quotes" and other sheets are left alone.
 std::string RemoveSheetFromFormula(const std::string& formula, const std::string& sheetName);
+
+// The formula with its references to sheet `sheetName` moved as inserting or
+// deleting rows (or columns) there moves the cells, as a spreadsheet does:
+//   count > 0   `count` rows inserted before row `at` (0-based): a reference
+//               at or below it moves down, a range across it grows;
+//   count < 0   rows at .. at-count-1 deleted: a reference below them moves
+//               up, a range across them shrinks, a reference (or a range)
+//               lying wholly in them becomes #REF!.
+// `columns` does the same for columns. $-anchored references move too - they
+// are anchored against copying, not against the sheet changing. An
+// unqualified reference (A1) is the formula's own sheet's: it moves only when
+// `onThatSheet`. A qualified one (Sales.A1, 'Q 1'!B2:C3) moves when it names
+// `sheetName` (case-insensitive). Text in "quotes" is left alone, and the
+// rest of the formula is kept as written. A reference pushed past the sheet's
+// last row or column becomes #REF!.
+std::string MoveFormulaReferencesForRowsColumns(const std::string& formula, const std::string& sheetName,
+                                                bool onThatSheet, bool columns, int at, int count);
 
 // ============================================================================
 // SPREADSHEET SHEET CLASS
@@ -331,6 +350,12 @@ public:
     const RowDefinition* GetRowDefinition(int row) const;
     RowDefinition& GetOrCreateRowDefinition(int row);
     
+    // Rewrites this sheet's formulas for rows or columns inserted (count > 0)
+    // or deleted (count < 0) at `at` on sheet `changedSheet` - this one or
+    // another its formulas name (MoveFormulaReferencesForRowsColumns).
+    // InsertRows / DeleteRows / InsertColumns / DeleteColumns do it for the
+    // sheet's own formulas; the workbook does it for the other sheets.
+    void MoveFormulaReferences(const std::string& changedSheet, bool columns, int at, int count);
     void InsertRows(int row, int count = 1);
     void DeleteRows(int row, int count = 1);
     

@@ -238,6 +238,24 @@ void FreezePanes(int rows, int cols);
 void UnfreezePanes();
 ```
 
+Inserting or deleting rows or columns moves the references in formulas with
+the cells, on every sheet, as a spreadsheet does. Say two rows are inserted
+above row 2:
+
+- `=A2+$B$5` becomes `=A4+$B$7`. `$`-anchored references move too: the `$`
+  stops a reference moving when it is copied, not when the sheet changes.
+- `=SUM(A1:A5)` becomes `=SUM(A1:A7)`: a range across the insertion grows.
+- `=Data.A3` on another sheet moves when the rows were inserted on Data.
+
+Deleting rows moves the references below them up and shrinks the ranges
+across them. A reference wholly inside the deleted rows becomes `#REF!`, so
+`=A2*2` becomes `=#REF!*2`. Text in quotes, and everything else in the
+formula, is kept as it was written. Workbook names on the sheet
+(`AddNamedRange` with a `range.start.sheetName`) move with it. For a formula
+string of your own, the same rewrite is
+`MoveFormulaReferencesForRowsColumns(formula, sheetName, onThatSheet, columns, at, count)`
+(`UltraCanvasSpreadsheetSheet.h`).
+
 ### Clipboard, Undo/Redo, Formula Engine
 
 ```cpp

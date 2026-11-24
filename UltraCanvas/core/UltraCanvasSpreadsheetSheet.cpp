@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheetSheet.cpp
 // Spreadsheet worksheet implementation (non-inline members)
+// Version: 1.3.0 - inserting / deleting rows and columns rewrites the formulas' references
 // Version: 1.2.0 - GetEffectiveValidation, DataValidationListItems
 // Version: 1.1.0 - data validation: one checker (CheckDataValidation) for range and cell rules; text is
 //                  not a number, unreadable bounds fail, Date/Time bounds as YYYY-MM-DD / HH:MM
@@ -147,6 +148,7 @@ void SpreadsheetSheet::InsertColumns(int col, int count) {
     columns_ = std::move(newDefs);
 
     ShiftCellReferences(0, col, 0, count);
+    MoveFormulaReferences(name_, true, col, count);
     InvalidateUsedRange();
     NotifyStructureChange();
 }
@@ -178,6 +180,7 @@ void SpreadsheetSheet::DeleteColumns(int col, int count) {
     columns_ = std::move(newDefs);
 
     ShiftCellReferences(0, col + count, 0, -count);
+    MoveFormulaReferences(name_, true, col, -count);
     InvalidateUsedRange();
     NotifyStructureChange();
 }
@@ -205,6 +208,7 @@ void SpreadsheetSheet::InsertRows(int row, int count) {
     rows_ = std::move(newDefs);
 
     ShiftCellReferences(row, 0, count, 0);
+    MoveFormulaReferences(name_, false, row, count);
     InvalidateUsedRange();
     NotifyStructureChange();
 }
@@ -236,6 +240,7 @@ void SpreadsheetSheet::DeleteRows(int row, int count) {
     rows_ = std::move(newDefs);
 
     ShiftCellReferences(row + count, 0, -count, 0);
+    MoveFormulaReferences(name_, false, row, -count);
     InvalidateUsedRange();
     NotifyStructureChange();
 }
@@ -1210,6 +1215,183 @@ std::string RemoveSheetFromFormula(const std::string& formula, const std::string
         out += "#REF!";
         return ReferenceEnd(formula, sep + 1);
     });
+}
+
+namespace {
+
+// One A1 address in a formula: [$]LETTERS[$]DIGITS.
+struct FormulaAddress {
+    bool colAbs = false;
+    bool rowAbs = false;
+    int col = 0;   // 0-based
+    int row = 0;
+    size_t end = 0;   // one past it in the formula
+};
+
+bool ReadFormulaAddress(const std::string& f, size_t i, FormulaAddress& a) {
+    const size_t n = f.size();
+    size_t p = i;
+    a.colAbs = p < n && f[p] == '$';
+    if (a.colAbs) ++p;
+    const size_t letters = p;
+    while (p < n && std::isalpha(static_cast<unsigned char>(f[p])) && p - letters < 4) ++p;
+    const size_t letterCount = p - letters;
+    a.rowAbs = p < n && f[p] == '$';
+    if (a.rowAbs) ++p;
+    const size_t digits = p;
+    while (p < n && std::isdigit(static_cast<unsigned char>(f[p]))) ++p;
+    const size_t digitCount = p - digits;
+    if (letterCount < 1 || letterCount > 3 || digitCount < 1 || digitCount > 7) return false;
+    // Not the start of a longer name or a call (LOG10( ).
+    if (p < n && (IsSheetNameChar(f[p]) || f[p] == '(' || f[p] == '$' || f[p] == '.' || f[p] == '!')) return false;
+    std::string upper = f.substr(letters, letterCount);
+    for (auto& ch : upper) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    a.col = CellAddress::LetterToColumn(upper);
+    a.row = std::stoi(f.substr(digits, digitCount)) - 1;
+    a.end = p;
+    return true;
+}
+
+std::string WriteFormulaAddress(const FormulaAddress& a) {
+    std::string out;
+    if (a.colAbs) out += '$';
+    out += CellAddress::ColumnToLetter(a.col);
+    if (a.rowAbs) out += '$';
+    out += std::to_string(a.row + 1);
+    return out;
+}
+
+} // namespace
+
+std::string MoveFormulaReferencesForRowsColumns(const std::string& formula, const std::string& sheetName,
+                                                bool onThatSheet, bool columns, int at, int count) {
+    if (count == 0 || formula.empty()) return formula;
+    const int limit = columns ? SpreadsheetLimits::MaxColumns : SpreadsheetLimits::MaxRows;
+    const int deleted = count < 0 ? -count : 0;
+    auto indexOf = [columns](FormulaAddress& a) -> int& { return columns ? a.col : a.row; };
+
+    // One end of a reference: moved, or -1 when it falls in deleted rows.
+    // `isEnd` says which end of a range it is, which decides where it goes
+    // when its own row is deleted (a range shrinks to what is left).
+    auto moveIndex = [&](int index, bool inRange, bool isEnd) -> int {
+        if (count > 0) return index >= at ? index + count : index;
+        if (index < at) return index;
+        if (index >= at + deleted) return index - deleted;
+        if (!inRange) return -1;
+        return isEnd ? at - 1 : at;   // clipped to the rows that remain
+    };
+
+    // Rewrites one reference (cell or range) or answers false for #REF!.
+    auto moveReference = [&](FormulaAddress& first, FormulaAddress* last) -> bool {
+        if (!last) {
+            const int moved = moveIndex(indexOf(first), false, false);
+            if (moved < 0 || moved >= limit) return false;
+            indexOf(first) = moved;
+            return true;
+        }
+        int lo = indexOf(first), hi = indexOf(*last);
+        const bool swapped = lo > hi;
+        if (swapped) std::swap(lo, hi);
+        const int newLo = moveIndex(lo, true, false);
+        const int newHi = moveIndex(hi, true, true);
+        if (newHi < newLo || newLo < 0 || newHi >= limit) return false;   // all of it deleted
+        indexOf(swapped ? *last : first) = newLo;
+        indexOf(swapped ? first : *last) = newHi;
+        return true;
+    };
+
+    std::string out;
+    out.reserve(formula.size() + 8);
+    const size_t n = formula.size();
+    size_t i = 0;
+    while (i < n) {
+        const char c = formula[i];
+        if (c == '"') {   // a text literal is copied as it is
+            size_t close = formula.find('"', i + 1);
+            close = close == std::string::npos ? n : close + 1;
+            out.append(formula, i, close - i);
+            i = close;
+            continue;
+        }
+
+        // A reference starts here: qualified (Sales.A1) or not (A1), and may
+        // run on to a range (A1:B3, Sales.A1:Sales.B3).
+        std::string name;
+        size_t sep = 0;
+        size_t addressAt = i;
+        bool qualified = false;
+        if (ReadSheetQualifier(formula, i, name, sep)) {
+            qualified = true;
+            addressAt = sep + 1;
+        } else if (i > 0 && (IsSheetNameChar(formula[i - 1]) || formula[i - 1] == '.' || formula[i - 1] == '!')) {
+            out += c;
+            ++i;
+            continue;
+        }
+        FormulaAddress first;
+        if (!ReadFormulaAddress(formula, addressAt, first)) {
+            if (qualified) {   // a qualifier before something that is no address
+                out.append(formula, i, addressAt - i);
+                i = addressAt;
+                continue;
+            }
+            if (IsSheetNameChar(c) || c == '$') {   // a name or word: copied whole
+                size_t j = i + 1;
+                while (j < n && (IsSheetNameChar(formula[j]) || formula[j] == '.' || formula[j] == '$')) ++j;
+                out.append(formula, i, j - i);
+                i = j;
+            } else {
+                out += c;
+                ++i;
+            }
+            continue;
+        }
+
+        size_t end = first.end;
+        size_t lastAt = std::string::npos;   // where the far end's address starts
+        FormulaAddress last;
+        if (end < n && formula[end] == ':') {
+            size_t k = end + 1;
+            std::string farName;
+            size_t farSep = 0;
+            if (ReadSheetQualifier(formula, k, farName, farSep)) k = farSep + 1;
+            if (ReadFormulaAddress(formula, k, last)) {
+                lastAt = k;
+                end = last.end;
+            }
+        }
+
+        const bool applies = qualified ? SameNameIgnoringCase(name, sheetName) : onThatSheet;
+        if (!applies) {
+            out.append(formula, i, end - i);
+            i = end;
+            continue;
+        }
+        const bool isRange = lastAt != std::string::npos;
+        if (!moveReference(first, isRange ? &last : nullptr)) {
+            out += "#REF!";
+            i = end;
+            continue;
+        }
+        out.append(formula, i, addressAt - i);            // the qualifier, as written
+        out += WriteFormulaAddress(first);
+        if (isRange) {
+            out.append(formula, first.end, lastAt - first.end);   // ':' and any far qualifier
+            out += WriteFormulaAddress(last);
+        }
+        i = end;
+    }
+    return out;
+}
+
+void SpreadsheetSheet::MoveFormulaReferences(const std::string& changedSheet, bool columns, int at, int count) {
+    const bool own = SameNameIgnoringCase(changedSheet, name_);
+    for (auto& [coord, cell] : cells_) {
+        if (!cell || !cell->HasFormula()) continue;
+        const std::string& text = cell->GetFormulaText();
+        std::string moved = MoveFormulaReferencesForRowsColumns(text, changedSheet, own, columns, at, count);
+        if (moved != text) cell->SetFormula(moved);
+    }
 }
 
 int SpreadsheetSheet::GetAutoFillDownEnd(const CellRange& source) const {

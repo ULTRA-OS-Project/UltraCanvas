@@ -882,11 +882,38 @@ void UltraCanvasSpreadsheet::InsertColumns(int count) {
     InsertColumnsAt(GetSelection().start.col, count);
 }
 
+void UltraCanvasSpreadsheet::MoveReferencesToSheet(const SpreadsheetSheet& changed, bool columns, int at, int count) {
+    // The sheet rewrote its own formulas; the others' that name it, and the
+    // workbook's names on it, follow here.
+    const std::string& name = changed.GetName();
+    for (auto& other : sheets_) {
+        if (other && other.get() != &changed) other->MoveFormulaReferences(name, columns, at, count);
+    }
+    const int deleted = count < 0 ? -count : 0;
+    auto move = [&](int& index, bool isEnd) {
+        if (count > 0) { if (index >= at) index += count; return; }
+        if (index < at) return;
+        if (index >= at + deleted) { index -= deleted; return; }
+        index = isEnd ? at - 1 : at;   // clipped to what remains
+    };
+    for (auto& [key, named] : namedRanges_) {
+        CellRange& range = named.range;
+        if (range.start.sheetName.empty() || GetSheetByName(range.start.sheetName) != &changed) continue;
+        CellRange moved = range;
+        int& lo = columns ? moved.start.col : moved.start.row;
+        int& hi = columns ? moved.end.col : moved.end.row;
+        move(lo, false);
+        move(hi, true);
+        if (hi >= lo) range = moved;   // a name whose cells were all deleted keeps its old range
+    }
+}
+
 void UltraCanvasSpreadsheet::InsertColumnsAt(int col, int count) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
     if (recordingUndo_) RecordStructureChange();
     sheet->InsertColumns(col, count);
+    MoveReferencesToSheet(*sheet, true, col, count);
     Recalculate();
 }
 
@@ -899,6 +926,7 @@ void UltraCanvasSpreadsheet::DeleteColumnsAt(int col, int count) {
     if (!sheet) return;
     if (recordingUndo_) RecordStructureChange();
     sheet->DeleteColumns(col, count);
+    MoveReferencesToSheet(*sheet, true, col, -count);
     Recalculate();
 }
 
@@ -937,6 +965,7 @@ void UltraCanvasSpreadsheet::InsertRowsAt(int row, int count) {
     if (!sheet) return;
     if (recordingUndo_) RecordStructureChange();
     sheet->InsertRows(row, count);
+    MoveReferencesToSheet(*sheet, false, row, count);
     Recalculate();
 }
 
@@ -949,6 +978,7 @@ void UltraCanvasSpreadsheet::DeleteRowsAt(int row, int count) {
     if (!sheet) return;
     if (recordingUndo_) RecordStructureChange();
     sheet->DeleteRows(row, count);
+    MoveReferencesToSheet(*sheet, false, row, -count);
     Recalculate();
 }
 

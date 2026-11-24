@@ -2815,6 +2815,32 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetValidationTest")
 
+# ===== SPREADSHEET MOVE REFERENCES TEST =====
+# Inserting or deleting rows and columns moves the references in formulas:
+# growing and shrinking ranges, #REF! for deleted cells, other sheets' names,
+# text left alone. No UI stack.
+message(STATUS "  Building SpreadsheetMoveReferencesTest...")
+add_executable(SpreadsheetMoveReferencesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetMoveReferencesTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetMoveReferencesTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetMoveReferencesTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetMoveReferencesTest PRIVATE UltraLocalisation)
+set_target_properties(SpreadsheetMoveReferencesTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetMoveReferencesTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetMoveReferencesTest
+    COMMAND SpreadsheetMoveReferencesTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetMoveReferencesTest")
+
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the
 # row-wide fallback, the header tooltip on ListColumnDef, and the ToolTipRole

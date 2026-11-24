@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.6.0 - inserting / deleting rows and columns moves the references in every sheet's formulas
 // Version: 1.5.0 - data validation enforced on a typed entry (onValidationFailed, Retry / Cancel / Accept),
 //                  a list rule's dropdown (ShowValidationListAt, Alt+Down); a typed value is an undo step
 // Version: 1.4.0 - LoadFromFile / LoadODS open a password-protected .ods with its password
@@ -795,6 +796,10 @@ private:
     std::string GenerateUniqueSheetName() const;
     void UpdateFormulaBar();
     void CommitEdit();
+    // After rows or columns were inserted (count > 0) or deleted (count < 0)
+    // on `changed`: the other sheets' formulas that name it, and the
+    // workbook's names on it, move with its cells.
+    void MoveReferencesToSheet(const SpreadsheetSheet& changed, bool columns, int at, int count);
     // A typed plain value into a cell of the active sheet: an undo step,
     // onCellChange, and the formulas that read it recalculated.
     void SetCellFromEntry(int row, int col, const std::string& text);

@@ -5,8 +5,8 @@
 // put them right. Driven on the grid with no window:
 //  - a value changed after the formula, and a formula set before its input;
 //  - chains (A1 -> B1 -> C1), ranges (SUM), other sheets, named ranges;
-//  - typing, clearing, paste, undo, inserting a row, sorting, and a write
-//    straight into the sheet;
+//  - typing, clearing, paste, undo, inserting and deleting rows (here and on
+//    a sheet other formulas name), sorting, and a write into the sheet;
 //  - formulas that read nothing that changed keep their result.
 //
 // Usage: SpreadsheetRecalcTest
@@ -116,6 +116,28 @@ int main() {
         Check(book->GetCellNumber(0, 2) == 13.0, "a formula naming a range follows it" + Shown(*book, 0, 2));
     }
 
+    std::printf("\n-- inserting rows on a sheet other formulas name --\n");
+    {
+        auto book = std::make_shared<UltraCanvasSpreadsheet>("book", 0, 0, 900, 600);
+        book->AddSheet("Data");
+        book->SetActiveSheet(1);
+        book->SetCellValue(0, 0, 3.0);                 // Data.A1
+        book->SetActiveSheet(0);
+        book->SetCellFormula(0, 0, "=Data.A1*10");     // Sheet1.A1
+        book->SetCellValue(2, 0, 5.0);                 // Sheet1.A3: same address, other sheet
+        book->SetCellFormula(0, 1, "=A3+1");           // Sheet1.B1
+        book->SetActiveSheet(1);
+        book->InsertRowsAt(0, 2);                      // Data.A1 -> Data.A3
+        book->SetActiveSheet(0);
+        Check(book->GetCellFormula(0, 0) == "=Data.A3*10", "Sheet1 follows Data's cell [" + book->GetCellFormula(0, 0) + "]");
+        Check(book->GetCellFormula(0, 1) == "=A3+1", "and its own A3 stays");
+        Check(book->GetCellNumber(0, 0) == 30.0 && book->GetCellNumber(0, 1) == 6.0, "with the same results");
+        book->SetActiveSheet(1);
+        book->DeleteRowsAt(2, 1);                      // Data.A3 deleted
+        book->SetActiveSheet(0);
+        Check(book->GetCellFormula(0, 0) == "=#REF!*10", "deleting it makes the reference #REF! [" + book->GetCellFormula(0, 0) + "]");
+    }
+
     std::printf("\n-- every way a cell changes --\n");
     {
         auto grid = std::make_shared<UltraCanvasSpreadsheet>("grid", 0, 0, 900, 600);
@@ -142,11 +164,14 @@ int main() {
         grid->Recalculate();
         Check(grid->GetCellNumber(0, 1) == 30.0, "a write into the sheet itself" + Shown(*grid, 0, 1));
 
-        // Inserting a row moves B1 to B2 but does not rewrite its =A1*3
-        // (a separate fault); what is tested here is that it still follows A1.
+        // Inserting a row moves A1 and B1 down, and B1's =A1*3 with them.
         grid->InsertRowsAt(0, 1);
-        grid->SetCellValue(0, 0, 11.0);
-        Check(grid->GetCellNumber(1, 1) == 33.0, "after inserting a row" + Shown(*grid, 1, 1));
+        Check(grid->GetCellFormula(1, 1) == "=A2*3", "B2 now reads A2 [" + grid->GetCellFormula(1, 1) + "]");
+        grid->SetCellValue(1, 0, 11.0);
+        Check(grid->GetCellNumber(1, 1) == 33.0, "and follows it after the insert" + Shown(*grid, 1, 1));
+        grid->DeleteRowsAt(0, 1);
+        Check(grid->GetCellFormula(0, 1) == "=A1*3" && grid->GetCellNumber(0, 1) == 33.0,
+              "deleting the row moves both back" + Shown(*grid, 0, 1));
 
         // Sorting moves the inputs of a formula outside the block.
         grid->SetCellValue(10, 0, 3.0);                // A11
