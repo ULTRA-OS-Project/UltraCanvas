@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.51.0 - Edit in UltraPaint: a picture's context menu starts UltraPaint with it
+//                  (BuildOpenMenuItems, on every folder display's openMenuProvider)
 // Version: 1.50.0 - IsOpen (MobilePC hands a later start's folders to an open window)
 // Version: 1.49.1 - the preview pane is left as it is while a selection rectangle is drawn in the
 //                  folder display, and follows the selection once it is let go
@@ -175,7 +177,8 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
-#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files
+#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files, UltraPaint to edit a picture
+#include "UltraCanvasHostedApps.h"     // UltraPaint carried by the same program (MobilePC)
 #include "UltraCanvasDiskCache.h"         // the cache entry of Extras > Open location
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
@@ -2070,6 +2073,34 @@ bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
         return false;
     }
     return true;
+}
+
+std::vector<MenuItemData> UltraFilerWindow::BuildOpenMenuItems(const std::vector<FilerEntry>& targets) {
+    // Pictures only - every one of the selection, each a file on the disk
+    // (an entry inside an archive or on a remote drive is a path UltraPaint
+    // cannot open) - and only where UltraPaint can be started: installed
+    // beside UltraFiler or on the PATH, or carried by the same program
+    // (MobilePC).
+    if (targets.empty()) return {};
+    std::vector<std::string> paths;
+    for (const FilerEntry& entry : targets) {
+        if (entry.isDirectory || entry.isShortcut || entry.category != FilerFileCategory::Image) return {};
+        std::error_code ec;
+        if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) || ec) return {};
+        paths.push_back(entry.path);
+    }
+    if (UltraCanvasHostedApps::IdForProgram("UltraPaint").empty() &&
+        UltraCanvasDesktopShell::FindProgram("UltraPaint").empty())
+        return {};
+    MenuItemData edit = MenuItemData::Action(
+            Tr("Edit in UltraPaint"),
+            NormalizePath(GetResourcesDir() + "media/appicon/UltraPaint.png"),
+            [this, paths]() {
+                std::string error;
+                if (!UltraCanvasDesktopShell::LaunchProgram("UltraPaint", paths, &error) && statusLabel)
+                    statusLabel->SetText(TrF("UltraPaint could not be started: {0}", error));
+            });
+    return {edit};
 }
 
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
@@ -7236,6 +7267,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    tab->filer->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
     WireFavoriteMarkProvider(tab->filer.get());
@@ -7561,6 +7593,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        histFiler->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
         WireFavoriteMarkProvider(histFiler.get());
@@ -7825,6 +7858,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        favFiler->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
         WireDisplayFormatCallbacks(favFiler.get());
         WireFolderIconProvider(favFiler.get());
         favFiler->onViewTypeChanged = [this](FilerViewType) {
@@ -7965,6 +7999,7 @@ void UltraFilerWindow::BuildComputerPage() {
     computerFolders->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     computerFolders->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     computerFolders->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    computerFolders->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
     WireDisplayFormatCallbacks(computerFolders.get());
     // The tiles carry the tree's icons for these folders - the house for
     // Home, the cloud for a cloud folder - and otherwise whatever the folder

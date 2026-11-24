@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.60.0 - openMenuProvider: a host's entries right after "Open with" in a file's
+//                  context menu (UltraFiler's "Edit in UltraPaint")
 // Version: 1.59.0 - IsDragInProgress; letting a selection rectangle go fires onSelectionChanged once
 //                  more, so a host that waited for the drag to end sees the final selection
 // Version: 1.58.0 - folderIconIsLineArt: a one-colour folder icon drawn in the view's text colour,
@@ -187,7 +189,7 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -2162,6 +2164,12 @@ namespace UltraCanvas {
         // that noticed it, so the host may set label text from it.
         std::function<void()> onSelectionInfoChanged;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
+        // Host entries placed right after "Open with" in the context menu of
+        // a file or a selection, asked every time the menu opens with the
+        // entries it acts on - so a host offers an entry only where it applies
+        // (UltraFiler's "Edit in UltraPaint" for pictures); an empty result
+        // adds nothing. Not asked for the menu of the folder's background.
+        std::function<std::vector<MenuItemData>(const std::vector<FilerEntry>& targets)> openMenuProvider;
         // Host-provided tail of the context menu's Extras submenu, called
         // every time the menu opens (so item flags can follow the host's
         // state); non-empty results are appended behind a separator. The

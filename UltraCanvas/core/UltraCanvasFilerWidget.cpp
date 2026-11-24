@@ -51,6 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.60.0 - openMenuProvider: the host's entries after "Open with"
 // Version: 1.59.0 - letting a selection rectangle go fires onSelectionChanged once more (IsDragInProgress)
 // Version: 1.57.0 - Run in background: the progress window's button, onBackgroundProgress on every
 //                  tick, BringOperationToFront; queued archive jobs stay in the background
@@ -192,7 +193,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -17207,6 +17208,11 @@ namespace UltraCanvas {
                 openWith.onClick = [this]() { OpenSelectionWithDefaultApp(); };
             }
             menu.AddItem(openWith);
+        }
+        // The host's own ways to open these (openMenuProvider), beside the
+        // system's.
+        if (hasSel && openMenuProvider) {
+            for (const MenuItemData& item : openMenuProvider(targets)) menu.AddItem(item);
         }
         // A program inside an archive: the one way to start it. Only shown
         // where it applies - greyed out on every other entry, it would be
