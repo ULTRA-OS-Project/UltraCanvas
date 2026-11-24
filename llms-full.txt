@@ -27882,6 +27882,7 @@ never to "every desktop".
 | `GetScreenSize(w, h)` | The default screen's size in pixels; on Windows the primary monitor's, the one at 0,0 that a desktop window covers. |
 | `ListScreens()` | Every monitor as a `DesktopScreenInfo` — `x`, `y`, `width`, `height` in physical pixels, `primary`, and `number` - the system's own number for the monitor where it gives one (Windows: n of `\\.\DISPLAYn`, as its display settings number them; 0 on X11) — the primary first, the rest left to right. On Windows `EnumDisplayMonitors`, the primary at 0,0 and a monitor left of or above it at negative coordinates; on X11 RandR's monitors in root-window coordinates, and while nobody chose a primary the one at the origin. Where the platform tells no monitors apart, the one screen `GetScreenSize` reports; a monitor that spans others (a server's automatic whole-screen monitor listed beside ones set with `xrandr --setmonitor`) is left out. A desktop puts its own window on the primary monitor through `WindowConfig::desktopArea` and covers the others with windows of `WindowType::Desktop` placed the same way — UltraDesktop puts its wallpaper there, so a monitor is not left black. |
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
+| `KeepMinimizedWindowsHidden()` | For a desktop that is the session's shell: on Windows without Explorer's taskbar, minimized windows kept out of sight as Explorer keeps them, instead of parked as small title bars along the bottom of the screen (Windows' behaviour when no shell says otherwise). Switches `ARW_HIDE` on for the session whenever something turned it off - an Explorer started and ended during the session puts it back as it ends - and moves a minimized window parked meanwhile off the screen, still minimized. Cheap enough every few seconds; UltraDesktop calls it every two. False beside Explorer's taskbar and on other systems. |
 | `CanCaptureScreen()` | Whether this build can capture the screen at all: Linux (X11, and Wayland through the desktop portal), the BSDs, Windows and macOS; false on Android and WebAssembly, where a screenshot button is better not shown (ChatCube hides its). True does not promise a capture - it can still fail, with its reason (macOS before the person allows it). To let the person choose an area of the capture, see [UltraCanvasScreenAreaPicker](UltraCanvasScreenAreaPicker.md). |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
@@ -116153,6 +116154,8 @@ From then on, UltraDesktop is the whole desktop:
 - **Win+V** opens UltraDesktop's clipboard history;
 - the **wallpaper** covers every monitor, and a monitor you plug in is covered
   within a few seconds;
+- **minimized windows** go to their taskbar buttons only, as with Explorer,
+  never to small title bars along the bottom of the screen;
 - the **⚙ right-click menu** offers **Sign out...**, **Restart...** and **Shut
   down...**. Each asks first, and open programs are asked to close.
 
@@ -117061,6 +117064,29 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/minimized-windows-not-parked.md
+==============================================================================
+
+- **Instead of Explorer, minimized windows no longer appear as title bars
+  along the bottom of the screen.** UltraDesktop now keeps them out of sight
+  itself, every two seconds (`UltraCanvasDesktopShell::KeepMinimizedWindowsHidden`),
+  as Explorer does: they are on the taskbar's buttons only, also after
+  Explorer was started and ended during the session, which switched Windows
+  back to parking them.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/tray-icon-letter-after-picture.md
+==============================================================================
+
+- **A tray icon no longer shows its initial beside its picture.** A program
+  that adds its notification-area icon before its picture is ready got a
+  button with its initial ("W" for WhatsApp); when the picture came, it was
+  put beside the letter instead of in its place. Now the letter stands in
+  only while there is no picture. The running applications' buttons do the
+  same: an icon found after the button was made (a Store application's)
+  replaces the letter, which they never did before - the letter stayed.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
