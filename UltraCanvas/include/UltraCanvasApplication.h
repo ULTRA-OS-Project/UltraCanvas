@@ -730,9 +730,9 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplica
         #include "../OS/MacOS/UltraCanvasMacOSApplication.h"
         namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasMacOSApplication; }
     #elif TARGET_OS_IPHONE
-        // iOS: no backend is written yet (there is no OS/iOS/) - say so here
-        // rather than fail on a missing include. What one needs:
-        // Docs/UltraCanvas/iOSPortInvestigation.md.
+        // iOS: no backend is written yet (OS/iOS/ holds only the dependency
+        // packaging) - say so here rather than fail on a missing include.
+        // What one needs: Docs/UltraCanvas/iOSPortInvestigation.md.
         #error "iOS backend not implemented yet - see Docs/UltraCanvas/iOSPortInvestigation.md"
     #else
         #error "Unsupported Apple platform"

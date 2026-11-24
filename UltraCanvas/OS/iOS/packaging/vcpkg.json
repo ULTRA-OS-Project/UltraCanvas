@@ -1,0 +1,61 @@
+{
+  "$comment": [
+    "Dependency manifest for cross-compiling UltraCanvas's rendering stack to",
+    "iOS. Consumed by scripts/ios-bootstrap-sysroot.sh, which",
+    ".github/workflows/ios-build.yml runs for the simulator and for devices.",
+    "",
+    "The same set as the Android manifest (UltraCanvas/OS/Android/packaging/",
+    "vcpkg.json): each entry is a pkg_check_modules call in",
+    "UltraCanvas/CMakeLists.txt, and libvips is part of UltraCanvas on every",
+    "platform, with the codecs the Android build carries. cairo is built",
+    "without its Quartz surface and fonts (vcpkg turns those on for macOS",
+    "only): cairo-quartz.h includes ApplicationServices, which iOS lacks, and",
+    "the iOS backend presents an image surface (iOSPortInvestigation.md 3.3).",
+    "Deliberately absent, as on Android: GTK3/X11 and GStreamer (video is",
+    "AVFoundation). See iOSPortInvestigation.md section 4."
+  ],
+  "name": "ultracanvas-ios",
+  "version-string": "0.1.0",
+  "description": "Cross-compiled dependency sysroot for the UltraCanvas iOS backend",
+  "dependencies": [
+    "cairo",
+    "pango",
+    "fontconfig",
+    "freetype",
+    "harfbuzz",
+    "glib",
+    "tinyxml2",
+    "fmt",
+    {
+      "name": "libvips",
+      "features": [
+        "cplusplus",
+        "exif",
+        "jpeg",
+        "lcms",
+        "nsgif",
+        "png",
+        "ppm",
+        "rsvg",
+        "tiff",
+        "webp"
+      ]
+    }
+  ],
+  "features": {
+    "net": {
+      "description": "UltraNet support (-DULTRACANVAS_ENABLE_NET=ON): OpenSSL for TLS (the macOS SecureTransport file does not build for iOS), c-ares for DNS, the vendored curl's dependencies.",
+      "dependencies": [
+        "openssl",
+        "c-ares",
+        {
+          "name": "curl",
+          "features": [
+            "openssl",
+            "websockets"
+          ]
+        }
+      ]
+    }
+  }
+}

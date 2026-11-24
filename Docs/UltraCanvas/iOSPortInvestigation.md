@@ -1,8 +1,12 @@
 # iOS Port Investigation
 
-**Status:** Investigation / planning document. Written before any iOS code
-exists: there is no `UltraCanvas/OS/iOS/`, no iOS CMake branch beyond the one
-that stops the configure, no dependency build and no CI job. An iOS compile
+**Status:** Investigation / planning document, written before any iOS code
+existed. **Phase 1 (§8) has landed, but it has not yet built green in CI:**
+the dependency sysroot (`scripts/ios-bootstrap-sysroot.sh`,
+`UltraCanvas/OS/iOS/packaging/`) and `.github/workflows/ios-build.yml`, which
+builds it for the simulator and for devices on GitHub's macOS runner and
+checks it with `scripts/ios-check-sysroot.sh`. There is still no backend:
+`OS/iOS/` holds only that packaging. An iOS compile
 stops at `#error "iOS backend not implemented yet"` in
 `include/UltraCanvasWindow.h` and `include/UltraCanvasApplication.h`, and an
 iOS configure (`-DCMAKE_SYSTEM_NAME=iOS`, and tvOS, visionOS and watchOS too)
@@ -301,9 +305,14 @@ route with vcpkg's iOS triplets.
 | manifest | `UltraCanvas/OS/iOS/packaging/vcpkg.json` | the Android manifest: cairo, pango, fontconfig, freetype, harfbuzz, glib, tinyxml2, fmt, libvips; then openssl, c-ares, sqlite3 |
 | triplets | `UltraCanvas/OS/iOS/packaging/triplets/arm64-ios-ultracanvas.cmake`, `arm64-ios-simulator-ultracanvas.cmake` | `MacOS/deps/triplets/arm64-osx-ultracanvas.cmake` |
 | overlay ports | reuse `MacOS/deps/ports/` (libvips, librevenge, mupdf, zbar) where they apply | the macOS overlays |
-| driver | `scripts/ios-bootstrap-sysroot.sh` | `scripts/android-bootstrap-sysroot.sh` and `scripts/macos-deps.sh` (same pinned vcpkg commit) |
+| driver | `scripts/ios-bootstrap-sysroot.sh [--with-net] [simulator\|device]` | `scripts/android-bootstrap-sysroot.sh` and `scripts/macos-deps.sh` (same pinned vcpkg commit) |
+| check | `scripts/ios-check-sysroot.sh <prefix> <simulator\|device>`: every archive's `LC_BUILD_VERSION` platform (7 simulator, 2 device), no `.dylib`, the `.pc` files the core asks for, no `cairo-quartz.h` | - |
+| CI | `.github/workflows/ios-build.yml`: both triplets on `macos-15`, vcpkg binary cache | `.github/workflows/android-build.yml` |
 
-A triplet, in outline (not yet written or tried):
+**Status:** written, as laid out above. The manifest is the Android set, with
+OpenSSL, c-ares and curl behind its `net` feature. Only the libvips overlay is
+reused; librevenge, mupdf and zbar wait for the plug-ins that need them. The
+triplets are below:
 
 ```text
 set(VCPKG_TARGET_ARCHITECTURE arm64)
@@ -429,9 +438,9 @@ and these follow:
    `-dead_strip_dylibs` link option, OBJCXX) and stay as they are. Some mean
    macOS (bundles, `Contents/MacOS`, notarisation, Homebrew) and become
    `APPLE AND NOT IOS`.
-4. **`cmake/UltraCanvasMacOSDeps.cmake`** returns early for `NOT APPLE`; it
-   must also return for `IOS` (it runs `brew --prefix`, whose answer is
-   macOS libraries). A sibling `cmake/UltraCanvasiOSDeps.cmake` points
+4. **`cmake/UltraCanvasMacOSDeps.cmake`** runs `brew --prefix`, whose answer
+   is macOS libraries. It now returns early for the four UIKit systems as
+   well as for `NOT APPLE` (phase 1). A sibling `cmake/UltraCanvasiOSDeps.cmake` points
    `CMAKE_FIND_ROOT_PATH` and `PKG_CONFIG_LIBDIR` at the vcpkg prefix (§4),
    as the WebAssembly build does with `cmake/UltraCanvasWasmSysroot.cmake`.
 5. **Defaults:** `ULTRACANVAS_BUILD_SHARED` OFF, chart runtime modules OFF,
@@ -481,16 +490,19 @@ cmake -B build-ios-sim -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=ipho
 | Phase | Delivers | Exit test |
 |---|---|---|
 | 0 | this document; the `#error` and `FATAL_ERROR` guards | done |
-| 1 | `scripts/ios-bootstrap-sysroot.sh`, triplets and manifest; the core library compiles and links for `arm64-ios-simulator` with GL off; the `__APPLE__` audit of §2 | `ios-build.yml` builds the core library |
-| 2 | `OS/iOS/` application, window, main, touch, run loop (§3.2 option A), presentation (§3.3); DemoApp as an `.app` | DemoApp starts in the simulator, draws, and scrolls under a simulated touch |
+| 1 | `scripts/ios-bootstrap-sysroot.sh`, triplets and manifest, `scripts/ios-check-sysroot.sh`, `ios-build.yml`; `cmake/UltraCanvasMacOSDeps.cmake` skips iOS | `ios-build.yml` builds both sysroots and the check passes. **Landed; first CI run pending** |
+| 2 | the `__APPLE__` audit of §2 and the CMake branch of §6.2; `OS/iOS/` application, window, main, touch, run loop (§3.2 option A), presentation (§3.3); the core library for `arm64-ios-simulator` with GL off; DemoApp as an `.app` | `ios-build.yml` builds the core library and DemoApp; DemoApp starts in the simulator, draws, and scrolls under a simulated touch |
 | 3 | text input with composition, clipboard, message dialogs, document picker open and `SaveContent`, host appearance, language | a text field takes input from the software keyboard in the simulator; a document opens and saves through the picker |
 | 4 | UltraNet (OpenSSL TLS with system roots, c-ares), audio (session category), AVFoundation video | a TLS fetch succeeds; a video plays |
 | 5 | GL surfaces through ANGLE/Metal (§5 option 3); option B run loop if frame pacing is wanted; iPad pointer and Pencil | the GL demo pages render |
 | 6 | a device build, signing documented, the privacy manifest | runs on an iPhone and an iPad |
 
-Phase 1 is almost entirely build work and can proceed without a single line
-of UIKit. It also tells, early, whether glib and libvips are a day's work on
-iOS or a week's.
+Phase 1 is entirely build work and needs no UIKit. It also tells, early,
+whether glib and libvips are a day's work on iOS or a week's. Compiling the
+core library moved to phase 2. The core includes `UltraCanvasWindow.h`
+everywhere, and that header needs a backend's window class to alias, so the
+core cannot compile for iOS until `OS/iOS/` has at least its application and
+window.
 
 ---
 

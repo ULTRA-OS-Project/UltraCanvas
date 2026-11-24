@@ -1,0 +1,159 @@
+name: iOS build
+
+# Phase 1 of Docs/UltraCanvas/iOSPortInvestigation.md: the dependency stack
+# for iOS. scripts/ios-bootstrap-sysroot.sh builds cairo, pango, glib,
+# harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips (with the codecs
+# the Android build carries) as static libraries with vcpkg and the runner's
+# Xcode, once for the iOS simulator and once for devices, and
+# scripts/ios-check-sysroot.sh checks every archive was built for the
+# platform its triplet names and every pkg-config file the core asks for is
+# there.
+#
+# There is no iOS backend yet (UltraCanvas/CMakeLists.txt stops an iOS
+# configure), so nothing is compiled against the sysroot here. Phase 2 adds
+# the core library and DemoApp to this workflow.
+#
+# Runs on a pull request, and on a push to main, that touches what the iOS
+# sysroot is made of (the paths below), and by hand from the Actions tab
+# against any branch. A cold build takes the better part of an hour per
+# triplet; vcpkg's binary cache keeps every library built, so a warm run
+# builds only what changed.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - 'scripts/ios-bootstrap-sysroot.sh'
+      - 'scripts/ios-check-sysroot.sh'
+      - 'UltraCanvas/OS/iOS/packaging/**'
+      - 'MacOS/deps/ports/libvips/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - 'scripts/ios-bootstrap-sysroot.sh'
+      - 'scripts/ios-check-sysroot.sh'
+      - 'UltraCanvas/OS/iOS/packaging/**'
+      - 'MacOS/deps/ports/libvips/**'
+  workflow_dispatch:
+
+# A newer push cancels a pull request's run in progress; on main nothing is
+# cancelled (as android-build.yml).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  sysroot:
+    name: ios sysroot (${{ matrix.kind }})
+    # Apple silicon: the simulator triplet is arm64, and the host tools vcpkg
+    # builds (pkgconf, glib's generators) run natively.
+    runs-on: macos-15
+    timeout-minutes: 180
+    strategy:
+      # One SDK failing says nothing about the other; let both finish.
+      fail-fast: false
+      matrix:
+        include:
+          - kind: simulator
+            triplet: arm64-ios-simulator-ultracanvas
+          - kind: device
+            triplet: arm64-ios-ultracanvas
+    env:
+      KIND: ${{ matrix.kind }}
+      TRIPLET: ${{ matrix.triplet }}
+      VCPKG_CACHE: ${{ github.workspace }}/.vcpkg/binary-cache
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.vcpkg/downloads
+    steps:
+      - uses: actions/checkout@v5
+
+      # What vcpkg's ports build with on macOS besides Xcode's compilers (the
+      # same list build.yml's macOS rows install).
+      - name: Install host tools
+        run: |
+          brew untap aws/tap 2>/dev/null || true
+          brew install pkg-config autoconf autoconf-archive automake libtool nasm
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      # vcpkg's binary cache, keyed by the manifest, the triplets, the libvips
+      # overlay and the script (which pins the vcpkg commit); restore-keys
+      # falls back to the newest. Saved only when a run built something, a
+      # failed run too, so the libraries it did build are kept (the reasons
+      # are android-build.yml's). The key carries the run attempt: a key can
+      # be written once.
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.VCPKG_CACHE }}
+          key: ios-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/iOS/packaging/**', 'MacOS/deps/ports/libvips/**', 'scripts/ios-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ios-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/iOS/packaging/**', 'MacOS/deps/ports/libvips/**', 'scripts/ios-bootstrap-sysroot.sh') }}-
+            ios-vcpkg-${{ env.TRIPLET }}-
+
+      - name: Count the restored cache
+        id: cache-before
+        run: |
+          mkdir -p "$VCPKG_CACHE" "$VCPKG_DOWNLOADS"
+          echo "files=$(find "$VCPKG_CACHE" -type f | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Build the sysroot
+        id: sysroot
+        timeout-minutes: 150
+        env:
+          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg/binary-cache,readwrite
+          # Report every port that fails in one run, not just the first.
+          UC_VCPKG_KEEP_GOING: "1"
+          # Outside the workspace: CMake refuses to export a link directory
+          # from inside the source tree.
+          UC_IOS_SYSROOT: ${{ runner.temp }}/ios-sysroot
+        run: |
+          prefix=$(scripts/ios-bootstrap-sysroot.sh "$KIND" | tail -n 1)
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "Libraries for $KIND in $prefix"
+
+      - name: Count the cache after the build
+        id: cache-after
+        if: always()
+        run: |
+          mkdir -p "$VCPKG_CACHE"
+          echo "files=$(find "$VCPKG_CACHE" -type f | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.cache-after.outputs.files != steps.cache-before.outputs.files
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.VCPKG_CACHE }}
+          key: ios-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/iOS/packaging/**', 'MacOS/deps/ports/libvips/**', 'scripts/ios-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Check the sysroot
+        run: scripts/ios-check-sysroot.sh "${{ steps.sysroot.outputs.prefix }}" "$KIND"
+
+      # What is in it, for the run's summary: each library's pkg-config
+      # version, so a later phase can see what it links against.
+      - name: List the libraries
+        if: success()
+        run: |
+          prefix="${{ steps.sysroot.outputs.prefix }}"
+          export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+          {
+            echo "### iOS sysroot ($KIND, $TRIPLET)"
+            echo
+            echo "| module | version |"
+            echo "|---|---|"
+            for pc in $(pkg-config --list-package-names | sort); do
+              echo "| $pc | $(pkg-config --modversion "$pc") |"
+            done
+            echo
+            echo "$(find "$prefix/lib" -maxdepth 1 -name '*.a' | wc -l | tr -d ' ') static archives, $(du -sh "$prefix/lib" | cut -f1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # What vcpkg's logs say when a port fails: the build trees hold them.
+      - name: Upload vcpkg logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-vcpkg-logs-${{ matrix.kind }}
+          path: |
+            .vcpkg/vcpkg/buildtrees/*/*.log
+          if-no-files-found: ignore
