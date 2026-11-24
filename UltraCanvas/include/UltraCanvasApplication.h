@@ -1,7 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.19.1 - iOS: an #error naming the missing backend, not an include of OS/iOS/;
-//                  iOS left out of the supported-platforms #error
+// Version: 1.19.1 - iOS: the UIKit backend in OS/iOS; fontconfig paths compiled for iOS too
 // Version: 1.19.0 - Appearance.conf over the host, the settings watcher (a change reaches a running application)
 // Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
 // Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
@@ -66,7 +65,7 @@ namespace UltraCanvas {
     // a name from kEmbeddedAllFonts appends to it as it is.
     std::string GetBundledFontsDir();
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
     // The platform's generic family aliases - "sans-serif", "sans", "serif",
     // "monospace" and Pango's "emoji" onto real families - as a <fontconfig>
     // document of <alias> elements alone. The fonts.conf the framework writes
@@ -730,15 +729,17 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplica
         #include "../OS/MacOS/UltraCanvasMacOSApplication.h"
         namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasMacOSApplication; }
     #elif TARGET_OS_IPHONE
-        // iOS: no backend is written yet (OS/iOS/ holds only the dependency
-        // packaging) - say so here rather than fail on a missing include.
-        // What one needs: Docs/UltraCanvas/iOSPortInvestigation.md.
-        #error "iOS backend not implemented yet - see Docs/UltraCanvas/iOSPortInvestigation.md"
+        // iOS: the UIKit backend (Docs/UltraCanvas/iOSPortInvestigation.md).
+        #if !TARGET_OS_IOS
+            #error "No backend for this Apple platform: OS/iOS covers iOS only"
+        #endif
+        #include "../OS/iOS/UltraCanvasiOSApplication.h"
+        namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasiOSApplication; }
     #else
         #error "Unsupported Apple platform"
     #endif
 #else
-    #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, Android, Web/WASM, Unix"
+    #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif
 
 #endif

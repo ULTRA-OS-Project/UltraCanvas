@@ -121,7 +121,8 @@ namespace UltraCanvas {
 // an icon theme this could read, so they get inline no-op backends and the
 // caller keeps its own icons. Every other platform ships one of the three
 // real backends listed at the top of this file.
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+// (iOS too: no icon theme, and no OS/MacOS file icons there.)
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || defined(ULTRACANVAS_IOS)
 namespace UltraCanvas {
 
     bool HostFileIconsAvailable() { return false; }

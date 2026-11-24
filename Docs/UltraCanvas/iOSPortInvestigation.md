@@ -1,17 +1,16 @@
 # iOS Port Investigation
 
 **Status:** Investigation / planning document, written before any iOS code
-existed. **Phase 1 (§8) has landed, but it has not yet built green in CI:**
-the dependency sysroot (`scripts/ios-bootstrap-sysroot.sh`,
-`UltraCanvas/OS/iOS/packaging/`) and `.github/workflows/ios-build.yml`, which
-builds it for the simulator and for devices on GitHub's macOS runner and
-checks it with `scripts/ios-check-sysroot.sh`. There is still no backend:
-`OS/iOS/` holds only that packaging. An iOS compile
-stops at `#error "iOS backend not implemented yet"` in
-`include/UltraCanvasWindow.h` and `include/UltraCanvasApplication.h`, and an
-iOS configure (`-DCMAKE_SYSTEM_NAME=iOS`, and tvOS, visionOS and watchOS too)
-stops in the platform detection of
-`UltraCanvas/CMakeLists.txt` with a message pointing here.
+existed. **Phases 1 and 2 (§8) are written but have not yet built green in
+CI.** Phase 1 is the dependency sysroot: `scripts/ios-bootstrap-sysroot.sh`
+and `UltraCanvas/OS/iOS/packaging/`, checked by `scripts/ios-check-sysroot.sh`.
+Phase 2 is the UIKit backend in `UltraCanvas/OS/iOS/` (its
+[README](../../UltraCanvas/OS/iOS/README.md) says what is there), the iOS
+branch of the CMake files, and DemoApp as `UltraCanvasDemo.app`.
+`.github/workflows/ios-build.yml` builds the sysroot for the simulator and
+for devices on GitHub's macOS runner. It then compiles the core and DemoApp
+for the simulator and launches the app on a booted simulator. tvOS, visionOS
+and watchOS still stop: in the configure and at the headers' `#error`.
 **Goal:** Bring UltraCanvas to iPhone and iPad with the support the Android
 backend has: one full-screen surface, touch and gestures, the on-screen
 keyboard with composition, clipboard, message dialogs, document picking and
@@ -94,8 +93,8 @@ Platform selection is at compile time, by alias, exactly as described in
 
 | Site | Today | iOS needs |
 |---|---|---|
-| `include/UltraCanvasWindow.h:807` | `#elif TARGET_OS_IPHONE` → `#error` | include `../OS/iOS/UltraCanvasiOSWindow.h`, `using UltraCanvasWindow = UltraCanvasiOSWindow;` |
-| `include/UltraCanvasApplication.h:732` | `#elif TARGET_OS_IPHONE` → `#error` | include `../OS/iOS/UltraCanvasiOSApplication.h`, `using UltraCanvasApplication = UltraCanvasiOSApplication;` |
+| `include/UltraCanvasWindow.h:806` | `#elif TARGET_OS_IPHONE` → **done:** includes the iOS window | include `../OS/iOS/UltraCanvasiOSWindow.h`, `using UltraCanvasWindow = UltraCanvasiOSWindow;` |
+| `include/UltraCanvasApplication.h:731` | `#elif TARGET_OS_IPHONE` → **done:** includes the iOS application | include `../OS/iOS/UltraCanvasiOSApplication.h`, `using UltraCanvasApplication = UltraCanvasiOSApplication;` |
 | `include/UltraCanvasMenu.h:48` | macOS shortcut format excluded on iOS | nothing: the pass-through format is right for a hardware keyboard on iPad |
 | `include/UltraCanvasNativeHandle.h:24` | `__APPLE__` → opaque `void*` | nothing: a `UIView*` (or `UIWindow*`) fits the same opaque handle |
 | `include/UltraCanvasEvent.h:372` | `__APPLE__` native-handle arm | check it holds for a `UIView*` |
@@ -402,13 +401,33 @@ later if profiling asks for it. It is not a reason to start with Metal.
 
 ### 6.1 What is there now
 
-`UltraCanvas/CMakeLists.txt:180` tests
-`CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS|visionOS|watchOS)$"` before `APPLE`,
-which those toolchains also set, and stops with a `FATAL_ERROR` that names
-this document. Without it, such a configure picks `OS/MacOS` and fails much
-later on Cocoa, IOKit or CoreWLAN. The header `#error` catches the same four,
-since `TARGET_OS_IPHONE` is set on each of them. The root
-`CMakeLists.txt` already skips UltraStore when `IOS` is set (`:1038`).
+**Status: the branch of 6.2 below is written (phase 2).** `CMAKE_SYSTEM_NAME
+STREQUAL "iOS"` is tested before `APPLE`, which an iOS toolchain also sets,
+and selects `OS/iOS`. tvOS, visionOS and watchOS stop with a `FATAL_ERROR`
+that names this document, and the headers stop them with an `#error`. Without
+the test, such a configure picks `OS/MacOS` and fails much later on Cocoa,
+IOKit or CoreWLAN. The root `CMakeLists.txt` has an iOS defaults block like
+Android's: every application but DemoApp off, the plug-ins off, and the
+modules whose dependencies the sysroot lacks off.
+
+`ULTRACANVAS_IOS` is the compile definition the audit of §2 tests. It is set
+for every target and carried PUBLIC by the core, so a source tells macOS from
+iOS without including `<TargetConditionals.h>`. The sites it changed:
+
+- the fontconfig code in `core/UltraCanvasApplication.cpp`,
+  `core/UltraCanvasEmojiSettings.cpp` and `include/UltraCanvasApplication.h`,
+  compiled for iOS as well;
+- the no-op fallbacks in `core/UltraCanvasFileAssociations.cpp`,
+  `core/UltraCanvasHostFileIcons.cpp` and `core/UltraCanvasMacBundle.cpp`
+  (`ResolveFinderAlias`), compiled for iOS as well;
+- iOS's own clipboard arm in `core/UltraCanvasClipboard.cpp`;
+- `OpenURLiOS` in `core/UltraCanvasUtils.cpp`, since `system()` is
+  unavailable on iOS;
+- the hardware-info and network-monitor backends, excluded for iOS so it
+  links the core fallbacks;
+- the root `CMakeLists.txt`'s `ULTRACANVAS_HAS_NATIVE_*` platform tests,
+  which exclude iOS, as does the CUPS probe (the Mac's own `cups-config` would
+  answer for an iOS build).
 
 ### 6.2 What the branch becomes
 
@@ -491,7 +510,7 @@ cmake -B build-ios-sim -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=ipho
 |---|---|---|
 | 0 | this document; the `#error` and `FATAL_ERROR` guards | done |
 | 1 | `scripts/ios-bootstrap-sysroot.sh`, triplets and manifest, `scripts/ios-check-sysroot.sh`, `ios-build.yml`; `cmake/UltraCanvasMacOSDeps.cmake` skips iOS | `ios-build.yml` builds both sysroots and the check passes. **Landed; first CI run pending** |
-| 2 | the `__APPLE__` audit of §2 and the CMake branch of §6.2; `OS/iOS/` application, window, main, touch, run loop (§3.2 option A), presentation (§3.3); the core library for `arm64-ios-simulator` with GL off; DemoApp as an `.app` | `ios-build.yml` builds the core library and DemoApp; DemoApp starts in the simulator, draws, and scrolls under a simulated touch |
+| 2 | the `__APPLE__` audit of §2 and the CMake branch of §6.2; `OS/iOS/` application, window, main, touch, run loop (§3.2 option A), presentation (§3.3), clipboard (text, PNG), message and input dialogs (`UIAlertController`); the core library for `arm64-ios-simulator` with GL off; DemoApp as an `.app` | `ios-build.yml` builds the core library and DemoApp, and DemoApp is still running 45 s after launch on a simulator (screenshot in the run's artifact). **Written; first CI run pending.** Scrolling under a simulated touch is not tested yet |
 | 3 | text input with composition, clipboard, message dialogs, document picker open and `SaveContent`, host appearance, language | a text field takes input from the software keyboard in the simulator; a document opens and saves through the picker |
 | 4 | UltraNet (OpenSSL TLS with system roots, c-ares), audio (session category), AVFoundation video | a TLS fetch succeeds; a video plays |
 | 5 | GL surfaces through ANGLE/Metal (§5 option 3); option B run loop if frame pacing is wanted; iPad pointer and Pencil | the GL demo pages render |
@@ -510,8 +529,9 @@ window.
 
 | What | Where |
 |---|---|
-| iOS stops in the headers | `UltraCanvas/include/UltraCanvasWindow.h:807`, `UltraCanvas/include/UltraCanvasApplication.h:732` |
-| iOS stops in CMake | `UltraCanvas/CMakeLists.txt:180` |
+| iOS in the headers | `UltraCanvas/include/UltraCanvasWindow.h:806`, `UltraCanvas/include/UltraCanvasApplication.h:731` |
+| The iOS backend | `UltraCanvas/OS/iOS/` and its `README.md` |
+| iOS in CMake | `UltraCanvas/CMakeLists.txt:182` (detection), the root `CMakeLists.txt`'s *iOS DEFAULTS* block |
 | macOS backend (Objective-C++ template) | `UltraCanvas/OS/MacOS/` |
 | macOS run-loop wait and wakeup | `UltraCanvas/OS/MacOS/UltraCanvasMacOSApplication.mm:271-358` |
 | macOS view presentation | `UltraCanvas/OS/MacOS/UltraCanvasMacOSWindow.mm:106-121`, `:644` |

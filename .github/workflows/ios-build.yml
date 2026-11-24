@@ -9,9 +9,11 @@ name: iOS build
 # platform its triplet names and every pkg-config file the core asks for is
 # there.
 #
-# There is no iOS backend yet (UltraCanvas/CMakeLists.txt stops an iOS
-# configure), so nothing is compiled against the sysroot here. Phase 2 adds
-# the core library and DemoApp to this workflow.
+# Phase 2: against the simulator's sysroot, the core library (with the UIKit
+# backend in UltraCanvas/OS/iOS) and DemoApp as UltraCanvasDemo.app are
+# built, the app is installed on a booted simulator and launched, and the run
+# keeps its screenshot and output (the UltraCanvasDemo-ios-simulator
+# artifact). It fails when the app is not running a while after launch.
 #
 # Runs on a pull request, and on a push to main, that touches what the iOS
 # sysroot is made of (the paths below), and by hand from the Actions tab
@@ -25,16 +27,22 @@ on:
       - '.github/workflows/ios-build.yml'
       - 'scripts/ios-bootstrap-sysroot.sh'
       - 'scripts/ios-check-sysroot.sh'
-      - 'UltraCanvas/OS/iOS/packaging/**'
+      - 'UltraCanvas/OS/iOS/**'
       - 'MacOS/deps/ports/libvips/**'
+      - 'Apps/DemoApp/**'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
   push:
     branches: [main]
     paths:
       - '.github/workflows/ios-build.yml'
       - 'scripts/ios-bootstrap-sysroot.sh'
       - 'scripts/ios-check-sysroot.sh'
-      - 'UltraCanvas/OS/iOS/packaging/**'
+      - 'UltraCanvas/OS/iOS/**'
       - 'MacOS/deps/ports/libvips/**'
+      - 'Apps/DemoApp/**'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
   workflow_dispatch:
 
 # A newer push cancels a pull request's run in progress; on main nothing is
@@ -45,7 +53,7 @@ concurrency:
 
 jobs:
   sysroot:
-    name: ios sysroot (${{ matrix.kind }})
+    name: ios (${{ matrix.kind }})
     # Apple silicon: the simulator triplet is arm64, and the host tools vcpkg
     # builds (pkgconf, glib's generators) run natively.
     runs-on: macos-15
@@ -72,7 +80,7 @@ jobs:
       - name: Install host tools
         run: |
           brew untap aws/tap 2>/dev/null || true
-          brew install pkg-config autoconf autoconf-archive automake libtool nasm
+          brew install pkg-config autoconf autoconf-archive automake libtool nasm ninja
           xcrun --sdk iphonesimulator --show-sdk-version
           xcrun --sdk iphoneos --show-sdk-version
 
@@ -157,3 +165,97 @@ jobs:
           path: |
             .vcpkg/vcpkg/buildtrees/*/*.log
           if-no-files-found: ignore
+
+      # ===== Phase 2: the core and DemoApp, on the simulator =====
+      # pkg-config sees the sysroot only (PKG_CONFIG_LIBDIR, not _PATH), so
+      # nothing can fall back to a library Homebrew installed on the runner,
+      # and asks for the static link lists (the sysroot is static). Libraries
+      # found with find_library come from the sysroot or the SDK only.
+      - name: Configure (simulator)
+        if: matrix.kind == 'simulator'
+        run: |
+          prefix="${{ steps.sysroot.outputs.prefix }}"
+          sdk="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+          cmake -G Ninja -B build-ios \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DCMAKE_FIND_ROOT_PATH="$prefix;$sdk" \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+            -DPKG_CONFIG_ARGN=--static \
+            -DCMAKE_BUILD_TYPE=Release
+
+      # -k 0: past a failing source, so one run lists every one (the core
+      # had never been compiled for iOS before this workflow).
+      - name: Build the core library (simulator)
+        if: matrix.kind == 'simulator'
+        run: |
+          prefix="${{ steps.sysroot.outputs.prefix }}"
+          export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+          cmake --build build-ios --target UltraCanvas --parallel "$(sysctl -n hw.ncpu)" -- -k 0
+
+      - name: Build DemoApp (simulator)
+        if: matrix.kind == 'simulator'
+        run: |
+          prefix="${{ steps.sysroot.outputs.prefix }}"
+          export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+          cmake --build build-ios --target UltraCanvasDemo --parallel "$(sysctl -n hw.ncpu)" -- -k 0
+          app="$(find build-ios -maxdepth 3 -name UltraCanvasDemo.app -type d -print -quit)"
+          if [ -z "$app" ]; then
+            echo "::error::UltraCanvasDemo.app was not built"
+            exit 1
+          fi
+          echo "APP=$app" >> "$GITHUB_ENV"
+          du -sh "$app"
+          plutil -p "$app/Info.plist"
+
+      # The first iPhone simulator the runner's Xcode has, booted, the app
+      # installed and launched with its output in a file; after a while it
+      # must still be running, and the screenshot shows what it drew.
+      - name: Run DemoApp on a simulator
+        if: matrix.kind == 'simulator'
+        timeout-minutes: 20
+        run: |
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime in sorted(data, reverse=True):
+              if "iOS" not in runtime: continue
+              for d in data[runtime]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit(0)
+          sys.exit(1)')"
+          echo "Simulator: $udid"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$APP"
+          mkdir -p ios-run
+          xcrun simctl launch --terminate-running-process \
+            --stdout="$PWD/ios-run/stdout.txt" --stderr="$PWD/ios-run/stderr.txt" \
+            "$udid" org.ultraos.UltraCanvasDemo
+          sleep 45
+          xcrun simctl io "$udid" screenshot ios-run/screenshot.png || true
+          running=0
+          if xcrun simctl spawn "$udid" launchctl list | grep -q UltraCanvasDemo; then running=1; fi
+          echo "--- stdout"; tail -n 80 ios-run/stdout.txt || true
+          echo "--- stderr"; tail -n 80 ios-run/stderr.txt || true
+          xcrun simctl spawn "$udid" log show --last 2m --style compact \
+            --predicate 'process == "UltraCanvasDemo"' > ios-run/system-log.txt 2>&1 || true
+          if [ "$running" != 1 ]; then
+            echo "::error::UltraCanvasDemo is not running 45 s after launch (see the artifact's logs)"
+            ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i UltraCanvas || true
+            cp ~/Library/Logs/DiagnosticReports/UltraCanvasDemo* ios-run/ 2>/dev/null || true
+            exit 1
+          fi
+          echo "UltraCanvasDemo is running"
+
+      - name: Upload the simulator run
+        if: always() && matrix.kind == 'simulator'
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvasDemo-ios-simulator
+          path: ios-run/
+          if-no-files-found: ignore
+
