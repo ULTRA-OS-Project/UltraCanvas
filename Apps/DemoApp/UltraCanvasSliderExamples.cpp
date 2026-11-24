@@ -58,12 +58,12 @@ namespace UltraCanvas {
             auto ramp = CreateSlider("RampTicksSlider", 0, 0, 300, 40);
             ramp->SetRange(0.0f, 100.0f);
             ramp->SetStep(25.0f);
-            ramp->SetValue(100.0f);
+            ramp->SetValue(75.0f);
             ramp->SetTickPosition(SliderTickPosition::Before);
             ramp->SetTickStyle(SliderTickStyle::Ramp);
             ramp->SetTickInterval(25.0f);
             ramp->SetHandleShape(SliderHandleShape::Block);
-            ramp->SetHandleSize(12.0f);
+            ramp->SetHandleSize(14.0f);
             ramp->GetStyle().trackInset = true;
             ramp->GetStyle().tickLength = 12.0f;
             ramp->GetStyle().tickGap = 1.0f;
@@ -199,7 +199,7 @@ namespace UltraCanvas {
             ruler->SetRange(-45.0f, 45.0f);
             ruler->SetStep(0.5f);
             ruler->SetValue(12.0f);
-            ruler->SetTickInterval(5.0f, 1.0f);
+            ruler->SetTickInterval(10.0f, 2.0f);
             ruler->SetTickLabels(true);
             ruler->tickLabelFormatter = [](float value) { return std::to_string(static_cast<int>(value)) + "°"; };
             ruler->SetValueDisplay(SliderValueDisplay::Number);

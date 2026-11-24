@@ -698,7 +698,7 @@ auto straighten = CreateSlider("Straighten", 0, 0, 300, 64);
 straighten->SetSliderStyle(SliderStyle::Ruler);
 straighten->SetRange(-45.0f, 45.0f);
 straighten->SetStep(0.5f);
-straighten->SetTickInterval(5.0f, 1.0f);
+straighten->SetTickInterval(10.0f, 2.0f);
 straighten->SetTickLabels(true);
 straighten->SetValueDisplay(SliderValueDisplay::Number);
 straighten->SetPixelsPerUnit(6.0f);

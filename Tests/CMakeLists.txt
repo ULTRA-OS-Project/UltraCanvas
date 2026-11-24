@@ -1160,6 +1160,24 @@ else()
     message(STATUS "  WidgetAccessibilityTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== SLIDER DESIGNS TEST =====
+# The slider's tick positions and labels, named stops, the double-click reset,
+# and the relative drag of a knob and a ruler. Headless - no display needed.
+if(TARGET UltraCanvas)
+    add_executable(SliderDesignsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SliderDesignsTest.cpp
+    )
+    target_include_directories(SliderDesignsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SliderDesignsTest PRIVATE cxx_std_20)
+    target_link_libraries(SliderDesignsTest PRIVATE UltraCanvas)
+    set_target_properties(SliderDesignsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SliderDesignsTest COMMAND SliderDesignsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SliderDesignsTest")
+endif()
+
 # ===== CLIPBOARD HISTORY TEST =====
 # The clipboard history the desktop shows is newest first, and never records
 # content marked secret - a password copied from UltraPassword, or another

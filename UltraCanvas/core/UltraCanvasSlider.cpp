@@ -641,18 +641,25 @@ namespace UltraCanvas {
         }
         if (span / major > limit) return ticks;
 
+        // Ticks count from the minimum, so both ends get one - except on a
+        // ruler, whose scale reads in round numbers: there they fall on
+        // multiples of the interval (-45..45 by 10 marks -40, -30, ... 40).
+        const bool rounded = (sliderStyle == SliderStyle::Ruler);
         float minor = minorTickInterval;
         if (minor > 0.0f && minor < major && span / minor <= limit) {
-            int count = (int)std::floor(span / minor + 1e-4f);
+            float first = rounded ? std::ceil(minValue / minor - 1e-4f) * minor : minValue;
+            float majorBase = rounded ? 0.0f : minValue;
+            int count = (int)std::floor((maxValue - first) / minor + 1e-4f);
             for (int i = 0; i <= count; i++) {
-                float offset = i * minor;
-                float rem = std::fmod(offset, major);
+                float value = first + i * minor;
+                float rem = std::fmod(std::abs(value - majorBase), major);
                 bool isMajor = rem < minor * 0.01f || (major - rem) < minor * 0.01f;
-                ticks.emplace_back(minValue + offset, isMajor);
+                ticks.emplace_back(value, isMajor);
             }
         } else {
-            int count = (int)std::floor(span / major + 1e-4f);
-            for (int i = 0; i <= count; i++) ticks.emplace_back(minValue + i * major, true);
+            float first = rounded ? std::ceil(minValue / major - 1e-4f) * major : minValue;
+            int count = (int)std::floor((maxValue - first) / major + 1e-4f);
+            for (int i = 0; i <= count; i++) ticks.emplace_back(first + i * major, true);
         }
         return ticks;
     }

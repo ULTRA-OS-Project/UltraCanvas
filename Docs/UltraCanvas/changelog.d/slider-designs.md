@@ -30,3 +30,6 @@
     fields from the theme rather than a fixed pale yellow.
   - The demo app's slider page has a **Slider Designs** section with each of
     them live, and its first slider shows ticks.
+  - `Tests/SliderDesignsTest` covers where the ticks fall (a ruler's on round
+    numbers), their labels and named stops, the double-click reset, and the
+    relative drag of a knob and a ruler.
