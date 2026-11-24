@@ -18,6 +18,7 @@
 // resources are the bundle's share/ (core/UltraCanvasConfig.cpp's
 // exeDir + "/share/"), so path-based resource, settings and font code works
 // unchanged. See Docs/UltraCanvas/iOSPortInvestigation.md 3.2 (option A).
+// Version: 1.3.0 - UITextInput: composition (marked text) and the hardware keyboard through the text system while editing
 // Version: 1.2.0 - the UIScene lifecycle: a scene delegate owns the window and the foreground events
 // Version: 1.1.0 - the view takes the software keyboard (UIKeyInput) and hardware keys
 // Version: 1.0.0
@@ -31,6 +32,7 @@
 
 #import <UIKit/UIKit.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <sys/stat.h>
@@ -119,15 +121,52 @@ namespace {
     }
 }
 
-// ===== THE VIEW: touches and size changes =====
+// ===== TEXT POSITIONS =====
+// UITextInput speaks in positions and ranges of its own classes. The view's
+// "document" is only the text being composed (the marked text); everything
+// already typed lives in the framework's widget, which edits it itself. So a
+// position is an offset in UTF-16 units into the marked text.
 
-// The view is also the software keyboard's editor: UIKeyInput gives it the
-// typed text and the backspace, and it is first responder (which is what
-// raises the keyboard) only while a text widget holds the caret. No
-// UITextInput yet, so the keyboard has no marked text to compose into: CJK
-// input methods and autocorrection need it, and are switched off meanwhile
-// (iOSPortInvestigation.md 3.1).
-@interface UltraCanvasiOSView : UIView <UIKeyInput>
+@interface UltraCanvasiOSTextPosition : UITextPosition
+@property (nonatomic, readonly) NSInteger index;
++ (instancetype)at:(NSInteger)index;
+@end
+
+@implementation UltraCanvasiOSTextPosition
++ (instancetype)at:(NSInteger)index {
+    UltraCanvasiOSTextPosition* position = [[self alloc] init];
+    position->_index = index;
+    return position;
+}
+@end
+
+@interface UltraCanvasiOSTextRange : UITextRange
+@property (nonatomic, readonly) NSRange range;
++ (instancetype)with:(NSRange)range;
+@end
+
+@implementation UltraCanvasiOSTextRange
++ (instancetype)with:(NSRange)range {
+    UltraCanvasiOSTextRange* textRange = [[self alloc] init];
+    textRange->_range = range;
+    return textRange;
+}
+- (UITextPosition*)start { return [UltraCanvasiOSTextPosition at:_range.location]; }
+- (UITextPosition*)end { return [UltraCanvasiOSTextPosition at:NSMaxRange(_range)]; }
+- (BOOL)isEmpty { return _range.length == 0; }
+@end
+
+// ===== THE VIEW: touches, size changes, the keyboards =====
+
+// The view is also the keyboard's editor (UITextInput): it is first
+// responder - which is what raises the software keyboard - only while a text
+// widget holds the caret. Typed text is committed to the widget at once;
+// what an input method is still composing is the view's marked text, which
+// the widget sees as TextComposition events when it draws compositions
+// (CJK input methods, the hardware keyboard's dead keys). Autocorrection
+// stays off: it rewrites text already typed, and that text is the widget's,
+// not the view's (iOSPortInvestigation.md 3.1).
+@interface UltraCanvasiOSView : UIView <UITextInput>
 @property (nonatomic) BOOL wantsKeyboard;
 @property (nonatomic) UITextAutocorrectionType autocorrectionType;
 @property (nonatomic) UITextAutocapitalizationType autocapitalizationType;
@@ -135,6 +174,8 @@ namespace {
 @property (nonatomic) UITextSmartQuotesType smartQuotesType;
 @property (nonatomic) UITextSmartDashesType smartDashesType;
 @property (nonatomic) UIKeyboardType keyboardType;
+@property (nonatomic, copy) NSDictionary<NSAttributedStringKey, id>* markedTextStyle;
+@property (nonatomic, weak) id<UITextInputDelegate> inputDelegate;
 @end
 
 @implementation UltraCanvasiOSView {
@@ -142,6 +183,10 @@ namespace {
     // (the lowest free one, like Android's pointer ids).
     std::unordered_map<void*, int> _fingerIds;
     CGSize _lastSize;
+    // The composition: the marked text and the selection in it.
+    NSString* _marked;
+    NSRange _selected;
+    UITextInputStringTokenizer* _tokenizer;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -150,6 +195,8 @@ namespace {
         self.opaque = YES;
         self.backgroundColor = [UIColor blackColor];
         _lastSize = CGSizeZero;
+        _marked = @"";
+        _selected = NSMakeRange(0, 0);
         // Text arrives as typed: the framework's widgets do their own
         // editing, and an autocorrection would replace text behind them.
         self.autocorrectionType = UITextAutocorrectionTypeNo;
@@ -162,7 +209,7 @@ namespace {
     return self;
 }
 
-// ===== The software keyboard =====
+// ===== The keyboard: committing and deleting =====
 
 - (BOOL)canBecomeFirstResponder {
     return self.wantsKeyboard;
@@ -174,7 +221,13 @@ namespace {
     return YES;
 }
 
+- (void)clearComposition {
+    _marked = @"";
+    _selected = NSMakeRange(0, 0);
+}
+
 - (void)insertText:(NSString*)text {
+    [self clearComposition];   // what was composed is replaced by the text
     if (auto* app = App()) {
         app->HandleInsertText(ToUtf8(text));
         app->WakeUpEventLoopFromView();
@@ -182,16 +235,177 @@ namespace {
 }
 
 - (void)deleteBackward {
+    auto* app = App();
+    if (!app) return;
+    if (_marked.length > 0) {
+        // Inside a composition the input method deletes in its own text.
+        NSRange last = [_marked rangeOfComposedCharacterSequenceAtIndex:_marked.length - 1];
+        [self setMarkedText:[_marked substringToIndex:last.location]
+              selectedRange:NSMakeRange(last.location, 0)];
+        return;
+    }
+    app->HandleDeleteBackward();
+    app->WakeUpEventLoopFromView();
+}
+
+// ===== The keyboard: composing =====
+
+- (UITextRange*)markedTextRange {
+    if (_marked.length == 0) return nil;
+    return [UltraCanvasiOSTextRange with:NSMakeRange(0, _marked.length)];
+}
+
+- (void)setMarkedText:(NSString*)markedText selectedRange:(NSRange)selectedRange {
+    _marked = markedText ? [markedText copy] : @"";
+    const NSUInteger at = std::min<NSUInteger>(selectedRange.location, _marked.length);
+    _selected = NSMakeRange(at, std::min<NSUInteger>(selectedRange.length, _marked.length - at));
+    // The caret as a byte offset into the UTF-8 text the widget gets.
+    const int caretBytes = static_cast<int>(
+            [[_marked substringToIndex:at] lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
     if (auto* app = App()) {
-        app->HandleDeleteBackward();
+        app->HandleSetMarkedText(ToUtf8(_marked), caretBytes);
         app->WakeUpEventLoopFromView();
     }
 }
 
+- (void)unmarkText {
+    if (_marked.length == 0) return;
+    [self clearComposition];
+    if (auto* app = App()) {
+        app->HandleUnmarkText();
+        app->WakeUpEventLoopFromView();
+    }
+}
+
+// ===== The document: the marked text =====
+
+- (NSString*)textInRange:(UITextRange*)range {
+    if (![range isKindOfClass:[UltraCanvasiOSTextRange class]]) return @"";
+    const NSRange r = ((UltraCanvasiOSTextRange*)range).range;
+    if (r.location > _marked.length) return @"";
+    return [_marked substringWithRange:NSMakeRange(r.location,
+            std::min<NSUInteger>(r.length, _marked.length - r.location))];
+}
+
+- (void)replaceRange:(UITextRange*)range withText:(NSString*)text {
+    // Only the composition is the view's to replace; anything else the
+    // input method replaces is a word it settled on - typed as it is.
+    [self insertText:text];
+}
+
+- (UITextRange*)selectedTextRange {
+    return [UltraCanvasiOSTextRange with:_selected];
+}
+
+- (void)setSelectedTextRange:(UITextRange*)selectedTextRange {
+    if ([selectedTextRange isKindOfClass:[UltraCanvasiOSTextRange class]]) {
+        const NSRange r = ((UltraCanvasiOSTextRange*)selectedTextRange).range;
+        if (NSMaxRange(r) <= _marked.length) _selected = r;
+    }
+}
+
+- (UITextPosition*)beginningOfDocument {
+    return [UltraCanvasiOSTextPosition at:0];
+}
+
+- (UITextPosition*)endOfDocument {
+    return [UltraCanvasiOSTextPosition at:_marked.length];
+}
+
+- (UITextRange*)textRangeFromPosition:(UITextPosition*)fromPosition toPosition:(UITextPosition*)toPosition {
+    const NSInteger a = ((UltraCanvasiOSTextPosition*)fromPosition).index;
+    const NSInteger b = ((UltraCanvasiOSTextPosition*)toPosition).index;
+    return [UltraCanvasiOSTextRange with:NSMakeRange(std::min(a, b), std::labs(b - a))];
+}
+
+- (UITextPosition*)positionFromPosition:(UITextPosition*)position offset:(NSInteger)offset {
+    const NSInteger at = ((UltraCanvasiOSTextPosition*)position).index + offset;
+    if (at < 0 || at > static_cast<NSInteger>(_marked.length)) return nil;
+    return [UltraCanvasiOSTextPosition at:at];
+}
+
+- (UITextPosition*)positionFromPosition:(UITextPosition*)position
+                            inDirection:(UITextLayoutDirection)direction offset:(NSInteger)offset {
+    const bool back = direction == UITextLayoutDirectionLeft || direction == UITextLayoutDirectionUp;
+    return [self positionFromPosition:position offset:(back ? -offset : offset)];
+}
+
+- (NSComparisonResult)comparePosition:(UITextPosition*)position toPosition:(UITextPosition*)other {
+    const NSInteger a = ((UltraCanvasiOSTextPosition*)position).index;
+    const NSInteger b = ((UltraCanvasiOSTextPosition*)other).index;
+    return a < b ? NSOrderedAscending : (a > b ? NSOrderedDescending : NSOrderedSame);
+}
+
+- (NSInteger)offsetFromPosition:(UITextPosition*)from toPosition:(UITextPosition*)toPosition {
+    return ((UltraCanvasiOSTextPosition*)toPosition).index - ((UltraCanvasiOSTextPosition*)from).index;
+}
+
+- (id<UITextInputTokenizer>)tokenizer {
+    if (!_tokenizer) _tokenizer = [[UITextInputStringTokenizer alloc] initWithTextInput:self];
+    return _tokenizer;
+}
+
+- (UITextPosition*)positionWithinRange:(UITextRange*)range farthestInDirection:(UITextLayoutDirection)direction {
+    const bool back = direction == UITextLayoutDirectionLeft || direction == UITextLayoutDirectionUp;
+    return back ? range.start : range.end;
+}
+
+- (UITextRange*)characterRangeByExtendingPosition:(UITextPosition*)position
+                                      inDirection:(UITextLayoutDirection)direction {
+    const NSInteger at = ((UltraCanvasiOSTextPosition*)position).index;
+    const bool back = direction == UITextLayoutDirectionLeft || direction == UITextLayoutDirectionUp;
+    const NSInteger other = std::clamp<NSInteger>(back ? at - 1 : at + 1, 0, _marked.length);
+    return [UltraCanvasiOSTextRange with:NSMakeRange(std::min(at, other), std::labs(other - at))];
+}
+
+- (NSWritingDirection)baseWritingDirectionForPosition:(UITextPosition*)position
+                                          inDirection:(UITextStorageDirection)direction {
+    return NSWritingDirectionNatural;
+}
+
+- (void)setBaseWritingDirection:(NSWritingDirection)writingDirection forRange:(UITextRange*)range {}
+
+// ===== Geometry: where the input method puts its candidates =====
+// The focused widget's caret, which is where the composition is drawn.
+
+- (CGRect)caretRect {
+    auto* app = App();
+    if (!app) return CGRectZero;
+    const UltraCanvas::Rect2Df caret = app->CaretRectInWindow();
+    return CGRectMake(caret.x, caret.y, std::max(1.0f, caret.width), std::max(1.0f, caret.height));
+}
+
+- (CGRect)firstRectForRange:(UITextRange*)range {
+    return [self caretRect];
+}
+
+- (CGRect)caretRectForPosition:(UITextPosition*)position {
+    return [self caretRect];
+}
+
+- (NSArray<UITextSelectionRect*>*)selectionRectsForRange:(UITextRange*)range {
+    return @[];
+}
+
+- (UITextPosition*)closestPositionToPoint:(CGPoint)point {
+    return [self endOfDocument];
+}
+
+- (UITextPosition*)closestPositionToPoint:(CGPoint)point withinRange:(UITextRange*)range {
+    return range.end;
+}
+
+- (UITextRange*)characterRangeAtPoint:(CGPoint)point {
+    return [UltraCanvasiOSTextRange with:NSMakeRange(_marked.length, 0)];
+}
+
 // ===== A hardware keyboard =====
-// Every press is the framework's: none reaches the text system (no super
-// call), so a typed letter arrives once, as the key's own text, and never a
-// second time through insertText:.
+// Outside text editing every press is the framework's: a key event with the
+// key's own text. While a widget edits text, a press that types (no Control
+// or Command), Return and Backspace go to the text system instead (super),
+// which hands them back as insertText: / deleteBackward / marked text - so an
+// input method composes from a hardware keyboard too, and nothing types
+// twice. Arrows, Escape, Tab, function keys and shortcuts stay key events.
 
 - (BOOL)deliverPresses:(NSSet<UIPress*>*)presses down:(BOOL)down {
     auto* app = App();
@@ -213,6 +427,11 @@ namespace {
             text = ToUtf8(characters);
         }
         if (ucKey == UltraCanvas::UCKeys::Unknown && text.empty()) continue;
+        if (self.wantsKeyboard && !ctrl && !meta &&
+            (!text.empty() || ucKey == UltraCanvas::UCKeys::Return ||
+             ucKey == UltraCanvas::UCKeys::Backspace)) {
+            continue;   // the text system's (see above)
+        }
         if (app) {
             app->HandleKey(down, ucKey, static_cast<int>(key.keyCode),
                            (flags & UIKeyModifierShift) != 0, ctrl,
@@ -431,6 +650,9 @@ namespace UltraCanvas {
         if (wanted) {
             [view becomeFirstResponder];
         } else {
+            // A composition still open when editing stops is kept as typed,
+            // before the widget loses the caret it would go to.
+            [view unmarkText];
             [view resignFirstResponder];
         }
     }

@@ -6,6 +6,7 @@
 // CollectAndProcessNativeEvents runs the main run loop one turn at a time, so
 // UIKit's touch and lifecycle callbacks arrive inside it
 // (Docs/UltraCanvas/iOSPortInvestigation.md 3.2, option A).
+// Version: 1.2.0 - composition: marked text as TextComposition, the caret rect for the IME
 // Version: 1.1.0 - the software and hardware keyboards, host appearance
 // Version: 1.0.0
 // Last Modified: 2026-11-24
@@ -84,6 +85,18 @@ namespace UltraCanvas {
         void HandleInsertText(const std::string& utf8);
         // The software keyboard's backspace (UIKeyInput deleteBackward).
         void HandleDeleteBackward();
+        // Composition (UITextInput marked text): the text being composed and
+        // its caret as a byte offset into it; "" ends it with nothing typed.
+        // It reaches the focused element as TextComposition events when the
+        // element draws compositions, and not at all otherwise until the
+        // commit (the Android rule).
+        void HandleSetMarkedText(const std::string& utf8, int caretBytes);
+        // The input method keeps what was composed: it is typed.
+        void HandleUnmarkText();
+        // Where the focused element's caret is, in the window (= view)
+        // coordinates: for the input method's candidate window. The whole
+        // element when it has no caret to tell, nothing without a focus.
+        Rect2Df CaretRectInWindow();
         // The trait collection changed (dark mode, contrast, Dynamic Type).
         void HandleTraitsChanged();
 
@@ -122,6 +135,14 @@ namespace UltraCanvas {
         // between two text fields does not flicker it (the Android rule).
         void OnTextEditingChanged(bool active);
         bool pendingKeyboardHide = false;
+
+        // ===== COMPOSITION STATE =====
+        std::string imeComposing;           // the marked text, as composed so far
+        bool imeCompositionShown = false;   // the focused element shows a pre-edit
+        bool FocusedDrawsComposition();
+        void PushComposition(const std::string& utf8, int caretBytes);
+        void EndShownComposition();
+        void PushCommittedText(const std::string& utf8);
 
         void PushWindowEvent(UCEventType type);
         void PushPointerEvent(UltraCanvasiOSWindow* win, UCEventType type, int x, int y,
