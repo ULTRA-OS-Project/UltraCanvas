@@ -42,7 +42,7 @@ the evidence:
 | Decision | Reason |
 |---|---|
 | One service, one advertiser account, one balance (§4.1) | An ad system per shop is seven wallets, seven reviews, seven reports and seven sets of rules for the same merchant. Every shop after the app store is a variant of one design on one portal (`Docs/UltraStore/design/README.md`); its advertising should be too. |
-| Two doors onto it: *Promote* in the shop, and the console (§4.2) | The answer to "this shop only, or all systems?" is **both, from one form**: the scope is a field of the campaign (*this shop*, *chosen areas*, *everywhere it fits*), not a property of where the merchant clicked. The shop's door keeps the common case to three fields. |
+| Two doors onto it: *Promote* in the shop, and the console (§4.2) | The answer to "this shop only, or all systems?" is **both, from one form** (decided 2026-11-24): the form lists every shop and marketplace with its placements - search, lists, detail pages, the home row - with this shop's ticked and all the others there to tick. Where a campaign runs is what the merchant ticked, not where they clicked. |
 | Closed loop first: an advertisement leads to a listing, not to a web address (§4.3) | The listing was already reviewed, so most ads need no second review; the sale happens in our checkout, so it can be counted without following anyone; and there is no landing page to turn into malware after approval. |
 | A shop's search shows only that shop's goods; other areas get one marked row (§4.4, §4.5) | Someone searching the app store for a photo editor must never be answered with a toaster. Cross-area advertising is real, and bounded: a single row per page that says where it comes from. |
 | The context, never the person (§4.7) | `VideoHome.dc.html` already promises "No tracking, no autoplay ads", and the privacy notes of UltraMail and UltraPress say "no advertising". Search words, category, language, country and platform are enough for a shop; a behavioural profile is the thing people leave other platforms over. |
@@ -155,10 +155,18 @@ app page (`/console/...`), later a marketplace seller's product list, a
 channel's Studio, a publisher's book list - every listing that is public has
 a **Promote** button. The form behind it has three things to fill in:
 
-1. **Where** - *In this shop* (chosen), *In chosen areas* or *Everywhere it
-   fits*. The second and third list only the areas this kind of listing may
-   appear in (§4.5), each with what an advertisement looks like there and the
-   price floor.
+1. **Where** - the whole list, on this one page (decided 2026-11-24):
+   **every shop and marketplace, and under each its placements** - in its
+   search, in its category lists, on its detail pages, in its home row.
+   **This shop's are ticked; every other one is listed and not ticked**, so
+   the merchant sees at the first glance where else the listing could
+   appear, and widens the campaign with a tick, without leaving the page.
+   Each line says what an advertisement looks like there and what a click
+   costs at the least. A place this kind of listing may not appear in (§4.5)
+   is listed as well, greyed, with the reason in a few words - "trade shows
+   business goods only" - so the list is the same for everyone and nothing
+   in it is a surprise. *All of this shop* and *Everywhere it fits* tick a
+   whole group at once.
 2. **How much** - a daily budget and, optionally, the most to pay for a
    click. Left empty, the service bids for the merchant up to the budget.
 3. **How long** - until stopped, or an end date.
@@ -183,7 +191,8 @@ half is how advertising becomes something only agencies can do.
 **Why not "always everywhere".** A seller of screws who clicks *Promote* in
 trade must not find the budget spent on the books shop. Three protections:
 
-- the scope starts at *this shop*, and widening it is the merchant's act;
+- a campaign starts with *this shop* ticked and nothing else, and every
+  further place is the merchant's own tick;
 - outside its home shop a campaign spends **at most a share** of its budget
   (proposed: 30 %) until the merchant changes it;
 - the report always splits by area, so what each one cost and brought is one
@@ -339,6 +348,8 @@ An agency that runs campaigns for several businesses is a person who is a
 
 ### 4.7 Targeting: the context, never the person
 
+*Decided 2026-11-24: context only, and for good.*
+
 An advertisement is chosen from **what is on the page**:
 
 | Signal | Example |
@@ -358,7 +369,8 @@ looked at, bought, watched or listened to, no interest groups, no list of
 identifier shared between areas, nothing bought from or sold to a third
 party. Nothing follows anyone from the video portal to the marketplace.
 
-This is a decision about what kind of platform this is, and it has a price:
+This is a decision about what kind of platform this is - taken, as above -
+and it has a price:
 advertising that follows people earns more per impression. It is also why the
 arrangement is simple - no consent banner for advertising, no profile to hand
 over in a data archive, no special treatment of minors beyond the age gate -
@@ -513,7 +525,7 @@ directly. **L** - later.
 | | Function | |
 |---|---|---|
 | 1 | **Promote** on every public listing: where, how much, how long (§4.2) | M |
-| 2 | The scope of a campaign: this shop, chosen areas, everywhere it fits; a ceiling on the share spent outside the home shop | M |
+| 2 | Where a campaign runs: every shop and marketplace with its placements (search, lists, detail pages, the home row) listed on the *Promote* page, this shop's ticked, the others to tick; a ceiling on the share spent outside the home shop | M |
 | 3 | Daily and total budget, start and end, pause and resume | M |
 | 4 | Automatic bidding up to the budget; or a highest price per click | M |
 | 5 | The balance: top up, the ledger, pause at zero with a notice before it | M |
@@ -574,7 +586,7 @@ and `billing/`, on the same database.
 | `Placement` | its id (`store.search.listing`), area, page, format, how many, the floor and its currency, on or off |
 | `PromotableKind` | a kind of goods a shop lists (`app`, `product`, `video`): how to find one by id, its card, its standing, its age rating, its context |
 | `CrossAreaRule` | a kind, an area, allowed or not (§4.5) |
-| `Campaign` | the business, a name, the scope, the budgets, the dates, the share outside the home area, its state and who changed it |
+| `Campaign` | the business, a name, the placements it was ticked for, the budgets, the dates, the share outside the home area, its state and who changed it |
 | `AdGroup` | the campaign, the offer, the context it wants: words with their match rules, exclusions, categories, countries, languages, platforms; offers per placement |
 | `Ad` | the ad group, what is promoted (kind and id), the format, what was added (headline, picture) and its review |
 | `FixedSlotBooking` | a placement, the days, the price, the ad |
@@ -693,8 +705,9 @@ public library.
 already has the category `games`, so its goods are apps and only the
 placements are new. Then whichever of the marketplace, books, music, video
 and trade comes into being, each registering its kinds and placements and
-opening its pairs in the cross-area table. The scope field of a campaign
-starts to matter here; until then it has one value.
+opening its pairs in the cross-area table. Each one adds its group of lines
+to the *Promote* page's list; until the second shop exists the list has one
+group.
 
 **Phase 4 - beyond.** `Apps/UltraAds`. The programming interface. Pages
 outside the ecosystem. Payment from the proceeds. Film and audio with the
@@ -720,17 +733,18 @@ is named here so that nothing earlier is built in its way.
 
 ## 12. Open questions for the owner
 
-1. **The scope's default.** Recommended: *this shop*, with at most 30 % of a
-   budget spent elsewhere once the merchant widens it. Or should a new
-   campaign start *everywhere it fits*?
+1. **The scope's default.** *Decided 2026-11-24:* *this shop*, and every
+   other shop, marketplace and placement listed on the same page to tick
+   (§4.2). Still open: the ceiling on what a widened campaign spends outside
+   its home shop - proposed 30 % until the merchant changes it.
 2. **The account's address.** *Decided 2026-11-24:* a name of its own,
    `account.ultraos.eu`, answered by the same portal.
 3. **Which account store survives.** *Decided 2026-11-24:* the portal's;
    it is the one that speaks OpenID Connect. Open: when the account
    service's records and the native applications move to it.
-4. **Context only, for good?** Recommended: yes, and said publicly. The
-   alternative - interests from what a signed-in person bought, with consent
-   - earns more and ends the promise.
+4. **Context only, for good?** *Decided 2026-11-24:* yes. An advertisement
+   is chosen from what is on the page and never from who is looking (§4.7),
+   and the shops say so.
 5. **A film before a video.** Recommended: no, and keep "no autoplay ads".
    If yes: only on channels that opt in, and the line is reworded.
 6. **A paid plan without advertising.** Should UltraAccount Plus remove
