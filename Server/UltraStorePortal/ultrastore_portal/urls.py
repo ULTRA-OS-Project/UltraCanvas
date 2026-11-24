@@ -1,5 +1,9 @@
-"""Every address of the store, all under the one root.
+"""Every address of the store, all under the one root - and the account's,
+which are here too while the account has no host of its own, and in
+urls_account.py when it has (identity/hosts.py).
 
+Version: 0.4.0 - the OpenID Connect endpoints; the account's pages on the
+                 account's host; sso/callback
 Version: 0.3.0 - console: icon/, packages/<n>/edit/
 Version: 0.1.0
 """
@@ -11,6 +15,9 @@ from django.views.static import serve
 
 from .api import billing as buying
 from .api import views as api
+from .identity import sso
+from .identity import views as oidc
+from .identity.hosts import account_page
 from .web import account, console, operator, pay, storefront
 
 
@@ -42,17 +49,34 @@ store_patterns = ([
 ], "store")
 
 account_patterns = ([
-    path("signup/", account.signup, name="signup"),
-    path("verify/<str:token>/", account.verify, name="verify"),
-    path("resend/", account.resend, name="resend"),
-    path("signin/", account.SignIn.as_view(), name="signin"),
-    path("signout/", account.auth_views.LogoutView.as_view(), name="signout"),
-    path("password/reset/", account.PasswordReset.as_view(), name="password_reset"),
-    path("password/reset/sent/", account.auth_views.PasswordResetDoneView.as_view(template_name="account/reset_sent.html"), name="password_reset_done"),
-    path("password/reset/<uidb64>/<token>/", account.PasswordResetConfirm.as_view(), name="password_reset_confirm"),
-    path("password/", account.PasswordChange.as_view(), name="password_change"),
-    path("", account.profile, name="profile"),
+    path("signup/", account_page(account.signup), name="signup"),
+    path("verify/<str:token>/", account_page(account.verify), name="verify"),
+    path("resend/", account_page(account.resend), name="resend"),
+    path("signin/", account_page(account.SignIn.as_view(), on_store=sso.start), name="signin"),
+    path("signout/", account_page(account.SignOut.as_view(), on_store=sso.signout), name="signout"),
+    path("password/reset/", account_page(account.PasswordReset.as_view()), name="password_reset"),
+    path("password/reset/sent/", account_page(account.auth_views.PasswordResetDoneView.as_view(template_name="account/reset_sent.html")), name="password_reset_done"),
+    path("password/reset/<uidb64>/<token>/", account_page(account.PasswordResetConfirm.as_view()), name="password_reset_confirm"),
+    path("password/", account_page(account.PasswordChange.as_view()), name="password_change"),
+    path("services/<slug:client_id>/forget/", account_page(account.forget_service), name="forget_service"),
+    path("", account_page(account.profile), name="profile"),
 ], "account")
+
+# OpenID Connect: where another service signs a person in through the
+# account (identity/views.py). They exist at the issuer, which is the
+# account's host when it has one.
+oidc_patterns = ([
+    path(".well-known/openid-configuration", oidc.discovery, name="discovery"),
+    path("oauth/jwks", oidc.jwks, name="jwks"),
+    path("oauth/authorize", oidc.authorize, name="authorize"),
+    path("oauth/authorize/decide", oidc.decide, name="decide"),
+    path("oauth/token", oidc.token, name="token"),
+    path("oauth/userinfo", oidc.userinfo, name="userinfo"),
+    path("oauth/introspect", oidc.introspect, name="introspect"),
+    path("oauth/revoke", oidc.revoke, name="revoke"),
+    path("oauth/logout", oidc.logout, name="logout"),
+    path("oauth/logout/confirm", oidc.logout_confirm, name="logout_confirm"),
+], "oidc")
 
 pay_patterns = ([
     path("pay/<str:public_id>/", pay.handoff, name="handoff"),
@@ -126,6 +150,8 @@ urlpatterns = [
     path("", include(store_patterns)),
     path("", include(pay_patterns)),
     path("account/", include(account_patterns)),
+    path("", include(oidc_patterns)),
+    path("sso/callback", sso.callback, name="sso_callback"),
     path("console/", include(console_patterns)),
     path("operator/", include(operator_patterns)),
     path("v1/", include(api_patterns)),

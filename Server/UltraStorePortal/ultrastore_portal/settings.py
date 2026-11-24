@@ -1,6 +1,8 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.4.0 - the account's own address (ACCOUNT_URL) and the OpenID
+                 Connect provider's settings (OIDC_...)
 Version: 0.3.0 - the portal_ui template library, messages as Bootstrap alerts;
                  a password is 8 to 64 characters
 Version: 0.1.0
@@ -73,12 +75,26 @@ if not SECRET_KEY:
 STORE_ROOT_URL = "https://store.ultraos.eu"
 BASE_URL = env("BASE_URL", "http://127.0.0.1:8000" if (DEBUG or RUNNING_TESTS) else STORE_ROOT_URL).rstrip("/")
 _base = urlsplit(BASE_URL)
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS") or [_base.hostname or "localhost"]
+# The account's own root: where a person signs up and signs in, and the
+# issuer other services sign in through (identity/hosts.py). Unset, the
+# account lives under the store's root, as it did (<root>/account/). Set -
+# https://account.ultraos.eu - it is a second host this same service
+# answers, and the store's host signs people in through it like any other
+# service. It is written into every token for good: choose it before the
+# first service is registered, and do not change it afterwards.
+ACCOUNT_URL = env("ACCOUNT_URL").rstrip("/")
+ACCOUNT_NAME = env("ACCOUNT_NAME", "ULTRA OS account")
+_account = urlsplit(ACCOUNT_URL or BASE_URL)
+if _account.scheme not in ("http", "https") or not _account.hostname or _account.path.strip("/"):
+    raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_ACCOUNT_URL is a host's root (https://account.ultraos.eu): {ACCOUNT_URL}")
+if _account.scheme != _base.scheme:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_ACCOUNT_URL and ULTRASTORE_PORTAL_BASE_URL are both https, or both http on a developer's machine")
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS") or sorted({_base.hostname or "localhost", _account.hostname})
 if DEBUG or RUNNING_TESTS:
     ALLOWED_HOSTS += ["localhost", "127.0.0.1", "testserver"]
 HTTPS = _base.scheme == "https"
 if HTTPS:
-    CSRF_TRUSTED_ORIGINS = [f"https://{_base.netloc}"]
+    CSRF_TRUSTED_ORIGINS = sorted({f"https://{_base.netloc}", f"https://{_account.netloc}"})
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -97,6 +113,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "ultrastore_portal.accounts",
+    "ultrastore_portal.identity",
     "ultrastore_portal.store",
     "ultrastore_portal.billing",
 ]
@@ -104,9 +121,11 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "ultrastore_portal.identity.hosts.AccountHostMiddleware",   # before anything looks an address up
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "ultrastore_portal.identity.sessions.SignInMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -157,6 +176,20 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 # A mailed link (the address proven, a password reset) is good this long.
 PASSWORD_RESET_TIMEOUT = 2 * 24 * 3600
+
+# Signing in for other services (identity/, OpenID Connect). The key the
+# identity tokens are signed with: a PEM file (an RSA key, 2048 bits or
+# more), or unset - one is made on first use and kept in the database. The
+# secret a person's subject is derived with: unset, made once and kept in
+# the database; it must never change. Then how long each thing lasts, in
+# seconds: the code, the access token, the identity token, a refresh token
+# that is not used.
+OIDC_KEY_FILE = env("OIDC_KEY_FILE")
+OIDC_SUBJECT_SECRET = env("OIDC_SUBJECT_SECRET")
+OIDC_CODE_TTL = int(env("OIDC_CODE_TTL", "120"))
+OIDC_ACCESS_TOKEN_TTL = int(env("OIDC_ACCESS_TOKEN_TTL", "3600"))
+OIDC_ID_TOKEN_TTL = int(env("OIDC_ID_TOKEN_TTL", "3600"))
+OIDC_REFRESH_TOKEN_TTL = int(env("OIDC_REFRESH_TOKEN_TTL", str(90 * 24 * 3600)))
 
 LANGUAGE_CODE = "en"
 TIME_ZONE = "UTC"

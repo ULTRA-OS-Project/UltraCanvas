@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Your account - UltraStore{% endblock %}
+{% block title %}Your account - {{ brand }}{% endblock %}
 {% block content %}
 <div class="narrow">
   <h1>Your account</h1>
@@ -10,7 +10,19 @@
   </form>
   <div class="mt-4 d-grid gap-1 small">
     <div><a href="{% url 'account:password_change' %}">Change the password</a></div>
-    <div><a href="{% url 'console:home' %}">Developer console</a></div>
+    <div><a href="{{ console_url }}">Developer console</a></div>
   </div>
+  {% if consents %}
+  <h2 class="h5 mt-5">Services you signed in to with this account</h2>
+  <p class="text-secondary small">Each was told what is listed beside it, and nothing else. Taking the access back signs the service out of your account; it keeps what it already learned.</p>
+  <ul class="list-group">
+    {% for consent in consents %}
+    <li class="list-group-item d-flex flex-wrap align-items-center gap-2">
+      <div class="me-auto"><b>{{ consent.client.name }}</b><div class="small text-secondary">{{ consent.scope_labels|join:", " }} - since {{ consent.granted|date:"Y-m-d" }}</div></div>
+      <form method="post" action="{% url 'account:forget_service' consent.client.client_id %}">{% csrf_token %}<button class="btn btn-outline-danger btn-sm">Take the access back</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
 </div>
 {% endblock %}

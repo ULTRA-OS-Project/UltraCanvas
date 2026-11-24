@@ -1,11 +1,16 @@
 """Signing up, proving the address, signing in.
 
+With two hosts (identity/hosts.py) these pages are the account's own, at
+its address; what they link to and send people on to in the store is named
+by its whole address then.
+
+Version: 0.4.0 - the account at an address of its own; signing in again when
+                 a service asks for it; the services a person let in
 Version: 0.1.0
 """
 
 from __future__ import annotations
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login, views as auth_views
 from django.contrib.auth.decorators import login_required
@@ -14,6 +19,10 @@ from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 
+from django.views.decorators.http import require_POST
+
+from ..identity import hosts, provider
+from ..identity.models import Client, Consent
 from .forms import EmailForm, ProfileForm, SignInForm, SignUpForm
 from .utils import too_many
 
@@ -22,18 +31,18 @@ BACKEND = "django.contrib.auth.backends.ModelBackend"
 
 
 def send_verification(user) -> None:
-    link = settings.BASE_URL + reverse("account:verify", args=[user.verification_token()])
-    send_mail("UltraStore: confirm your email address", render_to_string("mail/verify_email.txt", {"user": user, "link": link}), None, [user.email])
+    link = hosts.account_url("verify", user.verification_token())
+    send_mail(f"{hosts.brand()}: confirm your email address", render_to_string("mail/verify_email.txt", {"user": user, "link": link, "brand": hosts.brand()}), None, [user.email])
 
 
 def send_existing_account(user) -> None:
-    link = settings.BASE_URL + reverse("account:password_reset")
-    send_mail("UltraStore: you already have an account", render_to_string("mail/existing_account.txt", {"user": user, "link": link}), None, [user.email])
+    link = hosts.account_url("password_reset")
+    send_mail(f"{hosts.brand()}: you already have an account", render_to_string("mail/existing_account.txt", {"user": user, "link": link, "brand": hosts.brand()}), None, [user.email])
 
 
 def signup(request):
     if request.user.is_authenticated:
-        return redirect("console:home")
+        return redirect(hosts.store_url("console:home"))
     form = SignUpForm(request.POST or None)
     if request.method == "POST":
         if too_many(request, "signup", 10, 3600):
@@ -53,7 +62,7 @@ def signup(request):
             return render(request, "account/check_mail.html", {"email": email})
     return render(request, "form_page.html", {
         "form": form, "title": "Create an account", "submit": "Create account",
-        "lead": "One account for the developer console. Publishing an app starts here.",
+        "lead": "One account for every ULTRA OS shop and service." if hosts.split() else "One account for the developer console. Publishing an app starts here.",
         "below": [("Already have an account?", "Sign in", reverse("account:signin"))]})
 
 
@@ -66,7 +75,7 @@ def verify(request, token: str):
         user.save(update_fields=["email_verified"])
     login(request, user, backend=BACKEND)
     messages.success(request, "Your email address is confirmed.")
-    return redirect("console:home")
+    return redirect(hosts.store_url("console:home"))
 
 
 def resend(request):
@@ -90,6 +99,19 @@ class SignIn(auth_views.LoginView):
                   ("Forgot the password?", "Reset it", reverse_lazy("account:password_reset")),
                   ("No confirmation mail?", "Send it again", reverse_lazy("account:resend"))]}
 
+    def dispatch(self, request, *args, **kwargs):
+        # A service asked for the password again (prompt=login, max_age): the
+        # page is shown to someone who is signed in, too.
+        if request.GET.get("reauth"):
+            self.redirect_authenticated_user = False
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_initial(self):
+        return {**super().get_initial(), "username": self.request.GET.get("login_hint", "")}
+
+    def get_default_redirect_url(self):
+        return reverse("account:profile") if hosts.split() else super().get_default_redirect_url()
+
     def post(self, request, *args, **kwargs):
         if too_many(request, "signin", 10, 900, key=request.POST.get("username", "").strip().lower()):
             form = self.get_form()
@@ -110,7 +132,7 @@ class PasswordReset(auth_views.PasswordResetView):
     def form_valid(self, form):
         if too_many(self.request, "reset", 5, 3600):
             return redirect(self.success_url)
-        self.extra_email_context = {"base_url": settings.BASE_URL}   # the link under the store's root, whatever host was asked
+        self.extra_email_context = {"base_url": hosts.account_root(), "brand": hosts.brand()}   # the link under the account's root, whatever host was asked
         return super().form_valid(form)
 
 
@@ -121,7 +143,9 @@ class PasswordResetConfirm(auth_views.PasswordResetConfirmView):
 
     def form_valid(self, form):
         messages.success(self.request, "The password is changed. Sign in with the new one.")
-        return super().form_valid(form)
+        response = super().form_valid(form)
+        provider.password_changed(form.user)
+        return response
 
 
 class PasswordChange(auth_views.PasswordChangeView):
@@ -131,7 +155,14 @@ class PasswordChange(auth_views.PasswordChangeView):
 
     def form_valid(self, form):
         messages.success(self.request, "The password is changed.")
-        return super().form_valid(form)
+        response = super().form_valid(form)
+        provider.password_changed(form.user, keep_sid=self.request.session.get("sso_sid", ""))
+        return response
+
+
+class SignOut(auth_views.LogoutView):
+    def get_default_redirect_url(self):
+        return reverse("account:signin") if hosts.split() else super().get_default_redirect_url()
 
 
 @login_required
@@ -141,4 +172,17 @@ def profile(request):
         form.save()
         messages.success(request, "Saved.")
         return redirect("account:profile")
-    return render(request, "account/profile.html", {"form": form})
+    return render(request, "account/profile.html", {
+        "form": form, "console_url": hosts.store_url("console:home"),
+        "consents": Consent.objects.filter(user=request.user, client__active=True).select_related("client").order_by("client__name")})
+
+
+@login_required
+@require_POST
+def forget_service(request, client_id: str):
+    """A service's access taken back: the consent and every token it holds."""
+    client = Client.objects.filter(client_id=client_id).first()
+    if client is not None:
+        provider.forget(request.user, client)
+        messages.success(request, f"{client.name} no longer has access to your account.")
+    return redirect("account:profile")

@@ -1,7 +1,9 @@
 # UltraAds — the advertising service of the ULTRA OS shops and services (Investigation and Proposal)
 
 **Date:** 2026-11-24
-**Status:** Proposal — investigation only, no implementation yet
+**Status:** Proposal — no implementation of the advertising service yet.
+The one sign-in of §4.6 is built (`Server/UltraStorePortal` 0.4.0, same
+date); §4.6 says what of it stands and what remains.
 **Scope:** a new service, **UltraAds**, with which a merchant advertises in
 the shops and services of ULTRA OS - the app store, the games shop, the
 marketplace, B2B trade, the video portal, music and podcasts, e-books and
@@ -101,14 +103,15 @@ Two things the request does not say and the design has to settle anyway:
 | One account for a person | UltraAccount: "the one account a person has across ULTRA OS", the session shared by every native application on a machine | `Docs/UltraAccount/README.md`, `Server/UltraStoreAccount` |
 | A second account store | The portal's own `accounts/` (the email as the sign-in name, a mailed link, a password of 8 to 64 characters, no second factor) | `Server/UltraStorePortal` |
 | The client half of "sign in with ..." | OAuth 2.0 authorization code with PKCE, the loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h`, `Docs/Modules/UltraNet/README.md` |
-| The server half | **Missing.** Neither account store issues tokens to another service | - |
+| The server half | **Built since** (the portal's 0.4.0): an OpenID Connect provider in the portal, at an address of its own when one is set. When this was written neither account store issued a token to another service | `Server/UltraStorePortal/README.md`, *One sign-in for every service* |
 | Tax invoices, the split of a sale, payouts | **Missing**, and named as the portal's next step but one | the portal's README, *What comes next*, 2 |
 | The word *Sponsored* | **Missing** from the string sets, `Shopping.json` included | `media/locale/en/` |
 | Charts for a dashboard | The Charts plug-in elements | `UltraCanvas/include/Plugins/Charts/` |
 
 Two of these rows decide the order of the work. **Two account stores exist**
 with different rules, and one registration is not true until there is one
-(§4.6). And **payouts and tax are not built**, so anything that pays a third
+(§4.6: the portal's is now the one other services sign in through; the
+native applications still use the account service's). And **payouts and tax are not built**, so anything that pays a third
 party from advertising - a creator's share (§4.13) - waits for them.
 
 ---
@@ -305,16 +308,18 @@ the same server, a service on another host and somebody else's website alike.
   account service.
 - Neither store issues a statement another service can rely on.
 
-**Proposed.**
+**Proposed, and where each stands** (decided and built 2026-11-24 where it
+says so; the portal's README, *One sign-in for every service*, is the
+record).
 
-| | |
-|---|---|
-| One store of people | Whichever of the two survives the portal's migration holds what the account service holds today: the second factor, the sessions as devices, the recovery keys, the plan. UltraAds needs the outcome, not a side in that choice; it must be made before a second shop opens. |
-| It becomes an OpenID Connect provider | A discovery document, the authorization and token endpoints, signed identity tokens, a registry of the clients that may ask. On Django this is `django-oauth-toolkit` **[unverified: licence and state to be checked when it is added, with the three dependency files]** or a small implementation of the one flow. |
-| Our own shops and services | Registered as first-party clients: no consent page, the same session, so a person signed in to the app store is signed in to the marketplace, the video portal and the UltraAds console. |
-| Native applications | As today through `UltraAccountCore` and `session.json`; the core gains "a token for this service", so an application never holds the password. |
-| Somebody else's site or app | *Sign in with UltraAccount*: a consent page naming what is passed on (a name, an address - each only when asked for), and a **different identifier per site**, so two shops cannot compare notes about one person. That is more than Google gives. |
-| The issuer's address | Chosen once and kept: it is written into every token. `store.ultraos.eu` is the portal's one root, and an odd name for the account of UltraCloud and UltraAI. An open question (§12, 2). |
+| | | |
+|---|---|---|
+| One store of people | **Decided: the portal's.** It is the one other services sign in through. What the account service holds beyond it - the second factor, the sessions as devices, the recovery keys, the plan - has still to move over, and `UltraAccountCore` with it. | open |
+| It becomes an OpenID Connect provider | A discovery document, the authorization and token endpoints, signed identity tokens, a registry of the clients that may ask. Written as the one flow (the authorization code with PKCE) on the `cryptography` package the portal already has, not on a further dependency. | **built** |
+| The issuer's address | **Decided: an address of its own, `https://account.ultraos.eu`**, answered by the same portal: the account is every service's and not the store's, each host keeps its own session cookie, and the address is written into every token for good. | **built** (a setting; unset, the account stays under the store's root) |
+| Our own shops and services | Registered as first-party clients: no consent page, one sign-in at the account, so a person signed in to the app store is signed in to the marketplace, the video portal, the chat and the UltraAds console. The store's own host is the first such client. | **built** for the store; each later service registers |
+| Native applications | As today through `UltraAccountCore` and `session.json`; the core gains "a token for this service", so an application never holds the password. The provider answers an application on the person's machine at `http://127.0.0.1` on whatever port it got, which is how `UltraNetOAuth2.h` signs in. | provider side **built**; the core open |
+| Somebody else's site or app | *Sign in with UltraAccount*: a consent page naming what is passed on (a name, an address - each only when asked for), and a **different identifier per site**, so two shops cannot compare notes about one person. That is more than Google gives. | **built**; no outside service is let in before the conformance suite and a review |
 
 **A role is not an account.** One person signs in once and is, by what they
 have been granted, any of: a buyer (everyone), a member of a business, a
@@ -664,8 +669,9 @@ confirmed before anything is sold. **[unverified]** throughout.
 ## 10. Roadmap
 
 **Phase 0 - what must be there first.** One store of people, speaking
-OpenID Connect (§4.6). Tax invoices in the portal (its own next step). The
-decisions of §12.
+OpenID Connect (§4.6: the provider is built; the account service's extras
+and the native applications have still to move to it). Tax invoices in the
+portal (its own next step). The decisions of §12.
 
 **Phase 1 - sponsored listings in the app store.** The only shop that
 exists. *Promote* on an app's console page; a campaign with its scope fixed
@@ -703,7 +709,7 @@ is named here so that nothing earlier is built in its way.
 | Piece | Has | Lacks |
 |---|---|---|
 | The portal | publishers, review, reports, audit, orders, the console, the operator's pages | the `promote` app; a second kind of order; members' roles beyond two; tax invoices |
-| Accounts | two stores; one shared session on a machine | one store; an OpenID Connect provider; a second factor in the portal |
+| Accounts | two stores; one shared session on a machine; an OpenID Connect provider in the portal, with the account at its own address (0.4.0) | the account service's records and `UltraAccountCore` moved to the portal's; a second factor in the portal; the conformance suite |
 | The native store | the catalog, the cards, the code kept for 30 days and sent with the checkout | the client of §7; the mark; the clicked token |
 | The catalog | `payment_url`, `market_url`, `account_url` | `promote_url` |
 | String sets | the shopping base set | *Sponsored* and its neighbours, in every language |
@@ -717,12 +723,11 @@ is named here so that nothing earlier is built in its way.
 1. **The scope's default.** Recommended: *this shop*, with at most 30 % of a
    budget spent elsewhere once the merchant widens it. Or should a new
    campaign start *everywhere it fits*?
-2. **The account's address.** The issuer is in every token for good.
-   `store.ultraos.eu` (the portal's one root) or a name of its own, such as
-   `account.ultraos.eu`, for an account that is also UltraCloud's and
-   UltraAI's?
-3. **Which account store survives** - the account service's or the
-   portal's - and when?
+2. **The account's address.** *Decided 2026-11-24:* a name of its own,
+   `account.ultraos.eu`, answered by the same portal.
+3. **Which account store survives.** *Decided 2026-11-24:* the portal's;
+   it is the one that speaks OpenID Connect. Open: when the account
+   service's records and the native applications move to it.
 4. **Context only, for good?** Recommended: yes, and said publicly. The
    alternative - interests from what a signed-in person bought, with consent
    - earns more and ends the promise.
