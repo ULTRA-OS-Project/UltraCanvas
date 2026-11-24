@@ -5,8 +5,10 @@
   CMake fills in the MACOSX_BUNDLE_ values from the target's properties.
   UILaunchScreen is what makes iOS run the app at the device's own size;
   without it the app is shown letterboxed at an old iPhone's resolution.
-  No UIApplicationSceneManifest: the backend uses the application delegate's
-  window (OS/iOS/UltraCanvasiOSMain.mm), one per app.
+  UIApplicationSceneManifest opts into the scene lifecycle, which iOS 26
+  warns will soon be required; one scene, whose configuration (the scene
+  delegate class) the application delegate gives in code
+  (OS/iOS/UltraCanvasiOSMain.mm).
 -->
 <plist version="1.0">
 <dict>
@@ -32,6 +34,11 @@
     <true/>
     <key>UILaunchScreen</key>
     <dict/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
     <key>UIRequiresFullScreen</key>
     <true/>
     <key>UIStatusBarHidden</key>

@@ -1,5 +1,6 @@
 // OS/iOS/UltraCanvasiOSApplication.mm
 // iOS platform implementation for UltraCanvas Framework.
+// Version: 1.2.0 - composition: marked text as TextComposition, the caret rect for the IME
 // Version: 1.1.0 - the software and hardware keyboards, host appearance
 // Version: 1.0.0
 // Last Modified: 2026-11-24
@@ -16,6 +17,7 @@
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasHostAppearance.h"
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasAccessibility.h"
 
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -324,14 +326,23 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasiOSApplication::HandleInsertText(const std::string& utf8) {
+        // insertText: replaces whatever was being composed: the pre-edit
+        // ends before the text arrives, so it never shows next to the same
+        // text typed for real.
+        EndShownComposition();
+        imeComposing.clear();
         if (utf8.empty()) return;
         if (utf8 == "\n" || utf8 == "\r") {
             HandleKey(true, UCKeys::Return, 0, false, false, false, false, "");
             HandleKey(false, UCKeys::Return, 0, false, false, false, false, "");
             return;
         }
+        PushCommittedText(utf8);
+    }
+
+    void UltraCanvasiOSApplication::PushCommittedText(const std::string& utf8) {
         auto* win = GetPrimaryWindow();
-        if (!win) return;
+        if (!win || utf8.empty()) return;
         // What the keyboard settled on belongs to no single key, so
         // virtualKey stays Unknown and only `text` means anything - the shape
         // the Linux backend delivers for its input method, which every text
@@ -345,6 +356,56 @@ namespace UltraCanvas {
             event.character = utf8[0];
         }
         PushEvent(event);
+    }
+
+    // ===== COMPOSITION =====
+
+    bool UltraCanvasiOSApplication::FocusedDrawsComposition() {
+        UltraCanvasUIElement* focused = GetFocusedElement();
+        return focused && focused->DrawsTextComposition();
+    }
+
+    void UltraCanvasiOSApplication::PushComposition(const std::string& utf8, int caretBytes) {
+        auto* win = GetPrimaryWindow();
+        if (!win) return;
+        UCEvent event;
+        event.type = UCEventType::TextComposition;
+        event.targetWindow = win->GetWindowWeakPtr();
+        event.nativeWindowHandle = win->GetNativeHandle();
+        event.text = utf8;
+        event.compositionCursor = std::clamp(caretBytes, 0, static_cast<int>(utf8.size()));
+        PushEvent(event);
+        imeCompositionShown = !utf8.empty();
+    }
+
+    void UltraCanvasiOSApplication::EndShownComposition() {
+        if (imeCompositionShown) PushComposition(std::string(), 0);
+    }
+
+    void UltraCanvasiOSApplication::HandleSetMarkedText(const std::string& utf8, int caretBytes) {
+        imeComposing = utf8;
+        if (!utf8.empty() && FocusedDrawsComposition()) {
+            PushComposition(utf8, caretBytes);
+        } else {
+            EndShownComposition();
+        }
+    }
+
+    void UltraCanvasiOSApplication::HandleUnmarkText() {
+        const std::string text = imeComposing;
+        EndShownComposition();
+        imeComposing.clear();
+        PushCommittedText(text);
+    }
+
+    Rect2Df UltraCanvasiOSApplication::CaretRectInWindow() {
+        UltraCanvasUIElement* focused = GetFocusedElement();
+        if (!focused) return Rect2Df(0, 0, 0, 0);
+        if (IAccessibleText* text = focused->GetAccessibleTextInterface()) {
+            const Rect2Df caret = text->GetCharacterBounds(text->GetCaretOffset());
+            if (caret.height > 0.0f) return caret;
+        }
+        return focused->GetBoundsInWindow();
     }
 
     void UltraCanvasiOSApplication::HandleDeleteBackward() {
