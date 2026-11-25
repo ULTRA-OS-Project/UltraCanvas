@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.50.0 - Settings > Display > Favorite folders applied to every file display
+//                  (ApplyFavoriteHighlight): a fill, border or shade, its colour, the heart
 // Version: 1.49.1 - the preview pane is left as it is while a selection rectangle is drawn in the
 //                  folder display, and follows the selection once it is let go
 // Version: 1.49.0 - the path bar in the colours of Settings > Display > Path bar: #E4E6E9 for the
@@ -1794,6 +1796,7 @@ void UltraFilerWindow::ApplyLook() {
         statusProgress->SetTrackColor(look.line);
     }
     ApplyTreeColors();   // the default drive rows have a light and a dark tint
+    ApplyFavoriteHighlightEverywhere();   // ... and the default favorite colour
     if (computerPane) computerPane->SetBackgroundColor(look.panel);
     // The Computer page's drive cards take their colours when they are
     // built: the ring's border and free slice, the percentage in its hole,
@@ -2248,6 +2251,8 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
+    // Display > Favorite folders: how a favorite stands out, on every display.
+    ApplyFavoriteHighlightEverywhere();
     // Display > Path bar: its colours, on the window's strip and the split
     // view's two (a restyle, no rebuild)...
     for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
@@ -2713,6 +2718,23 @@ void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) 
     target->SetFavoriteMarkProvider([this](const FilerEntry& entry) {
         return favorites.IsFavorite(entry.path);
     });
+    ApplyFavoriteHighlight(target);
+}
+
+void UltraFilerWindow::ApplyFavoriteHighlight(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+    target->SetFavoriteHighlight(settings.favoriteHighlight,
+            settings.EffectiveFavoriteHighlightColor(theme.dark, theme.roles.ground));
+    target->SetFavoriteHeartShown(settings.favoriteHeart);
+}
+
+void UltraFilerWindow::ApplyFavoriteHighlightEverywhere() {
+    for (FilerTabState* state : FolderDisplayStates())
+        if (state->filer) ApplyFavoriteHighlight(state->filer.get());
+    ApplyFavoriteHighlight(folderPreview.get());
+    for (const auto& f : historyFilers) ApplyFavoriteHighlight(f.get());
+    for (const auto& f : favoritesFilers) ApplyFavoriteHighlight(f.get());
 }
 
 void UltraFilerWindow::RepaintFavoriteMarks() {
