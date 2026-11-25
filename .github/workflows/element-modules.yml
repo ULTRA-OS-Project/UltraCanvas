@@ -182,10 +182,10 @@ jobs:
           set -euo pipefail
           if [ "${{ matrix.core }}" = shared ]; then
             widgets=""
-            expected="Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas;MediaViewer\]"
+            expected="Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas;MediaViewer;ProfilePicture\]"
           else
             widgets="MediaViewer"
-            expected="Widgets: compiled in \[MediaViewer\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas\]"
+            expected="Widgets: compiled in \[MediaViewer\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas;ProfilePicture\]"
           fi
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \

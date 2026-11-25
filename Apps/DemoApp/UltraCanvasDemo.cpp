@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.29 - Widgets > Profile Picture (UltraCanvasProfilePicture)
 // Version: 1.0.28 - the shell follows the theme: header, legend, page area and scrollbars take a
 //                  dark (or high-contrast) theme's roles and change with it; the light look is kept
 // Version: 1.0.27 - Info Graphics: the "Waves info graphic" placeholder removed (Timeline Diagram > Wave)
@@ -2503,6 +2504,19 @@ namespace UltraCanvas {
                 .AddVariant("colorpalettes", Tr("Under a Colour Picker"))
                 .AddVariant("colorpalettes", Tr("Several Palettes"))
                 .AddVariant("colorpalettes", Tr("Indexed (GIF) Palettes"));
+
+        // A person's picture: chosen, placed in a circle, removed (ChatCube's
+        // Edit profile).
+        widgetsBuilder.AddItem("profilepicture", Tr("Profile Picture"),
+                               Tr("A person's picture in a circle or their initials on a colour; "
+                               "choose a picture, place it in the crop dialog, change or remove it"),
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateProfilePictureExamples(); },
+                               "DemoApp/UltraCanvasProfilePictureExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasProfilePicture.md")
+                .AddVariant("profilepicture", Tr("On a Profile Page"))
+                .AddVariant("profilepicture", Tr("Sizes and Initials"))
+                .AddVariant("profilepicture", Tr("The Cropper"));
 
         widgetsBuilder.AddItem("datepicker", Tr("Date Picker / Calendar"),
                                Tr("Calendar widgets covering single, range, multiple and week selection"),

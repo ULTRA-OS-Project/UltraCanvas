@@ -32011,6 +32011,7 @@ on Windows the module needs the shared core). The table:
 | `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
 | `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
 | `MediaViewer` | `media-viewer` | `ultracanvas-widget-media-viewer` (shared core only) | UltraViewer, UltraFiler, UltraMail, EmailCleaner, ChatCube, UltraClipboard, UltraSnip, DemoApp |
+| `ProfilePicture` | `profile-picture`, `profile-picture-editor` | `ultracanvas-widget-profile-picture` | ChatCube, DemoApp |
 
 **Static or shared core.** The shipping configuration is a shared core
 (`ULTRACANVAS_BUILD_SHARED`, on by default whenever DemoApp is built): every
@@ -64659,6 +64660,159 @@ The decks it writes open in python-pptx and LibreOffice
 (`UC_PPTX_TEST_DUMP=<dir>` keeps them).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasProfilePicture.md
+==============================================================================
+
+# UltraCanvas Profile Picture Documentation
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> card; std::shared_ptr<UltraCanvasContainer> row; UltraCanvasWindowBase* window; std::string savedPicture; std::string dataFolder; void SavePicturePath(const std::string& path); void ShowStatus(const std::string& text); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [The picture](#the-picture)
+- [Choosing and placing a picture](#choosing-and-placing-a-picture)
+- [The cropper on its own](#the-cropper-on-its-own)
+- [Writing the square yourself](#writing-the-square-yourself)
+- [Style and the theme](#style-and-the-theme)
+- [The element registry](#the-element-registry)
+
+## Overview
+
+A person's profile picture, the way the messengers show one: a square picture in a circle, or, without one, the initials of the name on a colour picked from a key (the same key always gets the same colour). Four parts, in `UltraCanvasProfilePicture.h`:
+
+| Part | What it is |
+|---|---|
+| `UltraCanvasProfilePicture` | The round picture. Editable, it wears a badge - a camera with a picture, a **+** without - and a click (or Return / Space with the focus) chooses a new picture; Delete removes it. |
+| `UltraCanvasProfilePictureEditor` | The row of a profile page: the picture, a caption, **Choose a picture** (**Change picture** once there is one), **Remove**, and a line of hint. Built from `UltraCanvasButton` and `UltraCanvasLabel`. |
+| `UltraCanvasProfilePictureCropper` | The area a picture is placed in: the whole picture under a round window, dragged to move it, the wheel (or `SetZoom`) to zoom, the arrow keys and **+** / **-** with the focus; what lies outside the circle is dimmed. |
+| `ShowProfilePictureCropDialog` | That cropper in a dialog, with a zoom slider, the picture as it will look at 40 and 28 pixels, **Cancel** and **Use this picture**. |
+
+Choosing goes through three steps: the FileLoader's Open dialog (every picture type this build reads), the crop dialog, then `CropProfilePicture`, which writes the square that was framed - 256 pixels a side by default, JPEG, or PNG when the picture has transparency - into the output folder. `onPictureChanged` reports the new file; removing reports `""`. The picture shown follows at once. The file is the application's own (a cache or profile folder of its own, `SetOutputDirectory`), so the application keeps the path and hands it back with `SetPicturePath` at the next start.
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasProfilePicture.h"
+
+auto editor = CreateProfilePictureEditor("ProfilePicture", 440);
+editor->SetName("Erin Mayer");                           // the initials and the accessible name
+editor->SetHint("A photo of you, or anything square. Your contacts see it beside your name.");
+editor->GetPicture()->SetOutputDirectory(dataFolder);    // where chosen pictures are written
+editor->SetPicturePath(savedPicture);                    // "" shows the initials
+editor->onPictureChanged = [](const std::string& path) {
+    SavePicturePath(path);                               // "" when the picture was removed
+};
+editor->onPictureError = [](const std::string& error) {
+    ShowStatus("The picture could not be written: " + error);
+};
+card->AddChild(editor);
+```
+
+An application that styles its own buttons reaches the row's two with `GetChooseButton()` and `GetRemoveButton()`. The row is at least as tall as its picture (96 pixels; `SetPictureSize`), taller when the caption, the buttons and a wrapped hint need it. `SetCaption("")` hides the caption, `SetHint("")` the hint.
+
+## The picture
+
+```cpp
+// In a list: 40 pixels, a person's id picks the colour of their initials.
+auto avatar = CreateProfilePicture("Avatar", 40);
+avatar->SetName("Mika Korhonen");
+avatar->SetColorKey("user-7c1f");
+avatar->SetPicturePath(savedPicture);      // shown in the circle; a picture that is not square shows its middle square
+row->AddChild(avatar);
+
+// Editable on its own, without the row's buttons.
+auto mine = CreateProfilePicture("MyPicture", 72);
+mine->SetName("Erin Mayer");
+mine->SetEditable(true);
+mine->onPictureChanged = [](const std::string& path) { SavePicturePath(path); };
+```
+
+- `ProfilePictureInitials(name)` gives the initials it draws: the first letters of the first and last word, upper-cased (`"Erin Mayer"` → `EM`, `"erin"` → `E`); a letter outside ASCII is taken whole.
+- `PictureRect()` is the circle: the element's largest centred square.
+- `SetPictureFrame(source, frame)` shows a square of a picture without writing a file - the crop dialog's previews use it; `SetPicturePath` clears it.
+- `SetOutputSize(pixels)` (256 by default, 64 to 1024) and `SetMaxOutputBytes(bytes)` (0, the default, for any size) say what a chosen picture is written as: a service that takes pictures up to a size - ChatCube Direct's 32 KiB in one sealed message - gets one that fits (see `CropProfilePictureWithin` below).
+- `ChoosePicture()` opens the chooser from code (the editor row's button does); `PlacePicture(path)` starts at the crop dialog with a picture the application already has (a file dropped on it, a photo taken); `RemovePicture()` goes back to the initials.
+
+## Choosing and placing a picture
+
+The crop dialog can be used without the picture element:
+
+```cpp
+ShowProfilePictureCropDialog(window, "/home/erin/Pictures/beach.jpg", ProfilePictureStyle::FromTheme(),
+    [](bool placed, const ProfilePictureFrame& frame) {
+        if (!placed) return;                             // Cancel, or the file could not be read
+        std::string error;
+        if (!CropProfilePicture("/home/erin/Pictures/beach.jpg", frame, 256, "/tmp/me.jpg", &error))
+            ShowStatus(error);
+    });
+```
+
+A `ProfilePictureFrame` says which square of the picture is shown: `centerX` and `centerY` are its centre as fractions of the picture's width and height (0.5, 0.5 is the middle), and `zoom` 1 is the largest square that fits (the picture's shorter side), 2 a square half as wide. `SquareIn(width, height)` gives that square in pixels and `Clamped(width, height)` brings a frame back inside the picture.
+
+## The cropper on its own
+
+```cpp
+auto cropper = std::make_shared<UltraCanvasProfilePictureCropper>("Cropper", 260.0f);
+cropper->SetSourcePath("/home/erin/Pictures/beach.jpg");   // false when it is no picture
+cropper->SetMaxZoom(4.0);                                  // the default
+auto preview = CreateProfilePicture("Preview", 64);
+cropper->onFrameChanged = [preview = preview.get(), cropper = cropper.get()](const ProfilePictureFrame& f) {
+    preview->SetPictureFrame(cropper->GetSourcePath(), f);
+};
+cropper->SetZoom(1.5, true);                               // true: report it as a drag would
+card->AddChild(cropper);
+card->AddChild(preview);
+```
+
+The circle is the cropper's largest centred square less `ProfilePictureStyle::cropInset` on each side (`CircleRect()`). A drag moves the picture with the pointer, and stops at the picture's edge.
+
+## Writing the square yourself
+
+```cpp
+std::string error;
+const bool written = CropProfilePicture("/home/erin/Pictures/beach.jpg",
+                                        ProfilePictureFrame{0.4, 0.5, 1.2},
+                                        512, "/tmp/me.png", &error);
+const bool keepAsPng = ProfilePictureHasTransparency("/home/erin/Pictures/logo.png");
+```
+
+The format follows the extension of the file written: `.jpg` / `.jpeg` (quality 88, transparency put over white), `.webp`, otherwise PNG with its transparency. Every output pixel averages the source pixels it covers, so a large photo shrinks sharp and a small picture is enlarged smoothly to the size asked for. The source is read at no more than 2048 pixels on its long side.
+
+To keep the file under a size, `CropProfilePictureWithin` writes it as `CropProfilePicture` does and, when it comes out larger, again as JPEG at quality 75 and 60, then at three quarters and half the size (never under 64 pixels), until it fits. The path written comes back - the one asked for, or the same with `.jpg` when a PNG had to become a JPEG; nothing is left behind when not even the smallest fits.
+
+```cpp
+std::string written, why;
+if (CropProfilePictureWithin("/home/erin/Pictures/beach.png", ProfilePictureFrame{}, 256, "/tmp/me.png",
+                             32 * 1024, &written, &why))
+    SavePicturePath(written);   // "/tmp/me.jpg" when the PNG was too large
+```
+
+## Style and the theme
+
+`ProfilePictureStyle` holds the eight initials colours (`initialsPalette`), the initials' two inks (`InkOn` picks whichever reads on the colour), the badge's colours and size, the hover shade, the focus ring, and the cropper's background, shade, ring and inset. `ProfilePictureStyle::Light()` and `Dark()` are the two looks; `FromTheme(theme)` takes the accent for the badge and the focus, the panel for the badge's border and the palette for the theme's darkness - or the theme's own `avatar.0` … `avatar.7` roles where it names them. A picture that follows the theme restyles with it; `SetStyle` by hand stops the following.
+
+```cpp
+ProfilePictureStyle style = ProfilePictureStyle::Dark();
+style.ringColor = Color(255, 255, 255, 60);              // a hairline round the circle
+const Color mine = style.ColorForKey("user-7c1f");       // the colour that key's initials get
+auto picture = CreateProfilePicture("Picture", 48);
+picture->SetStyle(style);
+```
+
+## The element registry
+
+Two type names, category Widget: `profile-picture` and `profile-picture-editor`. Both come from the selectable widget `ProfilePicture`: compiled into the core by default, or, when `ULTRACANVAS_WIDGETS` leaves it out, the runtime module `ultracanvas-widget-profile-picture` in `<build>/Plugins/Elements` (see [UltraCanvasElementPlugins.md](UltraCanvasElementPlugins.md)).
+
+```cpp
+UltraCanvas_RegisterSelectedWidgets();
+auto byName = UltraCanvasElementRegistry::Create("profile-picture", "Avatar", 0, 0, 64, 64);
+```
+
+DemoApp shows it under **Widgets > Profile Picture**; `Tests/ProfilePictureTest.cpp` covers the initials, the colours, the frame, the writing, the cropper's input and the editor row.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasProgressDialog.md
 ==============================================================================
 
@@ -90696,6 +90850,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Colour (wheel, SV area, hue × lightness field or colour + intensity sliders; optional design selector) | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Palette rows under a colour picker - add schemes from the Palette manager (a draggable popup; up to 256-colour GIF palettes), make palettes of your own, remove rows, set an entry with a right click, flood the picker with a hovered swatch | `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md)) | `UltraCanvasColorPaletteManager.h` |
+| A person's profile picture: a square picture in a circle or the initials on a colour their id picks; editable, it chooses a picture, places it in a crop dialog (drag, zoom) and writes the square; the profile page's row with Choose / Change and Remove; the cropper on its own | `UltraCanvasProfilePicture`, `UltraCanvasProfilePictureEditor`, `UltraCanvasProfilePictureCropper` ([doc](UltraCanvasProfilePicture.md)) | `UltraCanvasProfilePicture.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
@@ -107860,6 +108015,19 @@ that is plainly not one - the phone with `+` and the country code). A new
 account's are `credentials.email` and `credentials.phoneNumber` with
 `createAccount`.
 
+Where the service takes one (`pictureSupported`, filled by
+`UltraIM_FetchAccountProfile` - ChatCube Direct does), the profile carries
+the owner's picture too: `picturePath`, a square JPEG, PNG or WebP file, ""
+for none. An update applies it only with `pictureChanged` set, so a host
+that never shows the picture cannot remove it by leaving the field empty;
+with the flag, "" removes it. The provider keeps its own copy. ChatCube
+Direct takes at most 32 KiB (one sealed message;
+`UltraCanvasProfilePictureEditor::SetMaxOutputBytes` makes one that fits)
+and sends it to every contact end to end, as it sends a message - again
+when it changes, and to a contact added later; the contacts' pictures come
+back as `avatarPath` on their conversations and contacts and
+`senderAvatarPath` on their messages.
+
 How signing in on the device is protected is `UltraIMSignInProtection`
 (the `SignInProtection` capability): `DeviceKey` (nothing to type),
 `Password`, `AuthenticatorCode` (a TOTP code from an authenticator app -
@@ -108206,6 +108374,12 @@ other over mDNS alone, which skips without a responder unless
   message (`org.matrix.msc3245.voice`, with the `org.matrix.msc1767.audio`
   block) and its length (`info.duration`, milliseconds - set for a video
   too when `UltraIMSendOptions::durationSeconds` says it).
+- **Pictures:** a room's own (`m.room.avatar`) and its members'
+  (`avatar_url` on their `m.room.member` event) are fetched once each as a
+  96 x 96 thumbnail (the authenticated media API, else the one before it)
+  into the cache: `avatarPath` on a room - its own picture, else for a
+  direct chat the other person's - and on a contact, `senderAvatarPath` on
+  their messages; the room is told (`ConversationUpdate`) when one arrives.
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
   emotes, pictures, videos, audio and files with their attachments (the
   `filename` and the body as the caption, MSC2530), edits (`m.replace` -
@@ -108486,6 +108660,12 @@ The provider turns that into chats:
   `SetRedirectUri`). The access token is kept in UltraVault, so the next
   start signs in by itself (`SignIn` with no server); `credentials.accessToken`
   signs in with a token made in the server's settings instead.
+- **Pictures:** each account a poll or a new chat meets has its
+  `avatar_static` fetched once into the media folder: `avatarPath` on its
+  one-to-one chat and its contact, `senderAvatarPath` on its statuses; the
+  chat is told (`ConversationUpdate`) when it arrives. The server's grey
+  stand-in for no picture (`.../missing.png`) is not fetched, so the
+  initials show.
 - **People:** `AddContact` takes `@user@server`, `user@server`, `@user`
   (this server) or a profile's page (`https://server/@user`): the server
   looks them up (`/api/v1/accounts/lookup`), or asks theirs
@@ -120331,60 +120511,6 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/german-catalogue.md
-==============================================================================
-
-- **UltraMail in German.** A first German catalogue
-  (`media/locale/de/UltraMail.json`, 606 entries, marked as a machine draft
-  awaiting review): the menus, settings, dialogs, the warning strip, the
-  "Do you really want to open the link?" question and every reason the
-  scam/phishing scan gives. Words UltraMail shares with the other programs come
-  from the standard and Communication sets as before.
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/plain-text-links-look-like-links.md
-==============================================================================
-
-- **The links of a plain-text mail look like links.** A web address, a
-  `mailto:` or a mail address written in a plain-text message (or an HTML
-  message read as plain text) opened in the browser when clicked, but was
-  drawn like the text around it, so nothing said it could be clicked - a
-  Microsoft account's "verify this alias" mail showed its links as grey
-  text. They are now drawn in the look's accent colour and underlined, the
-  colour following a change of the look; what is drawn as a link is exactly
-  what a click opens (`PlainLinkSpans`, the rules `PlainLinkAt` reads).
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/scan-reasons-translated.md
-==============================================================================
-
-- **The scan's reasons are in the reader's language.** Every reason the
-  scam/phishing scan gives - the warning strip's list, the sender badge's
-  tooltip, the "Do you really want to open the link?" question - and the
-  sender's verdict line ("New sender", "In your address book", ...) go through
-  `Tr` / `TrF`, so a UltraMail catalogue translates them; a reason that lists
-  several signs joins them with the language's own separators. The engine
-  links UltraLocalisation (its home is the shared core, so engine and
-  application share one loaded set). A message that warns has its stored
-  reasons written again in the current language when it is shown, from a
-  fresh scan that came to the same findings, so a change of language does not
-  leave old mail in the old one.
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/suspicious-link-asks-first.md
-==============================================================================
-
-- **A link of a suspicious message asks before it opens.** While the warning
-  strip warns of the message shown (a scam, phishing, parts that do not add
-  up), a click on one of its web links - in formatted or plain-text mail -
-  asks "Do you really want to open the link?" and says why: the strip's
-  verdict, where this link goes when that is not the sender's domain, the
-  domain mismatch and the scan's reasons. "Do not open" is the answer Return
-  and Escape give. A sender the reader only blocked, and the caution every
-  mail about crypto gets, do not ask; a `mailto:` link opens the composer as
-  before.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md

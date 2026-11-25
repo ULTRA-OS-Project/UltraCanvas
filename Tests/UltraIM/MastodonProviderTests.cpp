@@ -5,10 +5,12 @@
 // direct chat opened before its first message, texts both ways, several
 // statuses between two looks arriving in order, a reply, an edit, a delete,
 // a picture and a video uploaded (progress, processing) and fetched back byte
-// for byte, a file Mastodon does not take, search, read, a group, leaving.
+// for byte, a file Mastodon does not take, search, read, a group, the
+// accounts' pictures (and none for the server's grey stand-in), leaving.
 // Skips without python3, unless ULTRAIM_TEST_MASTODON_REQUIRED is set.
+// Version: 0.1.1 - the accounts' pictures: fetched, on the chat, the contacts and the messages; missing.png none
 // Version: 0.1.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "MastodonProvider.h"
@@ -522,6 +524,55 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
     CHECK(e.conversationId == "alice@" + host + " carol@" + host);
     // The one-to-one chat is not touched by it.
     CHECK(Fetch(*bob, withAlice).size() == 7);
+
+    // ---- the accounts' pictures ------------------------------------------------
+    // Alice's avatar_static, fetched by Bob's side into its media folder: on
+    // his chat with her, in his contacts and beside her messages. Carol has
+    // only the server's grey stand-in (missing.png): none, so her initials show.
+    {
+        std::string aliceFace;
+        for (int i = 0; i < 100 && aliceFace.empty(); ++i) {
+            std::mutex m;
+            std::condition_variable cv;
+            bool done = false;
+            bob->FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& list) {
+                std::lock_guard<std::mutex> lock(m);
+                for (const auto& c : list)
+                    if (c.conversationId == withAlice) aliceFace = c.avatarPath;
+                done = true;
+                cv.notify_all();
+            });
+            std::unique_lock<std::mutex> lock(m);
+            cv.wait_for(lock, std::chrono::seconds(5), [&]() { return done; });
+            if (aliceFace.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        const std::vector<uint8_t> face = ReadBytes(aliceFace);
+        const std::string expected = std::string("\x89PNG\r\n\x1a\n") + [] {
+            std::string s;
+            for (int i = 0; i < 40; ++i) s += "alice";
+            return s;
+        }();
+        CHECK(!aliceFace.empty() && std::string(face.begin(), face.end()) == expected);
+        bool beside = false;
+        for (const UltraIMMessage& m : Fetch(*bob, withAlice))
+            if (!m.isOwn) beside = beside || m.senderAvatarPath == aliceFace;
+        CHECK(beside);
+        std::string bobFace = "unset", carolFace = "unset";
+        alice->FetchContacts([&](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
+            for (const auto& c : list) {
+                if (c.contactId == withBob) bobFace = c.avatarPath;
+                if (c.contactId == "carol@" + host) carolFace = c.avatarPath;
+            }
+        });
+        for (int i = 0; i < 50 && (bobFace.empty() || bobFace == "unset"); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            alice->FetchContacts([&](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
+                for (const auto& c : list) if (c.contactId == withBob) bobFace = c.avatarPath;
+            });
+        }
+        CHECK(!bobFace.empty() && bobFace != "unset" && fs::exists(UltraCanvas::PathFromUtf8(bobFace)));
+        CHECK(carolFace.empty());
+    }
 
     // ---- a status that answers nothing: a second thread, the same chat -------
     {
