@@ -1,4 +1,5 @@
 // UltraCanvas Framework Demonstration Program Entry Point
+// Version: 1.0.9 - no "Build Date" line: __DATE__ / __TIME__ made main.cpp.o miss ccache on every build
 // Version: 1.0.8 - Builds for iOS: the body is ultracanvas_app_main(), as on Android
 // Version: 1.0.7 - Initialize is given the name "UltraCanvasDemo", not argv[0]
 // Version: 1.0.6 - --audit-layout runs in the bundled Ubuntu 12, whatever the desktop's font
@@ -102,7 +103,6 @@ void SignalHandler(int) {
 bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
     debugOutput << "=== UltraCanvas Framework Demonstration Program ===" << std::endl;
     debugOutput << "Version: 1.0.0" << std::endl;
-    debugOutput << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
     debugOutput << "Platform: ";
 
 #ifdef _WIN32
