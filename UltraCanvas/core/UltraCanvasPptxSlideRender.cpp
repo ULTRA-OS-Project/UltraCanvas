@@ -1,5 +1,6 @@
 // core/UltraCanvasPptxSlideRender.cpp
 // A PowerPoint slide drawn as a picture - see UltraCanvasPptxSlideRender.h.
+// Version: 1.4.0 - PptxBulletText
 // Version: 1.3.0 - a picture is decoded once, not on every paint
 // Version: 1.2.0 - DrawPptxSlide: on any context, into a rectangle; prompt text, a shape's text left out
 // Version: 1.1.0 - preset and custom outlines turned and mirrored, gradients, dashes, arrowheads,
@@ -303,6 +304,14 @@ private:
     const PptxShape& ShapeToPaint(size_t index) {
         const PptxShape& shape = slide_.shapes[index];
         if (!options_) return shape;
+        if (options_->hideTextOfCellShape == static_cast<int>(index)) {
+            substitute_ = shape;
+            const int r = options_->hideTextOfCellRow, c = options_->hideTextOfCellColumn;
+            if (r >= 0 && c >= 0 && r < static_cast<int>(substitute_.rows.size()) &&
+                c < static_cast<int>(substitute_.rows[static_cast<size_t>(r)].size()))
+                substitute_.rows[static_cast<size_t>(r)][static_cast<size_t>(c)].clear();
+            return substitute_;
+        }
         if (options_->hideTextOfShape == static_cast<int>(index)) {
             substitute_ = shape;
             substitute_.paragraphs.clear();
@@ -779,6 +788,8 @@ private:
 };
 
 } // namespace
+
+std::string PptxBulletText(const PptxParagraph& p) { return BulletText(p); }
 
 void DrawPptxSlide(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, const Rect2Dd& rect,
                    const PptxSlideDrawOptions& options) {

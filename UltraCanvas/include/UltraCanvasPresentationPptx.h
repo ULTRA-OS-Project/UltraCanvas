@@ -54,6 +54,8 @@
 // Specification: ECMA-376 Part 1, PresentationML (§19) and DrawingML (§20-21).
 // Version: 1.6.0 - masters, layouts and transitions read and written (.pptx here, .odp in
 //                  UltraCanvasPresentationOdp.h); PptxLayout::type is p:sldLayout/@type
+// Version: 1.6.0 - PptxParagraphsToRichDocument / PptxParagraphsFromRichDocument: a shape's text for the
+//                  rich in-place editor and back
 // Version: 1.5.0 - masters, layouts (PptxLayout, PptxSlide::layoutIndex, PptxSlideFromLayout), transitions;
 //                  UCPresentation / UCSlide / UCSlideShape
 // Version: 1.4.0 - WritePptxPresentation / WritePptxPresentationToPackage (the writer, .pptx and kin,
@@ -290,6 +292,21 @@ bool ReadPptxPresentation(const std::string& filePath, PptxPresentation& out, st
 // The same for a package (the ZIP) already in memory.
 bool ReadPptxPresentationFromPackage(std::vector<uint8_t> package, PptxPresentation& out,
                                      std::string& error, bool withPictures = false);
+
+// A shape's text as a word-processing document, for editing it in
+// UltraCanvasRichTextEdit: each paragraph a block - a bulleted or numbered one
+// a list item at its level - with its alignment, each run with its look
+// (bold, italic, underline, strike, super- and subscript, typeface, size,
+// colour, highlight, link), a line break inside a paragraph kept.
+UCRichDocument PptxParagraphsToRichDocument(const std::vector<PptxParagraph>& paragraphs);
+// And back. `previous` - the paragraphs before the edit - gives what the
+// document does not hold (the bullet's character, typeface and colour, the
+// numbering scheme, indents, spacing): a paragraph takes them from the one
+// it was at the same place, else the last one at its level, else the first.
+// An empty paragraph keeps the look of the run before it, so typing into it
+// later looks as the shape says.
+std::vector<PptxParagraph> PptxParagraphsFromRichDocument(const UCRichDocument& document,
+                                                          const std::vector<PptxParagraph>& previous);
 
 // A new slide made from layout `layoutIndex` of `deck`: its placeholders,
 // empty (their prompt text is the editor's to show), and the layout's

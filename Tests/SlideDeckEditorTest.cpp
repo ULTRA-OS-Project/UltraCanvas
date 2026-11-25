@@ -161,6 +161,109 @@ int main() {
     editor.Redo();
     Check(editor.CurrentSlide()->shapes.size() == 5, "redo does it again");
 
+    std::printf("\n-- a shape's text and the rich document --\n");
+    {
+        std::vector<PptxParagraph> paragraphs(3);
+        PptxRun look;
+        look.sizePt = 24;
+        look.font = "Georgia";
+        look.color = "1F4E79";
+        PptxRun bold = look;
+        bold.text = "Bold";
+        bold.bold = true;
+        PptxRun plain = look;
+        plain.text = " and plain";
+        PptxRun lineBreak = look;
+        lineBreak.text = "\n";
+        PptxRun after = look;
+        after.text = "next line";
+        paragraphs[0].runs = {bold, plain, lineBreak, after};
+        paragraphs[0].align = PptxAlign::Center;
+        paragraphs[1].bullet = true;
+        paragraphs[1].bulletChar = "\xC2\xA7";   // Wingdings' square
+        paragraphs[1].bulletFont = "Wingdings";
+        paragraphs[1].level = 1;
+        PptxRun item = look;
+        item.text = "Item";
+        paragraphs[1].runs = {item};
+        paragraphs[2].bullet = paragraphs[2].numbered = true;
+        paragraphs[2].numberScheme = "alphaLcParenR";
+        paragraphs[2].numberStartAt = 3;
+        PptxRun third = look;
+        third.text = "Third";
+        paragraphs[2].runs = {third};
+
+        const UCRichDocument rich = PptxParagraphsToRichDocument(paragraphs);
+        Check(rich.blocks.size() == 3 && rich.blocks[0].runs.size() == 3 && rich.blocks[0].runs[0].bold &&
+                  rich.blocks[0].runs[2].lineBreakBefore && rich.blocks[0].runs[0].color == "#1F4E79" &&
+                  rich.blocks[0].align == RichTextAlign::Center,
+              "runs, look, a line break and the alignment in the document");
+        Check(rich.blocks[1].type == RichBlockType::ListItem && rich.blocks[1].listLevel == 1 &&
+                  rich.blocks[1].bulletText == "\xE2\x96\xAA",
+              "a bullet at its level, Wingdings' square as the square [" + rich.blocks[1].bulletText + "]");
+        Check(rich.blocks[2].orderedList && rich.blocks[2].numberFormat == RichNumberFormat::LowerLetter &&
+                  rich.blocks[2].numberTemplate == "%1)" && rich.blocks[2].listStartNumber == 3,
+              "numbering: c) as lower letters, a parenthesis, from 3");
+
+        UCRichDocument edited = rich;
+        RichDocBlock added;
+        added.type = RichBlockType::ListItem;
+        added.orderedList = true;
+        added.numberFormat = RichNumberFormat::LowerLetter;
+        added.numberTemplate = "%1)";
+        RichTextRun fourth;
+        fourth.text = "Fourth";
+        added.runs = {fourth};
+        edited.blocks.push_back(added);
+        edited.blocks.emplace_back();   // an empty paragraph
+        const std::vector<PptxParagraph> back = PptxParagraphsFromRichDocument(edited, paragraphs);
+        Check(back.size() == 5 && back[0].runs.size() == 4 && back[0].runs[2].text == "\n" && back[0].runs[0].bold &&
+                  back[0].runs[1].font == "Georgia" && back[0].runs[0].color == "1F4E79",
+              "back: the runs, the line break, the look");
+        Check(back[1].bulletChar == "\xC2\xA7" && back[1].bulletFont == "Wingdings", "the Wingdings bullet kept as it was");
+        Check(back[3].numbered && back[3].numberScheme == "alphaLcParenR" && back[3].runs[0].sizePt == 24,
+              "a new numbered item: the scheme, the size of the text before");
+        Check(back[4].runs.size() == 1 && back[4].runs[0].text.empty() && back[4].runs[0].sizePt == 24,
+              "an empty paragraph keeps its look");
+    }
+
+    std::printf("\n-- formatting the selected shapes --\n");
+    editor.SetCurrentSlide(0);
+    editor.Select({2});
+    Check(!editor.AllSelectedText([](const PptxRun& r) { return r.bold; }), "not all bold");
+    editor.FormatSelectedText("Bold", [](PptxRun& r) { r.bold = true; });
+    Check(editor.AllSelectedText([](const PptxRun& r) { return r.bold; }) && editor.UndoDescription() == "Bold",
+          "made bold, one step");
+    editor.Undo();
+
+    std::printf("\n-- tables --\n");
+    const int table = editor.InsertTable(SlideBox{kInch, kInch, 6 * kInch, 3 * kInch}, 3, 3);
+    const PptxShape& t = Shape(editor, table);
+    Check(t.kind == PptxShapeKind::Table && t.rows.size() == 3 && t.rows[0].size() == 3 && t.cellStyles[0][0].fill == "4472C4" &&
+              t.cellStyles[0][0].bold,
+          "a 3 x 3 table, its header row coloured and bold");
+    SlideBox cell = UCSlideDeckEditor::TableCellBox(Shape(editor, table), 1, 2);
+    Check(cell.x == 5 * kInch && cell.y == 2 * kInch && cell.width == 2 * kInch && cell.height == kInch, "a cell's box");
+    int row = -1, col = -1;
+    Check(editor.TableCellAt(table, static_cast<int64_t>(5.5 * kInch), static_cast<int64_t>(3.5 * kInch), row, col) && row == 2 && col == 2,
+          "the cell at a point");
+    editor.InsertTableRow(table, 0, true);
+    Check(Shape(editor, table).rows.size() == 4 && Shape(editor, table).cellStyles[1][0].fill != "4472C4" &&
+              Shape(editor, table).height == 4 * kInch,
+          "a row under the header: a body row, the table taller");
+    editor.InsertTableColumn(table, 2, true);
+    Check(Shape(editor, table).rows[0].size() == 4 && Shape(editor, table).columnWidths.size() == 4, "a column to the right");
+    editor.DeleteTableColumn(table, 0);
+    editor.DeleteTableRow(table, 3);
+    Check(Shape(editor, table).rows.size() == 3 && Shape(editor, table).rows[0].size() == 3, "a row and a column deleted");
+    editor.Undo();
+    editor.Undo();
+    editor.Undo();
+    editor.Undo();
+    Check(Shape(editor, table).rows.size() == 3 && Shape(editor, table).rows[0].size() == 3 &&
+              Shape(editor, table).height == 3 * kInch,
+          "all four undone");
+
     std::printf("\n%s (%d failed)\n", failures ? "FAILED" : "PASSED", failures);
     return failures;
 }

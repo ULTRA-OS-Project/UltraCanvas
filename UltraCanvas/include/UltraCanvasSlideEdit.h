@@ -29,6 +29,7 @@
 //   edit->SetDeck(deck);
 //   edit->onEditText = [edit](int shape) { /* ask for the text */ edit->Editor().SetShapeText(shape, "Hello"); };
 //
+// Version: 1.1.0 - SetEditingShape: a shape's text left to a host's in-place editor
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -84,6 +85,8 @@ public:
     std::function<void()> onSelectionChange;     // the slide or the selection changed
     // A shape's text is to be edited (double-click, Enter, F2).
     std::function<void(int shape)> onEditText;
+    // A table's cell is to be edited (double-click on a table).
+    std::function<void(int shape, int row, int col)> onEditTableCell;
     // Right-click: `slide` the slide under it in the strip (or the slide
     // shown), `shape` the shape under it on the slide (-1: none, or in the
     // strip); `windowX`, `windowY` where, for a menu.
@@ -94,6 +97,13 @@ public:
     bool OnEvent(const UCEvent& event) override;
     bool AcceptsFocus() const override { return true; }
 
+    // The shape whose text a host edits in place over the slide: drawn
+    // without its text meanwhile, its frame shown; -1: none.
+    void SetEditingShape(int shape);
+    int GetEditingShape() const { return editingShape_; }
+    // The table cell a host edits in place (its text left out); shape -1: none.
+    void SetEditingCell(int shape, int row, int col);
+
     // Where the slide is drawn, in the element's coordinates, and the
     // slide's EMU per pixel there (for a host placing something over it).
     Rect2Dd SlideRect() const;
@@ -102,6 +112,8 @@ public:
 private:
     enum class Drag { NoDrag, Band, Move, Resize, Rotate, StripSlide };
 
+    int editingShape_ = -1;
+    int editingCellShape_ = -1, editingCellRow_ = -1, editingCellCol_ = -1;
     bool showing_ = false;
     int showSlide_ = -1;             // -1 in the show: the end screen
     void ShowStep(int direction);

@@ -1,6 +1,8 @@
 // core/UltraCanvasSlideEdit.cpp
 // The presentation editor element (include/UltraCanvasSlideEdit.h).
 //
+// Version: 1.2.0 - a double-click on a table asks for its cell (onEditTableCell)
+// Version: 1.1.0 - SetEditingShape: the shape's text left out while a host edits it in place
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #include "UltraCanvasSlideEdit.h"
@@ -123,6 +125,19 @@ void UltraCanvasSlideEdit::SetStripWidth(int width) {
 void UltraCanvasSlideEdit::SetZoom(double zoom) {
     zoom_ = std::clamp(zoom, 0.25, 8.0);
     ClampPan();
+    RequestRedraw();
+}
+
+void UltraCanvasSlideEdit::SetEditingShape(int shape) {
+    if (editingShape_ == shape) return;
+    editingShape_ = shape;
+    RequestRedraw();
+}
+
+void UltraCanvasSlideEdit::SetEditingCell(int shape, int row, int col) {
+    editingCellShape_ = shape;
+    editingCellRow_ = row;
+    editingCellCol_ = col;
     RequestRedraw();
 }
 
@@ -380,7 +395,13 @@ void UltraCanvasSlideEdit::DrawCanvas(IRenderContext* ctx) {
     ctx->SetFillPaint(Color(0, 0, 0, 30));
     ctx->FillRectangle(Rect2Dd(rect.x + 3, rect.y + 4, rect.width, rect.height));
     PptxSlideDrawOptions options;
-    options.promptText = [](const PptxShape& shape, size_t) { return PromptFor(shape); };
+    options.promptText = [this](const PptxShape& shape, size_t index) {
+        return static_cast<int>(index) == editingShape_ ? std::string() : PromptFor(shape);
+    };
+    options.hideTextOfShape = editingShape_;
+    options.hideTextOfCellShape = editingCellShape_;
+    options.hideTextOfCellRow = editingCellRow_;
+    options.hideTextOfCellColumn = editingCellCol_;
     DrawPptxSlide(ctx, *editor_.GetDeck(), slide, rect, options);
 
     // Empty placeholders show where they are.
@@ -505,7 +526,13 @@ bool UltraCanvasSlideEdit::OnEvent(const UCEvent& event) {
             if (!Contains(p) || p.x < StripRect().width) return false;
             const Point2Dd at = ToSlide(p);
             const int shape = editor_.ShapeAt(static_cast<int64_t>(at.x), static_cast<int64_t>(at.y));
-            if (shape >= 0) EditTextOf(shape);
+            int row = -1, col = -1;
+            if (shape >= 0 && editor_.TableCellAt(shape, static_cast<int64_t>(at.x), static_cast<int64_t>(at.y), row, col)) {
+                editor_.Select({shape});
+                if (onEditTableCell) onEditTableCell(shape, row, col);
+            } else if (shape >= 0) {
+                EditTextOf(shape);
+            }
             return true;
         }
         case UCEventType::MouseWheel: {

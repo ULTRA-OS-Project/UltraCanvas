@@ -1,6 +1,8 @@
 // core/UltraCanvasSlideDeckEditor.cpp
 // The editing core of a presentation (include/UltraCanvasSlideDeckEditor.h).
 //
+// Version: 1.2.0 - tables: InsertTable, TableCellBox, TableCellAt, rows and columns inserted and deleted
+// Version: 1.1.0 - FormatSelectedText, AllSelectedText
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #include "UltraCanvasSlideDeckEditor.h"
@@ -583,6 +585,259 @@ void UCSlideDeckEditor::SetShapeText(int shape, const std::string& text) {
     ChangeSlide("Typing", [&](PptxSlide& s) {
         PptxShape& target = s.shapes[static_cast<size_t>(shape)];
         target.paragraphs = ParagraphsOf(text, target.paragraphs);
+    });
+}
+
+void UCSlideDeckEditor::FormatSelectedText(const std::string& description, const std::function<void(PptxRun&)>& run,
+                                           const std::function<void(PptxParagraph&)>& paragraph) {
+    if (selection_.empty()) return;
+    const std::vector<int> shapes = selection_;
+    ChangeSlide(description, [&](PptxSlide& slide) {
+        auto apply = [&](std::vector<PptxParagraph>& paragraphs) {
+            for (PptxParagraph& p : paragraphs) {
+                if (paragraph) paragraph(p);
+                if (run) for (PptxRun& r : p.runs) run(r);
+            }
+        };
+        for (int i : shapes) {
+            PptxShape& shape = slide.shapes[static_cast<size_t>(i)];
+            apply(shape.paragraphs);
+            for (auto& row : shape.rows)
+                for (auto& cell : row) apply(cell);
+        }
+    });
+}
+
+bool UCSlideDeckEditor::AllSelectedText(const std::function<bool(const PptxRun&)>& test) const {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || selection_.empty()) return false;
+    bool any = false;
+    for (int i : selection_) {
+        const PptxShape& shape = slide->shapes[static_cast<size_t>(i)];
+        for (const PptxParagraph& p : shape.paragraphs)
+            for (const PptxRun& r : p.runs) {
+                if (r.text.empty() || r.text == "\n") continue;
+                if (!test(r)) return false;
+                any = true;
+            }
+    }
+    return any;
+}
+
+// ===== TABLES =====
+
+namespace {
+
+std::vector<PptxParagraph> CellText(float sizePt, const std::string& color, bool bold) {
+    PptxRun run;
+    run.sizePt = sizePt;
+    run.color = color;
+    run.bold = bold;
+    PptxParagraph paragraph;
+    paragraph.runs.push_back(run);
+    return {paragraph};
+}
+
+// The table's look for row `row`: PowerPoint's Medium Style 2, accent 1.
+PptxCellStyle BandStyle(int row) {
+    PptxCellStyle style;
+    style.fill = row == 0 ? "4472C4" : (row % 2 ? "CFD5EA" : "E9EBF5");
+    style.textColor = row == 0 ? "FFFFFF" : "";
+    style.bold = row == 0;
+    PptxCellStyle::Border white{"FFFFFF", 1.0};
+    style.left = style.right = style.top = style.bottom = white;
+    return style;
+}
+
+// Sizes scaled so they add up to `total`.
+std::vector<double> Scaled(const std::vector<int64_t>& sizes, int64_t total, size_t count) {
+    std::vector<double> out(count, count ? static_cast<double>(total) / static_cast<double>(count) : 0.0);
+    double sum = 0;
+    for (size_t i = 0; i < count && i < sizes.size(); ++i) sum += static_cast<double>(sizes[i]);
+    if (sum <= 0 || sizes.size() < count) return out;
+    for (size_t i = 0; i < count; ++i) out[i] = static_cast<double>(sizes[i]) * static_cast<double>(total) / sum;
+    return out;
+}
+
+} // namespace
+
+int UCSlideDeckEditor::InsertTable(const SlideBox& box, int rows, int columns) {
+    rows = std::clamp(rows, 1, 75);
+    columns = std::clamp(columns, 1, 75);
+    PptxShape table;
+    table.kind = PptxShapeKind::Table;
+    table.name = "Table";
+    PlaceShape(table, box);
+    for (int r = 0; r < rows; ++r) {
+        std::vector<std::vector<PptxParagraph>> row;
+        std::vector<PptxCellStyle> styles;
+        for (int c = 0; c < columns; ++c) {
+            const PptxCellStyle style = BandStyle(r);
+            row.push_back(CellText(18, style.textColor, style.bold));
+            styles.push_back(style);
+        }
+        table.rows.push_back(row);
+        table.cellStyles.push_back(styles);
+        table.rowHeights.push_back(box.height / rows);
+    }
+    for (int c = 0; c < columns; ++c) table.columnWidths.push_back(box.width / columns);
+    return InsertShape(table);
+}
+
+SlideBox UCSlideDeckEditor::TableCellBox(const PptxShape& table, int row, int col) {
+    const size_t rows = table.rows.size();
+    size_t columns = 0;
+    for (const auto& r : table.rows) columns = std::max(columns, r.size());
+    if (rows == 0 || columns == 0) return SlideBox{table.x, table.y, table.width, table.height};
+    const std::vector<double> widths = Scaled(table.columnWidths, table.width, columns);
+    const std::vector<double> heights = Scaled(table.rowHeights, table.height, rows);
+    int spanCols = 1, spanRows = 1;
+    if (row >= 0 && row < static_cast<int>(table.cellStyles.size()) &&
+        col >= 0 && col < static_cast<int>(table.cellStyles[static_cast<size_t>(row)].size())) {
+        const PptxCellStyle& style = table.cellStyles[static_cast<size_t>(row)][static_cast<size_t>(col)];
+        spanCols = std::max(1, style.gridSpan);
+        spanRows = std::max(1, style.rowSpan);
+    }
+    double x = static_cast<double>(table.x), y = static_cast<double>(table.y), w = 0, h = 0;
+    for (int c = 0; c < col && c < static_cast<int>(columns); ++c) x += widths[static_cast<size_t>(c)];
+    for (int r = 0; r < row && r < static_cast<int>(rows); ++r) y += heights[static_cast<size_t>(r)];
+    for (int c = col; c < col + spanCols && c < static_cast<int>(columns); ++c) w += widths[static_cast<size_t>(c)];
+    for (int r = row; r < row + spanRows && r < static_cast<int>(rows); ++r) h += heights[static_cast<size_t>(r)];
+    return SlideBox{static_cast<int64_t>(x), static_cast<int64_t>(y), static_cast<int64_t>(w), static_cast<int64_t>(h)};
+}
+
+bool UCSlideDeckEditor::TableCellAt(int shape, int64_t x, int64_t y, int& row, int& col) const {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return false;
+    const PptxShape& table = slide->shapes[static_cast<size_t>(shape)];
+    if (table.kind != PptxShapeKind::Table || table.rows.empty()) return false;
+    for (int r = 0; r < static_cast<int>(table.rows.size()); ++r) {
+        for (int c = 0; c < static_cast<int>(table.rows[static_cast<size_t>(r)].size()); ++c) {
+            const bool away = r < static_cast<int>(table.cellStyles.size()) &&
+                              c < static_cast<int>(table.cellStyles[static_cast<size_t>(r)].size()) &&
+                              table.cellStyles[static_cast<size_t>(r)][static_cast<size_t>(c)].mergedAway;
+            if (away) continue;
+            const SlideBox box = TableCellBox(table, r, c);
+            if (x >= box.x && x < box.Right() && y >= box.y && y < box.Bottom()) {
+                row = r;
+                col = c;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void UCSlideDeckEditor::InsertTableRow(int shape, int row, bool below) {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return;
+    if (slide->shapes[static_cast<size_t>(shape)].kind != PptxShapeKind::Table) return;
+    ChangeSlide("Insert row", [&](PptxSlide& s) {
+        PptxShape& table = s.shapes[static_cast<size_t>(shape)];
+        const int count = static_cast<int>(table.rows.size());
+        const int at = std::clamp(below ? row + 1 : row, 0, count);
+        // The look of the row it is next to - under the header row, the row
+        // under it, so a new body row is not a second header.
+        int from = std::clamp(row, 0, std::max(0, count - 1));
+        if (below && from == 0 && count > 1) from = 1;
+        // The new row copies the look of the one it is next to, emptied.
+        std::vector<std::vector<PptxParagraph>> cells;
+        std::vector<PptxCellStyle> styles;
+        if (count > 0) {
+            for (const auto& cell : table.rows[static_cast<size_t>(from)]) {
+                PptxRun look = !cell.empty() && !cell.front().runs.empty() ? cell.front().runs.front() : PptxRun();
+                look.text.clear();
+                PptxParagraph paragraph = cell.empty() ? PptxParagraph() : cell.front();
+                paragraph.runs = {look};
+                cells.push_back({paragraph});
+            }
+            if (from < static_cast<int>(table.cellStyles.size())) {
+                styles = table.cellStyles[static_cast<size_t>(from)];
+                for (PptxCellStyle& style : styles) { style.rowSpan = 1; style.mergedAway = false; style.gridSpan = 1; }
+            }
+        }
+        table.rows.insert(table.rows.begin() + at, cells);
+        if (!table.cellStyles.empty()) table.cellStyles.insert(table.cellStyles.begin() + std::min<int>(at, static_cast<int>(table.cellStyles.size())), styles);
+        const int64_t height = from < static_cast<int>(table.rowHeights.size()) ? table.rowHeights[static_cast<size_t>(from)]
+                                                                               : table.height / std::max(1, count);
+        if (!table.rowHeights.empty()) table.rowHeights.insert(table.rowHeights.begin() + std::min<int>(at, static_cast<int>(table.rowHeights.size())), height);
+        table.height += height;
+    });
+}
+
+void UCSlideDeckEditor::DeleteTableRow(int shape, int row) {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return;
+    const PptxShape& current = slide->shapes[static_cast<size_t>(shape)];
+    if (current.kind != PptxShapeKind::Table || current.rows.size() <= 1 || row < 0 || row >= static_cast<int>(current.rows.size())) return;
+    ChangeSlide("Delete row", [&](PptxSlide& s) {
+        PptxShape& table = s.shapes[static_cast<size_t>(shape)];
+        int64_t height = table.height / static_cast<int64_t>(table.rows.size());
+        if (row < static_cast<int>(table.rowHeights.size())) {
+            height = table.rowHeights[static_cast<size_t>(row)];
+            table.rowHeights.erase(table.rowHeights.begin() + row);
+        }
+        table.rows.erase(table.rows.begin() + row);
+        if (row < static_cast<int>(table.cellStyles.size())) table.cellStyles.erase(table.cellStyles.begin() + row);
+        table.height = std::max<int64_t>(1, table.height - height);
+    });
+}
+
+void UCSlideDeckEditor::InsertTableColumn(int shape, int col, bool right) {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return;
+    if (slide->shapes[static_cast<size_t>(shape)].kind != PptxShapeKind::Table) return;
+    ChangeSlide("Insert column", [&](PptxSlide& s) {
+        PptxShape& table = s.shapes[static_cast<size_t>(shape)];
+        size_t columns = 0;
+        for (const auto& r : table.rows) columns = std::max(columns, r.size());
+        const int from = std::clamp(col, 0, std::max(0, static_cast<int>(columns) - 1));
+        const int at = std::clamp(right ? from + 1 : from, 0, static_cast<int>(columns));
+        for (size_t r = 0; r < table.rows.size(); ++r) {
+            auto& row = table.rows[r];
+            PptxParagraph paragraph;
+            if (from < static_cast<int>(row.size()) && !row[static_cast<size_t>(from)].empty()) {
+                paragraph = row[static_cast<size_t>(from)].front();
+                PptxRun look = paragraph.runs.empty() ? PptxRun() : paragraph.runs.front();
+                look.text.clear();
+                paragraph.runs = {look};
+            }
+            row.insert(row.begin() + std::min<int>(at, static_cast<int>(row.size())), std::vector<PptxParagraph>{paragraph});
+            if (r < table.cellStyles.size()) {
+                auto& styles = table.cellStyles[r];
+                PptxCellStyle style = from < static_cast<int>(styles.size()) ? styles[static_cast<size_t>(from)] : PptxCellStyle();
+                style.gridSpan = 1;
+                style.mergedAway = false;
+                styles.insert(styles.begin() + std::min<int>(at, static_cast<int>(styles.size())), style);
+            }
+        }
+        const int64_t width = from < static_cast<int>(table.columnWidths.size()) ? table.columnWidths[static_cast<size_t>(from)]
+                                                                                : table.width / static_cast<int64_t>(std::max<size_t>(1, columns));
+        if (!table.columnWidths.empty())
+            table.columnWidths.insert(table.columnWidths.begin() + std::min<int>(at, static_cast<int>(table.columnWidths.size())), width);
+        table.width += width;
+    });
+}
+
+void UCSlideDeckEditor::DeleteTableColumn(int shape, int col) {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return;
+    const PptxShape& current = slide->shapes[static_cast<size_t>(shape)];
+    size_t columns = 0;
+    for (const auto& r : current.rows) columns = std::max(columns, r.size());
+    if (current.kind != PptxShapeKind::Table || columns <= 1 || col < 0 || col >= static_cast<int>(columns)) return;
+    ChangeSlide("Delete column", [&](PptxSlide& s) {
+        PptxShape& table = s.shapes[static_cast<size_t>(shape)];
+        int64_t width = table.width / static_cast<int64_t>(columns);
+        if (col < static_cast<int>(table.columnWidths.size())) {
+            width = table.columnWidths[static_cast<size_t>(col)];
+            table.columnWidths.erase(table.columnWidths.begin() + col);
+        }
+        for (auto& row : table.rows)
+            if (col < static_cast<int>(row.size())) row.erase(row.begin() + col);
+        for (auto& styles : table.cellStyles)
+            if (col < static_cast<int>(styles.size())) styles.erase(styles.begin() + col);
+        table.width = std::max<int64_t>(1, table.width - width);
     });
 }
 

@@ -22,6 +22,8 @@
 //   editor.MoveSelection(914400, 0);                             // an inch to the right
 //   editor.Undo();
 //
+// Version: 1.2.0 - tables: InsertTable, TableCellBox, TableCellAt, rows and columns inserted and deleted
+// Version: 1.1.0 - FormatSelectedText, AllSelectedText
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -140,6 +142,31 @@ public:
     // is the selection after it (undo brings back the one before).
     void ChangeSlide(const std::string& description, const std::function<void(PptxSlide&)>& change,
                      const std::vector<int>* selectAfter = nullptr);
+
+    // The text of every selected shape - its paragraphs, and a table's cells
+    // - changed run by run and paragraph by paragraph, as one step (Bold on
+    // a shape with no text editor open).
+    void FormatSelectedText(const std::string& description, const std::function<void(PptxRun&)>& run,
+                            const std::function<void(PptxParagraph&)>& paragraph = nullptr);
+    // Whether every run of the selected shapes' text passes `test` (a toggle's state).
+    bool AllSelectedText(const std::function<bool(const PptxRun&)>& test) const;
+
+    // ===== TABLES =====
+    // A table of `rows` x `columns` at `box`, in PowerPoint's banded look (a
+    // coloured header row, alternating rows), selected; its index.
+    int InsertTable(const SlideBox& box, int rows, int columns);
+    // Cell (`row`, `col`)'s box on the slide: the table's grid scaled to its
+    // box, a merged cell spanning its columns and rows.
+    static SlideBox TableCellBox(const PptxShape& table, int row, int col);
+    // The cell of table `shape` at `x`, `y` (a merged-away cell gives the one
+    // covering it); false when the point is outside the table.
+    bool TableCellAt(int shape, int64_t x, int64_t y, int& row, int& col) const;
+    // A row before (`below` false) or after row `row`, copying its look; a
+    // column likewise; each one step. A table keeps at least one of each.
+    void InsertTableRow(int shape, int row, bool below);
+    void DeleteTableRow(int shape, int row);
+    void InsertTableColumn(int shape, int col, bool right);
+    void DeleteTableColumn(int shape, int col);
 
     // The shapes copied and pasted, inside the program.
     void CopySelection();
