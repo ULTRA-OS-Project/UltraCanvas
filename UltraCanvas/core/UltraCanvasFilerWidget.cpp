@@ -51,7 +51,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.60.0 - openMenuProvider: the host's entries after "Open with"
+// Version: 1.61.0 - openMenuProvider: the host's entries after "Open with"
+// Version: 1.60.0 - a favorite can stand out by a solid fill, a border or a shade in a colour of the
+//                  host's (SetFavoriteHighlight), and the heart can be switched off
 // Version: 1.59.1 - a rescan of the folder shown keeps the previews of unchanged files: deleting one
 //                  file no longer redraws the whole folder with type glyphs before the thumbnails
 // Version: 1.59.0 - letting a selection rectangle go fires onSelectionChanged once more (IsDragInProgress)
@@ -12354,6 +12356,13 @@ namespace UltraCanvas {
                 ctx->PushState();
                 ctx->SetAlpha(dimmedEntryOpacity);
             }
+            // A favorite's highlight goes under the item (a fill, a shade)
+            // and over it (a border); the name colours a fill set are put
+            // back once the item is drawn.
+            const bool favorite = favoriteMarkProvider && favoriteMarkProvider(entries[item.entryIndex]);
+            const Color savedText = style.textColor;
+            const Color savedSecondary = style.secondaryTextColor;
+            const bool inked = favorite && DrawFavoriteHighlightUnder(ctx, item);
             switch (viewType) {
                 case FilerViewType::Details: DrawDetailsRow(ctx, item, hov); break;
                 case FilerViewType::List:    DrawListItem(ctx, item, hov); break;
@@ -12361,8 +12370,14 @@ namespace UltraCanvas {
                 case FilerViewType::TreeMap: DrawTreeMapCell(ctx, item, hov); break;
                 default:                     DrawThumbnailTile(ctx, item, hov); break;
             }
-            if (favoriteMarkProvider && favoriteMarkProvider(entries[item.entryIndex]))
-                DrawFavoriteMark(ctx, item);
+            if (inked) {
+                style.textColor = savedText;
+                style.secondaryTextColor = savedSecondary;
+            }
+            if (favorite) {
+                DrawFavoriteHighlightOver(ctx, item);
+                if (favoriteHeartShown) DrawFavoriteMark(ctx, item);
+            }
             if (dimmed) ctx->PopState();
             // Ghost entries that are pending a "cut": wash the tile toward the
             // background so it reads as dimmed until the move is pasted.
@@ -14768,7 +14783,77 @@ namespace UltraCanvas {
     int UltraCanvasFilerWidget::FavoriteMarkGutter() const {
         // Room for a heart of up to 12 px plus a pixel either side. Only the
         // row views use it; tiles and treemap cells have space of their own.
-        return favoriteMarkProvider ? 14 : 0;
+        return (favoriteMarkProvider && favoriteHeartShown) ? 14 : 0;
+    }
+
+    bool UltraCanvasFilerWidget::DrawFavoriteHighlightUnder(IRenderContext* ctx,
+                                                           const ItemLayout& item) {
+        if (favoriteHighlight != FilerFavoriteHighlight::Fill &&
+            favoriteHighlight != FilerFavoriteHighlight::Shade) return false;
+        // A treemap cell's colour is its file type; the selection colour is
+        // what says a selected item is selected. Neither is painted over.
+        if (viewType == FilerViewType::TreeMap) return false;
+        const bool selected = item.entryIndex < frameSelected.size() && frameSelected[item.entryIndex];
+        if (selected) return false;
+        const Color& c = favoriteHighlightColor;
+        const Rect2Dd box(item.rect);
+        if (favoriteHighlight == FilerFavoriteHighlight::Fill) {
+            ctx->SetFillPaint(c);
+            ctx->FillRoundedRectangle(box, 5);
+            // The name and columns in white or dark, whichever reads on the
+            // colour - unless the style's own already does.
+            if (UltraCanvasTheme::Contrast(style.textColor, c) < 4.5) {
+                const Color dark(32, 32, 36, 255);
+                const Color ink = UltraCanvasTheme::Contrast(c, Colors::White) >=
+                                  UltraCanvasTheme::Contrast(c, dark) ? Colors::White : dark;
+                style.textColor = ink;
+                style.secondaryTextColor = Color(ink.r, ink.g, ink.b, 200);
+                return true;
+            }
+            return false;
+        }
+        // Shade: the colour at the top, gone at the bottom - the name below
+        // the picture sits on the ground as before, so its colour stays.
+        ctx->PushState();
+        auto pattern = ctx->CreateLinearGradientPattern(
+                box.x, box.y, box.x, box.y + box.height,
+                {GradientStop(0.0, c), GradientStop(1.0, Color(c.r, c.g, c.b, 0))});
+        ctx->ClearPath();
+        ctx->RoundedRect(box.x, box.y, box.width, box.height, 5);
+        ctx->SetFillPaint(pattern);
+        ctx->FillPathPreserve();
+        ctx->ClearPath();
+        ctx->PopState();
+        return false;
+    }
+
+    void UltraCanvasFilerWidget::DrawFavoriteHighlightOver(IRenderContext* ctx,
+                                                          const ItemLayout& item) {
+        if (favoriteHighlight != FilerFavoriteHighlight::Border) return;
+        // Inside the item, so a neighbour's frame never covers it; on the
+        // selection colour too.
+        ctx->SetStrokePaint(favoriteHighlightColor);
+        ctx->SetStrokeWidth(2.0f);
+        const Rect2Dd frame(item.rect.x + 1.0, item.rect.y + 1.0,
+                            item.rect.width - 2.0, item.rect.height - 2.0);
+        ctx->DrawRoundedRectangle(frame, viewType == FilerViewType::TreeMap ? 0 : 5);
+    }
+
+    void UltraCanvasFilerWidget::SetFavoriteHighlight(FilerFavoriteHighlight look, const Color& color) {
+        if (favoriteHighlight == look && favoriteHighlightColor == color) return;
+        favoriteHighlight = look;
+        favoriteHighlightColor = color;
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetFavoriteHeartShown(bool shown) {
+        if (favoriteHeartShown == shown) return;
+        const int gutterBefore = FavoriteMarkGutter();
+        favoriteHeartShown = shown;
+        // The row views keep a gutter for the heart: losing or gaining it
+        // moves every icon and name, a relayout.
+        if (gutterBefore != FavoriteMarkGutter()) InvalidateFilerLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::DrawFavoriteMark(IRenderContext* ctx,

@@ -7,6 +7,8 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.26.0 - Display > Favorite folders: favoriteHighlight (none, fill, border, shade),
+//                  favoriteHighlightColor and favoriteHeart; EffectiveFavoriteHighlightColor
 // Version: 1.25.0 - Display > Path bar: pathBarFolderColor / pathBarCurrentColor, the segments'
 //                  colours (#E4E6E9 and #0078D7 by default, as the arrow bar was before it took
 //                  the theme's)
@@ -182,6 +184,31 @@ public:
     // or dark, whichever reads on it.
     Color pathBarFolderColor  = kDefaultPathBarFolderColor;
     Color pathBarCurrentColor = kDefaultPathBarCurrentColor;
+
+    // Display > Favorite folders: how a favorite folder stands out in the
+    // folder display - a solid fill, a border or a shade in one colour, or
+    // nothing beyond the heart - and whether it carries the heart. The
+    // default colour is a pale rose (EffectiveFavoriteHighlightColor turns it
+    // into the heart's red for a border and a dark tint under a dark theme).
+    static inline const Color kDefaultFavoriteHighlightColor{253, 226, 228, 255};   // #FDE2E4
+    static inline const Color kFavoriteHeartRed{226, 67, 74, 255};                  // the heart's
+    FilerFavoriteHighlight favoriteHighlight = FilerFavoriteHighlight::NoHighlight;
+    Color favoriteHighlightColor = kDefaultFavoriteHighlightColor;
+    bool favoriteHeart = true;
+
+    // The colour the highlight is drawn in. A colour of the user's own is
+    // used as it is, in either look. The default pale rose would make a faint
+    // border, so a border takes the heart's red; and it would glare on a
+    // dark ground, so under a dark theme a fill or shade is a dark tint of
+    // the red instead.
+    Color EffectiveFavoriteHighlightColor(bool darkTheme, const Color& ground) const {
+        if (favoriteHighlightColor != kDefaultFavoriteHighlightColor) return favoriteHighlightColor;
+        if (favoriteHighlight == FilerFavoriteHighlight::Border) return kFavoriteHeartRed;
+        if (!darkTheme) return favoriteHighlightColor;
+        auto mix = [](uint8_t a, uint8_t b) { return static_cast<uint8_t>(a + (b - a) * 0.35); };
+        return Color(mix(ground.r, kFavoriteHeartRed.r), mix(ground.g, kFavoriteHeartRed.g),
+                     mix(ground.b, kFavoriteHeartRed.b), 255);
+    }
 
     // Display > Thumbnails and Display > Detail view: which file kinds may
     // show a thumbnail in the file display, and which ones the detail pane
@@ -558,6 +585,18 @@ public:
         if (it != kv.end()) ParseColor(it->second, pathBarFolderColor);
         it = kv.find("display.pathbar.current.color");
         if (it != kv.end()) ParseColor(it->second, pathBarCurrentColor);
+        it = kv.find("display.favorites.highlight");
+        if (it != kv.end()) {
+            const std::string& v = it->second;
+            favoriteHighlight = v == "fill"   ? FilerFavoriteHighlight::Fill
+                              : v == "border" ? FilerFavoriteHighlight::Border
+                              : v == "shade"  ? FilerFavoriteHighlight::Shade
+                                              : FilerFavoriteHighlight::NoHighlight;
+        }
+        it = kv.find("display.favorites.color");
+        if (it != kv.end()) ParseColor(it->second, favoriteHighlightColor);
+        it = kv.find("display.favorites.heart");
+        if (it != kv.end()) favoriteHeart = ParseFlag(it->second);
         it = kv.find("display.thumbnails.kinds.off");
         if (it != kv.end()) thumbnailKinds = ParseEnabledKinds(it->second);
         it = kv.find("display.thumbnails.formats.off");
@@ -750,6 +789,12 @@ public:
              << FormatColor(pathBarFolderColor) << "\n";
         file << "display.pathbar.current.color = "
              << FormatColor(pathBarCurrentColor) << "\n";
+        file << "display.favorites.highlight = "
+             << (favoriteHighlight == FilerFavoriteHighlight::Fill   ? "fill"
+               : favoriteHighlight == FilerFavoriteHighlight::Border ? "border"
+               : favoriteHighlight == FilerFavoriteHighlight::Shade  ? "shade" : "none") << "\n";
+        file << "display.favorites.color = " << FormatColor(favoriteHighlightColor) << "\n";
+        file << "display.favorites.heart = " << (favoriteHeart ? "true" : "false") << "\n";
         file << "display.thumbnails.kinds.off = "
              << FormatDisabledKinds(thumbnailKinds) << "\n";
         file << "display.thumbnails.formats.off = "

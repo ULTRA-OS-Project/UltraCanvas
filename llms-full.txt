@@ -34248,6 +34248,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [What the extension cannot say](#what-the-extension-cannot-say)
 - [Folder icons](#folder-icons)
 - [Favorite mark](#favorite-mark)
+  - [Favorite highlight](#favorite-highlight)
 - [Folder previews](#folder-previews)
 - [Selection access](#selection-access)
 - [Hover icon menu](#hover-icon-menu)
@@ -36187,6 +36188,29 @@ button's Files / Folders / Apps tabs, `UltraFilerFavorites::IsFavorite`) — not
 with folders pinned only into the folder tree's *Pinned* section — and leaves
 the Favorites view's own pages without it, where every entry would carry one.
 
+### Favorite highlight
+
+Beside (or instead of) the heart, a favorite can stand out as a whole:
+
+```cpp
+filer->SetFavoriteHighlight(FilerFavoriteHighlight::Fill, Color(253, 226, 228, 255));
+filer->SetFavoriteHeartShown(false);      // the highlight alone, no heart
+```
+
+| `FilerFavoriteHighlight` | What a favorite gets |
+|---|---|
+| `NoHighlight` (default) | Nothing beyond the heart |
+| `Fill` | The whole tile or row filled in the colour; its name and details are drawn in white or dark, whichever reads on it (contrast 4.5 : 1) |
+| `Border` | A 2 px rounded border around the tile, row or treemap cell |
+| `Shade` | The colour at the top, fading out to the bottom of the tile or row |
+
+A selected favorite keeps the selection colour - `Fill` and `Shade` give way
+to it, `Border` is drawn over it. In the treemap only `Border` is drawn, the
+cells carry their own colours. The colour is used as given; the widget does
+not adapt it to the theme, the host does (UltraFiler tints its default for a
+dark theme). `SetFavoriteHeartShown(false)` drops the heart and, in the row
+views, its gutter; the provider still decides which entries are favorites.
+
 ## Folder previews
 
 A folder drawn as the built-in shape shows the **first pictures inside it
@@ -37568,6 +37592,7 @@ reports what the system hides, not what the host asked for.
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)); a folder drawn as the shape shows the first pictures inside it (see [Folder previews](#folder-previews)) |
 | `SetFavoriteMarkProvider(fn(entry) -> bool)` | Per entry while it is drawn — `true` draws the red favorite heart at the entry's left (see [Favorite mark](#favorite-mark)) |
+| `SetFavoriteHighlight(look, colour)` / `SetFavoriteHeartShown(bool)` | How a favorite stands out besides the heart - background, border or shade - and whether the heart is drawn (see [Favorite highlight](#favorite-highlight)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |

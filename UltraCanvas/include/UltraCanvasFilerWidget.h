@@ -104,8 +104,10 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
-// Version: 1.60.0 - openMenuProvider: a host's entries right after "Open with" in a file's
-//                  context menu (UltraFiler's "Edit in UltraPaint")
+// Version: 1.61.0 - openMenuProvider: a host's entries right after "Open with" in a file's
+//                  context menu (UltraFiler's "Edit in UltraPaint" / "Edit in ArtCreator")
+// Version: 1.60.0 - SetFavoriteHighlight (FilerFavoriteHighlight: Fill, Border, Shade) and
+//                  SetFavoriteHeartShown: how a favorite stands out beyond the heart
 // Version: 1.59.1 - a rescan of the folder shown keeps the thumbnails, text pages, folder peeks and
 //                  picture proportions of the files that did not change (PruneThumbnailCache)
 // Version: 1.59.0 - IsDragInProgress; letting a selection rectangle go fires onSelectionChanged once
@@ -507,6 +509,25 @@ namespace UltraCanvas {
         NoneBadge,
         Bar,
         Icon
+    };
+
+    // ===== HOW A FAVORITE STANDS OUT =====
+    // Beyond the heart (SetFavoriteHeartShown), a favorite entry
+    // (SetFavoriteMarkProvider) can carry one of these, in the colour
+    // SetFavoriteHighlight gives:
+    //   NoHighlight — nothing more (the default).
+    //   Fill        — the whole item, picture and name, on a solid colour; the
+    //                 name and columns turn white or dark, whichever reads.
+    //   Border      — a 2 px frame around the item.
+    //   Shade       — the colour at the top, fading out towards the bottom.
+    // A selected item keeps the selection colour (a border still shows on
+    // it); a treemap cell, whose colour is its file type, only takes the
+    // border.
+    enum class FilerFavoriteHighlight {
+        NoHighlight,
+        Fill,
+        Border,
+        Shade
     };
 
     // ===== HOW A DETAILS COLUMN SPLITTER RESIZES =====
@@ -1509,6 +1530,16 @@ namespace UltraCanvas {
         // cached. Pass an empty function to drop the marks and the gutter.
         void SetFavoriteMarkProvider(std::function<bool(const FilerEntry&)> provider);
         bool HasFavoriteMarkProvider() const { return bool(favoriteMarkProvider); }
+        // How a favorite stands out beyond the heart (FilerFavoriteHighlight),
+        // and in which colour - used as given, so a host that follows the
+        // theme passes the colour for the look shown. A repaint, no relayout.
+        void SetFavoriteHighlight(FilerFavoriteHighlight look, const Color& color);
+        FilerFavoriteHighlight GetFavoriteHighlight() const { return favoriteHighlight; }
+        const Color& GetFavoriteHighlightColor() const { return favoriteHighlightColor; }
+        // Whether a favorite carries the heart (on by default). Off, the row
+        // views give back the gutter they keep for it.
+        void SetFavoriteHeartShown(bool shown);
+        bool IsFavoriteHeartShown() const { return favoriteHeartShown; }
         // The menu label of a badge mode ("Bar"), shared by the Display
         // submenu and by an application's settings page.
         static const char* ExtensionBadgeLabel(FilerExtensionBadge badge);
@@ -2277,6 +2308,9 @@ namespace UltraCanvas {
         FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
         // SetFavoriteMarkProvider: which entries carry the heart.
         std::function<bool(const FilerEntry&)> favoriteMarkProvider;
+        FilerFavoriteHighlight favoriteHighlight = FilerFavoriteHighlight::NoHighlight;
+        Color favoriteHighlightColor = Color(253, 226, 228, 255);
+        bool favoriteHeartShown = true;
         // Display > File icons: whose icons an entry with no picture of its
         // own is drawn with.
         FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
@@ -3420,6 +3454,11 @@ namespace UltraCanvas {
         // of the item, vertically centred, and the width the row views keep
         // free for it left of the icon (0 without a provider).
         void DrawFavoriteMark(IRenderContext* ctx, const ItemLayout& item);
+        // The favorite highlight under the item (Fill, Shade) and over it
+        // (Border). Under returns true when it set the name colours for this
+        // item, which the caller puts back after drawing it.
+        bool DrawFavoriteHighlightUnder(IRenderContext* ctx, const ItemLayout& item);
+        void DrawFavoriteHighlightOver(IRenderContext* ctx, const ItemLayout& item);
         int  FavoriteMarkGutter() const;
         // The box an entry's icon is drawn in, per view - the geometry the
         // badges are placed against, so their hit tests land where they are
