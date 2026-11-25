@@ -1262,6 +1262,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # ... and written (a PptxPresentation, or a document laid out as a deck)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptxWriter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdpWriter.cpp
         # ... and a slide drawn as a picture from what it reads (previews)

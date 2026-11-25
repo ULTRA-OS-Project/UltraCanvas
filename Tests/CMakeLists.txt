@@ -5972,6 +5972,23 @@ else()
     message(STATUS "  PresentationPptxTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== PRESENTATION PRINT TEST =====
+# DrawPptxSlide into a rectangle (prompt text, nothing around it) and a
+# deck's slides as pages and a PDF. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PresentationPrintTest...")
+    add_executable(PresentationPrintTest ${CMAKE_CURRENT_SOURCE_DIR}/PresentationPrintTest.cpp)
+    target_include_directories(PresentationPrintTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PresentationPrintTest PRIVATE cxx_std_20)
+    target_link_libraries(PresentationPrintTest PRIVATE UltraCanvas)
+    set_target_properties(PresentationPrintTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PresentationPrintTest COMMAND PresentationPrintTest ${CMAKE_BINARY_DIR}/presentation-print-test.pdf
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PresentationPrintTest")
+endif()
+
 # ===== OFFICE ENCRYPTION TEST =====
 # Password-protected .xlsx / .docx (ECMA-376 agile encryption): the decryptor
 # against fixtures msoffcrypto-tool encrypted - right, wrong and missing

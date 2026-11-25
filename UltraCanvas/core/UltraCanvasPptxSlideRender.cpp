@@ -1,5 +1,6 @@
 // core/UltraCanvasPptxSlideRender.cpp
 // A PowerPoint slide drawn as a picture - see UltraCanvasPptxSlideRender.h.
+// Version: 1.2.0 - DrawPptxSlide: on any context, into a rectangle; prompt text, a shape's text left out
 // Version: 1.1.0 - preset and custom outlines turned and mirrored, gradients, dashes, arrowheads,
 //                  connectors, cropped pictures, charts (the chart engine), styled and merged table
 //                  cells; text in its fonts with its spacing, indents, insets, bullet characters,
@@ -208,16 +209,25 @@ void Arrowhead(IRenderContext* ctx, double fromX, double fromY, double tipX, dou
 
 class SlidePainter {
 public:
-    SlidePainter(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, double scale)
-        : ctx_(ctx), deck_(deck), slide_(slide), scale_(scale),
+    SlidePainter(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, double scale,
+                 const PptxSlideDrawOptions* options = nullptr)
+        : ctx_(ctx), deck_(deck), slide_(slide), scale_(scale), options_(options),
           ink_(FromHex(slide.textColor, Colors::Black)),
           link_(FromHex(ValueOr(deck.themeColors, "hlink", "0563C1"), Color(5, 99, 193))) {}
 
-    void Paint(double width, double height) {
+    // `clear`: the whole context takes the background (a pixmap of the
+    // slide); else only the slide's rectangle is filled.
+    void Paint(double width, double height, bool clear = true) {
         width_ = width;
         height_ = height;
-        ctx_->Clear(FromHex(slide_.background, Colors::White));
-        for (const PptxShape& shape : slide_.shapes) {
+        if (clear) {
+            ctx_->Clear(FromHex(slide_.background, Colors::White));
+        } else {
+            ctx_->SetFillPaint(FromHex(slide_.background, Colors::White));
+            ctx_->FillRectangle(Rect2Dd(0, 0, width, height));
+        }
+        for (size_t index = 0; index < slide_.shapes.size(); ++index) {
+            const PptxShape& shape = ShapeToPaint(index);
             const Rect2Dd box = BoxOf(shape);
             if (shape.kind == PptxShapeKind::Connector) {
                 PaintGeometry(shape, box);
@@ -241,6 +251,40 @@ private:
     const PptxPresentation& deck_;
     const PptxSlide& slide_;
     double scale_;   // pixels per EMU
+    const PptxSlideDrawOptions* options_;
+    PptxShape substitute_;   // a shape drawn with its prompt text, or without its text
+
+    static bool HasText(const PptxShape& shape) {
+        for (const PptxParagraph& paragraph : shape.paragraphs)
+            for (const PptxRun& run : paragraph.runs)
+                if (!run.text.empty()) return true;
+        return false;
+    }
+
+    // Shape `index` as it is drawn: its text left out where an editor shows
+    // it, an empty placeholder's prompt in grey.
+    const PptxShape& ShapeToPaint(size_t index) {
+        const PptxShape& shape = slide_.shapes[index];
+        if (!options_) return shape;
+        if (options_->hideTextOfShape == static_cast<int>(index)) {
+            substitute_ = shape;
+            substitute_.paragraphs.clear();
+            return substitute_;
+        }
+        if (!options_->promptText || shape.placeholder.empty() || HasText(shape)) return shape;
+        const std::string prompt = options_->promptText(shape, index);
+        if (prompt.empty()) return shape;
+        substitute_ = shape;
+        PptxParagraph paragraph = shape.paragraphs.empty() ? PptxParagraph() : shape.paragraphs.front();
+        PptxRun run = paragraph.runs.empty() ? PptxRun() : paragraph.runs.front();
+        run.text = prompt;
+        run.color = "8C8C8C";
+        paragraph.runs = {run};
+        paragraph.bullet = false;
+        paragraph.numbered = false;
+        substitute_.paragraphs = {paragraph};
+        return substitute_;
+    }
     Color ink_;
     Color link_;
     double width_ = 0, height_ = 0;
@@ -697,6 +741,18 @@ private:
 };
 
 } // namespace
+
+void DrawPptxSlide(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, const Rect2Dd& rect,
+                   const PptxSlideDrawOptions& options) {
+    if (!ctx || rect.width <= 0 || rect.height <= 0) return;
+    const int64_t slideW = deck.slideWidth > 0 ? deck.slideWidth : kDefaultSlideWidth;
+    const double scale = rect.width / static_cast<double>(slideW);
+    ctx->PushState();
+    ctx->Translate(rect.x, rect.y);
+    ctx->ClipRect(Rect2Dd(0, 0, rect.width, rect.height));
+    SlidePainter(ctx, deck, slide, scale, &options).Paint(rect.width, rect.height, false);
+    ctx->PopState();
+}
 
 std::shared_ptr<UCPixmap> RenderPptxSlide(const PptxPresentation& deck, size_t index, int widthPx) {
     if (index >= deck.slides.size() || widthPx <= 0) return nullptr;
