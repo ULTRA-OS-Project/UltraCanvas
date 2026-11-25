@@ -63,8 +63,25 @@ document or spreadsheet.
 
 Save writes a file where it came from in its own format; a file only read
 (.doc, .xls, Markdown, LaTeX, text) and a presentation ask for a name. A file
-opened with a password is saved protected with it again. Closing a tab or
+opened with a password is saved protected with it again. A .docx saved again
+keeps the theme and font table it came with (`UCRichDocument::keptParts`). Closing a tab or
 the window with unsaved changes asks first.
+
+## Autosave and recovery
+
+Every minute UltraOffice copies each document with unsaved changes into
+`UltraOffice/recovery/` in the UltraCanvas settings folder: the copy in the
+document's own type where it can be written back (else the type new files are saved as),
+protected with the document's password when it has one, and a note of its
+kind, file and name beside it. A copy is written under another name first
+and then moved over the last one, so a crash while writing leaves the
+earlier copy whole. Saving the document, closing its tab or quitting
+UltraOffice removes its copy.
+
+When UltraOffice ends without closing, the copies stay, and the next start
+asks whether to restore them. **Yes** opens each in a tab under its own file
+and name, with its changes still to save; **No** deletes them. Presentations
+are not copied: they are not changed here.
 
 ## Starting it
 
@@ -92,7 +109,7 @@ twice.
 | File | Role |
 |---|---|
 | `Apps/UltraOffice/main.cpp` | the command line, one copy per user |
-| `Apps/UltraOffice/UltraOfficeWindow.h`, `.cpp` | the window: tabs, command row, File menu, Start tab, open, save, close |
+| `Apps/UltraOffice/UltraOfficeWindow.h`, `.cpp` | the window: tabs, command row, File menu, Start tab, open, save, close, autosave and recovery |
 | `Apps/UltraOffice/UltraOfficeHost.h`, `.cpp` | what every kind of tab provides (`OfficeHost`) and the shared toolbar helpers |
 | `Apps/UltraOffice/UltraOfficeDocumentHost.cpp` | documents |
 | `Apps/UltraOffice/UltraOfficeSpreadsheetHost.cpp` | spreadsheets |
@@ -100,3 +117,9 @@ twice.
 | `Apps/UltraOffice/UltraOffice.desktop` | the freedesktop entry |
 | `media/appicon/UltraOffice.svg`, `.png` | the icon |
 | `media/icons/office/` | the kind icons and the tools the shared sets lack |
+
+## Languages
+
+UltraOffice's texts are in `media/locale/<language>/UltraOffice.json`, in
+every language the framework has, as machine drafts until someone reviews
+them (`@translated-by`); the shared ones come from `Standard.json`.

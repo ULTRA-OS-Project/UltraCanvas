@@ -88,7 +88,7 @@ public:
         return true;
     }
 
-    bool Save(const std::string& path, const std::string& password, std::string& error) override {
+    bool Write(const std::string& path, const std::string& password, std::string& error) override {
         const std::string ext = LowerExtension(path);
         if (ext == "xls") {
             error = Tr("Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.");
@@ -100,7 +100,6 @@ public:
             if (error.empty()) error = Tr("The spreadsheet could not be written.");
             return false;
         }
-        modified_ = false;
         return true;
     }
 

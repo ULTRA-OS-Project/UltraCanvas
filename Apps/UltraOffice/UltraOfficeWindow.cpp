@@ -1,13 +1,15 @@
 // Apps/UltraOffice/UltraOfficeWindow.cpp
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
-// File menu, opening, saving, closing.
+// File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.2.0 - autosave every minute and crash recovery
 // Version: 0.1.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeWindow.h"
 #include "UltraOfficeToolbar.h"
 
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
@@ -16,6 +18,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 
 namespace UltraOffice {
@@ -28,6 +31,22 @@ constexpr int kStatusHeight = 26;
 constexpr int kStartPageWidth = 620;
 const char* kRecentKey = "recent";
 const char* kFormatKey = "saveFormat";
+constexpr unsigned kAutosaveMs = 60 * 1000;
+
+const char* KindName(OfficeKind kind) {
+    switch (kind) {
+        case OfficeKind::Spreadsheet: return "spreadsheet";
+        case OfficeKind::Presentation: return "presentation";
+        default: return "document";
+    }
+}
+
+OfficeKind KindFromName(const std::string& name) {
+    if (name == "spreadsheet") return OfficeKind::Spreadsheet;
+    if (name == "presentation") return OfficeKind::Presentation;
+    if (name == "document") return OfficeKind::Document;
+    return OfficeKind::Unknown;
+}
 
 std::string FileNameOf(const std::string& path) { return PathToUtf8(PathFromUtf8(path).filename()); }
 
@@ -67,9 +86,16 @@ int KindSlot(OfficeKind kind) {
 
 } // namespace
 
-UltraOfficeWindow::UltraOfficeWindow() : UltraCanvasWindow(), settings_("UltraOffice") { settings_.Load(); }
+UltraOfficeWindow::UltraOfficeWindow() : UltraCanvasWindow(), settings_("UltraOffice") {
+    settings_.Load();
+    runTag_ = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::system_clock::now().time_since_epoch()).count());
+}
 
-UltraOfficeWindow::~UltraOfficeWindow() = default;
+UltraOfficeWindow::~UltraOfficeWindow() {
+    if (autosaveTimer_)
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(autosaveTimer_);
+}
 
 // ===== BUILDING =====
 
@@ -108,10 +134,12 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
 
     // Closing the window asks once about every document with unsaved changes.
     onWindowClosing = [this]() -> bool {
-        if (closingConfirmed_) return true;
+        // A window that closes takes its recovery copies with it: only a run
+        // that ends without closing leaves them.
+        if (closingConfirmed_) { RemoveAllRecovery(); return true; }
         int unsaved = 0;
         for (const auto& doc : documents_) if (doc->host->IsModified()) ++unsaved;
-        if (unsaved == 0) return true;
+        if (unsaved == 0) { RemoveAllRecovery(); return true; }
         UltraCanvasDialogManager::ShowConfirmation(
             TrN("{n} document has unsaved changes. Close UltraOffice and lose them?",
                 "{n} documents have unsaved changes. Close UltraOffice and lose them?", unsaved),
@@ -120,8 +148,10 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
         return false;
     };
 
+    OfferRecovery();
     OpenPaths(paths);
     UpdateTitle();
+    StartAutosave();
 }
 
 void UltraOfficeWindow::BuildStartPage() {
@@ -168,7 +198,9 @@ UltraOfficeWindow::OpenDocument* UltraOfficeWindow::AddDocument(std::unique_ptr<
     doc->password = password;
     doc->host = std::move(host);
     const int id = doc->id;
-    doc->host->onChanged = [this, id]() { if (OpenDocument* d = FindById(id)) Refresh(*d); };
+    doc->host->onChanged = [this, id]() {
+        if (OpenDocument* d = FindById(id)) { d->changedSinceCopy = true; Refresh(*d); }
+    };
     BuildPane(*doc);
     OpenDocument* raw = doc.get();
     documents_.push_back(std::move(doc));
@@ -402,6 +434,7 @@ bool UltraOfficeWindow::WriteTo(OpenDocument& doc, const std::string& path) {
         return false;
     }
     UltraCanvasFileLoader::NotifyRecentFile(path);
+    RemoveRecovery(doc);   // saved: its copy is no longer needed
     Refresh(doc);
     return true;
 }
@@ -446,6 +479,7 @@ void UltraOfficeWindow::RequestCloseDocument(OpenDocument& doc) {
 }
 
 void UltraOfficeWindow::CloseDocument(OpenDocument& doc) {
+    RemoveRecovery(doc);
     const int index = TabIndexOf(doc);
     const int id = doc.id;
     if (index >= 0) tabs_->RemoveTab(index);
@@ -453,6 +487,151 @@ void UltraOfficeWindow::CloseDocument(OpenDocument& doc) {
                                     [id](const std::unique_ptr<OpenDocument>& d) { return d->id == id; }),
                      documents_.end());
     UpdateTitle();
+}
+
+// ===== RECOVERY =====
+
+std::filesystem::path UltraOfficeWindow::RecoveryFolder() const {
+    const std::string file = settings_.File();
+    if (file.empty()) return {};
+    return PathFromUtf8(file).parent_path() / "recovery";
+}
+
+void UltraOfficeWindow::StartAutosave() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app || RecoveryFolder().empty()) return;
+    autosaveTimer_ = app->StartTimer(kAutosaveMs, true, [this](TimerId) { Autosave(); });
+}
+
+void UltraOfficeWindow::Autosave() {
+    for (auto& doc : documents_) {
+        if (doc->host->IsModified()) {
+            if (doc->changedSinceCopy || doc->recoveryCopy.empty()) WriteRecovery(*doc);
+        } else if (!doc->recoveryCopy.empty()) {
+            RemoveRecovery(*doc);   // undone back to the saved state
+        }
+    }
+}
+
+void UltraOfficeWindow::WriteRecovery(OpenDocument& doc) {
+    const std::filesystem::path folder = RecoveryFolder();
+    if (folder.empty()) return;
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    // In its own type where it can be written back there, so a restored
+    // document saves as it would have; else the default type of its kind.
+    const std::string ext = !doc.path.empty() && !IsReadOnlyFormat(doc.path) && doc.host->CanSaveInPlace()
+        ? LowerExtension(doc.path) : doc.host->DefaultExtension(GetSaveFormat());
+    const std::string stem = runTag_ + "-" + std::to_string(doc.id);
+    const std::filesystem::path copy = folder / PathFromUtf8(stem + "." + ext);
+    // Written under another name first and moved over the last copy, so a
+    // crash while writing still leaves that one whole.
+    const std::filesystem::path writing = folder / PathFromUtf8(stem + ".writing." + ext);
+    std::string error;
+    if (!doc.host->Write(PathToUtf8(writing), doc.password, error)) {
+        std::filesystem::remove(writing, ec);
+        return;
+    }
+    std::filesystem::rename(writing, copy, ec);
+    if (ec) { std::filesystem::remove(writing, ec); return; }
+    if (!doc.recoveryCopy.empty() && doc.recoveryCopy != copy) std::filesystem::remove(doc.recoveryCopy, ec);
+    doc.recoveryCopy = copy;
+    doc.changedSinceCopy = false;
+
+    UltraCanvasAppSettings note = UltraCanvasAppSettings::AtFile(PathToUtf8(folder / PathFromUtf8(stem + ".json")));
+    note.Set("kind", KindName(doc.host->GetKind()));
+    note.Set("file", doc.path);
+    note.Set("name", doc.name);
+    note.Set("copy", PathToUtf8(copy.filename()));
+    note.Save();
+}
+
+void UltraOfficeWindow::RemoveRecovery(OpenDocument& doc) {
+    if (doc.recoveryCopy.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove(doc.recoveryCopy, ec);
+    std::filesystem::remove(RecoveryFolder() / PathFromUtf8(runTag_ + "-" + std::to_string(doc.id) + ".json"), ec);
+    doc.recoveryCopy.clear();
+    doc.changedSinceCopy = true;
+}
+
+void UltraOfficeWindow::RemoveAllRecovery() {
+    for (auto& doc : documents_) RemoveRecovery(*doc);
+}
+
+void UltraOfficeWindow::OfferRecovery() {
+    const std::filesystem::path folder = RecoveryFolder();
+    if (folder.empty()) return;
+    // The notes there now are an earlier run's: this run's copies are named
+    // with its own tag, so the list does not change while the question waits.
+    std::vector<std::filesystem::path> notes;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+        if (entry.is_regular_file(ec) && entry.path().extension() == ".json") notes.push_back(entry.path());
+    }
+    if (notes.empty()) return;
+    std::sort(notes.begin(), notes.end());
+    const int count = static_cast<int>(notes.size());
+    UltraCanvasDialogManager::ShowMessage(
+        TrN("UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept "
+            "for it? No deletes the copy.",
+            "UltraOffice ended without closing while {n} documents had unsaved changes. Restore them from the copies "
+            "kept for them? No deletes the copies.", count),
+        Tr("Restore documents"), DialogType::Question, DialogButtons::YesNo,
+        [this, notes](DialogResult result) {
+            if (result == DialogResult::Yes) { RestoreRecovered(notes, 0); return; }
+            if (result != DialogResult::No) return;   // closed unanswered: asked again next time
+            std::error_code removeError;
+            for (const auto& note : notes) {
+                UltraCanvasAppSettings kept = UltraCanvasAppSettings::AtFile(PathToUtf8(note));
+                kept.Load();
+                const std::string copy = kept.GetString("copy");
+                if (!copy.empty()) std::filesystem::remove(note.parent_path() / PathFromUtf8(copy), removeError);
+                std::filesystem::remove(note, removeError);
+            }
+        }, this);
+}
+
+void UltraOfficeWindow::RestoreRecovered(const std::vector<std::filesystem::path>& notes, size_t next) {
+    if (next >= notes.size()) return;
+    const std::filesystem::path notePath = notes[next];
+    UltraCanvasAppSettings note = UltraCanvasAppSettings::AtFile(PathToUtf8(notePath));
+    note.Load();
+    const OfficeKind kind = KindFromName(note.GetString("kind"));
+    const std::string copyName = note.GetString("copy");
+    const std::filesystem::path copy = notePath.parent_path() / PathFromUtf8(copyName);
+    std::error_code ec;
+    if (kind == OfficeKind::Unknown || kind == OfficeKind::Presentation || copyName.empty()
+        || !std::filesystem::exists(copy, ec)) {
+        std::filesystem::remove(notePath, ec);
+        RestoreRecovered(notes, next + 1);
+        return;
+    }
+    const std::string file = note.GetString("file");
+    const std::string name = note.GetString("name", FileNameOf(file));
+    // A protected document's copy is protected with its password too.
+    UltraCanvasFileLoader::RequestDocumentPassword(PathToUtf8(copy), this,
+        [this, notes, next, notePath, copy, kind, file, name](bool proceed, const std::string& password) {
+            if (proceed) {
+                std::unique_ptr<OfficeHost> host = kind == OfficeKind::Spreadsheet ? CreateSpreadsheetHost(this)
+                                                                                   : CreateDocumentHost(this);
+                std::string error;
+                if (host->Load(PathToUtf8(copy), password, error)) {
+                    // Back under its own file and name, with its changes
+                    // still to save.
+                    OpenDocument* doc = AddDocument(std::move(host), file, name, password);
+                    if (file.empty()) ++untitled_[KindSlot(kind)];   // the next new one is not "Document 1" again
+                    doc->host->SetModified(true);
+                    Refresh(*doc);
+                    std::error_code removeError;
+                    std::filesystem::remove(copy, removeError);
+                    std::filesystem::remove(notePath, removeError);
+                } else {
+                    ShowError(Tr("Restore documents"), TrF("{0} could not be restored: {1}", name, error));
+                }
+            }
+            RestoreRecovered(notes, next + 1);
+        });
 }
 
 // ===== KEYBOARD =====

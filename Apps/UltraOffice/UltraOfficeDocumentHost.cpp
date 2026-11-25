@@ -80,7 +80,7 @@ public:
         return true;
     }
 
-    bool Save(const std::string& path, const std::string& password, std::string& error) override {
+    bool Write(const std::string& path, const std::string& password, std::string& error) override {
         const auto& document = editor_->GetDocument();
         if (!document) { error = Tr("There is no document to save."); return false; }
         if (DetectWordDocumentFormat(path) == WordDocumentFormat::LegacyDoc ||
@@ -88,9 +88,7 @@ public:
             error = Tr("Word 97-2003 (.doc) files are read, not written. Save as .docx or .odt instead.");
             return false;
         }
-        if (!UltraCanvasFileLoader::SaveTextDocument(*document, path, error, password)) return false;
-        editor_->SetModified(false);
-        return true;
+        return UltraCanvasFileLoader::SaveTextDocument(*document, path, error, password);
     }
 
     void AddSaveTypes(FileDialogOptions& opts) const override { UltraCanvasFileLoader::AddTextDocumentSaveTypes(opts); }

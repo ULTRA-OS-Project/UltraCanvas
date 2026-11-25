@@ -4,7 +4,11 @@
 // document's tab holds its command row (File, Undo, Redo, Save and the
 // kind's command tabs), the toolbar of the command tab chosen, the document
 // itself and a status line - so the toolbar follows the tab that is open.
+// Every minute a copy of each document with unsaved changes goes to the
+// recovery folder; a run that ends without closing leaves them there, and
+// the next start offers them back.
 //
+// Version: 0.2.0 - autosave and crash recovery
 // Version: 0.1.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
@@ -18,8 +22,10 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasStartPage.h"
 #include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasWindow.h"
 
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -56,6 +62,8 @@ private:
         std::shared_ptr<UltraCanvas::UltraCanvasLabel> status;
         std::vector<UltraCanvas::UltraCanvasButton*> commandButtons;
         int commandTab = -1;
+        std::filesystem::path recoveryCopy;   // its copy in the recovery folder; empty: none
+        bool changedSinceCopy = true;         // the copy is behind the document
     };
 
     UltraCanvas::UltraCanvasAppSettings settings_;
@@ -95,6 +103,23 @@ private:
     SaveFormat GetSaveFormat() const;
     void SetSaveFormat(SaveFormat format);
     void ShowError(const std::string& title, const std::string& message);
+
+    // ===== RECOVERY =====
+    // <settings folder>/UltraOffice/recovery holds, for each document with
+    // unsaved changes, a copy ("<id>.<ext>", written with its password) and
+    // a note of what it is ("<id>.json": its kind, file and name). Saving,
+    // closing or quitting removes them.
+    UltraCanvas::TimerId autosaveTimer_ = 0;
+    std::string runTag_;   // this run's copies are "<runTag>-<id>.<ext>", a crashed run's stay apart
+    std::filesystem::path RecoveryFolder() const;
+    void StartAutosave();
+    void Autosave();
+    void WriteRecovery(OpenDocument& doc);
+    void RemoveRecovery(OpenDocument& doc);
+    void RemoveAllRecovery();
+    // Offers back the copies a run that ended without closing left behind.
+    void OfferRecovery();
+    void RestoreRecovered(const std::vector<std::filesystem::path>& notes, size_t next);
 };
 
 } // namespace UltraOffice

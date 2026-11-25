@@ -23,4 +23,13 @@
 - New files are saved as Office Open XML (.docx, .xlsx) by default, or
   OpenDocument (*File > New files are saved as*). Protected files ask for
   their password and are saved protected again.
+- **Autosave and crash recovery.** Every minute each document with
+  unsaved changes is copied to the recovery folder (protected ones with
+  their password); saving, closing or quitting removes the copy. When
+  UltraOffice ends without closing - a crash, a power cut - the next start
+  offers the documents back, under their own files and names, with their
+  changes still to save.
+- A .docx saved again keeps its theme and font table.
+- In every language UltraOffice's texts have (machine drafts, to be
+  reviewed).
 - One copy per user: opening a file again brings it to the window.

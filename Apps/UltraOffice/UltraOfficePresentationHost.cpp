@@ -62,7 +62,7 @@ public:
         return true;
     }
 
-    bool Save(const std::string& path, const std::string& password, std::string& error) override {
+    bool Write(const std::string& path, const std::string& password, std::string& error) override {
         if (path_.empty()) { error = Tr("There is no presentation to save."); return false; }
         PptxPresentation deck;
         const bool read = IsOdpExtension(path_) ? ReadOdpPresentation(path_, deck, error, password_, true)

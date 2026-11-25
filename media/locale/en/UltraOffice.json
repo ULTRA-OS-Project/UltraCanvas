@@ -99,6 +99,7 @@
   "Presentations open for viewing and presenting; editing slides comes with the slide editor.": "Presentations open for viewing and presenting; editing slides comes with the slide editor.",
   "Print...": "Print...",
   "Redo (Ctrl+Y)": "Redo (Ctrl+Y)",
+  "Restore documents": "Restore documents",
   "Save (Ctrl+S)": "Save (Ctrl+S)",
   "Save as...": "Save as...",
   "Save the changes to {0} before closing it?": "Save the changes to {0} before closing it?",
@@ -123,6 +124,10 @@
   "The spreadsheet could not be written.": "The spreadsheet could not be written.",
   "There is no document to save.": "There is no document to save.",
   "There is no presentation to save.": "There is no presentation to save.",
+  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
+    "one": "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.",
+    "other": "UltraOffice ended without closing while {n} documents had unsaved changes. Restore them from the copies kept for them? No deletes the copies."
+  },
   "Underline (Ctrl+U)": "Underline (Ctrl+U)",
   "Undo (Ctrl+Z)": "Undo (Ctrl+Z)",
   "Unfreeze": "Unfreeze",
@@ -137,6 +142,7 @@
   "Zoom to show the whole page": "Zoom to show the whole page",
   "Zoom to the width of the page": "Zoom to the width of the page",
   "{0} could not be opened: {1}": "{0} could not be opened: {1}",
+  "{0} could not be restored: {1}": "{0} could not be restored: {1}",
   "{0} could not be saved: {1}": "{0} could not be saved: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} is not a document, spreadsheet or presentation UltraOffice can open.",
   "{0} slides": "{0} slides",

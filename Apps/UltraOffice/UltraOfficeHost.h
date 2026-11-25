@@ -51,8 +51,16 @@ public:
     // Reads `path` (UTF-8) with `password` when it is protected. False with
     // a reason a person can read in `error`.
     virtual bool Load(const std::string& path, const std::string& password, std::string& error) = 0;
-    // Writes the document as the type `path` names.
-    virtual bool Save(const std::string& path, const std::string& password, std::string& error) = 0;
+    // Writes the document as the type `path` names, with `password` when
+    // not empty, and leaves whether it counts as saved alone: the window's
+    // recovery copies are written this way.
+    virtual bool Write(const std::string& path, const std::string& password, std::string& error) = 0;
+    // Write, and the document counts as saved.
+    bool Save(const std::string& path, const std::string& password, std::string& error) {
+        if (!Write(path, password, error)) return false;
+        SetModified(false);
+        return true;
+    }
     // The Save dialog's types for this kind (through UltraCanvasFileLoader).
     virtual void AddSaveTypes(UltraCanvas::FileDialogOptions& opts) const = 0;
     // The extension a new file of this kind is saved with.
