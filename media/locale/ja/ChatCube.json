@@ -214,7 +214,6 @@
   "Members": "メンバー",
   "Members ({0})": "メンバー ({0})",
   "Members' ChatCube IDs, separated by commas": "メンバーの ChatCube ID (カンマ区切り)",
-  "Message": "メッセージ",
   "Messages": "メッセージ",
   "Messages - the key that sends, and whether typing is shown, to the other side and to you.": "メッセージ - 送信に使うキーと、入力中を相手と自分に表示するかどうか。",
   "Message…  (Ctrl+Enter sends, Enter for a new line)": "メッセージ…  (Ctrl+Enter で送信、Enter で改行)",

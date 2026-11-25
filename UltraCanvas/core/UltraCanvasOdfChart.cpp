@@ -1,7 +1,8 @@
 // core/UltraCanvasOdfChart.cpp
 // OpenDocument chart objects - see UltraCanvasOdfChart.h.
+// Version: 1.1.0 - series ranges into a spreadsheet's cells, written and read back
 // Version: 1.0.0 - WriteOdfChartObject and ReadOdfChartObject, moved out of the .odt plugin
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasOdfChart.h"
@@ -55,6 +56,42 @@ const char* Attr(const tinyxml2::XMLElement* element, const char* name) {
 } // namespace
 
 std::string WriteOdfChartObject(const RichChart& chart, float widthPt, float heightPt) {
+    return WriteOdfChartObject(chart, widthPt, heightPt, {}, std::string());
+}
+
+std::vector<OdfChartSeriesSource> ReadOdfChartSources(const std::string& contentXml) {
+    std::vector<OdfChartSeriesSource> sources;
+    tinyxml2::XMLDocument doc;
+    if (doc.Parse(contentXml.c_str(), contentXml.size()) != tinyxml2::XML_SUCCESS || !doc.RootElement()) return sources;
+    std::function<const tinyxml2::XMLElement*(const tinyxml2::XMLElement*, const char*)> find =
+        [&](const tinyxml2::XMLElement* root, const char* name) -> const tinyxml2::XMLElement* {
+            for (auto* child = root->FirstChildElement(); child; child = child->NextSiblingElement()) {
+                if (child->Name() && std::string(child->Name()) == name) return child;
+                if (auto* found = find(child, name)) return found;
+            }
+            return nullptr;
+        };
+    auto* chart = find(doc.RootElement(), "chart:chart");
+    auto* plot = chart ? chart->FirstChildElement("chart:plot-area") : nullptr;
+    if (!plot) return sources;
+    std::string categories;
+    for (auto* axis = plot->FirstChildElement("chart:axis"); axis; axis = axis->NextSiblingElement("chart:axis")) {
+        if (std::string(Attr(axis, "chart:dimension")) != "x") continue;
+        if (auto* names = axis->FirstChildElement("chart:categories")) categories = Attr(names, "table:cell-range-address");
+    }
+    for (auto* ser = plot->FirstChildElement("chart:series"); ser; ser = ser->NextSiblingElement("chart:series")) {
+        OdfChartSeriesSource source;
+        source.name = Attr(ser, "chart:label-cell-address");
+        source.values = Attr(ser, "chart:values-cell-range-address");
+        auto* domain = ser->FirstChildElement("chart:domain");
+        source.categories = domain ? Attr(domain, "table:cell-range-address") : categories;
+        sources.push_back(std::move(source));
+    }
+    return sources;
+}
+
+std::string WriteOdfChartObject(const RichChart& chart, float widthPt, float heightPt,
+                                const std::vector<OdfChartSeriesSource>& sources, const std::string& plotArea) {
     using Kind = RichChart::Kind;
     const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
     const bool scatter = chart.kind == Kind::Scatter;
@@ -154,12 +191,20 @@ std::string WriteOdfChartObject(const RichChart& chart, float widthPt, float hei
               "<style:graphic-properties draw:stroke=\"solid\" svg:stroke-color=\"#d0d0d0\"/></style:style>";
 
     body << "<chart:chart chart:class=\"" << kind << "\" svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt)
-         << "\" xlink:href=\".\" xlink:type=\"simple\">";
+         // "." - the data is the chart's own table; ".." - the document the
+         // chart stands in (a spreadsheet's cells): LibreOffice takes a
+         // chart's ranges into the sheets only with "..".
+         << "\" xlink:href=\"" << (sources.empty() ? "." : "..") << "\" xlink:type=\"simple\">";
     if (!chart.title.empty()) body << "<chart:title><text:p>" << Escape(chart.title) << "</text:p></chart:title>";
     if (chart.legend) body << "<chart:legend chart:legend-position=\"end\"/>";
-    body << "<chart:plot-area chart:style-name=\"plot\" chart:data-source-has-labels=\"both\">"
-            "<chart:axis chart:dimension=\"x\" chart:name=\"primary-x\" chart:style-name=\"axisX\">";
-    if (!scatter && !bubble) body << "<chart:categories table:cell-range-address=\"" << range(0) << "\"/>";
+    // (A spreadsheet's chart: the ranges its sources name, in the sheets.)
+    auto sourceOf = [&](size_t s) { return s < sources.size() ? sources[s] : OdfChartSeriesSource(); };
+    body << "<chart:plot-area chart:style-name=\"plot\" chart:data-source-has-labels=\"both\"";
+    if (!plotArea.empty()) body << " table:cell-range-address=\"" << Escape(plotArea) << "\"";
+    body << "><chart:axis chart:dimension=\"x\" chart:name=\"primary-x\" chart:style-name=\"axisX\">";
+    const std::string categoriesAt = !sources.empty() ? sourceOf(0).categories : range(0);
+    if (!scatter && !bubble && !categoriesAt.empty())
+        body << "<chart:categories table:cell-range-address=\"" << Escape(categoriesAt) << "\"/>";
     else body << "<chart:grid chart:class=\"major\" chart:style-name=\"grid\"/>";
     body << "</chart:axis><chart:axis chart:dimension=\"y\" chart:name=\"primary-y\" chart:style-name=\"axisY\">"
          << (pie ? "" : "<chart:grid chart:class=\"major\" chart:style-name=\"grid\"/>") << "</chart:axis>";
@@ -181,10 +226,18 @@ std::string WriteOdfChartObject(const RichChart& chart, float widthPt, float hei
         styles << "</style:style>";
         // (A bubble series' values are its sizes; its y and then its x are the ranges it stands over.)
         const size_t valuesAt = bubble ? sizeColumn[s] : valueColumn[s];
-        body << "<chart:series chart:style-name=\"" << name << "\" chart:values-cell-range-address=\"" << range(valuesAt)
-             << "\" chart:label-cell-address=\"local-table.$" << column(valueColumn[s]) << "$1\" chart:class=\"" << kind << "\">";
+        const bool sheetData = !sources.empty() && !bubble && !stock;
+        const OdfChartSeriesSource source = sourceOf(s);
+        body << "<chart:series chart:style-name=\"" << name << "\" chart:values-cell-range-address=\""
+             << (sheetData ? Escape(source.values) : range(valuesAt)) << "\"";
+        if (!sheetData) body << " chart:label-cell-address=\"local-table.$" << column(valueColumn[s]) << "$1\"";
+        else if (!source.name.empty()) body << " chart:label-cell-address=\"" << Escape(source.name) << "\"";
+        body << " chart:class=\"" << kind << "\">";
         if (bubble) body << "<chart:domain table:cell-range-address=\"" << range(valueColumn[s]) << "\"/>";
-        if (scatter || bubble) body << "<chart:domain table:cell-range-address=\"" << range(xColumn[s]) << "\"/>";
+        if (scatter && sheetData && !source.categories.empty())
+            body << "<chart:domain table:cell-range-address=\"" << Escape(source.categories) << "\"/>";
+        else if ((scatter && !sheetData) || bubble)
+            body << "<chart:domain table:cell-range-address=\"" << range(xColumn[s]) << "\"/>";
         if (pie && s == 0) {
             for (size_t i = 0; i < one.values.size(); i++) {
                 if (i < chart.pointColors.size() && stated(chart.pointColors[i])) {

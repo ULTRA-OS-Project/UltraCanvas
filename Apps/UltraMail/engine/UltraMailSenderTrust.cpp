@@ -1,16 +1,22 @@
 // Apps/UltraMail/engine/UltraMailSenderTrust.cpp
+// Version: 0.2.0 - the reason in the reader's language (Tr / TrF)
 // Version: 0.1.1 - a scam's reason names scams as well as phishing (romance, crypto)
 // Version: 0.1.0
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderTrust.h"
 
 #include "UltraMailContactStore.h"
 #include "UltraMailSenderBrands.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
 
 namespace UltraMail {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -141,21 +147,22 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
     // from — an address book entry says nothing about *this* message.
     if (level == ThreatLevel::Scam) {
         status.cls    = SenderClass::Scam;
-        status.reason = "This message shows scam or phishing markers — check the reasons "
-                        "below before clicking, paying or answering anything in it.";
+        status.reason = Tr("This message shows scam or phishing markers — check the "
+                                        "reasons below before clicking, paying or answering "
+                                        "anything in it.");
         return status;
     }
     if (level == ThreatLevel::Suspicious || (who.junkFolder && !status.inAddressBook)) {
         status.cls    = SenderClass::Spam;
         status.reason = who.junkFolder && level != ThreatLevel::Suspicious
-            ? "This message is in the junk folder."
-            : "Parts of this message do not add up — treat its links with care.";
+            ? Tr("This message is in the junk folder.")
+            : Tr("Parts of this message do not add up — treat its links with care.");
         return status;
     }
 
     if (status.inAddressBook) {
         status.cls = IsPrivateSection(section) ? SenderClass::Friend : SenderClass::Business;
-        status.reason = "In your address book (" + DisplayName(section) + ").";
+        status.reason = TrF("In your address book ({0}).", DisplayName(section));
         return status;
     }
 
@@ -165,8 +172,8 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
     if (level == ThreatLevel::Advertisement || who.bulk) {
         status.cls = SenderClass::Advertisement;
         status.reason = status.brandName.empty()
-            ? "Bulk mail — this looks like advertising or a newsletter."
-            : "Bulk mail from " + status.brandName + " — a newsletter or an offer.";
+            ? Tr("Bulk mail — this looks like advertising or a newsletter.")
+            : TrF("Bulk mail from {0} — a newsletter or an offer.", status.brandName);
         return status;
     }
 
@@ -178,14 +185,13 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
     // only a source of icons.)
     if (status.knownService) {
         status.cls    = SenderClass::Business;
-        status.reason = status.brandName + " \xE2\x80\x94 " +
-                        DisplayName(status.brandCategory) +
-                        ", not yet in your address book.";
+        status.reason = TrF("{0} — {1}, not yet in your address book.",
+                                         status.brandName, DisplayName(status.brandCategory));
         return status;
     }
 
     status.cls = SenderClass::New;
-    status.reason = "New sender — this address is not in your address book.";
+    status.reason = Tr("New sender — this address is not in your address book.");
     return status;
 }
 
