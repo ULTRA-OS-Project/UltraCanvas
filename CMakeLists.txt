@@ -664,7 +664,7 @@ function(ultracanvas_require_widgets build_flag app_name)
     endif()
 endfunction()
 ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
-    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
+    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer ProfilePicture)
 ultracanvas_require_widgets(BUILD_ULTRAPAINT_APP UltraPaint ColorPaletteManager)
 ultracanvas_require_widgets(BUILD_ARTCREATOR_APP ArtCreator ColorPaletteManager VectorCanvas)
 ultracanvas_require_widgets(BUILD_ULTRAFILER_APP UltraFiler MediaViewer)
@@ -1254,6 +1254,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasColorPaletteManagerExamples.cpp
+            Apps/DemoApp/UltraCanvasProfilePictureExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp

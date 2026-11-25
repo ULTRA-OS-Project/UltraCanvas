@@ -201,6 +201,7 @@ on Windows the module needs the shared core). The table:
 | `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
 | `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
 | `MediaViewer` | `media-viewer` | `ultracanvas-widget-media-viewer` (shared core only) | UltraViewer, UltraFiler, UltraMail, EmailCleaner, ChatCube, UltraClipboard, UltraSnip, DemoApp |
+| `ProfilePicture` | `profile-picture`, `profile-picture-editor` | `ultracanvas-widget-profile-picture` | DemoApp |
 
 **Static or shared core.** The shipping configuration is a shared core
 (`ULTRACANVAS_BUILD_SHARED`, on by default whenever DemoApp is built): every
