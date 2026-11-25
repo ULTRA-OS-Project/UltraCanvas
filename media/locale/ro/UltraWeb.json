@@ -1,0 +1,8 @@
+{
+  "@language": "ro",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Au fost șterse {0} cookie-uri; permisiunile dispozitivului acordate aplicațiilor sunt uitate",
+  "No cookies to clear; the apps' device permissions are forgotten": "Nu există cookie-uri de șters; permisiunile dispozitivului acordate aplicațiilor sunt uitate",
+  "{0} wants to use your camera": "{0} dorește să vă folosească camera",
+  "{0} wants to use your microphone": "{0} dorește să vă folosească microfonul"
+}

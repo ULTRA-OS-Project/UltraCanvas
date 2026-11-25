@@ -1,6 +1,11 @@
 {
   "@language": "uk",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} малюнок у цьому вікні має незбережені зміни. Усе одно закрити?",
+    "few": "{n} малюнки в цьому вікні мають незбережені зміни. Усе одно закрити?",
+    "many": "{n} малюнків у цьому вікні мають незбережені зміни. Усе одно закрити?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Текст додано: щоб змінити його, клацніть його інструментом «Текст» або двічі клацніть його",
   "Changed the text": "Текст змінено",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Клацніть на сторінці й введіть текст або клацніть текст, щоб змінити його; панель вище задає його шрифт, розмір, стиль, вирівнювання та інтервали. Escape, Ctrl+Enter або клацання поза ним завершують введення",
@@ -18,5 +23,8 @@
   "Text Strikethrough": "Текст: закреслений",
   "Text Underline": "Текст: підкреслений",
   "The text was emptied, so it was deleted": "Текст став порожнім, тому його видалено",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Введення нового тексту: Enter починає новий рядок; Escape, Ctrl+Enter або клацання поза ним завершують введення"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Введення нового тексту: Enter починає новий рядок; Escape, Ctrl+Enter або клацання поза ним завершують введення",
+  "Untitled {0}": "Без назви {0}",
+  "{0} has unsaved changes. Close it anyway?": "«{0}» має незбережені зміни. Усе одно закрити?",
+  "{0} is open already": "«{0}» уже відкрито"
 }

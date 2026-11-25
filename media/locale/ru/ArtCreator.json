@@ -1,6 +1,11 @@
 {
   "@language": "ru",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "В этом окне есть {n} рисунок с несохранёнными изменениями. Всё равно закрыть?",
+    "few": "В этом окне есть {n} рисунка с несохранёнными изменениями. Всё равно закрыть?",
+    "many": "В этом окне есть {n} рисунков с несохранёнными изменениями. Всё равно закрыть?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Текст добавлен: чтобы изменить его, щёлкните его инструментом «Текст» или дважды щёлкните его",
   "Changed the text": "Текст изменён",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Щёлкните на странице и введите текст или щёлкните текст, чтобы изменить его; панель выше задаёт его шрифт, размер, стиль, выравнивание и интервалы. Escape, Ctrl+Enter или щелчок снаружи завершают ввод",
@@ -18,5 +23,8 @@
   "Text Strikethrough": "Текст: зачёркнутый",
   "Text Underline": "Текст: подчёркнутый",
   "The text was emptied, so it was deleted": "Текст стал пустым, поэтому он удалён",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Ввод нового текста: Enter начинает новую строку; Escape, Ctrl+Enter или щелчок снаружи завершают ввод"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Ввод нового текста: Enter начинает новую строку; Escape, Ctrl+Enter или щелчок снаружи завершают ввод",
+  "Untitled {0}": "Без имени {0}",
+  "{0} has unsaved changes. Close it anyway?": "В «{0}» есть несохранённые изменения. Всё равно закрыть?",
+  "{0} is open already": "«{0}» уже открыт"
 }

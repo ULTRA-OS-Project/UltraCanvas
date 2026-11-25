@@ -1,6 +1,10 @@
 {
   "@language": "fi",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "Tässä ikkunassa on {n} piirros, jossa on tallentamattomia muutoksia. Suljetaanko silti?",
+    "other": "Tässä ikkunassa on {n} piirrosta, joissa on tallentamattomia muutoksia. Suljetaanko silti?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Teksti lisätty: muokkaa sitä napsauttamalla sitä tekstityökalulla tai kaksoisnapsauttamalla sitä",
   "Changed the text": "Tekstiä muutettu",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Napsauta sivua ja kirjoita, tai muokkaa tekstiä napsauttamalla sitä; yläpuolen palkki asettaa sen fontin, koon, tyylin, tasauksen ja välit. Escape, Ctrl+Enter tai napsautus muualle lopettaa",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Tekstin yliviivaus",
   "Text Underline": "Tekstin alleviivaus",
   "The text was emptied, so it was deleted": "Teksti tyhjennettiin, joten se poistettiin",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Uutta tekstiä kirjoitetaan: Enter aloittaa uuden rivin; Escape, Ctrl+Enter tai napsautus muualle lopettaa"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Uutta tekstiä kirjoitetaan: Enter aloittaa uuden rivin; Escape, Ctrl+Enter tai napsautus muualle lopettaa",
+  "Untitled {0}": "Nimetön {0}",
+  "{0} has unsaved changes. Close it anyway?": "Kohteessa {0} on tallentamattomia muutoksia. Suljetaanko se silti?",
+  "{0} is open already": "{0} on jo auki"
 }

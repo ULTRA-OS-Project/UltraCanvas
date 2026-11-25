@@ -1,0 +1,8 @@
+{
+  "@language": "hu",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "{0} süti törölve; az alkalmazások eszközengedélyei elfelejtve",
+  "No cookies to clear; the apps' device permissions are forgotten": "Nincs törölhető süti; az alkalmazások eszközengedélyei elfelejtve",
+  "{0} wants to use your camera": "{0} használni szeretné a kameráját",
+  "{0} wants to use your microphone": "{0} használni szeretné a mikrofonját"
+}

@@ -1,0 +1,8 @@
+{
+  "@language": "cs",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Smazáno cookies: {0}; oprávnění aplikací k zařízením byla zapomenuta",
+  "No cookies to clear; the apps' device permissions are forgotten": "Žádné cookies ke smazání; oprávnění aplikací k zařízením byla zapomenuta",
+  "{0} wants to use your camera": "{0} chce používat vaši kameru",
+  "{0} wants to use your microphone": "{0} chce používat váš mikrofon"
+}

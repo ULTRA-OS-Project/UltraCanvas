@@ -1,6 +1,11 @@
 {
   "@language": "cs",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} kresba v tomto okně má neuložené změny. Přesto zavřít?",
+    "few": "{n} kresby v tomto okně mají neuložené změny. Přesto zavřít?",
+    "other": "{n} kreseb v tomto okně má neuložené změny. Přesto zavřít?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Text přidán: chcete-li ho upravit, klikněte na něj nástrojem Text nebo na něj dvakrát klikněte",
   "Changed the text": "Text změněn",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Klikněte na stránku a pište, nebo klikněte na text a upravte ho; lišta nahoře nastavuje jeho písmo, velikost, styl, zarovnání a mezery. Escape, Ctrl+Enter nebo kliknutí mimo psaní ukončí",
@@ -18,5 +23,8 @@
   "Text Strikethrough": "Přeškrtnutí textu",
   "Text Underline": "Podtržení textu",
   "The text was emptied, so it was deleted": "Text byl vyprázdněn, proto byl odstraněn",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Psaní nového textu: Enter začne nový řádek; Escape, Ctrl+Enter nebo kliknutí mimo psaní ukončí"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Psaní nového textu: Enter začne nový řádek; Escape, Ctrl+Enter nebo kliknutí mimo psaní ukončí",
+  "Untitled {0}": "Bez názvu {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} má neuložené změny. Přesto zavřít?",
+  "{0} is open already": "{0} je již otevřen"
 }

@@ -1,0 +1,8 @@
+{
+  "@language": "el",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Διαγράφηκαν {0} cookies· οι άδειες συσκευών των εφαρμογών ξεχνιούνται",
+  "No cookies to clear; the apps' device permissions are forgotten": "Δεν υπάρχουν cookies για διαγραφή· οι άδειες συσκευών των εφαρμογών ξεχνιούνται",
+  "{0} wants to use your camera": "Το {0} θέλει να χρησιμοποιήσει την κάμερά σας",
+  "{0} wants to use your microphone": "Το {0} θέλει να χρησιμοποιήσει το μικρόφωνό σας"
+}
