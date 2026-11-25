@@ -24,6 +24,7 @@
     "Font",
     "Footnote",
     "Green",
+    "Headings",
     "Hide",
     "Home",
     "Insert",
@@ -58,7 +59,8 @@
     "The spreadsheet could not be read.",
     "View",
     "White",
-    "Zoom"
+    "Zoom",
+    "{0} rows, {1} columns"
   ],
   "A chart of the selected cells: every chart type, by category, drawn from them": "A chart of the selected cells: every chart type, by category, drawn from them",
   "A column left of this cell": "A column left of this cell",
@@ -152,7 +154,6 @@
   "Heading 2": "Heading 2",
   "Heading 3": "Heading 3",
   "Heading 4": "Heading 4",
-  "Headings": "Headings",
   "Hidden in the show": "Hidden in the show",
   "How this slide comes on in the show": "How this slide comes on in the show",
   "In front of every other shape": "In front of every other shape",
@@ -178,6 +179,7 @@
   "Mark what is typed and deleted": "Mark what is typed and deleted",
   "Memo": "Memo",
   "More decimal places": "More decimal places",
+  "Navigator": "Navigator",
   "New document": "New document",
   "New files are saved as": "New files are saved as",
   "New from template": "New from template",
@@ -257,6 +259,7 @@
   "Show comments": "Show comments",
   "Show the comments and their pane": "Show the comments and their pane",
   "Show the document as pages": "Show the document as pages",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Show the headings, tables, pictures and comments beside the document (F5)",
   "Show the slides full screen, from the first": "Show the slides full screen, from the first",
   "Show the slides full screen, from this one": "Show the slides full screen, from this one",
   "Shrink the sheet so every column fits across one page": "Shrink the sheet so every column fits across one page",
@@ -313,7 +316,6 @@
   "{0} could not be restored: {1}": "{0} could not be restored: {1}",
   "{0} could not be saved: {1}": "{0} could not be saved: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} is not a document, spreadsheet or presentation UltraOffice can open.",
-  "{0} rows, {1} columns": "{0} rows, {1} columns",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} document has unsaved changes. Close UltraOffice and lose them?",
     "other": "{n} documents have unsaved changes. Close UltraOffice and lose them?"

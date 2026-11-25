@@ -91,7 +91,6 @@
   "Heading 2": "Título 2",
   "Heading 3": "Título 3",
   "Heading 4": "Título 4",
-  "Headings": "Cabeçalhos",
   "Hidden in the show": "Oculto na apresentação",
   "How this slide comes on in the show": "Como este diapositivo entra na apresentação",
   "In front of every other shape": "À frente de todas as outras formas",
@@ -117,6 +116,7 @@
   "Memo": "Memorando",
   "Mark what is typed and deleted": "Marcar o que é escrito e apagado",
   "More decimal places": "Mais casas decimais",
+  "Navigator": "Navegador",
   "New document": "Novo documento",
   "New files are saved as": "Os ficheiros novos são guardados como",
   "New from template": "Novo a partir de modelo",
@@ -196,6 +196,7 @@
   "Show comments": "Mostrar comentários",
   "Show the comments and their pane": "Mostrar os comentários e o respetivo painel",
   "Show the document as pages": "Mostrar o documento em páginas",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Mostrar os títulos, tabelas, imagens e comentários ao lado do documento (F5)",
   "Show the slides full screen, from the first": "Mostrar os diapositivos em ecrã inteiro, a partir do primeiro",
   "Show the slides full screen, from this one": "Mostrar os diapositivos em ecrã inteiro, a partir deste",
   "Shrink the sheet so every column fits across one page": "Reduzir a folha para que todas as colunas caibam na largura de uma página",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "Não foi possível restaurar {0}: {1}",
   "{0} could not be saved: {1}": "Não foi possível guardar {0}: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} não é um documento, folha de cálculo ou apresentação que o UltraOffice consiga abrir.",
-  "{0} rows, {1} columns": "{0} linhas, {1} colunas",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} documento tem alterações não guardadas. Fechar o UltraOffice e perdê-las?",
     "other": "{n} documentos têm alterações não guardadas. Fechar o UltraOffice e perdê-las?"

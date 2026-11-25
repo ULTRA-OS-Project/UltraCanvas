@@ -91,7 +91,6 @@
   "Heading 2": "Overskrift 2",
   "Heading 3": "Overskrift 3",
   "Heading 4": "Overskrift 4",
-  "Headings": "Overskrifter",
   "Hidden in the show": "Skjult i diasshowet",
   "How this slide comes on in the show": "Hvordan dette dias kommer frem i diasshowet",
   "In front of every other shape": "Foran alle andre figurer",
@@ -117,6 +116,7 @@
   "Memo": "Notat",
   "Mark what is typed and deleted": "Marker det, der skrives og slettes",
   "More decimal places": "Flere decimaler",
+  "Navigator": "Navigator",
   "New document": "Nyt dokument",
   "New files are saved as": "Nye filer gemmes som",
   "New from template": "Ny fra skabelon",
@@ -196,6 +196,7 @@
   "Show comments": "Vis kommentarer",
   "Show the comments and their pane": "Vis kommentarerne og deres rude",
   "Show the document as pages": "Vis dokumentet som sider",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Vis overskrifter, tabeller, billeder og kommentarer ved siden af dokumentet (F5)",
   "Show the slides full screen, from the first": "Vis diasene i fuld skærm fra det første",
   "Show the slides full screen, from this one": "Vis diasene i fuld skærm fra dette",
   "Shrink the sheet so every column fits across one page": "Formindsk arket, så alle kolonner passer i bredden på én side",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "{0} kunne ikke gendannes: {1}",
   "{0} could not be saved: {1}": "{0} kunne ikke gemmes: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} er ikke et dokument, regneark eller en præsentation, som UltraOffice kan åbne.",
-  "{0} rows, {1} columns": "{0} rækker, {1} kolonner",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} dokument har ændringer, der ikke er gemt. Vil du lukke UltraOffice og miste dem?",
     "other": "{n} dokumenter har ændringer, der ikke er gemt. Vil du lukke UltraOffice og miste dem?"

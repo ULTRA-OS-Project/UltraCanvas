@@ -91,7 +91,6 @@
   "Heading 2": "제목 2",
   "Heading 3": "제목 3",
   "Heading 4": "제목 4",
-  "Headings": "제목",
   "Hidden in the show": "슬라이드 쇼에서 숨김",
   "How this slide comes on in the show": "슬라이드 쇼에서 이 슬라이드가 나타나는 방식",
   "In front of every other shape": "다른 모든 도형의 앞으로",
@@ -117,6 +116,7 @@
   "Memo": "메모",
   "Mark what is typed and deleted": "입력하고 삭제한 내용 표시",
   "More decimal places": "자릿수 늘림",
+  "Navigator": "탐색기",
   "New document": "새 문서",
   "New files are saved as": "새 파일 저장 형식",
   "New from template": "템플릿에서 새로 만들기",
@@ -196,6 +196,7 @@
   "Show comments": "메모 표시",
   "Show the comments and their pane": "메모와 메모 창 표시",
   "Show the document as pages": "문서를 페이지로 표시",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "문서 옆에 제목, 표, 그림, 메모 표시 (F5)",
   "Show the slides full screen, from the first": "처음 슬라이드부터 전체 화면으로 표시",
   "Show the slides full screen, from this one": "현재 슬라이드부터 전체 화면으로 표시",
   "Shrink the sheet so every column fits across one page": "모든 열이 한 페이지 너비에 맞도록 시트 축소",
@@ -251,7 +252,6 @@
   "{0} could not be restored: {1}": "{0}을(를) 복원할 수 없습니다: {1}",
   "{0} could not be saved: {1}": "{0}을(를) 저장할 수 없습니다: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0}은(는) UltraOffice에서 열 수 있는 문서, 스프레드시트 또는 프레젠테이션이 아닙니다.",
-  "{0} rows, {1} columns": "{0}행 {1}열",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "other": "{n}개 문서에 저장되지 않은 변경 사항이 있습니다. UltraOffice를 닫고 변경 사항을 버리시겠습니까?"
   },

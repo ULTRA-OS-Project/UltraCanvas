@@ -48,7 +48,8 @@ The command tabs:
   a new comment, the previous and next comment, *All comments* (go to, edit,
   resolve or reopen, delete), show or hide comments (and their pane); track
   changes, the previous and next change, accept, reject, accept all, reject
-  all. *View*: pages on or off, page width, whole page, zoom.
+  all. *View*: *Navigator* (F5, below), pages on or off, page width, whole
+  page, zoom.
 
   The dialogs are the framework's
   ([Document dialogs](../UltraCanvas/UltraCanvasRichTextEdit.md#document-dialogs)),
@@ -56,6 +57,31 @@ The command tabs:
   setup too - and Cancel changes nothing. Lengths are in centimetres,
   spacing in points. Comments and changes are signed with the login name; a
   double-click on a comment in the pane edits it.
+
+  **The navigator** is a side panel at the left of the document, shown and
+  hidden with *View > Navigator* or **F5** (LibreOffice Writer's key; Word's
+  Ctrl+F6 moves between windows, so it was not taken). Drag the bar between
+  it and the page to make it wider; the choice to show it and its width are
+  kept in the settings and apply to every document tab. It is the framework's
+  [`UltraCanvasDocumentNavigator`](../UltraCanvas/UltraCanvasDocumentNavigator.md),
+  shared with UltraTexter:
+  - **Headings** as a tree by level. The heading the caret is under is the
+    selected row and follows the caret; a click goes to a heading. The
+    buttons above the tree promote and demote a heading with its
+    subheadings, and move its chapter (the heading, its text and its
+    subheadings) up or down past the heading of its level beside it;
+    dragging a heading's row onto another heading moves the chapter before
+    that one, onto the *Headings* row to the end. Each is one undo step.
+  - **Tables, Pictures, Charts** (by caption, alt text or title), **Comments**
+    (with their authors; a double-click opens *All comments*), **Bookmarks**,
+    **Footnotes and endnotes** (a double-click opens the note) and **Tracked
+    changes**; a click goes there and selects the picture, chart, comment or
+    change.
+  - **The search box** filters every list and lists under *Found in the text*
+    each place the document says it; a click selects it.
+
+  The lists follow the document as it is edited, read again once the typing
+  pauses.
 - **Spreadsheets** - *Home*: cut, copy, paste, bold, italic, alignment,
   wrap, number format, decimals. *Insert*: *Chart* opens the chart gallery
   over the selected cells - every chart of the framework, 52 types in nine
@@ -216,8 +242,10 @@ twice.
 
 `UltraOffice/settings.json` in the UltraCanvas settings folder
 (`UltraCanvasAppSettings`) keeps the recent files
-(`recent`, twelve) and the format new files are saved as (`saveFormat`:
-`ooxml` or `odf`), which also picks the type *Save as template* proposes. The
+(`recent`, twelve), the format new files are saved as (`saveFormat`:
+`ooxml` or `odf`), which also picks the type *Save as template* proposes, and
+whether a document's navigator is shown (`documentNavigator`) and how wide
+(`documentNavigatorWidth`, pixels). The
 user's templates are in `UltraOffice/templates/` beside it.
 
 ## Files
@@ -228,7 +256,7 @@ user's templates are in `UltraOffice/templates/` beside it.
 | `Apps/UltraOffice/UltraOfficeWindow.h`, `.cpp` | the window: tabs, command row, File menu, Start tab, open, save, close, autosave and recovery |
 | `Apps/UltraOffice/UltraOfficeTemplates.h`, `.cpp` | the templates offered (shipped and the user's) and the Start tab's gallery |
 | `Apps/UltraOffice/UltraOfficeHost.h`, `.cpp` | what every kind of tab provides (`OfficeHost`) and the shared toolbar helpers |
-| `Apps/UltraOffice/UltraOfficeDocumentHost.cpp` | documents |
+| `Apps/UltraOffice/UltraOfficeDocumentHost.cpp` | documents, and their navigator's side panel |
 | `Apps/UltraOffice/UltraOfficeSpreadsheetHost.cpp` | spreadsheets |
 | `Apps/UltraOffice/UltraOfficePresentationHost.cpp` | presentations |
 | `Apps/UltraOffice/UltraOffice.desktop` | the freedesktop entry |

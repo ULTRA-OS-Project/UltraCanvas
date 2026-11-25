@@ -91,7 +91,6 @@
   "Heading 2": "Kop 2",
   "Heading 3": "Kop 3",
   "Heading 4": "Kop 4",
-  "Headings": "Koppen",
   "Hidden in the show": "Verborgen in de diavoorstelling",
   "How this slide comes on in the show": "Hoe deze dia in de diavoorstelling verschijnt",
   "In front of every other shape": "Voor alle andere vormen",
@@ -117,6 +116,7 @@
   "Memo": "Memo",
   "Mark what is typed and deleted": "Markeren wat getypt en verwijderd wordt",
   "More decimal places": "Meer decimalen",
+  "Navigator": "Navigator",
   "New document": "Nieuw document",
   "New files are saved as": "Nieuwe bestanden worden opgeslagen als",
   "New from template": "Nieuw van sjabloon",
@@ -196,6 +196,7 @@
   "Show comments": "Opmerkingen tonen",
   "Show the comments and their pane": "De opmerkingen en hun deelvenster tonen",
   "Show the document as pages": "Het document als pagina's tonen",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Koppen, tabellen, afbeeldingen en opmerkingen naast het document tonen (F5)",
   "Show the slides full screen, from the first": "De dia's schermvullend tonen, vanaf de eerste",
   "Show the slides full screen, from this one": "De dia's schermvullend tonen, vanaf deze",
   "Shrink the sheet so every column fits across one page": "Het blad verkleinen zodat alle kolommen op de breedte van één pagina passen",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "{0} kon niet worden hersteld: {1}",
   "{0} could not be saved: {1}": "{0} kon niet worden opgeslagen: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} is geen document, spreadsheet of presentatie die UltraOffice kan openen.",
-  "{0} rows, {1} columns": "{0} rijen, {1} kolommen",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} document heeft niet-opgeslagen wijzigingen. UltraOffice sluiten en ze verliezen?",
     "other": "{n} documenten hebben niet-opgeslagen wijzigingen. UltraOffice sluiten en ze verliezen?"

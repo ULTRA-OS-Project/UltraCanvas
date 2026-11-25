@@ -91,7 +91,6 @@
   "Heading 2": "Başlık 2",
   "Heading 3": "Başlık 3",
   "Heading 4": "Başlık 4",
-  "Headings": "Başlıklar",
   "Hidden in the show": "Gösteride gizli",
   "How this slide comes on in the show": "Bu slaytın gösteride nasıl geldiği",
   "In front of every other shape": "Diğer tüm şekillerin önünde",
@@ -117,6 +116,7 @@
   "Memo": "Not",
   "Mark what is typed and deleted": "Yazılanları ve silinenleri işaretle",
   "More decimal places": "Ondalık basamağı artır",
+  "Navigator": "Gezgin",
   "New document": "Yeni belge",
   "New files are saved as": "Yeni dosyaların kayıt biçimi",
   "New from template": "Şablondan yeni",
@@ -196,6 +196,7 @@
   "Show comments": "Yorumları göster",
   "Show the comments and their pane": "Yorumları ve bölmelerini göster",
   "Show the document as pages": "Belgeyi sayfalar halinde göster",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Başlıkları, tabloları, resimleri ve açıklamaları belgenin yanında göster (F5)",
   "Show the slides full screen, from the first": "Slaytları tam ekranda ilkinden başlayarak göster",
   "Show the slides full screen, from this one": "Slaytları tam ekranda bundan başlayarak göster",
   "Shrink the sheet so every column fits across one page": "Çalışma sayfasını, tüm sütunlar tek bir sayfa genişliğine sığacak şekilde küçült",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "{0} geri yüklenemedi: {1}",
   "{0} could not be saved: {1}": "{0} kaydedilemedi: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0}, UltraOffice'in açabileceği bir belge, hesap tablosu veya sunu değil.",
-  "{0} rows, {1} columns": "{0} satır, {1} sütun",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} belgede kaydedilmemiş değişiklikler var. UltraOffice kapatılıp bu değişiklikler kaybedilsin mi?",
     "other": "{n} belgede kaydedilmemiş değişiklikler var. UltraOffice kapatılıp bu değişiklikler kaybedilsin mi?"

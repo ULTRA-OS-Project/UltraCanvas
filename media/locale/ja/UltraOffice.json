@@ -91,7 +91,6 @@
   "Heading 2": "見出し 2",
   "Heading 3": "見出し 3",
   "Heading 4": "見出し 4",
-  "Headings": "見出し",
   "Hidden in the show": "スライドショーで非表示",
   "How this slide comes on in the show": "スライドショーでのこのスライドの切り替え",
   "In front of every other shape": "ほかのすべての図形の前面へ",
@@ -117,6 +116,7 @@
   "Memo": "メモ",
   "Mark what is typed and deleted": "入力と削除を記録",
   "More decimal places": "小数点以下の桁数を増やす",
+  "Navigator": "ナビゲーター",
   "New document": "新しい文書",
   "New files are saved as": "新しいファイルの保存形式",
   "New from template": "テンプレートから新規作成",
@@ -196,6 +196,7 @@
   "Show comments": "コメントを表示",
   "Show the comments and their pane": "コメントとコメント ウィンドウを表示",
   "Show the document as pages": "文書をページとして表示",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "見出し、表、図、コメントをドキュメントの横に表示 (F5)",
   "Show the slides full screen, from the first": "最初のスライドから全画面で表示",
   "Show the slides full screen, from this one": "このスライドから全画面で表示",
   "Shrink the sheet so every column fits across one page": "すべての列が 1 ページの幅に収まるようにシートを縮小",
@@ -251,7 +252,6 @@
   "{0} could not be restored: {1}": "{0} を復元できませんでした: {1}",
   "{0} could not be saved: {1}": "{0} を保存できませんでした: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} は UltraOffice で開ける文書、スプレッドシート、プレゼンテーションではありません。",
-  "{0} rows, {1} columns": "{0} 行 {1} 列",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "other": "{n} 個の文書に未保存の変更があります。UltraOffice を閉じて変更を破棄しますか?"
   },

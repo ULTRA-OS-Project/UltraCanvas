@@ -91,7 +91,6 @@
   "Heading 2": "Überschrift 2",
   "Heading 3": "Überschrift 3",
   "Heading 4": "Überschrift 4",
-  "Headings": "Überschriften",
   "Hidden in the show": "In der Bildschirmpräsentation ausgeblendet",
   "How this slide comes on in the show": "Wie diese Folie in der Bildschirmpräsentation erscheint",
   "In front of every other shape": "Vor allen anderen Formen",
@@ -117,6 +116,7 @@
   "Memo": "Notiz",
   "Mark what is typed and deleted": "Markieren, was eingegeben und gelöscht wird",
   "More decimal places": "Mehr Dezimalstellen",
+  "Navigator": "Navigator",
   "New document": "Neues Dokument",
   "New files are saved as": "Neue Dateien werden gespeichert als",
   "New from template": "Neu aus Vorlage",
@@ -196,6 +196,7 @@
   "Show comments": "Kommentare anzeigen",
   "Show the comments and their pane": "Die Kommentare und ihren Bereich anzeigen",
   "Show the document as pages": "Das Dokument als Seiten anzeigen",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Überschriften, Tabellen, Bilder und Kommentare neben dem Dokument anzeigen (F5)",
   "Show the slides full screen, from the first": "Die Folien im Vollbild zeigen, ab der ersten",
   "Show the slides full screen, from this one": "Die Folien im Vollbild zeigen, ab dieser",
   "Shrink the sheet so every column fits across one page": "Die Tabelle verkleinern, sodass alle Spalten auf eine Seitenbreite passen",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "{0} konnte nicht wiederhergestellt werden: {1}",
   "{0} could not be saved: {1}": "{0} konnte nicht gespeichert werden: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} ist kein Dokument, keine Tabelle und keine Präsentation, die UltraOffice öffnen kann.",
-  "{0} rows, {1} columns": "{0} Zeilen, {1} Spalten",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} Dokument hat ungespeicherte Änderungen. UltraOffice schließen und sie verwerfen?",
     "other": "{n} Dokumente haben ungespeicherte Änderungen. UltraOffice schließen und sie verwerfen?"

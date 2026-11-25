@@ -91,7 +91,6 @@
   "Heading 2": "Επικεφαλίδα 2",
   "Heading 3": "Επικεφαλίδα 3",
   "Heading 4": "Επικεφαλίδα 4",
-  "Headings": "Επικεφαλίδες",
   "Hidden in the show": "Κρυφή στην προβολή παρουσίασης",
   "How this slide comes on in the show": "Πώς εμφανίζεται αυτή η διαφάνεια στην προβολή",
   "In front of every other shape": "Μπροστά από όλα τα άλλα σχήματα",
@@ -117,6 +116,7 @@
   "Memo": "Σημείωμα",
   "Mark what is typed and deleted": "Σήμανση όσων πληκτρολογούνται και διαγράφονται",
   "More decimal places": "Περισσότερα δεκαδικά ψηφία",
+  "Navigator": "Περιήγηση",
   "New document": "Νέο έγγραφο",
   "New files are saved as": "Τα νέα αρχεία αποθηκεύονται ως",
   "New from template": "Νέο από πρότυπο",
@@ -196,6 +196,7 @@
   "Show comments": "Εμφάνιση σχολίων",
   "Show the comments and their pane": "Εμφάνιση των σχολίων και του παραθύρου τους",
   "Show the document as pages": "Εμφάνιση του εγγράφου ως σελίδες",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Εμφάνιση επικεφαλίδων, πινάκων, εικόνων και σχολίων δίπλα στο έγγραφο (F5)",
   "Show the slides full screen, from the first": "Εμφάνιση των διαφανειών σε πλήρη οθόνη, από την πρώτη",
   "Show the slides full screen, from this one": "Εμφάνιση των διαφανειών σε πλήρη οθόνη, από αυτήν",
   "Shrink the sheet so every column fits across one page": "Σμίκρυνση του φύλλου ώστε όλες οι στήλες να χωρούν στο πλάτος μίας σελίδας",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "Δεν ήταν δυνατή η επαναφορά του {0}: {1}",
   "{0} could not be saved: {1}": "Δεν ήταν δυνατή η αποθήκευση του {0}: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "Το {0} δεν είναι έγγραφο, υπολογιστικό φύλλο ή παρουσίαση που μπορεί να ανοίξει το UltraOffice.",
-  "{0} rows, {1} columns": "{0} γραμμές, {1} στήλες",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} έγγραφο έχει μη αποθηκευμένες αλλαγές. Κλείσιμο του UltraOffice και απώλειά τους;",
     "other": "{n} έγγραφα έχουν μη αποθηκευμένες αλλαγές. Κλείσιμο του UltraOffice και απώλειά τους;"

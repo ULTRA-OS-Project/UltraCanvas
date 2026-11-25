@@ -91,7 +91,6 @@
   "Heading 2": "Judul 2",
   "Heading 3": "Judul 3",
   "Heading 4": "Judul 4",
-  "Headings": "Judul",
   "Hidden in the show": "Disembunyikan dalam tayangan",
   "How this slide comes on in the show": "Cara slide ini muncul dalam tayangan",
   "In front of every other shape": "Di depan semua bentuk lain",
@@ -117,6 +116,7 @@
   "Memo": "Memo",
   "Mark what is typed and deleted": "Tandai yang diketik dan dihapus",
   "More decimal places": "Tambah angka desimal",
+  "Navigator": "Navigator",
   "New document": "Dokumen baru",
   "New files are saved as": "File baru disimpan sebagai",
   "New from template": "Baru dari templat",
@@ -196,6 +196,7 @@
   "Show comments": "Tampilkan komentar",
   "Show the comments and their pane": "Tampilkan komentar dan panelnya",
   "Show the document as pages": "Tampilkan dokumen sebagai halaman",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Tampilkan judul, tabel, gambar, dan komentar di samping dokumen (F5)",
   "Show the slides full screen, from the first": "Tampilkan slide dalam layar penuh, dari yang pertama",
   "Show the slides full screen, from this one": "Tampilkan slide dalam layar penuh, dari slide ini",
   "Shrink the sheet so every column fits across one page": "Perkecil lembar agar semua kolom muat dalam lebar satu halaman",
@@ -251,7 +252,6 @@
   "{0} could not be restored: {1}": "{0} tidak dapat dipulihkan: {1}",
   "{0} could not be saved: {1}": "{0} tidak dapat disimpan: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} bukan dokumen, lembar kerja, atau presentasi yang dapat dibuka UltraOffice.",
-  "{0} rows, {1} columns": "{0} baris, {1} kolom",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "other": "{n} dokumen memiliki perubahan yang belum disimpan. Tutup UltraOffice dan buang perubahan tersebut?"
   },

@@ -91,7 +91,6 @@
   "Heading 2": "Đề mục 2",
   "Heading 3": "Đề mục 3",
   "Heading 4": "Đề mục 4",
-  "Headings": "Đầu đề",
   "Hidden in the show": "Ẩn khi trình chiếu",
   "How this slide comes on in the show": "Cách trang chiếu này xuất hiện khi trình chiếu",
   "In front of every other shape": "Phía trước mọi hình khác",
@@ -117,6 +116,7 @@
   "Memo": "Bản ghi nhớ",
   "Mark what is typed and deleted": "Đánh dấu những gì được gõ và xóa",
   "More decimal places": "Tăng số chữ số thập phân",
+  "Navigator": "Trình điều hướng",
   "New document": "Tài liệu mới",
   "New files are saved as": "Tệp mới được lưu dưới dạng",
   "New from template": "Mới từ mẫu",
@@ -196,6 +196,7 @@
   "Show comments": "Hiện nhận xét",
   "Show the comments and their pane": "Hiện nhận xét và ngăn của chúng",
   "Show the document as pages": "Hiển thị tài liệu theo trang",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Hiển thị tiêu đề, bảng, hình và chú thích bên cạnh tài liệu (F5)",
   "Show the slides full screen, from the first": "Trình chiếu toàn màn hình, từ trang đầu tiên",
   "Show the slides full screen, from this one": "Trình chiếu toàn màn hình, từ trang này",
   "Shrink the sheet so every column fits across one page": "Thu nhỏ trang tính để mọi cột vừa trong chiều rộng một trang",
@@ -251,7 +252,6 @@
   "{0} could not be restored: {1}": "Không thể khôi phục {0}: {1}",
   "{0} could not be saved: {1}": "Không thể lưu {0}: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} không phải là tài liệu, bảng tính hay bản trình bày mà UltraOffice có thể mở.",
-  "{0} rows, {1} columns": "{0} hàng, {1} cột",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "other": "{n} tài liệu có thay đổi chưa lưu. Đóng UltraOffice và bỏ các thay đổi đó?"
   },

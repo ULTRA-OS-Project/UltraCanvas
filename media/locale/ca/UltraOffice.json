@@ -91,7 +91,6 @@
   "Heading 2": "Encapçalament 2",
   "Heading 3": "Encapçalament 3",
   "Heading 4": "Encapçalament 4",
-  "Headings": "Capçaleres",
   "Hidden in the show": "Amagada a la presentació",
   "How this slide comes on in the show": "Com entra aquesta diapositiva a la presentació",
   "In front of every other shape": "Davant de totes les altres formes",
@@ -117,6 +116,7 @@
   "Memo": "Memoràndum",
   "Mark what is typed and deleted": "Marca el que s'escriu i s'esborra",
   "More decimal places": "Més decimals",
+  "Navigator": "Navegador",
   "New document": "Document nou",
   "New files are saved as": "Els fitxers nous es desen com a",
   "New from template": "Nou a partir d'una plantilla",
@@ -196,6 +196,7 @@
   "Show comments": "Mostra els comentaris",
   "Show the comments and their pane": "Mostra els comentaris i la seva subfinestra",
   "Show the document as pages": "Mostra el document com a pàgines",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Mostra els encapçalaments, les taules, les imatges i els comentaris al costat del document (F5)",
   "Show the slides full screen, from the first": "Mostra les diapositives a pantalla completa, des de la primera",
   "Show the slides full screen, from this one": "Mostra les diapositives a pantalla completa, des d’aquesta",
   "Shrink the sheet so every column fits across one page": "Redueix el full perquè totes les columnes càpiguen en l’amplada d’una pàgina",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "No s'ha pogut restaurar {0}: {1}",
   "{0} could not be saved: {1}": "No s’ha pogut desar {0}: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} no és un document, un full de càlcul ni una presentació que UltraOffice pugui obrir.",
-  "{0} rows, {1} columns": "{0} files, {1} columnes",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} document té canvis sense desar. Voleu tancar UltraOffice i perdre’ls?",
     "other": "{n} documents tenen canvis sense desar. Voleu tancar UltraOffice i perdre’ls?"

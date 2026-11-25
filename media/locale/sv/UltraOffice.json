@@ -91,7 +91,6 @@
   "Heading 2": "Rubrik 2",
   "Heading 3": "Rubrik 3",
   "Heading 4": "Rubrik 4",
-  "Headings": "Rubriker",
   "Hidden in the show": "Dold i bildspelet",
   "How this slide comes on in the show": "Hur den här bilden kommer in i bildspelet",
   "In front of every other shape": "Framför alla andra former",
@@ -117,6 +116,7 @@
   "Memo": "PM",
   "Mark what is typed and deleted": "Markera det som skrivs och tas bort",
   "More decimal places": "Fler decimaler",
+  "Navigator": "Navigator",
   "New document": "Nytt dokument",
   "New files are saved as": "Nya filer sparas som",
   "New from template": "Nytt från mall",
@@ -196,6 +196,7 @@
   "Show comments": "Visa kommentarer",
   "Show the comments and their pane": "Visa kommentarerna och deras fönster",
   "Show the document as pages": "Visa dokumentet som sidor",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Visa rubriker, tabeller, bilder och kommentarer bredvid dokumentet (F5)",
   "Show the slides full screen, from the first": "Visa bilderna i helskärm, från den första",
   "Show the slides full screen, from this one": "Visa bilderna i helskärm, från denna",
   "Shrink the sheet so every column fits across one page": "Förminska bladet så att alla kolumner får plats på en sidas bredd",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "{0} kunde inte återställas: {1}",
   "{0} could not be saved: {1}": "{0} kunde inte sparas: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} är inte ett dokument, kalkylblad eller en presentation som UltraOffice kan öppna.",
-  "{0} rows, {1} columns": "{0} rader, {1} kolumner",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} dokument har osparade ändringar. Stäng UltraOffice och förlora dem?",
     "other": "{n} dokument har osparade ändringar. Stäng UltraOffice och förlora dem?"
