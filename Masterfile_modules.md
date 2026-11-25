@@ -864,6 +864,25 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`,
   `core/UltraCanvasSpreadsheetChartGallery.cpp`.
   See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts`.
+- **UltraCanvasSpreadsheetPivot** (`UltraCanvasSpreadsheetPivot.h`) — pivot
+  tables: `SpreadsheetPivotTable` (a source block, row / column / filter
+  fields `PivotField` with order, subtotals, hidden items and `PivotGrouping`,
+  value fields `PivotValueField` with `PivotSummary` and `PivotShowAs`,
+  grand totals), `MakeSpreadsheetPivot`, `MakePivotValueField`,
+  `ComputeSpreadsheetPivot` (laid out as `PivotOutput` cells),
+  `RefreshSpreadsheetPivot` / `ClearSpreadsheetPivotCells` (written onto a
+  sheet), `SpreadsheetPivotFieldItems`, `SpreadsheetPivotDrillDownRows`, and
+  the .xlsx / .ods parts (`WriteXlsxPivots`, `ReadXlsxSheetPivots`,
+  `WriteOdsPivots`, `ReadOdsPivots`). A sheet keeps them
+  (`SpreadsheetSheet::GetPivotTables`); the grid inserts, changes, refreshes
+  and removes them (`InsertPivotTable`, `SetPivotTable`, `RefreshPivotTables`,
+  `RemovePivotTable`), keeps their cells read-only, refreshes them when the
+  source changes and drills into a value. The field list:
+  `UltraCanvasSpreadsheetPivotPanel` (`UltraCanvasSpreadsheetPivotPanel.h`),
+  `ShowSpreadsheetPivotDialog`. In `core/UltraCanvasSpreadsheetPivot.cpp`,
+  `core/UltraCanvasSpreadsheetPivotIO.cpp`,
+  `core/UltraCanvasSpreadsheetPivotDialog.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#pivot-tables`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
   presentations (`.odp`, `.otp` templates, flat `.fodp`) read into

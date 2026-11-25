@@ -16,6 +16,8 @@
 //                  hyperlinks (with their relationships) and comments (the comments part and the legacy
 //                  VML drawing Excel shows them with) read and written; one relationships part per sheet
 //                  for its links, comments and charts
+// Version: 1.6.0 - pivot tables: their cache definitions, records and table parts read and written
+//                  (UltraCanvasSpreadsheetPivotIO.cpp)
 // Version: 1.5.0 - charts: a sheet's drawing with its charts read and written (UltraCanvasSpreadsheetChartIO.cpp)
 // Version: 1.4.0 - a cell's number is written to read back exactly (it kept six significant digits)
 // Version: 1.3.0 - keeps what a sheet holds beyond its cells: frozen panes (sheetViews), hidden rows and
@@ -29,6 +31,7 @@
 
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetChart.h"           // the sheets' charts
+#include "UltraCanvasSpreadsheetPivot.h"           // the sheets' pivot tables
 #include "UltraCanvasSpreadsheetXls.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasOfficeEncryption.h"
@@ -624,6 +627,7 @@ public:
         // By position in <sheets>, which is what a defined name's
         // localSheetId counts; null where a sheet could not be read.
         std::vector<SpreadsheetSheet*> sheetsByPosition;
+        std::vector<std::pair<SpreadsheetSheet*, std::string>> sheetParts;   // for the pivots, read last
         for (auto* sheetElem = sheets->FirstChildElement("sheet"); sheetElem;
              sheetElem = sheetElem->NextSiblingElement("sheet")) {
             sheetsByPosition.push_back(nullptr);
@@ -639,11 +643,14 @@ public:
                 currentSheetPath_ = rel->second;
                 ParseWorksheet(sheetXml, sheet);
                 ReadXlsxSheetCharts(zip_, rel->second, *sheet);
+                sheetParts.emplace_back(sheet, rel->second);
             }
         }
         if (auto* definedNames = root->FirstChildElement("definedNames")) {
             LoadDefinedNames(definedNames, sheetsByPosition);
         }
+        // The pivots, once every sheet (and name) a source may be is read.
+        for (const auto& [sheet, part] : sheetParts) ReadXlsxSheetPivots(zip_, part, *sheet, *spreadsheet_);
         if (spreadsheet_->GetSheetCount() == 0) {
             spreadsheet_->AddSheet("Sheet1");
         }
@@ -1575,6 +1582,7 @@ public:
     explicit XlsxSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
     bool Save(const std::string& filePath, const std::string& password, std::string& error) {
+        spreadsheet_->RefreshChangedPivotTables();   // the pivots' cells as their sources are now
         spreadsheet_->RefreshCharts();   // the charts' caches as the cells are now
         // Sheets are generated first so the style/string tables are complete
         // before styles.xml and sharedStrings.xml are written.
@@ -1606,12 +1614,17 @@ public:
         std::string contentTypes = BuildContentTypesXml(sheetXmls.size(), ExtraContentTypes(),
                                                         IsSpreadsheetTemplateExtension(filePath));
         auto chartParts = WriteXlsxCharts(*spreadsheet_, sheetXmls, contentTypes);
+        // The pivots: their caches, records and tables, the workbook's list
+        // of caches and its relationships to them.
+        std::string pivotCaches, pivotRelationships;
+        auto pivotParts = WriteXlsxPivots(*spreadsheet_, pivotCaches, pivotRelationships, contentTypes);
+        chartParts.insert(chartParts.end(), pivotParts.begin(), pivotParts.end());
         MergeSheetRelationships(chartParts);
         bool ok = zip_.AddEntry("[Content_Types].xml", contentTypes)
                   && zip_.AddEntry("_rels/.rels", BuildRootRelsXml())
-                  && zip_.AddEntry("xl/workbook.xml", BuildWorkbookXml())
+                  && zip_.AddEntry("xl/workbook.xml", BuildWorkbookXml(pivotCaches))
                   && zip_.AddEntry("xl/_rels/workbook.xml.rels",
-                                   BuildWorkbookRelsXml(sheetXmls.size(), wroteDynamicArray_))
+                                   BuildWorkbookRelsXml(sheetXmls.size(), wroteDynamicArray_, pivotRelationships))
                   && zip_.AddEntry("xl/styles.xml", BuildStylesXml())
                   && zip_.AddEntry("xl/sharedStrings.xml", BuildSharedStringsXml())
                   && (!wroteDynamicArray_ || zip_.AddEntry("xl/metadata.xml", BuildMetadataXml()));
@@ -2198,7 +2211,7 @@ private:
         return xml.str();
     }
 
-    std::string BuildWorkbookXml() const {
+    std::string BuildWorkbookXml(const std::string& pivotCaches) const {
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
@@ -2213,6 +2226,7 @@ private:
         xml << "</sheets>";
         std::string definedNames = BuildDefinedNamesXml();
         if (!definedNames.empty()) xml << "<definedNames>" << definedNames << "</definedNames>";
+        xml << pivotCaches;   // after the names, as the schema orders them
         xml << "</workbook>\n";
         return xml.str();
     }
@@ -2293,7 +2307,7 @@ private:
         return xml.str();
     }
 
-    static std::string BuildWorkbookRelsXml(size_t sheetCount, bool withMetadata) {
+    static std::string BuildWorkbookRelsXml(size_t sheetCount, bool withMetadata, const std::string& more) {
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n";
@@ -2314,7 +2328,7 @@ private:
                    "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata\" "
                    "Target=\"metadata.xml\"/>\n";
         }
-        xml << "</Relationships>\n";
+        xml << more << "</Relationships>\n";
         return xml.str();
     }
 

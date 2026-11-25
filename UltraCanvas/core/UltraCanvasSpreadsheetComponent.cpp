@@ -4,6 +4,7 @@
 // workbook-scoped features (sheet management, named ranges, undo/redo).
 // Rendering, event handling, editing, navigation and clipboard live in
 // core/UltraCanvasSpreadsheet.cpp - this file MUST NOT redefine those.
+// Version: 1.4.0 - a cleared range refuses a pivot table's cells; a renamed sheet's pivots follow it
 // Version: 1.3.0 - a change of sheet is announced to assistive technology (its name, its active cell)
 // Version: 1.2.0 - a conditional-format or validation step (RulesChange) is undone and redone
 // Version: 1.1.0 - charts: a chart step is undone and redone; a renamed sheet's charts follow it; a
@@ -334,6 +335,7 @@ bool UltraCanvasSpreadsheet::RenameSheet(int index, const std::string& newName) 
     if (rewritten || !namedRanges_.empty()) RecalculateAll();
     // And the charts' ranges on it.
     for (auto& sheet : sheets_) RenameSpreadsheetChartSheet(sheet->GetCharts(), oldName, newName);
+    for (auto& sheet : sheets_) RenameSpreadsheetPivotSheet(sheet->GetPivotTables(), oldName, newName);
 
     // The undo history follows too: the formulas its steps would put back
     // name the new name (the steps find the sheet itself by its id).
@@ -535,6 +537,7 @@ void UltraCanvasSpreadsheet::ClearSelection() {
 void UltraCanvasSpreadsheet::ClearRange(const CellRange& range) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
+    if (RefusePivotEdit(range)) return;
     if (recordingUndo_) RecordRangeChange(range);
     sheet->ClearRange(range);
     Recalculate();

@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.8.0 - the sheet's pivot tables (GetPivotTables, UltraCanvasSpreadsheetPivot.h);
+//                  NotifyCellsChanged for cells written directly
 // Version: 1.7.0 - SetArrayFormula: a legacy (Ctrl+Shift+Enter) array formula over a range
 // Version: 1.6.0 - conditional formats drawn: GetConditionalFormatting (styles, colour scales, data
 //                  bars, formula rules), SetConditionalFormats; validation: Custom (formula) rules and
@@ -21,6 +23,7 @@
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetMetrics.h"
 #include "UltraCanvasSpreadsheetChart.h"
+#include "UltraCanvasSpreadsheetPivot.h"
 #include <string>
 #include <optional>
 #include <vector>
@@ -228,6 +231,8 @@ private:
 
     // Charts standing on the sheet (UltraCanvasSpreadsheetChart.h).
     std::vector<SpreadsheetChart> charts_;
+    // Pivot tables standing on the sheet (UltraCanvasSpreadsheetPivot.h).
+    std::vector<SpreadsheetPivotTable> pivots_;
     // The conditional formats' figures over their ranges (lowest, highest,
     // sorted values, how often each text occurs), worked out once and kept
     // until a cell may have changed: contentRevision_ moves on every change,
@@ -645,6 +650,25 @@ public:
     std::vector<SpreadsheetChart>& GetCharts() { return charts_; }
     const std::vector<SpreadsheetChart>& GetCharts() const { return charts_; }
     void SetCharts(std::vector<SpreadsheetChart> charts) { charts_ = std::move(charts); }
+
+    // ===== PIVOT TABLES =====
+    // The pivots whose cells stand on the sheet (their sources may be on
+    // any sheet). Changed directly, their cells are not rewritten: the
+    // grid's InsertPivotTable / SetPivotTable / RefreshPivotTables do that.
+    std::vector<SpreadsheetPivotTable>& GetPivotTables() { return pivots_; }
+    const std::vector<SpreadsheetPivotTable>& GetPivotTables() const { return pivots_; }
+    // The pivot whose cells cover (row, col); -1 for none.
+    int PivotTableAt(int row, int col) const {
+        for (size_t i = 0; i < pivots_.size(); ++i) {
+            if (pivots_[i].Covers(row, col)) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    // Tells whoever follows the sheet (the formula engine, the grid) that
+    // the cells of `range` changed, after they were written directly through
+    // GetOrCreateCell.
+    void NotifyCellsChanged(const CellRange& range) { NotifyRangeChange(range); }
     
     // Get memory usage
     size_t GetMemorySize() const;

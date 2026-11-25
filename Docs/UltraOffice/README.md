@@ -64,12 +64,15 @@ The command tabs:
   other), each drawn from the selection, with what it shows and the
   columns it reads; *Chart type* changes the selected chart's type in the
   same gallery; the selected chart's properties (type, title, legend,
-  series in rows) and deleting it. *Data*: sort, filter, fill
+  series in rows) and deleting it; *Pivot table* summarises the selected
+  cells in a pivot table. *Data*: sort, filter, fill
   down and right, SUM, conditional formatting (value and formula rules,
   text, blanks, errors, top values, averages, duplicates, colour scales,
   data bars) and data validation (numbers, dates, times, text length, a list
   typed or taken from cells, a custom formula; how a wrong entry is
-  answered). *Review*: the active cell's comment (add, change, delete) and
+  answered); for the pivot table under the active cell *Refresh* (every
+  pivot table when none is), *Change source*, *Field list* and *Delete
+  pivot*. *Review*: the active cell's comment (add, change, delete) and
   link (a web or mail address, or a cell of the workbook; open, remove).
   *Page*: set and clear the print area, landscape, fit to width, gridlines,
   headings. *View*: freeze and unfreeze panes.
@@ -86,6 +89,27 @@ The command tabs:
   is saved as a column chart of its numbers, which they show, with the
   real type beside it for UltraOffice to read back
   ([Every chart type](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#every-chart-type)).
+
+  A pivot table summarises a block of cells whose first row names its
+  fields. *Insert > Pivot table* opens its field list in a dialog: the data
+  (the selection, or a range typed in), where it goes (a new sheet, or a
+  cell of this sheet), and the fields - pick one and add it to the rows,
+  columns, values or filters (a double-click puts numbers into the values
+  and anything else into the rows), remove it or move it up and down. A
+  value field is summed, counted, averaged, taken as its min or max,
+  multiplied, its numbers counted, its standard deviation or variance taken,
+  and shown as it is or as a share of the grand total, its row or its
+  column; a row, column or filter field has its order, the items it shows,
+  its subtotals and a grouping - dates by year, quarter or month, numbers
+  by a step. The grand totals at the bottom and the right can be turned
+  off, and several values put one under the other. The pivot's cells are
+  drawn with a header style and cannot be typed over; while one of them is
+  active, the field list stands beside the sheet and each change in it is
+  applied at once. When the source cells change the pivot follows, a
+  double-click on a value opens a new sheet of the rows behind it, and
+  pivots are kept in .xlsx and .ods - those Excel and LibreOffice made are
+  read and refreshed too
+  ([Pivot tables](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#pivot-tables)).
 
   A comment is marked by a red corner and shown while the pointer rests on
   the cell; a link is blue and underlined, and Ctrl+click opens it.

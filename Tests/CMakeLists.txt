@@ -5675,6 +5675,27 @@ add_test(NAME SpreadsheetChartDrawTest COMMAND SpreadsheetChartDrawTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set_tests_properties(SpreadsheetChartDrawTest PROPERTIES TIMEOUT 300)
 message(STATUS "    Test registered: SpreadsheetChartDrawTest")
+# ===== SPREADSHEET PIVOT TEST =====
+# Pivot tables (UltraCanvasSpreadsheetPivot.h) without a display: sums,
+# counts, averages and the other summaries against hand-worked values;
+# several row and column fields with subtotals and grand totals; filters,
+# hidden items, order, dates grouped by years / quarters / months and
+# numbers by a step; shares of the totals; the grid's read-only cells,
+# refresh on a source change and drill-down; .xlsx and .ods round trips;
+# LibreOffice's conversions of our files and pivots LibreOffice makes itself
+# (both skipped without soffice).
+message(STATUS "  Building SpreadsheetPivotTest...")
+add_executable(SpreadsheetPivotTest ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetPivotTest.cpp)
+target_include_directories(SpreadsheetPivotTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetPivotTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetPivotTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetPivotTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetPivotTest COMMAND SpreadsheetPivotTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_tests_properties(SpreadsheetPivotTest PROPERTIES TIMEOUT 300)
+message(STATUS "    Test registered: SpreadsheetPivotTest")
 # ===== SPREADSHEET RULES TEST =====
 # Conditional formats (value, formula, text, top, duplicate rules, colour
 # scales, data bars), validation (Custom formulas, lists taken from cells),
