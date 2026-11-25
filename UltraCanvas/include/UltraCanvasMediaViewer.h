@@ -87,6 +87,7 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.33.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) is a presentation (IsPresentationFile)
 // Version: 1.32.0 - a word-processing document (.odt, .docx, .doc) opens in the document view as its
 //                   pages, laid out as print lays them out (IsWordProcessingFile); a password-protected
 //                   one waits for Unlock
@@ -142,7 +143,7 @@
 // Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
 //                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -789,8 +790,9 @@ public:
     // sheets and pictures read from the archive's own parts. False without
     // UltraNet's MIME reader, as IsMailMessageFile.
     static bool IsWebArchiveFile(const std::string& path);
-    // PowerPoint (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm) and OpenDocument
-    // (.odp, .otp, .fodp) decks, by name. Shown in the text view as the
+    // PowerPoint (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm; the 97-2003 .ppt,
+    // .pps, .pot) and OpenDocument (.odp, .otp, .fodp) decks, by name. Shown
+    // in the document view as their slides, or in the text view as the
     // outline of their slides - each slide's number and title, its bullets,
     // tables and notes - as UltraCanvasFileLoader::LoadTextDocument reads
     // them; a password-protected one is locked until Unlock, as a PDF is.

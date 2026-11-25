@@ -2514,6 +2514,7 @@ if(TINYXML2_TEST_FOUND AND TARGET uc-crypt)
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasDrawingML.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasOdfChart.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOfficeArt.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasCompoundFile.cpp
         ${WORD_ENCRYPTION_SOURCES}
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
@@ -2640,6 +2641,7 @@ if(TINYXML2_TEST_FOUND AND TARGET uc-crypt)
         ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasDrawingML.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasOdfChart.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasOfficeArt.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasCompoundFile.cpp
         ${WORD_ENCRYPTION_SOURCES}
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
@@ -6062,6 +6064,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: PresentationPptxTest")
 else()
     message(STATUS "  PresentationPptxTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== POWERPOINT 97-2003 (.ppt) READER TEST =====
+# LibreOffice's .ppt of a python-pptx deck (make-ppt-fixtures.py) read field
+# by field, a deck built record by record (outline text, master styles, an
+# incremental save, encryption refused), damaged files read without a crash,
+# and FileLoader's handling of the format.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PresentationPptTest...")
+    add_executable(PresentationPptTest ${CMAKE_CURRENT_SOURCE_DIR}/PresentationPptTest.cpp)
+    target_include_directories(PresentationPptTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PresentationPptTest PRIVATE cxx_std_20)
+    target_link_libraries(PresentationPptTest PRIVATE UltraCanvas)
+    target_compile_definitions(PresentationPptTest PRIVATE
+        PPTTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(PresentationPptTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PresentationPptTest COMMAND PresentationPptTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(PresentationPptTest PROPERTIES TIMEOUT 600)
+    message(STATUS "    Test registered: PresentationPptTest")
+else()
+    message(STATUS "  PresentationPptTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== PRESENTATION PRINT TEST =====

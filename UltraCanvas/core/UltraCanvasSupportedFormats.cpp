@@ -27,6 +27,7 @@
 //                  it (CanImagePipelineLoad stays false for every font).
 //   LayeredImage — UCRasterDocument's own files: the UCD 2.1 layered image
 //                  (no libvips needed) and the UltraPaint project (libvips).
+// Version: 1.6.0 - PowerPoint 97-2003 presentations (.ppt, .pps, .pot), read only
 // Version: 1.5.0 - OpenDocument presentations (.odp, .otp, .fodp); PowerPoint lists .ppsm and
 //                  .potm, which its reader always took
 // Version: 1.4.0 - LayeredImage: *.ucd (UCD 2.1 layered image) and *.ucraster
@@ -36,7 +37,7 @@
 //                  HEIC without libheif's encoder); ICO and QOI name the
 //                  framework's own plugins
 // Version: 1.1.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
@@ -239,6 +240,11 @@ namespace {
                         "slides read and drawn (text, tables, pictures, charts), or opened as an outline; written "
                         "from the deck model or from a document (a slide per heading); password-protected files "
                         "read, not written" });
+        out.push_back({ "ppt", { "pps", "pot" }, "PowerPoint 97-2003 presentation",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in OLE2/CFB parser",
+                        "slides read and drawn (text, bullets, shapes, pictures, tables, notes, transitions), or "
+                        "opened as an outline; saved as .pptx or .odp; password-protected files are refused" });
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });

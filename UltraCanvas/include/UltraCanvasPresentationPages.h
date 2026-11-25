@@ -5,17 +5,20 @@
 // navigation, and search over the slides' text (each hit framed on its
 // shape). Read-only: every write answers false.
 //
-// Reads a PowerPoint deck (.pptx and kin, UltraCanvasPresentationPptx.h) or
-// an OpenDocument presentation (.odp, .otp, .fodp,
-// UltraCanvasPresentationOdp.h), a password-protected one with its password;
+// Reads a PowerPoint deck (.pptx and kin, UltraCanvasPresentationPptx.h; the
+// 97-2003 .ppt, .pps and .pot, UltraCanvasPresentationPpt.h) or an
+// OpenDocument presentation (.odp, .otp, .fodp,
+// UltraCanvasPresentationOdp.h) - through
+// UltraCanvasFileLoader::LoadPresentation - a password-protected one with its password;
 // GetLastOpenError tells NeedsPassword and WrongPassword from a damaged file,
 // as the PDF engine does.
 //
 //   auto pages = std::make_unique<UltraCanvasPresentationPages>();
 //   if (pages->OpenInMemory(path)) pdfView->SetDocument(std::move(pages));
 //
+// Version: 1.1.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) opens too
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 

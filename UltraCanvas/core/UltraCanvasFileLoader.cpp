@@ -1,6 +1,8 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.14.0 - LoadPresentation (.pptx, .odp, and PowerPoint 97-2003 .ppt by content);
+//                  LoadTextDocument and DetectOfficeDocumentKind take a .ppt
 // Version: 1.13.0 - DetectOfficeDocumentKind, AddOfficeDocumentLoadTypes, AddPresentationSaveTypes
 // Version: 1.12.2 - SaveContent: iOS defines its own (the document picker), as Android and WASM do
 // Version: 1.12.1 - RequestDocumentPassword's prompt shows a lock centred above the field
@@ -20,7 +22,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -34,6 +36,8 @@
 #include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
 #include "UltraCanvasPresentationPptx.h"    // .pptx, read as an outline
 #include "UltraCanvasPresentationOdp.h"     // .odp / .otp / .fodp, the same
+#include "UltraCanvasPresentationPpt.h"     // .ppt / .pps / .pot, PowerPoint 97-2003
+#include "UltraCanvasCompoundFile.h"        // DetectOfficeDocumentKind: a compound file's streams
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasZipPackage.h"          // DetectOfficeDocumentKind: a package's mimetype and parts
 #include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
@@ -898,6 +902,13 @@ namespace UltraCanvas {
             if (!ReadOdpPresentation(filePath, deck, outError, password)) return nullptr;
             return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
         }
+        // ... and a PowerPoint 97-2003 deck: a compound file with a
+        // "PowerPoint Document" stream.
+        if (IsPptPresentationFile(filePath)) {
+            PptxPresentation deck;
+            if (!ReadPptPresentation(filePath, deck, outError)) return nullptr;
+            return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
+        }
 
         // Package formats (and renamed/legacy files) go by content signature.
         WordDocumentFormat format = DetectWordDocumentFormat(filePath);
@@ -911,9 +922,9 @@ namespace UltraCanvas {
 
         // A deck's name on a file that is no deck (damaged, or something
         // else renamed) is not text to show.
-        if (IsPptxExtension(filePath) || IsOdpExtension(filePath)) {
+        if (IsPptxExtension(filePath) || IsOdpExtension(filePath) || IsPptExtension(filePath)) {
             outError = std::string("The file is not a valid ") +
-                       (IsPptxExtension(filePath) ? "PowerPoint" : "OpenDocument") + " presentation: " + filePath;
+                       (IsOdpExtension(filePath) ? "OpenDocument" : "PowerPoint") + " presentation: " + filePath;
             return nullptr;
         }
 
@@ -936,7 +947,9 @@ namespace UltraCanvas {
         // Markdown text path's.
         bool TextDocumentReads(const MediaFormatInfo& format) {
             if (WordDocumentFormatFromExtension(format.extension) != WordDocumentFormat::Unknown) return true;
-            if (IsPptxExtension(format.extension) || IsOdpExtension(format.extension)) return true;
+            if (IsPptxExtension(format.extension) || IsOdpExtension(format.extension) ||
+                IsPptExtension(format.extension))
+                return true;
             return format.extension == "md" || format.extension == "txt";
         }
 
@@ -991,6 +1004,17 @@ namespace UltraCanvas {
         return WritePptxPresentation(deck, filePath, outError, password);
     }
 
+    bool UltraCanvasFileLoader::LoadPresentation(const std::string& filePath, PptxPresentation& deck,
+                                                 std::string& outError, const std::string& password,
+                                                 bool withPictures) {
+        outError.clear();
+        // By content first: a renamed deck still opens as what it is.
+        if (IsPptPresentationFile(filePath)) return ReadPptPresentation(filePath, deck, outError, withPictures);
+        if (IsOdpPresentationFile(filePath) || IsOdpExtension(filePath))
+            return ReadOdpPresentation(filePath, deck, outError, password, withPictures);
+        return ReadPptxPresentation(filePath, deck, outError, password, withPictures);
+    }
+
     void UltraCanvasFileLoader::AddTextDocumentSaveTypes(FileDialogOptions& opts) {
         for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document))
             if (TextDocumentWrites(format)) opts.AddFilter(format.description, ExtensionsOf(format));
@@ -1001,7 +1025,9 @@ namespace UltraCanvas {
 
     namespace {
         // (LowerExtensionOf: above, with the video helpers.)
-        bool IsDeckExtension(const std::string& ext) { return IsPptxExtension(ext) || IsOdpExtension(ext); }
+        bool IsDeckExtension(const std::string& ext) {
+            return IsPptxExtension(ext) || IsOdpExtension(ext) || IsPptExtension(ext);
+        }
 
         // What a word processor opens as a document: TextDocumentReads
         // without the decks, which an office suite opens as presentations.
@@ -1019,9 +1045,12 @@ namespace UltraCanvas {
         }
 
         // A package without a telling extension: its mimetype entry (ODF) or
-        // its main part (Office Open XML).
+        // its main part (Office Open XML); a compound file with a "PowerPoint
+        // Document" stream is a PowerPoint 97-2003 deck.
         UltraCanvasFileLoader::OfficeDocumentKind OfficeKindOfPackage(const std::string& filePath) {
             using Kind = UltraCanvasFileLoader::OfficeDocumentKind;
+            if (UCCompoundFileReader::HasSignature(filePath))
+                return IsPptPresentationFile(filePath) ? Kind::Presentation : Kind::Unknown;
             UCZipPackageReader zip;
             if (!zip.Open(filePath)) return Kind::Unknown;
             std::string mimetype;

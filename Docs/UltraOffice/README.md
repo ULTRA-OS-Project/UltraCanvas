@@ -13,11 +13,14 @@ It is built from the framework's elements, one per kind of document:
 |---|---|---|---|
 | Document | [`UltraCanvasRichTextEdit`](../UltraCanvas/UltraCanvasRichTextEdit.md), in page view | .odt, .docx, .doc, LaTeX, Markdown, text | .docx, .odt |
 | Spreadsheet | [`UltraCanvasSpreadsheet`](../UltraCanvas/UltraCanvasSpreadsheetExamples.md) | .ods, .xlsx, .xls, .csv, .tsv | .xlsx, .ods, .csv, .tsv |
-| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their template and show variants | .pptx, .odp |
+| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their template and show variants; PowerPoint 97-2003 .ppt (.pps, .pot) | .pptx, .odp |
 
 What a file is comes from `UltraCanvasFileLoader::DetectOfficeDocumentKind`:
 the extension, else the package inside (`mimetype`, `word/document.xml`,
-`xl/workbook.xml`, `ppt/presentation.xml`). The design, and the phases still
+`xl/workbook.xml`, `ppt/presentation.xml`; a compound file with a "PowerPoint
+Document" stream is a presentation,
+[UltraCanvasPresentationPpt](../UltraCanvas/UltraCanvasPresentationPpt.md)).
+The design, and the phases still
 to come (the slide editor, charts, comments and track changes), are in
 [`Docs/Research/UltraOfficeDesignProposal.md`](../Research/UltraOfficeDesignProposal.md).
 
@@ -104,7 +107,8 @@ document or spreadsheet.
 | Quit | Ctrl+Q |
 
 Save writes a file where it came from in its own format; a file only read
-(.doc, .xls, Markdown, LaTeX, text) asks for a name. A file
+(.doc, .xls, .ppt / .pps / .pot, Markdown, LaTeX, text) asks for a name,
+and is saved as the default type of its kind. A file
 opened with a password is saved protected with it again. A .docx saved again
 keeps the theme and font table it came with (`UCRichDocument::keptParts`). Closing a tab or
 the window with unsaved changes asks first.

@@ -10,6 +10,8 @@
 // and a format that moves into a runtime module takes its provider with it
 // and registers it from the module's init.
 //
+// Version: 1.5.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) previews its first slide and its
+//                  text; decks are read through UltraCanvasFileLoader::LoadPresentation
 // Version: 1.4.1 - an .odp deck's first slide is drawn with its pictures
 // Version: 1.4.0 - a deck's thumbnail is its first slide as drawn (RenderPptxSlide), not a page of
 //                  its outline
@@ -21,7 +23,7 @@
 // Version: 1.1.0 - a PDF's first page on white paper: the page the engine left transparent showed
 //                  the tile under it (a dark page with white patches on a dark tile)
 // Version: 1.0.0
-// Last Modified: 2026-11-22
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilePreviews.h"
@@ -33,6 +35,7 @@
 #include "UltraCanvasPresentationPptx.h"
 #include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasPresentationOdp.h"
+#include "UltraCanvasFileLoader.h"   // LoadPresentation: .pptx, .odp and .ppt alike
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "Documents/eBook/EPUBEngine.h"
 #include "Documents/eBook/MOBIEngine.h"
@@ -266,9 +269,7 @@ std::shared_ptr<UCPixmap> RenderWordFirstPage(const std::string& path, const Fil
 bool ReadPresentation(const std::string& path, UCRichDocument& document) {
     PptxPresentation deck;
     std::string error;
-    const bool read = IsOdpExtension(path) ? ReadOdpPresentation(path, deck, error)
-                                           : ReadPptxPresentation(path, deck, error);
-    if (!read) return false;
+    if (!UltraCanvasFileLoader::LoadPresentation(path, deck, error)) return false;
     document = PptxPresentationToRichDocument(deck);
     return true;
 }
@@ -279,9 +280,7 @@ std::shared_ptr<UCPixmap> RenderDeckFirstSlide(const std::string& path, const Fi
     if (r.width <= 0 || r.height <= 0) return nullptr;
     PptxPresentation deck;
     std::string error;
-    const bool read = IsOdpExtension(path) ? ReadOdpPresentation(path, deck, error, "", true)
-                                           : ReadPptxPresentation(path, deck, error, "", true);
-    if (!read || deck.slides.empty()) return nullptr;
+    if (!UltraCanvasFileLoader::LoadPresentation(path, deck, error, "", true) || deck.slides.empty()) return nullptr;
     const double slideW = deck.slideWidth > 0 ? static_cast<double>(deck.slideWidth) : 12192000.0;
     const double slideH = deck.slideHeight > 0 ? static_cast<double>(deck.slideHeight) : 6858000.0;
     const double fitWidth = std::min(static_cast<double>(r.width), r.height * slideW / slideH);
@@ -336,7 +335,8 @@ void RegisterBuiltinFilePreviewProviders() {
 
         FilePreviewProvider deck;
         deck.name = "powerpoint";
-        deck.documentExtensions = {"pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp"};
+        deck.documentExtensions = {"pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp",
+                                   "ppt", "pps", "pot"};
         deck.ReadDocument = ReadPresentation;
         deck.thumbnailExtensions = deck.documentExtensions;
         deck.RenderThumbnail = RenderDeckFirstSlide;

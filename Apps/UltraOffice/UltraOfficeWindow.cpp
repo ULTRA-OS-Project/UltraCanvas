@@ -2,6 +2,7 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.5.0 - PowerPoint 97-2003 decks (.ppt, .pps, .pot) are read, not written: Save asks for a name
 // Version: 0.4.0 - new presentations (the slide editor)
 // Version: 0.3.0 - recovered documents offered on the Start tab, so the window never waits on the question
 // Version: 0.2.0 - autosave every minute and crash recovery
@@ -67,7 +68,8 @@ std::string LowerExtension(const std::string& path) {
 // Files that are read but not written: saving one asks for a new name.
 bool IsReadOnlyFormat(const std::string& path) {
     const std::string ext = LowerExtension(path);
-    return ext == "doc" || ext == "xls" || ext == "md" || ext == "markdown" || ext == "tex" || ext == "txt";
+    return ext == "doc" || ext == "xls" || ext == "ppt" || ext == "pps" || ext == "pot" || ext == "md" ||
+           ext == "markdown" || ext == "tex" || ext == "txt";
 }
 
 const char* KindIcon(OfficeKind kind) {

@@ -1,13 +1,15 @@
 // Plugins/Documents/Word/UltraCanvasWordFormatInternal.h
 // Small helpers shared by the ODT and DOCX readers/writers. Internal to the
 // Word document module — not installed, not part of the public API.
+// Version: 1.4.0 - ApplyOfficeArtShapeType through OfficeArt::PresetOfShapeType (UltraCanvasOfficeArt.h):
+//                  the shape types the .doc and .ppt readers share, more of them
 // Version: 1.3.0 - FindDocxMainPart: the main document part named by the package's
 //                  relationships, not only word/document.xml
 // Version: 1.2.0 - ApplyOfficeArtShapeType: Word 97 / VML shape types as RichShape geometry;
 //                  ReadNumberAt / ReadNumbers: dot-decimal shape geometry; ApplyOfficeShade
 // Version: 1.1.1 - <cstdlib> for std::strtof, which libc++ no longer brings in
 //                  through <string> (MSYS2 CLANG64, 2026-10-09)
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -19,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "UltraCanvasOfficeArt.h"
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasTextUtils.h"
 
@@ -197,21 +200,12 @@ inline void ApplyOfficeShade(RichShape& shape, const std::string& fill, const st
 }
 
 // A Word 97 / VML shape type (MSOSPT: 1 rectangle, 3 ellipse, 20 line,
-// ...) as a RichShape's geometry; false for one it does not know (a
+// ...) as a RichShape's geometry, through its DrawingML preset
+// (OfficeArt::PresetOfShapeType); false for one it does not know (a
 // freeform, 0, has its own outline).
 inline bool ApplyOfficeArtShapeType(int type, RichShape& shape) {
-    static const std::pair<int, const char*> kTypes[] = {
-        {1, "rect"}, {2, "roundRect"}, {3, "ellipse"}, {4, "diamond"}, {5, "triangle"}, {6, "rtTriangle"},
-        {7, "parallelogram"}, {8, "trapezoid"}, {9, "hexagon"}, {10, "octagon"}, {11, "plus"}, {12, "star5"},
-        {13, "rightArrow"}, {15, "homePlate"}, {20, "line"}, {32, "straightConnector1"}, {55, "chevron"},
-        {56, "pentagon"}, {66, "leftArrow"}, {67, "downArrow"}, {68, "upArrow"}, {109, "flowChartProcess"},
-        {110, "flowChartDecision"}, {111, "flowChartInputOutput"}, {116, "flowChartTerminator"},
-        {117, "flowChartPreparation"}, {120, "flowChartConnector"}, {127, "flowChartExtract"},
-        {128, "flowChartMerge"}, {176, "flowChartAlternateProcess"}, {187, "star4"}, {202, "rect"}};
-    for (const auto& [id, name] : kTypes) {
-        if (id == type) return shape.ApplyPreset(name);
-    }
-    return false;
+    const char* preset = OfficeArt::PresetOfShapeType(type);
+    return preset && shape.ApplyPreset(preset);
 }
 
 uint32_t SymbolFontCharToUnicode(const std::string& fontFamily, uint32_t codepoint);

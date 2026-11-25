@@ -729,7 +729,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   storage, ASCII case-insensitive), `StreamNames`, `GetLastError`; below the
   root by '/'-separated path: `ReadStreamAt` / `HasStreamAt`,
   `StreamNamesAt` / `StorageNamesAt`. Used by the `.doc` importer, the `.xls`
-  reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
+  reader, the `.ppt` reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
   `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
   storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
   the password-protected Office files.
@@ -883,6 +883,28 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   list-styled bullets and numbering, notes; no password. In
   `core/UltraCanvasPresentationOdp.cpp` and `core/UltraCanvasPresentationOdpWriter.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationOdp.md`.
+
+- **UltraCanvasPresentationPpt** (`UltraCanvasPresentationPpt.h`) — PowerPoint
+  97-2003 decks (`.ppt`, `.pps`, `.pot`; [MS-PPT]) read into
+  UltraCanvasPresentationPptx's model, so everything that draws, shows,
+  prints, edits or outlines a deck takes them: `ReadPptPresentation`,
+  `ReadPptPresentationFromMemory` (`withPictures`: the pictures' bytes),
+  `IsPptPresentationFile` (a compound file with a "PowerPoint Document"
+  stream), `IsPptExtension`. The Current User stream and the UserEditAtom /
+  persist directory chain (the last edit of an incrementally saved deck);
+  the slide size, fonts, hyperlinks, the picture store; masters (text styles
+  by type and level, colour schemes, placeholders, backgrounds; a title
+  master as a layout) and layouts from the slides' SlideAtom geom; shapes
+  through the .doc reader's OfficeArt layer
+  (`Plugins/Documents/Word/UltraCanvasOfficeArt.h`: properties, BStore,
+  BLIPs, freeforms, MSOSPT as DrawingML presets) - places in EMU, turns,
+  mirroring, fills, gradients, outlines, pictures with crops, placeholders,
+  tables (a group with tableProperties); text with paragraph and character
+  runs, master inheritance, scheme colours, bullets, numbering
+  (StyleTextProp9Atom), hyperlinks, outline text (OutlineTextRefAtom);
+  notes, hidden slides, backgrounds, transitions. Encrypted decks refused.
+  No writer (saved as .pptx / .odp). In `core/UltraCanvasPresentationPpt.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPpt.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -1922,7 +1944,9 @@ own list: `AddLoadTypes(opts, label, {categories})` (one Open filter of every
 type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 (one Save filter per type it writes, the proposed name's type first),
 `AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes` with
-`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
+`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written);
+`LoadPresentation(path, deck, error, password, withPictures)` reads any deck
+(.pptx, .odp, .ppt, by content) and `SavePresentation` writes .pptx / .odp. A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
 

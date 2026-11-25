@@ -14,6 +14,12 @@
 - Conditional formats, validation, comments and links are kept in .xlsx and
   .ods.
 - Opening a spreadsheet from the command line no longer crashes.
+- **Old PowerPoint decks open.** A PowerPoint 97-2003 presentation (.ppt,
+  and the .pps show and .pot template) opens in the slide editor with its
+  slides, text and bullets, shapes, pictures, tables, notes, hidden slides
+  and transitions; it is shown, printed and exported to PDF like any deck.
+  Saving one asks for a name and writes .pptx or .odp. A password-protected
+  .ppt is refused with a reason.
 
 #### 2026-11-25 *0.1.0*
 - **UltraOffice: documents, spreadsheets and presentations in one window.**
