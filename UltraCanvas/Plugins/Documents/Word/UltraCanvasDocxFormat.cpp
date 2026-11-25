@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.19.0 - the theme and font table are kept from the file read and written back (UCRichDocument::keptParts)
 // Version: 1.18.1 - a chart part is written by UltraCanvasDrawingML (WriteDrawingMLChart) too
 // Version: 1.18.0 - a chart part and a DrawingML colour are read by UltraCanvasDrawingML (core, shared
 //                   with the PowerPoint reader)
@@ -307,6 +308,7 @@ public:
         partFolder_ = mainPart_.substr(0, mainPart_.find_last_of('/') + 1);
         LoadRelationships();
         LoadTheme();
+        LoadFontTable();
         LoadStyles();
         LoadSettings();
         LoadNumbering();
@@ -1503,6 +1505,66 @@ private:
     // The theme's colour scheme (word/theme/theme1.xml): "accent1" -> "4472C4".
     std::map<std::string, std::string> themeColors_;
 
+    // A part the model has no place for, kept so that saving the document as
+    // a .docx writes it back (UCRichDocument::keptParts): not one in the
+    // Strict namespaces (the writer writes Transitional ones), nor one that
+    // refers to other parts by relationship, which would not be there.
+    void KeepPart(const std::string& xml, const std::string& name, const std::string& contentType,
+                  const std::string& relationshipType) {
+        if (xml.empty() || xml.find("purl.oclc.org/ooxml") != std::string::npos) return;
+        for (const char* reference : {"r:id=\"", "r:embed=\"", "r:link=\"", "r:pict=\""}) {
+            if (xml.find(reference) != std::string::npos) return;
+        }
+        doc_->keptParts.push_back({"docx", name, contentType, relationshipType, xml});
+    }
+
+    // The font table (word/fontTable.xml): each font's family, pitch and
+    // alternatives, which Word substitutes from. Fonts embedded in the file
+    // are left out - the model does not keep their parts - and the table
+    // keeps the rest.
+    void LoadFontTable() {
+        for (const auto& [id, rel] : relationships_) {
+            if (rel.type.size() < 10 || rel.type.compare(rel.type.size() - 10, 10, "/fontTable") != 0) continue;
+            std::string xml;
+            if (!zip_.ReadEntry(ResolvePartPath(rel.target), xml)) return;
+            KeepPart(WithoutEmbeddedFonts(xml), "word/fontTable.xml",
+                     "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml",
+                     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable");
+            return;
+        }
+    }
+
+    // `xml` without its w:embedRegular / w:embedBold / w:embedItalic /
+    // w:embedBoldItalic elements (whatever the prefix): each names an
+    // embedded font's part by relationship.
+    static std::string WithoutEmbeddedFonts(const std::string& xml) {
+        std::string out;
+        out.reserve(xml.size());
+        size_t at = 0;
+        while (at < xml.size()) {
+            const size_t open = xml.find('<', at);
+            if (open == std::string::npos) { out.append(xml, at, std::string::npos); break; }
+            out.append(xml, at, open - at);
+            const size_t close = xml.find('>', open);
+            if (close == std::string::npos) { out.append(xml, open, std::string::npos); break; }
+            size_t nameEnd = open + 1;
+            while (nameEnd < close && xml[nameEnd] != ' ' && xml[nameEnd] != '/' && xml[nameEnd] != '\t'
+                   && xml[nameEnd] != '\n' && xml[nameEnd] != '\r') ++nameEnd;
+            const std::string tag = xml.substr(open + 1, nameEnd - open - 1);
+            const size_t colon = tag.find(':');
+            const std::string local = colon == std::string::npos ? tag : tag.substr(colon + 1);
+            if (local.rfind("embed", 0) == 0 && local != "embedTrueTypeFonts" && local != "embedSystemFonts") {
+                if (xml[close - 1] == '/') { at = close + 1; continue; }   // <w:embedRegular .../>
+                const size_t end = xml.find("</" + tag + ">", close);      // <w:embedRegular ...></w:embedRegular>
+                at = end == std::string::npos ? close + 1 : end + tag.size() + 3;
+                continue;
+            }
+            out.append(xml, open, close + 1 - open);
+            at = close + 1;
+        }
+        return out;
+    }
+
     void LoadTheme() {
         // Office's own scheme, for a package without a theme.
         themeColors_ = DrawingMLDefaultThemeColors();
@@ -1514,6 +1576,8 @@ private:
         }
         std::string xml;
         if (!zip_.ReadEntry(path, xml)) return;
+        KeepPart(xml, "word/theme/theme1.xml", "application/vnd.openxmlformats-officedocument.theme+xml",
+                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme");
         tinyxml2::XMLDocument theme;
         if (theme.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !theme.RootElement()) return;
         NormalizeOoxmlPrefixes(theme);
@@ -3653,6 +3717,12 @@ public:
                 return false;
             }
         }
+        for (const RichDocKeptPart& part : KeptParts()) {
+            if (!zip_.AddEntry(part.name, part.data)) {
+                error = "Failed to write " + part.name + ": " + zip_.GetLastError();
+                return false;
+            }
+        }
         for (size_t i = 0; i < doc.media.size(); ++i) {
             if (!zip_.AddEntry(MediaPartName(i), doc.media[i].data.data(),
                                doc.media[i].data.size())) {
@@ -3680,6 +3750,22 @@ private:
     bool usesLists_ = false;
     std::vector<std::string> listDefinitions_;   // w:abstractNum per list run
     int currentListNumId_ = 1;
+
+    // The parts kept from the .docx the document was read from (its theme
+    // and font table), each under a name the writer does not write itself.
+    std::vector<RichDocKeptPart> KeptParts() const {
+        std::vector<RichDocKeptPart> parts;
+        for (const RichDocKeptPart& part : doc_->keptParts) {
+            if (part.format != "docx" || part.name.rfind("word/", 0) != 0) continue;
+            if (part.name == "word/document.xml" || part.name == "word/styles.xml" || part.name == "word/numbering.xml"
+                || part.name == "word/settings.xml" || part.name.rfind("word/media/", 0) == 0
+                || part.name.rfind("word/charts/", 0) == 0 || part.name.rfind("word/_rels/", 0) == 0) continue;
+            bool repeated = false;
+            for (const RichDocKeptPart& kept : parts) repeated = repeated || kept.name == part.name;
+            if (!repeated) parts.push_back(part);
+        }
+        return parts;
+    }
 
     std::string MediaPartName(size_t mediaIndex) const {
         const RichDocMedia& m = doc_->media[mediaIndex];
@@ -5058,6 +5144,10 @@ private:
                    "ContentType=\"application/vnd.openxmlformats-officedocument."
                    "wordprocessingml.numbering+xml\"/>\n";
         }
+        for (const RichDocKeptPart& part : KeptParts()) {
+            xml << "<Override PartName=\"/" << EscapeXml(part.name) << "\" ContentType=\""
+                << EscapeXml(part.contentType) << "\"/>\n";
+        }
         for (size_t i = 0; i < chartParts_.size(); ++i) {
             xml << "<Override PartName=\"/word/charts/chart" << (i + 1) << ".xml\" "
                    "ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>\n";
@@ -5127,6 +5217,11 @@ private:
             xml << "<Relationship Id=\"rIdSettings\" "
                    "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings\" "
                    "Target=\"settings.xml\"/>\n";
+        }
+        const std::vector<RichDocKeptPart> kept = KeptParts();
+        for (size_t i = 0; i < kept.size(); ++i) {
+            xml << "<Relationship Id=\"rIdKept" << (i + 1) << "\" Type=\"" << EscapeXml(kept[i].relationshipType)
+                << "\" Target=\"" << EscapeXml(kept[i].name.substr(5)) << "\"/>\n";
         }
         for (size_t i = 0; i < furnitureParts_.size(); ++i) {
             xml << "<Relationship Id=\"rIdPart" << (i + 1)
