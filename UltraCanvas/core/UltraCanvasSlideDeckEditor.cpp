@@ -264,19 +264,19 @@ SlideHandle UCSlideDeckEditor::HandleAt(int64_t x, int64_t y, double emuPerPixel
         box = BoxOf(shape);
     }
     const double t = kHandleReach * emuPerPixel;
-    auto near = [&](double hx, double hy) { return std::fabs(lx - hx) <= t && std::fabs(ly - hy) <= t; };
+    auto closeTo = [&](double hx, double hy) { return std::fabs(lx - hx) <= t && std::fabs(ly - hy) <= t; };
     const double l = static_cast<double>(box.x), r = static_cast<double>(box.Right());
     const double tp = static_cast<double>(box.y), b = static_cast<double>(box.Bottom());
     const double cx = (l + r) / 2.0, cy = (tp + b) / 2.0;
-    if (one && near(cx, tp - kRotateHandleOffset * emuPerPixel)) return SlideHandle::Rotate;
-    if (near(l, tp)) return SlideHandle::TopLeft;
-    if (near(r, tp)) return SlideHandle::TopRight;
-    if (near(r, b)) return SlideHandle::BottomRight;
-    if (near(l, b)) return SlideHandle::BottomLeft;
-    if (near(cx, tp)) return SlideHandle::Top;
-    if (near(r, cy)) return SlideHandle::Right;
-    if (near(cx, b)) return SlideHandle::Bottom;
-    if (near(l, cy)) return SlideHandle::Left;
+    if (one && closeTo(cx, tp - kRotateHandleOffset * emuPerPixel)) return SlideHandle::Rotate;
+    if (closeTo(l, tp)) return SlideHandle::TopLeft;
+    if (closeTo(r, tp)) return SlideHandle::TopRight;
+    if (closeTo(r, b)) return SlideHandle::BottomRight;
+    if (closeTo(l, b)) return SlideHandle::BottomLeft;
+    if (closeTo(cx, tp)) return SlideHandle::Top;
+    if (closeTo(r, cy)) return SlideHandle::Right;
+    if (closeTo(cx, b)) return SlideHandle::Bottom;
+    if (closeTo(l, cy)) return SlideHandle::Left;
     return SlideHandle::NoHandle;
 }
 

@@ -2755,21 +2755,21 @@ int main(int argc, char** argv) {
                     if (r.text == text) return r.letterSpacingPt;
             return std::optional<float>(-999.0f);   // not found
         };
-        auto near = [](std::optional<float> v, float want) { return v && std::fabs(*v - want) < 0.01f; };
+        auto closeTo = [](std::optional<float> v, float want) { return v && std::fabs(*v - want) < 0.01f; };
 
         std::string err;
         CHECK_MSG(UCWordDocumentIO::SaveOdt(TmpPath("spacing.odt"), *spaced, err), err);
         UCRichDocument odt;
         CHECK_MSG(UCWordDocumentIO::LoadOdt(TmpPath("spacing.odt"), odt, err), err);
-        CHECK_MSG(near(spacingOf(odt, "wide"), 2.5f), "ODT: fo:letter-spacing read back");
-        CHECK_MSG(near(spacingOf(odt, " tight"), -0.5f), "ODT: a negative letter spacing read back");
+        CHECK_MSG(closeTo(spacingOf(odt, "wide"), 2.5f), "ODT: fo:letter-spacing read back");
+        CHECK_MSG(closeTo(spacingOf(odt, " tight"), -0.5f), "ODT: a negative letter spacing read back");
         CHECK_MSG(!spacingOf(odt, "Plain ").has_value(), "ODT: a run without its own has none");
 
         CHECK_MSG(UCWordDocumentIO::SaveDocx(TmpPath("spacing.docx"), *spaced, err), err);
         UCRichDocument docx;
         CHECK_MSG(UCWordDocumentIO::LoadDocx(TmpPath("spacing.docx"), docx, err), err);
-        CHECK_MSG(near(spacingOf(docx, "wide"), 2.5f), "DOCX: w:spacing read back");
-        CHECK_MSG(near(spacingOf(docx, " tight"), -0.5f), "DOCX: a negative w:spacing read back");
+        CHECK_MSG(closeTo(spacingOf(docx, "wide"), 2.5f), "DOCX: w:spacing read back");
+        CHECK_MSG(closeTo(spacingOf(docx, " tight"), -0.5f), "DOCX: a negative w:spacing read back");
         CHECK_MSG(!spacingOf(docx, "Plain ").has_value(), "DOCX: a run without its own has none");
         {
             std::string documentXml;
@@ -2805,22 +2805,22 @@ int main(int argc, char** argv) {
                 CHECK_MSG(style && style->character.letterSpacingPt &&
                           std::fabs(*style->character.letterSpacingPt - 3.0f) < 0.01f,
                           std::string(name) + ": a character style keeps its letter spacing");
-                CHECK_MSG(near(spacingOf(back, "spread"), 3.0f), std::string(name) + ": its run is spread");
+                CHECK_MSG(closeTo(spacingOf(back, "spread"), 3.0f), std::string(name) + ": its run is spread");
             }
         }
 
         const std::string html = spaced->ToHTML();
         CHECK_MSG(html.find("letter-spacing:2.5pt") != std::string::npos, "HTML: letter-spacing written");
         const UCRichDocument fromHtml = UCRichDocument::FromHTML(html);
-        CHECK_MSG(near(spacingOf(fromHtml, "wide"), 2.5f), "HTML: letter-spacing read back");
-        CHECK_MSG(near(spacingOf(fromHtml, " tight"), -0.5f), "HTML: a negative one read back");
+        CHECK_MSG(closeTo(spacingOf(fromHtml, "wide"), 2.5f), "HTML: letter-spacing read back");
+        CHECK_MSG(closeTo(spacingOf(fromHtml, " tight"), -0.5f), "HTML: a negative one read back");
         CHECK_MSG(!spacingOf(fromHtml, "Plain ").has_value(), "HTML: none where none was set");
 
         UCRichDocumentEditor editor;
         editor.SetDocument(spaced);
         editor.SetSelection(RichDocPosition(0, 6), RichDocPosition(0, 10));   // "wide"
         RichCharFormatState state = editor.GetFormatState();
-        CHECK_MSG(!state.letterSpacingMixed && near(state.letterSpacingPt, 2.5f), "the format state reports a run's spacing");
+        CHECK_MSG(!state.letterSpacingMixed && closeTo(state.letterSpacingPt, 2.5f), "the format state reports a run's spacing");
         editor.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 10));   // "Plain wide"
         state = editor.GetFormatState();
         CHECK_MSG(state.letterSpacingMixed && !state.letterSpacingPt, "two spacings are mixed");
@@ -2830,9 +2830,9 @@ int main(int argc, char** argv) {
         delta.letterSpacingPt = 1.0f;
         CHECK(!delta.IsEmpty());
         editor.ApplyCharFormat(delta);
-        CHECK_MSG(near(spacingOf(*spaced, "Plain"), 1.0f), "a delta gives the selected words their own spacing");
+        CHECK_MSG(closeTo(spacingOf(*spaced, "Plain"), 1.0f), "a delta gives the selected words their own spacing");
         CHECK_MSG(!spacingOf(*spaced, " ").has_value(), "the rest of the run keeps none");
-        CHECK_MSG(near(spacingOf(*spaced, "wide"), 2.5f), "the words beside keep theirs");
+        CHECK_MSG(closeTo(spacingOf(*spaced, "wide"), 2.5f), "the words beside keep theirs");
         delta.letterSpacingPt.reset();
         editor.SetSelection(RichDocPosition(0, 6), RichDocPosition(0, 10));
         editor.ApplyCharFormat(delta);
