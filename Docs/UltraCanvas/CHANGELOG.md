@@ -1,3 +1,213 @@
+#### 2026-11-25 *0.9.589*
+- **CI: fewer runners per pull request and per release.** On 2026-11-24 the
+  macOS runners were the bottleneck: one release run's Apple silicon row
+  waited 161 minutes to start and a pull request's iOS run 98.
+  - **The macOS Intel row is built only when asked for**: a pull request
+    labelled `ci:intel`, or a Build dispatch with the new `intel` input. Main
+    and `ci:distro` no longer build it. It took 88 to 198 minutes a run, and
+    full runs 150 to 300. A release no longer carries the x86_64 macOS SDK
+    and UltraCanvasStart unless it is dispatched with `intel` set.
+  - **No nightly Build run.** It built every row at 02:23 UTC; `build.yml`'s
+    `on:` says how to turn it back on.
+  - **iOS and WebAssembly build on main only**, not on pull requests. A pull
+    request that changes either backend starts them by hand against its
+    branch.
+  - **Android: a pull request builds arm64-v8a alone**, 1 job instead of 7.
+    The x86_64 build, ChatCube's two builds and the three emulator jobs run
+    on main (a push, the weekly run, a dispatch).
+  - **Windows ARM builds on release dispatches**, on pull requests labelled
+    `ci:distro` and on a dispatch with the new `windows_arm` input, but not
+    on a plain push to main. It took 96 to 102 minutes a run. Outside a
+    release build it skips its installer (29 to 32 minutes), the MSIX,
+    UltraCanvasStart and the store packages.
+  - **ccache holds a whole build again.** The cap stayed at 500 MB from when
+    a leg compiled about 1,136 objects. The Linux row now compiles 3,378 and
+    filled the cache to 0.39 of 0.50 GB, the level ccache trims to after an
+    eviction. That evicted objects the build had not reached yet, so they
+    missed too. The cap is 800 MB, and the statistics step prints evictions.
+- **CI: the Linux build job gets 180 minutes.** It builds, runs every test
+  and the layout audits, then packages the AppImage, the SDK and the store
+  packages, and had reached the 120-minute cap: on 2026-11-24 one pull
+  request's run took 118 minutes and another's was cut off in its last
+  packaging step with its build and tests green. Windows on ARM already got
+  180; macOS keeps 300, Windows x86_64 120.
+- **CI: the sixteen static source checks run as one job.** Callback cycles,
+  label identifiers, the locale catalogues and numbers, UTF-8 paths, platform
+  names, HTML and UI reuse, the element catalogue, window tests, notification
+  activators, changelog versions, llms.txt, cache keys, plug-in ABIs and the
+  UltraVideo tokens were each a workflow of their own, and a pull request
+  touching `UltraCanvas/` or `Apps/` started most of them at once. Each took a
+  runner slot next to the build rows, Android, WebAssembly and iOS, and on
+  2026-11-24 checks that run for a minute waited up to 38 minutes to start.
+  They are now steps of `.github/workflows/source-checks.yml`: one runner for
+  about four minutes, every check still under its own step name, and every
+  step running even after an earlier one failed, so a red run names each
+  check that failed. The job runs all sixteen whenever any of their paths
+  changes. The documentation that named the old workflow files names the new
+  one.
+- **DesktopShell: `GetPointerPosition(x, y)`.** Where the mouse pointer is,
+  in the pixels of `ListScreens`, so an application can open a window on the
+  monitor the person is working on. X11 (`XQueryPointer`) and Windows
+  (`GetCursorPos`) answer; Wayland and macOS answer false.
+- **iOS: a nameless scene configuration, and no mixed-enum warning when
+  presenting.**
+  - The scene configuration is nameless. A named one is looked up in
+    Info.plist first, and UIKit logged an error when it was not there.
+  - The bitmap info that presents a frame combines its two enums through a
+    `CGBitmapInfo` cast, so the iOS compile has no warnings.
+- **A validation rule set on a spreadsheet cell accepted every value.**
+  `SpreadsheetCell::ValidateValue` was a stub that always returned true.
+  Range rules had their own checker in `SpreadsheetSheet::ValidateCell`,
+  which had problems of its own:
+  - text in a number rule read as 0 and could pass a "between 0 and 10" rule;
+  - a bound read with `std::stod` honoured the desktop's decimal comma;
+  - a bound that was not a number counted as 0;
+  - a date bound could only be a serial number.
+
+  Both now go through one checker, `CheckDataValidation`
+  (`UltraCanvasSpreadsheetCell.h`):
+  - Number, date and time rules need a number, and bounds are read
+    dot-decimal (a Date bound may also be `YYYY-MM-DD`, a Time bound `HH:MM[:SS]`).
+  - A bound that cannot be read fails the check.
+  - Text length counts characters, not bytes.
+  - A list takes comma-separated items as typed, or ODF's quoted,
+    semicolon-separated form.
+
+  `ValidateCell` falls back to the cell's own rule when no range rule covers
+  the cell. The default error messages go through `Tr`. Custom (formula)
+  rules are still not evaluated. New test: `SpreadsheetValidationTest`.
+- **The spreadsheet grid enforces validation rules on what is typed.** An
+  entry that breaks its cell's rule is answered as the rule's `alertStyle`
+  says:
+  - Stop: Retry (the entry back in the editor) or Cancel (the old value back);
+  - Warning: Yes, No or Cancel;
+  - Information: OK or Cancel.
+
+  A refused entry leaves no undo step. An application can ask in its own way
+  with `onValidationFailed`. After Enter or Tab, Retry stays on the refused
+  cell instead of moving on.
+- **List rules get a dropdown.** A List rule puts an arrow beside the active
+  cell; a click or Alt+Down opens its items, and picking one enters it as one
+  undo step (`ShowValidationListAt`, `GetValidationListItems`,
+  `ChooseValidationListItem`). `SpreadsheetSheet::GetEffectiveValidation`
+  gives the rule that applies to a cell. New test:
+  `SpreadsheetValidationGridTest`.
+- **A plain value typed into a spreadsheet cell was not an undo step and did
+  not fire `onCellChange`.** The commit wrote into the cell directly. It now
+  goes through `SpreadsheetSheet::SetCellValueFromString` with undo
+  recording.
+- `UltraCanvasSpreadsheet::IsCellVisible` was declared but never defined. It
+  is defined now; frozen rows and columns count as visible.
+- `UltraCanvasRichTextEdit.h` declared `struct FurnitureLayout` twice in the
+  class, so Clang warned (`-Wredeclared-class-member`) in every file that
+  included it.
+- `UltraCanvasFileLoader.h`: the comment on `OpenTextDocument` still said a
+  legacy `.doc` file is rejected. It is read by the DOC reader, which is
+  read-only, so it is saved as `.docx` or `.odt`.
+- **Inserting or deleting spreadsheet rows or columns left formulas reading
+  the wrong cells.** The cells moved but their formulas' references did not:
+  `=A1*3` in B1 became `=A1*3` in B2 after a row was inserted above. Even
+  `RecalculateAll` could not put that right. `SpreadsheetSheet::InsertRows` /
+  `DeleteRows` / `InsertColumns` / `DeleteColumns` now rewrite the sheet's
+  formulas:
+  - a reference at or past the insertion moves, `$`-anchored ones too;
+  - a range across an insertion grows, and one across a deletion shrinks;
+  - a reference wholly inside deleted rows becomes `#REF!`.
+
+  The grid's `InsertRowsAt` / `DeleteRowsAt` / `InsertColumnsAt` /
+  `DeleteColumnsAt` do the same for other sheets' formulas that name the
+  sheet (`Data.A3`, `'Q 1'!B2:C3`), and for workbook names on it. The rewrite
+  keeps the formula's own text otherwise. The old `SpreadsheetFormula::AdjustReferences`
+  shifted every reference by a fixed offset and rebuilt the text with every
+  operation in parentheses; nothing calls it. New:
+  `MoveFormulaReferencesForRowsColumns`, `SpreadsheetSheet::MoveFormulaReferences`.
+  Test: `SpreadsheetMoveReferencesTest`.
+- **Spreadsheet named ranges ignored their scope.** Names were stored by
+  their text alone and looked up the same way from every sheet:
+  - a name scoped to one sheet was used from any other;
+  - a scoped name whose range named no sheet read the cells of whichever
+    sheet the formula was on;
+  - the same name scoped to two sheets ("Total" on each month, common in
+    Excel files) kept only the last one;
+  - renaming a sheet left the names scoped to it, or covering it, behind.
+
+  Names are now kept one per scope and name, matched without regard to case.
+  A formula sees the name scoped to its own sheet, else the workbook's
+  (`ResolveNamedRange`), and a scoped name covers its own sheet unless its
+  range says otherwise. Renaming a sheet, and inserting or deleting rows or
+  columns there, carries its names along. `HasNamedRange`,
+  `RemoveNamedRange` and `GetNamedRange` take an optional scope.
+- **A spreadsheet formula naming a range that does not exist read cell A1.**
+  The lookup's "not found" was an empty `CellRange`, which is A1:A1 and
+  valid. It now gives `#NAME?`.
+- `SpreadsheetFormula::AdjustReferences` and `GetAdjustedText` are removed.
+  Nothing called them. They moved every reference by the same offset
+  wherever rows were inserted, and rebuilt the text with every operation in
+  parentheses. `ShiftFormulaReferences` (copying) and
+  `MoveFormulaReferencesForRowsColumns` (inserting and deleting) do those
+  jobs.
+- New test: `SpreadsheetNamedRangeTest`.
+- **A typed "nan", "inf" or "0x10" became a number.** `std::stod` also reads
+  these, so "nan" became a NaN, "-Infinity" an infinity, and "0x10" 16;
+  "nan%" became a NaN percentage. `SpreadsheetCell::SetValueFromString` now
+  takes only what a number is written with (digits, sign, decimal point or
+  comma, exponent) and only a finite result. Everything else stays text.
+- **A CSV field holding a number too large for a double imported as 0.**
+  `CSVTryParseNumber` took `ParseFloatClassic`'s "read, but too large"
+  (value left untouched) for the number 0. "1e400" now stays text.
+- **Deleting a sheet kept the workbook names that belonged to it, broken.**
+  As in Excel:
+  - names scoped to the deleted sheet are removed;
+  - names covering it stay, and a formula using one shows `#REF!` instead of
+    `#NAME?`, also as a function's argument (`IsNamedRangeVisible`,
+    `FormulaEvaluator::NamedRangeError`);
+  - undoing the delete brings both back, under the sheet's new name if it
+    had to take one.
+- **Spreadsheet formulas did not follow their inputs.** `Recalculate` only
+  calculated formulas that were already marked dirty. The engine kept a list
+  of the changed cells and their dependents but never read it, so changing a
+  cell left every formula reading it at its old result until something
+  called `RecalculateAll`. With `C2 = B2*2`, setting B2 from 4 to 5 left C2
+  at 8, and a formula entered before its input stayed at 0.
+  - `Recalculate` now starts from what changed and follows every formula
+    that reads it, through chains, ranges and other sheets. It works from the
+    references each formula holds, so formulas from a file, a paste, a fill
+    or an undo are followed as well as those typed in. Formulas that name a
+    range, and volatile ones (NOW, TODAY, RAND, RANDBETWEEN), are always
+    recalculated.
+  - The grid tells the engine about every change the sheet reports: a cell,
+    a range, or rows and columns (which recalculate everything).
+  - Pasting recalculates (it did not at all), and sorting marks the sorted
+    block. A change nobody recalculated is calculated before the grid draws.
+  - New engine calls: `MarkRangeDirty`, `MarkAllDirty`, `HasPendingChanges`;
+    a formula's `GetFunctionNames` and `ReadsNamedRanges`.
+  - New test: `SpreadsheetRecalcTest`.
+- **Undoing an inserted or deleted spreadsheet row or column erased the
+  sheet.** The four operations recorded a placeholder step with no saved
+  cells. Undo treated it as a cell edit, cleared the sheet's whole used range
+  and put nothing back.
+  - Each insert or delete (`InsertRowsAt`, `DeleteRowsAt`, `InsertColumnsAt`,
+    `DeleteColumnsAt`) is now one undo step ("Insert 2 rows") that keeps:
+    - the sheet as it was (a copy that keeps its identity);
+    - the formulas it rewrote on other sheets;
+    - the workbook's names.
+  - Undo and redo swap that state with the current one. Undo puts back the
+    cells, row and column sizes, merges, deleted cells and every formula as
+    they were, and redo does the change again.
+  - `RecordStructureChange`, which recorded the placeholder, is gone.
+  - New test: `SpreadsheetRowUndoTest`.
+- **A percentage typed into a spreadsheet cell was kept as text.** In
+  `SpreadsheetCell::SetValueFromString`, `std::stod` stopped at the `%`, so
+  the check that the whole entry was a number failed. The percentage branch
+  after it was never reached, and "45%" could not be summed. The sign is now
+  taken off first:
+  - "45%", "12.5 %" and "-3%" are the percentages 0.45, 0.125 and -0.03;
+  - "%", "abc%" and "45%%" stay text.
+
+  A percentage under the General format now shows as one ("45%"), not as the
+  fraction "0.45". That also applies to percentages read from a CSV file.
+  What the editor shows types back to the same value.
+
 #### 2026-11-25 *0.9.588*
 - **The demo app speaks every language of its catalogue.** Each of the 29
   languages had 841 of the demo's 7475 texts, so most of every page showed
