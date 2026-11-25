@@ -1,10 +1,13 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
-// Version: 1.14.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
+// Version: 1.15.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
 //                  shown on hover) and links (Ctrl+click opens them: OpenHyperlink, onOpenHyperlink),
 //                  SetCellComment / SetCellHyperlink as undo steps; the rules dialogs
 //                  (ShowConditionalFormatDialog, ShowDataValidationDialog, ShowCommentDialog,
 //                  ShowHyperlinkDialog); validation lists taken from cells
+// Version: 1.14.0 - charts: InsertChart / InsertChartFromSelection, SetChart, RemoveChart, SelectChart,
+//                  RefreshCharts, ShowChartPropertiesDialog; drawn over the cells, moved and resized
+//                  with handles, each change an undo step
 // Version: 1.13.0 - GetNamedRangeList: every name with its scope, for the .xlsx / .ods writers
 // Version: 1.12.0 - PaintCell: one cell drawn as the grid draws it, for printing
 // Version: 1.11.0 - the system clipboard: Copy/Cut publish text and an HTML table; Paste reads other programs' (PasteHtml, PasteText); a paste is an undo step
@@ -42,6 +45,7 @@
 namespace UltraCanvas {
 class UltraCanvasTextInput;
 class UltraCanvasMenu;
+class UltraCanvasChartEngineElement;
 
 // Forward declarations
 class IRenderContext;
@@ -88,6 +92,9 @@ struct SpreadsheetUndoAction {
     // names. Undo and redo each swap them with what is there now, so the
     // step always holds the state it leads back to.
     std::map<std::string, NamedRange> workbookNames;
+    // ChartChange: the sheet's charts on the other side of the step; undo
+    // and redo each swap them with what is there now.
+    std::vector<SpreadsheetChart> chartData;
 };
 
 // A text measurer backed by a live render context: it selects each cell's own
@@ -143,6 +150,14 @@ public:
     std::function<void(int, int, int)> onSheetTabContextMenu;
     // A header sort button reordered the selection: (range, column, order).
     std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;
+    // The selected chart changed: its index on the active sheet, -1 for none.
+    std::function<void(int)> onChartSelectionChange;
+    // A chart was inserted, changed, moved, resized or removed (an undo or
+    // redo of one too).
+    std::function<void()> onChartsChange;
+    // A chart was double-clicked: (index). Unset, the chart's properties
+    // dialog opens (ShowChartPropertiesDialog).
+    std::function<void(int)> onChartDoubleClick;
     
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
@@ -282,6 +297,24 @@ private:
     float sheetTabHeight_ = 24;
     float scrollbarSize_ = 16;
     
+    // Charts (UltraCanvasSpreadsheetChart.h): the selected one on the active
+    // sheet, a move or resize in progress, the engine's drawings by revision.
+    int selectedChart_ = -1;
+    uint64_t selectedChartSheet_ = 0;
+    int chartDrag_ = 0;                  // 0 none, 1 moving, 2 resizing
+    int chartHandle_ = 0;                // SlideHandle while resizing
+    Point2Di chartDragFrom_;
+    Rect2Di chartDragBox_;               // the chart's box in sheet pixels when the drag began
+    std::vector<SpreadsheetChart> chartsBeforeDrag_;
+    bool chartsDirty_ = true;
+    std::map<uint64_t, std::shared_ptr<UltraCanvasChartEngineElement>> chartCache_;
+    bool HandleChartEvent(const UCEvent& event);
+    void RenderCharts(IRenderContext* ctx);
+    Rect2Di ChartScreenRect(const SpreadsheetChart& chart) const;
+    int ChartAt(int x, int y) const;
+    void RecordChartStep(SpreadsheetSheet& sheet, std::vector<SpreadsheetChart> before, const std::string& description);
+    void ApplyChartStep(SpreadsheetUndoAction& action);
+
     Rect2Df formulaBarBounds_;
     Rect2Df gridBounds_;
     Rect2Df sheetTabsBounds_;
@@ -612,6 +645,34 @@ public:
     bool HasClipboardData() const { return clipboardOp_ != ClipboardOperation::NoOperation; }
     void ClearClipboard();
     
+    // ===== CHARTS (UltraCanvasSpreadsheetChart.h) =====
+    // On the active sheet. `chart` placed as its anchor says, its data read
+    // from the cells, selected; its index. One undo step.
+    int InsertChart(const SpreadsheetChart& chart);
+    // A chart of `kind` over the selection (MakeSpreadsheetChart): -1 when
+    // the selection holds no number to plot.
+    int InsertChartFromSelection(RichChart::Kind kind, bool stacked = false,
+                                 SpreadsheetChartSeriesIn seriesIn = SpreadsheetChartSeriesIn::Automatic);
+    int GetChartCount() const;
+    const SpreadsheetChart* GetChart(int index) const;
+    // Chart `index` becomes `chart` (its kind, title, legend, anchor ...),
+    // its data read again. One undo step; false for no such chart.
+    bool SetChart(int index, const SpreadsheetChart& chart);
+    bool RemoveChart(int index);                 // one undo step
+    int GetSelectedChart() const;                // -1: none
+    void SelectChart(int index);                 // -1 selects none
+    // Reads every sheet's charts from their cells again; true when any
+    // changed. The grid does it before drawing and saving, after its cells
+    // changed.
+    bool RefreshCharts();
+    // Chart `index`'s box in the element's coordinates (it may lie outside
+    // the cells shown).
+    Rect2Di GetChartBounds(int index) const;
+    // A dialog for chart `index`: its kind, title, legend and - for a chart
+    // made from a block of cells - whether its series run along the rows.
+    // OK is one undo step.
+    void ShowChartPropertiesDialog(int index);
+
     // ===== UNDO/REDO =====
     void Undo();
     void Redo();

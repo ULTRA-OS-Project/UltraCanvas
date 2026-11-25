@@ -47,6 +47,7 @@
 - [Comments and links](#comments-and-links)
 - [Best Practices](#best-practices)
 - [Printing and PDF](#printing-and-pdf)
+- [Charts](#charts)
 - [See Also](#see-also)
 
 ## Overview
@@ -75,6 +76,7 @@
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references; Ctrl-drag copies instead, a double-click fills down beside the neighbouring data, Ctrl+D / Ctrl+R fill down / right (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
+- **Charts**: Columns, bars, lines, areas, pies, scatter and radar charts made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
@@ -1446,6 +1448,98 @@ if (pages->ExportPdf(pdf, error))
     PrintDocumentWithDialog("Budget", pdf, "application/pdf", window, pages);
 ```
 
+## Charts
+
+A sheet holds charts (`UltraCanvasSpreadsheetChart.h`). A `SpreadsheetChart`
+is anchored to cells - its top-left corner some pixels into one cell, its
+bottom-right into another, as .xlsx's two-cell anchor keeps it - and holds a
+`RichChart`, the chart model documents and decks use, whose series are
+ranges of cells: each series' name, its categories (a scatter series' x
+values) and its values (`SpreadsheetChartSeries`, ranges as
+`SpreadsheetChartRange`: a sheet's name and a `CellRange`). It is drawn by
+the chart engine (`DrawRichDocumentChart`) over the cells, moves with them
+when the grid scrolls or rows and columns are inserted above or left of it,
+and prints where it stands.
+
+| Kind (`RichChart::Kind`) | Offered by *Insert chart* |
+|---|---|
+| `Column`, `Bar` (side by side or `stacked`) | Columns, Columns stacked, Bars, Bars stacked |
+| `Line`, `Area` (or stacked) | Line, Area, Area stacked |
+| `Pie`, `Doughnut` | the first series, its values as slices named by the categories |
+| `Scatter` | each series' points over the first line of numbers as x |
+| `Radar` | the categories as spokes |
+
+A file's bubble and stock charts are read and drawn too, from the values the
+file keeps with them.
+
+`InsertChartFromSelection(kind, stacked, seriesIn)` makes one from the
+selection as a spreadsheet does (`MakeSpreadsheetChart`): a first row of
+words names the series, a first column of words (or an empty corner) holds
+the categories, and the series run down the columns when the block is at
+least as tall as it is wide (`SpreadsheetChartSeriesIn::Automatic`), else
+along the rows. It returns -1, and inserts nothing, when the selection holds
+no number. A single selected cell stands for the block of cells in use
+around it.
+
+On the grid a click selects a chart, a drag moves it, its eight handles
+resize it, Delete (or Backspace) removes it and the arrow keys nudge it (ten
+pixels with Shift); a double-click opens `ShowChartPropertiesDialog` - the
+kind, the title, the legend and, for a chart made from a block, whether the
+series run along the rows - unless `onChartDoubleClick` is set. Inserting,
+changing, moving, resizing and deleting are each one undo step
+(`UndoActionType::ChartChange`).
+
+The data is read from the cells again whenever they change: the grid marks
+its charts stale when a sheet reports a change and reads them before it
+draws and before it saves (`RefreshCharts`, which also recalculates the
+formulas waiting). A chart whose ranges name a sheet reads it from any sheet;
+renaming that sheet renames the ranges.
+
+| Format | How a chart is kept |
+|---|---|
+| .xlsx | `xl/drawings/drawingN.xml` (an `xdr:twoCellAnchor` holding a `graphicFrame`), its relationships, and `xl/charts/chartN.xml` written by `WriteDrawingMLChart` with the series as `c:f` references (`'Sales Data'!$B$2:$B$7`) and their cached values; a one-cell anchor is read too |
+| .ods | a `draw:frame` in the sheet's `table:shapes` naming an object `Object N/` whose `content.xml` is a `chart:chart` (`WriteOdfChartObject`) with `chart:values-cell-range-address` and the categories' and names' ranges into the sheets; a frame LibreOffice anchors in a cell is read too |
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"
+
+// Months in A2:A7, two regions' sales in B2:C7, their names in B1:C1.
+grid->Select(CellRange(0, 0, 6, 2));
+int index = grid->InsertChartFromSelection(RichChart::Kind::Column);   // one undo step
+if (index >= 0) {
+    SpreadsheetChart chart = *grid->GetChart(index);
+    chart.chart.title = "Sales";
+    chart.chart.legend = true;
+    // Six columns wide from G2, ten pixels into it.
+    chart.anchor.from = CellAddress(1, 6);
+    chart.anchor.fromOffsetX = 10;
+    chart.anchor.to = CellAddress(16, 12);
+    grid->SetChart(index, chart);                                   // one undo step
+}
+
+grid->SetCellValue(3, 1, 120.0);   // the chart shows it the next time it is drawn
+grid->RefreshCharts();             // ...or now
+const RichChart& data = grid->GetChart(0)->chart;   // series[0].values[2] == 120
+
+grid->onChartSelectionChange = [](int selected) { /* -1: none */ };
+```
+
+A chart of any block, placed and kept by hand:
+
+<!-- doc-check: SpreadsheetSheet& sheet; std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+SpreadsheetChart pie = MakeSpreadsheetChart(sheet, CellRange(0, 0, 6, 1), RichChart::Kind::Pie);
+pie.anchor = SpreadsheetChartAnchorForBox(sheet, Rect2Di(400, 40, 360, 260));   // sheet pixels
+grid->InsertChart(pie);
+
+// The ranges' two spellings.
+SpreadsheetChartRange range;
+SpreadsheetChartRange::FromExcel("'Sales Data'!$B$2:$B$7", range);
+std::string odf = range.ToOdf();   // 'Sales Data'.$B$2:.$B$7
+```
+
 ## See Also
 
 - [`Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp`](../../Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp) - Full working demo (sample data, Open/Import/Save flows)
@@ -1457,3 +1551,4 @@ if (pages->ExportPdf(pdf, error))
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
 - [`include/UltraCanvasSpreadsheetPrint.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetPrint.h) - A sheet's pages for PDF and printers
+- [`include/UltraCanvasSpreadsheetChart.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetChart.h) - Charts on a sheet, anchored to cells, their series ranges of cells

@@ -9,9 +9,11 @@
 // borders, alignment, wrap). Number formats are classified by
 // ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
 // .xls reader.
-// Version: 1.5.0 - conditional formats (conditionalFormatting, dxfs), data validations (dataValidations),
+// Version: 1.6.0 - conditional formats (conditionalFormatting, dxfs), data validations (dataValidations),
 //                  hyperlinks (with their relationships) and comments (the comments part and the legacy
-//                  VML drawing Excel shows them with) read and written
+//                  VML drawing Excel shows them with) read and written; one relationships part per sheet
+//                  for its links, comments and charts
+// Version: 1.5.0 - charts: a sheet's drawing with its charts read and written (UltraCanvasSpreadsheetChartIO.cpp)
 // Version: 1.4.0 - a cell's number is written to read back exactly (it kept six significant digits)
 // Version: 1.3.0 - keeps what a sheet holds beyond its cells: frozen panes (sheetViews), hidden rows and
 //                  columns, named ranges of the workbook and of each sheet (definedNames), the
@@ -23,6 +25,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"           // the sheets' charts
 #include "UltraCanvasSpreadsheetXls.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasOfficeEncryption.h"
@@ -631,6 +634,7 @@ public:
             if (zip_.ReadEntry(rel->second, sheetXml)) {
                 currentSheetPath_ = rel->second;
                 ParseWorksheet(sheetXml, sheet);
+                ReadXlsxSheetCharts(zip_, rel->second, *sheet);
             }
         }
         if (auto* definedNames = root->FirstChildElement("definedNames")) {
@@ -1470,6 +1474,7 @@ public:
     explicit XlsxSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
     bool Save(const std::string& filePath, const std::string& password, std::string& error) {
+        spreadsheet_->RefreshCharts();   // the charts' caches as the cells are now
         // Sheets are generated first so the style/string tables are complete
         // before styles.xml and sharedStrings.xml are written.
         std::vector<std::string> sheetXmls;
@@ -1492,7 +1497,13 @@ public:
             error = "Cannot create file: " + filePath;
             return false;
         }
-        bool ok = zip_.AddEntry("[Content_Types].xml", BuildContentTypesXml(sheetXmls.size(), ExtraContentTypes()))
+        // The sheets' charts: their parts, each sheet's <drawing>, their types.
+        // A worksheet's relationships to its drawing join those to its links
+        // and comments in one part (MergeSheetRelationships).
+        std::string contentTypes = BuildContentTypesXml(sheetXmls.size(), ExtraContentTypes());
+        auto chartParts = WriteXlsxCharts(*spreadsheet_, sheetXmls, contentTypes);
+        MergeSheetRelationships(chartParts);
+        bool ok = zip_.AddEntry("[Content_Types].xml", contentTypes)
                   && zip_.AddEntry("_rels/.rels", BuildRootRelsXml())
                   && zip_.AddEntry("xl/workbook.xml", BuildWorkbookXml())
                   && zip_.AddEntry("xl/_rels/workbook.xml.rels",
@@ -1504,6 +1515,9 @@ public:
                                sheetXmls[i]);
         }
         ok = ok && WriteSheetParts();
+        for (size_t i = 0; ok && i < chartParts.size(); ++i) {
+            ok = zip_.AddEntry(chartParts[i].first, chartParts[i].second);
+        }
         if (!ok || !zip_.Finalize()) {
             error = "Failed to write workbook package: " + zip_.GetLastError();
             return false;
@@ -2186,6 +2200,7 @@ private:
         std::vector<Relationship> rels;
         std::string commentsXml;
         std::string vmlXml;
+        std::string moreRelationships;   // <Relationship> elements another writer made (the charts' drawing)
     };
     std::vector<SheetParts> sheetParts_;   // one per worksheet, in order
     std::vector<CellStyle> dxfs_;          // the conditional formats' styles
@@ -2544,12 +2559,41 @@ private:
         xml << "<legacyDrawing r:id=\"" << id << "\"/>\n";
     }
 
+    // The worksheet relationship parts the charts' writer made: their
+    // <Relationship>s move into the sheet's own, written once by
+    // WriteSheetParts with the links' and comments'.
+    void MergeSheetRelationships(std::vector<std::pair<std::string, std::string>>& parts) {
+        const std::string prefix = "xl/worksheets/_rels/sheet";
+        const std::string suffix = ".xml.rels";
+        for (auto it = parts.begin(); it != parts.end();) {
+            const std::string& path = it->first;
+            if (path.rfind(prefix, 0) != 0 || path.size() <= prefix.size() + suffix.size() ||
+                path.compare(path.size() - suffix.size(), suffix.size(), suffix) != 0) {
+                ++it;
+                continue;
+            }
+            const size_t number = static_cast<size_t>(
+                std::atoi(path.substr(prefix.size(), path.size() - prefix.size() - suffix.size()).c_str()));
+            const std::string& xml = it->second;
+            const size_t open = xml.find("<Relationships");
+            const size_t bodyStart = open == std::string::npos ? std::string::npos : xml.find('>', open);
+            const size_t bodyEnd = xml.rfind("</Relationships>");
+            if (number == 0 || number > sheetParts_.size() || bodyStart == std::string::npos ||
+                bodyEnd == std::string::npos || bodyEnd < bodyStart) {
+                ++it;
+                continue;
+            }
+            sheetParts_[number - 1].moreRelationships += xml.substr(bodyStart + 1, bodyEnd - bodyStart - 1);
+            it = parts.erase(it);
+        }
+    }
+
     // Each worksheet's relationships, comments and drawing.
     bool WriteSheetParts() {
         for (size_t i = 0; i < sheetParts_.size(); ++i) {
             const SheetParts& parts = sheetParts_[i];
             const std::string number = std::to_string(i + 1);
-            if (!parts.rels.empty()) {
+            if (!parts.rels.empty() || !parts.moreRelationships.empty()) {
                 std::ostringstream rels;
                 rels << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
                      << "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n";
@@ -2558,7 +2602,7 @@ private:
                          << XmlEscape(rel.target) << "\"" << (rel.external ? " TargetMode=\"External\"" : "")
                          << "/>\n";
                 }
-                rels << "</Relationships>\n";
+                rels << parts.moreRelationships << "\n</Relationships>\n";
                 if (!zip_.AddEntry("xl/worksheets/_rels/sheet" + number + ".xml.rels", rels.str())) return false;
             }
             if (!parts.commentsXml.empty() &&

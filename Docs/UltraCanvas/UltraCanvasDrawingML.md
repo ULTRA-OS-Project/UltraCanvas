@@ -62,6 +62,27 @@ slice colours, the categories, the title, the legend, the axes and the ranges
 the chart states (`valueMin` / `valueMax`, a scatter chart's `xMin` / `xMax`).
 `ReadDrawingMLChart` reads it back as it was.
 
+A workbook's chart (`xl/charts/chartN.xml`) keeps references to the cells
+instead: `WriteDrawingMLChart(chart, sources)` writes each series' name,
+categories, values and - scatter - x values as `c:strRef` / `c:numRef` with
+the formula a `DrawingMLSeriesSource` gives (`'Sales Data'!$B$2:$B$7`) and the
+chart's values as their cache, and `ReadDrawingMLChartSources` reads the
+formulas back, one per series in the part's order. The spreadsheet's charts
+([UltraCanvasSpreadsheetExamples](UltraCanvasSpreadsheetExamples.md#charts))
+are written and read this way.
+
+<!-- doc-check: UltraCanvas::RichChart chart; -->
+```cpp
+std::vector<DrawingMLSeriesSource> sources(1);
+sources[0].name = "Sheet1!$B$1";
+sources[0].categories = "Sheet1!$A$2:$A$7";
+sources[0].values = "Sheet1!$B$2:$B$7";
+const std::string part = WriteDrawingMLChart(chart, sources);
+for (const DrawingMLSeriesSource& source : ReadDrawingMLChartSources(part)) {
+    // source.values == "Sheet1!$B$2:$B$7" ...
+}
+```
+
 ## Colours
 
 <!-- doc-check: const tinyxml2::XMLElement* solidFill; std::map<std::string, std::string> theme; -->

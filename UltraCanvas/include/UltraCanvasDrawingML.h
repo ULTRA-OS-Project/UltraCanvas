@@ -13,9 +13,11 @@
 // Elements are matched by their local name, whatever prefix a part binds the
 // namespace to (c:, a:, cdr:, ns0:...).
 //
+// Version: 1.2.0 - a workbook's chart: its series' cell references (c:f) written with their cached values
+//                  and read back (DrawingMLSeriesSource, ReadDrawingMLChartSources)
 // Version: 1.1.0 - WriteDrawingMLChart: a RichChart as a chart part (moved from the .docx writer)
 // Version: 1.0.0 - ReadDrawingMLChart and DrawingMLColor, moved out of the .docx reader
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,6 +25,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 namespace tinyxml2 {
 class XMLElement;
@@ -61,5 +64,27 @@ bool ReadDrawingMLChart(const std::string& chartXml, const std::map<std::string,
 // colours where the series state one, categories, title, legend, the axes
 // and the ranges the chart states. ReadDrawingMLChart reads it back.
 std::string WriteDrawingMLChart(const RichChart& chart);
+
+// Where a series of a workbook's chart (xl/charts/chartN.xml) takes its data
+// from: the formulas (c:f) of its name, its categories, its values and - a
+// scatter or bubble series - its x values, as Excel writes them
+// ("Sheet1!$B$1", "'My data'!$A$2:$A$7"). Empty where the series has none.
+struct DrawingMLSeriesSource {
+    std::string name;
+    std::string categories;
+    std::string values;
+    std::string xValues;
+};
+
+// The chart part for `chart`, each series' data a reference to the cells
+// `sources` names (one per series, in order) with the values the chart holds
+// as its cache - as Excel writes a chart on a sheet. A series without a
+// source (or with empty formulas) keeps its literals.
+std::string WriteDrawingMLChart(const RichChart& chart, const std::vector<DrawingMLSeriesSource>& sources);
+
+// The references of each series of a chart part, in the order the part
+// lists them (every c:ser, with values or not); empty when the XML does not
+// parse.
+std::vector<DrawingMLSeriesSource> ReadDrawingMLChartSources(const std::string& chartXml);
 
 } // namespace UltraCanvas

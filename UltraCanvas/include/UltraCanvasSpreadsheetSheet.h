@@ -1,8 +1,9 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
-// Version: 1.5.0 - conditional formats drawn: GetConditionalFormatting (styles, colour scales, data
+// Version: 1.6.0 - conditional formats drawn: GetConditionalFormatting (styles, colour scales, data
 //                  bars, formula rules), SetConditionalFormats; validation: Custom (formula) rules and
 //                  lists taken from cells (GetValidationListItems), GetValidations
+// Version: 1.5.0 - the sheet's charts (GetCharts / SetCharts, UltraCanvasSpreadsheetChart.h)
 // Version: 1.4.0 - GetColumnDefinitions / GetRowDefinitions: the sized and hidden columns and rows,
 //                  for the .xlsx / .ods writers
 // Version: 1.3.0 - PasteCells pastes formulas (PasteType All), their references moved from where they were copied
@@ -18,6 +19,7 @@
 #include "UltraCanvasSpreadsheetTypes.h"
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetMetrics.h"
+#include "UltraCanvasSpreadsheetChart.h"
 #include <string>
 #include <optional>
 #include <vector>
@@ -223,6 +225,8 @@ private:
     // Zoom level (percentage)
     int zoomLevel_ = 100;
 
+    // Charts standing on the sheet (UltraCanvasSpreadsheetChart.h).
+    std::vector<SpreadsheetChart> charts_;
     // The conditional formats' figures over their ranges (lowest, highest,
     // sorted values, how often each text occurs), worked out once and kept
     // until a cell may have changed: contentRevision_ moves on every change,
@@ -629,6 +633,13 @@ public:
     // Clone sheet (deep copy)
     std::unique_ptr<SpreadsheetSheet> Clone(const std::string& newName = "") const;
     std::unique_ptr<SpreadsheetSheet> CloneKeepingId() const;
+
+    // ===== CHARTS =====
+    // The charts on the sheet, bottom first. Changed directly, they are not
+    // undo steps: the grid's InsertChart / SetChart / RemoveChart are.
+    std::vector<SpreadsheetChart>& GetCharts() { return charts_; }
+    const std::vector<SpreadsheetChart>& GetCharts() const { return charts_; }
+    void SetCharts(std::vector<SpreadsheetChart> charts) { charts_ = std::move(charts); }
     
     // Get memory usage
     size_t GetMemorySize() const;

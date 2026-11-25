@@ -26,6 +26,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"
 
 #include <chrono>
 #include <cstdio>
@@ -486,6 +487,11 @@ void CheckFiles() {
     fs::create_directories(dir, ec);
 
     auto book = BuildWorkbook();
+    // A chart on the same sheet as the comments and links: its drawing's
+    // relationship shares the worksheet's one relationships part with theirs.
+    book->Select(CellRange(0, 0, 9, 1));
+    Check(book->InsertChartFromSelection(RichChart::Kind::Column) == 0, "a chart beside the comments and links");
+    book->Select(CellRange(0, 0, 0, 0));
     const fs::path xlsx = dir / "rules.xlsx";
     const fs::path ods = dir / "rules.ods";
     Check(book->SaveToFile(PathToUtf8(xlsx)), "saved as .xlsx " + book->GetLastError());
@@ -494,6 +500,8 @@ void CheckFiles() {
         if (auto loaded = Load(PathToUtf8(path))) {
             CheckRules(*loaded, name + " loaded");
             CheckAnnotations(*loaded, name + " loaded");
+            Check(loaded->GetSheet(0) && loaded->GetSheet(0)->GetCharts().size() == 1,
+                  name + " loaded: the chart is still there");
             const fs::path again = dir / (name == ".xlsx" ? "again.ods" : "again.xlsx");
             Check(loaded->SaveToFile(PathToUtf8(again)), name + " loaded, saved in the other format");
             if (auto twice = Load(PathToUtf8(again))) {

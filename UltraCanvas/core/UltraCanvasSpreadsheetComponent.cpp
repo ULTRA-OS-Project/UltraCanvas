@@ -4,6 +4,8 @@
 // workbook-scoped features (sheet management, named ranges, undo/redo).
 // Rendering, event handling, editing, navigation and clipboard live in
 // core/UltraCanvasSpreadsheet.cpp - this file MUST NOT redefine those.
+// Version: 1.1.0 - charts: a chart step is undone and redone; a renamed sheet's charts follow it; a
+//                  chart stays selected only on its sheet
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #include <stdexcept>
@@ -66,6 +68,7 @@ void UltraCanvasSpreadsheet::SetActiveSheet(int index) {
     if (index >= (int)sheets_.size()) index = (int)sheets_.size() - 1;
 
     activeSheetIndex_ = index;
+    SelectChart(-1);   // a chart is selected on its own sheet only
 
     // Update selected flags so only the active sheet is marked selected.
     for (int i = 0; i < (int)sheets_.size(); ++i) {
@@ -324,6 +327,8 @@ bool UltraCanvasSpreadsheet::RenameSheet(int index, const std::string& newName) 
     };
     renameInNames(namedRanges_);
     if (rewritten || !namedRanges_.empty()) RecalculateAll();
+    // And the charts' ranges on it.
+    for (auto& sheet : sheets_) RenameSpreadsheetChartSheet(sheet->GetCharts(), oldName, newName);
 
     // The undo history follows too: the formulas its steps would put back
     // name the new name (the steps find the sheet itself by its id).
@@ -333,6 +338,7 @@ bool UltraCanvasSpreadsheet::RenameSheet(int index, const std::string& newName) 
             action.sheetName = newName;
         }
         renameInNames(action.workbookNames);
+        RenameSpreadsheetChartSheet(action.chartData, oldName, newName);
         RewriteSnapshotFormulas(action, [&](const std::string& f) { return RenameSheetInFormula(f, oldName, newName); });
         return true;
     });
@@ -1706,6 +1712,13 @@ void UltraCanvasSpreadsheet::Undo() {
 
     SpreadsheetUndoAction action = undoStack_.top();
 
+    if (action.type == UndoActionType::ChartChange) {   // a swap, as the structure steps are
+        undoStack_.pop();
+        ApplyChartStep(action);
+        redoStack_.push(std::move(action));
+        if (onUndoStackChange) onUndoStackChange();
+        return;
+    }
     if (IsSheetStep(action.type)) {
         undoStack_.pop();
         ApplySheetStep(action, true);
@@ -1745,6 +1758,13 @@ void UltraCanvasSpreadsheet::Redo() {
 
     SpreadsheetUndoAction action = redoStack_.top();
 
+    if (action.type == UndoActionType::ChartChange) {
+        redoStack_.pop();
+        ApplyChartStep(action);
+        undoStack_.push(std::move(action));
+        if (onUndoStackChange) onUndoStackChange();
+        return;
+    }
     if (IsSheetStep(action.type)) {
         redoStack_.pop();
         ApplySheetStep(action, false);

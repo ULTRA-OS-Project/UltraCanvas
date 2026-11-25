@@ -10,9 +10,10 @@
     page break, footnote, contents), View (pages, page width, whole page,
     zoom);
   - spreadsheets: Home (clipboard, bold, italic, alignment, wrap, number
-    format, decimals), Data (sort, filter, fill, SUM, conditional
-    formatting, data validation), Review (comments, links), Page (print
-    area, landscape, fit to width, gridlines, headings), View (freeze panes);
+    format, decimals), Insert (chart, chart properties, delete chart), Data
+    (sort, filter, fill, SUM, conditional formatting, data validation),
+    Review (comments, links), Page (print area, landscape, fit to width,
+    gridlines, headings), View (freeze panes);
   - presentations: Home (new slide, layouts, duplicate, delete, hide,
     present), Insert (text box, shape, picture), Text (formatting), Table,
     Arrange (order, duplicate, delete), Slide show;
@@ -20,7 +21,12 @@
   .docx read and written, .doc, Markdown and LaTeX read. Export as PDF and
   Print.
 - **Spreadsheets**: .ods and .xlsx read and written, .xls read, .csv and
-  .tsv; the status line adds up the selection. Export as PDF and Print, by
+  .tsv; the status line adds up the selection. Charts of the selection -
+  columns and bars (side by side or stacked), lines, areas, pies,
+  doughnuts, scatter and radar charts - stand over the cells, follow them
+  as they change, are moved and resized with handles, deleted with Delete,
+  their type, title and legend changed by a double-click, every change
+  undone; they are kept in .xlsx and .ods and printed. Export as PDF and Print, by
   the sheet's print settings. Copy and paste reach other programs: cells go
   out as text and a table, and another program's table or text comes in.
   Conditional formatting and data validation (*Data*), comments and links

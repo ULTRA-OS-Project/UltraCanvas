@@ -37,18 +37,30 @@ The command tabs:
   alignment. *Insert*: table, picture, link, page break, footnote, contents.
   *View*: pages on or off, page width, whole page, zoom.
 - **Spreadsheets** - *Home*: cut, copy, paste, bold, italic, alignment,
-  wrap, number format, decimals. *Data*: sort, filter, fill down and right,
-  SUM, conditional formatting (value and formula rules, text, blanks,
-  errors, top values, averages, duplicates, colour scales, data bars) and
-  data validation (numbers, dates, times, text length, a list typed or taken
-  from cells, a custom formula; how a wrong entry is answered). *Review*:
-  the active cell's comment (add, change, delete) and link (a web or mail
-  address, or a cell of the workbook; open, remove). A comment is marked by
-  a red corner and shown while the pointer rests on the cell; a link is blue
-  and underlined, and Ctrl+click opens it. *Page*: set and clear the print
-  area, landscape, fit to width, gridlines, headings. *View*: freeze and
-  unfreeze panes. Conditional formats, validation rules, comments and links
-  are kept in .xlsx and .ods, and printed and exported as PDF as shown.
+  wrap, number format, decimals. *Insert*: a chart of the selected cells
+  (columns, columns stacked, bars, bars stacked, line, area, area stacked,
+  pie, doughnut, scatter, radar), the selected chart's properties (type,
+  title, legend, series in rows) and deleting it. *Data*: sort, filter, fill
+  down and right, SUM, conditional formatting (value and formula rules,
+  text, blanks, errors, top values, averages, duplicates, colour scales,
+  data bars) and data validation (numbers, dates, times, text length, a list
+  typed or taken from cells, a custom formula; how a wrong entry is
+  answered). *Review*: the active cell's comment (add, change, delete) and
+  link (a web or mail address, or a cell of the workbook; open, remove).
+  *Page*: set and clear the print area, landscape, fit to width, gridlines,
+  headings. *View*: freeze and unfreeze panes.
+
+  A chart stands over the cells, anchored to them: a click selects it, a
+  drag moves it, its handles resize it, Delete removes it and a
+  double-click opens its properties. It reads its cells again whenever they
+  change, is saved in .xlsx and .ods, and prints where it stands
+  ([Charts](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts)).
+
+  A comment is marked by a red corner and shown while the pointer rests on
+  the cell; a link is blue and underlined, and Ctrl+click opens it.
+  Conditional formats, validation rules, comments and links are kept in
+  .xlsx and .ods, and printed and exported as PDF as shown
+  ([Conditional formats](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#conditional-formats)).
 - **Presentations** - *Home*: new slide (Ctrl+M) or one from the deck's
   layouts, duplicate, delete and hide a slide, present. *Insert*: text box,
   drawn shape (rectangle, rounded rectangle, ellipse, triangle, arrow, star),

@@ -1,7 +1,8 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
-// Version: 1.10.0 - conditional formats, comments (a red corner) and links (blue, underlined) drawn by PaintCell;
+// Version: 1.11.0 - conditional formats, comments (a red corner) and links (blue, underlined) drawn by PaintCell;
 //                   a comment or link shown while the pointer rests on its cell; Ctrl+click opens a link
+// Version: 1.10.0 - charts drawn over the cells and taking the pointer first (UltraCanvasSpreadsheetChart.cpp)
 // Version: 1.9.0 - the system clipboard: text and an HTML table out, another program's table or text in; a paste is an undo step
 // Version: 1.8.0 - a keyboard move selects the cell it lands on, not only the active cell; Shift+arrow extends the range
 // Version: 1.7.0 - every change a sheet reports reaches the formula engine; Paste recalculates
@@ -126,6 +127,7 @@ void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
     RenderCells(ctx);
     RenderSelection(ctx);
     RenderFormulaRangeHighlights(ctx);
+    RenderCharts(ctx);   // over the cells (UltraCanvasSpreadsheetChart.cpp)
 
     if (HasFrozenPanes()) {
         RenderFreezeLines(ctx);
@@ -1224,6 +1226,8 @@ CellRange UltraCanvasSpreadsheet::AutoFillTargetFor(int row, int col) const {
 // ============================================================================
 
 bool UltraCanvasSpreadsheet::OnEvent(const UCEvent& event) {
+    // A chart under the pointer, or the selected one, takes the event first.
+    if (HandleChartEvent(event)) return true;
     switch (event.type) {
         case UCEventType::MouseDown:
             HandleMouseDown(event);
@@ -3221,12 +3225,14 @@ void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
     // The sheet is held raw: it owns these callbacks.
     sheet->onCellChange = [this, sheet](int row, int col) {
         if (formulaEngine_) formulaEngine_->MarkDirty(CellAddress(row, col), sheet->GetName());
+        chartsDirty_ = true;
         Invalidate();
         if (onCellChange) onCellChange(row, col);
     };
 
     sheet->onRangeChange = [this, sheet](const CellRange& range) {
         if (formulaEngine_) formulaEngine_->MarkRangeDirty(range, sheet->GetName());
+        chartsDirty_ = true;
         Invalidate();
     };
     
@@ -3238,6 +3244,7 @@ void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
     
     sheet->onStructureChange = [this]() {
         if (formulaEngine_) formulaEngine_->MarkAllDirty();   // rows or columns moved
+        chartsDirty_ = true;
         Invalidate();
         if (onStructureChange) onStructureChange();
     };

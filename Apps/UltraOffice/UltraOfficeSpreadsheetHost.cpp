@@ -3,10 +3,12 @@
 // bar, sheet tabs, its own format menu - read and written through its
 // LoadFromFile / SaveToFile (.ods, .xlsx, .csv, .tsv; .xls read-only), the
 // file types and password prompts through UltraCanvasFileLoader. Command
-// tabs - Home, Data, Review, Page, View - and a status line with the sum,
-// average and count of the selection.
+// tabs - Home, Insert, Data, Review, Page, View - and a status line with the
+// sum, average and count of the selection.
 //
-// Version: 0.3.0 - Data: conditional formatting and data validation dialogs; Review: comments and links
+// Version: 0.4.0 - Data: conditional formatting and data validation dialogs; Review: comments and links
+// Version: 0.3.0 - Insert: a chart of the selection (columns, bars, lines, areas, pies, scatter ...),
+//                  its properties and Delete chart
 // Version: 0.2.0 - Export as PDF and Print, through the sheet's print pages
 // Version: 0.1.0
 // Last Modified: 2026-11-25
@@ -20,6 +22,8 @@
 #include "UltraCanvasSpreadsheetPrint.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
@@ -70,7 +74,10 @@ public:
         sheet_->onSheetRemove = [changed](int) { changed(); };
         sheet_->onSheetRename = [changed](int, const std::string&) { changed(); };
         sheet_->onSelectionChange = [this]() { Sync(); if (onChanged) onChanged(); };
+        sheet_->onChartsChange = changed;
+        sheet_->onChartSelectionChange = [this](int) { Sync(); };
         BuildHome();
+        BuildInsert();
         BuildData();
         BuildReview();
         BuildPage();
@@ -178,6 +185,8 @@ private:
     UltraCanvasButton* gridlines_ = nullptr;
     UltraCanvasButton* headings_ = nullptr;
     UltraCanvasDropdown* format_ = nullptr;
+    UltraCanvasButton* chartProperties_ = nullptr;
+    UltraCanvasButton* chartDelete_ = nullptr;
 
     std::function<void()> Act(std::function<void(UltraCanvasSpreadsheet&)> action) {
         UltraCanvasSpreadsheet* sheet = sheet_.get();
@@ -228,6 +237,41 @@ private:
         AddTool(*bar, "sheet-moredec", ".0+", "", Tr("More decimal places"), Act([](auto& s) { s.AdjustSelectionDecimalPlaces(1); }));
         AddTool(*bar, "sheet-lessdec", ".0-", "", Tr("Fewer decimal places"), Act([](auto& s) { s.AdjustSelectionDecimalPlaces(-1); }));
         tabs_.push_back({Tr("Home"), bar});
+    }
+
+    // A chart of the selected cells, of the kind picked; the selected
+    // chart's properties, and deleting it.
+    void BuildInsert() {
+        auto bar = MakeToolbar("office-sheet-insert");
+        auto chart = bar->AddDropdownButton("sheet-chart", "", {}, nullptr);
+        for (size_t i = 0; i < SpreadsheetChartChoices().size(); ++i)
+            chart->AddItem(SpreadsheetChartChoiceName(i), std::to_string(i), IconPath("chart.svg"));
+        chart->SetIconsAsMask(true);
+        chart->SetPlaceholderText(Tr("Chart"));
+        chart->SetTooltip(Tr("A chart of the selected cells"));
+        chart->SetSelectedIndex(-1, false);
+        UltraCanvasSpreadsheet* sheet = sheet_.get();
+        UltraCanvasDropdown* dropdown = chart.get();
+        chart->onSelectionChanged = [this, sheet, dropdown](int index, const DropdownItem&) {
+            const auto& choices = SpreadsheetChartChoices();
+            if (index < 0 || index >= static_cast<int>(choices.size())) return;
+            dropdown->SetSelectedIndex(-1, false);
+            const SpreadsheetChartChoice choice = choices[static_cast<size_t>(index)];
+            if (sheet->InsertChartFromSelection(choice.kind, choice.stacked) < 0) {
+                UltraCanvasDialogManager::ShowInformation(Tr("Select cells holding numbers to make a chart of them."),
+                                                          Tr("Chart"), nullptr, window_);
+                return;
+            }
+            sheet->SetFocus(true);
+            Sync();
+            if (onChanged) onChanged();
+        };
+        chartProperties_ = AddTool(*bar, "sheet-chart-properties", Tr("Chart properties"), "chart.svg",
+                                   Tr("The selected chart's type, title and legend (or double-click the chart)"),
+                                   Act([](auto& s) { if (s.GetSelectedChart() >= 0) s.ShowChartPropertiesDialog(s.GetSelectedChart()); })).get();
+        chartDelete_ = AddTool(*bar, "sheet-chart-delete", Tr("Delete chart"), "delete.svg", Tr("Remove the selected chart (Delete)"),
+                               Act([](auto& s) { s.RemoveChart(s.GetSelectedChart()); })).get();
+        tabs_.push_back({Tr("Insert"), bar});
     }
 
     void BuildData() {
@@ -312,8 +356,7 @@ private:
     }
 
     void Sync() {
-        // A load takes the sheets down before it reads the new ones; with none
-        // there is nothing to show.
+        // (A file being read has taken every sheet away for a moment.)
         if (!sheet_->GetActiveSheet()) return;
         const CellFont font = sheet_->GetActiveCellFont();
         if (bold_) bold_->SetPressed(font.bold);
@@ -325,6 +368,9 @@ private:
         if (fitWidth_) fitWidth_->SetPressed(print.fitToWidth == 1);
         if (gridlines_) gridlines_->SetPressed(print.printGridlines);
         if (headings_) headings_->SetPressed(print.printRowColHeaders);
+        const bool chartSelected = sheet_->GetSelectedChart() >= 0;
+        if (chartProperties_) chartProperties_->SetDisabled(!chartSelected);
+        if (chartDelete_) chartDelete_->SetDisabled(!chartSelected);
         if (format_) {
             const NumberFormatCategory category = sheet_->GetActiveCellNumberFormat().category;
             int index = 0;
