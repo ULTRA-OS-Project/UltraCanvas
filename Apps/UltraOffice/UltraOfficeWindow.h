@@ -41,9 +41,9 @@ public:
     // New, empty documents.
     void NewDocument(OfficeKind kind);
 
-    bool OnEvent(const UltraCanvas::UCEvent& event) override;
 
 private:
+    bool HandleShortcut(const UltraCanvas::UCEvent& event);
     struct OpenDocument {
         int id = 0;
         std::string path;                // empty: never saved

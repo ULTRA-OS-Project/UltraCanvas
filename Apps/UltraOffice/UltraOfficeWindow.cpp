@@ -75,6 +75,8 @@ UltraOfficeWindow::~UltraOfficeWindow() = default;
 
 void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
     layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    InstallEventFilter("office-shortcuts", [this](const UCEvent& event) { return HandleShortcut(event); },
+                       {UCEventType::KeyDown});
 
     tabs_ = std::make_shared<UltraCanvasTabbedContainer>("office-tabs");
     tabs_->SetTabStyle(TabStyle::Modern);
@@ -455,7 +457,9 @@ void UltraOfficeWindow::CloseDocument(OpenDocument& doc) {
 
 // ===== KEYBOARD =====
 
-bool UltraOfficeWindow::OnEvent(const UCEvent& event) {
+// A filter, not OnEvent: the window's own keys come before the element with
+// the keyboard, which would otherwise take Ctrl+S or Ctrl+N for itself.
+bool UltraOfficeWindow::HandleShortcut(const UCEvent& event) {
     if (event.type == UCEventType::KeyDown && event.ctrl && !event.alt) {
         OpenDocument* doc = Active();
         switch (event.virtualKey) {
@@ -468,7 +472,7 @@ bool UltraOfficeWindow::OnEvent(const UCEvent& event) {
             default: break;
         }
     }
-    return UltraCanvasWindow::OnEvent(event);
+    return false;
 }
 
 // ===== BOOKKEEPING =====
