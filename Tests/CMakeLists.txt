@@ -476,7 +476,9 @@ message(STATUS "    Test registered: ArchiveRunTest")
 # and UltraDBAdmin's streamed one), and a record read back by CSVParse.
 # Header-only, no UI.
 message(STATUS "  Building CSVFormatRecordTest...")
-add_executable(CSVFormatRecordTest ${CMAKE_CURRENT_SOURCE_DIR}/CSVFormatRecordTest.cpp)
+# CSVTryParseNumber reads numbers with ParseFloatClassic (UltraCanvasTextUtils.cpp).
+add_executable(CSVFormatRecordTest ${CMAKE_CURRENT_SOURCE_DIR}/CSVFormatRecordTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp)
 target_include_directories(CSVFormatRecordTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(CSVFormatRecordTest PRIVATE cxx_std_20)
 set_target_properties(CSVFormatRecordTest PROPERTIES
@@ -2737,6 +2739,8 @@ target_include_directories(SpreadsheetColumnSizingTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(SpreadsheetColumnSizingTest PRIVATE cxx_std_20)
+# Data validation's default messages go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpreadsheetColumnSizingTest PRIVATE UltraLocalisation)
 set_target_properties(SpreadsheetColumnSizingTest PROPERTIES
     OUTPUT_NAME "SpreadsheetColumnSizingTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -2762,6 +2766,8 @@ target_include_directories(SpreadsheetRangeSortTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(SpreadsheetRangeSortTest PRIVATE cxx_std_20)
+# Data validation's default messages go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpreadsheetRangeSortTest PRIVATE UltraLocalisation)
 set_target_properties(SpreadsheetRangeSortTest PROPERTIES
     OUTPUT_NAME "SpreadsheetRangeSortTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -2787,6 +2793,8 @@ target_include_directories(SpreadsheetAutoFillTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(SpreadsheetAutoFillTest PRIVATE cxx_std_20)
+# Data validation's default messages go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpreadsheetAutoFillTest PRIVATE UltraLocalisation)
 set_target_properties(SpreadsheetAutoFillTest PROPERTIES
     OUTPUT_NAME "SpreadsheetAutoFillTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -2811,6 +2819,8 @@ target_include_directories(SpreadsheetSheetNameTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(SpreadsheetSheetNameTest PRIVATE cxx_std_20)
+# Data validation's default messages go through Tr; UltraLocalisation is UI-free.
+target_link_libraries(SpreadsheetSheetNameTest PRIVATE UltraLocalisation)
 set_target_properties(SpreadsheetSheetNameTest PROPERTIES
     OUTPUT_NAME "SpreadsheetSheetNameTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -2821,6 +2831,58 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: SpreadsheetSheetNameTest")
+
+# ===== SPREADSHEET VALIDATION TEST =====
+# Data validation rules - whole numbers, decimals, dates, times, text length
+# and lists, set on a cell or on a range - through CheckDataValidation. The
+# cell's own ValidateValue accepted everything until 2026-11. No UI stack.
+message(STATUS "  Building SpreadsheetValidationTest...")
+add_executable(SpreadsheetValidationTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetValidationTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetValidationTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetValidationTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetValidationTest PRIVATE UltraLocalisation)
+set_target_properties(SpreadsheetValidationTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetValidationTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetValidationTest
+    COMMAND SpreadsheetValidationTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetValidationTest")
+
+# ===== SPREADSHEET MOVE REFERENCES TEST =====
+# Inserting or deleting rows and columns moves the references in formulas:
+# growing and shrinking ranges, #REF! for deleted cells, other sheets' names,
+# text left alone. No UI stack.
+message(STATUS "  Building SpreadsheetMoveReferencesTest...")
+add_executable(SpreadsheetMoveReferencesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetMoveReferencesTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetMoveReferencesTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetMoveReferencesTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetMoveReferencesTest PRIVATE UltraLocalisation)
+set_target_properties(SpreadsheetMoveReferencesTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetMoveReferencesTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetMoveReferencesTest
+    COMMAND SpreadsheetMoveReferencesTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetMoveReferencesTest")
 
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the
@@ -5329,6 +5391,77 @@ set_target_properties(SpreadsheetPointModeTest PROPERTIES
 add_test(NAME SpreadsheetPointModeTest COMMAND SpreadsheetPointModeTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetPointModeTest")
+
+# ===== SPREADSHEET VALIDATION GRID TEST =====
+# The grid enforcing data validation on a typed entry: Stop / Warning answers
+# (Retry, Cancel, Accept, late answers), the list rule's items, and a typed
+# value being an undo step. No window.
+message(STATUS "  Building SpreadsheetValidationGridTest...")
+add_executable(SpreadsheetValidationGridTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetValidationGridTest.cpp
+)
+target_include_directories(SpreadsheetValidationGridTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetValidationGridTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetValidationGridTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetValidationGridTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetValidationGridTest COMMAND SpreadsheetValidationGridTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetValidationGridTest")
+
+# ===== SPREADSHEET RECALC TEST =====
+# Formulas follow their inputs - through chains, ranges, other sheets and
+# names - however a cell changes: typing, clearing, paste, undo, inserting a
+# row, sorting, a write into the sheet itself. No window.
+message(STATUS "  Building SpreadsheetRecalcTest...")
+add_executable(SpreadsheetRecalcTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetRecalcTest.cpp
+)
+target_include_directories(SpreadsheetRecalcTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetRecalcTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetRecalcTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetRecalcTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetRecalcTest COMMAND SpreadsheetRecalcTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetRecalcTest")
+
+# ===== SPREADSHEET ROW UNDO TEST =====
+# Inserting and deleting rows and columns undo and redo exactly: cells, row
+# heights, merges, the formulas on the sheet and on others naming it. No window.
+message(STATUS "  Building SpreadsheetRowUndoTest...")
+add_executable(SpreadsheetRowUndoTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetRowUndoTest.cpp
+)
+target_include_directories(SpreadsheetRowUndoTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetRowUndoTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetRowUndoTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetRowUndoTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetRowUndoTest COMMAND SpreadsheetRowUndoTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetRowUndoTest")
+
+# ===== SPREADSHEET NAMED RANGE TEST =====
+# Workbook names and their scope: a scoped name is seen only from its sheet
+# and covers it, one name per scope, #NAME? for none, renames and inserted
+# rows followed. No window.
+message(STATUS "  Building SpreadsheetNamedRangeTest...")
+add_executable(SpreadsheetNamedRangeTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetNamedRangeTest.cpp
+)
+target_include_directories(SpreadsheetNamedRangeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetNamedRangeTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetNamedRangeTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetNamedRangeTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetNamedRangeTest COMMAND SpreadsheetNamedRangeTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetNamedRangeTest")
 
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in

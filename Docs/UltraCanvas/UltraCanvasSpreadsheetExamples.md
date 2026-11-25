@@ -32,6 +32,7 @@
   - [6. Save: ODS Directly, CSV via Export Dialog](#6-save-ods-directly-csv-via-export-dialog)
   - [7. Working with Multiple Sheets](#7-working-with-multiple-sheets)
   - [8. Reading Cell Values Back](#8-reading-cell-values-back)
+- [Named ranges](#named-ranges)
 - [Formula language and functions](#formula-language-and-functions)
 - [Column widths](#column-widths)
 - [Cell formatting menu](#cell-formatting-menu)
@@ -41,6 +42,7 @@
 - [Pointing at cells in a formula](#pointing-at-cells-in-a-formula)
 - [Sheet tab menu](#sheet-tab-menu)
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
+- [Data validation](#data-validation)
 - [Best Practices](#best-practices)
 - [See Also](#see-also)
 
@@ -236,6 +238,26 @@ void FreezeColumns(int count);
 void FreezePanes(int rows, int cols);
 void UnfreezePanes();
 ```
+
+Inserting or deleting rows or columns moves the references in formulas with
+the cells, on every sheet, as a spreadsheet does. Say two rows are inserted
+above row 2:
+
+- `=A2+$B$5` becomes `=A4+$B$7`. `$`-anchored references move too: the `$`
+  stops a reference moving when it is copied, not when the sheet changes.
+- `=SUM(A1:A5)` becomes `=SUM(A1:A7)`: a range across the insertion grows.
+- `=Data.A3` on another sheet moves when the rows were inserted on Data.
+
+Deleting rows moves the references below them up and shrinks the ranges
+across them. A reference wholly inside the deleted rows becomes `#REF!`, so
+`=A2*2` becomes `=#REF!*2`. Text in quotes, and everything else in the
+formula, is kept as it was written. Workbook names covering the sheet move
+with it (see [Named ranges](#named-ranges)). Each insert or delete is one undo step: undo puts back the
+cells, row and column sizes, merges and the formulas on every sheet as they
+were, deleted cells included, and redo does it again. For a formula
+string of your own, the same rewrite is
+`MoveFormulaReferencesForRowsColumns(formula, sheetName, onThatSheet, columns, at, count)`
+(`UltraCanvasSpreadsheetSheet.h`).
 
 ### Clipboard, Undo/Redo, Formula Engine
 
@@ -510,6 +532,16 @@ SeedSampleData(sheet.get());
 
 Set formula cells with `SetCellFormula`, then call `Recalculate()` so the engine evaluates dependencies. Formulas use A1 notation and are 1-based in text (`B2:B8` is rows 1..7).
 
+`Recalculate()` calculates every formula whose result may have changed since
+the last call: formulas set or changed, formulas reading a cell that changed,
+directly or through other formulas, on any sheet, the formulas that name a
+range, and the volatile ones (`NOW`, `TODAY`, `RAND`, `RANDBETWEEN`). It
+finds the changes itself, however a cell was changed: through the grid
+(typing, paste, fill, clear, sort, undo) or by writing into a sheet directly
+(`GetActiveSheet()->SetCellValue(...)`). A change that has not been
+recalculated yet is calculated before the grid draws. Inserting or deleting
+rows or columns recalculates everything; so does `RecalculateAll()`.
+
 ```cpp
 const int totalRow = 9;
 sheet->SetCellValue(totalRow, 0, std::string("07 to 12/2016"));
@@ -683,6 +715,42 @@ std::string shown = sheet->GetCellDisplayValue(2, 2); // formatted, e.g. "30,913
 std::string text  = sheet->GetCellText(0, 0);         // "Month"
 std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
 ```
+
+## Named ranges
+
+A workbook name stands for a range in formulas (`=SUM(Amounts)`). It is
+visible from every sheet, or, given a `sheetScope`, only from that sheet:
+
+```cpp
+CellRange rates(0, 0, 0, 0);                         // A1
+rates.start.sheetName = rates.end.sheetName = "Settings";
+grid->AddNamedRange("Rate", rates);                  // every sheet: Settings.A1
+
+grid->AddNamedRange("Total", CellRange(9, 1, 9, 1), "Jan");   // on Jan: Jan.B10
+grid->AddNamedRange("Total", CellRange(9, 1, 9, 1), "Feb");   // on Feb: Feb.B10
+
+CellRange r = grid->ResolveNamedRange("Total", "Feb");        // what =Total means on Feb
+bool both = grid->HasNamedRange("Total", "Jan") && grid->HasNamedRange("Total", "Feb");
+grid->RemoveNamedRange("Total", "Jan");                       // that one only
+```
+
+- **One name per scope.** The same name can exist once for the workbook and
+  once for each sheet, as Excel files often have ("Total" on each month's
+  sheet).
+- **Lookup from a formula.** A formula looks for the name scoped to its own
+  sheet first, then for the workbook's. It never sees a name scoped to
+  another sheet; that gives `#NAME?`, as a name that does not exist does.
+- **Case.** Names are matched without regard to case.
+- **Which sheet a name covers.** It covers the sheet its range names
+  (`range.start.sheetName`). A scoped name whose range names none covers its
+  own sheet. A workbook name whose range names none covers the sheet of the
+  formula using it.
+- **Following the sheet.** Renaming a sheet renames the scope and the covered
+  sheet of its names. Inserting or deleting rows or columns moves the names
+  covering that sheet.
+- **Deleting a sheet.** The names scoped to it go with it. Workbook names
+  covering it stay, and a formula using one shows `#REF!` (`#NAME?` is for a
+  name that does not exist). Undoing the delete brings both back.
 
 ## Formula language and functions
 
@@ -1078,11 +1146,73 @@ Turn the warning off with `SetSortFormulaWarningEnabled(false)`.
 and `SpreadsheetSheet::CountFormulaCells(range)` gives the count if you want
 to warn in your own way.
 
+## Data validation
+
+A rule says what a cell may hold. It is set on a range of the sheet, or on one
+cell, and is checked when someone **types** into the cell and commits the
+entry (Enter, Tab, a click elsewhere). Values set from code, pasted or filled
+are not checked; `SpreadsheetSheet::ValidateCell` checks any cell on demand.
+
+```cpp
+DataValidation quantity;
+quantity.type = ValidationType::WholeNumber;     // also Decimal, Date, Time, TextLength, List
+quantity.op = ValidationOperator::Between;
+quantity.formula1 = "1";                         // dot-decimal; a Date bound may be "2026-01-31",
+quantity.formula2 = "99";                        // a Time bound "17:30"
+quantity.alertStyle = ValidationAlertStyle::Stop;
+quantity.errorTitle = "Quantity";
+quantity.errorMessage = "Order between 1 and 99 pieces.";
+grid->GetActiveSheet()->SetValidation(CellRange(1, 2, 50, 2), quantity);   // C2:C51
+
+DataValidation status;
+status.type = ValidationType::List;
+status.formula1 = "Open, In progress, Done";     // or ODF's "\"Open\";\"Done\""
+grid->GetActiveSheet()->SetValidation(CellRange(1, 3, 50, 3), status);     // D2:D51
+```
+
+An entry that breaks its rule is answered as the rule's `alertStyle` says,
+in a dialog titled with `errorTitle` that shows `errorMessage` (or a default):
+
+| Alert style | Buttons | What they do |
+|---|---|---|
+| `Stop` | Retry, Cancel | Retry opens the entry again on its cell, all of it selected; Cancel puts the old value back. A Stop rule never keeps the entry. |
+| `Warning` | Yes, No, Cancel | Yes keeps it; No edits it again; Cancel puts the old value back. |
+| `Information` | OK, Cancel | OK keeps it; Cancel puts the old value back. |
+
+A refused entry leaves no undo step. A rule with `showErrorAlert = false`
+keeps whatever is typed, and blanks pass while `allowBlank` is true (the
+default). Custom (formula) rules are not evaluated yet and always pass.
+
+To ask in your own way, set `onValidationFailed`. It replaces the dialog, and
+`answer` may be called at once or later, exactly once:
+
+```cpp
+grid->onValidationFailed = [statusLabel](const UltraCanvasSpreadsheet::ValidationFailure& failure,
+                                         std::function<void(UltraCanvasSpreadsheet::ValidationAnswer)> answer) {
+    statusLabel->SetText(failure.message);       // also failure.row, col, enteredText, rule
+    answer(UltraCanvasSpreadsheet::ValidationAnswer::Retry);   // or Accept, Cancel
+};
+```
+
+A `List` rule with `showDropdown` (the default) puts a small arrow just right
+of the active cell. A click on it, or Alt+Down, opens the rule's items with
+the cell's current value ticked; the one picked is entered as if typed, as one
+undo step. From code:
+
+```cpp
+std::vector<std::string> items = grid->GetValidationListItems(1, 3);   // {"Open", "In progress", "Done"}
+grid->ChooseValidationListItem(1, 3, "Done");                          // false for an item not offered
+```
+
+The list's items are the rule's own text; a list taken from a range of cells
+(`$F$1:$F$5`) is not read yet. Neither ODS nor XLSX reads or writes rules yet,
+so they are set from code.
+
 ## Best Practices
 
 - **Create with the factory.** Use `CreateSpreadsheetElement(...)` so the element is a `shared_ptr` (matching the rest of the framework). Capture that `shared_ptr` in async callbacks (file dialogs) so the grid stays alive, and call `RequestRedraw()` after mutating it from a callback.
 - **Set values, then format.** `SetCellValue` / `SetCellFormula` define the value; use `GetCell(row, col)->SetNumberFormat(...)` / `SetBold(...)` to style. Number formats are factories (`NumberFormat::Currency`, `NumberFormat::Percentage`).
-- **Call `Recalculate()` after setting formulas** when you need results immediately (e.g. right after seeding data); the engine recalculates dirty cells automatically during normal editing when auto-calculate is enabled.
+- **Call `Recalculate()` after writing into a sheet directly** when you need the results at once (e.g. right after seeding data). The grid's own setters (`SetCellValue`, `SetCellFormula`, ...) recalculate as they go while auto-calculate is enabled.
 - **Mind coordinate systems.** The API is 0-based `(row, col)`; formula text and `CellAddress::ToString()` are 1-based A1 notation (`SetCellFormula(9, 1, "=SUM(B2:B8)")`).
 - **Prefer the auto-detecting loaders for a quick "Open"** (`LoadFromFile`, single-arg `LoadCSV`); use the `*WithOptions` variants plus the import/export dialogs when the user needs to choose charset, separators, or quoting.
 - **Always check the return value and `GetLastError()`** after any `Load*`/`Save*` call to surface a clear reason to the user.

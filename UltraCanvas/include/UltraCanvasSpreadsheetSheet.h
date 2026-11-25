@@ -1,5 +1,9 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.2.0 - inserting / deleting rows and columns moves the references in formulas
+//                  (MoveFormulaReferencesForRowsColumns)
+// Version: 1.1.0 - GetEffectiveValidation; SetCellValueFromString (a typed entry, notified)
+// Version: 1.0.1 - ValidateCell falls back to the cell's own rule
 // Version: 1.0.0
 // Last Modified: 2026-01-09
 // Author: UltraCanvas Framework
@@ -96,6 +100,23 @@ std::string RenameSheetInFormula(const std::string& formula, const std::string& 
 // #REF!, as a spreadsheet does when a sheet is deleted: =Sales.A1*2 becomes
 // =#REF!*2. Case-insensitive; text in "quotes" and other sheets are left alone.
 std::string RemoveSheetFromFormula(const std::string& formula, const std::string& sheetName);
+
+// The formula with its references to sheet `sheetName` moved as inserting or
+// deleting rows (or columns) there moves the cells, as a spreadsheet does:
+//   count > 0   `count` rows inserted before row `at` (0-based): a reference
+//               at or below it moves down, a range across it grows;
+//   count < 0   rows at .. at-count-1 deleted: a reference below them moves
+//               up, a range across them shrinks, a reference (or a range)
+//               lying wholly in them becomes #REF!.
+// `columns` does the same for columns. $-anchored references move too - they
+// are anchored against copying, not against the sheet changing. An
+// unqualified reference (A1) is the formula's own sheet's: it moves only when
+// `onThatSheet`. A qualified one (Sales.A1, 'Q 1'!B2:C3) moves when it names
+// `sheetName` (case-insensitive). Text in "quotes" is left alone, and the
+// rest of the formula is kept as written. A reference pushed past the sheet's
+// last row or column becomes #REF!.
+std::string MoveFormulaReferencesForRowsColumns(const std::string& formula, const std::string& sheetName,
+                                                bool onThatSheet, bool columns, int at, int count);
 
 // ============================================================================
 // SPREADSHEET SHEET CLASS
@@ -250,6 +271,9 @@ public:
     // ===== CELL VALUES (CONVENIENCE) =====
     
     void SetCellValue(int row, int col, const std::string& text);
+    // What a person typed: "12.5" a number, "45%" a percentage, "TRUE" a truth
+    // value, anything else text (SpreadsheetCell::SetValueFromString).
+    void SetCellValueFromString(int row, int col, const std::string& text);
     void SetCellValue(int row, int col, double number);
     void SetCellValue(int row, int col, bool boolean);
     void SetCellFormula(int row, int col, const std::string& formula);
@@ -326,6 +350,12 @@ public:
     const RowDefinition* GetRowDefinition(int row) const;
     RowDefinition& GetOrCreateRowDefinition(int row);
     
+    // Rewrites this sheet's formulas for rows or columns inserted (count > 0)
+    // or deleted (count < 0) at `at` on sheet `changedSheet` - this one or
+    // another its formulas name (MoveFormulaReferencesForRowsColumns).
+    // InsertRows / DeleteRows / InsertColumns / DeleteColumns do it for the
+    // sheet's own formulas; the workbook does it for the other sheets.
+    void MoveFormulaReferences(const std::string& changedSheet, bool columns, int at, int count);
     void InsertRows(int row, int count = 1);
     void DeleteRows(int row, int count = 1);
     
@@ -415,6 +445,11 @@ public:
     void RemoveValidation(const CellRange& range);
     void ClearAllValidations();
     const DataValidation* GetValidation(int row, int col) const;
+    // The rule that applies to a cell: the one set on a range over it, else
+    // the cell's own (SpreadsheetCell::SetValidation); null when neither.
+    const DataValidation* GetEffectiveValidation(int row, int col) const;
+    // True when the cell's value passes the rule set on its range, or, with
+    // none, the cell's own rule (CheckDataValidation, UltraCanvasSpreadsheetCell.h).
     bool ValidateCell(int row, int col, std::string* errorMessage = nullptr) const;
     
     // ===== NAMED RANGES =====
@@ -673,6 +708,11 @@ inline std::vector<const SpreadsheetCell*> SpreadsheetSheet::GetCellsInRange(con
 
 inline void SpreadsheetSheet::SetCellValue(int row, int col, const std::string& text) {
     GetOrCreateCell(row, col).SetText(text);
+    NotifyCellChange(row, col);
+}
+
+inline void SpreadsheetSheet::SetCellValueFromString(int row, int col, const std::string& text) {
+    GetOrCreateCell(row, col).SetValueFromString(text);
     NotifyCellChange(row, col);
 }
 
