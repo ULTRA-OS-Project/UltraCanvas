@@ -7,6 +7,7 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
+// Version: 1.5.0 - InsertChart: a chart frame in the line at the caret
 // Version: 1.4.0 - SetFloatOffset; text frames and drawings are addressed like pictures, and
 //                  a resized drawing keeps the size its shapes were drawn for
 // Version: 1.3.0 - letter spacing: a delta sets a run's own, the format state reports it, a
@@ -3184,6 +3185,55 @@ int UCRichDocumentEditor::InsertInlineImage(const std::string& name,
     NotifyChanged();
     NotifySelectionChanged();
     return mediaIndex;
+}
+
+int UCRichDocumentEditor::InsertChart(const RichChart& chart, float widthPt, float heightPt) {
+    if (!chart.IsChart() || widthPt < 40.0f || heightPt < 40.0f) return -1;
+    // The chart as drawn shapes, its words frames of the document's own.
+    RichShape group;
+    if (!UCRichDocument::ChartAsShapes(chart, widthPt, heightPt, doc->frames, group)) return -1;
+
+    RichTextFrame frame;
+    frame.name = chart.title.empty() ? "Chart" : chart.title;
+    frame.shapes.push_back(std::move(group));
+    frame.drawingWidthPt = widthPt;
+    frame.drawingHeightPt = heightPt;
+    frame.chart = chart;
+    const int frameIndex = static_cast<int>(doc->frames.size());
+    doc->frames.push_back(std::move(frame));
+
+    RichTextRun run;
+    run.text = RichTextRun::kObjectReplacement;
+    run.frameIndex = frameIndex;
+    run.imageWidthPt = widthPt;
+    run.imageHeightPt = heightPt;
+    run.imageWrap = RichTextRun::ImageWrap::Inline;
+    run.imageAltText = chart.title.empty() ? std::string("Chart") : chart.title;
+
+    if (!IsTextContainer(caret)) {
+        // The caret on a table or a picture, not in a line: a paragraph of
+        // its own holding the chart.
+        RichDocBlock paragraph;
+        paragraph.runs.push_back(std::move(run));
+        InsertBlocks({paragraph});
+        return frameIndex;
+    }
+    RichDocRange selection = GetSelectionRange();
+    int first = selection.start.blockIndex;
+    int count = selection.end.blockIndex - first + 1;
+    {
+        EditScope scope(*this, first, count);
+        if (HasSelection()) DeleteRangeInternal(selection);
+        std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+        if (!runs) return -1;
+        InsertIntoRuns(*runs, caret.byteOffset, run.text, &run);
+        caret.byteOffset += static_cast<int>(run.text.size());
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return frameIndex;
 }
 
 namespace {

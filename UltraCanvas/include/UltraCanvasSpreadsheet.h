@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.17.0 - a table to assistive technology (rows and cells as parts, the active cell focused and
+//                  announced); Copy / Cut a selected chart onto the office clipboard (CopyChartToClipboard)
 // Version: 1.16.0 - conditional formats and validation rules as undo steps (RulesChange): AddConditionalFormat,
 //                  SetConditionalFormatRule, RemoveConditionalFormatRule, the selection calls and the dialogs
 // Version: 1.15.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
@@ -218,6 +220,10 @@ private:
     std::string clipboardSheetName_;
     std::vector<std::vector<SpreadsheetCell>> clipboardData_;
     std::string clipboardText_;   // what Copy put on the system clipboard as text
+    // Assistive technology's view of the grid (made on first request).
+    class AccessibleGrid;
+    std::shared_ptr<AccessibleGrid> accessibleGrid_;
+    void AnnounceAccessibleSelection();
     bool PasteValues(const std::vector<std::vector<std::string>>& rows);
     
     std::stack<SpreadsheetUndoAction> undoStack_;
@@ -353,6 +359,21 @@ public:
     void Arrange(const UltraCanvas::Rect2Df &newFinalRect, const CSSLayout::LayoutContext &ctx) override;
     bool AcceptsFocus() const override { return true; }
     bool SetFocus(bool focus = true) override;   // commit edit on focus loss
+
+    // ===== ACCESSIBILITY =====
+    // A table to assistive technology, named by its sheet: its rows and
+    // their cells are its parts (GetAccessibleTableInterface,
+    // GetAccessiblePartsInterface) - the used cells, and as far as the active
+    // cell and the selection reach - each cell named by its address and the
+    // value it shows ("B3 42"). The active cell is the focused part and the
+    // value text; a move of it or of the selection is announced
+    // (SelectionChanged, its `part` the active cell), a change of sheet too
+    // (NameChanged).
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Table; }
+    std::string GetAccessibleName() const override;
+    std::string GetAccessibleValueText() const override;
+    IAccessibleParts* GetAccessiblePartsInterface() override;
+    IAccessibleTable* GetAccessibleTableInterface() override;
     
     // ===== SHEET MANAGEMENT =====
     int GetSheetCount() const { return static_cast<int>(sheets_.size()); }
@@ -651,7 +672,9 @@ public:
     // Paste takes the grid's own copy while the system clipboard still holds
     // it; else what another program copied - its HTML table, or tab- or
     // comma-separated text - each value read as if typed. Every paste is one
-    // undo step.
+    // undo step. With a chart selected, Copy and Cut take the chart instead:
+    // a static copy for a document or a slide (CopyChartToClipboard,
+    // UltraCanvasOfficeClipboard.h), a picture and its data for other programs.
     void Cut();
     void Copy();
     void Paste();

@@ -15,6 +15,7 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
+// Version: 1.5.0 - InsertChart: a chart in the line at the caret (a frame holding its data and its drawing)
 // Version: 1.4.1 - DocumentStart is the first cell of a table that opens the
 //                  document, where a new document's caret starts too: on the
 //                  table outside its cells it stood the whole table high
@@ -401,6 +402,12 @@ public:
     int InsertInlineImage(const std::string& name, const std::string& mimeType,
                           const std::vector<uint8_t>& data,
                           const std::string& altText = "");
+    // A chart INTO the line at the caret, `widthPt` x `heightPt`: a frame
+    // holding its data (RichTextFrame::chart, drawn by the chart engine) and
+    // the same chart as drawn shapes, for whoever has no engine. Returns the
+    // frame's index, or -1 when the chart has nothing to show or the box is
+    // under 40 points.
+    int InsertChart(const RichChart& chart, float widthPt, float heightPt);
     void DeleteBlock(int blockIndex);
 
     // ===== PICTURES =====

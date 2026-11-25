@@ -8,6 +8,7 @@
 // zoom (the rich in-place editor comes with Phase 4). The show runs full
 // screen in a window of its own; PDF and print draw the same slides.
 //
+// Version: 0.5.0 - Cut, Copy and Paste on the Home bar: cells, charts and text from the other kinds
 // Version: 0.4.0 - the show is UltraCanvasSlideShowPlayer (transitions, the presenter view); a
 //                  transition picker
 // Version: 0.3.0 - formatted text in place (the rich editor), a Text tab, tables (insert, cells, rows,
@@ -332,6 +333,19 @@ private:
 
     void BuildHome() {
         auto bar = MakeToolbar("office-slides-home");
+        // The shapes, and what other programs and the other kinds copied:
+        // cells as a table, a chart as a chart, text as a text box.
+        auto clip = [this](void (UltraCanvasSlideEdit::*action)()) {
+            return [this, action]() {
+                CloseText(true);
+                (edit_.get()->*action)();
+                edit_->SetFocus(true);
+            };
+        };
+        AddTool(*bar, "slides-cut", "", "menu/cut.svg", Tr("Cut (Ctrl+X)"), clip(&UltraCanvasSlideEdit::Cut));
+        AddTool(*bar, "slides-copy", "", "menu/copy.svg", Tr("Copy (Ctrl+C)"), clip(&UltraCanvasSlideEdit::Copy));
+        AddTool(*bar, "slides-paste", "", "menu/paste.svg", Tr("Paste (Ctrl+V)"), clip(&UltraCanvasSlideEdit::Paste));
+        bar->AddSeparator();
         AddTool(*bar, "slides-new", Tr("New slide"), "", Tr("A new slide after this one (Ctrl+M)"),
                 Act([](UCSlideDeckEditor& e) { e.NewSlide(-1); }));
         layouts_ = bar->AddDropdownButton("slides-layout", "", {}, nullptr);

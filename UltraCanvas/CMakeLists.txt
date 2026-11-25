@@ -1269,6 +1269,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideDeckEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideEdit.cpp
+        # Copy and paste between cells, documents and slides (tables, text, the office clipboard's chart)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeClipboard.cpp
         # ... played as a show (transitions, timings) and the presenter view beside it
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideShowPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp

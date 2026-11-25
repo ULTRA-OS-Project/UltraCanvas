@@ -18,6 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.20.0 - InsertChart; Paste takes a chart copied from a spreadsheet (UltraCanvasOfficeClipboard.h)
 // Version: 1.19.0 - RichTextEditStyle::adaptDocumentColors; AdaptDocumentColorToPage
 // Version: 1.18.0 - chartCache: a frame's chart drawn by the chart engine
 // Version: 1.17.1 - layoutStatedLines
@@ -406,6 +407,10 @@ public:
     void InsertInlineImageFromMemory(const std::string& name, const std::string& mimeType,
                                      const std::vector<uint8_t>& data,
                                      const std::string& altText = "");
+    // A chart in the line at the caret, `widthPt` x `heightPt`
+    // (UCRichDocumentEditor::InsertChart). Paste puts one there when the
+    // clipboard holds a chart copied from a spreadsheet.
+    bool InsertChart(const RichChart& chart, float widthPt, float heightPt);
 
     // ===== PICTURES =====
     // Clicking a picture selects it: a frame with eight handles is drawn round
