@@ -331,8 +331,9 @@ jobs:
       # The Windows ARM row packages only in a release build: its installer
       # step alone took 29-32 minutes. Outside one (a ci:distro pull request,
       # a dispatch with windows_arm) it builds and tests, and skips the NSIS
-      # installer, the MSIX and their uploads; the x86_64 row checks the same
-      # packaging scripts on every run.
+      # installer, the MSIX, UltraCanvasStart and the store packages (all made
+      # from package-win.sh's dist/) and their uploads; the x86_64 row checks
+      # the same packaging scripts on every run.
       SKIP_WINDOWS_PACKAGE: ${{ matrix.os == 'windows-11-arm' && !(github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)) }}
 
       # ccache. There is no incremental state between runs on a hosted runner,
@@ -3115,6 +3116,9 @@ jobs:
       # UltraCanvas runtime as a component of its own, and UltraMail on it -
       # the app without what the runtime carries.
       - name: Package UltraMail and the runtime for the store
+        # Out of package-win.sh's dist/ on Windows, as UltraCanvasStart is:
+        # an unpackaged Windows ARM run has none (SKIP_WINDOWS_PACKAGE).
+        if: env.SKIP_WINDOWS_PACKAGE != 'true'
         run: |
           have() { for f in "$1"/*.tar.xz "$1"/*.zip; do [ -e "$f" ] && return 0; done; return 1; }
           scripts/package-store-app.sh UltraMail
@@ -3206,6 +3210,7 @@ jobs:
           retention-days: 7
 
       - name: Upload UltraMail for the store
+        if: env.SKIP_WINDOWS_PACKAGE != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: UltraMail-store-${{ runner.os }}-${{ matrix.arch_label }}
@@ -3217,7 +3222,7 @@ jobs:
           retention-days: 7
 
       - name: Upload the runtime and UltraMail on it for the store
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' && env.SKIP_WINDOWS_PACKAGE != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: UltraCanvas-runtime-store-${{ runner.os }}-${{ matrix.arch_label }}

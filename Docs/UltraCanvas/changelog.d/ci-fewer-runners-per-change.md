@@ -17,8 +17,8 @@
   - **Windows ARM builds on release dispatches**, on pull requests labelled
     `ci:distro` and on a dispatch with the new `windows_arm` input, but not
     on a plain push to main. It took 96 to 102 minutes a run. Outside a
-    release build it skips its installer (29 to 32 minutes), the MSIX and
-    UltraCanvasStart.
+    release build it skips its installer (29 to 32 minutes), the MSIX,
+    UltraCanvasStart and the store packages.
   - **ccache holds a whole build again.** The cap stayed at 500 MB from when
     a leg compiled about 1,136 objects. The Linux row now compiles 3,378 and
     filled the cache to 0.39 of 0.50 GB, the level ccache trims to after an
