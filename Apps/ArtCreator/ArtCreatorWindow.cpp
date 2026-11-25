@@ -3,6 +3,7 @@
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command; the drawings' tabs (one canvas, selection and history
 // each).
+// Version: 1.15.0 - ObjectCountOf (a host asks whether a file it handed over was read)
 // Version: 1.14.0 - the text bar's font list (the framework's font picker): the drawing's fonts
 //                  under "In this document", the recent fonts kept in the settings
 //                  (text.recentfonts)
@@ -56,7 +57,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -82,6 +83,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -364,6 +366,31 @@ std::shared_ptr<ArtCreatorWindow> ArtCreatorWindow::OpenWindow(const std::vector
     LastFocusedWindow() = raw;
     editor->Show();
     return editor;
+}
+
+int ArtCreatorWindow::ObjectCountOf(const std::string& path) const {
+    if (path.empty()) return -1;
+    std::function<int(const std::vector<std::shared_ptr<VectorStorage::VectorElement>>&)> count =
+        [&count](const std::vector<std::shared_ptr<VectorStorage::VectorElement>>& elements) {
+            int n = 0;
+            for (const auto& element : elements) {
+                if (!element) continue;
+                if (auto group = std::dynamic_pointer_cast<VectorStorage::VectorGroup>(element)) n += count(group->Children);
+                else ++n;
+            }
+            return n;
+        };
+    const std::string wanted = NormalizePath(path);
+    for (int i = 0; i < static_cast<int>(drawings.size()); ++i) {
+        const bool active = i == activeDrawing;
+        const std::string& open = active ? documentPath : drawings[i]->documentPath;
+        const auto& doc = active ? document : drawings[i]->document;
+        if (open.empty() || !doc || NormalizePath(open) != wanted) continue;
+        int n = 0;
+        for (const auto& layer : doc->Layers) if (layer) n += count(layer->Children);
+        return n;
+    }
+    return -1;
 }
 
 std::shared_ptr<ArtCreatorWindow> ArtCreatorWindow::OpenInRunningWindow(const std::vector<std::string>& paths) {
