@@ -9,6 +9,7 @@
 // borders, alignment, wrap). Number formats are classified by
 // ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
 // .xls reader.
+// Version: 1.4.0 - a cell's number is written to read back exactly (it kept six significant digits)
 // Version: 1.3.0 - keeps what a sheet holds beyond its cells: frozen panes (sheetViews), hidden rows and
 //                  columns, named ranges of the workbook and of each sheet (definedNames), the
 //                  auto-filter (autoFilter, _xlnm._FilterDatabase, value filters), and the print area
@@ -1395,7 +1396,7 @@ private:
             case CellValueType::Currency: {
                 xml << ">";
                 if (!formula.empty()) xml << "<f>" << XmlEscape(formula) << "</f>";
-                xml << "<v>" << cell.GetCurrency().amount << "</v></c>";
+                xml << "<v>" << FormatFloatRoundTrip(cell.GetCurrency().amount) << "</v></c>";
                 return;
             }
             case CellValueType::Empty:
@@ -1403,7 +1404,7 @@ private:
                 xml << ">";
                 if (!formula.empty()) xml << "<f>" << XmlEscape(formula) << "</f>";
                 auto number = cell.TryGetNumber();
-                if (number) xml << "<v>" << *number << "</v>";
+                if (number) xml << "<v>" << FormatFloatRoundTrip(*number) << "</v>";
                 xml << "</c>";
                 return;
             }
@@ -1412,7 +1413,7 @@ private:
                 // xf's numFmt communicates the presentation.
                 xml << ">";
                 if (!formula.empty()) xml << "<f>" << XmlEscape(formula) << "</f>";
-                xml << "<v>" << cell.GetNumber() << "</v></c>";
+                xml << "<v>" << FormatFloatRoundTrip(cell.GetNumber()) << "</v></c>";
                 return;
         }
     }

@@ -16,6 +16,7 @@
 //     std::string error;
 //     if (pages && pages->ExportPdf("Budget.pdf", error)) { /* written */ }
 //
+// Version: 1.1.0 - title rows and columns start as PrintSettings' repeat rows and columns
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -47,7 +48,8 @@ public:
     SpreadsheetPrintPages& operator=(const SpreadsheetPrintPages&) = delete;
 
     // Rows (columns) printed at the top (left) of every page; -1: none.
-    // Set before the pages are counted.
+    // Set before the pages are counted. They start as the sheet's own print
+    // titles (PrintSettings::repeatRowsFirst ...).
     void SetTitleRows(int first, int last);
     void SetTitleColumns(int first, int last);
 

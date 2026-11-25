@@ -6,6 +6,7 @@
 // 0.75 (points per pixel) times the print scale, so a printed sheet at 100 %
 // is the size it is on screen at 100 %.
 //
+// Version: 1.1.0 - the sheet's own print titles (PrintSettings repeatRows / repeatColumns) repeat
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #include "UltraCanvasSpreadsheetPrint.h"
@@ -35,12 +36,6 @@ const Color kHeadingFill(240, 240, 240);
 const Color kHeadingLine(160, 160, 160);
 const Color kHeadingText(60, 60, 60);
 
-bool HasPrintArea(const PrintSettings& settings) {
-    // No print area is the default range, A1:A1.
-    const CellRange& area = settings.printArea;
-    return area.IsValid() && !(area.start.row == 0 && area.start.col == 0 && area.end.row == 0 && area.end.col == 0);
-}
-
 std::string Number(int value) {
     char text[16];
     const auto result = std::to_chars(text, text + sizeof text, value);
@@ -59,6 +54,9 @@ SpreadsheetPrintPages::SpreadsheetPrintPages(const SpreadsheetSheet& sheet)
 SpreadsheetPrintPages::SpreadsheetPrintPages(const SpreadsheetSheet& sheet, const PrintSettings& settings)
     : sheet_(sheet.CloneKeepingId()), settings_(settings) {
     PaperSizePoints(settings_, paperWidthPt_, paperHeightPt_);
+    // The print titles the sheet keeps (a file's "rows to repeat at top").
+    if (settings_.HasRepeatRows()) SetTitleRows(settings_.repeatRowsFirst, settings_.repeatRowsLast);
+    if (settings_.HasRepeatColumns()) SetTitleColumns(settings_.repeatColumnsFirst, settings_.repeatColumnsLast);
 }
 
 SpreadsheetPrintPages::~SpreadsheetPrintPages() = default;
@@ -87,7 +85,7 @@ void SpreadsheetPrintPages::PaperSizePoints(const PrintSettings& settings, doubl
 }
 
 CellRange SpreadsheetPrintPages::PrintedRange() const {
-    if (HasPrintArea(settings_)) return settings_.printArea;
+    if (settings_.HasPrintArea()) return settings_.printArea;
     return sheet_->GetUsedRange();
 }
 

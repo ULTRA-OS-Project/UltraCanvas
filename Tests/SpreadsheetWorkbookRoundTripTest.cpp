@@ -88,6 +88,9 @@ std::shared_ptr<UltraCanvasSpreadsheet> BuildWorkbook() {
     data->SetCellValue(1, 0, 4.0);
     data->SetCellValue(2, 0, 5.0);
     data->SetCellValue(7, 6, std::string("far"));        // G8
+    data->SetCellValue(10, 2, 3.14159265358979);           // C11: every digit kept
+    data->SetCellValue(11, 2, 0.1);                        // C12
+    data->SetCellValue(12, 2, 123456789.123456);           // C13
     data->MergeCells(4, 3, 4, 4);                        // D5:E5, its first cell empty
 
     // 1. Frozen panes
@@ -177,6 +180,9 @@ void CheckWorkbook(UltraCanvasSpreadsheet& book, const std::string& label, bool 
           label + ": the sheet names [" + first->GetName() + ", " + data->GetName() + "]");
     Check(first->GetCellDisplayValue(3, 0) == "Item 3", label + ": a cell's text");
     Check(first->GetCellNumber(5, 2) == 50.0, label + ": a cell's number");
+    Check(data->GetCellNumber(10, 2) == 3.14159265358979 && data->GetCellNumber(11, 2) == 0.1
+              && data->GetCellNumber(12, 2) == 123456789.123456,
+          label + ": numbers keep every digit [" + data->GetCellDisplayValue(10, 2) + "]");
 
     // 1. Frozen panes
     if (freeze) {

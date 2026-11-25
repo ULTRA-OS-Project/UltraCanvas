@@ -1,6 +1,7 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.3.0 - a cell's number is written to read back exactly (it kept six significant digits)
 // Version: 1.2.0 - .ods keeps what a sheet holds beyond its cells: frozen panes (settings.xml), hidden
 //                  rows and columns (table:visibility), named ranges of the workbook and of each sheet
 //                  (table:named-expressions), the auto-filter (table:database-range with filter buttons,
@@ -2126,7 +2127,7 @@ private:
         switch (cell->GetValueType()) {
             case CellValueType::Number:
                 ss << " office:value-type=\"float\"";
-                ss << " office:value=\"" << cell->GetNumber() << "\"";
+                ss << " office:value=\"" << FormatFloatRoundTrip(cell->GetNumber()) << "\"";
                 break;
             case CellValueType::Boolean:
                 ss << " office:value-type=\"boolean\"";
@@ -2144,13 +2145,13 @@ private:
                 break;
             case CellValueType::Percentage:
                 ss << " office:value-type=\"percentage\"";
-                ss << " office:value=\"" << cell->GetNumber() << "\"";
+                ss << " office:value=\"" << FormatFloatRoundTrip(cell->GetNumber()) << "\"";
                 break;
             case CellValueType::Currency: {
                 auto currency = cell->GetCurrency();
                 ss << " office:value-type=\"currency\"";
                 ss << " office:currency=\"" << currency.currencyCode << "\"";
-                ss << " office:value=\"" << currency.amount << "\"";
+                ss << " office:value=\"" << FormatFloatRoundTrip(currency.amount) << "\"";
                 break;
             }
             case CellValueType::Formula: {
@@ -2158,7 +2159,7 @@ private:
                 // the table:formula attribute.
                 if (auto number = cell->TryGetNumber()) {
                     ss << " office:value-type=\"float\"";
-                    ss << " office:value=\"" << *number << "\"";
+                    ss << " office:value=\"" << FormatFloatRoundTrip(*number) << "\"";
                 } else if (auto boolean = cell->TryGetBoolean()) {
                     ss << " office:value-type=\"boolean\"";
                     ss << " office:boolean-value=\"" << (*boolean ? "true" : "false") << "\"";

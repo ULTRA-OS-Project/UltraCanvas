@@ -99,6 +99,14 @@ int main(int argc, char** argv) {
     }
     {
         PrintSettings settings = sheet.GetPrintSettings();
+        settings.repeatRowsFirst = 0;
+        settings.repeatRowsLast = 0;
+        SpreadsheetPrintPages pages(sheet, settings);
+        Check(pages.Paginate() == 6 && pages.GetPageCells(1).ToString() == "A46:J89",
+              "the sheet's own print titles repeat too [" + Pages(pages) + "]");
+    }
+    {
+        PrintSettings settings = sheet.GetPrintSettings();
         settings.printGridlines = true;
         settings.printRowColHeaders = true;
         settings.headerCenter = "&A";

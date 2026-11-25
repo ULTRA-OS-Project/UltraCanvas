@@ -7,7 +7,8 @@
   - it can print gridlines and column and row headings, centre the cells,
     repeat title rows and columns, and print header and footer lines with
     the page (`&P`), the page count (`&N`), the sheet (`&A`) and the date
-    (`&D`);
+    (`&D`); the title rows and columns are the sheet's own print titles
+    (`PrintSettings::repeatRowsFirst` ...), which .xlsx and .ods now keep;
   - each cell is drawn by `UltraCanvasSpreadsheet::PaintCell`, the grid's own
     painter (lifted out of `RenderCell`), so paper shows what the screen
     shows.
