@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.27.0 - the links of a plain-text mail look like links: in the accent colour,
+//                   underlined (they opened on a click, but read as plain text)
 // Version: 0.26.0 - a "Re:" / "Fw:" from a stranger (unsolicited-reply) is named in the
 //                   warning strip ("fraud"), with "Add to contacts" for a sender the
 //                   reader knows; SetContacts shows the message again when its sender
@@ -81,7 +83,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailStorage.h"
@@ -196,7 +198,8 @@ public:
 };
 
 // The plain-text body: a read-only text area whose links (web and mail
-// addresses written in the text) work like the HTML view's links - the one under the pointer is
+// addresses written in the text) work like the HTML view's links - drawn as
+// links (the accent colour, underlined), the one under the pointer is
 // reported (to the status line, or as a tooltip that follows the pointer
 // along it) and a click on it opens it. A drag still selects text.
 class PlainBodyArea : public UltraCanvasTextArea {
@@ -238,6 +241,26 @@ public:
         }
         return UltraCanvasTextArea::OnEvent(event);
     }
+
+    // The links written in a line, drawn as links: what PlainLinkAt finds
+    // is what LinkUnder reports and a click opens. The colour is the look's
+    // accent, read whenever the line is laid out (InvalidateLineSpans on a
+    // change of the look).
+    std::vector<TextAreaLineSpan> GetLineSpans(int /*lineIndex*/,
+                                               const std::string& lineText) override {
+        std::vector<TextAreaLineSpan> spans;
+        for (const auto& [start, end] : PlainLinkSpans(lineText)) {
+            TextAreaLineSpan span;
+            span.startByte = static_cast<int>(start);
+            span.endByte = static_cast<int>(end);
+            span.style = TokenStyle(Theme::Accent(), false, false, /*underline=*/true);
+            spans.push_back(span);
+        }
+        return spans;
+    }
+
+    // Public for the look's follower in RenderBody.
+    using UltraCanvasTextArea::InvalidateLineSpans;
 
     // The pointing hand over a link, as over a link in formatted mail.
     UCMouseCursor GetMouseCursor() const override {
@@ -869,6 +892,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
     Theme::StyleTextArea(text, /*bordered=*/false);
+    // The links in the new look's accent.
+    Theme::Follow(text, "links", [](PlainBodyArea& a) { a.InvalidateLineSpans(); });
     {
         // The message list's scrollbar (ScrollbarStyle::Modern), not the text
         // area's classic 15px square one.

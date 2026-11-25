@@ -21,6 +21,7 @@
 // Version: 0.5.0 - mail addresses in plain text (merged with main's 0.4.0)
 // Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
 //                  and mailbox addresses are not claims
+// Version: 0.4.0 - PlainLinkSpans (the Microsoft account mail's long links)
 // Version: 0.3.0 - PlainLinkAt
 // Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
 // Version: 0.1.0
@@ -648,6 +649,36 @@ TEST(plain_link_at_finds_the_url_under_a_position) {
     REQUIRE_EQ(PlainLinkAt(text, text.find("test")), std::string("www.test.org"));
     REQUIRE(PlainLinkAt(text, text.find("not")).empty());
     REQUIRE(PlainLinkAt(text, text.size() + 5).empty());
+}
+
+TEST(plain_text_link_spans_are_what_a_click_opens) {
+    // A line of a Microsoft account mail: one long link with "!", "*" and "%24".
+    const std::string verify =
+        "https://account.live.com/Aliases/Verify?aliasname=info%40example.com&aliastype=Email"
+        "&otc=*DgyhHEpp0uNLWBcx!LbC2gi1YubjEoYTxZ4jC8dkpjvBcegvSzt!TgWGS2v5UiVacuLDZUw%24&cxt=ALS";
+    auto spans = PlainLinkSpans(verify);
+    REQUIRE_EQ(spans.size(), std::size_t(1));
+    REQUIRE_EQ(spans[0].first, std::size_t(0));
+    REQUIRE_EQ(spans[0].second, verify.size());
+
+    // Two links and an address on one line; the "|" and the full stop are not theirs.
+    const std::string line = "Privacy: https://go.microsoft.com/fwlink/?LinkId=521839 | "
+                             "Imprint: https://aka.ms/impressum_de. Mail info@example.com";
+    spans = PlainLinkSpans(line);
+    REQUIRE_EQ(spans.size(), std::size_t(3));
+    REQUIRE_EQ(line.substr(spans[0].first, spans[0].second - spans[0].first),
+               std::string("https://go.microsoft.com/fwlink/?LinkId=521839"));
+    REQUIRE_EQ(line.substr(spans[1].first, spans[1].second - spans[1].first),
+               std::string("https://aka.ms/impressum_de"));
+    REQUIRE_EQ(line.substr(spans[2].first, spans[2].second - spans[2].first),
+               std::string("info@example.com"));
+    // Every byte of a span is a link to PlainLinkAt, and the bytes around it are not.
+    for (const auto& [a, b] : spans) {
+        REQUIRE(!PlainLinkAt(line, a).empty());
+        REQUIRE(!PlainLinkAt(line, b - 1).empty());
+        if (b < line.size()) REQUIRE(PlainLinkAt(line, b).empty());
+    }
+    REQUIRE(PlainLinkSpans("No link here, and not www. either").empty());
 }
 
 TEST(plain_text_mail_addresses_are_mailto_links) {

@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.13.0 - PlainLinkSpans (the links of a line of plain text, to draw them)
 // Version: 0.12.1 - SenderLists: a no-reply address with a code per message
 //                   ("no-reply-<code>@mail.anthropic.com") is one sender (StableAddress),
 //                   and so is "name+tag@..." (the tag dropped)
@@ -1482,6 +1483,17 @@ std::string PlainLinkAt(const std::string& text, std::size_t offset) {
         i = end > start ? end : start + 1;
     }
     return std::string();
+}
+
+std::vector<std::pair<std::size_t, std::size_t>> PlainLinkSpans(const std::string& text) {
+    std::vector<std::pair<std::size_t, std::size_t>> spans;
+    std::size_t i = 0, start = 0, end = 0;
+    std::string href;
+    while (i < text.size() && NextPlainLink(text, i, start, end, href)) {
+        if (!href.empty() && end > start) spans.emplace_back(start, end);
+        i = end > start ? end : start + 1;
+    }
+    return spans;
 }
 
 std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml) {
