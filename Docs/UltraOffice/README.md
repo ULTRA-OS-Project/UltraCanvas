@@ -148,8 +148,12 @@ The command tabs:
 - **Presentations** - *Home*: new slide (Ctrl+M) or one from the deck's
   layouts, duplicate, delete and hide a slide, present. *Insert*: text box,
   drawn shape (rectangle, rounded rectangle, ellipse, triangle, arrow, star),
-  picture. *Arrange*: bring to front, forward, backward, to back; duplicate
-  and delete shapes. *Text*: bold, italic, underline, strikethrough, font,
+  picture. *Arrange*: group and ungroup (Ctrl+G, Ctrl+Shift+G); align the
+  left edges, centres, right edges, tops, middles or bottoms (to each other,
+  or to the slide when one shape is selected), distribute across or down;
+  bring to front, forward, backward, to back; duplicate and delete shapes.
+  *Format*: crop a picture with its handles, reset the crop; a chart's data.
+  *View*: normal, the slide sorter, the notes pane. *Text*: bold, italic, underline, strikethrough, font,
   size, larger and smaller, colour, alignment, bullets, numbering, list
   level - on the text being edited, or all the text of the selected shapes.
   *Table*: insert a table, rows above and below, columns left and right,
@@ -161,7 +165,19 @@ The command tabs:
   turned with their handles, snapping to the slide and to each other;
   double-click a shape (or Enter) to edit its text in place, formatted, with
   bullets and numbering - a table's cell likewise - Ctrl+Enter or a click
-  elsewhere to keep it, Escape to drop it. The show runs full screen
+  elsewhere to keep it, Escape to drop it. A group is selected, moved,
+  resized and turned as one shape; a double-click selects a shape inside
+  it, Escape the group again. Groups are kept in .pptx (`p:grpSp`) and .odp
+  (`draw:g`), a crop as `a:srcRect` and `fo:clip`. A double-click on a chart
+  (from the file, or pasted from a spreadsheet) opens its data in a small
+  spreadsheet; OK puts it into the chart, its kind kept, as one undo step.
+  Under the slide the notes pane holds the speaker notes, formatted, with a
+  splitter to size it; what is typed goes into the slide (one undo step) on
+  leaving the pane or the slide. The slide sorter shows every slide in a
+  grid: Ctrl+click and Shift+click choose several, a drag moves them, a
+  right-click offers a new slide, duplicate, hide and delete, and a
+  double-click edits a slide. A right-click on the slide offers cut, copy,
+  paste, group, the order, crop, the chart's data and delete. The show runs full screen
   with the slides' transitions and timings; on a second monitor the
   presenter view shows the next slide, the notes and the time. A click or
   the arrows move on, a number and Enter jump, B or W blank the screen,
