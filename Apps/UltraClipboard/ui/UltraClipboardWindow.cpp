@@ -502,6 +502,8 @@ void UltraClipboardWindow::Present(const std::string& search, int64_t editId) {
     // the request waits for the user to finish there.
     const auto dialogs = UltraCanvasDialogManager::GetActiveDialogs();
     if (!dialogs.empty()) {
+        // The window follows its dialog to the virtual desktop in view.
+        window_->MoveToCurrentDesktop();
         dialogs.back()->RaiseAndFocus();
         return;
     }

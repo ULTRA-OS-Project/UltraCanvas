@@ -3,6 +3,8 @@
 // private bus driven over the real transport by several endpoints —
 // subscriptions, recorded delivery with bounce, request/reply, the journal
 // and its queries, replay, lifecycle notices, the typed topic helpers.
+// Version: 0.1.3 - the bus folder must be this user's alone
+// Version: 0.1.2 - a bus on a path longer than a socket's address
 // Version: 0.1.1 - the notification it posts is Silent: tests show nothing on screen
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -26,6 +28,10 @@
 #include <thread>
 #include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
+#ifndef _WIN32
+#  include <sys/stat.h>
+#  include <unistd.h>
+#endif
 
 using UltraCanvas::JSONValue;
 using namespace std::chrono_literals;
@@ -240,6 +246,185 @@ UltraMsgHandle ConnectTo(const std::string& bus, const std::string& appId, bool 
 }
 
 } // namespace
+
+// A Unix socket's address holds a path of 107 bytes on Linux, and the bus lies
+// under the user's runtime folder, which can be longer. Such a bus was out of
+// reach for the broker and for every endpoint ("bus path too long for a Unix
+// socket"), so a second start of a single-instance application could not ask
+// the running copy forward and said "already running". On Linux it is now
+// reached through its folder; elsewhere the error still says why.
+#ifndef _WIN32
+TEST(bus_on_a_path_longer_than_a_socket_address) {
+    namespace fs = std::filesystem;
+    const fs::path folder = UltraCanvas::PathFromUtf8(TestBusPath()).parent_path() / std::string(120, 'r');
+    const std::string bus = UltraCanvas::PathToUtf8(folder / "bus.sock");
+    REQUIRE(bus.size() > static_cast<size_t>(110));
+    struct Cleanup {
+        fs::path folder;
+        ~Cleanup() {
+            std::error_code ec;
+            fs::remove_all(folder, ec);
+        }
+    } cleanup{folder};
+
+    UltraMsgConnectOptions lonely;
+    lonely.appId = "org.test.far.lonely";
+    lonely.busPath = bus;
+    lonely.startBrokerIfAbsent = false;
+    UltraMsgResult error;
+#if defined(__linux__)
+    // Nothing there yet - not even the folder: that is "no broker", as on a
+    // short path, not a path that cannot be used.
+    REQUIRE(UltraMsg_Connect(lonely, &error) == UltraMsgInvalidHandle);
+    REQUIRE(error.code == UltraMsgResultCode::BrokerUnavailable);
+    REQUIRE(error.message.find("too long") == std::string::npos);
+    REQUIRE(!UltraMsg_IsAvailable(bus));
+
+    auto broker = StartBroker(bus);
+    // The socket is where it was asked for, not somewhere shorter.
+    std::error_code ec;
+    REQUIRE(fs::is_socket(folder / "bus.sock", ec));
+    REQUIRE(UltraMsg_IsAvailable(bus));
+
+    // What a second start does: finds the running copy and asks it.
+    Scoped running{ConnectTo(bus, "org.test.far.running")};
+    Scoped second{ConnectTo(bus, "org.test.far.second")};
+    std::vector<std::string> instances;
+    REQUIRE(UltraMsg_ResolveApp(second.handle, "org.test.far.running", instances).ok);
+    REQUIRE_EQ(instances.size(), static_cast<size_t>(1));
+    UltraMsgSubscribeOptions onWorker;
+    onWorker.onWorkerThread = true;
+    const UltraMsgHandle sub = UltraMsg_Subscribe(running.handle, "org.test.far.show",
+        [&](const UltraMsgMessage& request) {
+            JSONValue answer = JSONValue::MakeObject();
+            answer.Set("page", request.body.Get("page").GetString());
+            UltraMsg_Reply(running.handle, request, answer);
+        }, onWorker);
+    REQUIRE(sub != UltraMsgInvalidHandle);
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("page", "desktop");
+    UltraMsgMessage reply;
+    REQUIRE(UltraMsg_Request(second.handle, instances[0], "org.test.far.show", body, 3000, reply).ok);
+    REQUIRE_EQ(reply.body.Get("page").GetString(), std::string("desktop"));
+
+    broker->Stop();
+    broker.reset();
+    REQUIRE(!fs::exists(folder / "bus.sock", ec));   // taken away again, by its full path
+#else
+    // No /proc to reach it through: the reason is said, to the caller.
+    REQUIRE(UltraMsg_Connect(lonely, &error) == UltraMsgInvalidHandle);
+    REQUIRE(error.message.find("too long") != std::string::npos);
+#endif
+}
+#endif
+
+// The bus is one user's, and so is the folder it lies in: whoever holds the
+// folder decides which broker an application meets there. Without
+// XDG_RUNTIME_DIR the bus lies in /tmp/ultramessage-<uid>, a name another
+// account can make first - and its broker then read what this user's
+// applications posted. The bus is now hosted and joined only in a folder
+// that is this user's alone. (A folder of ANOTHER user's needs a second
+// account, which a test does not have; the same check refuses it.) Root is
+// let through - it joins a user's bus on purpose - so this runs as a user.
+#ifndef _WIN32
+namespace {
+
+// Whether a broker starts on `bus`, and what it said when it did not.
+bool BrokerStarts(const std::string& bus, std::string& why) {
+    UltraMessage::Internal::Broker broker;
+    UltraMessage::Internal::Broker::Config config;
+    config.busPath = bus;
+    config.journalPath = ":memory:";
+    bool inUse = false;
+    const UltraMsgResult started = broker.Start(config, inUse);
+    why = started.message;
+    if (started.ok) broker.Stop();
+    return started.ok;
+}
+
+// Whether an endpoint gets as far as looking for a broker on `bus`.
+bool ClientIsRefused(const std::string& bus, std::string& why) {
+    UltraMsgConnectOptions options;
+    options.appId = "org.test.careful";
+    options.busPath = bus;
+    options.startBrokerIfAbsent = false;
+    UltraMsgResult error;
+    const UltraMsgHandle handle = UltraMsg_Connect(options, &error);
+    if (handle != UltraMsgInvalidHandle) UltraMsg_Disconnect(handle);
+    why = error.message;
+    return handle == UltraMsgInvalidHandle && why.find("not this user's alone") != std::string::npos;
+}
+
+} // namespace
+
+TEST(bus_folder_must_be_this_users_alone) {
+    namespace fs = std::filesystem;
+    if (::geteuid() == 0) throw ultramsg_test::Skip{"root is let through; run as a user"};
+    const fs::path root = UltraCanvas::PathFromUtf8(TestBusPath()).parent_path() / "folders";
+    struct Cleanup {
+        fs::path root;
+        ~Cleanup() {
+            std::error_code ec;
+            fs::remove_all(root, ec);
+        }
+    } cleanup{root};
+    std::error_code ec;
+    fs::create_directories(root, ec);
+    const auto mode = [](const fs::path& p) {
+        struct stat st{};
+        return ::stat(p.c_str(), &st) == 0 ? static_cast<int>(st.st_mode & 0777) : -1;
+    };
+    std::string why;
+
+    // A folder of this user's that others may write to: no endpoint joins a
+    // bus there; the broker makes it owner-only and hosts.
+    const fs::path loose = root / "loose";
+    fs::create_directories(loose, ec);
+    REQUIRE(::chmod(loose.c_str(), 0777) == 0);
+    const std::string looseBus = UltraCanvas::PathToUtf8(loose / "bus.sock");
+    REQUIRE(ClientIsRefused(looseBus, why));
+    REQUIRE(why.find("others may write to it") != std::string::npos);
+    REQUIRE(BrokerStarts(looseBus, why));
+    REQUIRE_EQ(mode(loose), 0700);
+
+    // A link in the folder's place - to a folder that would pass.
+    const fs::path real = root / "real";
+    fs::create_directories(real, ec);
+    REQUIRE(::chmod(real.c_str(), 0700) == 0);
+    const fs::path link = root / "link";
+    fs::create_directory_symlink(real, link, ec);
+    REQUIRE(!ec);
+    const std::string linkBus = UltraCanvas::PathToUtf8(link / "bus.sock");
+    REQUIRE(ClientIsRefused(linkBus, why));
+    REQUIRE(why.find("a link or a file") != std::string::npos);
+    REQUIRE(!BrokerStarts(linkBus, why));
+    REQUIRE(why.find("not this user's alone") != std::string::npos);
+    REQUIRE(!fs::exists(real / "bus.sock.lock", ec));   // nothing was written through it
+
+    // A private folder in one everyone may write to, with no sticky bit:
+    // anyone could take it away and put another in its place.
+    const fs::path open = root / "open";
+    const fs::path inside = open / "bus";
+    fs::create_directories(inside, ec);
+    REQUIRE(::chmod(inside.c_str(), 0700) == 0);
+    REQUIRE(::chmod(open.c_str(), 0777) == 0);
+    const std::string insideBus = UltraCanvas::PathToUtf8(inside / "bus.sock");
+    REQUIRE(ClientIsRefused(insideBus, why));
+    REQUIRE(why.find("everyone may write to the folder above it") != std::string::npos);
+    REQUIRE(!BrokerStarts(insideBus, why));
+    // The same folder with the sticky bit is /tmp's kind: an entry there is
+    // its owner's to rename.
+    REQUIRE(::chmod(open.c_str(), 01777) == 0);
+    REQUIRE(BrokerStarts(insideBus, why));
+
+    // Every folder the broker makes on the way is owner-only, not only the
+    // last: the fallback place is two deep in /tmp.
+    const fs::path deep = root / "made" / "ultramessage";
+    REQUIRE(BrokerStarts(UltraCanvas::PathToUtf8(deep / "bus.sock"), why));
+    REQUIRE_EQ(mode(deep), 0700);
+    REQUIRE_EQ(mode(root / "made"), 0700);
+}
+#endif
 
 TEST(endpoint_reconnects_and_keeps_its_subscriptions_when_the_broker_returns) {
     const std::string bus = ReconnectBusPath("reconnect");

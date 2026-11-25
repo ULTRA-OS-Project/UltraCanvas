@@ -75,8 +75,10 @@ if(NOT TARGET UltraMessage)
         set_source_files_properties(${_um_macos_presenter_source}
             PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     endif()
+    # UltraLocalisation: the module words its connect failures through Tr.
     add_library(UltraMessage STATIC
         ${_um_sources}
+        ${_um_root}/UltraCanvas/core/UltraLocalisation/UltraLocalisation.cpp
         ${_um_root}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp)
     target_include_directories(UltraMessage PUBLIC ${_um_root}/UltraCanvas/include)
     target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads PRIVATE uc-yyjson)

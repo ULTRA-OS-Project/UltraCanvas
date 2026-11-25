@@ -3,6 +3,7 @@
 // election, one reader thread per endpoint, delivery through the UI
 // dispatcher or the pending queue, subscriptions, the Wimp send set, and the
 // journal calls forwarded to the broker as control RPCs.
+// Version: 0.2.1 - why a connect failed, as a person is shown it, goes through Tr
 // Version: 0.2.0 - an endpoint whose connection drops (the process hosting the
 //   broker ended) reconnects on its own, hosting the next broker when it may,
 //   and registers its subscriptions again (autoReconnect); UltraMsg_IsConnected
@@ -17,6 +18,7 @@
 #include "UltraMessageBroker.h"
 #include "UltraMessageInternal.h"
 #include "UltraMessageTransport.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // Tr: why a connect failed, as a person is shown it
 
 #include <UltraDatabase/UltraDatabaseConnection.h>
 
@@ -32,6 +34,9 @@
 
 using namespace UltraMessage::Internal;
 using UltraCanvas::JSONValue;
+// Unqualified, as scripts/extract_ui_strings.py reads the sites.
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -389,7 +394,8 @@ void FailEverythingPending(const EndpointPtr& endpoint) {
         if (!endpoint->welcomed) {
             endpoint->welcomed = true;
             endpoint->welcomeOk = false;
-            if (endpoint->welcomeError.empty()) endpoint->welcomeError = "connection closed before welcome";
+            if (endpoint->welcomeError.empty())
+                endpoint->welcomeError = Tr("connection closed before welcome");
         }
     }
     endpoint->welcomeCv.notify_all();
@@ -573,14 +579,14 @@ ConnectionPtr ConnectOrHost(const std::string& bus, bool hostIfAbsent, const std
                 if (started.ok) {
                     module.broker = std::move(broker);
                 } else if (!alreadyInUse) {
-                    why = "cannot start a broker: " + started.message;
+                    why = TrF("cannot start a broker: {0}", started.message);
                     return nullptr;
                 }
             }
         }
         if (alreadyInUse) std::this_thread::sleep_for(std::chrono::milliseconds(20));
         if (std::chrono::steady_clock::now() > deadline) {
-            why = "no broker reachable on " + bus;
+            why = TrF("no broker reachable on {0}", bus);
             return nullptr;
         }
     }
@@ -619,7 +625,8 @@ bool Handshake(const EndpointPtr& endpoint, const ConnectionPtr& connection, std
         endpoint->welcomeCv.wait_for(lock, std::chrono::milliseconds(kWelcomeTimeoutMs),
                                      [&] { return endpoint->welcomed; });
         if (!endpoint->welcomed || !endpoint->welcomeOk) {
-            why = endpoint->welcomeError.empty() ? "the broker did not welcome us" : endpoint->welcomeError;
+            why = endpoint->welcomeError.empty() ? Tr("the broker did not welcome us")
+                                                 : endpoint->welcomeError;
             ok = false;
         }
     }

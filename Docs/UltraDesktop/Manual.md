@@ -152,6 +152,12 @@ windows are minimised, so the wallpaper shows.
   the window manager has more, it shows those too.
 - To put a window on another desktop, right-click its taskbar button →
   **Move to**.
+- A window that is already open on another desktop comes to the one you are
+  on when you ask for it again: **Desktop settings...**, the clipboard,
+  screenshot and UltraToDo buttons, the Sticker board, the Applications and
+  Task Manager windows, and every ULTRA OS application you start a second
+  time (Linux, X11). Other programs decide for themselves: some bring their
+  window over, some switch to its desktop, some open a second window.
 - On Windows, the buttons are Windows' own virtual desktops, which Explorer
   provides: they switch while Explorer runs (beside Explorer). A button for
   a desktop Windows does not have yet adds it in Task View when you click

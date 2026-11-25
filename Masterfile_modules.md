@@ -577,6 +577,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasUnixSocketAddress** (`UltraCanvasUnixSocketAddress.h`,
+  header-only, not Windows) — the address of a Unix socket at a path of any
+  length. `UnixSocketAddress::Resolve(path, error)` fills a `sockaddr_un`;
+  a path longer than the 107 bytes it holds is reached through its folder
+  on Linux (`/proc/self/fd/<n>/<file>`), and refused with the reason on
+  macOS and the BSDs. `Fits(path)` says whether a path needs that. Used by
+  UltraMessage's transport and UltraWin's QMP client. See
+  `Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md`.
+
 - **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
   `SettingsPageKit`) — the look of an application's settings window, once:
   `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,

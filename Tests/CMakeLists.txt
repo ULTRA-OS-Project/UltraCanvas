@@ -6362,6 +6362,29 @@ else()
     message(STATUS "  DialogStackingTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
+# ===== WINDOW CURRENT DESKTOP TEST =====
+# A window asked to come forward (RaiseAndFocus) asks first to be moved to
+# the virtual desktop in view, with the window it belongs to, and says where
+# it is (IsOnCurrentDesktop, MoveToCurrentDesktop). The test plays the window
+# manager on a display without one. Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building WindowCurrentDesktopTest...")
+    add_executable(WindowCurrentDesktopTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/WindowCurrentDesktopTest.cpp
+    )
+    target_include_directories(WindowCurrentDesktopTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(WindowCurrentDesktopTest PRIVATE cxx_std_20)
+    target_link_libraries(WindowCurrentDesktopTest PRIVATE UltraCanvas)
+    set_target_properties(WindowCurrentDesktopTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME WindowCurrentDesktopTest COMMAND WindowCurrentDesktopTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: WindowCurrentDesktopTest")
+else()
+    message(STATUS "  WindowCurrentDesktopTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== UNDECODABLE IMAGE TEST =====
 # An image whose header reads but whose pixels do not (a truncated PNG, a HEIC
 # without an HEVC decoder): asking for its pixmap must fail cleanly, not copy

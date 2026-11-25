@@ -1,5 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.13.0 - IsOnCurrentDesktop / MoveToCurrentDesktop: a window on another virtual desktop
+//                   comes to the one in view; RaiseAndFocus does that first (X11)
 // Version: 2.12.4 - iOS: the UIKit backend in OS/iOS; tvOS, visionOS and watchOS stop with an #error
 // Version: 2.12.3 - WindowType::Overlay documented: the screen-area picker's window, keyable above the
 //                   menu bar on macOS
@@ -25,7 +27,7 @@
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -418,7 +420,23 @@ namespace UltraCanvas {
         virtual void Show() = 0;
         virtual void Hide() = 0;
         // Window state
+        // In front of every other window, with the keyboard. A window that
+        // is on another virtual desktop (workspace) than the one in view is
+        // brought to this one first, with the window it belongs to: the
+        // person asked for it here, and a window manager asked only to
+        // activate it marks it "wants attention" where it lies, or changes
+        // the desktop under them. On X11; elsewhere the system decides.
         virtual void RaiseAndFocus() = 0;
+        // False while the window lies on another virtual desktop than the
+        // one in view - shown, yet not where the person can see it. True
+        // for a window on every desktop, one not shown, and wherever the
+        // platform does not say (anything but X11 so far).
+        virtual bool IsOnCurrentDesktop() const { return true; }
+        // Brings the window to the virtual desktop in view, and the window
+        // it belongs to (its parent) with it; nothing else changes - it is
+        // neither raised nor focused. True when a move was asked for, false
+        // when the window was there already or the platform cannot move it.
+        virtual bool MoveToCurrentDesktop() { return false; }
         virtual void SetWindowTitle(const std::string& title) = 0;
         virtual void SetWindowIcon(const std::string& iconPath) = 0;
         virtual void SetWindowPosition(int x, int y) = 0;
