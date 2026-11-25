@@ -19,8 +19,9 @@
 // Opens a real window, so it runs under Xvfb (xvfb-run -a) and skips itself
 // without a DISPLAY. With ULTRACANVAS_SCREENSHOT_DIR set it writes the pane
 // there: a drag's selection, the sign-in code's button and the code bar
-// (message-preview-selection.ppm, -code.ppm, -code-bar.ppm) and the links of a
-// plain-text mail (message-preview-plain-links.ppm).
+// (message-preview-selection.ppm, -code.ppm, -code-bar.ppm), the links of a
+// plain-text mail (-plain-links.ppm), a phishing mail (-phishing.ppm) and the
+// question a click on its link asks (-link-question.ppm).
 // Version: 1.6.0 - a link of a message the warning strip warns of asks before it opens
 // Version: 1.5.0 - a plain-text mail's links are drawn in the accent colour, a long one
 //                  wrapped over several lines too
@@ -38,6 +39,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextSelection.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextArea.h"
@@ -764,10 +766,53 @@ int main() {
     std::cerr << "   --- the question's text ---\n" << why << "\n   ---" << std::endl;
     TEST("suspicious link: the question names the link", why.rfind("http://198.51.100.7/login", 0) == 0);
     TEST("suspicious link: and says why", why.find("Suspicious because of:") != std::string::npos);
-    TEST("suspicious link: where it goes, not the sender's domain",
-         why.find("This link goes to 198.51.100.7") != std::string::npos);
+    TEST("suspicious link: where it goes (the button's domain)",
+         why.find("Button domain: 198.51.100.7") != std::string::npos);
+    TEST("suspicious link: a link elsewhere is named as going there",
+         preview.LinkCautionText("https://login.other-site.example/x")
+                 .find("This link goes to login.other-site.example, not to the sender's domain "
+                       "paypa1-secure.example.") != std::string::npos);
     TEST("suspicious link: the strip's verdict, without the footnote's mark",
          why.find("phishing") != std::string::npos && why.find('*') == std::string::npos);
+    // A click on the link (the mail read as plain text) opens the question,
+    // not the browser.
+    preview.showHtml = false;
+    preview.ReRender();
+    render();
+    if (auto phishArea = Find(root, "prevBodyText")) {
+        const Rect2Df area = phishArea->GetBoundsInWindow();
+        for (int y = 4; y < 120 && UltraCanvasDialogManager::GetActiveDialogCount() == 0; y += 8)
+            for (int x = 4; x < static_cast<int>(area.width) - 20 &&
+                            UltraCanvasDialogManager::GetActiveDialogCount() == 0; x += 24) {
+                UCEvent ev;
+                ev.button = UCMouseButton::Left;
+                ev.pointer = Point2Di(x, y);
+                ev.pointerWindow = Point2Di(static_cast<int>(area.x) + x, static_cast<int>(area.y) + y);
+                ev.type = UCEventType::MouseDown;
+                phishArea->OnEvent(ev);
+                // A real click has a frame between press and release: the
+                // press moved the caret, and the caret's line is laid out
+                // again in it before the release is hit-tested.
+                render();
+                ev.type = UCEventType::MouseUp;
+                phishArea->OnEvent(ev);
+            }
+        const auto dialogs = UltraCanvasDialogManager::GetActiveDialogs();
+        auto dialog = dialogs.empty() ? nullptr : dialogs.back();
+        TEST("suspicious link: a click opens the question", dialog != nullptr);
+        if (dialog) {
+            for (int frame = 0; frame < 3; ++frame) dialog->UpdateAndRender();
+            if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                const std::string path = std::string(shotDir) + "/message-preview-link-question.ppm";
+                std::shared_ptr<UltraCanvasWindow> asWindow = dialog;
+                WritePpm(asWindow, static_cast<int>(dialog->GetWidth()),
+                         static_cast<int>(dialog->GetHeight()), path);
+                std::cerr << "   wrote " << path << std::endl;
+            }
+            UltraCanvasDialogManager::CloseAllDialogs();   // "Do not open"
+        }
+    }
+    preview.showHtml = true;
     preview.Show(Envelope(7, "Look"));
     render();
     TEST("suspicious link: the next message's links open again", !preview.LinkNeedsConfirmation());

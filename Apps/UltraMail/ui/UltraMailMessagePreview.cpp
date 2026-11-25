@@ -1591,9 +1591,12 @@ std::string MessagePreview::LinkCautionText(const std::string& href) const {
         text += "\xE2\x80\xA2 " + line + "\n";   // "• "
     };
     add(linkCaution_->verdict);
-    // Where this link goes, when that is not the sender's own domain.
+    // Where this link goes, when that is not the sender's own domain - and
+    // the strip's reasons do not already name it.
     const std::string host = LinkHost(href);
-    if (!host.empty() && !linkCaution_->senderDomain.empty() &&
+    const bool named = std::any_of(linkCaution_->reasons.begin(), linkCaution_->reasons.end(),
+                                   [&host](const std::string& r) { return r.find(host) != std::string::npos; });
+    if (!host.empty() && !named && !linkCaution_->senderDomain.empty() &&
         RegistrableDomain(host) != RegistrableDomain(linkCaution_->senderDomain))
         add(TrF("This link goes to {0}, not to the sender's domain {1}.", host,
                 linkCaution_->senderDomain));
