@@ -10,6 +10,7 @@
 //   chatcube-peer --data /tmp/bob --call <ChatCube ID> --video --echo 60 --devices
 //   chatcube-peer --data /tmp/ben --name Ben --create --echo 600     (no relay: the local network)
 //
+// Version: 0.1.2 - --picture: the profile picture set (or removed) and sent to every contact
 // Version: 0.1.1 - --send-file: a video, a picture or a file
 // Version: 0.1.0
 // Last Modified: 2026-11-16
@@ -53,6 +54,9 @@ void Usage() {
                 "  --create             make a new identity if there is none\n"
                 "  --print-id           print this identity's ChatCube ID\n"
                 "  --add <id>           add a contact (may repeat)\n"
+                "  --picture <path>     set the profile picture (a square JPEG, PNG or WebP\n"
+                "                       of at most 32 KB) and send it to every contact;\n"
+                "                       \"\" removes it\n"
                 "  --send <id> <text>   send a message to a contact (may repeat)\n"
                 "  --send-file <id> <path>  send a file (a video as a video, a picture as a\n"
                 "                       photo, anything else as a file; may repeat)\n"
@@ -78,6 +82,8 @@ int main(int argc, char** argv) {
     std::string dataDir;
     bool printId = false;
     int echoSeconds = 0;
+    bool setPicture = false;
+    std::string pictureFile;
     std::vector<std::string> adds;
     std::vector<std::pair<std::string, std::string>> sends;
     std::vector<std::pair<std::string, std::string>> fileSends;
@@ -102,6 +108,10 @@ int main(int argc, char** argv) {
         else if (arg == "--create") credentials.createAccount = true;
         else if (arg == "--print-id") printId = true;
         else if (arg == "--add") adds.push_back(next());
+        else if (arg == "--picture") {
+            setPicture = true;
+            pictureFile = next();
+        }
         else if (arg == "--send") {
             std::string to = next();
             sends.emplace_back(to, next());
@@ -181,6 +191,18 @@ int main(int argc, char** argv) {
         wait([&](auto done) {
             provider.AddContact(id, [done](const UltraIMResult& r, const UltraIMConversation&) {
                 done(r.success, r.message);
+            });
+        });
+    }
+    // After the contacts: they are the ones it goes to.
+    if (setPicture) {
+        wait([&](auto done) {
+            provider.FetchAccountProfile([&provider, &pictureFile, done](const UltraIMResult& r, const UltraIMAccountProfile& p) {
+                if (!r) return done(false, r.message);
+                UltraIMAccountProfile changed = p;
+                changed.pictureChanged = true;
+                changed.picturePath = pictureFile;
+                provider.UpdateAccountProfile(changed, [done](const UltraIMResult& u) { done(u.success, u.message); });
             });
         });
     }
