@@ -17,7 +17,11 @@ name: Android build
 #
 # Runs on a pull request, and on a push to main, that touches what the
 # Android build is made of (the paths below) - a pull request the arm64-v8a
-# build alone, main every job (see the android job's matrix). The sysroot takes the better
+# build alone, main every job (see the android job's matrix). A pull request
+# labelled `ci:emulator` gets main's set: x86_64 as well, and the emulator
+# jobs that run it (the demo at two densities, MobilePC on a second display),
+# so an Android change is seen running before it merges rather than after.
+# Adding the label starts that run without a push. The sysroot takes the better
 # part of an hour to build from nothing; vcpkg's binary cache keeps every
 # library it built, so a run on a warm cache only builds the framework. A
 # manual dispatch from the Actions tab works against any branch.
@@ -48,6 +52,12 @@ name: Android build
 
 on:
   pull_request:
+    # The default types plus `labeled`, for `ci:emulator` (above): adding it
+    # starts a run with the emulator jobs. Any other label added starts a run
+    # too - GitHub cannot filter by label here - in which every job is skipped
+    # (the android job's `if`) and nothing in progress is cancelled (the
+    # concurrency group below).
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
@@ -106,13 +116,18 @@ on:
 
 # A newer push cancels a pull request's run in progress; on main nothing is
 # cancelled, so the weekly run and a push's run each finish (as build.yml).
+# A label other than ci:emulator gets a group of its own: its run, all
+# skipped, must not cancel the pull request's build in progress.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}${{ github.event.action == 'labeled' && github.event.label.name != 'ci:emulator' && '-other-label' || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   android:
     name: android (${{ matrix.abi }})
+    # A run started by adding a label builds only for ci:emulator; any other
+    # label leaves the pull request's earlier results as they are.
+    if: github.event.action != 'labeled' || github.event.label.name == 'ci:emulator'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -124,9 +139,10 @@ jobs:
       # and the three emulator jobs held six runners on every pull request
       # that touched the paths above). The list is chosen whole: a row
       # dropped with `exclude` comes back as a job of its own from its
-      # `include` entry (build.yml's gate says how).
+      # `include` entry (build.yml's gate says how). A pull request labelled
+      # `ci:emulator` builds both, as main does, for the emulator jobs.
       matrix:
-        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"abi":"arm64-v8a","triplet":"arm64-android"}]' || '[{"abi":"arm64-v8a","triplet":"arm64-android"},{"abi":"x86_64","triplet":"x64-android"}]') }}
+        include: ${{ fromJSON((github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci:emulator')) && '[{"abi":"arm64-v8a","triplet":"arm64-android"}]' || '[{"abi":"arm64-v8a","triplet":"arm64-android"},{"abi":"x86_64","triplet":"x64-android"}]') }}
     env:
       ABI: ${{ matrix.abi }}
       TRIPLET: ${{ matrix.triplet }}
@@ -655,8 +671,9 @@ jobs:
   emulator:
     name: android emulator (${{ matrix.label }})
     needs: android
-    # It runs the x86_64 APK, which only main builds (see the android job).
-    if: github.event_name != 'pull_request'
+    # It runs the x86_64 APK, which main builds, and a pull request labelled
+    # ci:emulator (see the android job).
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:emulator')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -719,8 +736,10 @@ jobs:
   emulator-mobilepc:
     name: android emulator (MobilePC, second display)
     needs: android
-    # Not on a pull request: it runs the x86_64 APK, which only main builds.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    # It runs the x86_64 APK, which main builds, and a pull request labelled
+    # ci:emulator. Not after a run whose android job was skipped (a label
+    # other than ci:emulator added): there is no APK to download.
+    if: ${{ !cancelled() && needs.android.result != 'skipped' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:emulator')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
