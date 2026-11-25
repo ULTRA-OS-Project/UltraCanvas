@@ -20,7 +20,7 @@ pointer and the keys into the core's commands. The design is
 |---|---|---|
 | `PptxPresentation` (`UCPresentation`) | The deck: slides of shapes in EMU, masters and layouts, transitions, the pictures' bytes | `include/UltraCanvasPresentationPptx.h` |
 | `UCSlideDeckEditor` | The editing core: the current slide, the selection, every change as a command with undo and redo, hit testing, handles, snapping | `include/UltraCanvasSlideDeckEditor.h`, `core/UltraCanvasSlideDeckEditor.cpp` |
-| `UltraCanvasSlideEdit` | The element: the slide strip, the slide, the selection's handles, dragging, the keys, a simple full-screen show | `include/UltraCanvasSlideEdit.h`, `core/UltraCanvasSlideEdit.cpp` |
+| `UltraCanvasSlideEdit` | The element: the slide strip, the slide, the selection's handles, dragging, the keys | `include/UltraCanvasSlideEdit.h`, `core/UltraCanvasSlideEdit.cpp` |
 | `DrawPptxSlide` | A slide on any render context, into a rectangle; prompt text for empty placeholders | `include/UltraCanvasPptxSlideRender.h` |
 | `PresentationPrintPages` | A page per slide for PDF and printers | `include/UltraCanvasPresentationPrint.h` |
 
@@ -91,13 +91,12 @@ button is let go. Empty placeholders show their prompt ("Click to add title")
 and a dashed outline. `onContextMenu` reports a right-click in the strip or on
 the slide, for a host's menu. `SlideRect()` and `EmuPerPixel()` say where the
 slide is drawn, for a host that lays its own editor over a shape - UltraOffice
-edits a shape's text in a text area placed there.
+edits a shape's text in a rich text editor placed there (below).
 
-`StartShow(fromSlide)` turns the element into a simple show: each slide as
-large as the element on black, the hidden ones left out, a click or the
-arrows moving on, Escape ending it (`onShowEnd`). The host puts it in a
-full-screen window of its own; transitions come with the show player of
-Phase 4.
+The show is `UltraCanvasSlideShowPlayer`
+([UltraCanvasSlideShowPlayer.md](UltraCanvasSlideShowPlayer.md)): the slides'
+transitions, auto-advance, the presenter view on a second monitor
+(`StartSlideShow(deck, fromSlide)`).
 
 ## Drawing and print
 
@@ -146,8 +145,7 @@ row inserted under the header takes the body rows' look.
 
 - Grouping, alignment and distribution commands, guides of one's own.
 - Merging and splitting table cells, resizing a table's columns by dragging.
-- The show plays no transitions or animations (`UltraCanvasSlideShowPlayer`
-  does).
+- Animations of single shapes in the show (the slides' transitions play).
 
 ## Tests
 

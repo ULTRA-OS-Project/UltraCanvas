@@ -30,3 +30,7 @@
   translations, from the Presentation base set and UltraOffice's catalogue.
 
   Covered by `SlideShowPlayerTest`.
+- `UltraCanvasSlideEdit`'s own show mode (`StartShow`, `StopShow`,
+  `onShowEnd`) is gone: the player plays the deck. UltraOffice presents
+  through `StartSlideShow`, and picks each slide's transition in its Slide
+  show tab.

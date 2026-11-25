@@ -8,6 +8,8 @@
 // zoom (the rich in-place editor comes with Phase 4). The show runs full
 // screen in a window of its own; PDF and print draw the same slides.
 //
+// Version: 0.4.0 - the show is UltraCanvasSlideShowPlayer (transitions, the presenter view); a
+//                  transition picker
 // Version: 0.3.0 - formatted text in place (the rich editor), a Text tab, tables (insert, cells, rows,
 //                  columns)
 // Version: 0.2.0 - editing: UltraCanvasSlideEdit, text in place, the show, PDF and print
@@ -28,6 +30,7 @@
 #include "UltraCanvasPresentationPptx.h"
 #include "UltraCanvasPresentationPrint.h"
 #include "UltraCanvasSlideEdit.h"
+#include "UltraCanvasSlideShowPlayer.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
@@ -103,7 +106,10 @@ public:
     }
 
     ~PresentationHost() override {
-        if (showWindow_) showWindow_->Close();
+        if (show_) {
+            show_->onEnd = nullptr;   // nothing may come back to this host
+            if (show_->player) show_->player->Stop();
+        }
     }
 
     OfficeKind GetKind() const override { return OfficeKind::Presentation; }
@@ -207,7 +213,9 @@ private:
     UltraCanvasButton* strike_ = nullptr;
     int lastCellRow_ = -1, lastCellCol_ = -1;   // the table cell edited last
     std::shared_ptr<UltraCanvasDropdown> layouts_;
-    std::shared_ptr<UltraCanvasWindow> showWindow_;
+    std::shared_ptr<UltraCanvasDropdown> transition_;
+    bool syncing_ = false;   // the tools are being set from the deck, not by a person
+    std::shared_ptr<SlideShowWindows> show_;
 
     UCSlideDeckEditor& Editor() { return edit_->Editor(); }
 
@@ -620,6 +628,36 @@ private:
                 [this]() { Present(0); });
         AddTool(*bar, "slides-show-here", Tr("From this slide"), "", Tr("Show the slides full screen, from this one"),
                 [this]() { Present(std::max(0, Editor().GetCurrentSlide())); });
+        bar->AddSeparator();
+        // How this slide comes on in the show.
+        transition_ = bar->AddDropdownButton("slides-transition", "",
+            {Tr("No transition"), Tr("Fade"), Tr("Push"), Tr("Wipe"), Tr("Split"), Tr("Cover"), Tr("Zoom")}, nullptr);
+        transition_->SetTooltip(Tr("How this slide comes on in the show"));
+        transition_->onSelectionChanged = [this](int index, const DropdownItem&) {
+            if (index < 0 || syncing_) return;
+            const auto kind = static_cast<PptxTransitionKind>(index);
+            const PptxSlide* slide = Editor().CurrentSlide();
+            if (!slide || slide->transition.kind == kind) return;
+            Editor().ChangeSlide("Transition", [kind](PptxSlide& s) {
+                s.transition.kind = kind;
+                if (s.transition.durationSec <= 0) s.transition.durationSec = 0.7;
+            });
+            edit_->SetFocus(true);
+        };
+        AddTool(*bar, "slides-transition-all", Tr("Apply to all slides"), "", Tr("Every slide comes on as this one does"), [this]() {
+            const PptxSlide* slide = Editor().CurrentSlide();
+            if (!slide) return;
+            const PptxTransition transition = slide->transition;
+            const int current = Editor().GetCurrentSlide();
+            // One step per slide changed, the last one shown again.
+            for (int i = 0; i < Editor().GetSlideCount(); ++i) {
+                if (i == current) continue;
+                Editor().SetCurrentSlide(i);
+                Editor().ChangeSlide("Transition", [transition](PptxSlide& s) { s.transition = transition; });
+            }
+            Editor().SetCurrentSlide(current);
+            edit_->SetFocus(true);
+        });
         tabs_.push_back({Tr("Slide show"), bar});
     }
 
@@ -647,43 +685,23 @@ private:
 
     // ===== THE SHOW =====
 
-    // The slides full screen, in a window of their own, the deck shared.
+    // The show: the player full screen with the slides' transitions, and on
+    // a second monitor the presenter view (the next slide, the notes, the
+    // time) - StartSlideShow. The deck is shared, read only.
     void Present(int fromSlide) {
         CloseText(true);
-        if (showWindow_) return;
-        auto window = std::make_shared<UltraCanvasWindow>();
-        WindowConfig config;
-        config.title = Tr("Slide show");
-        config.width = 1280;
-        config.height = 720;
-        config.deleteOnClose = false;
-        if (!window->Create(config)) return;
-        auto player = CreateSlideEdit("office-slide-show", 0, 0, 1280, 720);
-        player->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Pct(100));
-        player->SetShowSlideStrip(false);
-        player->SetDeck(Editor().GetDeck());
-        window->AddChild(player);
-        UltraCanvasWindow* raw = window.get();
-        player->onShowEnd = [this, raw]() {
-            // Closed after the key or click that ended it is handled.
+        if (show_) return;
+        show_ = StartSlideShow(Editor().GetDeck(), fromSlide, true);
+        if (!show_) return;
+        SlideShowWindows* raw = show_.get();
+        show_->onEnd = [this, raw]() {
+            // Let go once the event that ended it is over.
             if (auto* app = UltraCanvasApplication::GetInstance())
                 app->StartTimer(1, false, [this, raw](TimerId) {
-                    if (showWindow_.get() == raw) {
-                        showWindow_->Close();
-                        showWindow_.reset();
-                    }
+                    if (show_.get() == raw) show_.reset();
                     edit_->SetFocus(true);
                 });
         };
-        window->onWindowClosed = [this, raw]() {
-            if (showWindow_.get() == raw)
-                if (auto* app = UltraCanvasApplication::GetInstance())
-                    app->StartTimer(1, false, [this, raw](TimerId) { if (showWindow_.get() == raw) showWindow_.reset(); });
-        };
-        showWindow_ = window;
-        window->Show();
-        window->SetFullscreen(true);
-        player->StartShow(fromSlide);
     }
 
     void Sync() {
@@ -692,6 +710,12 @@ private:
         if (hidden_) {
             const PptxSlide* slide = editor.CurrentSlide();
             hidden_->SetPressed(slide && slide->hidden);
+        }
+        if (transition_) {
+            const PptxSlide* slide = editor.CurrentSlide();
+            syncing_ = true;
+            transition_->SetSelectedIndex(slide ? static_cast<int>(slide->transition.kind) : -1, false);
+            syncing_ = false;
         }
         // The deck's layouts, by name, for a new slide.
         if (layouts_) {

@@ -56,8 +56,11 @@ The command tabs:
   turned with their handles, snapping to the slide and to each other;
   double-click a shape (or Enter) to edit its text in place, formatted, with
   bullets and numbering - a table's cell likewise - Ctrl+Enter or a click
-  elsewhere to keep it, Escape to drop it. The show runs full screen in
-  a window of its own: a click or the arrows move on, Escape ends it.
+  elsewhere to keep it, Escape to drop it. The show runs full screen
+  with the slides' transitions and timings; on a second monitor the
+  presenter view shows the next slide, the notes and the time. A click or
+  the arrows move on, a number and Enter jump, B or W blank the screen,
+  Escape ends it.
 
 The **Start** tab opens a file, lists the recent ones and starts a new
 document or spreadsheet.

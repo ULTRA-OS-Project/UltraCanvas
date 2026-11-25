@@ -1,6 +1,7 @@
 // core/UltraCanvasSlideEdit.cpp
 // The presentation editor element (include/UltraCanvasSlideEdit.h).
 //
+// Version: 1.3.0 - the show mode is gone: UltraCanvasSlideShowPlayer plays the deck
 // Version: 1.2.0 - a double-click on a table asks for its cell (onEditTableCell)
 // Version: 1.1.0 - SetEditingShape: the shape's text left out while a host edits it in place
 // Version: 1.0.0
@@ -245,93 +246,9 @@ void UltraCanvasSlideEdit::EnsureThumbVisible(int index) {
 
 // ===== DRAWING =====
 
-// ===== THE SHOW =====
-
-void UltraCanvasSlideEdit::StartShow(int fromSlide) {
-    showing_ = true;
-    drag_ = Drag::NoDrag;
-    preview_.reset();
-    const auto& slides = editor_.GetDeck()->slides;
-    showSlide_ = -1;
-    for (int i = std::max(0, fromSlide); i < static_cast<int>(slides.size()); ++i)
-        if (!slides[static_cast<size_t>(i)].hidden) { showSlide_ = i; break; }
-    SetFocus(true);
-    RequestRedraw();
-}
-
-void UltraCanvasSlideEdit::StopShow() {
-    if (!showing_) return;
-    showing_ = false;
-    RequestRedraw();
-    if (onShowEnd) onShowEnd();
-}
-
-void UltraCanvasSlideEdit::ShowStep(int direction) {
-    const auto& slides = editor_.GetDeck()->slides;
-    const int count = static_cast<int>(slides.size());
-    if (showSlide_ < 0) {   // the end screen: on ends the show, back goes to the last slide
-        if (direction > 0) { StopShow(); return; }
-        for (int i = count - 1; i >= 0; --i)
-            if (!slides[static_cast<size_t>(i)].hidden) { showSlide_ = i; break; }
-        RequestRedraw();
-        return;
-    }
-    for (int i = showSlide_ + direction; i >= 0 && i < count; i += direction) {
-        if (!slides[static_cast<size_t>(i)].hidden) { showSlide_ = i; RequestRedraw(); return; }
-    }
-    if (direction > 0) { showSlide_ = -1; RequestRedraw(); }
-}
-
-void UltraCanvasSlideEdit::DrawShow(IRenderContext* ctx) {
-    const Rect2Df b = GetLocalBounds();
-    ctx->SetFillPaint(Colors::Black);
-    ctx->FillRectangle(Rect2Dd(0, 0, b.width, b.height));
-    const auto& deck = editor_.GetDeck();
-    if (showSlide_ >= 0 && showSlide_ < static_cast<int>(deck->slides.size())) {
-        const double scale = std::min(b.width / static_cast<double>(editor_.SlideWidth()),
-                                      b.height / static_cast<double>(editor_.SlideHeight()));
-        const double w = static_cast<double>(editor_.SlideWidth()) * scale;
-        const double h = static_cast<double>(editor_.SlideHeight()) * scale;
-        DrawPptxSlide(ctx, *deck, deck->slides[static_cast<size_t>(showSlide_)],
-                      Rect2Dd((b.width - w) / 2.0, (b.height - h) / 2.0, w, h));
-        return;
-    }
-    FontStyle font;
-    font.fontSize = 14;
-    ctx->SetFontStyle(font);
-    ctx->SetTextPaint(Color(200, 200, 200));
-    ctx->DrawText(Tr("End of the slide show. Click to leave."), Point2Dd(24, 24));
-}
-
-bool UltraCanvasSlideEdit::OnShowEvent(const UCEvent& event) {
-    switch (event.type) {
-        case UCEventType::MouseDown:
-            ShowStep(event.button == UCMouseButton::Right ? -1 : 1);
-            return true;
-        case UCEventType::MouseWheel:
-            ShowStep(event.wheelDelta > 0 ? -1 : 1);
-            return true;
-        case UCEventType::KeyDown:
-            switch (event.virtualKey) {
-                case UCKeys::Escape: StopShow(); return true;
-                case UCKeys::Right: case UCKeys::Down: case UCKeys::PageDown: case UCKeys::Space: case UCKeys::Return:
-                case UCKeys::N:
-                    ShowStep(1); return true;
-                case UCKeys::Left: case UCKeys::Up: case UCKeys::PageUp: case UCKeys::Backspace: case UCKeys::P:
-                    ShowStep(-1); return true;
-                case UCKeys::Home: StartShow(0); return true;
-                case UCKeys::End: showSlide_ = -1; ShowStep(-1); return true;
-                default: return true;   // nothing else edits during the show
-            }
-        default:
-            return false;
-    }
-}
-
 void UltraCanvasSlideEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     (void)dirtyRect;
     if (!IsVisible()) return;
-    if (showing_) { DrawShow(ctx); return; }
     const Rect2Df b = GetLocalBounds();
     ctx->PushState();
     ctx->SetFillPaint(kWorkspace);
@@ -516,7 +433,6 @@ void UltraCanvasSlideEdit::DrawSelection(IRenderContext* ctx, const PptxSlide& s
 // ===== EVENTS =====
 
 bool UltraCanvasSlideEdit::OnEvent(const UCEvent& event) {
-    if (showing_) return OnShowEvent(event);
     switch (event.type) {
         case UCEventType::MouseDown: return OnPress(event);
         case UCEventType::MouseMove: return OnMove(event);

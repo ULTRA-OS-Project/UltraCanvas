@@ -29,6 +29,7 @@
 //   edit->SetDeck(deck);
 //   edit->onEditText = [edit](int shape) { /* ask for the text */ edit->Editor().SetShapeText(shape, "Hello"); };
 //
+// Version: 1.3.0 - the show mode is gone: UltraCanvasSlideShowPlayer plays the deck
 // Version: 1.1.0 - SetEditingShape: a shape's text left to a host's in-place editor
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -67,19 +68,6 @@ public:
     // Shows slide `index` and scrolls the strip to it.
     void GoToSlide(int index);
 
-    // ===== THE SHOW =====
-    // The slides one after another, each as large as the element, on black,
-    // the hidden ones left out, and a black end screen after the last: a
-    // click, Space, Enter, the right and down arrows and Page Down go on;
-    // Backspace, the left and up arrows and Page Up go back; Home and End;
-    // Escape ends it (onShowEnd). The host puts the element in a window of
-    // its own, full screen (Phase 4 brings transitions).
-    void StartShow(int fromSlide = 0);
-    void StopShow();
-    bool IsShowing() const { return showing_; }
-    int GetShowSlide() const { return showSlide_; }
-    std::function<void()> onShowEnd;
-
     // ===== CALLBACKS =====
     std::function<void()> onChange;              // the deck changed (and undo / redo)
     std::function<void()> onSelectionChange;     // the slide or the selection changed
@@ -114,11 +102,6 @@ private:
 
     int editingShape_ = -1;
     int editingCellShape_ = -1, editingCellRow_ = -1, editingCellCol_ = -1;
-    bool showing_ = false;
-    int showSlide_ = -1;             // -1 in the show: the end screen
-    void ShowStep(int direction);
-    void DrawShow(IRenderContext* ctx);
-    bool OnShowEvent(const UCEvent& event);
 
     UCSlideDeckEditor editor_;
     bool showStrip_ = true;

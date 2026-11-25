@@ -29,7 +29,9 @@
   deleted; a shape's text edited in place, formatted (a Text tab); tables
   inserted, their cells typed into, rows and columns added and deleted;
   every change undone. They are
-  presented full screen, exported as PDF, printed and saved in place.
+  presented full screen with their transitions and timings (a presenter
+  view with the next slide, the notes and the time on a second monitor),
+  exported as PDF, printed and saved in place.
 - New files are saved as Office Open XML (.docx, .xlsx) by default, or
   OpenDocument (*File > New files are saved as*). Protected files ask for
   their password and are saved protected again.
