@@ -1,5 +1,8 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.12.0 - a press on the frame (title bar, border) or a move / size loop closes the menus and
+//                   other popups that close on a click outside; WM_MOVE: the popups' own windows follow
+//                   the window (they stayed where it had been), GetConfig / onWindowMove learn the move
 // Version: 1.11.0 - the destructor releases the native half, so a window never closed
 //                   does not leave its HWND, DC and icons behind
 // Version: 1.10.0 - SetTransientParent makes the parent the window's owner, so a dialog
@@ -570,6 +573,45 @@ namespace UltraCanvas {
                     HandleResizeEventWindows(w_new, h_new);
                 }
                 return 0;
+            }
+
+            case WM_MOVE: {
+                // The window moved (dragged by its title bar, snapped, placed
+                // by the program). A popup in its own window - a menu, a
+                // dropdown's list - is a separate top-level window, which
+                // Windows leaves where it was: put it back beside this one.
+                // At once, not at the next frame: while the user drags,
+                // Windows runs its own loop and no frame is drawn until the
+                // button is released. The popups' own windows are placed by
+                // SetWindowPosition, which keeps their config itself.
+                if (config_.type != WindowType::Popup && config_.type != WindowType::Tooltip && !IsIconic(h)) {
+                    RECT r;
+                    if (GetWindowRect(h, &r)) {
+                        config_.x = r.left;
+                        config_.y = r.top;
+                    }
+                    MovePopupHostsWithWindow();
+                    if (onWindowMove) onWindowMove(config_.x, config_.y);
+                }
+                break;
+            }
+
+            // A press on the frame - the title bar, a border, the system menu
+            // button - never reaches the elements, so it was not a click
+            // outside the open menu, which stayed open while the window was
+            // dragged away from under it. It is one: the popups that close on
+            // a click outside close now, before Windows starts the move.
+            // WM_ENTERSIZEMOVE covers a move or size begun from the keyboard
+            // (Alt+Space, Move).
+            case WM_NCLBUTTONDOWN:
+            case WM_NCRBUTTONDOWN:
+            case WM_NCMBUTTONDOWN:
+            case WM_NCXBUTTONDOWN:
+            case WM_ENTERSIZEMOVE: {
+                if (config_.type != WindowType::Popup && config_.type != WindowType::Tooltip) {
+                    ClosePopupsOnFramePress();
+                }
+                break;
             }
 
             case WM_DPICHANGED: {

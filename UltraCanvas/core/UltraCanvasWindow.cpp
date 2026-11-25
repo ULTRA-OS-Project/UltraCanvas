@@ -1,5 +1,7 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.10.0 - ClosePopupsOnFramePress (a press on the frame is a click outside the popups);
+//                  MovePopupHostsWithWindow puts the popups' windows beside a moved window at once
 // Version: 1.9.0 - a popup in its own window: its outline keeps pixels from a quarter opaque, and they are
 //                  shown at full strength in their own colour (ShowPopupOpaque) - the border round a
 //                  menu's corners no longer breaks off, washed white on Windows or dark on X11
@@ -1476,17 +1478,43 @@ namespace UltraCanvas {
             auto window = self.lock();
             auto* application = UltraCanvasApplication::GetInstance();
             if (!window || !application || application->GetFocusedWindow() != nullptr) return;
-            std::vector<UltraCanvasUIElement*> closing;
-            for (const auto& pe : window->popupElements) {
-                if (pe.host && pe.settings.closeByClickOutside && pe.element) closing.push_back(pe.element);
-            }
-            // The newest first, as clicks outside them would close them
-            for (auto it = closing.rbegin(); it != closing.rend(); ++it) {
-                bool stillOpen = false;
-                for (const auto& pe : window->popupElements) stillOpen = stillOpen || pe.element == *it;
-                if (stillOpen) window->ClosePopup(**it, ClosePopupReason::ClickOutside);
-            }
+            window->ClosePopupsClosedByClickOutside(true);
         });
+    }
+
+    void UltraCanvasWindowBase::ClosePopupsClosedByClickOutside(bool ownWindowsOnly) {
+        std::vector<UltraCanvasUIElement*> closing;
+        for (const auto& pe : popupElements) {
+            if ((pe.host || !ownWindowsOnly) && pe.settings.closeByClickOutside && pe.element) {
+                closing.push_back(pe.element);
+            }
+        }
+        // The newest first, as clicks outside them would close them; closing
+        // one can close others (a menu its submenus)
+        for (auto it = closing.rbegin(); it != closing.rend(); ++it) {
+            bool stillOpen = false;
+            for (const auto& pe : popupElements) stillOpen = stillOpen || pe.element == *it;
+            if (stillOpen) ClosePopup(**it, ClosePopupReason::ClickOutside);
+        }
+    }
+
+    void UltraCanvasWindowBase::ClosePopupsOnFramePress() {
+        if (popupElements.empty()) return;
+        ClosePopupsClosedByClickOutside(false);
+    }
+
+    void UltraCanvasWindowBase::MovePopupHostsWithWindow() {
+        bool any = false;
+        // Only the windows on screen: one not shown yet is placed when its
+        // popup has been drawn, not shown empty here
+        for (auto& pe : popupElements) {
+            if (pe.host && pe.host->IsWindowVisible()) {
+                SyncPopupHost(pe);
+                any = true;
+            }
+        }
+        // And again at the next frame, should the window still be moving
+        if (any) _needsPopupHostSync = true;
     }
 
     UltraCanvasWindowBase* UltraCanvasWindowBase::GetPopupWindow(const UltraCanvasUIElement& popup) const {

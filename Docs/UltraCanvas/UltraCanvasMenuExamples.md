@@ -344,7 +344,11 @@ drop shadow of its own - macOS and a compositing window manager give a popup
 window one - and it does not fade in: `enableAnimations` shows it in full at
 once. It closes on a click outside it, as before, and also when the focus
 leaves the application, since it would otherwise float above other programs'
-windows. In the browser and on Android, and with
+windows. A press on the window's frame - its title bar or a border, to drag or
+size it - counts as a click outside on Windows
+(`UltraCanvasWindowBase::ClosePopupsOnFramePress`), so the menu closes rather
+than staying behind while the window moves away; a popup that does not close
+on a click outside follows its window instead. In the browser and on Android, and with
 `SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
 described above.
 

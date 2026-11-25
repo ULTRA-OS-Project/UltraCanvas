@@ -1,5 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.14.0 - ClosePopupsOnFramePress: a press on the window's frame closes the popups that
+//                   close on a click outside; MovePopupHostsWithWindow for a platform's move loop
 // Version: 2.13.0 - IsOnCurrentDesktop / MoveToCurrentDesktop: a window on another virtual desktop
 //                   comes to the one in view; RaiseAndFocus does that first (X11)
 // Version: 2.12.4 - iOS: the UIKit backend in OS/iOS; tvOS, visionOS and watchOS stop with an #error
@@ -580,6 +582,13 @@ namespace UltraCanvas {
         // leaves the application.
         static void SetPopupsInOwnWindows(bool inOwnWindows);
         static bool GetPopupsInOwnWindows();
+        // The pointer was pressed on the window's frame - its title bar or a
+        // border, which the system keeps for itself - to move or size the
+        // window: a click outside every popup, so the popups that close on
+        // one (a menu, a dropdown's list) close now, before the window
+        // moves away from under them. For the platform layer, which alone
+        // sees such a press (Windows: WM_NCLBUTTONDOWN, WM_ENTERSIZEMOVE).
+        void ClosePopupsOnFramePress();
         // The window `popup` is shown in: its own, or null while it is
         // composited onto this window (or is not an open popup here)
         UltraCanvasWindowBase* GetPopupWindow(const UltraCanvasUIElement& popup) const;
@@ -757,6 +766,14 @@ namespace UltraCanvas {
         // Focus left the window: popups in their own windows that close on a
         // click outside them close once focus has left the application
         void ClosePopupsInOwnWindowsOnBlur();
+        // Closes the popups that close on a click outside them, the newest
+        // first (only those in windows of their own with `ownWindowsOnly`)
+        void ClosePopupsClosedByClickOutside(bool ownWindowsOnly);
+        // The window moved: its popups' windows are put back beside it now,
+        // not at the next frame - for a platform that moves a window in a
+        // loop of its own, where no frame is drawn until the move ends
+        // (Windows' move and size loop)
+        void MovePopupHostsWithWindow();
 
         virtual void RenderWindowBackground(IRenderContext* ctx) {
             (void)ctx;
