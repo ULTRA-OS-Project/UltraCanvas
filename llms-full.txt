@@ -81960,6 +81960,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextAreaExamples.md
 - [Usage Example](#usage-example)
 - [Advanced Features](#advanced-features)
   - [Custom Syntax Highlighting](#custom-syntax-highlighting)
+  - [Styled Ranges of a Line](#styled-ranges-of-a-line)
   - [CSS Highlighting](#css-highlighting)
   - [Constructs Spanning Lines](#constructs-spanning-lines)
   - [Single Selection](#single-selection)
@@ -82760,6 +82761,43 @@ style.tokenStyles.keywordStyle = customKeywordStyle;
 textArea->SetStyle(style);
 ```
 
+### Styled Ranges of a Line
+A subclass can draw ranges of a plain line in a style of their own - what the
+text means to it rather than to a language: the web addresses written in a
+plain-text mail, say. It overrides the protected `GetLineSpans`, which is asked
+for each line whenever that line is laid out, and answers byte ranges of the
+line (without its line end) with a `TokenStyle`. The ranges are drawn over the
+syntax colours, in PlainText mode and on the raw line being edited in Markdown
+mode. When the answer changes for text that did not (a theme change alters the
+colour), `InvalidateLineSpans()` lays every line out again.
+
+```cpp
+class LinkTextArea : public UltraCanvasTextArea {
+public:
+    using UltraCanvasTextArea::UltraCanvasTextArea;
+    using UltraCanvasTextArea::InvalidateLineSpans;   // for a theme follower
+
+protected:
+    std::vector<TextAreaLineSpan> GetLineSpans(int /*lineIndex*/,
+                                               const std::string& lineText) override {
+        std::vector<TextAreaLineSpan> spans;
+        for (std::size_t at = lineText.find("https://"); at != std::string::npos;
+             at = lineText.find("https://", at + 1)) {
+            std::size_t end = lineText.find(' ', at);
+            if (end == std::string::npos) end = lineText.size();
+            TextAreaLineSpan span;
+            span.startByte = static_cast<int>(at);
+            span.endByte = static_cast<int>(end);
+            span.style = TokenStyle(Color(0, 102, 204), false, false, /*underline=*/true);
+            spans.push_back(span);
+        }
+        return spans;
+    }
+};
+```
+
+UltraMail's plain-text message body draws its links this way.
+
 ### CSS Highlighting
 CSS (`.css`, language name `"CSS"`) is not highlighted from keyword lists: a
 word's colour depends on where it sits, so `color` is a property before a `:`
@@ -83134,6 +83172,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.19.0** (2026-11-25): `GetLineSpans()` (protected, virtual) and `TextAreaLineSpan` - a subclass styles ranges of a plain line; `InvalidateLineSpans()`
 - **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks, with each one's name and code in a tooltip
 - **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`
 - **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
@@ -120292,6 +120331,60 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/german-catalogue.md
+==============================================================================
+
+- **UltraMail in German.** A first German catalogue
+  (`media/locale/de/UltraMail.json`, 606 entries, marked as a machine draft
+  awaiting review): the menus, settings, dialogs, the warning strip, the
+  "Do you really want to open the link?" question and every reason the
+  scam/phishing scan gives. Words UltraMail shares with the other programs come
+  from the standard and Communication sets as before.
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/plain-text-links-look-like-links.md
+==============================================================================
+
+- **The links of a plain-text mail look like links.** A web address, a
+  `mailto:` or a mail address written in a plain-text message (or an HTML
+  message read as plain text) opened in the browser when clicked, but was
+  drawn like the text around it, so nothing said it could be clicked - a
+  Microsoft account's "verify this alias" mail showed its links as grey
+  text. They are now drawn in the look's accent colour and underlined, the
+  colour following a change of the look; what is drawn as a link is exactly
+  what a click opens (`PlainLinkSpans`, the rules `PlainLinkAt` reads).
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/scan-reasons-translated.md
+==============================================================================
+
+- **The scan's reasons are in the reader's language.** Every reason the
+  scam/phishing scan gives - the warning strip's list, the sender badge's
+  tooltip, the "Do you really want to open the link?" question - and the
+  sender's verdict line ("New sender", "In your address book", ...) go through
+  `Tr` / `TrF`, so a UltraMail catalogue translates them; a reason that lists
+  several signs joins them with the language's own separators. The engine
+  links UltraLocalisation (its home is the shared core, so engine and
+  application share one loaded set). A message that warns has its stored
+  reasons written again in the current language when it is shown, from a
+  fresh scan that came to the same findings, so a change of language does not
+  leave old mail in the old one.
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/suspicious-link-asks-first.md
+==============================================================================
+
+- **A link of a suspicious message asks before it opens.** While the warning
+  strip warns of the message shown (a scam, phishing, parts that do not add
+  up), a click on one of its web links - in formatted or plain-text mail -
+  asks "Do you really want to open the link?" and says why: the strip's
+  verdict, where this link goes when that is not the sender's domain, the
+  domain mismatch and the scan's reasons. "Do not open" is the answer Return
+  and Escape give. A sender the reader only blocked, and the caution every
+  mail about crypto gets, do not ask; a `mailto:` link opens the composer as
+  before.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
