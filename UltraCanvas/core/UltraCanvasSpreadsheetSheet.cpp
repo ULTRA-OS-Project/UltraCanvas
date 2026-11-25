@@ -1586,8 +1586,8 @@ size_t ReferenceEnd(const std::string& formula, size_t i) {
         std::string name;
         size_t sep = 0;
         if (ReadSheetQualifier(formula, k, name, sep)) k = sep + 1;
-        const size_t far = addressEnd(k);
-        if (far > k) end = far;
+        const size_t spillEnd = addressEnd(k);
+        if (spillEnd > k) end = spillEnd;
     }
     return end;
 }

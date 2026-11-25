@@ -227,17 +227,17 @@ std::vector<SpreadsheetChartChoice> MakeChoices() {
 // The handle of `box` under `x`, `y`, within the slide editor's reach.
 SlideHandle HandleOf(const Rect2Di& box, int x, int y) {
     const double reach = UCSlideDeckEditor::kHandleReach;
-    auto near = [&](double hx, double hy) { return std::fabs(x - hx) <= reach && std::fabs(y - hy) <= reach; };
+    auto onHandle = [&](double hx, double hy) { return std::fabs(x - hx) <= reach && std::fabs(y - hy) <= reach; };
     const double l = box.x, r = box.x + box.width, t = box.y, b = box.y + box.height;
     const double cx = (l + r) / 2.0, cy = (t + b) / 2.0;
-    if (near(l, t)) return SlideHandle::TopLeft;
-    if (near(r, t)) return SlideHandle::TopRight;
-    if (near(r, b)) return SlideHandle::BottomRight;
-    if (near(l, b)) return SlideHandle::BottomLeft;
-    if (near(cx, t)) return SlideHandle::Top;
-    if (near(r, cy)) return SlideHandle::Right;
-    if (near(cx, b)) return SlideHandle::Bottom;
-    if (near(l, cy)) return SlideHandle::Left;
+    if (onHandle(l, t)) return SlideHandle::TopLeft;
+    if (onHandle(r, t)) return SlideHandle::TopRight;
+    if (onHandle(r, b)) return SlideHandle::BottomRight;
+    if (onHandle(l, b)) return SlideHandle::BottomLeft;
+    if (onHandle(cx, t)) return SlideHandle::Top;
+    if (onHandle(r, cy)) return SlideHandle::Right;
+    if (onHandle(cx, b)) return SlideHandle::Bottom;
+    if (onHandle(l, cy)) return SlideHandle::Left;
     return SlideHandle::NoHandle;
 }
 
