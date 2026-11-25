@@ -5593,6 +5593,59 @@ add_test(NAME SpreadsheetWorkbookRoundTripTest COMMAND SpreadsheetWorkbookRoundT
 set_tests_properties(SpreadsheetWorkbookRoundTripTest PROPERTIES TIMEOUT 300)
 message(STATUS "    Test registered: SpreadsheetWorkbookRoundTripTest")
 
+# ===== SPREADSHEET CHART TESTS =====
+# Charts on a sheet (UltraCanvasSpreadsheetChart.h): made from a block of
+# cells, read again when the cells change, and kept by .xlsx (a drawing and
+# chart parts with c:f references) and .ods (chart objects in table:shapes) -
+# through LibreOffice's conversion too where soffice is installed. The draw
+# test paints the grid on an off-screen raster: the chart where it stands,
+# scrolled, selected, moved, resized, deleted and undone, and printed. No
+# window.
+message(STATUS "  Building SpreadsheetChartRoundTripTest...")
+add_executable(SpreadsheetChartRoundTripTest ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetChartRoundTripTest.cpp)
+target_include_directories(SpreadsheetChartRoundTripTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetChartRoundTripTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetChartRoundTripTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetChartRoundTripTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetChartRoundTripTest COMMAND SpreadsheetChartRoundTripTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_tests_properties(SpreadsheetChartRoundTripTest PROPERTIES TIMEOUT 300)
+message(STATUS "    Test registered: SpreadsheetChartRoundTripTest")
+message(STATUS "  Building SpreadsheetChartDrawTest...")
+add_executable(SpreadsheetChartDrawTest ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetChartDrawTest.cpp)
+target_include_directories(SpreadsheetChartDrawTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetChartDrawTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetChartDrawTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetChartDrawTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetChartDrawTest COMMAND SpreadsheetChartDrawTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_tests_properties(SpreadsheetChartDrawTest PROPERTIES TIMEOUT 300)
+message(STATUS "    Test registered: SpreadsheetChartDrawTest")
+# ===== SPREADSHEET RULES TEST =====
+# Conditional formats (value, formula, text, top, duplicate rules, colour
+# scales, data bars), validation (Custom formulas, lists taken from cells),
+# comments and links: evaluated, drawn by PaintCell on an off-screen page, set
+# through the grid's calls, and saved as .xlsx and .ods and loaded back -
+# where soffice is installed, also through LibreOffice's conversion. No window.
+message(STATUS "  Building SpreadsheetRulesTest...")
+add_executable(SpreadsheetRulesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetRulesTest.cpp
+)
+target_include_directories(SpreadsheetRulesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetRulesTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetRulesTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetRulesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetRulesTest COMMAND SpreadsheetRulesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_tests_properties(SpreadsheetRulesTest PROPERTIES TIMEOUT 300)
+message(STATUS "    Test registered: SpreadsheetRulesTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

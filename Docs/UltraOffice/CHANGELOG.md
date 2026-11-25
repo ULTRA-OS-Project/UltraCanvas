@@ -1,3 +1,20 @@
+#### 2026-11-25 *0.2.0*
+- **Spreadsheet charts.** Charts of the selection - columns and bars (side
+  by side or stacked), lines, areas, pies, doughnuts, scatter and radar
+  charts - stand over the cells and follow them as they change. They are
+  moved and resized with handles and deleted with Delete; a double-click
+  changes their type, title and legend; every change can be undone. They
+  are kept in .xlsx and .ods, and printed. A new *Insert* command tab holds
+  Chart, Chart properties and Delete chart.
+- **Conditional formatting and data validation** (*Data*): rules over the
+  selection in the grid's own dialogs, colour scales and data bars, drawn
+  on screen, on paper and in the PDF; every rule change can be undone.
+- **Comments and links** (*Review*, a new command tab): a comment is marked
+  by a red corner and shown on hover; Ctrl+click opens a link.
+- Conditional formats, validation, comments and links are kept in .xlsx and
+  .ods.
+- Opening a spreadsheet from the command line no longer crashes.
+
 #### 2026-11-25 *0.1.0*
 - **UltraOffice: documents, spreadsheets and presentations in one window.**
   Every open file is a tab, marked with its kind's icon; the Start tab

@@ -2,6 +2,7 @@
   "@language": "en",
   "@inherited": [
     "3D",
+    "Allow",
     "Audio",
     "Cancel",
     "Close",
@@ -82,7 +83,6 @@
   "Adventure": "Adventure",
   "AI assistants": "AI assistants",
   "all": "all",
-  "Allow": "Allow",
   "Analog clock": "Analog clock",
   "Analog clock with the date": "Analog clock with the date",
   "Applications": "Applications",
