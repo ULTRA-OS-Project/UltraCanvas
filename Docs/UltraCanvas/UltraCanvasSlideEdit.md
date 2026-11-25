@@ -51,7 +51,9 @@ a step: `change` edits a copy of the slide.
 | Slides | `NewSlide(layout)`, `InsertSlide`, `DuplicateSlide`, `DeleteSlide`, `MoveSlide`, `SetSlideHidden`, `SetSlideNotes`, `SetCurrentSlide` |
 | Selection | `Select`, `SelectAll`, `ClearSelection`, `ToggleSelected`, `SelectionBox` |
 | Shapes | `MoveSelection`, `NudgeSelection`, `SetShapeBox`, `SetSelectionBox`, `SetShapeRotation`, `DeleteSelection`, `DuplicateSelection`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `SetShapeText` |
-| Inserting | `InsertTextBox`, `InsertGeometry` (a preset outline), `InsertPicture` (bytes, kept in `deck.pictures`), `InsertShape` |
+| Inserting | `InsertTextBox`, `InsertGeometry` (a preset outline), `InsertPicture` (bytes, kept in `deck.pictures`), `InsertShape`, `InsertTable` |
+| Text | `SetShapeText` (plain lines), `FormatSelectedText` (every run and paragraph of the selected shapes, table cells too), `AllSelectedText` (a toggle's state) |
+| Tables | `TableCellBox`, `TableCellAt`, `InsertTableRow`, `DeleteTableRow`, `InsertTableColumn`, `DeleteTableColumn` |
 | Clipboard | `CopySelection`, `CutSelection`, `Paste` (in place, or offset on the slide the shapes came from) |
 | Finding | `ShapeAt` (a turned shape in its own frame), `ShapesInside`, `HandleAt`, `Snap` |
 | History | `Undo`, `Redo`, `UndoDescription`, `IsModified`, `onChange`, `onSelectionChange` |
@@ -113,19 +115,47 @@ background; `PptxSlideDrawOptions` adds prompt text for empty placeholders
 and leaves one shape's text out while a host edits it. A picture is decoded
 once and drawn from then on.
 
+## Text and tables in place
+
+A shape's text - or a table cell's - is edited in an `UltraCanvasRichTextEdit`
+the host lays over it, at the slide's zoom (`SlideRect()`, `EmuPerPixel()`),
+transparent, with the shape's text left out meanwhile (`SetEditingShape`,
+`SetEditingCell`). A double-click asks for it: `onEditText(shape)`, or
+`onEditTableCell(shape, row, col)` on a table. The text goes there and back
+through
+
+```cpp
+UCRichDocument rich = PptxParagraphsToRichDocument(shape.paragraphs);
+// ... edited ...
+shape.paragraphs = PptxParagraphsFromRichDocument(rich, shape.paragraphs);
+```
+
+The document keeps each run's look (bold, italic, underline, strike, super-
+and subscript, typeface, size, colour, highlight, link), line breaks,
+alignment, bullets at their levels (a Wingdings square as the square it is:
+`PptxBulletText`) and numbering (PowerPoint's `alphaLcParenR` as lower
+letters with a parenthesis, the start number on a list's first item). What it
+does not hold - the bullet's typeface, indents, spacing, capitals - comes back
+from the paragraphs before the edit. UltraOffice commits the edit as one step
+on a click elsewhere or Ctrl+Enter, and drops it on Escape.
+
+`InsertTable(box, rows, columns)` makes a table in PowerPoint's banded look; a
+row inserted under the header takes the body rows' look.
+
 ## Not yet
 
-- Text is edited as plain lines (the host's in-place editor); the rich
-  in-place editor through `UltraCanvasRichTextEdit` comes with Phase 4.
-- Tables are drawn and moved, not edited cell by cell.
 - Grouping, alignment and distribution commands, guides of one's own.
-- The show plays no transitions or animations.
+- Merging and splitting table cells, resizing a table's columns by dragging.
+- The show plays no transitions or animations (`UltraCanvasSlideShowPlayer`
+  does).
 
 ## Tests
 
 - `Tests/SlideDeckEditorTest.cpp` - every command with undo and redo, the
   selection put back, nudges joined, hit testing of turned shapes, handles,
-  snapping.
+  snapping; the text's round trip through the rich document (looks, line
+  breaks, bullets, numbering, an empty paragraph's look); formatting the
+  selected shapes; tables (cells, rows, columns, undo).
 - `Tests/SlideEditElementTest.cpp` - the element driven by pointer and key
   events: a click selects, a drag moves (one step, snapping to the slide's
   centre), a corner with Shift keeps the proportions, the turning handle

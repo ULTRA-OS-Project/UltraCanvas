@@ -44,13 +44,19 @@ The command tabs:
   layouts, duplicate, delete and hide a slide, present. *Insert*: text box,
   drawn shape (rectangle, rounded rectangle, ellipse, triangle, arrow, star),
   picture. *Arrange*: bring to front, forward, backward, to back; duplicate
-  and delete shapes. *Slide show*: from the beginning or from this slide.
+  and delete shapes. *Text*: bold, italic, underline, strikethrough, font,
+  size, larger and smaller, colour, alignment, bullets, numbering, list
+  level - on the text being edited, or all the text of the selected shapes.
+  *Table*: insert a table, rows above and below, columns left and right,
+  delete a row or a column. *Slide show*: from the beginning or from this
+  slide.
 
   The slide strip shows every slide (drag one to move it); on the slide a
   click selects a shape, a band several, and they are moved, resized and
   turned with their handles, snapping to the slide and to each other;
-  double-click a shape (or Enter) to edit its text in place, Ctrl+Enter or a
-  click elsewhere to keep it, Escape to drop it. The show runs full screen in
+  double-click a shape (or Enter) to edit its text in place, formatted, with
+  bullets and numbering - a table's cell likewise - Ctrl+Enter or a click
+  elsewhere to keep it, Escape to drop it. The show runs full screen in
   a window of its own: a click or the arrows move on, Escape ends it.
 
 The **Start** tab opens a file, lists the recent ones and starts a new

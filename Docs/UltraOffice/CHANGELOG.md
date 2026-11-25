@@ -13,8 +13,8 @@
     format, decimals), Data (sort, filter, fill, SUM), Page (print area,
     landscape, fit to width, gridlines, headings), View (freeze panes);
   - presentations: Home (new slide, layouts, duplicate, delete, hide,
-    present), Insert (text box, shape, picture), Arrange (order, duplicate,
-    delete), Slide show;
+    present), Insert (text box, shape, picture), Text (formatting), Table,
+    Arrange (order, duplicate, delete), Slide show;
 - **Documents** are edited in the WYSIWYG element, in page view: .odt and
   .docx read and written, .doc, Markdown and LaTeX read. Export as PDF and
   Print.
@@ -26,7 +26,9 @@
   editor: the slide strip, new slides from the deck's layouts, duplicate,
   move, hide and delete; text boxes, drawn shapes and pictures; shapes
   selected, moved, resized and turned with snapping, ordered, duplicated and
-  deleted; a shape's text edited in place; every change undone. They are
+  deleted; a shape's text edited in place, formatted (a Text tab); tables
+  inserted, their cells typed into, rows and columns added and deleted;
+  every change undone. They are
   presented full screen, exported as PDF, printed and saved in place.
 - New files are saved as Office Open XML (.docx, .xlsx) by default, or
   OpenDocument (*File > New files are saved as*). Protected files ask for
