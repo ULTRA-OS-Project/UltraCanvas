@@ -6023,6 +6023,25 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: SlideEditElementTest")
 endif()
 
+# ===== SLIDE SHOW PLAYER TEST =====
+# The slide show player and the presenter view by events and a test clock:
+# hidden slides, the end screen, transitions (mid-way, finished by a key, a
+# mid-fade frame on an off-screen page), timings, a slide by number, black
+# and white screens, Escape, and the presenter view following. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SlideShowPlayerTest...")
+    add_executable(SlideShowPlayerTest ${CMAKE_CURRENT_SOURCE_DIR}/SlideShowPlayerTest.cpp)
+    target_include_directories(SlideShowPlayerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SlideShowPlayerTest PRIVATE cxx_std_20)
+    target_link_libraries(SlideShowPlayerTest PRIVATE UltraCanvas)
+    set_target_properties(SlideShowPlayerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SlideShowPlayerTest COMMAND SlideShowPlayerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SlideShowPlayerTest")
+endif()
+
 # ===== OFFICE ENCRYPTION TEST =====
 # Password-protected .xlsx / .docx (ECMA-376 agile encryption): the decryptor
 # against fixtures msoffcrypto-tool encrypted - right, wrong and missing

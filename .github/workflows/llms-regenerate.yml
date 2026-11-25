@@ -9,7 +9,7 @@ name: llms.txt regenerate
 # whole six-platform matrix again, and on a busy day it happened again an
 # hour later. The changelog's line 1 had the same problem and the same cure
 # (changelog-fold.yml): pull requests no longer carry the files
-# (llms-txt.yml refuses a pull request that changes them), and this job
+# (source-checks.yml refuses a pull request that changes them), and this job
 # writes them on main after the merge.
 #
 # The regeneration is a second commit on main, made with GITHUB_TOKEN, so it

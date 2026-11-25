@@ -11,7 +11,7 @@ Deterministic output (stable ordering). Standard library only.
 
 llms.txt and llms-full.txt are written on main, not by branches:
 .github/workflows/llms-regenerate.yml runs this script after every docs change
-lands and commits the result, and llms-txt.yml refuses a pull request that
+lands and commits the result, and source-checks.yml refuses a pull request that
 changes them - two docs pull requests that each carried them always conflicted
 there. The README mirrors (MIRRORED_READMES) it also rewrites are still
 committed with the change that edits their source.

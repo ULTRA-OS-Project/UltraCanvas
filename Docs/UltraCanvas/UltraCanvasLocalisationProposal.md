@@ -14,7 +14,7 @@ and the framework's `Tr` sites, the sixteen base sets of Appendix B under
 dialogs, the file dialog, the filer widget, the colour, time and
 new-document dialogs, the media viewer - the remaining framework strings
 are wrapped as their files are touched), and `extract_ui_strings.py`,
-`check_locale_catalogues.py` with `locale-catalogues.yml`, and
+`check_locale_catalogues.py` with `source-checks.yml`, and
 `wrap_ui_strings.py`. **Phase L3 implemented** (2026-11-02): the
 `ultralocalisation-draft` tool over UltraAI's translator with
 `translate_catalogue.py` driving it per language and set, the first
@@ -674,7 +674,7 @@ run in CI:
   wrote it. For `Standard.json` it adds what the framework's
   sources use and removes nothing (§4). Generated, never edited by hand
   for an application; regenerated like `llms.txt`.
-- **`check_locale_catalogues.py`** (CI, `locale-catalogues.yml`): the `en`
+- **`check_locale_catalogues.py`** (CI, `source-checks.yml`): the `en`
   catalogues are in sync with the sources; every other language's file
   parses, has no key the source lacks (stale), repeats no entry of a set
   below it with the same translation (§4), names in `@bases` only base

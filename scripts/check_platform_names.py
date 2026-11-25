@@ -75,7 +75,7 @@ A site that is correct as it stands says so where it is and is skipped:
 
 scripts/platform_names_baseline.txt lists the sites that predate the checks
 (Win32 names still being worked off; the X11 and Objective-C sets are empty
-and stay so), so CI blocks *new* ones (`platform-names.yml`, --strict). Each
+and stay so), so CI blocks *new* ones (`source-checks.yml`, --strict). Each
 platform's rules have a --self-test against built-in examples, run first in
 CI, so a rule that stopped matching cannot pass by finding nothing.
 

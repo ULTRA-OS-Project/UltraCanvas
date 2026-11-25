@@ -129,8 +129,6 @@
   "Show the slides full screen, from the first": "처음 슬라이드부터 전체 화면으로 표시",
   "Show the slides full screen, from this one": "현재 슬라이드부터 전체 화면으로 표시",
   "Shrink the sheet so every column fits across one page": "모든 열이 한 페이지 너비에 맞도록 시트 축소",
-  "Slide show": "슬라이드 쇼",
-  "Slide {0} of {1}": "슬라이드 {0}/{1}",
   "Sort A to Z": "오름차순 정렬",
   "Sort the selection, largest first": "선택 영역을 큰 값부터 정렬",
   "Sort the selection, smallest first": "선택 영역을 작은 값부터 정렬",

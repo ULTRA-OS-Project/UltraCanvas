@@ -35,7 +35,7 @@ with scripts/plugin_abi.txt:
   fingerprint changed, version not        FAIL: bump the version, then --update
   version moved                           FAIL until --update records it
 
-  python3 scripts/check_plugin_abi.py                     # the check (CI: plugin-abi.yml)
+  python3 scripts/check_plugin_abi.py                     # the check (CI: source-checks.yml)
   python3 scripts/check_plugin_abi.py --update            # record, after a bump
   python3 scripts/check_plugin_abi.py --update --no-abi-change "why"
                                                           # a change that is not one: a free

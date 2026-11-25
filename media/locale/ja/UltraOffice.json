@@ -129,8 +129,6 @@
   "Show the slides full screen, from the first": "最初のスライドから全画面で表示",
   "Show the slides full screen, from this one": "このスライドから全画面で表示",
   "Shrink the sheet so every column fits across one page": "すべての列が 1 ページの幅に収まるようにシートを縮小",
-  "Slide show": "スライドショー",
-  "Slide {0} of {1}": "スライド {0}/{1}",
   "Sort A to Z": "昇順で並べ替え",
   "Sort the selection, largest first": "選択範囲を大きい順に並べ替え",
   "Sort the selection, smallest first": "選択範囲を小さい順に並べ替え",

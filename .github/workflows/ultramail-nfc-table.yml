@@ -17,7 +17,7 @@ name: UltraMail NFC table
 #           Scheduled, not on pull requests: a new Python must not turn every
 #           unrelated pull request red.
 
-# Trigger policy matches plugin-abi.yml: `pull_request` covers feature
+# Trigger policy matches source-checks.yml: `pull_request` covers feature
 # branches, so listing them under `push` too would run this check twice.
 on:
   push:
@@ -28,7 +28,7 @@ on:
       - 'scripts/generate_ultramail_nfc_table.py'
       - '.github/workflows/ultramail-nfc-table.yml'
   pull_request:
-    # `branches` filters the BASE branch; see locale-numbers.yml for why
+    # `branches` filters the BASE branch; see source-checks.yml for why
     # `claude/**` is listed too.
     branches:
       - main
@@ -50,7 +50,7 @@ env:
 jobs:
   pinned:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-22.04   # the pool the build legs use (see platform-names.yml)
+    runs-on: ubuntu-22.04   # the pool the build legs use (see source-checks.yml)
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
