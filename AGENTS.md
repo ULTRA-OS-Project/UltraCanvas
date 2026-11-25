@@ -428,14 +428,19 @@ that land within minutes of each other are folded and released together:
 `changelog-fold.yml` runs every ten minutes and folds once `main` has been
 quiet for ten, or when the oldest pending entry has waited twenty.
 A pull request builds three rows - Linux x86_64, Windows x86_64 and macOS
-on Apple silicon - and main builds two more (Linux arm64, Windows ARM),
-where the release is made. The sixth, macOS Intel, is not built on main
+on Apple silicon - and main builds Linux arm64 as well, where the release
+is made. Windows ARM is built on a release dispatch (changelog-fold.yml's,
+the run that makes nearly every release - not a plain push to main), with
+the `ci:distro` label, and on a dispatch with the `windows_arm` input; outside
+a release build it builds and tests but skips its half-hour installer, the
+MSIX and UltraCanvasStart. The sixth, macOS Intel, is not built on main
 either, only when asked for: a pull request labelled `ci:intel`, or a Build dispatch
 with its `intel` input (a release dispatch with it set is the only release
 that carries x86_64 macOS archives). Its runner is five to ten times slower
 than the rest and held the scarce macOS runners for up to three hours a
-run. The `ci:distro` label asks for main's five on a pull request (the
-distribution build); adding either label starts a run with its rows. Ask
+run. The `ci:distro` label asks for Linux arm64 and Windows ARM on a pull
+request (the distribution build); adding either label starts a run with its
+rows. Ask
 for `ci:distro` when a change touches what only those rows would catch - a
 platform layer, the packaging, a bundled library, or code that behaves
 differently by platform (rule 8 of *Branch and pull-request rules*) - with
@@ -449,6 +454,9 @@ says how to turn it back on). A change in a runner image or in the
 libraries the runners install fresh (MSYS2, Homebrew, apt) therefore shows
 first on the next merge or pull request: a row that goes red on a change
 that cannot have caused it is that, not the change.
+The Android build (`android-build.yml`) builds arm64-v8a alone on a pull
+request; the x86_64 build, ChatCube's two and the three emulator jobs run
+on main (a push, the weekly run, a dispatch).
 The iOS and WebAssembly builds (`ios-build.yml`, `wasm-build.yml`) run on
 main only, not on pull requests: a pull request that changes the iOS or
 WebAssembly backend, its sysroot or the demo's branches for it starts them
@@ -1279,8 +1287,9 @@ For assistants:
 
 8. **Label a platform-specific change `ci:distro` - and read the rows before
    "green".** A pull request builds Linux x86_64, Windows x86_64 and macOS
-   on Apple silicon; Windows ARM and Linux arm64 are built only on `main`
-   or with the `ci:distro` label, and macOS Intel only with the `ci:intel`
+   on Apple silicon; Linux arm64 is built only on `main` or with the
+   `ci:distro` label, Windows ARM only on a release dispatch or with
+   `ci:distro`, and macOS Intel only with the `ci:intel`
    label (or a dispatch with `intel` set) - not on `main` either (*Building
    and testing*). Add `ci:distro` when you open the PR (or right after -
    adding it starts a run with those rows), and `ci:intel` as well when the

@@ -16,7 +16,8 @@ name: Android build
 # headers standing in; this is the build those headers stand in for.
 #
 # Runs on a pull request, and on a push to main, that touches what the
-# Android build is made of (the paths below). The sysroot takes the better
+# Android build is made of (the paths below) - a pull request the arm64-v8a
+# build alone, main every job (see the android job's matrix). The sysroot takes the better
 # part of an hour to build from nothing; vcpkg's binary cache keeps every
 # library it built, so a run on a warm cache only builds the framework. A
 # manual dispatch from the Actions tab works against any branch.
@@ -115,12 +116,15 @@ jobs:
     strategy:
       # One ABI failing says nothing about the other; let both finish.
       fail-fast: false
+      # A pull request builds arm64-v8a alone, what phones run; main (a
+      # push, the weekly run, a dispatch) builds x86_64 as well, the ABI the
+      # emulator jobs run (since 2026-11-25: the second ABI, ChatCube's two
+      # and the three emulator jobs held six runners on every pull request
+      # that touched the paths above). The list is chosen whole: a row
+      # dropped with `exclude` comes back as a job of its own from its
+      # `include` entry (build.yml's gate says how).
       matrix:
-        include:
-          - abi: arm64-v8a
-            triplet: arm64-android
-          - abi: x86_64
-            triplet: x64-android
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"abi":"arm64-v8a","triplet":"arm64-android"}]' || '[{"abi":"arm64-v8a","triplet":"arm64-android"},{"abi":"x86_64","triplet":"x64-android"}]') }}
     env:
       ABI: ${{ matrix.abi }}
       TRIPLET: ${{ matrix.triplet }}
@@ -432,6 +436,9 @@ jobs:
   # feature and ChatCube's library, manifest and assets.
   chatcube:
     name: android chatcube (${{ matrix.abi }})
+    # Main only (a push, the weekly run, a dispatch), not on a pull request:
+    # see the android job's matrix.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -646,6 +653,8 @@ jobs:
   emulator:
     name: android emulator (${{ matrix.label }})
     needs: android
+    # It runs the x86_64 APK, which only main builds (see the android job).
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -708,7 +717,8 @@ jobs:
   emulator-mobilepc:
     name: android emulator (MobilePC, second display)
     needs: android
-    if: ${{ !cancelled() }}
+    # Not on a pull request: it runs the x86_64 APK, which only main builds.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

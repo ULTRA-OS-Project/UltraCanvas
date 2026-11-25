@@ -15,7 +15,7 @@
 #
 #   $ULTRAOS_SFTP_DIR/                 must exist; the script never creates it
 #     <version>/                       created on the first upload
-#       UltraCanvas-SDK-<OS>-<version>-<arch>.<ext>   the five (six) archives
+#       UltraCanvas-SDK-<OS>-<version>-<arch>.<ext>   the four to six archives
 #       SHA256SUMS                     `sha256sum -c SHA256SUMS` checks them
 #
 # Each file goes up as <name>.part and is renamed to <name> once it is
@@ -149,12 +149,12 @@ if [ ${#archives[@]} -eq 0 ]; then
     ls -la "$ARCHIVE_DIR" >&2
     exit 1
 fi
-if [ ${#archives[@]} -lt 5 ]; then
+if [ ${#archives[@]} -lt 4 ]; then
     # The release job warns the same way: a leg that failed leaves a gap,
-    # and the archives that exist are still worth publishing. Five rows
-    # build on main; the macOS Intel one only when the release dispatch
-    # asks for it, which makes six.
-    echo "::warning::${#archives[@]} SDK archives for $VERSION instead of 5 (6 with the Intel row)"
+    # and the archives that exist are still worth publishing. Four rows
+    # build every release; Windows ARM adds one on a release dispatch, and
+    # macOS Intel one more when that dispatch asks for it (build.yml).
+    echo "::warning::${#archives[@]} SDK archives for $VERSION, fewer than 4"
 fi
 
 ( cd "$ARCHIVE_DIR" && sha256sum "${archives[@]}" ) > "$WORK/SHA256SUMS"

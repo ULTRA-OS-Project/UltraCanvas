@@ -52,9 +52,9 @@ is the only place the whole framework is compiled for everyone:
 
 | Leg | Platform | What it also does |
 |---|---|---|
-| ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64, shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
+| ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64 (arm64 on main and with `ci:distro`), shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
 | macos-15, macos-15-intel | Apple Silicon and Intel (Intel only with the `ci:intel` label, or a dispatch with `intel` set) | builds the bundled libraries for macOS 14 (vcpkg, cached) and packages the app suite for macOS 14 and later; signs and notarises on `main` |
-| windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 | packages the standalone zip |
+| windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 (ARM on release dispatches and with `ci:distro`) | packages the standalone zip and the installer (on ARM in release builds only) |
 | Android backend check | syntax check against the NDK | — |
 
 The source checks run beside it on every PR, as the steps of one job

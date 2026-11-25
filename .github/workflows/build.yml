@@ -66,6 +66,13 @@ on:
         description: "Build the macOS Intel row too"
         type: boolean
         default: false
+      # The Windows ARM row, which a release dispatch builds anyway (see the
+      # gate's `matrix` step). A validation dispatch with this set builds it
+      # too, without its installer and MSIX (those are a release's).
+      windows_arm:
+        description: "Build the Windows ARM row too (always on with release)"
+        type: boolean
+        default: false
 
 # Supersede in-flight runs for the same branch when newer commits arrive, so a
 # rapid series of pushes to an open PR costs one build rather than one each.
@@ -150,13 +157,19 @@ jobs:
       # A pull request builds three rows: Linux x86_64, Windows x86_64 and
       # macOS on Apple silicon - one per operating system, and the only
       # macOS one, so the macOS platform layer is checked before a merge.
-      # Linux arm64 and Windows ARM build on main (a push, or a dispatch),
-      # where the release is made, and on a pull request labelled
-      # `ci:distro`, the distribution build. The Windows ARM row took an
-      # hour on its own on 2026-11-13 (#1236, #1238); what differs in those
-      # rows (another MSYS2 toolchain, the same code and the same packaging
-      # scripts) is checked on every run on main, before anything is
-      # released.
+      # Linux arm64 builds on main (a push, or a dispatch), where the
+      # release is made, and on a pull request labelled `ci:distro`, the
+      # distribution build.
+      #
+      # Windows ARM builds on a release dispatch (changelog-fold.yml's, the
+      # run that makes nearly every release), on a pull request labelled
+      # `ci:distro`, and on a dispatch with the `windows_arm` input - not on
+      # a plain push to main (since 2026-11-25). It took an hour on its own
+      # on 2026-11-13 (#1236, #1238) and 96 to 102 minutes a run in
+      # November, half an hour of it the installer; outside a release build
+      # it skips the packaging (SKIP_WINDOWS_PACKAGE in the build job). What
+      # differs in it (another MSYS2 toolchain, the same code and the same
+      # packaging scripts) is still checked before anything is released.
       #
       # macOS Intel builds only when asked for, on main as well (since
       # 2026-11-25): a pull request labelled `ci:intel`, or a dispatch with
@@ -168,10 +181,10 @@ jobs:
       #
       # A pull request that changes what only those rows would catch - a
       # platform layer, the packaging, a bundled library - asks for them
-      # with `ci:distro` (Linux arm64 and Windows ARM) and `ci:intel` (the
-      # Intel row): adding a label starts a run with its rows (the `labeled`
-      # event above), so the failure shows on the pull request rather than
-      # on main.
+      # with `ci:distro` (Linux arm64 and Windows ARM, unpackaged) and
+      # `ci:intel` (the Intel row): adding a label starts a run with its
+      # rows (the `labeled` event above), so the failure shows on the pull
+      # request rather than on main.
       #
       # NOTE: GitHub retired macos-13 (the last x86_64 image of the
       # macos-NN series) in December 2025. `macos-15-intel` is its
@@ -197,8 +210,9 @@ jobs:
         env:
           ALL_ROWS: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:distro') }}
           WITH_INTEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:intel') || inputs.intel == true }}
+          WITH_WINDOWS_ARM: ${{ contains(github.event.pull_request.labels.*.name, 'ci:distro') || inputs.release == true || inputs.windows_arm == true }}
         run: |
-          python3 - "$ALL_ROWS" "$WITH_INTEL" >> "$GITHUB_OUTPUT" <<'PY'
+          python3 - "$ALL_ROWS" "$WITH_INTEL" "$WITH_WINDOWS_ARM" >> "$GITHUB_OUTPUT" <<'PY'
           import json, sys
           rows = [
               {"os": "macos-15",         "arch_label": "arm64"},
@@ -212,14 +226,17 @@ jobs:
                "msystem": "CLANGARM64", "msys_prefix": "mingw-w64-clang-aarch64",
                "msys_toolchain": "mingw-w64-clang-aarch64-clang"},
           ]
-          # The rows a pull request builds without a label, the two main
-          # and ci:distro add, and the Intel row only ci:intel or the
-          # dispatch's `intel` input asks for (see above).
+          # The rows a pull request builds without a label; Linux arm64,
+          # which main and ci:distro add; Windows ARM, which a release
+          # dispatch, ci:distro or the `windows_arm` input adds; and the
+          # Intel row, which only ci:intel or the `intel` input adds (see
+          # above).
           standard = {"ubuntu-22.04", "windows-latest", "macos-15"}
-          distro = {"ubuntu-22.04-arm", "windows-11-arm"}
           keep = set(standard)
           if sys.argv[1] == "true":
-              keep |= distro
+              keep.add("ubuntu-22.04-arm")
+          if sys.argv[3] == "true":
+              keep.add("windows-11-arm")
           if sys.argv[2] == "true":
               keep.add("macos-15-intel")
           skipped = [r["os"] for r in rows if r["os"] not in keep]
@@ -239,7 +256,8 @@ jobs:
   # request. Branch protection knows the rows by their names
   # (`build (<os>, Release)`), and a required one that never reports holds
   # the pull request back for good; this one says "skipped - add ci:distro"
-  # (or ci:intel) instead. The Intel row reports so on main too. It builds
+  # (or ci:intel) instead. The Intel and Windows ARM rows report so on main
+  # too. It builds
   # nothing, and it runs only where rows were left out.
   build-skipped:
     needs: gate
@@ -257,6 +275,8 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" = macos-15-intel ]; then
             echo "::notice::${{ matrix.os }} is built only when asked for - label the pull request ci:intel (or dispatch with intel set) to build it."
+          elif [ "${{ matrix.os }}" = windows-11-arm ]; then
+            echo "::notice::${{ matrix.os }} is built on release dispatches and on a pull request labelled ci:distro (or a dispatch with windows_arm set) - add the label to build it here."
           else
             echo "::notice::${{ matrix.os }} is built on main and on a pull request labelled ci:distro - add the label to build it here."
           fi
@@ -308,6 +328,12 @@ jobs:
     # "Package (macOS)" for why that matters.
     env:
       RELEASE_BUILD: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true) }}
+      # The Windows ARM row packages only in a release build: its installer
+      # step alone took 29-32 minutes. Outside one (a ci:distro pull request,
+      # a dispatch with windows_arm) it builds and tests, and skips the NSIS
+      # installer, the MSIX and their uploads; the x86_64 row checks the same
+      # packaging scripts on every run.
+      SKIP_WINDOWS_PACKAGE: ${{ matrix.os == 'windows-11-arm' && !(github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)) }}
 
       # ccache. There is no incremental state between runs on a hosted runner,
       # so without this every leg compiles all its objects (about 3,400 on
@@ -331,8 +357,8 @@ jobs:
       # evicts the least recently used entries - the objects this build has
       # not reached yet - so they miss too, and the cache main saves no
       # longer holds a whole build. 800 MB holds one build and a pull
-      # request's worth of new objects; main saves five legs (the Intel row
-      # builds only when asked for), 4 GB of the 10 GB at most. The
+      # request's worth of new objects; main saves at most five legs (the
+      # Intel row builds only when asked for), 4 GB of the 10 GB. The
       # statistics step prints the evictions (`-v`), so a leg that outgrows
       # this shows it there.
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -2750,7 +2776,7 @@ jobs:
       # bumped. A run on main saves it where every pull request can read it.
       - name: Restore NSIS (Windows)
         id: nsis-cache
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}\nsis-cache
@@ -2758,7 +2784,7 @@ jobs:
 
       - name: NSIS for the installer (Windows)
         id: nsis
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
         shell: pwsh
         run: |
           $target = "${env:ProgramFiles(x86)}\NSIS"
@@ -2795,14 +2821,14 @@ jobs:
           Write-Host "makensis: $found"
 
       - name: Save NSIS (Windows)
-        if: runner.os == 'Windows' && steps.nsis.outputs.fresh == 'true'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true' && steps.nsis.outputs.fresh == 'true'
         uses: actions/cache/save@v5
         with:
           path: ${{ runner.temp }}\nsis-cache
           key: ${{ steps.nsis-cache.outputs.cache-primary-key }}
 
       - name: Package (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
         run: ./package-win.sh --no-sign --installer
 
       # The installer, run as a user would - silently, into a folder of its
@@ -2813,7 +2839,7 @@ jobs:
       # there. /D= and _?= must be last and unquoted, hence a path
       # without spaces.
       - name: Install and uninstall the installer (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -2904,7 +2930,9 @@ jobs:
       # archive is run once more (the script starts from a clean folder);
       # a second miss fails here, naming the script.
       - name: Package UltraCanvasStart on its own (Linux, Windows)
-        if: runner.os != 'macOS'
+        # Out of package-win.sh's dist/ on Windows, which an unpackaged
+        # Windows ARM run has none of (SKIP_WINDOWS_PACKAGE).
+        if: runner.os != 'macOS' && env.SKIP_WINDOWS_PACKAGE != 'true'
         run: |
           # A glob test, not `ls ... | grep`: under this shell's pipefail the
           # pattern with no match (*.zip on Linux, *.tar.xz on Windows) made
@@ -2927,7 +2955,7 @@ jobs:
       # of the framework - a module archive linked beside the shared core, a
       # static core - shows up on the run page as a fat executable.
       - name: Package sizes (Linux, Windows)
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' && env.SKIP_WINDOWS_PACKAGE != 'true'
         shell: bash
         run: |
           set -eu
@@ -2991,7 +3019,7 @@ jobs:
       # on the app's Product identity page). That one is uploaded to Partner
       # Center unsigned and the Store signs it, so no certificate is needed.
       - name: Package MSIX (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
         env:
           MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
           MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
@@ -3104,7 +3132,7 @@ jobs:
           fi
 
       - name: Upload build artifacts (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: UCDemo-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
@@ -3114,7 +3142,7 @@ jobs:
 
       # The installer is LZMA-compressed already: stored as it is.
       - name: Upload the installer (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: UltraCanvas-Setup-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
@@ -3125,7 +3153,7 @@ jobs:
 
       # An .msix is a zip already, hence compression-level 0.
       - name: Upload MSIX (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: UltraCanvas-Windows-MSIX-${{ env.VERSION }}-${{ matrix.arch_label }}
@@ -3165,6 +3193,7 @@ jobs:
       # so no compression here. The macOS image of a pull request is signed
       # ad hoc and says so in its name, as the suite's does.
       - name: Upload UltraCanvasStart on its own
+        if: env.SKIP_WINDOWS_PACKAGE != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: UltraCanvasStart-${{ runner.os == 'macOS' && 'MacOS' || runner.os }}-${{ env.VERSION }}-${{ matrix.arch_label }}${{ runner.os == 'macOS' && env.RELEASE_BUILD != 'true' && '-unsigned' || '' }}
@@ -3371,12 +3400,16 @@ jobs:
         run: |
           set -eu
           ls -la sdk-release
-          # Five rows build on main; the macOS Intel row only when the
-          # dispatch asked for it (`intel`), which makes six.
+          # The rows this release built: Linux x86_64 and arm64, Windows
+          # x86_64 and macOS arm64 always; Windows ARM on a release dispatch
+          # (not a plain push); macOS Intel when the dispatch set `intel`.
+          expected=4
+          [ "${{ inputs.release }}" = true ] && expected=$((expected + 1))
+          [ "${{ inputs.intel }}" = true ] && expected=$((expected + 1))
           count=$(ls sdk-release | grep -c '^UltraCanvas-SDK-' || true)
-          [ "$count" -ge 5 ] || echo "::warning::$count SDK archives instead of 5 (6 with the Intel row)"
+          [ "$count" -ge "$expected" ] || echo "::warning::$count SDK archives instead of $expected"
           count=$(ls sdk-release | grep -c '^UltraCanvasStart-' || true)
-          [ "$count" -ge 5 ] || echo "::warning::$count UltraCanvasStart archives instead of 5 (6 with the Intel row)"
+          [ "$count" -ge "$expected" ] || echo "::warning::$count UltraCanvasStart archives instead of $expected"
           tag="v$VERSION"
           if ! gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
             gh release create "$tag" --repo "${{ github.repository }}" --target "$TARGET" \
