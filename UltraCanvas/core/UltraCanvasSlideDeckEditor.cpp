@@ -1,14 +1,22 @@
 // core/UltraCanvasSlideDeckEditor.cpp
 // The editing core of a presentation (include/UltraCanvasSlideDeckEditor.h).
 //
+// Version: 1.4.0 - groups (whole groups selected, grouped and ungrouped, entered, turned as one, kept
+//                  together by the z-order commands, copied with fresh ids); align and distribute;
+//                  picture crops; a chart's data; notes as paragraphs; several slides at once
 // Version: 1.3.0 - InsertTable with the cells' text, InsertFormattedTextBox, InsertChart
 // Version: 1.2.0 - tables: InsertTable, TableCellBox, TableCellAt, rows and columns inserted and deleted
 // Version: 1.1.0 - FormatSelectedText, AllSelectedText
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #include "UltraCanvasSlideDeckEditor.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat, FormatFloatClassic
 
 #include <algorithm>
+#include <cctype>
+#include <climits>
+#include <cstdint>
+#include <map>
 #include <cmath>
 #include <cstdlib>
 #include <set>
@@ -23,6 +31,60 @@ constexpr int64_t kPasteOffset = 152400;   // a sixth of an inch, as PowerPoint 
 constexpr double kPi = 3.14159265358979323846;
 
 SlideBox BoxOf(const PptxShape& shape) { return SlideBox{shape.x, shape.y, shape.width, shape.height}; }
+
+// The shapes' boxes together.
+SlideBox BoxOfShapes(const PptxSlide& slide, const std::vector<int>& shapes) {
+    int64_t left = INT64_MAX, top = INT64_MAX, right = INT64_MIN, bottom = INT64_MIN;
+    for (int i : shapes) {
+        if (i < 0 || i >= static_cast<int>(slide.shapes.size())) continue;
+        const PptxShape& shape = slide.shapes[static_cast<size_t>(i)];
+        left = std::min(left, shape.x);
+        top = std::min(top, shape.y);
+        right = std::max(right, shape.x + shape.width);
+        bottom = std::max(bottom, shape.y + shape.height);
+    }
+    if (left > right) return SlideBox{};
+    return SlideBox{left, top, right - left, bottom - top};
+}
+
+bool StartsWith(const std::vector<int>& path, const std::vector<int>& prefix) {
+    return path.size() >= prefix.size() && std::equal(prefix.begin(), prefix.end(), path.begin());
+}
+
+// The shapes that go with `shape` when groups are chosen whole below
+// `entered`: its group's one level below, else itself. A shape outside the
+// group entered goes with its outermost group.
+std::vector<int> UnitIn(const PptxSlide& slide, int shape, const std::vector<int>& entered) {
+    const std::vector<int>& path = slide.shapes[static_cast<size_t>(shape)].groupPath;
+    const std::vector<int> base = StartsWith(path, entered) ? entered : std::vector<int>();
+    if (path.size() <= base.size()) return {shape};
+    const std::vector<int> prefix(path.begin(), path.begin() + static_cast<long>(base.size()) + 1);
+    std::vector<int> unit;
+    for (size_t i = 0; i < slide.shapes.size(); ++i)
+        if (StartsWith(slide.shapes[i].groupPath, prefix)) unit.push_back(static_cast<int>(i));
+    return unit;
+}
+
+// Copies of shapes going onto `target`: the group entered (`strip`) left
+// out of their paths, and each group they are in given an id of its own
+// there, named as its original (`names`) was.
+void RenewGroups(std::vector<PptxShape>& copies, PptxSlide& target, const std::vector<int>& strip,
+                 const std::map<int, std::string>& names) {
+    std::map<int, int> renamed;
+    int next = PptxNewGroupId(target);
+    for (PptxShape& copy : copies) {
+        if (!strip.empty() && StartsWith(copy.groupPath, strip))
+            copy.groupPath.erase(copy.groupPath.begin(), copy.groupPath.begin() + static_cast<long>(strip.size()));
+        for (int& id : copy.groupPath) {
+            auto it = renamed.find(id);
+            if (it == renamed.end()) {
+                it = renamed.emplace(id, next++).first;
+                if (const auto name = names.find(id); name != names.end()) target.groupNames[it->second] = name->second;
+            }
+            id = it->second;
+        }
+    }
+}
 
 void PlaceShape(PptxShape& shape, const SlideBox& box) {
     shape.x = box.x;
@@ -166,6 +228,7 @@ void UCSlideDeckEditor::SetCurrentSlide(int index) {
     if (next == current_) return;
     current_ = next;
     selection_.clear();
+    entered_.clear();
     SelectionChanged();
 }
 
@@ -179,6 +242,13 @@ void UCSlideDeckEditor::Select(std::vector<int> shapes) {
     const PptxSlide* slide = CurrentSlide();
     const int count = slide ? static_cast<int>(slide->shapes.size()) : 0;
     shapes.erase(std::remove_if(shapes.begin(), shapes.end(), [count](int i) { return i < 0 || i >= count; }), shapes.end());
+    CheckEnteredGroup();
+    // A shape in a group comes with the rest of it.
+    if (slide) {
+        const size_t picked = shapes.size();
+        for (size_t k = 0; k < picked; ++k)
+            for (int member : UnitIn(*slide, shapes[k], entered_)) shapes.push_back(member);
+    }
     std::sort(shapes.begin(), shapes.end());
     shapes.erase(std::unique(shapes.begin(), shapes.end()), shapes.end());
     if (shapes == selection_) return;
@@ -196,10 +266,18 @@ void UCSlideDeckEditor::SelectAll() {
 void UCSlideDeckEditor::ClearSelection() { Select({}); }
 
 void UCSlideDeckEditor::ToggleSelected(int shape) {
+    const std::vector<int> unit = UnitOf(shape);
+    if (unit.empty()) return;
+    if (IsSelected(shape)) {
+        // The whole of its group goes (Select would bring it back otherwise).
+        selection_.erase(std::remove_if(selection_.begin(), selection_.end(), [&unit](int i) {
+            return std::find(unit.begin(), unit.end(), i) != unit.end();
+        }), selection_.end());
+        SelectionChanged();
+        return;
+    }
     std::vector<int> next = selection_;
-    const auto it = std::find(next.begin(), next.end(), shape);
-    if (it == next.end()) next.push_back(shape);
-    else next.erase(it);
+    next.insert(next.end(), unit.begin(), unit.end());
     Select(next);
 }
 
@@ -210,15 +288,246 @@ bool UCSlideDeckEditor::IsSelected(int shape) const {
 SlideBox UCSlideDeckEditor::SelectionBox() const {
     const PptxSlide* slide = CurrentSlide();
     if (!slide || selection_.empty()) return SlideBox{};
-    int64_t left = INT64_MAX, top = INT64_MAX, right = INT64_MIN, bottom = INT64_MIN;
+    return BoxOfShapes(*slide, selection_);
+}
+
+// ===== GROUPS =====
+
+std::vector<int> UCSlideDeckEditor::UnitOf(int shape) const {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return {};
+    return UnitIn(*slide, shape, entered_);
+}
+
+std::vector<std::vector<int>> UCSlideDeckEditor::SelectionUnits() const {
+    std::vector<std::vector<int>> units;
+    std::set<int> seen;
+    for (int i : selection_) {
+        if (seen.count(i)) continue;
+        std::vector<int> unit = UnitOf(i);
+        // Only what is selected of it.
+        unit.erase(std::remove_if(unit.begin(), unit.end(), [this](int k) { return !IsSelected(k); }), unit.end());
+        seen.insert(unit.begin(), unit.end());
+        if (!unit.empty()) units.push_back(std::move(unit));
+    }
+    return units;
+}
+
+bool UCSlideDeckEditor::SelectionIsOneGroup() const {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || selection_.empty()) return false;
+    const auto units = SelectionUnits();
+    if (units.size() != 1) return false;
+    const std::vector<int>& path = slide->shapes[static_cast<size_t>(units.front().front())].groupPath;
+    return StartsWith(path, entered_) && path.size() > entered_.size();
+}
+
+bool UCSlideDeckEditor::CanGroup() const {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || SelectionUnits().size() < 2) return false;
     for (int i : selection_) {
         const PptxShape& shape = slide->shapes[static_cast<size_t>(i)];
-        left = std::min(left, shape.x);
-        top = std::min(top, shape.y);
-        right = std::max(right, shape.x + shape.width);
-        bottom = std::max(bottom, shape.y + shape.height);
+        if (!shape.placeholder.empty() || shape.kind == PptxShapeKind::Title || shape.kind == PptxShapeKind::Subtitle ||
+            shape.kind == PptxShapeKind::Body)
+            return false;
     }
-    return SlideBox{left, top, right - left, bottom - top};
+    return true;
+}
+
+bool UCSlideDeckEditor::CanUngroup() const {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide) return false;
+    for (int i : selection_) {
+        const std::vector<int>& path = slide->shapes[static_cast<size_t>(i)].groupPath;
+        if (StartsWith(path, entered_) && path.size() > entered_.size()) return true;
+    }
+    return false;
+}
+
+void UCSlideDeckEditor::GroupSelection() {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || !CanGroup()) return;
+    const std::vector<int> members = selection_;
+    const int count = static_cast<int>(slide->shapes.size());
+    const int id = PptxNewGroupId(*slide);
+    const size_t depth = entered_.size();
+    // The new order: the members together where the frontmost of them was.
+    std::vector<int> order;
+    const int front = members.back();
+    for (int i = 0; i < count; ++i) {
+        if (i == front) order.insert(order.end(), members.begin(), members.end());
+        else if (!IsSelected(i)) order.push_back(i);
+    }
+    std::vector<int> after;
+    for (size_t k = 0; k < order.size(); ++k)
+        if (IsSelected(order[k])) after.push_back(static_cast<int>(k));
+    ChangeSlide("Group", [&](PptxSlide& s) {
+        std::vector<PptxShape> shapes;
+        for (int i : order) {
+            PptxShape shape = s.shapes[static_cast<size_t>(i)];
+            if (IsSelected(i)) {
+                const size_t at = std::min(depth, shape.groupPath.size());
+                shape.groupPath.insert(shape.groupPath.begin() + static_cast<long>(at), id);
+            }
+            shapes.push_back(std::move(shape));
+        }
+        s.shapes = std::move(shapes);
+        s.groupNames[id] = "Group " + std::to_string(id);
+    }, &after);
+}
+
+void UCSlideDeckEditor::UngroupSelection() {
+    if (!CanUngroup()) return;
+    const std::vector<int> members = selection_;
+    const std::vector<int> entered = entered_;
+    ChangeSlide("Ungroup", [&](PptxSlide& s) {
+        std::set<int> gone;
+        for (int i : members) {
+            std::vector<int>& path = s.shapes[static_cast<size_t>(i)].groupPath;
+            if (!StartsWith(path, entered) || path.size() <= entered.size()) continue;
+            gone.insert(path[entered.size()]);
+            path.erase(path.begin() + static_cast<long>(entered.size()));
+        }
+        // A name no shape uses any more goes with its group.
+        const std::vector<int> used = PptxGroupIds(s);
+        for (int id : gone)
+            if (std::find(used.begin(), used.end(), id) == used.end()) s.groupNames.erase(id);
+    }, &members);
+}
+
+bool UCSlideDeckEditor::EnterGroup(int shape) {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return false;
+    const std::vector<int>& path = slide->shapes[static_cast<size_t>(shape)].groupPath;
+    std::vector<int> base = StartsWith(path, entered_) ? entered_ : std::vector<int>();
+    if (path.size() <= base.size()) return false;
+    base.push_back(path[base.size()]);
+    entered_ = base;
+    selection_ = UnitIn(*slide, shape, entered_);
+    SelectionChanged();
+    return true;
+}
+
+void UCSlideDeckEditor::ExitGroup() {
+    if (entered_.empty()) return;
+    entered_.clear();
+    const std::vector<int> keep = selection_;
+    selection_.clear();
+    Select(keep);   // the group, whole again
+    if (keep.empty()) SelectionChanged();
+}
+
+void UCSlideDeckEditor::CheckEnteredGroup() {
+    if (entered_.empty()) return;
+    if (const PptxSlide* slide = CurrentSlide())
+        for (const PptxShape& shape : slide->shapes)
+            if (StartsWith(shape.groupPath, entered_)) return;
+    entered_.clear();
+}
+
+void UCSlideDeckEditor::RotateSelection(double degrees) {
+    if (selection_.empty() || std::fabs(degrees) < 1e-6) return;
+    const SlideBox box = SelectionBox();
+    const std::vector<int> turned = selection_;
+    const double cx = static_cast<double>(box.x) + static_cast<double>(box.width) / 2.0;
+    const double cy = static_cast<double>(box.y) + static_cast<double>(box.height) / 2.0;
+    const double a = degrees * kPi / 180.0;
+    ChangeSlide("Rotate", [&](PptxSlide& slide) {
+        for (int i : turned) {
+            PptxShape& shape = slide.shapes[static_cast<size_t>(i)];
+            const double dx = static_cast<double>(shape.x) + static_cast<double>(shape.width) / 2.0 - cx;
+            const double dy = static_cast<double>(shape.y) + static_cast<double>(shape.height) / 2.0 - cy;
+            const double nx = cx + dx * std::cos(a) - dy * std::sin(a), ny = cy + dx * std::sin(a) + dy * std::cos(a);
+            shape.x = static_cast<int64_t>(std::llround(nx - static_cast<double>(shape.width) / 2.0));
+            shape.y = static_cast<int64_t>(std::llround(ny - static_cast<double>(shape.height) / 2.0));
+            double r = std::fmod(shape.rotationDeg + degrees, 360.0);
+            if (r < 0) r += 360.0;
+            shape.rotationDeg = r;
+            shape.placeInherited = false;
+        }
+    });
+}
+
+// ===== ALIGNING =====
+
+void UCSlideDeckEditor::AlignSelection(SlideAlignment how) {
+    const PptxSlide* slide = CurrentSlide();
+    const auto units = SelectionUnits();
+    if (!slide || units.empty()) return;
+    const SlideBox against = units.size() == 1 ? SlideBox{0, 0, SlideWidth(), SlideHeight()} : SelectionBox();
+    std::vector<std::pair<int64_t, int64_t>> moves;   // per unit
+    bool any = false;
+    for (const auto& unit : units) {
+        const SlideBox box = BoxOfShapes(*slide, unit);
+        int64_t dx = 0, dy = 0;
+        switch (how) {
+            case SlideAlignment::Left: dx = against.x - box.x; break;
+            case SlideAlignment::Centre: dx = against.CentreX() - box.CentreX(); break;
+            case SlideAlignment::Right: dx = against.Right() - box.Right(); break;
+            case SlideAlignment::Top: dy = against.y - box.y; break;
+            case SlideAlignment::Middle: dy = against.CentreY() - box.CentreY(); break;
+            case SlideAlignment::Bottom: dy = against.Bottom() - box.Bottom(); break;
+        }
+        any = any || dx != 0 || dy != 0;
+        moves.emplace_back(dx, dy);
+    }
+    if (!any) return;
+    ChangeSlide("Align", [&](PptxSlide& s) {
+        for (size_t u = 0; u < units.size(); ++u)
+            for (int i : units[u]) {
+                s.shapes[static_cast<size_t>(i)].x += moves[u].first;
+                s.shapes[static_cast<size_t>(i)].y += moves[u].second;
+                s.shapes[static_cast<size_t>(i)].placeInherited = false;
+            }
+    });
+}
+
+void UCSlideDeckEditor::DistributeSelection(bool horizontally) {
+    const PptxSlide* slide = CurrentSlide();
+    const auto units = SelectionUnits();
+    if (!slide || units.empty()) return;
+    auto start = [horizontally](const SlideBox& b) { return horizontally ? b.x : b.y; };
+    auto length = [horizontally](const SlideBox& b) { return horizontally ? b.width : b.height; };
+    std::vector<SlideBox> boxes;
+    for (const auto& unit : units) boxes.push_back(BoxOfShapes(*slide, unit));
+    std::vector<size_t> order(units.size());
+    for (size_t k = 0; k < order.size(); ++k) order[k] = k;
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        return start(boxes[a]) + length(boxes[a]) / 2 < start(boxes[b]) + length(boxes[b]) / 2;
+    });
+    int64_t total = 0;
+    for (const SlideBox& b : boxes) total += length(b);
+    // Three or more: between the outermost two; fewer: over the slide, the
+    // same gap at its edges.
+    const size_t n = order.size();
+    double from = 0, gap = 0;
+    if (n >= 3) {
+        const SlideBox& first = boxes[order.front()];
+        const SlideBox& last = boxes[order.back()];
+        from = static_cast<double>(start(first));
+        gap = static_cast<double>(start(last) + length(last) - start(first) - total) / static_cast<double>(n - 1);
+    } else {
+        const double extent = static_cast<double>(horizontally ? SlideWidth() : SlideHeight());
+        gap = (extent - static_cast<double>(total)) / static_cast<double>(n + 1);
+        from = gap;
+    }
+    std::vector<int64_t> shift(units.size(), 0);
+    double at = from;
+    bool any = false;
+    for (size_t k : order) {
+        shift[k] = static_cast<int64_t>(std::llround(at)) - start(boxes[k]);
+        any = any || shift[k] != 0;
+        at += static_cast<double>(length(boxes[k])) + gap;
+    }
+    if (!any) return;
+    ChangeSlide("Distribute", [&](PptxSlide& s) {
+        for (size_t u = 0; u < units.size(); ++u)
+            for (int i : units[u]) {
+                PptxShape& shape = s.shapes[static_cast<size_t>(i)];
+                (horizontally ? shape.x : shape.y) += shift[u];
+                shape.placeInherited = false;
+            }
+    });
 }
 
 // ===== FINDING =====
@@ -249,7 +558,15 @@ std::vector<int> UCSlideDeckEditor::ShapesInside(const SlideBox& area) const {
             shape.y + shape.height <= area.Bottom())
             inside.push_back(static_cast<int>(i));
     }
-    return inside;
+    // A group only when the band takes all of it.
+    std::vector<int> whole;
+    for (int i : inside) {
+        bool all = true;
+        for (int member : UnitIn(*slide, i, entered_))
+            all = all && std::find(inside.begin(), inside.end(), member) != inside.end();
+        if (all) whole.push_back(i);
+    }
+    return whole;
 }
 
 SlideHandle UCSlideDeckEditor::HandleAt(int64_t x, int64_t y, double emuPerPixel) const {
@@ -257,8 +574,8 @@ SlideHandle UCSlideDeckEditor::HandleAt(int64_t x, int64_t y, double emuPerPixel
     if (!slide || selection_.empty()) return SlideHandle::NoHandle;
     double lx = static_cast<double>(x), ly = static_cast<double>(y);
     SlideBox box = SelectionBox();
-    const bool one = selection_.size() == 1;
-    if (one) {
+    const bool one = selection_.size() == 1 || SelectionIsOneGroup();
+    if (selection_.size() == 1) {
         const PptxShape& shape = slide->shapes[static_cast<size_t>(selection_.front())];
         ToShapeFrame(shape, x, y, lx, ly);
         box = BoxOf(shape);
@@ -445,7 +762,9 @@ void UCSlideDeckEditor::DuplicateSelection() {
     std::vector<int> copies;
     const size_t count = CurrentSlide()->shapes.size();
     for (size_t k = 0; k < originals.size(); ++k) copies.push_back(static_cast<int>(count + k));
+    const std::vector<int> entered = entered_;
     ChangeSlide("Duplicate", [&](PptxSlide& slide) {
+        std::vector<PptxShape> made;
         for (int i : originals) {
             PptxShape copy = slide.shapes[static_cast<size_t>(i)];
             copy.x += kPasteOffset;
@@ -453,8 +772,12 @@ void UCSlideDeckEditor::DuplicateSelection() {
             copy.placeholder.clear();   // a copy of the title is a text box, not a second title
             if (copy.kind == PptxShapeKind::Title || copy.kind == PptxShapeKind::Subtitle || copy.kind == PptxShapeKind::Body)
                 copy.kind = PptxShapeKind::Text;
-            slide.shapes.push_back(copy);
+            made.push_back(copy);
         }
+        // A copy of a group is a group of its own, in front of the rest.
+        const std::map<int, std::string> names = slide.groupNames;
+        RenewGroups(made, slide, entered, names);
+        for (PptxShape& copy : made) slide.shapes.push_back(std::move(copy));
     }, &copies);
 }
 
@@ -462,21 +785,44 @@ void UCSlideDeckEditor::Reorder(int how) {
     if (selection_.empty()) return;
     const PptxSlide* slide = CurrentSlide();
     const int count = static_cast<int>(slide->shapes.size());
-    // The new order as old indices.
-    std::vector<int> order(static_cast<size_t>(count));
-    for (int i = 0; i < count; ++i) order[static_cast<size_t>(i)] = i;
     auto selected = [this](int i) { return IsSelected(i); };
-    if (how == 0 || how == 1) {   // front / back
-        std::stable_partition(order.begin(), order.end(), [&](int i) { return how == 0 ? !selected(i) : selected(i); });
-    } else if (how == 2) {        // forward: each selected one past the next unselected one above it
-        for (int k = count - 2; k >= 0; --k)
-            if (selected(order[static_cast<size_t>(k)]) && !selected(order[static_cast<size_t>(k + 1)]))
-                std::swap(order[static_cast<size_t>(k)], order[static_cast<size_t>(k + 1)]);
-    } else {                      // backward
-        for (int k = 1; k < count; ++k)
-            if (selected(order[static_cast<size_t>(k)]) && !selected(order[static_cast<size_t>(k - 1)]))
-                std::swap(order[static_cast<size_t>(k)], order[static_cast<size_t>(k - 1)]);
+    // What moves are blocks - a group whole, or a shape - and only among the
+    // shapes of the group entered, if any, so groups stay together.
+    int lo = 0, hi = count - 1;
+    if (!entered_.empty()) {
+        lo = count;
+        hi = -1;
+        for (int i = 0; i < count; ++i)
+            if (StartsWith(slide->shapes[static_cast<size_t>(i)].groupPath, entered_)) { lo = std::min(lo, i); hi = std::max(hi, i); }
+        if (lo > hi) { lo = 0; hi = count - 1; }
     }
+    std::vector<std::vector<int>> blocks;
+    int lastKey = 0;
+    for (int i = lo; i <= hi; ++i) {
+        const int key = UnitKey(slide->shapes[static_cast<size_t>(i)], i);
+        if (blocks.empty() || key != lastKey) blocks.emplace_back();
+        blocks.back().push_back(i);
+        lastKey = key;
+    }
+    auto chosen = [&](const std::vector<int>& block) { return selected(block.front()); };
+    const int n = static_cast<int>(blocks.size());
+    if (how == 0 || how == 1) {   // front / back
+        std::stable_partition(blocks.begin(), blocks.end(),
+                              [&](const std::vector<int>& b) { return how == 0 ? !chosen(b) : chosen(b); });
+    } else if (how == 2) {        // forward: each selected one past the next unselected one above it
+        for (int k = n - 2; k >= 0; --k)
+            if (chosen(blocks[static_cast<size_t>(k)]) && !chosen(blocks[static_cast<size_t>(k + 1)]))
+                std::swap(blocks[static_cast<size_t>(k)], blocks[static_cast<size_t>(k + 1)]);
+    } else {                      // backward
+        for (int k = 1; k < n; ++k)
+            if (chosen(blocks[static_cast<size_t>(k)]) && !chosen(blocks[static_cast<size_t>(k - 1)]))
+                std::swap(blocks[static_cast<size_t>(k)], blocks[static_cast<size_t>(k - 1)]);
+    }
+    // The new order as old indices.
+    std::vector<int> order;
+    for (int i = 0; i < lo; ++i) order.push_back(i);
+    for (const auto& block : blocks) order.insert(order.end(), block.begin(), block.end());
+    for (int i = hi + 1; i < count; ++i) order.push_back(i);
     std::vector<int> nextSelection;
     for (int k = 0; k < count; ++k)
         if (selected(order[static_cast<size_t>(k)])) nextSelection.push_back(k);
@@ -486,6 +832,14 @@ void UCSlideDeckEditor::Reorder(int how) {
         for (int i : order) shapes.push_back(s.shapes[static_cast<size_t>(i)]);
         s.shapes = std::move(shapes);
     }, &nextSelection);
+}
+
+// A shape's block for the z-order: its group one below the group entered
+// (an id, >= 1), else a key of its own (< 0).
+int UCSlideDeckEditor::UnitKey(const PptxShape& shape, int index) const {
+    if (StartsWith(shape.groupPath, entered_) && shape.groupPath.size() > entered_.size())
+        return shape.groupPath[entered_.size()];
+    return -(index + 1);
 }
 
 void UCSlideDeckEditor::BringToFront() { Reorder(0); }
@@ -914,6 +1268,8 @@ void UCSlideDeckEditor::CopySelection() {
     if (!slide || selection_.empty()) return;
     clipboard_.clear();
     for (int i : selection_) clipboard_.push_back(slide->shapes[static_cast<size_t>(i)]);
+    clipboardStrip_ = entered_;
+    clipboardGroupNames_ = slide->groupNames;
 }
 
 void UCSlideDeckEditor::CutSelection() {
@@ -934,10 +1290,13 @@ void UCSlideDeckEditor::Paste() {
     std::vector<int> pasted;
     for (size_t k = 0; k < clipboard_.size(); ++k) pasted.push_back(static_cast<int>(count + k));
     ChangeSlide("Paste", [&](PptxSlide& s) {
+        std::vector<PptxShape> made;
         for (PptxShape copy : clipboard_) {
             if (occupied) { copy.x += kPasteOffset; copy.y += kPasteOffset; }
-            s.shapes.push_back(copy);
+            made.push_back(std::move(copy));
         }
+        RenewGroups(made, s, clipboardStrip_, clipboardGroupNames_);
+        for (PptxShape& copy : made) s.shapes.push_back(std::move(copy));
     }, &pasted);
     if (occupied)
         for (PptxShape& copy : clipboard_) { copy.x += kPasteOffset; copy.y += kPasteOffset; }
@@ -1028,6 +1387,315 @@ void UCSlideDeckEditor::SetSlideNotes(int index, const std::string& text) {
     Select(keep);
 }
 
+// ===== PICTURES =====
+
+SlideBox UCSlideDeckEditor::PictureFullBox(const PptxShape& picture) {
+    const double keepW = std::max(0.01, 1.0 - picture.cropLeft - picture.cropRight);
+    const double keepH = std::max(0.01, 1.0 - picture.cropTop - picture.cropBottom);
+    const double fullW = static_cast<double>(picture.width) / keepW, fullH = static_cast<double>(picture.height) / keepH;
+    SlideBox box;
+    box.x = picture.x - static_cast<int64_t>(std::llround(picture.cropLeft * fullW));
+    box.y = picture.y - static_cast<int64_t>(std::llround(picture.cropTop * fullH));
+    box.width = static_cast<int64_t>(std::llround(fullW));
+    box.height = static_cast<int64_t>(std::llround(fullH));
+    return box;
+}
+
+namespace {
+
+// The picture keeping `left` .. `bottom` of the whole picture `full`: its box and crop.
+void CropPicture(PptxShape& picture, const SlideBox& full, double left, double top, double right, double bottom) {
+    left = std::clamp(left, 0.0, 0.98);
+    top = std::clamp(top, 0.0, 0.98);
+    right = std::clamp(right, 0.0, 0.99 - left);
+    bottom = std::clamp(bottom, 0.0, 0.99 - top);
+    const double w = static_cast<double>(full.width), h = static_cast<double>(full.height);
+    picture.x = full.x + static_cast<int64_t>(std::llround(left * w));
+    picture.y = full.y + static_cast<int64_t>(std::llround(top * h));
+    picture.width = std::max<int64_t>(1, static_cast<int64_t>(std::llround((1.0 - left - right) * w)));
+    picture.height = std::max<int64_t>(1, static_cast<int64_t>(std::llround((1.0 - top - bottom) * h)));
+    picture.cropLeft = left;
+    picture.cropTop = top;
+    picture.cropRight = right;
+    picture.cropBottom = bottom;
+    picture.placeInherited = false;
+}
+
+} // namespace
+
+void UCSlideDeckEditor::SetPictureCropBox(int shape, const SlideBox& box) {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return;
+    const PptxShape& picture = slide->shapes[static_cast<size_t>(shape)];
+    if (picture.kind != PptxShapeKind::Picture) return;
+    const SlideBox full = PictureFullBox(picture);
+    if (full.width <= 0 || full.height <= 0) return;
+    const double w = static_cast<double>(full.width), h = static_cast<double>(full.height);
+    SetPictureCrop(shape, static_cast<double>(box.x - full.x) / w, static_cast<double>(box.y - full.y) / h,
+                   static_cast<double>(full.Right() - box.Right()) / w, static_cast<double>(full.Bottom() - box.Bottom()) / h);
+}
+
+void UCSlideDeckEditor::SetPictureCrop(int shape, double left, double top, double right, double bottom) {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size())) return;
+    const PptxShape& picture = slide->shapes[static_cast<size_t>(shape)];
+    if (picture.kind != PptxShapeKind::Picture) return;
+    const SlideBox full = PictureFullBox(picture);
+    PptxShape cropped = picture;
+    CropPicture(cropped, full, left, top, right, bottom);
+    if (cropped.x == picture.x && cropped.y == picture.y && cropped.width == picture.width &&
+        cropped.height == picture.height && std::fabs(cropped.cropLeft - picture.cropLeft) < 1e-6 &&
+        std::fabs(cropped.cropTop - picture.cropTop) < 1e-6 && std::fabs(cropped.cropRight - picture.cropRight) < 1e-6 &&
+        std::fabs(cropped.cropBottom - picture.cropBottom) < 1e-6)
+        return;
+    ChangeSlide("Crop", [&](PptxSlide& s) { s.shapes[static_cast<size_t>(shape)] = cropped; });
+}
+
+void UCSlideDeckEditor::ResetPictureCrop(int shape) { SetPictureCrop(shape, 0, 0, 0, 0); }
+
+// ===== CHARTS =====
+
+void UCSlideDeckEditor::SetShapeChart(int shape, const RichChart& chart) {
+    const PptxSlide* slide = CurrentSlide();
+    if (!slide || shape < 0 || shape >= static_cast<int>(slide->shapes.size()) || !chart.IsChart()) return;
+    if (slide->shapes[static_cast<size_t>(shape)].kind != PptxShapeKind::Chart) return;
+    ChangeSlide("Chart data", [&](PptxSlide& s) { s.shapes[static_cast<size_t>(shape)].chart = chart; });
+}
+
+namespace {
+
+bool TakesXValues(const RichChart& chart) {
+    return chart.kind == RichChart::Kind::Scatter || chart.kind == RichChart::Kind::Bubble;
+}
+
+} // namespace
+
+std::vector<std::vector<std::string>> UCSlideDeckEditor::ChartDataRows(const RichChart& chart) {
+    std::vector<std::vector<std::string>> rows;
+    std::vector<std::string> header = {""};
+    size_t points = chart.categories.size();
+    for (const RichChartSeries& series : chart.series) {
+        header.push_back(series.name);
+        points = std::max(points, series.values.size());
+    }
+    rows.push_back(header);
+    const bool xs = TakesXValues(chart) && !chart.series.empty();
+    for (size_t p = 0; p < points; ++p) {
+        std::vector<std::string> row;
+        if (xs && p < chart.series.front().xValues.size()) row.push_back(FormatFloatClassic(chart.series.front().xValues[p]));
+        else row.push_back(p < chart.categories.size() ? chart.categories[p] : std::string());
+        for (const RichChartSeries& series : chart.series)
+            row.push_back(p < series.values.size() ? FormatFloatClassic(series.values[p]) : std::string());
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+RichChart UCSlideDeckEditor::ChartWithDataRows(const RichChart& chart, const std::vector<std::vector<std::string>>& rows) {
+    auto blank = [](const std::string& text) {
+        return std::all_of(text.begin(), text.end(), [](unsigned char c) { return std::isspace(c) != 0; });
+    };
+    auto cell = [&rows](size_t r, size_t c) -> std::string {
+        return r < rows.size() && c < rows[r].size() ? rows[r][c] : std::string();
+    };
+    // How far the block goes: the last row and column with anything in them.
+    size_t lastRow = 0, lastColumn = 0;
+    for (size_t r = 0; r < rows.size(); ++r)
+        for (size_t c = 0; c < rows[r].size(); ++c)
+            if (!blank(rows[r][c])) { lastRow = std::max(lastRow, r); lastColumn = std::max(lastColumn, c); }
+    RichChart out = chart;
+    out.categories.clear();
+    out.series.clear();
+    const bool xs = TakesXValues(chart);
+    std::vector<double> xValues;
+    for (size_t r = 1; r <= lastRow; ++r) {
+        out.categories.push_back(cell(r, 0));
+        double x = 0;
+        if (!TryParseFloat(cell(r, 0), x)) x = static_cast<double>(r);
+        xValues.push_back(x);
+    }
+    for (size_t c = 1; c <= lastColumn; ++c) {
+        RichChartSeries series = c - 1 < chart.series.size() ? chart.series[c - 1] : RichChartSeries();
+        series.name = cell(0, c);
+        if (series.name.empty()) series.name = "Series " + std::to_string(c);
+        series.values.clear();
+        for (size_t r = 1; r <= lastRow; ++r) {
+            double value = 0;
+            if (!TryParseFloat(cell(r, c), value)) value = 0;
+            series.values.push_back(value);
+        }
+        const size_t points = series.values.size();
+        if (xs) series.xValues = xValues;
+        if (!series.sizes.empty()) series.sizes.resize(points, series.sizes.back());
+        if (!series.labels.empty()) series.labels.resize(points);
+        out.series.push_back(std::move(series));
+    }
+    if (!out.pointColors.empty()) out.pointColors.resize(out.categories.size());
+    return out;
+}
+
+// ===== SEVERAL SLIDES =====
+
+namespace {
+
+std::vector<int> ValidSlides(std::vector<int> slides, int count) {
+    slides.erase(std::remove_if(slides.begin(), slides.end(), [count](int i) { return i < 0 || i >= count; }), slides.end());
+    std::sort(slides.begin(), slides.end());
+    slides.erase(std::unique(slides.begin(), slides.end()), slides.end());
+    return slides;
+}
+
+// The slides in a new order: slot i holds the slide that was at order[i].
+struct PermuteSlidesCommand : UCSlideDeckEditor::Command {
+    std::vector<int> order;
+    int currentAfter = 0, currentBefore = 0;
+    void Apply(UCSlideDeckEditor& editor) override {
+        auto& slides = editor.GetDeck()->slides;
+        std::vector<PptxSlide> next;
+        for (int i : order) next.push_back(std::move(slides[static_cast<size_t>(i)]));
+        slides = std::move(next);
+        editor.SetCurrentSlide(currentAfter);
+    }
+    void Revert(UCSlideDeckEditor& editor) override {
+        auto& slides = editor.GetDeck()->slides;
+        std::vector<PptxSlide> before(slides.size());
+        for (size_t k = 0; k < order.size(); ++k) before[static_cast<size_t>(order[k])] = std::move(slides[k]);
+        slides = std::move(before);
+        editor.SetCurrentSlide(currentBefore);
+    }
+};
+
+// Several commands as one step: done in order, undone the other way.
+struct CompositeCommand : UCSlideDeckEditor::Command {
+    std::vector<std::unique_ptr<UCSlideDeckEditor::Command>> steps;
+    void Apply(UCSlideDeckEditor& editor) override {
+        for (auto& step : steps) step->Apply(editor);
+    }
+    void Revert(UCSlideDeckEditor& editor) override {
+        for (auto it = steps.rbegin(); it != steps.rend(); ++it) (*it)->Revert(editor);
+    }
+};
+
+struct HideSlidesCommand : UCSlideDeckEditor::Command {
+    std::vector<int> slides;
+    std::vector<bool> before;
+    bool hidden = true;
+    void Apply(UCSlideDeckEditor& editor) override {
+        for (int i : slides) editor.GetDeck()->slides[static_cast<size_t>(i)].hidden = hidden;
+    }
+    void Revert(UCSlideDeckEditor& editor) override {
+        for (size_t k = 0; k < slides.size(); ++k) editor.GetDeck()->slides[static_cast<size_t>(slides[k])].hidden = before[k];
+    }
+};
+
+// A slide's speaker notes before and after; the slide shown only on undo and redo.
+struct NotesCommand : UCSlideDeckEditor::Command {
+    int index = 0;
+    std::vector<PptxParagraph> before, after;
+    bool done = false;
+    void Apply(UCSlideDeckEditor& editor) override {
+        editor.GetDeck()->slides[static_cast<size_t>(index)].notes = after;
+        if (done) editor.SetCurrentSlide(index);
+        done = true;
+    }
+    void Revert(UCSlideDeckEditor& editor) override {
+        editor.GetDeck()->slides[static_cast<size_t>(index)].notes = before;
+        editor.SetCurrentSlide(index);
+    }
+};
+
+} // namespace
+
+void UCSlideDeckEditor::MoveSlides(std::vector<int> slides, int to) {
+    const int count = GetSlideCount();
+    slides = ValidSlides(std::move(slides), count);
+    if (slides.empty()) return;
+    to = std::clamp(to, 0, count);
+    std::vector<int> rest;
+    int at = 0;   // where the moved ones go among the rest
+    for (int i = 0; i < count; ++i) {
+        if (std::binary_search(slides.begin(), slides.end(), i)) continue;
+        if (i < to) ++at;
+        rest.push_back(i);
+    }
+    std::vector<int> order(rest.begin(), rest.begin() + at);
+    order.insert(order.end(), slides.begin(), slides.end());
+    order.insert(order.end(), rest.begin() + at, rest.end());
+    bool same = true;
+    for (int i = 0; i < count; ++i) same = same && order[static_cast<size_t>(i)] == i;
+    if (same) return;
+    auto command = std::make_unique<PermuteSlidesCommand>();
+    command->description = slides.size() == 1 ? "Move slide" : "Move slides";
+    command->order = std::move(order);
+    command->currentAfter = at;
+    command->currentBefore = slides.front();
+    Run(std::move(command));
+}
+
+void UCSlideDeckEditor::DeleteSlides(std::vector<int> slides) {
+    slides = ValidSlides(std::move(slides), GetSlideCount());
+    if (slides.empty()) return;
+    if (slides.size() == 1) { DeleteSlide(slides.front()); return; }
+    auto command = std::make_unique<CompositeCommand>();
+    command->description = "Delete slides";
+    for (auto it = slides.rbegin(); it != slides.rend(); ++it) {
+        auto step = std::make_unique<InsertSlideCommand>();
+        step->remove = true;
+        step->index = *it;
+        step->slide = deck_->slides[static_cast<size_t>(*it)];
+        step->currentBefore = current_;
+        command->steps.push_back(std::move(step));
+    }
+    Run(std::move(command));
+}
+
+void UCSlideDeckEditor::DuplicateSlides(std::vector<int> slides) {
+    slides = ValidSlides(std::move(slides), GetSlideCount());
+    if (slides.empty()) return;
+    if (slides.size() == 1) { DuplicateSlide(slides.front()); return; }
+    auto command = std::make_unique<CompositeCommand>();
+    command->description = "Duplicate slides";
+    int at = slides.back() + 1;
+    for (int i : slides) {
+        auto step = std::make_unique<InsertSlideCommand>();
+        step->index = at++;
+        step->slide = deck_->slides[static_cast<size_t>(i)];
+        step->currentBefore = current_;
+        command->steps.push_back(std::move(step));
+    }
+    Run(std::move(command));
+}
+
+void UCSlideDeckEditor::SetSlidesHidden(std::vector<int> slides, bool hidden) {
+    slides = ValidSlides(std::move(slides), GetSlideCount());
+    auto command = std::make_unique<HideSlidesCommand>();
+    command->description = hidden ? "Hide slides" : "Show slides";
+    command->hidden = hidden;
+    for (int i : slides) {
+        if (deck_->slides[static_cast<size_t>(i)].hidden == hidden) continue;
+        command->slides.push_back(i);
+        command->before.push_back(deck_->slides[static_cast<size_t>(i)].hidden);
+    }
+    if (command->slides.empty()) return;
+    Run(std::move(command));
+}
+
+void UCSlideDeckEditor::SetSlideNotes(int index, const std::vector<PptxParagraph>& notes) {
+    if (index < 0 || index >= GetSlideCount()) return;
+    const PptxSlide& slide = deck_->slides[static_cast<size_t>(index)];
+    if (slide.notes.empty() && notes.empty()) return;
+    // A note that holds no text at all is no note.
+    bool text = false;
+    for (const PptxParagraph& p : notes) text = text || !p.Text().empty();
+    auto command = std::make_unique<NotesCommand>();
+    command->description = "Notes";
+    command->index = index;
+    command->before = slide.notes;
+    command->after = text ? notes : std::vector<PptxParagraph>();
+    if (command->before.empty() && command->after.empty()) return;
+    Run(std::move(command));
+}
+
 // ===== UNDO =====
 
 void UCSlideDeckEditor::Run(std::unique_ptr<Command> command) {
@@ -1069,6 +1737,7 @@ void UCSlideDeckEditor::RenumberSlides() {
 }
 
 void UCSlideDeckEditor::Changed() {
+    CheckEnteredGroup();
     modified_ = true;
     if (onChange) onChange();
 }

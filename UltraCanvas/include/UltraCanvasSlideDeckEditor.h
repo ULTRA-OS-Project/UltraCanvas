@@ -22,6 +22,10 @@
 //   editor.MoveSelection(914400, 0);                             // an inch to the right
 //   editor.Undo();
 //
+// Version: 1.4.0 - groups (GroupSelection, UngroupSelection, EnterGroup, whole groups selected, moved,
+//                  resized and turned as one: RotateSelection); AlignSelection, DistributeSelection;
+//                  picture crops (SetPictureCrop, ResetPictureCrop, PictureFullBox); a chart's data
+//                  (SetShapeChart, ChartDataRows, ChartWithDataRows); SetSlideNotes with paragraphs
 // Version: 1.3.0 - pasting from other kinds: InsertTable with the cells' text, InsertFormattedTextBox,
 //                  InsertChart; CopiedShapes
 // Version: 1.2.0 - tables: InsertTable, TableCellBox, TableCellAt, rows and columns inserted and deleted
@@ -34,6 +38,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -60,6 +65,10 @@ struct SlideSnap {
 // The eight handles round a box, and the turning handle above it.
 enum class SlideHandle { NoHandle, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left, Rotate };
 
+// Where AlignSelection lines the shapes up: their left edges, centres or
+// right edges; their tops, middles or bottoms.
+enum class SlideAlignment { Left, Centre, Right, Top, Middle, Bottom };
+
 class UCSlideDeckEditor {
 public:
     explicit UCSlideDeckEditor(std::shared_ptr<PptxPresentation> deck = nullptr);
@@ -81,6 +90,10 @@ public:
     const PptxSlide* CurrentSlide() const;
 
     // ===== SELECTION =====
+    // A shape in a group is selected with the rest of it: Select and
+    // ToggleSelected take whole groups - the outermost below the group
+    // entered (EnterGroup), if any - and the selection holds every shape of
+    // them.
     const std::vector<int>& GetSelection() const { return selection_; }
     void Select(std::vector<int> shapes);   // indices on the current slide
     void SelectAll();
@@ -89,6 +102,47 @@ public:
     bool IsSelected(int shape) const;
     // The shapes' boxes together; width 0 when nothing is selected.
     SlideBox SelectionBox() const;
+
+    // ===== GROUPS =====
+    // The shapes selected with `shape`: its group's below the group entered,
+    // else itself; empty for no shape.
+    std::vector<int> UnitOf(int shape) const;
+    // The selection as its groups and single shapes, back to front.
+    std::vector<std::vector<int>> SelectionUnits() const;
+    // One group is selected (it is framed, resized and turned as one shape).
+    bool SelectionIsOneGroup() const;
+    // Two groups or shapes or more, none of them a placeholder (a title or a
+    // content box stays on its own, as PowerPoint keeps it).
+    bool CanGroup() const;
+    bool CanUngroup() const;
+    // The selected shapes and groups as one group (Ctrl+G), one step: they
+    // come together in the z-order where the frontmost of them was, and stay
+    // selected. Inside a group entered, the new one is a group in it.
+    void GroupSelection();
+    // Each selected group taken apart (Ctrl+Shift+G), one step; what was in
+    // it stays selected.
+    void UngroupSelection();
+    // Selecting inside `shape`'s group (a double-click on a group): the shape
+    // - or the group inside it that holds it - alone selected. False when the
+    // shape is in no group below the one entered.
+    bool EnterGroup(int shape);
+    // Back to selecting whole groups (a click outside, Escape).
+    void ExitGroup();
+    // The group selected inside (its path, outermost first); empty: none.
+    const std::vector<int>& GetEnteredGroup() const { return entered_; }
+    // The selection turned by `degrees` more about its box's centre, as one:
+    // each shape's centre goes round it and each shape turns as much (a
+    // group turned). One step.
+    void RotateSelection(double degrees);
+
+    // ===== ALIGNING =====
+    // The selected groups and shapes lined up with each other, or with the
+    // slide when one is selected; one step.
+    void AlignSelection(SlideAlignment how);
+    // The same gap between each two (`horizontally`: across, else down), the
+    // outermost two staying where they are; with fewer than three, spread
+    // over the slide. One step.
+    void DistributeSelection(bool horizontally);
 
     // ===== FINDING =====
     // The topmost shape at `x`, `y` on the current slide, turned shapes
@@ -160,6 +214,32 @@ public:
     // Whether every run of the selected shapes' text passes `test` (a toggle's state).
     bool AllSelectedText(const std::function<bool(const PptxRun&)>& test) const;
 
+    // ===== PICTURES =====
+    // Where the whole picture would stand, uncropped, at the size it is
+    // shown: the box grown by what the crop takes away from each side.
+    static SlideBox PictureFullBox(const PptxShape& picture);
+    // Picture `shape` cropped to `box` (on the slide): what it keeps of the
+    // picture follows from where the box lies in PictureFullBox, the
+    // picture's scale unchanged (a crop handle dragged). One step.
+    void SetPictureCropBox(int shape, const SlideBox& box);
+    // The crop by its shares (0..1 from each side, as a:srcRect), the box
+    // following. One step.
+    void SetPictureCrop(int shape, double left, double top, double right, double bottom);
+    // The whole picture again, its box grown to it. One step.
+    void ResetPictureCrop(int shape);
+
+    // ===== CHARTS =====
+    // Chart `shape` showing `chart` (its data edited), one step.
+    void SetShapeChart(int shape, const RichChart& chart);
+    // A chart's data as a block of cells: the first row the series' names
+    // under an empty corner, then a row per category - its name, and each
+    // series' value. A scatter or bubble chart's first column is the x values.
+    static std::vector<std::vector<std::string>> ChartDataRows(const RichChart& chart);
+    // `chart` with the data of `rows` (as ChartDataRows gives them): its
+    // kind, title, legend and the series' colours kept; an empty row or
+    // column at the end left out; a cell that is no number is 0.
+    static RichChart ChartWithDataRows(const RichChart& chart, const std::vector<std::vector<std::string>>& rows);
+
     // ===== TABLES =====
     // A table of `rows` x `columns` at `box`, in PowerPoint's banded look (a
     // coloured header row, alternating rows), selected; its index.
@@ -197,7 +277,18 @@ public:
     void DeleteSlide(int index);
     void MoveSlide(int from, int to);
     void SetSlideHidden(int index, bool hidden);
+    // Several slides at once (the sorter's selection), each one step: moved
+    // together before slide `to` of the deck as it is (the end for the
+    // count), in their order; deleted; each duplicated after the last of
+    // them; hidden or shown.
+    void MoveSlides(std::vector<int> slides, int to);
+    void DeleteSlides(std::vector<int> slides);
+    void DuplicateSlides(std::vector<int> slides);
+    void SetSlidesHidden(std::vector<int> slides, bool hidden);
     void SetSlideNotes(int index, const std::string& text);
+    // The notes as paragraphs (the notes pane's rich text), one step; the
+    // slide shown stays as it is.
+    void SetSlideNotes(int index, const std::vector<PptxParagraph>& notes);
     static std::string SlideNotesText(const PptxSlide& slide);
 
     // ===== UNDO =====
@@ -220,8 +311,11 @@ private:
     std::shared_ptr<PptxPresentation> deck_;
     int current_ = -1;
     std::vector<int> selection_;
+    std::vector<int> entered_;   // the group selected inside; empty: none
     std::vector<std::unique_ptr<Command>> undo_, redo_;
     std::vector<PptxShape> clipboard_;
+    std::vector<int> clipboardStrip_;                 // the group entered when they were copied
+    std::map<int, std::string> clipboardGroupNames_;  // their slide's group names
     bool modified_ = false;
     bool nudging_ = false;   // the last step is a nudge the next one joins
 
@@ -229,6 +323,8 @@ private:
     void Changed();
     void SelectionChanged();
     void Reorder(int how);
+    int UnitKey(const PptxShape& shape, int index) const;
+    void CheckEnteredGroup();
     void RenumberSlides();
 };
 

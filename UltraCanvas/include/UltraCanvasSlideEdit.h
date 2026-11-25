@@ -20,8 +20,19 @@
 //   Ctrl+Z / Y        undo / redo          Page Up / Down the slide before / after
 //   Tab               the next shape       Enter, F2 its text (onEditText)
 //   Ctrl+wheel        zoom                 Ctrl+M a new slide
+//   Ctrl+G            group                Ctrl+Shift+G ungroup
+// A group is selected, moved, resized and turned as one; a double-click on
+// it selects inside it (a shape of it alone), Escape or a click outside
+// goes back. A double-click on a chart calls onEditChart.
+// Crop mode (SetCropMode, a picture selected): the handles crop the picture,
+// the rest of it shown faintly; Enter, Escape or a click elsewhere ends it.
 // In the strip: click a slide, drag it to move it, Delete deletes it;
 // right-click (strip or slide) calls onContextMenu.
+// The slide sorter (SetView(SlideEditView::Sorter)): every slide as a
+// thumbnail in a grid; click, Ctrl+click and Shift+click choose slides, a
+// drag moves them all to where it is let go (one step), a double-click or
+// Enter edits the slide, Delete deletes them, Ctrl+D duplicates them, and a
+// right-click calls onContextMenu (inStrip true) for a host's menu.
 //
 // Paste takes the shapes copied here while the system clipboard still holds
 // what Copy put there (their text and HTML, for other programs); else what
@@ -43,6 +54,8 @@
 //   edit->SetDeck(deck);
 //   edit->onEditText = [edit](int shape) { /* ask for the text */ edit->Editor().SetShapeText(shape, "Hello"); };
 //
+// Version: 1.5.0 - groups (Ctrl+G, Ctrl+Shift+G, a double-click selects inside), a group framed and
+//                  turned as one; crop mode (SetCropMode); the slide sorter (SetView); onEditChart
 // Version: 1.4.0 - Copy / Cut / Paste through the system clipboard (cells, text, pictures, charts);
 //                  a canvas with the slides and shapes as parts to assistive technology
 // Version: 1.3.0 - the show mode is gone: UltraCanvasSlideShowPlayer plays the deck
@@ -60,6 +73,9 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+// The slide being edited with the strip beside it, or every slide in a grid.
+enum class SlideEditView { Normal, Sorter };
 
 class UltraCanvasSlideEdit : public UltraCanvasUIElement {
 public:
@@ -84,6 +100,19 @@ public:
     // Shows slide `index` and scrolls the strip to it.
     void GoToSlide(int index);
 
+    // The slide sorter, or the slide being edited.
+    void SetView(SlideEditView view);
+    SlideEditView GetView() const { return view_; }
+    // The slides chosen in the sorter, in order (the current one when none
+    // was chosen); and choosing them.
+    std::vector<int> GetSorterSelection() const;
+    void SetSorterSelection(std::vector<int> slides);
+
+    // Crop mode for the selected picture: its handles crop it. Ends by
+    // itself when the selection changes. False when no picture is selected.
+    bool SetCropMode(bool crop);
+    bool IsCropping() const { return cropping_; }
+
     // ===== CLIPBOARD =====
     // The selected shapes (Ctrl+C / X), kept for a paste here and put on the
     // system clipboard as text and HTML; Paste (Ctrl+V) as described above.
@@ -98,6 +127,11 @@ public:
     std::function<void(int shape)> onEditText;
     // A table's cell is to be edited (double-click on a table).
     std::function<void(int shape, int row, int col)> onEditTableCell;
+    // A chart's data is to be edited (double-click on a chart).
+    std::function<void(int shape)> onEditChart;
+    // The view or crop mode changed (SetView, a double-click in the sorter,
+    // the end of cropping).
+    std::function<void()> onModeChange;
     // Right-click: `slide` the slide under it in the strip (or the slide
     // shown), `shape` the shape under it on the slide (-1: none, or in the
     // strip); `windowX`, `windowY` where, for a menu.
@@ -126,7 +160,24 @@ public:
     double EmuPerPixel() const;
 
 private:
-    enum class Drag { NoDrag, Band, Move, Resize, Rotate, StripSlide };
+    enum class Drag { NoDrag, Band, Move, Resize, Rotate, StripSlide, Crop, SorterSlides };
+
+    SlideEditView view_ = SlideEditView::Normal;
+    bool cropping_ = false;
+    std::vector<int> sorterSelection_;   // the slides chosen in the sorter
+    int sorterAnchor_ = -1;               // where a Shift+click's range starts
+    double sorterScroll_ = 0;
+    int sorterDropIndex_ = -1;
+    Rect2Dd SorterThumbRect(int index) const;
+    int SorterColumns() const;
+    int SorterSlideAt(const Point2Df& p) const;
+    int SorterDropAt(const Point2Df& p) const;
+    void DrawSorter(IRenderContext* ctx);
+    void DrawCrop(IRenderContext* ctx, const PptxSlide& slide);
+    bool OnSorterPress(const UCEvent& event);
+    bool OnSorterKey(const UCEvent& event);
+    void EnsureSorterVisible(int index);
+    void ModeChanged();
 
     int editingShape_ = -1;
     std::string copiedText_;         // what Copy put on the system clipboard as text
@@ -154,6 +205,7 @@ private:
     std::unique_ptr<PptxSlide> preview_;
     SlideBox startBox_;              // the selection's (or the one shape's) box at the press
     double startRotation_ = 0;
+    double dragAngle_ = 0;           // a group's turn while its turning handle is dragged
     SlideBox bandBox_;
     SlideSnap guides_;
     int stripDropIndex_ = -1;

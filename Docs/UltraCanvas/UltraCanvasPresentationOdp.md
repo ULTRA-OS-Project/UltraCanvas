@@ -148,9 +148,15 @@ level's.
 
 - Slides in document order; every `draw:page` is one, the hidden ones marked.
 - Text frames, drawing shapes (custom shapes, rectangles, ellipses, polygons,
-  paths, ...), lines and connectors, groups (`draw:g`) and shapes behind a
-  hyperlink (`draw:a`) are read through. A shape with neither text, fill nor
-  outline is left out.
+  paths, ...), lines and connectors and shapes behind a hyperlink
+  (`draw:a`) are read through. A group (`draw:g`) is kept: its shapes, on
+  the page already, each with the group in its `groupPath` and its
+  `draw:name` in the slide's `groupNames`. A shape with neither text, fill
+  nor outline is left out.
+- A picture's crop: its graphic style's `fo:clip="rect(top, right, bottom,
+  left)"`, lengths of the picture at its own size - its pixels at the
+  resolution it states, else 96 to the inch (`PptxPictureNaturalSize`), as
+  LibreOffice measures it - as the shares `cropLeft` ... `cropBottom`.
 - White space as ODF has it: a run of spaces, tabs and line ends is one
   space, none at a paragraph's start or end; `text:s`, `text:tab` and
   `text:line-break` stay. A field (page number, date, ...) gives the text it
@@ -190,8 +196,8 @@ level's.
 - Not read: master pages' shapes other than placeholders (a logo on every slide), shadows and
   other effects, bitmap and hatch fills (a hatch on a solid ground keeps the
   ground), outlines built from formulas (an Office preset still draws by its
-  name; an ODF type the list above does not name draws as a box), picture
-  crops, animations, a transition's direction. Pictures are kept as bytes
+  name; an ODF type the list above does not name draws as a box),
+  animations, a transition's direction. Pictures are kept as bytes
   (`withPictures`), not decoded.
 - A password-protected deck (`manifest:encryption-data` in the manifest) is
   decrypted with the password `ReadOdpPresentation` and
@@ -249,9 +255,11 @@ if (ReadPptxPresentation(pptxPath, deck, error, "", true)) {     // a PowerPoint
   `draw:mirror-*` applies after the turn and leaves the fill alone);
 - connectors as lines between their ends, or paths, mirrored and turned
   into place;
+- groups: a `draw:g` round the shapes of each `groupPath`, nested, its
+  `draw:name` from `groupNames`;
 - pictures from `deck.pictures` (`Pictures/imageN.*`; a picture whose bytes
-  were not kept is a grey box with its description) - not cropped: ODF crops
-  by the picture's own size, which the model does not carry;
+  were not kept is a grey box with its description), cropped by `fo:clip`
+  in lengths of the picture's own size (`PptxPictureNaturalSize`);
 - tables with merged cells (`table:number-columns-spanned` /
   `-rows-spanned`, covered cells), fills, borders, padding and vertical
   alignment; one without cell looks in PowerPoint's default colours;

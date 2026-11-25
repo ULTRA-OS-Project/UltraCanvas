@@ -1,5 +1,6 @@
 // core/UltraCanvasPptxSlideRender.cpp
 // A PowerPoint slide drawn as a picture - see UltraCanvasPptxSlideRender.h.
+// Version: 1.5.0 - PptxSlideDrawOptions::background (false: the shapes alone)
 // Version: 1.4.0 - PptxBulletText
 // Version: 1.3.0 - a picture is decoded once, not on every paint
 // Version: 1.2.0 - DrawPptxSlide: on any context, into a rectangle; prompt text, a shape's text left out
@@ -260,7 +261,7 @@ public:
         height_ = height;
         if (clear) {
             ctx_->Clear(FromHex(slide_.background, Colors::White));
-        } else {
+        } else if (!options_ || options_->background) {
             ctx_->SetFillPaint(FromHex(slide_.background, Colors::White));
             ctx_->FillRectangle(Rect2Dd(0, 0, width, height));
         }
