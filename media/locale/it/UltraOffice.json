@@ -1,7 +1,6 @@
 {
   "@language": "it",
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
-  "A chart of the selected cells": "Un grafico delle celle selezionate",
   "A column left of this cell": "Una colonna a sinistra di questa cella",
   "A column right of this cell": "Una colonna a destra di questa cella",
   "A copy of the selected shapes (Ctrl+D)": "Una copia delle forme selezionate (Ctrl+D)",
@@ -158,7 +157,6 @@
   "Save (Ctrl+S)": "Salva (Ctrl+S)",
   "Save as...": "Salva con nome…",
   "Save the changes to {0} before closing it?": "Salvare le modifiche a {0} prima di chiuderlo?",
-  "Select cells holding numbers to make a chart of them.": "Seleziona celle contenenti numeri per farne un grafico.",
   "Select the words the link should cover first.": "Seleziona prima le parole che il collegamento deve coprire.",
   "Send backward": "Porta indietro",
   "Send to back": "Porta in secondo piano",
@@ -224,5 +222,7 @@
   "{n} shape selected": {
     "one": "{n} forma selezionata",
     "other": "{n} forme selezionate"
-  }
+  },
+  "A chart of the selected cells: every chart type, by category, drawn from them": "Un grafico delle celle selezionate: ogni tipo di grafico, per categoria, disegnato con esse",
+  "Change the selected chart's type in the chart gallery": "Cambia il tipo del grafico selezionato nella galleria dei grafici"
 }

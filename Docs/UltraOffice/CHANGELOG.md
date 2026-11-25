@@ -10,7 +10,8 @@
     page break, footnote, contents), View (pages, page width, whole page,
     zoom);
   - spreadsheets: Home (clipboard, bold, italic, alignment, wrap, number
-    format, decimals), Insert (chart, chart properties, delete chart), Data
+    format, decimals), Insert (chart gallery, chart type, chart properties,
+    delete chart), Data
     (sort, filter, fill, SUM, conditional formatting, data validation),
     Review (comments, links), Page (print area, landscape, fit to width,
     gridlines, headings), View (freeze panes);
@@ -21,12 +22,19 @@
   .docx read and written, .doc, Markdown and LaTeX read. Export as PDF and
   Print.
 - **Spreadsheets**: .ods and .xlsx read and written, .xls read, .csv and
-  .tsv; the status line adds up the selection. Charts of the selection -
-  columns and bars (side by side or stacked), lines, areas, pies,
-  doughnuts, scatter and radar charts - stand over the cells, follow them
-  as they change, are moved and resized with handles, deleted with Delete,
-  their type, title and legend changed by a double-click, every change
-  undone; they are kept in .xlsx and .ods and printed. Export as PDF and Print, by
+  .tsv; the status line adds up the selection. Charts of the selection,
+  picked in the chart gallery - every chart of the framework, 52 types in
+  nine categories, each tile drawn from the selection (columns and bars,
+  lines and areas, pies, radar and polar charts, scatter and bubbles,
+  waterfall, histogram, box and whisker, stock, funnel, Sankey, chord,
+  treemap, sunburst, Gantt, timeline, heatmaps, contour and surface, word
+  cloud, parliament and more), a type the selection does not fit saying
+  why - stand over the cells, follow them as they change, are moved and
+  resized with handles, deleted with Delete, their type (through the same
+  gallery), title and legend changed by a double-click, every change
+  undone; they are kept in .xlsx and .ods - a type those have no form for
+  as a column chart other programs show, with the real type beside it for
+  UltraOffice - and printed. Export as PDF and Print, by
   the sheet's print settings. Copy and paste reach other programs: cells go
   out as text and a table, and another program's table or text comes in.
   Conditional formatting and data validation (*Data*), comments and links

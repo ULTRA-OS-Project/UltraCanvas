@@ -26,6 +26,19 @@
 //     chart.chart.title = "Sales";
 //     grid->InsertChart(chart);             // on the active sheet, one undo step
 //
+// Every chart of the framework a block of cells can feed is a type
+// (SpreadsheetChartTypes): bars and columns, waterfall, Sankey, Gantt,
+// heatmap, ternary ... - drawn by its own element through
+// CreateRichChartElement. A type .xlsx (c:) or .ods (chart:class) has no
+// form for is written as a column chart of its numbers - what Excel and
+// LibreOffice show - with the real kind and its ranges in an UltraCanvas
+// extension (c:extLst, an element of our own namespace in the chart
+// object), which reading puts back.
+//
+// Version: 1.1.0 - every chart of the framework a block of cells can feed: SpreadsheetChartTypes (the gallery's
+//                  types by category, with names and descriptions), SpreadsheetChartFitMessage, sizes ranges,
+//                  ShowSpreadsheetChartGallery; a kind .xlsx / .ods have no form for is kept as an
+//                  UltraCanvas extension beside a column chart of its data
 // Version: 1.0.0 - SpreadsheetChart, its anchor and its ranges; made from a block of cells, read again from them
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -48,6 +61,8 @@ class SpreadsheetSheet;
 class UCZipPackageReader;
 class UltraCanvasChartEngineElement;
 class UltraCanvasSpreadsheet;
+class UltraCanvasUIElement;
+class UltraCanvasWindowBase;
 
 // A block of cells on a sheet named by its name. Unset (no sheet) where a
 // series has no such part: a series without a name cell, a chart without
@@ -80,6 +95,7 @@ struct SpreadsheetChartSeries {
     SpreadsheetChartRange name;         // one cell; unset: the series keeps the name it has
     SpreadsheetChartRange categories;   // the category names (a scatter series: its x values)
     SpreadsheetChartRange values;
+    SpreadsheetChartRange sizes;        // a bubble series: each point's size
 };
 
 // Where a chart sits: its top-left corner `fromOffsetX`, `fromOffsetY`
@@ -154,7 +170,7 @@ SpreadsheetChartAnchor SpreadsheetChartAnchorForBox(const SpreadsheetSheet& shee
 // chart area with a thin border, the chart engine's chart over it. `cache`
 // (optional) keeps the engine's element between calls.
 bool DrawSpreadsheetChart(IRenderContext* ctx, const SpreadsheetChart& chart, const Rect2Dd& target,
-                          std::shared_ptr<UltraCanvasChartEngineElement>* cache = nullptr);
+                          std::shared_ptr<UltraCanvasUIElement>* cache = nullptr);
 
 // A sheet was renamed: the ranges naming it by `oldName` name it `newName`.
 void RenameSpreadsheetChartSheet(std::vector<SpreadsheetChart>& charts, const std::string& oldName,
@@ -206,5 +222,71 @@ const std::vector<SpreadsheetChartChoice>& SpreadsheetChartChoices();
 std::string SpreadsheetChartChoiceName(size_t index);
 // The choice a chart is (its kind and stacking); -1 for one not offered.
 int SpreadsheetChartChoiceOf(const RichChart& chart);
+
+// ===== THE CHART TYPES (the chart gallery) =====
+
+// The gallery's groups, in its order.
+enum class SpreadsheetChartCategory {
+    ColumnAndBar, LineAndArea, PieAndCircular, ScatterAndBubble, Statistical, Financial, FlowAndHierarchy,
+    MatrixAndMaps, Other
+};
+
+// One type the gallery offers: a kind and the look it is made with.
+struct SpreadsheetChartType {
+    RichChart::Kind kind = RichChart::Kind::Column;
+    SpreadsheetChartCategory category = SpreadsheetChartCategory::ColumnAndBar;
+    bool stacked = false;     // Column / Bar / Area: one on the other
+    bool percent = false;     // ...as shares of 100 %
+    bool filled = false;      // Radar: filled shapes
+    bool lines = false;       // Scatter: the points joined
+    const char* id = "";      // stable: "column-stacked", "sankey", "gantt"
+};
+
+// Every type, by category: columns and bars (side by side, stacked, 100 %,
+// lying down), waterfall, diverging bars, population pyramid, dumbbell,
+// Mekko; lines and areas, cumulative flow, nested areas; pie, doughnut,
+// radar, polar, radial bars, progress rings, gauge; scatter, bubbles,
+// quadrant, importance-performance, ternary, hexbin, 3D scatter; histogram,
+// box and whisker, jitter, ridgeline; stock; funnel, pyramid, Sankey, chord,
+// treemap, sunburst, Gantt, timeline; heatmap, calendar heatmap, contour,
+// surface; word cloud, parliament.
+const std::vector<SpreadsheetChartType>& SpreadsheetChartTypes();
+// Type `index`'s name and a sentence on what it shows and which columns it
+// reads, in the reader's language.
+std::string SpreadsheetChartTypeName(size_t index);
+std::string SpreadsheetChartTypeDescription(size_t index);
+std::string SpreadsheetChartCategoryName(SpreadsheetChartCategory category);
+// The type a chart is; -1 for none.
+int SpreadsheetChartTypeOf(const RichChart& chart);
+// The type with `id`; -1 for none.
+int SpreadsheetChartTypeById(const std::string& id);
+
+// `kind` as the extension names it ("waterfall", "sankey"), and back.
+const char* SpreadsheetChartKindId(RichChart::Kind kind);
+bool SpreadsheetChartKindFromId(const std::string& id, RichChart::Kind& kind);
+
+// A chart of type `type` over `range` of `sheet`: MakeSpreadsheetChart with
+// the type's kind and look, the columns read as the type reads them (a
+// bubble chart's x, y and size; a Sankey diagram's sources, targets and
+// amounts ...).
+SpreadsheetChart MakeSpreadsheetChartOfType(const SpreadsheetSheet& sheet, const CellRange& range, size_t type);
+// `chart` made type `type`, its kind and look, its series read from its
+// dataRange again where the new type reads the columns differently.
+void SetSpreadsheetChartType(SpreadsheetChart& chart, const SpreadsheetSheet& sheet, size_t type);
+// Why `chart`'s data does not fit its kind, in the reader's language ("A
+// bubble chart needs three columns of numbers: x, y and size."); empty when
+// it fits.
+std::string SpreadsheetChartFitMessage(const SpreadsheetChart& chart);
+// A small table of invented data that shows what `kind` is (the gallery's
+// picture when the selection does not fit the kind).
+RichChart SampleSpreadsheetChartData(RichChart::Kind kind);
+
+// The chart gallery: every type by category, each a picture of `data` (or
+// of sample data where it does not fit the type) drawn by the chart itself,
+// its name and description; a click or the arrow keys and Enter pick one.
+// `onChosen` gets the type picked (SpreadsheetChartTypes). `current` (-1 for
+// none) is chosen to begin with.
+void ShowSpreadsheetChartGallery(const SpreadsheetSheet& sheet, const CellRange& data, int current,
+                                 std::function<void(size_t type)> onChosen, UltraCanvasWindowBase* parent);
 
 } // namespace UltraCanvas

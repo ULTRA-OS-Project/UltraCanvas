@@ -1,7 +1,6 @@
 {
   "@language": "zh-Hans",
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
-  "A chart of the selected cells": "所选单元格的图表",
   "A column left of this cell": "此单元格左侧的一列",
   "A column right of this cell": "此单元格右侧的一列",
   "A copy of the selected shapes (Ctrl+D)": "所选形状的副本 (Ctrl+D)",
@@ -158,7 +157,6 @@
   "Save (Ctrl+S)": "保存 (Ctrl+S)",
   "Save as...": "另存为…",
   "Save the changes to {0} before closing it?": "关闭 {0} 前是否保存更改？",
-  "Select cells holding numbers to make a chart of them.": "请选择含有数字的单元格来制作图表。",
   "Select the words the link should cover first.": "请先选择链接要覆盖的文字。",
   "Send backward": "下移一层",
   "Send to back": "置于底层",
@@ -221,5 +219,7 @@
   },
   "{n} shape selected": {
     "other": "已选择 {n} 个形状"
-  }
+  },
+  "A chart of the selected cells: every chart type, by category, drawn from them": "所选单元格的图表：由其绘制的、按类别列出的所有图表类型",
+  "Change the selected chart's type in the chart gallery": "在图表库中更改所选图表的类型"
 }

@@ -48,6 +48,7 @@
 - [Best Practices](#best-practices)
 - [Printing and PDF](#printing-and-pdf)
 - [Charts](#charts)
+  - [Every chart type](#every-chart-type)
 - [See Also](#see-also)
 
 ## Overview
@@ -76,7 +77,7 @@
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references; Ctrl-drag copies instead, a double-click fills down beside the neighbouring data, Ctrl+D / Ctrl+R fill down / right (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
-- **Charts**: Columns, bars, lines, areas, pies, scatter and radar charts made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
+- **Charts**: every chart of the framework a block of cells can feed - columns, bars, lines, areas, pies, scatter, bubbles, waterfall, Sankey, Gantt, heatmap, ternary and forty more - picked in a chart gallery and made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
@@ -1481,22 +1482,17 @@ is anchored to cells - its top-left corner some pixels into one cell, its
 bottom-right into another, as .xlsx's two-cell anchor keeps it - and holds a
 `RichChart`, the chart model documents and decks use, whose series are
 ranges of cells: each series' name, its categories (a scatter series' x
-values) and its values (`SpreadsheetChartSeries`, ranges as
-`SpreadsheetChartRange`: a sheet's name and a `CellRange`). It is drawn by
-the chart engine (`DrawRichDocumentChart`) over the cells, moves with them
+values), its values and - a bubble series - its sizes
+(`SpreadsheetChartSeries`, ranges as `SpreadsheetChartRange`: a sheet's name
+and a `CellRange`). It is drawn by its kind's chart element (`DrawRichChart`:
+the chart engine's, or a funnel, a Sankey diagram, a Gantt chart ...) over
+the cells, moves with them
 when the grid scrolls or rows and columns are inserted above or left of it,
 and prints where it stands.
 
-| Kind (`RichChart::Kind`) | Offered by *Insert chart* |
-|---|---|
-| `Column`, `Bar` (side by side or `stacked`) | Columns, Columns stacked, Bars, Bars stacked |
-| `Line`, `Area` (or stacked) | Line, Area, Area stacked |
-| `Pie`, `Doughnut` | the first series, its values as slices named by the categories |
-| `Scatter` | each series' points over the first line of numbers as x |
-| `Radar` | the categories as spokes |
-
-A file's bubble and stock charts are read and drawn too, from the values the
-file keeps with them.
+The kinds, and the columns each reads, are in [Every chart type](#every-chart-type)
+below. A file's bubble and stock charts written by another program are read
+and drawn too, from the values the file keeps with them.
 
 `InsertChartFromSelection(kind, stacked, seriesIn)` makes one from the
 selection as a spreadsheet does (`MakeSpreadsheetChart`): a first row of
@@ -1565,6 +1561,116 @@ SpreadsheetChartRange range;
 SpreadsheetChartRange::FromExcel("'Sales Data'!$B$2:$B$7", range);
 std::string odf = range.ToOdf();   // 'Sales Data'.$B$2:.$B$7
 ```
+
+### Every chart type
+
+Every chart of the framework that a block of cells can feed is a type of
+the chart gallery (`SpreadsheetChartTypes()`, 52 of them in nine
+categories), each a `RichChart::Kind` with a look (stacked, 100 %, filled,
+joined). The grid's *Insert* opens the gallery (`ShowInsertChartDialog`),
+and a chart's type changes through it (`ShowChartTypeDialog`, and the *Type*
+button of the properties dialog). Each tile is a picture of the selection
+drawn by the chart itself - or, where the selection does not fit the type,
+of a small sample, faded, with the reason (`SpreadsheetChartFitMessage`:
+"A bubble chart needs three columns of numbers: x, y and size."). A click
+or the arrow keys pick a tile, Enter or a double click takes it; the
+category chips scroll to their section. Every kind is drawn by one factory,
+`CreateRichChartElement` (`UltraCanvasRichDocumentChart.h`), so a document
+or a slide holding the same `RichChart` draws it too.
+
+The columns each type reads, left to right, after an optional first row of
+series names (the names column is the categories; a first column of dates
+counts as names for the kinds that do not plot dates):
+
+| Category | Type (`id`) | Kind | Reads |
+|---|---|---|---|
+| Column and bar | Columns, stacked, 100 % (`column`, `column-stacked`, `column-percent`) | `Column` | names, one or more columns of numbers |
+| | Bars, stacked, 100 % (`bar`, `bar-stacked`, `bar-percent`) | `Bar` | as columns |
+| | Diverging bars (`diverging-bar`) | `DivergingBar` | names, the answers' counts from the most negative to the most positive (an odd middle column is neutral) |
+| | Population pyramid (`population-pyramid`) | `PopulationPyramid` | age groups, left, right |
+| | Dumbbell (`dumbbell`) | `Dumbbell` | names, two (or more) columns joined per row |
+| | Mekko (`mekko`) | `Mekko` | names (the columns), a column per segment |
+| Line and area | Line (`line`) | `Line` | names, one or more columns |
+| | Area, stacked, 100 % (`area`, `area-stacked`, `area-percent`) | `Area` | names, one or more columns |
+| | Cumulative flow (`cumulative-flow`) | `CumulativeFlow` | periods, a column per stage |
+| | Nested areas (`nested-area`) | `NestedArea` | names, values |
+| Pie and circular | Pie, Doughnut (`pie`, `doughnut`) | `Pie`, `Doughnut` | names, values |
+| | Radar, filled (`radar`, `radar-filled`) | `Radar` | at least three names (the spokes), one or more columns |
+| | Polar (`polar`) | `Polar` | at least three names, one or more columns |
+| | Radial bars (`radial-bar`) | `RadialBar` | names, one or more columns |
+| | Progress rings (`circular-progress`) | `CircularProgress` | names, values (out of 100, or out of a second column) |
+| | Gauge (`gauge`) | `Gauge` | the first value (a second column's first value is the maximum) |
+| Scatter and bubble | Scatter, with lines (`scatter`, `scatter-lines`) | `Scatter` | x, then one or more columns of y |
+| | Bubble (`bubble`) | `Bubble` | x, y, size (more series: y and size pairs) |
+| | Quadrant (`quadrant`) | `Quadrant` | names, x, y |
+| | Importance-performance (`importance-performance`) | `ImportancePerformance` | names, importance, performance (Slack's nine-point scales, 1 best) |
+| | Ternary (`ternary`) | `Ternary` | names, three parts (a, b, c) |
+| | Hexbin (`hexbin`) | `Hexbin` | x, y |
+| | 3D scatter (`scatter-3d`) | `Scatter3D` | names, x, y, z |
+| Statistical | Histogram (`histogram`) | `Histogram` | raw values, a column per group (`RichChart::bins`, 0 = Sturges' rule) |
+| | Box and whisker (`box-whisker`) | `BoxWhisker` | raw values, a column per group - or names and one column, grouped by name |
+| | Jitter (`jitter`) | `Jitter` | as box and whisker |
+| | Ridgeline (`ridgeline`) | `Ridgeline` | as box and whisker |
+| Financial | Stock (`stock`) | `Stock` | dates or names, (open,) high, low, close |
+| | Waterfall (`waterfall`) | `Waterfall` | names, changes (a name starting with *Total* or *Subtotal* stands on zero) |
+| Flow and hierarchy | Funnel (`funnel`) | `Funnel` | stages, values |
+| | Pyramid (`pyramid`) | `Pyramid` | levels, values |
+| | Sankey (`sankey`) | `Sankey` | sources (names), targets (a column of words), amounts |
+| | Chord (`chord`) | `Chord` | a square table: the same names down the side and across the top |
+| | Treemap, Sunburst (`treemap`, `sunburst`) | `Treemap`, `Sunburst` | names, columns of words for deeper levels, values |
+| | Gantt (`gantt`) | `Gantt` | tasks, start dates, end dates (an end before its start is a number of days) |
+| | Timeline (`timeline`) | `Timeline` | names, dates (and end dates for spans) |
+| Matrix and maps | Heatmap (`heatmap`) | `Heatmap` | names down, a column of numbers per column |
+| | Calendar heatmap (`calendar-heatmap`) | `CalendarHeatmap` | dates, values |
+| | Contour, Surface (`contour`, `surface`) | `Contour`, `Surface` | a table of numbers, at least two rows and two columns |
+| Other | Word cloud (`word-cloud`) | `WordCloud` | words, weights |
+| | Parliament (`parliament`) | `Parliament` | parties, seats |
+
+Left out, because no table of cells feeds them: the Kanban board (a board
+of cards worked on, not a chart of numbers), the circular infographic (rings
+of hand-placed cells and icons), the spectrogram (audio), the image
+histogram `UltraCanvasHistogramChart` (a picture's pixel counts - the
+histogram type bins cells instead), the GL contour surface (it needs a GL
+context; the surface type draws the cairo one), the parallel-coordinates
+chart (a runtime-loaded module, not in the core the spreadsheet links), the
+legacy chart elements the engine replaces (line, bar, scatter, area, pie,
+radar, financial, waterfall, dumbbell, diverging, Mekko, polar, radial bar,
+population) and the diagrams that hold structure rather than numbers (flow
+charts, UML, mind maps, Git graphs, fishbone, SWOT, PERT, Venn, timeline
+diagram, ticker board).
+
+<!-- doc-check: SpreadsheetSheet& sheet; std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+// Sources in A2:A9, targets in B2:B9, amounts in C2:C9, names in row 1.
+const int sankey = SpreadsheetChartTypeById("sankey");
+std::string problem;
+if (grid->InsertChartOfTypeFromSelection(static_cast<size_t>(sankey), &problem) < 0) {
+    // problem: "A Sankey diagram needs a column of sources, ..."
+}
+
+// Made by hand, checked, inserted; its type changed later.
+SpreadsheetChart gantt = MakeSpreadsheetChartOfType(sheet, CellRange(0, 4, 8, 6),
+                                                    static_cast<size_t>(SpreadsheetChartTypeById("gantt")));
+if (SpreadsheetChartFitMessage(gantt).empty()) grid->InsertChart(gantt);
+SetSpreadsheetChartType(gantt, sheet, static_cast<size_t>(SpreadsheetChartTypeById("timeline")));
+
+grid->ShowInsertChartDialog();   // the gallery over the selection
+```
+
+A type a format has no form for is kept as an UltraCanvas extension beside a
+column chart of its numbers - what Excel and LibreOffice show - and reading
+puts the real kind back:
+
+| Kinds | .xlsx | .ods |
+|---|---|---|
+| Column, Bar, Line, Area, Pie, Doughnut, Scatter, Radar, Stock | `c:barChart` ... `c:stockChart` | `chart:class` `bar` ... `stock` |
+| Bubble | `c:bubbleChart`, sizes as `c:bubbleSize` references | a `chart:bar` and the extension (ODF's bubble series cannot name our x, y and size ranges) |
+| Surface, Contour | `c:surface3DChart`, `c:surfaceChart` | a `chart:bar` and the extension |
+| every other kind | a `c:barChart` of its numbers, and in the chart part's `c:extLst` a `c:ext uri="{8E1F6B2A-4C3D-4A57-9B0E-2D6C71A5F3B8}"` holding `ucc:chart kind="sankey" stacked percent filled bins data-range series-in-rows` with a `ucc:series name categories values sizes` per series (Excel's range spelling) | a `chart:bar` of its numbers, and as the last child of `chart:chart` an `ucchart:chart` in the namespace `http://schemas.ultracanvas.org/spreadsheet/chart/2026`, the same attributes and series in ODF's range spelling |
+
+Excel's own 2016 kinds (`cx:` waterfall, histogram, funnel, box and
+whisker, treemap, sunburst) are not written as `cx:` parts: those take the
+extension route too, so Excel shows their columns.
 
 ## See Also
 
