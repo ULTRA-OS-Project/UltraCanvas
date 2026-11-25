@@ -1,0 +1,115 @@
+{% extends "operator/base.html" %}
+{% block title %}Advertising - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Advertising</h1></div>
+<div class="panels">
+{% if not enabled %}<div class="alert alert-warning"><b>Advertising is switched off</b> (<code>ULTRASTORE_PORTAL_PROMOTE</code>). No publisher sees a Promote button and no advertisement is shown; what is set here takes effect when it is switched on.</div>{% endif %}
+{% if not topups.0 %}<div class="alert alert-secondary">{{ topups.1 }}</div>{% endif %}
+<div><div class="row row-cols-2 row-cols-lg-4 g-3">
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Revenue today, {{ currency }}</span><b>{{ revenue.today.spent|floatformat:2 }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Revenue, {{ revenue.days }} days</span><b>{{ revenue.total.spent|floatformat:2 }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Shown / clicks</span><b>{{ revenue.total.shown }} / {{ revenue.total.clicks }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Clicks that did not count</span><b>{{ revenue.total.invalid }}</b></div></div></div>
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2>Placements</h2>
+  <p class="text-secondary">Where an advertisement may appear, how many at the most, and the least a click costs there. A shop that is not built is listed for publishers as <i>not open yet</i> and cannot be opened from here.</p>
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Shop</th><th>Place</th><th>At the most</th><th>Floor, {{ currency }}</th><th>State</th><th></th></tr></thead>
+    <tbody>
+    {% for placement in placements %}
+    {# The row's fields belong to the form in its last cell (a form cannot wrap table cells). #}
+    <tr>
+      <td>{{ placement.area_name }}</td><td><b>{{ placement.name }}</b><div class="small text-secondary font-monospace">{{ placement.key }}</div></td>
+      <td><input form="placement-{{ placement.pk }}" class="form-control form-control-sm" style="width:5rem" name="slots" value="{{ placement.slots }}" inputmode="numeric" aria-label="At the most"></td>
+      <td><input form="placement-{{ placement.pk }}" class="form-control form-control-sm" style="width:6rem" name="floor" value="{{ placement.floor }}" inputmode="decimal" aria-label="Floor"></td>
+      <td>{% if placement.state == "planned" %}<span class="text-secondary">Not open yet</span>{% else %}<select form="placement-{{ placement.pk }}" class="form-select form-select-sm" name="state" aria-label="State"><option value="open"{% if placement.state == "open" %} selected{% endif %}>Open</option><option value="closed"{% if placement.state == "closed" %} selected{% endif %}>Switched off</option></select>{% endif %}</td>
+      <td class="text-end"><form method="post" id="placement-{{ placement.pk }}">{% csrf_token %}<input type="hidden" name="action" value="placement"><input type="hidden" name="placement" value="{{ placement.pk }}"><button class="btn btn-outline-secondary btn-sm">Save</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2>Campaigns</h2>
+  {% if campaigns %}
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>App</th><th>Publisher</th><th>State</th><th class="text-end">A day</th><th class="text-end">Spent</th><th></th></tr></thead>
+    <tbody>
+    {% for campaign in campaigns %}
+    <tr><td><b>{{ campaign.app.name }}</b></td><td><a href="{% url 'operator:publisher' campaign.publisher.slug %}">{{ campaign.publisher.name }}</a></td>
+      <td>{% if campaign.stopped %}<span class="badge bg-danger-subtle text-danger-emphasis">stopped</span> <span class="small text-secondary">{{ campaign.stop_reason }}</span>{% else %}<span class="badge">{{ campaign.get_state_display }}</span>{% endif %}</td>
+      <td class="text-end">{{ campaign.daily_budget }}</td><td class="text-end">{{ campaign.spent|floatformat:2 }}</td>
+      <td class="text-end"><form method="post" class="d-flex gap-2 justify-content-end">{% csrf_token %}<input type="hidden" name="campaign" value="{{ campaign.pk }}">
+        {% if campaign.stopped %}<button class="btn btn-outline-secondary btn-sm" name="action" value="release">Let it run</button>
+        {% else %}<input class="form-control form-control-sm" style="width:16rem" name="reason" placeholder="Why - the publisher reads it" aria-label="Reason"><button class="btn btn-soft-danger btn-sm" name="action" value="stop">Stop</button>{% endif %}
+      </form></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="text-secondary mb-0">No campaign yet.</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2>A voucher</h2>
+  <p class="text-secondary">A balance granted by the store: a publisher's first, or a goodwill credit. It is a ledger entry like a top-up.</p>
+  <form method="post" class="row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="voucher">
+    <div class="col-md-4"><label class="form-label" for="voucher-publisher">Publisher</label><select class="form-select" id="voucher-publisher" name="publisher">{% for publisher in publishers %}<option value="{{ publisher.slug }}">{{ publisher.name }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="form-label" for="voucher-amount">Amount, {{ currency }}</label><input class="form-control" id="voucher-amount" name="amount" inputmode="decimal"></div>
+    <div class="col-md-4"><label class="form-label" for="voucher-note">Note</label><input class="form-control" id="voucher-note" name="note" maxlength="200"></div>
+    <div class="col-md-2"><button class="btn btn-primary">Grant</button></div>
+  </form>
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2>Recent clicks</h2>
+  <p class="text-secondary">One row per click, without who clicked. A click that should not have counted is credited back to the publisher's balance.</p>
+  {% if clicks %}
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>When</th><th>Campaign</th><th>Place</th><th class="text-end">Price</th><th>Counted</th><th></th></tr></thead>
+    <tbody>
+    {% for click in clicks %}
+    <tr><td>{{ click.at|date:"j M Y, H:i" }}</td><td>{{ click.campaign.name }} <span class="small text-secondary">{{ click.campaign.publisher.name }}</span></td><td>{{ click.placement.name }}</td>
+      <td class="text-end">{{ click.price }}</td><td>{% if click.valid %}yes{% else %}<span class="text-secondary">no: {{ click.reason }}</span>{% endif %}</td>
+      <td class="text-end">{% if click.valid %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="credit"><input type="hidden" name="click" value="{{ click.pk }}"><button class="btn btn-outline-secondary btn-sm">Did not count - credit</button></form>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="text-secondary mb-0">No click yet.</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2>By place, {{ revenue.days }} days</h2>
+  {% include "promote/_report.html" with rows=revenue.by_place head="Place" %}
+</div></div>
+
+{% if revenue.by_day %}<div class="card"><div class="card-body">
+  <h2>By day</h2>
+  {% include "promote/_report.html" with rows=revenue.by_day head="Day" %}
+</div></div>{% endif %}
+
+<div class="card"><div class="card-body">
+  <h2>The advertising policy</h2>
+  {% if policy %}<p class="mb-0">Version {{ policy.version }}, in force since {{ policy.in_force_from|date:"j M Y" }}. A publisher advertises once it has accepted it; a new version makes every campaign wait until its publisher accepts that one. <a href="{% url 'promote:policy' %}">Read it</a> - a new version is written in the <a href="{% url 'admin:promote_policyversion_changelist' %}">admin site</a>.</p>
+  {% else %}<p class="mb-0 text-secondary">None is in force: publishers advertise without accepting one. The first is written in the <a href="{% url 'admin:promote_policyversion_changelist' %}">admin site</a> (<i>Policy versions</i>).</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2>Settings</h2>
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Setting</th><th>Value</th><th>Unless set</th><th></th></tr></thead>
+    <tbody>
+    {% for name, value, default in settings_rows %}
+    <tr>
+      <td class="font-monospace">{{ name }}</td><td><input form="setting-{{ name }}" class="form-control form-control-sm" style="width:8rem" name="value" value="{{ value }}" aria-label="{{ name }}"></td><td class="text-secondary">{{ default }}</td>
+      <td class="text-end"><form method="post" id="setting-{{ name }}">{% csrf_token %}<input type="hidden" name="action" value="setting"><input type="hidden" name="name" value="{{ name }}"><button class="btn btn-outline-secondary btn-sm">Save</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="small text-secondary mb-0"><b>results_per_ad</b>: at most one advertisement for this many results on a page. <b>auto_factor</b>: a campaign with no highest price offers the floor times this. <b>attribution_days</b>: an install or an order counts for a click this many days back. <b>click_days</b>: how long a click row is kept. <b>burst_clicks</b>: more clicks than this on one campaign from one address in ten minutes do not count. <b>low_balance</b>: the publisher is mailed once under it. <b>new_daily_cap</b>, <b>new_days</b>: the ceiling per day of a publisher new to advertising. <b>pacing</b>: 1 spreads a day's budget over the day. <b>small_numbers</b>: a country, or a search, with fewer showings is folded into "other" in a report. <b>relevance_floor</b>: of the words of a search, the share in a hundred a listing must hold to be shown for a search word its campaign chose. <b>max_keywords</b>: the most search words a campaign has.</p>
+</div></div>
+</div>
+{% endblock %}

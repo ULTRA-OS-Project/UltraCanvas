@@ -60,3 +60,49 @@ def hash_token(token: str) -> str:
 # their names.
 from ultrastore_db.totp import (RECOVERY_ALPHABET, hash_code, hash_recovery, new_code, new_recovery_codes, new_totp_secret, otpauth_url,   # noqa: E402,F401
                                 totp_code, verify_totp)
+
+
+# ----- the recovery-key escrow -----
+# An escrowed recovery key is kept sealed with the service's escrow key
+# (ULTRASTORE_ACCOUNT_ESCROW_KEY, 32 bytes hex): AES-256-GCM, a fresh 12-byte
+# nonce, the escrow's id and owner as associated data, so a sealed key copied
+# onto another row does not open. A copy of the database alone therefore
+# yields nothing; the key itself is half of what opens a vault, the vault
+# file holding the other half.
+ESCROW_SECRET_BYTES = 32
+
+
+def escrow_key_problem(key_hex: str) -> str:
+    try:
+        return "" if len(bytes.fromhex(key_hex)) == 32 else "ULTRASTORE_ACCOUNT_ESCROW_KEY is 32 bytes, hex"
+    except ValueError:
+        return "ULTRASTORE_ACCOUNT_ESCROW_KEY is 32 bytes, hex"
+
+
+def seal_escrow(key_hex: str, escrow_id: str, user_id: str, secret: bytes) -> str:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    nonce = secrets.token_bytes(12)
+    sealed = AESGCM(bytes.fromhex(key_hex)).encrypt(nonce, secret, f"{escrow_id}\n{user_id}".encode())
+    return "g1$" + nonce.hex() + "$" + sealed.hex()
+
+
+def open_escrow(key_hex: str, escrow_id: str, user_id: str, sealed: str) -> bytes | None:
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    try:
+        kind, nonce_hex, body_hex = sealed.split("$")
+        if kind != "g1":
+            return None
+        return AESGCM(bytes.fromhex(key_hex)).decrypt(bytes.fromhex(nonce_hex), bytes.fromhex(body_hex), f"{escrow_id}\n{user_id}".encode())
+    except (ValueError, InvalidTag):
+        return None
+
+
+def normalise_phone(text: str) -> str:
+    """+4915123456789 from "+49 151 2345-6789"; empty when it is not an
+    international (E.164) number."""
+    digits = "".join(c for c in text.strip() if c.isdigit() or c == "+")
+    if not digits.startswith("+") or digits.count("+") != 1:
+        return ""
+    body = digits[1:]
+    return digits if body.isdigit() and 7 <= len(body) <= 15 and body[0] != "0" else ""

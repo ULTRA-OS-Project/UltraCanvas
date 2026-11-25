@@ -3,6 +3,7 @@ the web server never serves. A package becomes public only when the
 publish lays it out beside the catalog (catalog.py), so a build in review
 is reachable by the reviewer alone.
 
+Version: 0.3.0 - stored_names: the entries of an archive already in the store
 Version: 0.1.0
 """
 
@@ -52,6 +53,16 @@ def _archive_names(path: Path, fmt: str) -> list[str] | None:
             if handle.read(6) != b"7z\xbc\xaf\x27\x1c":
                 raise ValidationError("The file is not a 7z archive.")
     return None
+
+
+def stored_names(sha256: str, fmt: str) -> list[str] | None:
+    """The entries of an archive already in the package store, to look an
+    entry up in again when a package is edited; None where they cannot be
+    listed (the format, or the file gone)."""
+    try:
+        return _archive_names(package_path(sha256, fmt), fmt)
+    except (ValidationError, OSError):
+        return None
 
 
 def entry_in_archive(entry: str, names: list[str] | None) -> bool:

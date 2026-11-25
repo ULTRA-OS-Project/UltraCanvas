@@ -2,6 +2,7 @@
 // Demonstration of UltraCanvasAlert - modal, floating, can't-be-missed message
 // boxes built on the UltraCanvas dialog system. Each button below raises an
 // alert of a given severity; the result is echoed into the status label.
+// Version: 1.2.0 - the Rich alert carries a heading (AlertOptions::heading) above its message
 // Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the buttons and the
 //                  result in one card, the usage notes in another beside it; every
 //                  text wraps and grows
@@ -32,7 +33,7 @@ namespace UltraCanvas {
 
         // Status readout, updated from the alert callbacks.
         auto status = DemoKit::CreateText("AlertStatus", Tr("Result: (press a button)"));
-        status->SetBackgroundColor(Color(240, 240, 240));
+        status->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         status->SetPadding(4);
         DemoKit::Add(buttonsCard, status);
 
@@ -98,7 +99,9 @@ namespace UltraCanvas {
         addButton("AlertRichBtn", Tr("Rich Alert (Markdown)"))->onClick = [status, describe, parentWin]() {
             AlertOptions opts;
             opts.severity = AlertSeverity::Warning;
-            opts.title = Tr("Update available");
+            opts.title = Tr("Warning");
+            // The bold line above the message; the title stays the title bar's
+            opts.heading = Tr("Update available");
             // The message is rendered as Markdown, so inline **bold**, *italic*
             // and `code` all format; the dialog height fits the text.
             opts.message = Tr("A new version of **UltraCanvas** is ready to install.");

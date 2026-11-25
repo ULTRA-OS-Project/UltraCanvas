@@ -46,6 +46,10 @@ std::string FormatDuration(double seconds);
 std::string FormatSize(int64_t bytes);
 // A photo, a video or a sticker: shown as a picture in its bubble.
 bool HasPicture(const UltraIMMessage& message);
+// A message that is a location (an openstreetmap.org link with a marker,
+// ParseLocationText): the place. ChatCube draws it as a map card.
+struct MapPlace;
+bool LocationOf(const UltraIMMessage& message, MapPlace& place);
 // A file that is sound, by its name: .mp3, .ogg, .opus, .m4a, .flac, .wav, ...
 bool IsAudioFileName(const std::string& name);
 // A message ChatCube plays as audio in its bubble: a voice message, or a

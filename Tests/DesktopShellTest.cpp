@@ -72,6 +72,11 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.13.0 - KeepMinimizedWindowsHidden: beside Explorer nothing, on a desktop without it
+//                  a minimized window off the screen
+// Version: 1.12.0 - ShowWindowThumbnail: a minimized window's live thumbnail (Windows), none elsewhere
+// Version: 1.11.1 - Windows: SetVirtualDesktopCount adds desktops now (Win+Ctrl+D); the test checks the
+//                  current count is accepted and a smaller one refused, and adds none
 // Version: 1.11.0 - the session lock, a popup and a panel placed by their parent,
 //                   a file drag and a GL surface on Wayland
 // Version: 1.10.0 - the portals (--portals, a fake portal of this test's own), the
@@ -444,6 +449,20 @@ int TrayChild() {
     std::printf("  [notification area, on a desktop of its own]\n");
     Check(!UltraCanvasDesktopShell::IsSystemDesktopRunning(), "no Explorer taskbar on this desktop");
     Check(FindWindowW(L"Shell_TrayWnd", nullptr) == nullptr, "and no notification area yet");
+
+    // Without Explorer's taskbar the desktop keeps minimized windows out of
+    // sight, not parked as title bars along the bottom of the screen.
+    if (HWND parked = OpenTestWindow("Desktop shell test minimized")) {
+        ShowWindow(parked, SW_MINIMIZE);
+        Check(UltraCanvasDesktopShell::KeepMinimizedWindowsHidden(),
+              "without Explorer's taskbar minimized windows are kept hidden");
+        RECT rect = {};
+        GetWindowRect(parked, &rect);
+        Check(IsIconic(parked) != FALSE && rect.left <= -30000 && rect.top <= -30000,
+              "a minimized window is off the screen, still minimized (" + std::to_string(rect.left) + ", " +
+                  std::to_string(rect.top) + ")");
+        DestroyWindow(parked);
+    }
 
     g_taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
     HWND window = OpenTrayTestWindow();
@@ -2115,8 +2134,14 @@ int main(int argc, char** argv) {
         Check(desktops >= 1 && current >= 0 && current < desktops,
               "the virtual desktops are counted (" + std::to_string(current + 1) + " of " +
                   std::to_string(desktops) + ")");
-        Check(!UltraCanvasDesktopShell::SetVirtualDesktopCount(desktops + 1),
-              "adding a desktop has no Windows call, and says so");
+        // Adding one works through Explorer's Win+Ctrl+D, which would leave
+        // a desktop behind on the machine running the test: not tried here.
+        Check(UltraCanvasDesktopShell::SetVirtualDesktopCount(desktops),
+              "asking for the desktops there are is fine");
+        if (desktops > 1) {
+            Check(!UltraCanvasDesktopShell::SetVirtualDesktopCount(desktops - 1),
+                  "removing a desktop has no Windows call, and says so");
+        }
 
         UltraCanvasDesktopShellMonitor monitor;
         std::atomic<int> changes{0};
@@ -2165,6 +2190,22 @@ int main(int argc, char** argv) {
             const auto minimizedList = UltraCanvasDesktopShell::ListWindows();
             const DesktopWindowInfo* minimized = FindListed(minimizedList, hwnd);
             Check(minimized && minimized->minimized, "and is listed as minimized");
+
+            // A live thumbnail (DWM) of the minimized window in another
+            // window of the test's: what a taskbar preview shows when
+            // PrintWindow has nothing to draw.
+            if (UltraCanvasDesktopShell::IsSystemDesktopRunning()) {
+                Check(!UltraCanvasDesktopShell::KeepMinimizedWindowsHidden(),
+                      "beside Explorer's taskbar its minimized windows are left to it");
+            }
+            Check(UltraCanvasDesktopShell::ShowWindowThumbnail(id, id, 0, 0, 200, 120) == 0,
+                  "a window is not given a thumbnail of itself");
+            if (HWND strip = OpenTestWindow("Desktop shell test previews")) {
+                const uint64_t thumbnail = UltraCanvasDesktopShell::ShowWindowThumbnail(IdOf(strip), id, 4, 4, 200, 120);
+                Check(thumbnail != 0, "a minimized window gets a live thumbnail in another window");
+                UltraCanvasDesktopShell::HideWindowThumbnail(thumbnail);
+                DestroyWindow(strip);
+            }
 
             Check(UltraCanvasDesktopShell::CloseWindow(id), "CloseWindow asks it to close");
             Check(PumpUntil([hwnd]() { return IsWindow(hwnd) == FALSE; }, 5000), "the window closes");

@@ -1,3 +1,1298 @@
+#### 2026-11-25 *0.9.595*
+- **A .docx saved again lost its theme and font table.** The DOCX writer
+  builds its package from the document model, which held neither, so the
+  colour scheme and heading and body fonts Word offers (`theme1.xml`) and
+  the font table's families and alternatives (`fontTable.xml`) were gone
+  after a save. The reader now keeps both in `UCRichDocument::keptParts`
+  and the writer writes them back unchanged, named in `[Content_Types].xml`
+  and the main part's relationships.
+  - A kept part is never one that refers to other parts: a font table's
+    embedded fonts (`w:embedRegular` and its kin) are taken out, and a
+    theme with a picture is not kept. Neither is a part in the Strict
+    namespaces.
+  - Saved as OpenDocument, the parts are not written.
+
+  Covered in `WordFormatsTest`.
+- **`UltraCanvasFileLoader` tells which kind of office file a file is.**
+  `DetectOfficeDocumentKind(path)` answers `Document`, `Spreadsheet`,
+  `Presentation` or `Unknown`, from the extension, else from the package
+  inside (an OpenDocument `mimetype`, or `word/document.xml`,
+  `xl/workbook.xml`, `ppt/presentation.xml`), so a file without its usual
+  extension still opens in the right place. Two dialog helpers go with it:
+  - `AddOfficeDocumentLoadTypes(opts)`: one *Office documents* filter with
+    every kind, then *Documents*, *Spreadsheets* and *Presentations*;
+  - `AddPresentationSaveTypes(opts)`: the decks the file loader writes,
+    PowerPoint before OpenDocument, the default save type first.
+
+  UltraOffice, the new office application, opens its files through them.
+  Covered by `FileLoaderOfficeKindTest`.
+- **A slide could only be drawn as a whole pixmap, and a deck could not be
+  printed or saved as PDF.** The slide painter was private to
+  `RenderPptxSlide` and cleared its whole context. `DrawPptxSlide`
+  (`UltraCanvasPptxSlideRender.h`) now draws a slide on any render context
+  into a rectangle, filling only that with the slide's background; for an
+  editor it can draw grey prompt text in empty placeholders and leave one
+  shape's text out (`PptxSlideDrawOptions`).
+- **`PresentationPrintPages`** (`UltraCanvasPresentationPrint.h`): a page per
+  slide at the slide's size, hidden slides left out unless asked for, drawn
+  by `DrawPptxSlide`; `ExportPdf` to a file or memory, and an
+  `IPrintPageSource` for `PrintDocumentWithDialog`.
+- **The deck model** gains masters and layouts (`PptxMaster`, `PptxLayout`,
+  `PptxSlide::layoutIndex`), transitions (`PptxTransition`), the
+  format-neutral names `UCPresentation` / `UCSlide` / `UCSlideShape`, and
+  `PptxSlideFromLayout`, a new slide made from a layout (Title and Content
+  when the deck has none).
+
+  Covered by `PresentationPrintTest`.
+- **Presentations: slide masters, slide layouts and transitions are read
+  and written, in .pptx and .odp.** The readers had flattened a deck's
+  masters and layouts into each slide's shapes (which drawing needs, and
+  still gets) and kept no transitions. The writers always wrote one fixed
+  master and layout. As a result, a slide editor had no layouts to offer
+  for a new slide, and a saved deck lost its design and its transitions.
+  - **PowerPoint reader:** reads every master and layout, in the file's
+    order, into `PptxPresentation::masters` / `layouts`: name, layout type,
+    master, background, and the placeholders resolved the way a slide's
+    are, keeping their prompt text ("Click to edit Master title style").
+    Sets each slide's `layoutIndex`. Reads `p:transition` (also PowerPoint
+    2010's inside `mc:AlternateContent`) into `PptxSlide::transition`:
+    - the kind, with a kind the model does not know read as Fade
+    - the length, from `p14:dur`, else the speed
+    - `advClick` and `advTm`
+  - **PowerPoint writer:** a deck that has layouts is written with its own
+    masters and layouts:
+    - their names, types and backgrounds
+    - their placeholders, with their look as a list style and their prompt
+      text
+    - the date and the slide number as fields
+    - a blank layout for a master that has none
+    - unique ids from 2^31, and a theme for each master
+
+    Each slide links to its layout, and its placeholders name that
+    layout's. A deck with no layouts still gets the standard master. A
+    transition is written as `p:transition`. A length that no speed
+    names goes in `p14:dur`, inside `mc:AlternateContent` with a fallback,
+    as PowerPoint writes it.
+  - **OpenDocument reader:**
+    - **masters:** from the master pages: name, background, and the
+      placeholder frames. Impress leaves these empty on its masters, so an
+      empty one gets Impress's prompt text.
+    - **layouts:** one for each presentation page layout, on the master
+      that its slides use. Each layout is named and typed from its
+      placeholders unless the file names it. A deck with no page layouts
+      gets one layout per master page.
+    - **transitions:** from the drawing-page style (`smil:type`, the speed,
+      automatic advance with `presentation:duration`) and the page's
+      `anim:transitionFilter`, which holds the exact length.
+  - **OpenDocument writer:**
+    - **masters:** written as master pages, with `<master>-title` /
+      `-subtitle` / `-outline1..9` presentation styles. These styles are
+      also the parents of the slides' frames.
+    - **layouts:** written as presentation page layouts that carry the
+      layout's name.
+    - **slides:** each slide goes on its layout's master.
+    - **transitions:** the style properties, plus the
+      `anim:transitionFilter` that LibreOffice reads the length from.
+  - **Empty placeholders:** both readers now keep a slide's empty
+    placeholder. Before, they dropped it, so an editor had nothing to type
+    into. The placeholder keeps its kind, its place, and one empty
+    paragraph:
+    - .pptx: the run's size comes from `a:endParaRPr`, else from the
+      layout. A `<p:ph idx="N"/>` that names no type reads as `"body"`.
+    - .odp: an empty title, subtitle or outline frame, and a
+      `presentation:placeholder` frame, whose text is the prompt. The
+      prompt text is not kept.
+  - `PptxSlideFromLayout` gives a layout placeholder that has no place of
+    its own the place of the master's placeholder of the same kind.
+  - Tested by `PresentationLayoutsRoundTripTest`, on a deck with one master,
+    two layouts and two transitions (Fade over 2 s that moves on after 5 s,
+    and Push), saved as .pptx, .odp and .fodp and read back. The test also
+    covers:
+    - the package's parts, content types and ids
+    - a second save of the deck that was read back
+    - the standard set for a deck with no layouts
+    - `PptxSlideFromLayout` on a deck that was read back
+    - the LibreOffice-made `pptx-features` fixtures
+    - a slide with an empty content placeholder, which is read back in its
+      box from both formats
+    - LibreOffice converting our .pptx to .odp and our .odp to .pptx, with
+      layouts and transitions kept. This part is skipped when `soffice` is
+      not installed.
+- **A presentation could be shown, not edited.** New:
+  - `UCSlideDeckEditor` (`UltraCanvasSlideDeckEditor.h`), the slide
+    editor's core without a window: the slide being edited, the selection,
+    and every change as a command with undo and redo - slides inserted from
+    a layout, duplicated, moved, hidden and deleted; shapes moved, nudged (a
+    run is one step), resized, turned, reordered, duplicated, deleted,
+    copied and pasted, inserted (text box, drawn shape, picture), their text
+    and the notes set - with hit testing of turned shapes, the handles and
+    snapping to the slide and to other shapes.
+  - `UltraCanvasSlideEdit` (`UltraCanvasSlideEdit.h`), its element: the
+    slide strip (drag to reorder) and the slide, prompt text and outlines on
+    empty placeholders, selection by click and band, dragging with guides,
+    resize (Shift keeps the proportions, Alt from the centre, a turned shape
+    in its own frame), turning, the keys, and a simple full-screen show.
+    Documented in `Docs/UltraCanvas/UltraCanvasSlideEdit.md`.
+- **The slide painter decodes a picture once**, not on every paint.
+
+  Covered by `SlideDeckEditorTest`, `SlideEditElementTest` (the element
+  driven by pointer and key events) and `PresentationPrintTest` (the
+  drawing).
+- **A presentation is played as a slide show, with its transitions and
+  timings.** New, in `UltraCanvasSlideShowPlayer.h`:
+  - `UltraCanvasSlideShowPlayer` (`CreateSlideShowPlayer`): a deck's slides
+    letterboxed on black, hidden ones left out, a black end screen after
+    the last. Going on plays the slide's transition over its duration -
+    Fade, Push, Wipe, Split, Cover, Zoom - from pixmaps drawn once at the
+    size shown, at about 60 frames a second; going back shows the slide at
+    once, and a key or click finishes a transition. A slide's
+    `advanceAfterSec` moves on by itself, and one with `advanceOnClick` false
+    ignores a click. PowerPoint's keys: on, back, Home, End, a number and
+    Enter, B / W for a black or white screen, Escape. `SetClock` and `Tick`
+    let a test run it without real time. It replaces the simple show mode
+    of `UltraCanvasSlideEdit`.
+  - `UltraCanvasPresenterView` (`CreatePresenterView`): the presenter's
+    screen - the slide shown and the next one, the speaker notes, the time
+    with Pause / Resume and Reset, Previous / Next slide, "Slide N of M" -
+    following a player and driving it.
+  - `StartSlideShow(deck, fromSlide)`: the show full screen on the second
+    monitor and the presenter view on the first when
+    `UltraCanvasDesktopShell::ListScreens` lists two, else the show alone.
+  Documented in `Docs/UltraCanvas/UltraCanvasSlideShowPlayer.md`.
+- **The photo slideshow's transitions are shared.** `UltraCanvasSlideTransition.h`
+  holds the frames' geometry (`SlideTransitionFrame`: cross-fade, fade out
+  and in, push left or up, wipe, split, cover, zoom, zoom-fade);
+  `UltraCanvasSlideshow` draws from it, looking as before, and so does the
+  player.
+- The presentation words the player and presenter view show ("Next slide",
+  "Previous slide", "Speaker notes", "Presenter view", "End of slideshow",
+  "Slide show", "Slide {0} of {1}") moved into the standard set, with their
+  translations, from the Presentation base set and UltraOffice's catalogue.
+
+  Covered by `SlideShowPlayerTest`.
+- `UltraCanvasSlideEdit`'s own show mode (`StartShow`, `StopShow`,
+  `onShowEnd`) is gone: the player plays the deck. UltraOffice presents
+  through `StartSlideShow`, and picks each slide's transition in its Slide
+  show tab.
+- **A slide's text could be edited only as plain lines, and tables not at
+  all.**
+  - `PptxParagraphsToRichDocument` / `PptxParagraphsFromRichDocument`
+    (`UltraCanvasPresentationPptx.h`): a shape's text as a word-processing
+    document and back, for `UltraCanvasRichTextEdit` laid over the shape -
+    runs with their looks, line breaks, alignment, bullets and numbering
+    (PowerPoint's schemes as the document's number formats, start numbers on
+    a list's first item); what the document does not hold comes back from
+    the text before the edit. `PptxBulletText` gives a bullet as drawn (a
+    Wingdings square as a square).
+  - `UCSlideDeckEditor::FormatSelectedText` / `AllSelectedText`: the text of
+    the selected shapes formatted as one step.
+  - Tables: `InsertTable` (PowerPoint's banded look), `TableCellBox`,
+    `TableCellAt`, rows and columns inserted and deleted, each one step;
+    `UltraCanvasSlideEdit::onEditTableCell`, `SetEditingShape`,
+    `SetEditingCell` and `PptxSlideDrawOptions::hideTextOfCell...` for a
+    host's in-place editor.
+
+  Covered in `SlideDeckEditorTest`.
+- **A saved spreadsheet lost digits.** The .xlsx and .ods writers wrote each
+  cell's number with the stream's six significant digits, so 3.14159265 came
+  back as 3.14159 and 123456789.123 as 1.23457e+08 after every save. A
+  number is now written with the fewest digits (15 to 17) that read back as
+  exactly the same value, through the new `FormatFloatRoundTrip`
+  (`UltraCanvasTextUtils.h`): 0.1 stays "0.1". Covered in
+  `SpreadsheetWorkbookRoundTripTest`, also through LibreOffice's conversions.
+- **Moving with the keyboard in a spreadsheet left the old cell selected.**
+  The arrows, Enter, Tab, Home, End, Page Up / Down and Ctrl+arrow moved
+  only the active cell, so the highlight stayed behind and the next Bold,
+  number format or Delete went to the cell just left. Each of them now
+  selects the cell it lands on (`MoveActiveCell` and the `MoveTo...`
+  functions), and `onSelectionChange` reports it.
+- **Shift+arrow did not extend the selection.** It now grows or shrinks the
+  range at the corner away from the active cell, which stays where it is
+  (`UltraCanvasSpreadsheet::ExtendSelectionBy`).
+
+  Covered by `SpreadsheetKeyboardMoveTest`.
+- **A spreadsheet could not be printed or saved as PDF.** `PrintSettings`
+  and `SetPrintArea` existed, but nothing drew pages. The new
+  `SpreadsheetPrintPages` (`UltraCanvasSpreadsheetPrint.h`) does:
+  - it cuts the print area (or the cells in use) into pages by the sheet's
+    `PrintSettings`: paper and orientation, margins, scale or fit to pages,
+    manual row and column breaks;
+  - it can print gridlines and column and row headings, centre the cells,
+    repeat title rows and columns, and print header and footer lines with
+    the page (`&P`), the page count (`&N`), the sheet (`&A`) and the date
+    (`&D`); the title rows and columns are the sheet's own print titles
+    (`PrintSettings::repeatRowsFirst` ...), which .xlsx and .ods now keep;
+  - each cell is drawn by `UltraCanvasSpreadsheet::PaintCell`, the grid's own
+    painter (lifted out of `RenderCell`), so paper shows what the screen
+    shows.
+
+  It writes a PDF (`ExportPdf`, to a file or to memory) and is an
+  `IPrintPageSource` for `PrintDocumentWithDialog`: drawn on the printer's
+  own context, or as an image where the printer has none, like
+  `RichDocumentPrintPages`. `CreateSpreadsheetPrintPages(grid)` gives the
+  sheet on show. Covered by `SpreadsheetPrintTest`, which checks the pages
+  for default paper, landscape, a print area, a break, fit to width and title
+  rows, and writes the PDF.
+- **A spreadsheet saved as .xlsx or .ods lost everything but its cells,
+  sizes, styles and merges.** A workbook opened and saved again in
+  UltraOffice came back with:
+  - no frozen rows or columns;
+  - its hidden rows and columns shown;
+  - no named ranges - neither the workbook's nor those scoped to a sheet;
+  - no auto-filter, and the rows it had filtered out simply hidden;
+  - no print area and the default print settings: orientation, paper size,
+    margins, scale or fit to pages, gridlines and headings, centring, header
+    and footer, the rows and columns repeated on every page, and the manual
+    page breaks.
+
+  Both formats now read and write all of it. In .xlsx: the frozen pane
+  (`sheetViews`), `hidden` on rows and columns, `definedNames` (a sheet's
+  names with its `localSheetId`), `autoFilter` with its value filters and the
+  `_xlnm._FilterDatabase` name Excel writes, `_xlnm.Print_Area`,
+  `_xlnm.Print_Titles`, `printOptions`, `pageMargins`, `pageSetup` (with
+  `fitToPage`), `headerFooter` and `rowBreaks` / `colBreaks`, each in the
+  order the schema gives. In .ods: the split in `settings.xml`,
+  `table:visibility`, `table:named-expressions` of the document and of each
+  table, a `table:database-range` with filter buttons and its "="
+  conditions, `table:print-ranges`, header rows and columns, page breaks
+  (`fo:break-before`), and a page layout and master page per sheet in
+  `styles.xml` with the header and footer.
+- **`PrintSettings` holds the rows and columns printed on every page**
+  (`repeatRowsFirst` / `repeatRowsLast`, `repeatColumnsFirst` /
+  `repeatColumnsLast`, -1 for none; `HasRepeatRows`, `HasRepeatColumns`),
+  which both formats carry and the model had no place for, and says whether a
+  print area is set (`HasPrintArea`). Header and footer texts are kept in
+  Excel's codes (`&P`, `&N`, `&A` ...), which .ods writes as text fields.
+- **An .ods merge whose first cell was empty was dropped on load, and a
+  covered cell (`table:covered-table-cell`, which LibreOffice writes inside
+  every merge) was not counted,** so every cell after it in the row landed
+  one column too far left. The writer now writes the covered cells too, and
+  rows and columns inside `table:table-header-rows`, `-columns` and row or
+  column groups are read where they were skipped.
+- **LibreOffice opened every formula of a saved .ods as an error.** The
+  writer put the `of:` prefix on each `table:formula` but never declared its
+  namespace, so LibreOffice could not tell the formula's syntax. It is
+  declared now; `SpreadsheetWorkbookRoundTripTest` checks the formulas'
+  values after LibreOffice's conversion.
+- The .xlsx and .ods writers wrote cell numbers through the stream's locale
+  (`1.234,5` under a host that set a comma-decimal global locale); the
+  worksheet and content streams are dot-decimal now.
+- `UltraCanvasSpreadsheet::GetNamedRangeList` lists every name with its
+  scope; `SpreadsheetSheet::GetColumnDefinitions` / `GetRowDefinitions` list
+  the sized and hidden columns and rows.
+- New test: `SpreadsheetWorkbookRoundTripTest` - a two-sheet workbook with
+  all of the above saved as .xlsx and .ods, loaded back, saved in the other
+  format and loaded again; where LibreOffice is installed, also converted by
+  `soffice` (.xlsx to .ods and to .xlsx, .ods to .xlsx) and checked for the
+  frozen panes, hidden rows and columns, names, filter and print areas. An
+  .ods that `soffice --convert-to` writes holds no view settings from any
+  source, so the frozen panes are not checked in that one; LibreOffice
+  opened with a window reads them from ours.
+- **The spreadsheet's Copy and Paste never reached the system clipboard.**
+  Copy filled the grid's own buffer and nothing else, so cells could not be
+  pasted into another program, nor another program's cells into the grid.
+  Now:
+  - Copy and Cut also put the cells on the system clipboard, as
+    tab-separated text of the shown values and as an HTML table (bold,
+    italic and right-aligned numbers kept): `RangeAsText`, `RangeAsHtml`.
+  - Paste takes the grid's own copy while the clipboard still holds it, and
+    otherwise another program's HTML table, read with `HTML::Parser`
+    (spanned cells keep the cells they cover free), or its tab-, comma- or
+    semicolon-separated text: `PasteHtml`, `PasteText`. Each value is read
+    as if typed: numbers, percentages, `=` formulas. The pasted cells are
+    selected.
+- **A pasted formula lost its formula.** Paste (and Paste Special *All*)
+  wrote a formula cell's last result under the Formula type, which showed
+  `#NAME?`. A copied formula is now pasted as a formula with its relative
+  references moved (`=B2*2` from B3 to B8 is `=B7*2`); a cut one keeps
+  them. *Values* pastes the result as the number or text it is
+  (`SpreadsheetSheet::PasteCells` takes where the cells came from).
+- **A paste could not be undone.** Every paste, the grid's own or another
+  program's, is now one undo step.
+
+  Covered by `SpreadsheetClipboardTest` (a stand-in clipboard backend), and
+  by hand on X11: `xclip` reads both flavours, and an HTML table put there
+  by another program pastes with its formula working.
+
+#### 2026-11-25 *0.9.594*
+- **`ci:emulator`: the Android emulator on a pull request, when asked for.**
+  A pull request builds Android for arm64 alone and runs no emulator; one
+  labelled `ci:emulator` now gets what `main` runs - x86_64 as well, the demo
+  on the emulator at two densities and MobilePC on a second display - so an
+  Android change is seen running before it merges. Adding the label starts
+  that run without a push. Adding any other label starts no Android build
+  and cancels none in progress.
+- **A host's own entries after "Open with" in the file display's context
+  menu.** `UltraCanvasFilerWidget::openMenuProvider` is asked every time the
+  menu of a file or a selection opens, with the entries it acts on, and its
+  items go right after *Open with* - so an application offers an entry only
+  where it applies. UltraFiler adds *Edit in UltraPaint* for pictures and *Edit in ArtCreator*
+  for drawings there.
+- **A hosted application answers its program's name.** `HostedAppInfo` has
+  `programs`, the executable names an application inside its host stands in
+  for, and `UltraCanvasDesktopShell::LaunchProgram` starts that application -
+  with the program's arguments - before looking for an executable
+  (`UltraCanvasHostedApps::IdForProgram`). In MobilePC, UltraDesktop's
+  taskbar button for "UltraFiler" and UltraFiler's "UltraViewer" for a
+  double-clicked picture now start the applications in the same process;
+  before, they failed with "not installed". `HostedAppsTest` covers the
+  registry and the routing.
+- **Android: access to every file on the phone's storage.**
+  `AndroidPermissions::HasAllFilesAccess`, `RequestAllFilesAccess` and
+  `SharedStoragePath` (`OS/Android/UltraCanvasAndroidPermissions.h`), with
+  their Java half in `UltraCanvasActivity`: *All files access* from Android 11
+  - Settings' switch, opened on the phone - and the storage permission before
+  it. What a file manager such as MobilePC's UltraFiler needs to browse
+  `/storage/emulated/0` by path.
+- **The Vector plug-in builds for Android.** It needs only libvips, zlib
+  and tinyxml2, which the Android sysroot has, so the Android defaults no
+  longer switch it off: an Android app that links `UltraCanvasVectorPlugin`
+  and calls `RegisterVectorFormatsPlugin()` opens and saves SVG, AI, DXF,
+  DWG, EMF, WMF and ODG drawings. MobilePC does, for ArtCreator. The CDR,
+  XAR and EPS plug-ins stay off there.
+
+#### 2026-11-25 *0.9.593*
+- **A window asked to come forward comes to the virtual desktop in view
+  (X11).** `RaiseAndFocus` asked the window manager to activate the window and
+  nothing else. For a window on another virtual desktop (workspace) the
+  manager answers that as it likes: openbox and metacity only mark it "wants
+  attention" where it lies, so nothing happened that the person could see,
+  and icewm changes the desktop under them. A second start of a single-instance
+  application ended there (`UltraCanvasSingleInstance::BringToFront`): with
+  UOS-Settings or UltraClipboard open on desktop 1, UltraDesktop's *Desktop
+  settings...* and its clipboard button did nothing on desktop 2. The window
+  now asks to be moved to the current desktop first (`_NET_WM_DESKTOP`), then
+  to be activated, and the manager handles the two in that order: it appears
+  where it was asked for, in front, with the keyboard - measured under
+  openbox, metacity, icewm and xfwm4.
+  - `UltraCanvasWindowBase::MoveToCurrentDesktop()` is that move on its own,
+    and takes the window this one belongs to (its parent) along, so a dialog
+    brought over does not leave its window behind; `IsOnCurrentDesktop()`
+    says whether a shown window is where the person can see it. Both are
+    X11's so far: on the other platforms they answer "nothing to move" and
+    "yes", and the system decides as before (a Wayland compositor alone: no
+    protocol lets a client name a workspace).
+  - A window on every desktop stays on every desktop, and one the manager
+    names no desktop for (no manager, a popup) is left alone.
+  - `BringToFront` brings the main window over behind an open dialog too.
+  - `Tests/WindowCurrentDesktopTest.cpp` plays the window manager on a
+    display without one and reads what a manager would be asked; it runs
+    with the framework's window tests in CI.
+- **The "already running" alert says why the running copy did not come
+  forward, and speaks the application's language.** A second start that
+  cannot hand over to the running copy says "<App> is already running" and
+  asks the person to switch to its window. Why the window had not simply come
+  was only in the debug log - so with a bus that refused its folder, or a
+  copy that hung, the alert sent the person looking for a window with nothing
+  to go on. `UltraCanvasSingleInstance::RunAlreadyRunningAlert` now adds the
+  reason `Claim()` found:
+  - the bus could not be joined: "It could not be asked to come forward:"
+    and what UltraMessage said (`the bus folder ... is not this user's
+    alone: ...`, `bus path too long for a Unix socket: ...`), which is in
+    the person's language too (the entry on UltraMessage's reasons);
+  - the copy is on the bus and did not answer within the fifteen seconds a
+    start waits: "It did not answer when asked to come forward."
+  The debug log has the same line at the end of the wait. A build without
+  UltraMessage, where the lock alone decides, adds nothing.
+  - The alert's texts went straight to the screen in English in every
+    language. They go through `Tr` now, and the four are in the standard set
+    (`media/locale/en/Standard.json`) with drafts in all 29 languages
+    (`machine draft ..., reviewed by -`, as the rest of each file).
+  - No caller changes: the thirty applications call the alert as before.
+- **UltraMessage: the bus is hosted and joined only in a folder that is this
+  user's alone (Linux, macOS, BSD).** Whoever holds the folder the bus socket
+  lies in decides which broker an application meets there. Without
+  `$XDG_RUNTIME_DIR` the bus lies at `/tmp/ultramessage-<uid>/ultramessage/`,
+  a name any account on the machine can work out, in a folder everyone may
+  write to - and nothing looked at whose that folder was. Another account
+  that made it first and ran a broker in it was the bus: this user's
+  applications connected to it, and it read what they posted (notifications,
+  mail and chat previews) and could answer what they asked. Reproduced with
+  two accounts: the first account's broker printed the note the second one
+  posted.
+  - Before a broker hosts or an endpoint joins, the bus folder must be a real
+    folder (not a link) owned by this user that nobody else may write to, and
+    the folder above it this user's or root's and not open to everyone -
+    except with the sticky bit, as `/tmp` has, where an entry is its owner's
+    alone to rename (`BusFolderIsPrivate`, `UltraMessageTransport.cpp`).
+    Otherwise the connect fails with `the bus folder ... is not this user's
+    alone: ...`, naming which it was, and nothing is written there.
+  - The broker makes every folder it creates on the way owner-only, not only
+    the last (`EnsureDirectory`): the upper of the two in `/tmp` was left as
+    the umask made it. A folder of this user's with a looser mode is
+    tightened, as before.
+  - A program running as root is let through: it joins a user's bus on
+    purpose (a tool started with `sudo`).
+  - A custom `busPath` follows the same rule, so one in a folder shared with
+    other accounts is now refused. `Docs/Modules/UltraMessage/README.md` has
+    the rule.
+  - `Tests/UltraMessage/test_ultramessage.cpp` covers a folder others may
+    write to, a link in the folder's place, a private folder in one open to
+    everyone with and without the sticky bit, and the modes of the folders
+    the broker makes. It needs a user that is not root, which CI's is.
+- **UltraMessage: a bus under a long runtime folder is reached (Linux).** A
+  Unix socket's address holds a path of 107 bytes, and the bus lies at
+  `$XDG_RUNTIME_DIR/ultramessage/bus.sock`. With a runtime folder long enough
+  to pass that - a session's own, a sandbox's, a test's - no broker started
+  and no endpoint connected (`bus path too long for a Unix socket`), and the
+  only trace was in the debug log. What a person saw: a second start of a
+  single-instance application could not ask the running copy to come forward,
+  waited, and said "already running" instead; notifications and everything
+  else on the bus were silently off too. Such a socket is now bound and
+  connected through its folder - the folder is opened, which takes a path of
+  any length, and the socket named as `/proc/self/fd/<n>/bus.sock`
+  (`UltraCanvasUnixSocketAddress.h`). The bus stays exactly where its path says;
+  nothing is moved to a shorter place. A client that finds the folder not
+  there yet reads it as "no broker", as on a short path.
+  - macOS and the BSDs have no such way in, and still refuse a path past
+    their 103 bytes with the same message; `Docs/Modules/UltraMessage/README.md`
+    says so.
+  - `Tests/UltraMessage/test_ultramessage.cpp` hosts a broker on a bus path of
+    some 150 bytes and has one endpoint find and ask another across it.
+- **UltraMessage says why a bus could not be hosted or joined in the person's
+  language.** `UltraMsg_Connect`'s `error.message` is what an application
+  shows, and the single-instance "already running" alert now puts it on
+  screen: a German alert ended in an English clause ("... konnte nicht in den
+  Vordergrund geholt werden: the bus folder ... is not this user's alone").
+  The fourteen reasons a person can meet go through `Tr` - no broker
+  listening or reachable, a broker that cannot be started, the five ways a
+  bus folder is not this user's alone, a bus path too long (with and without
+  `/proc`), a bus folder that cannot be made or opened, a broker that does
+  not confirm the connection - and are in the standard set with drafts in
+  all 29 languages. What only a programmer meets (an invalid topic, a missing
+  callback, an endpoint that is not connected, the journal's and the system
+  calls' errors) stays English.
+  - The five folder reasons are whole sentences now, one entry each, so a
+    translator has a sentence and not two halves: `the bus folder {0} is not
+    this user's alone: it belongs to another user` where it was `... alone
+    (it belongs to another user)`.
+  - UltraMessage links UltraLocalisation for it (`uc-localisation`, by its
+    archive name; UI-free, as UltraDatabase is). The standalone test tree
+    (`Tests/UltraMessage/CMakeLists.txt`) compiles it in.
+  - A reason is worded when it happens, so `UltraCanvasSingleInstance::Claim`
+    loads the language before it asks the bus - a second start has no
+    application yet. A program that loads none (`ultramsg`, the tests) gets
+    the English, which is the catalogue key.
+  - `UltraCanvasUnixSocketAddress.h` 1.1.0: `LastFailure()` / `FolderError()`
+    say why `Resolve` failed, so the bus words a path that is too long
+    itself instead of matching the header's English.
+- **`UltraCanvasSingleInstance::HandOffMessage`: the terminal's line about
+  the running copy, translated.** UltraClipboard, UltraToDo,
+  UltraNotifications and UltraSnip each printed "<App> is already running:
+  brought it forward." in English from a literal of their own. One call
+  gives the line now - `Running`, `BroughtForward`, `RequestTaken`,
+  `OpeningHere` - from the standard set, and loads the language for a start
+  that quits before it has an application.
+- **`UltraCanvasUnixSocketAddress.h`: the address of a Unix socket at a path
+  of any length.** A socket's address holds a path of 107 bytes on Linux (103
+  on macOS and the BSDs), and two modules each refused a longer one in their
+  own words. `UnixSocketAddress::Resolve(path, error)` fills the address, and
+  on Linux reaches a longer path through its folder
+  (`/proc/self/fd/<n>/<file>`), so the socket stays where its path says;
+  `Fits(path)` says whether a path needs that. Header-only, with nothing of
+  the framework in it. UltraMessage's transport reaches a bus under a long
+  runtime folder with it (its own entry), and UltraWin's QMP client the
+  control socket of a machine in a long folder (UltraWin's changelog). Doc:
+  `Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md`.
+
+#### 2026-11-25 *0.9.592*
+- **Filer widget: a favorite can stand out by more than its heart.**
+  `SetFavoriteHighlight(look, colour)` gives every entry the favorite provider
+  names a solid background (the whole tile or row, its text switched to white
+  or dark, whichever reads on the colour), a border around it, or a shade -
+  the colour at the top, fading out to the bottom; `NoHighlight` (the default)
+  keeps only the heart. `SetFavoriteHeartShown(false)` leaves the heart out
+  and gives its gutter back. A selected favorite keeps the selection colour,
+  and the border is drawn over it.
+
+#### 2026-11-25 *0.9.591*
+- **Text drawn on several threads at once no longer crashes.** Every render
+  context in the process shared one cache of Pango layouts, so a layout made
+  on one thread was measured or drawn on another while the first still used
+  it. UltraFiler crashed this way on Windows (an access violation in cairo's
+  glyph lookup under `pango_renderer_draw_layout_line`) while its thumbnail
+  workers drew document pages and slides. `RenderContextCairo` now keeps the
+  layouts per thread: a layout is only handed back to the thread that made
+  it, and the UI thread's are still shared by all its windows.
+  `Tests/TextRenderThreadsTest.cpp` draws the same words on five threads at
+  once; before the fix it crashed on every run, now it passes.
+
+#### 2026-11-25 *0.9.590*
+- **CI: a merge with a changelog entry is folded and released within ten to
+  twenty minutes, not hours.** `changelog-fold.yml` ran only on its
+  ten-minute schedule, which GitHub honoured every six to ten hours. Main went
+  that long without a release build, so its ccache was not saved, and every
+  pull request in between recompiled what the merges had touched: 298 of the
+  Linux row's 3,378 objects on 2026-11-25, after five merges since the last
+  fold. A push to main that adds an entry now starts the fold, which waits
+  ten quiet minutes (the next such merge cancels the wait and waits in its
+  place) and never longer than twenty from the oldest pending entry. The fold
+  itself is still never cancelled, and the schedule stays as the fallback.
+- **DemoApp's start-up log no longer prints a "Build Date".** It came from
+  `__DATE__` / `__TIME__`, which differ on every build, so DemoApp's
+  `main.cpp` (and Texter's, which printed the same line) missed ccache on
+  every CI run - the one object that did on every pull request.
+
+#### 2026-11-25 *0.9.589*
+- **CI: fewer runners per pull request and per release.** On 2026-11-24 the
+  macOS runners were the bottleneck: one release run's Apple silicon row
+  waited 161 minutes to start and a pull request's iOS run 98.
+  - **The macOS Intel row is built only when asked for**: a pull request
+    labelled `ci:intel`, or a Build dispatch with the new `intel` input. Main
+    and `ci:distro` no longer build it. It took 88 to 198 minutes a run, and
+    full runs 150 to 300. A release no longer carries the x86_64 macOS SDK
+    and UltraCanvasStart unless it is dispatched with `intel` set.
+  - **No nightly Build run.** It built every row at 02:23 UTC; `build.yml`'s
+    `on:` says how to turn it back on.
+  - **iOS and WebAssembly build on main only**, not on pull requests. A pull
+    request that changes either backend starts them by hand against its
+    branch.
+  - **Android: a pull request builds arm64-v8a alone**, 1 job instead of 7.
+    The x86_64 build, ChatCube's two builds and the three emulator jobs run
+    on main (a push, the weekly run, a dispatch).
+  - **Windows ARM builds on release dispatches**, on pull requests labelled
+    `ci:distro` and on a dispatch with the new `windows_arm` input, but not
+    on a plain push to main. It took 96 to 102 minutes a run. Outside a
+    release build it skips its installer (29 to 32 minutes), the MSIX,
+    UltraCanvasStart and the store packages.
+  - **ccache holds a whole build again.** The cap stayed at 500 MB from when
+    a leg compiled about 1,136 objects. The Linux row now compiles 3,378 and
+    filled the cache to 0.39 of 0.50 GB, the level ccache trims to after an
+    eviction. That evicted objects the build had not reached yet, so they
+    missed too. The cap is 800 MB, and the statistics step prints evictions.
+- **CI: the Linux build job gets 180 minutes.** It builds, runs every test
+  and the layout audits, then packages the AppImage, the SDK and the store
+  packages, and had reached the 120-minute cap: on 2026-11-24 one pull
+  request's run took 118 minutes and another's was cut off in its last
+  packaging step with its build and tests green. Windows on ARM already got
+  180; macOS keeps 300, Windows x86_64 120.
+- **CI: the sixteen static source checks run as one job.** Callback cycles,
+  label identifiers, the locale catalogues and numbers, UTF-8 paths, platform
+  names, HTML and UI reuse, the element catalogue, window tests, notification
+  activators, changelog versions, llms.txt, cache keys, plug-in ABIs and the
+  UltraVideo tokens were each a workflow of their own, and a pull request
+  touching `UltraCanvas/` or `Apps/` started most of them at once. Each took a
+  runner slot next to the build rows, Android, WebAssembly and iOS, and on
+  2026-11-24 checks that run for a minute waited up to 38 minutes to start.
+  They are now steps of `.github/workflows/source-checks.yml`: one runner for
+  about four minutes, every check still under its own step name, and every
+  step running even after an earlier one failed, so a red run names each
+  check that failed. The job runs all sixteen whenever any of their paths
+  changes. The documentation that named the old workflow files names the new
+  one.
+- **DesktopShell: `GetPointerPosition(x, y)`.** Where the mouse pointer is,
+  in the pixels of `ListScreens`, so an application can open a window on the
+  monitor the person is working on. X11 (`XQueryPointer`) and Windows
+  (`GetCursorPos`) answer; Wayland and macOS answer false.
+- **iOS: a nameless scene configuration, and no mixed-enum warning when
+  presenting.**
+  - The scene configuration is nameless. A named one is looked up in
+    Info.plist first, and UIKit logged an error when it was not there.
+  - The bitmap info that presents a frame combines its two enums through a
+    `CGBitmapInfo` cast, so the iOS compile has no warnings.
+- **A validation rule set on a spreadsheet cell accepted every value.**
+  `SpreadsheetCell::ValidateValue` was a stub that always returned true.
+  Range rules had their own checker in `SpreadsheetSheet::ValidateCell`,
+  which had problems of its own:
+  - text in a number rule read as 0 and could pass a "between 0 and 10" rule;
+  - a bound read with `std::stod` honoured the desktop's decimal comma;
+  - a bound that was not a number counted as 0;
+  - a date bound could only be a serial number.
+
+  Both now go through one checker, `CheckDataValidation`
+  (`UltraCanvasSpreadsheetCell.h`):
+  - Number, date and time rules need a number, and bounds are read
+    dot-decimal (a Date bound may also be `YYYY-MM-DD`, a Time bound `HH:MM[:SS]`).
+  - A bound that cannot be read fails the check.
+  - Text length counts characters, not bytes.
+  - A list takes comma-separated items as typed, or ODF's quoted,
+    semicolon-separated form.
+
+  `ValidateCell` falls back to the cell's own rule when no range rule covers
+  the cell. The default error messages go through `Tr`. Custom (formula)
+  rules are still not evaluated. New test: `SpreadsheetValidationTest`.
+- **The spreadsheet grid enforces validation rules on what is typed.** An
+  entry that breaks its cell's rule is answered as the rule's `alertStyle`
+  says:
+  - Stop: Retry (the entry back in the editor) or Cancel (the old value back);
+  - Warning: Yes, No or Cancel;
+  - Information: OK or Cancel.
+
+  A refused entry leaves no undo step. An application can ask in its own way
+  with `onValidationFailed`. After Enter or Tab, Retry stays on the refused
+  cell instead of moving on.
+- **List rules get a dropdown.** A List rule puts an arrow beside the active
+  cell; a click or Alt+Down opens its items, and picking one enters it as one
+  undo step (`ShowValidationListAt`, `GetValidationListItems`,
+  `ChooseValidationListItem`). `SpreadsheetSheet::GetEffectiveValidation`
+  gives the rule that applies to a cell. New test:
+  `SpreadsheetValidationGridTest`.
+- **A plain value typed into a spreadsheet cell was not an undo step and did
+  not fire `onCellChange`.** The commit wrote into the cell directly. It now
+  goes through `SpreadsheetSheet::SetCellValueFromString` with undo
+  recording.
+- `UltraCanvasSpreadsheet::IsCellVisible` was declared but never defined. It
+  is defined now; frozen rows and columns count as visible.
+- `UltraCanvasRichTextEdit.h` declared `struct FurnitureLayout` twice in the
+  class, so Clang warned (`-Wredeclared-class-member`) in every file that
+  included it.
+- `UltraCanvasFileLoader.h`: the comment on `OpenTextDocument` still said a
+  legacy `.doc` file is rejected. It is read by the DOC reader, which is
+  read-only, so it is saved as `.docx` or `.odt`.
+- **Inserting or deleting spreadsheet rows or columns left formulas reading
+  the wrong cells.** The cells moved but their formulas' references did not:
+  `=A1*3` in B1 became `=A1*3` in B2 after a row was inserted above. Even
+  `RecalculateAll` could not put that right. `SpreadsheetSheet::InsertRows` /
+  `DeleteRows` / `InsertColumns` / `DeleteColumns` now rewrite the sheet's
+  formulas:
+  - a reference at or past the insertion moves, `$`-anchored ones too;
+  - a range across an insertion grows, and one across a deletion shrinks;
+  - a reference wholly inside deleted rows becomes `#REF!`.
+
+  The grid's `InsertRowsAt` / `DeleteRowsAt` / `InsertColumnsAt` /
+  `DeleteColumnsAt` do the same for other sheets' formulas that name the
+  sheet (`Data.A3`, `'Q 1'!B2:C3`), and for workbook names on it. The rewrite
+  keeps the formula's own text otherwise. The old `SpreadsheetFormula::AdjustReferences`
+  shifted every reference by a fixed offset and rebuilt the text with every
+  operation in parentheses; nothing calls it. New:
+  `MoveFormulaReferencesForRowsColumns`, `SpreadsheetSheet::MoveFormulaReferences`.
+  Test: `SpreadsheetMoveReferencesTest`.
+- **Spreadsheet named ranges ignored their scope.** Names were stored by
+  their text alone and looked up the same way from every sheet:
+  - a name scoped to one sheet was used from any other;
+  - a scoped name whose range named no sheet read the cells of whichever
+    sheet the formula was on;
+  - the same name scoped to two sheets ("Total" on each month, common in
+    Excel files) kept only the last one;
+  - renaming a sheet left the names scoped to it, or covering it, behind.
+
+  Names are now kept one per scope and name, matched without regard to case.
+  A formula sees the name scoped to its own sheet, else the workbook's
+  (`ResolveNamedRange`), and a scoped name covers its own sheet unless its
+  range says otherwise. Renaming a sheet, and inserting or deleting rows or
+  columns there, carries its names along. `HasNamedRange`,
+  `RemoveNamedRange` and `GetNamedRange` take an optional scope.
+- **A spreadsheet formula naming a range that does not exist read cell A1.**
+  The lookup's "not found" was an empty `CellRange`, which is A1:A1 and
+  valid. It now gives `#NAME?`.
+- `SpreadsheetFormula::AdjustReferences` and `GetAdjustedText` are removed.
+  Nothing called them. They moved every reference by the same offset
+  wherever rows were inserted, and rebuilt the text with every operation in
+  parentheses. `ShiftFormulaReferences` (copying) and
+  `MoveFormulaReferencesForRowsColumns` (inserting and deleting) do those
+  jobs.
+- New test: `SpreadsheetNamedRangeTest`.
+- **A typed "nan", "inf" or "0x10" became a number.** `std::stod` also reads
+  these, so "nan" became a NaN, "-Infinity" an infinity, and "0x10" 16;
+  "nan%" became a NaN percentage. `SpreadsheetCell::SetValueFromString` now
+  takes only what a number is written with (digits, sign, decimal point or
+  comma, exponent) and only a finite result. Everything else stays text.
+- **A CSV field holding a number too large for a double imported as 0.**
+  `CSVTryParseNumber` took `ParseFloatClassic`'s "read, but too large"
+  (value left untouched) for the number 0. "1e400" now stays text.
+- **Deleting a sheet kept the workbook names that belonged to it, broken.**
+  As in Excel:
+  - names scoped to the deleted sheet are removed;
+  - names covering it stay, and a formula using one shows `#REF!` instead of
+    `#NAME?`, also as a function's argument (`IsNamedRangeVisible`,
+    `FormulaEvaluator::NamedRangeError`);
+  - undoing the delete brings both back, under the sheet's new name if it
+    had to take one.
+- **Spreadsheet formulas did not follow their inputs.** `Recalculate` only
+  calculated formulas that were already marked dirty. The engine kept a list
+  of the changed cells and their dependents but never read it, so changing a
+  cell left every formula reading it at its old result until something
+  called `RecalculateAll`. With `C2 = B2*2`, setting B2 from 4 to 5 left C2
+  at 8, and a formula entered before its input stayed at 0.
+  - `Recalculate` now starts from what changed and follows every formula
+    that reads it, through chains, ranges and other sheets. It works from the
+    references each formula holds, so formulas from a file, a paste, a fill
+    or an undo are followed as well as those typed in. Formulas that name a
+    range, and volatile ones (NOW, TODAY, RAND, RANDBETWEEN), are always
+    recalculated.
+  - The grid tells the engine about every change the sheet reports: a cell,
+    a range, or rows and columns (which recalculate everything).
+  - Pasting recalculates (it did not at all), and sorting marks the sorted
+    block. A change nobody recalculated is calculated before the grid draws.
+  - New engine calls: `MarkRangeDirty`, `MarkAllDirty`, `HasPendingChanges`;
+    a formula's `GetFunctionNames` and `ReadsNamedRanges`.
+  - New test: `SpreadsheetRecalcTest`.
+- **Undoing an inserted or deleted spreadsheet row or column erased the
+  sheet.** The four operations recorded a placeholder step with no saved
+  cells. Undo treated it as a cell edit, cleared the sheet's whole used range
+  and put nothing back.
+  - Each insert or delete (`InsertRowsAt`, `DeleteRowsAt`, `InsertColumnsAt`,
+    `DeleteColumnsAt`) is now one undo step ("Insert 2 rows") that keeps:
+    - the sheet as it was (a copy that keeps its identity);
+    - the formulas it rewrote on other sheets;
+    - the workbook's names.
+  - Undo and redo swap that state with the current one. Undo puts back the
+    cells, row and column sizes, merges, deleted cells and every formula as
+    they were, and redo does the change again.
+  - `RecordStructureChange`, which recorded the placeholder, is gone.
+  - New test: `SpreadsheetRowUndoTest`.
+- **A percentage typed into a spreadsheet cell was kept as text.** In
+  `SpreadsheetCell::SetValueFromString`, `std::stod` stopped at the `%`, so
+  the check that the whole entry was a number failed. The percentage branch
+  after it was never reached, and "45%" could not be summed. The sign is now
+  taken off first:
+  - "45%", "12.5 %" and "-3%" are the percentages 0.45, 0.125 and -0.03;
+  - "%", "abc%" and "45%%" stay text.
+
+  A percentage under the General format now shows as one ("45%"), not as the
+  fraction "0.45". That also applies to percentages read from a CSV file.
+  What the editor shows types back to the same value.
+
+#### 2026-11-25 *0.9.588*
+- **The demo app speaks every language of its catalogue.** Each of the 29
+  languages had 841 of the demo's 7475 texts, so most of every page showed
+  in English. All 6571 missing texts - the slider page's new ones among
+  them - are drafted in all 29 (machine drafts, marked for review like the
+  rest of the catalogue), with the plural forms each language needs. The
+  layout audit passes with the demo in German, Russian, Japanese and Arabic.
+- **`UltraCanvasDesktopShell::KeepMinimizedWindowsHidden`: a shell without
+  Explorer keeps minimized windows out of sight.** Without Explorer's
+  taskbar, Windows parks each minimized window as a small title bar along
+  the bottom of the screen unless the session's `ARW_HIDE` is on. The shell
+  guard set it once at sign-in, but an Explorer started and ended later in
+  the session puts it back as it ends, and windows parked meanwhile stayed
+  where they were. The new call switches it on again whenever it is off and
+  moves a parked minimized window off the screen, still minimized; false
+  beside Explorer's taskbar and on other systems. `DesktopShellTest` checks
+  both sides on Windows.
+- **iOS phase 2: a UIKit backend, and DemoApp as an app for the simulator.**
+  Nothing in it has run yet: `.github/workflows/ios-build.yml` is its first
+  build. `UltraCanvas/OS/iOS/` holds:
+  - the application and the window. The window is a Cairo image surface
+    presented as the root view layer's contents, at
+    `traitCollection.displayScale`, and it follows rotation;
+  - `main()`. It calls `UIApplicationMain`, and the application's renamed
+    `ultracanvas_app_main()` runs once the app has launched;
+  - the run loop. The framework's `Run()` pumps the main run loop one turn at
+    a time, with a `CFRunLoopSource` wakeup;
+  - touches, as touch events and first-finger mouse events with double tap;
+  - the clipboard (`UIPasteboard`);
+  - message and text-input dialogs (`UIAlertController`, answered
+    synchronously);
+  - the system languages.
+
+  `UltraCanvas/CMakeLists.txt` selects it for `CMAKE_SYSTEM_NAME=iOS`, with a
+  static core and GL, audio, video and UltraNet off. tvOS, visionOS and
+  watchOS still stop. It defines `ULTRACANVAS_IOS`, which the core now tests
+  where `__APPLE__` alone meant macOS:
+  - fontconfig is used on iOS;
+  - iOS takes the no-op file-association, host-icon and alias fallbacks;
+  - there is no hardware-info or network-monitor backend;
+  - `OpenURL` goes through `UIApplication`, since `system()` is unavailable.
+
+  The root `CMakeLists.txt` builds DemoApp alone, as `UltraCanvasDemo.app`
+  (Info.plist from `UltraCanvas/OS/iOS/packaging/Info.plist.in`), with its
+  resources in the bundle's `share/`. The CI job builds the core and the app
+  against the simulator sysroot and launches the app on a simulator.
+- **iOS: composing text.** CJK input methods and dead keys now compose on
+  iOS. Not yet driven on a simulator.
+  - **The editor.** The keyboard's editor view adopts `UITextInput` instead
+    of `UIKeyInput`. Its document is only the text being composed (the
+    marked text), counted in UTF-16 positions. The widget gets it as
+    `TextComposition` events when it draws compositions, with the caret as
+    a byte offset, and nothing until the commit when it does not (the
+    Android rule).
+  - **Committing.** `unmarkText` and lowering the keyboard keep the
+    composition as typed. `insertText:` replaces it. Backspace inside a
+    composition deletes in the composition.
+  - **The candidate window** goes at the focused element's caret, found
+    through its `IAccessibleText` as on macOS.
+  - **A hardware keyboard.** While a widget edits text, the keys that type,
+    plus Return and backspace, go through the text system, so an input
+    method composes from a hardware keyboard too. Arrows, Escape, Tab,
+    function keys and shortcuts stay key events.
+  - **Autocorrection** stays off: the text it rewrites is the widget's.
+- **iOS: the keyboards, host appearance and opening files.** Like the rest of
+  the iOS backend, it has not yet been compiled or run.
+  - **Software keyboard.** The root view is the editor (`UIKeyInput`), and
+    it becomes first responder only while a text widget holds the caret
+    (`UltraCanvasCaret::onTextEditingChanged`). A hide waits one loop turn,
+    as on Android. Typed text arrives as committed text, and Return and
+    backspace as key presses. Autocorrection is off, since there is no
+    composition yet.
+  - **Hardware keyboard.** Presses become key events: `UIKey` HID usages
+    map to `UCKeys`, and the key's own text is used, so nothing types twice.
+  - **Host appearance** comes from the trait collection: dark mode, contrast,
+    Reduce Motion, the tint as the accent, and Dynamic Type as the text scale.
+    A trait change refreshes it.
+  - **Opening files.** `OpenFile` and `OpenMultipleFiles` show the document
+    picker, which copies the documents into the sandbox so callers get plain
+    paths.
+- **iOS: a clear stop instead of a missing file, and the port investigated.**
+  An iOS compile reached `#include "../OS/iOS/..."` in `UltraCanvasWindow.h`
+  and `UltraCanvasApplication.h`, a directory that does not exist; both
+  branches are now `#error "iOS backend not implemented yet"`. An iOS
+  configure (`-DCMAKE_SYSTEM_NAME=iOS`, likewise tvOS, visionOS and watchOS)
+  satisfied `APPLE` and quietly picked the AppKit backend;
+  `UltraCanvas/CMakeLists.txt` now tests those four first and stops with a
+  message. The headers' last-resort `#error` no longer lists iOS as
+  supported. The two stops name the new
+  `Docs/UltraCanvas/iOSPortInvestigation.md`: the backend's parts list, the
+  run loop under `UIApplicationMain`, building the dependencies with vcpkg's
+  iOS triplets, the GL / Metal decision (GL off first, ANGLE on Metal later)
+  and the CMake branch a port needs.
+- **iOS: saving, and choosing a folder, through the document picker.** Neither
+  has been compiled or run yet.
+  - **`SaveContent`** writes the bytes into a temporary file of the suggested
+    name (with the default extension where it has none). The picker's export
+    mode then copies it to where the user chooses, and the function returns
+    true once it is there.
+  - **The shared desktop `SaveContent`** (`core/UltraCanvasFileLoader.cpp`) is
+    compiled out for iOS, as it is for Android and WebAssembly. The
+    path-returning `SaveFile` stays a stub: nothing outside the sandbox has a
+    path the app could write to afterwards.
+  - **`SelectFolder`** returns the picked folder's path with its
+    security-scoped access started and kept for the run.
+  - **The iOS CI job** now fails when the app's screenshot is one colour,
+    using `scripts/ios-check-screenshot.py`. It also prints the app's system
+    log into the job's own log.
+- **iOS: the scene lifecycle.** DemoApp's first run on the simulator drew its
+  window: the screenshot check found 288 colours. Its log also carried UIKit's
+  warning "`UIScene` lifecycle will soon be required. Failure to adopt will
+  result in an assert in the future."
+  - A scene delegate now creates the window and the root view, and takes the
+    foreground and background events.
+  - The application delegate only sets up the sandbox's folders and names
+    the scene delegate, in code.
+  - `Info.plist.in` opts into scenes with a single scene. The application's
+    main body still starts once, after the first scene connects.
+  - Not yet run: the next simulator run of `ios-build.yml` is its first.
+- **iOS phase 1: the dependency stack builds for iOS, in CI.**
+  `scripts/ios-bootstrap-sysroot.sh [--with-net] [simulator|device]` builds
+  cairo, pango, glib, harfbuzz, fontconfig, freetype, tinyxml2, fmt and
+  libvips as static libraries. It uses vcpkg at the commit macOS and Android
+  pin, the manifest and triplets in `UltraCanvas/OS/iOS/packaging/`
+  (`arm64-ios-simulator-ultracanvas`, `arm64-ios-ultracanvas`, iOS 16.0) and
+  the macOS libvips overlay. `scripts/ios-check-sysroot.sh` checks that every
+  archive's objects name the right platform (simulator 7, device 2), that no
+  `.dylib` is present, that the `.pc` files the core asks for are there, and
+  that cairo was built without its Quartz backend.
+  `.github/workflows/ios-build.yml` runs both triplets on `macos-15` with a
+  vcpkg binary cache. `cmake/UltraCanvasMacOSDeps.cmake` no longer asks
+  Homebrew for an iOS, tvOS, visionOS or watchOS configure. There is still no
+  backend: the core and DemoApp are phase 2 of
+  `Docs/UltraCanvas/iOSPortInvestigation.md`.
+- **A tooltip asked of a window that is closing no longer crashes the
+  program.** A pointer event of a window being closed - queued before it
+  closed, as UltraDesktop's window-preview strip closes when the pointer
+  leaves it - asked the tooltip manager for a tooltip after the window's
+  render context was gone, and `CalculateTooltipLayout` called
+  `CreateTextLayout` on a null context (UltraDesktop on Windows: an access
+  violation writing address 0x8). A window that is not created is no
+  tooltip target now, `UpdateAndShowTooltipImmediately` no longer marks such
+  a tooltip shown, the layout stops without a render context, and a text
+  layout that could not be made measures 0 (the drawing skipped those
+  already). `TooltipOwnWindowTest` asks for a tooltip on a closed window:
+  it crashed before, it shows nothing now.
+
+#### 2026-11-24 *0.9.587*
+- **The Android sysroot survives GNU's download hosts being down.** vcpkg
+  fetches gperf, libiconv and gettext only from ftpmirror.gnu.org and
+  ftp.gnu.org; when both timed out the whole arm64 sysroot failed after half
+  an hour. `scripts/android-bootstrap-sysroot.sh` now has
+  `scripts/vcpkg_seed_gnu_sources.py` put the GNU archives the manifest needs
+  into vcpkg's download cache first, from other GNU mirrors, each checked
+  against the port's SHA512; vcpkg takes them from there.
+- **`scripts/android-package-apk.sh` packages with build-tools 34 on JDK 21.**
+  JDK 21's javac writes unnamed `MethodParameters` entries for anonymous
+  classes, on which build-tools 34's d8 stopped with a NullPointerException.
+  When d8 refuses the classes, `scripts/strip_method_parameters.py` takes that
+  attribute out of them (it only names parameters for reflection) and d8 runs
+  again.
+- **The Android documents say what has run.** `AndroidPortInvestigation.md`
+  and the backend's README still said no APK had been installed; the
+  emulator jobs install and run the demo and MobilePC, and only a physical
+  device is still to come.
+- **CI: the Windows-on-ARM build job may run for 180 minutes, not 120.** A pull
+  request starts without a saved ccache, and one that changes a header most
+  targets include rebuilds nearly everything: on Windows ARM that is about 65
+  minutes of compiling before the tests and the packaging, which ran past the
+  old limit with its build and tests already green.
+- **A window manager inside the program: `UltraCanvasEmbeddedWindowManager`.**
+  For a backend that draws many windows onto one surface it keeps them
+  stacked (desktop, windows, always-on-top, notifications, popups, tooltips,
+  each band above the last), focused, placed (cascaded, a dialog centred over
+  its window), moved by their title bars, resized by their edges, maximised
+  into the work area a desktop's bars leave and minimised, and composites
+  them - only what changed - with a shadow under each and the pointer on top.
+  Platform-neutral; `Tests/EmbeddedWindowManagerTest` covers it with no
+  display. Its title bar, `UltraCanvasEmbeddedWindowFrame`, is a window of its
+  own built from an `UltraCanvasLabel` and three `UltraCanvasButton`s.
+- **Android: desktop mode** (`UltraCanvasAndroidDesktop`). After `Enable()`
+  every window is one of the embedded window manager's, drawn on an external
+  display when one is connected (a `Presentation` that `UltraCanvasActivity`
+  puts on the first presentation display - a USB-C cable or dock, a wireless
+  display, the emulator's simulated second display) and on the phone's own
+  screen otherwise. `CreatePhoneWindow` makes the window the phone shows
+  meanwhile. A mouse is captured while the desktop is on the external display
+  (`requestPointerCapture`), so it moves the desktop's pointer whichever
+  display Android would have put its own on; the phone's screen can be a
+  touchpad (`TouchpadInput`). Keys and the keyboard's text go to the focused
+  window of the desktop, and the back button is Escape there. Without
+  `Enable()` the Android backend is the one-window backend it was.
+- **`UltraCanvasDesktopShell` answers from an in-program window manager.**
+  Where no platform backend does (Android), the window list, activating,
+  minimising and closing a window, the screen, the strips a desktop's bars
+  reserve, the shell monitor and the applications come from the
+  `EmbeddedHost` the desktop mode installs - so UltraDesktop's taskbar and
+  Apps window work there.
+- **`UltraCanvasHostedApps`: applications that run inside their host
+  program.** Registered with an entry point, they are listed by
+  `UltraCanvasDesktopShell::ListApplications` where the platform has none of
+  its own, and `LaunchApplication` starts them in the process.
+- **FilerWidget: `IsDragInProgress()`.** True while a selection rectangle is
+  drawn or entries are dragged. Letting the rectangle go now fires
+  `onSelectionChanged` once more, so a host that waits for the drag to end
+  (UltraFiler's preview pane) sees the final selection.
+- **FilerWidget: a rescan keeps the thumbnails of unchanged files.** Every
+  `Refresh()` - the one after a delete, a rename, a paste, the folder watch's -
+  used to drop the whole thumbnail cache, so the folder was drawn with type
+  glyphs until the thumbnails were decoded again. A rescan of the folder
+  already shown now keeps the thumbnails, text pages, folder peeks and picture
+  proportions of every file whose path, size and modification time are
+  unchanged (`PruneThumbnailCache`). A changed file is decoded again in the
+  background while its tile keeps the old picture (`ThumbSlot::stalePixmap`).
+  Opening another folder or changing the view still drops everything.
+  `Tests/FilerRescanKeepsThumbnailsTest.cpp` covers a delete, a change and a
+  folder switch.
+- **CSSLayout: a flex item is measured at the cross extent it is given.** A
+  column measured each child's height at the column's whole width, but then
+  arranged a stretched child narrower by its own side margins. A wrapping
+  label that just fitted on one line at the full width needed two at the
+  narrower one, got one line's height and lost its second line - the Group
+  Box page in German. The item's cross margins now come off the extent it is
+  measured at, for its base size and for its line's cross size (a row's
+  items likewise against their top and bottom margins).
+  `Tests/CSSLayoutCrossMarginTest` holds it.
+- **`UltraCanvasGaugeDiagramElement` follows the theme.** It drew its value
+  text, captions, ticks, unlit segments and faces in fixed light-look greys,
+  so under a dark theme the value in the middle of a ring was dark grey on a
+  dark card. Under a dark theme those greys and the default text,
+  background, track, ring border and clock colours now take the dark look;
+  a colour set with its setter is drawn as given, and the value colours
+  (gauge colour, ranges, warnings) are kept. The speedometer, whose face is
+  dark in both looks, draws its value light unless the application chose a
+  text colour.
+- **`UltraCanvasTheme::ForDarkLook` / `ForThisLook`**: a colour chosen for
+  the light look, its lightness turned over into the dark look's range with
+  its hue kept - what the gauge draws its greys through, and the demo app's
+  `DemoKit::Themed` now calls.
+- **`UltraCanvasSlider`: tick marks, scales and new designs.** The
+  slider had no ticks at all (the demo page carried a commented-out
+  `SetShowTicks` that was never written), its circular style drew a ring with
+  no value arc, and `SliderVisualStyle::cornerRadius` was declared but never
+  drawn. Now:
+  - **Ticks and labels**: `SetTickPosition` (`Before`, `After`, `BothSides`,
+    `OnTrack`), `SetTickStyle` (`Line`, `Ramp` - marks that grow towards the
+    maximum - and `Dot`), `SetTickInterval(major, minor)`, `SetTickMarks` for
+    chosen values, `SetTickLabels` with a `tickLabelFormatter`, and
+    `SetStopLabels` to name each step. The layout leaves the ticks and labels
+    room and pulls the travel in so the end labels are not cut off.
+  - **Handle shapes**: `Pointer` (points at the ticks), `Bar` (with
+    `handleGap`), `Block`, `FaderCap` and `NoHandle`, and `handleShadow`.
+  - **Styles**: `Knob` (a cap in a ring of dots), `Field` (a property-panel
+    field that fills with the value), `Seek` (a media timeline with
+    `SetSecondaryValue` for what has loaded and `SetHoverPreview`), `Ruler`
+    (the scale slides under a fixed marker; `SetPixelsPerUnit`) and
+    `Segmented` (blocks lit up to the value, `SetSegmentCount`).
+  - **Values**: `SliderValueDisplay::Bubble` and `BubbleWhileDragging`;
+    `SetFillOrigin` for a bipolar control that fills from zero; `SetResetValue`
+    for a double-click reset; `SetColorZones`; `SetHistogram` draws the
+    data's spread behind a (range) slider.
+  - **Circular** draws its value arc now, over `SetArcAngles` (135° and 270°
+    by default, a gap at the bottom), and the value in its centre. Circular,
+    Knob and Ruler are turned by dragging from where they are, not set by
+    where the press lands, and take the mouse wheel.
+  - The track, its fill and the Progress bar are rounded by `cornerRadius`
+    (at most half the thickness, so the default 3 on a 6 px track gives round
+    ends); set it to 0 for the square look. The tooltip's colours are style
+    fields from the theme rather than a fixed pale yellow.
+  - The demo app's slider page has a **Slider Designs** section with each of
+    them live, and its first slider shows ticks.
+  - `Tests/SliderDesignsTest` covers where the ticks fall (a ruler's on round
+    numbers), their labels and named stops, the double-click reset, and the
+    relative drag of a knob and a ruler.
+- **`UltraCanvasSlider` sizes itself.** Its `MeasureOwnContent` was a TODO,
+  so a slider had to be given a size, and one given too little for its ticks
+  and labels had them cut off. It now reports its size to the layout - a
+  preferred length, and across the bar what the handle, ticks, labels, value
+  text, bubble or histogram need (`GetMinimumSize`, `GetPreferredLength`) -
+  and when a size given explicitly is too small across the bar for what it
+  shows, it sets its own `min-height` (`min-width` when vertical) so the
+  layout grows it. A plain slider keeps its given size exactly; a minimum the
+  application set is left alone; `SetGrowToFit(false)` turns it off.
+- **DemoApp follows a dark theme.** The page kit (`UltraCanvasDemoPageKit`)
+  and the demo's own frame - the header, the status legend, the page area and
+  its scrollbars - had fixed light colours, so with a dark theme the tree and
+  the controls turned dark while the pages, cards and header stayed light,
+  and theme-coloured text on them (the header's title, a slider's value, the
+  range sliders' labels) was white on white. They now take the theme's roles
+  in a dark or high-contrast theme (the light look is unchanged) and change
+  with it when the theme switches while a page is shown
+  (`DemoKit::ColourOf`, `KitContainer`, `KitLabel`). Pages that paint their
+  own fixed colours still do.
+- **DemoApp: the example pages follow a dark theme too.** About 90 example
+  files painted their own light panels, readouts and grey captions with fixed
+  colours, so with a dark theme they stayed light, or showed the theme's
+  white text on a light panel. `DemoKit::Themed(colour)` keeps a colour as it
+  is in the light look and, in a dark one, turns its lightness over while
+  keeping its hue (a pale green panel becomes a dark green one, dark grey
+  text light grey); `ThemedFill` / `ThemedInk` do it for a colour known only
+  at run time, and only for a pale fill or dark text. The pages' decorative
+  colours - about 400 calls on labels, panels, panes, dividers and toolbars -
+  go through them; charts and diagrams drawn on their own white paper,
+  colour swatches, coloured buttons and status pills keep their colours. The
+  page shown is rebuilt when the theme switches, so its colours follow.
+- DemoApp: the Performance Matrix page's title is 40 px tall, room for a
+  Japanese or Chinese line (it had 35 and needed 37).
+- **The Save dialog's "Drag to Folder" caption was cut in sixteen
+  languages.** It was one line in the 96 px block under the file icon
+  (Ukrainian needs 139 px); it now wraps onto two lines.
+- **UltraCloud's account dialog cut "Use as the default cloud account"** in
+  fourteen languages (Russian needs 487 px of its 300); the checkbox's label
+  now wraps.
+- **New design proposal: UltraAds, the advertising service of the ULTRA OS
+  shops and services** (`Docs/Research/UltraAdsDesignProposal.md`). Nothing
+  for advertising existed beyond one *Sponsored* mark drawn in the
+  marketplace's search page. The proposal answers whether a shop sells
+  advertising for itself or for every area - both, from one form: a *Promote*
+  button on each listing whose page lists every shop and marketplace with its
+  placements (search, lists, detail pages, the home row), this shop's ticked
+  and the others to tick, with one console, one balance and one review behind
+  every shop - and what one registration for all shops and services takes:
+  the ULTRA account as an OpenID Connect provider (built in the store portal,
+  its own entry), with advertising a capability of the publisher a merchant
+  already is. An advertisement promotes a listing, is chosen from what is on
+  the page and never from who is looking (decided: context only, for good),
+  and is always marked; the editor's picks are not for sale and nothing is
+  shown in the system or its applications. With the placements per area, the
+  functions in three priorities, the data model as an app of the store
+  portal, the roadmap, and the questions for the owner with those already
+  decided. No code.
+
+#### 2026-11-23 *0.9.586*
+- **CI: a build job GitHub never started is re-run, not reported red.** The
+  macos-15 leg of a pull request sat queued and ended "cancelled" with no
+  runner and no step, twice, while other pull requests' macOS legs got
+  runners in the same hour. Each time the Build run ended "failure" and the
+  pull request read red with nothing of it wrong. `build-result.yml` now
+  re-runs the failed jobs when every unsuccessful job of the run is such a
+  dropped job, up to attempt 3, and keeps "Build result" pending until the
+  new attempt ends. A job that started and then failed, timed out or was
+  cancelled still turns it red.
+- **`UltraCanvasDesktopShell::ShowWindowThumbnail` / `HideWindowThumbnail`:
+  live window pictures drawn by the compositor.** A taskbar's preview of a
+  minimized window had nothing to show: `CaptureWindowImage` asks the window
+  to draw itself (`PrintWindow` on Windows), which a minimized window does
+  not. On Windows the new call registers a DWM thumbnail
+  (`DwmRegisterThumbnail`), as Explorer's taskbar does: the source drawn
+  live into a rectangle of one of the program's own windows, its proportions
+  kept, and a minimized window as it last looked - also one minimized before
+  the program started. Elsewhere it answers 0 and the caller captures.
+  `DesktopShellTest` checks a minimized window's thumbnail on Windows.
+- **Alerts, confirmations and input dialogs have a new look.** Before, the
+  internal `UltraCanvasModalDialog` showed a bright square with a letter, its
+  buttons centred and alike, and the button row on the message's white. Now:
+  - the type badge is a 40 px disc tinted with the type colour, with a drawn
+    glyph (`media/icons/dialog/*.svg`) in the full colour; the letter stands
+    in when the glyph is not shipped;
+  - the type colours follow the theme: Information the accent, Error the
+    danger colour, Successful green, Question violet, Warning amber, lighter in
+    a dark theme, and a theme can change any with the `dialog.*` roles;
+  - an optional bold heading above the message: `DialogConfig::heading`,
+    `UltraCanvasModalDialog::SetHeading` / `GetHeading`, and
+    `AlertOptions::heading`;
+  - the buttons sit at the trailing edge with the affirmative answer last
+    (*Cancel OK*, *No Cancel Yes*), the default answer in the accent colour
+    even while it is disabled, 32 px high with 7 px corners;
+  - the button band is the theme's ground under a hairline.
+  - `ModalDialogStyle` gains `iconGlyphSize`, `headingFontSize`,
+    `headingTextColor`, `buttonCornerRadius`, `footerColor` and
+    `footerLineColor`; its padding, icon, gap and button sizes change to the
+    new design (`FromTheme` fills the new colours and the heading size).
+  - The DemoApp's Rich alert shows a heading.
+- **UltraCanvasMapView: a map in any application.** A map of the world
+  from OpenStreetMap's tiles (or another slippy-map server) as an element -
+  dragged to move, the wheel to zoom, a click to put the pin - and as a
+  map drawn into any rectangle (`DrawMap`, for a card in a list's row) or
+  into pixels (`RenderMapToRgba`). The tiles are fetched in the background,
+  shared by every map of the program, within OpenStreetMap's usage policy.
+  `Docs/UltraCanvas/UltraCanvasMapView.md`.
+- **UltraCanvasGeolocation: where this device is.** One position from the
+  system's location service, with how far off it may be: GeoClue on Linux,
+  Location Services on macOS (the app's Info.plist says why it asks),
+  Windows' location service where the build has its WinRT headers.
+  `Docs/UltraCanvas/UltraCanvasGeolocation.md`.
+- **MediaViewer: word-processing documents show as their pages.** A `.odt`,
+  `.docx` or `.doc` was not a file the viewer could show - UltraFiler's preview
+  pane stayed closed on one, and UltraViewer passed it by. It now opens in the
+  document view as its pages, laid out as print and PDF export lay them out
+  (`UltraCanvasRichTextEdit`: page size and margins, fonts, pictures, tables,
+  header and footer, on white paper in either theme), with the PDF view's zoom,
+  page strip, page keys and search over the real text, fitted to the page
+  width. A password-protected `.docx` or `.odt` waits for Unlock, as a PDF
+  does. `UltraCanvasMediaViewer::IsWordProcessingFile`; builds without the PDF
+  view do not list them. `Tests/MediaViewerWordDocumentTest.cpp` opens a
+  `.docx`, a two-page `.odt` and a Word 97 `.doc`, and unlocks a protected
+  `.odt`.
+- **UltraCanvasScreenAreaPicker: choosing an area of the screen is part of
+  the framework.** UltraSnip's selection - the screen frozen and dimmed, a
+  rectangle dragged or a window clicked, Enter for the window under the
+  pointer or the whole screen, Escape to give up - moved out of UltraSnip
+  into `UltraCanvasScreenAreaPicker.h`, with the arithmetic beside it
+  (`ScreenArea`: the rectangle of a drag, the crop of a capture into RGBA,
+  the window under a point, the windows to offer). UltraSnip and ChatCube's
+  new screenshot button use the same one.
+  `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md`.
+- **macOS captures the screen.** `CaptureScreen`, `CaptureScreenImage` and
+  `CaptureScreenArea` said "Screenshots are not available on this platform
+  yet" on a Mac. They now capture the main display at its own pixels
+  through ScreenCaptureKit (macOS 14 and later). macOS asks once for the
+  Screen Recording permission (Privacy & Security); until it is given the
+  capture fails with that reason. Other displays are not captured yet.
+- **`UltraCanvasDesktopShell::CanCaptureScreen()`** says whether a build
+  can capture the screen at all - false on Android and WebAssembly - so a
+  screenshot button can stay hidden where it would only fail.
+- **`WindowType::Overlay` on macOS** is a borderless window above the menu
+  bar and the Dock, on every Space, that takes the keyboard (a borderless
+  window on macOS otherwise never does). The screen-area picker opens in
+  one there, placed in points.
+- **Text sits on the pixel grid: no more blurred first letters.** A file name
+  in UltraFiler's icon grid starting with R, I, B or l often looked blurred
+  and lighter than the rest of the word, on Windows and Linux alike. Glyphs
+  are hinted only vertically and advance by fractional widths, so a label
+  centred over an odd leftover width - or a letter whose side bearing is a
+  fraction of a pixel - drew its first vertical stem as two grey columns
+  instead of one dark one. `RenderContextCairo::DrawTextLayout` now moves the
+  text by less than a pixel so the left edge of its ink and its baseline fall
+  on whole device pixels. It does so only where text becomes pixels (not in a
+  PDF, PostScript or SVG export) and only without rotation or skew, so every
+  label, button and tab benefits, not just the Filer.
+
+#### 2026-11-22 *0.9.585*
+- **The localisation editor has a Window arrangement.**
+  `UltraCanvasLocalisationEditor` takes a `LocalisationEditorLayout` when it
+  is made: `Compact` (the default, as before) for a page or a dialog, and
+  `Window` for a window of its own - the choices on two rows across the
+  width, the grid beside a 380 px panel that shows the selected row whole
+  (its key, its English, the comparison, what is shown and its status,
+  every set's text, wrapped rather than cut to a column) with the edit at
+  its foot (*Apply*, *Clear override*), the status line and the actions at
+  the window's foot. The Draft button shows there only when a drafter is
+  set. The parts are made once (`MakeParts`) and each arrangement places
+  them. UOS-Localisation, the new translation editor program, uses it.
+- **A menu's border no longer breaks off at its rounded corners.** A popup
+  in a window of its own is cut to an outline of its opaque pixels, and only
+  pixels at least half opaque were kept and copied as they were: the outer,
+  fainter half of the 1 px border round each corner was cut away and the
+  rest came out washed white on Windows (dark on X11), so the corners looked
+  open and square against a light window behind. The outline now keeps
+  pixels from a quarter opaque, and the popup's window shows every pixel it
+  keeps at full strength in its own colour, so the border runs round the
+  corner unbroken.
+- **A menu's title stands apart.** A header row (`MenuItemData::Header`)
+  sits on a band darker than the panel - the new
+  `MenuStyle::headerBackgroundColor`, reaching up to the border when the
+  title is the first row - and its text is dark grey (the theme's ink a
+  shade lighter with `FromTheme`) instead of the light grey that read as a
+  disabled entry.
+- **The `.odp` reader reads the look as drawn, so UltraViewer, MediaViewer's
+  slide view and UltraFiler's thumbnails draw an Impress deck as fully as a
+  PowerPoint one.** It used to read text with bold, italic and underline
+  only; now every style is resolved through its parents and the family
+  defaults (common styles, the content's automatic styles, the master pages'
+  own):
+  - shapes: their fill (solid, or a gradient's stops - linear, axial, radial;
+    LibreOffice's bare tenths of a degree too), outline (colour, width,
+    dashes and dots, arrowheads from markers), text area (anchor, padding,
+    wrap, vertical writing, shrink to fit), turn (`draw:transform`) and
+    mirroring; their outline - an Office preset LibreOffice names
+    `ooxml-...`, ODF's own shape types (rectangles, ellipses, diamonds,
+    triangles, arrows, stars, flowchart shapes ...), an enhanced path in
+    plain numbers, `draw:rect` / `ellipse` / `polygon` / `polyline` / `path`
+    / `regular-polygon`, lines and connectors (a standard connector routed
+    with elbows);
+  - text: each run's size (points or a share of the size under it), colour,
+    typeface (through the font-face declarations), strike, super- and
+    subscript, capitals, highlight and links (`#name` of a page as a jump to
+    its slide); each paragraph's alignment, spacing, line height and
+    margins; list labels - the bullet character (a symbol font's private-use
+    code), its font, colour and size, the numbering scheme and the number
+    each item shows (start values, continued lists), where the label hangs;
+    an outline's levels from their own presentation styles;
+  - tables: column widths, row heights, each cell's fill, borders, padding,
+    anchor and span, a table template applied;
+  - each slide's background (its page style, else its master page's), the
+    theme's colours (LibreOffice's `loext:theme`), and with the new
+    `withPictures` argument of `ReadOdpPresentation` /
+    `ReadOdpPresentationFromMemory` the pictures' bytes (inline ones of a
+    flat `.fodp` too).
+  - Tested on LibreOffice's own conversion of the PowerPoint feature deck
+    (`Tests/fixtures/pptx-features.odp`), read field by field against the
+    `.pptx` reader and drawn the same, and on a flat deck written in the test.
+- **The `.odp` writer turns a turned shape's gradient with it, and starts a
+  radial gradient at the edge.** ODF's gradient angle is on the page, so a
+  turned shape's fill came out turned against the shape in LibreOffice; and a
+  radial gradient's colours were the wrong way round.
+- **A running copy no longer goes deaf when the message bus's host ends.**
+  `UltraCanvasSingleInstance` hands a second start to the running copy over
+  UltraMessage, and the bus lives in whichever program connected first. When
+  that program ended - the desktop restarting, an application that happened
+  to host it closing - the running copy's endpoint lost the bus and never
+  reconnected, so every later start waited fifteen seconds and said "*App* is
+  already running" instead of bringing it forward: clicking a pinned UltraSnip
+  that the desktop had preloaded, for one. A listening copy now checks its
+  connection once a second and joins again (hosting the new bus when nobody
+  does); a start made meanwhile keeps asking and is handed over.
+- **A toolbar's re-styling no longer turns coloured icons into black
+  silhouettes.** `UltraCanvasToolbar` drew every new button's icon through its
+  mask (a monochrome glyph, tinted), which is right for its own glyphs; a host
+  that shows a picture in its own colours switches that off with
+  `SetUseIconAsMask(false)`. But each re-application of the appearance -
+  `SetAppearance`, a theme (`ApplyTheme`), `SetOrientation` - set the mask on
+  every button again, so the icons became black shapes the first time
+  anything re-styled the bar: UltraDesktop's pinned and running applications
+  went black once the running group tightened its spacing for a full bar or
+  the look was refreshed, while they were right at start-up. A re-styling now
+  keeps each button's choice; only a button just added gets the mask.
+  `ToolbarOverflowMenuTest` checks it.
+- **A toolbar's re-styling keeps an icon size the host chose.** The same
+  re-application set every button's icon to the appearance's size, so a host
+  that sized its icons itself (UltraDesktop's 24 px bar icons) had them snap
+  back at each theme refresh. A re-styling now moves only the buttons still
+  at the toolbar's earlier size, which follow a new appearance as before;
+  `ToolbarOverflowMenuTest` checks both.
+- **UltraMessage endpoints reconnect when the broker goes.** The message bus's
+  broker runs inside whichever program connected first, and when that program
+  ended every other program's endpoint lost the bus for good: the
+  notification toasts, UltraNotifications, the Message Centre, a feed
+  publisher and the single-instance hand-off all went quiet until each was
+  restarted. An endpoint whose connection drops without
+  `UltraMsg_Disconnect` now reconnects by itself (`UltraMsgConnectOptions::autoReconnect`,
+  on by default): after 200 ms, then at growing intervals up to five seconds,
+  hosting the next broker when `startBrokerIfAbsent` allows, and registering
+  its subscriptions again under the same handles, so their callbacks keep
+  coming; one made with `replaySinceMs` gets what was journaled meanwhile.
+  `UltraCanvasSingleInstance` relies on it and keeps its watch only for a
+  copy that never got onto the bus. `UltraMessageTests` stops the broker
+  under two endpoints and starts it again: they come back on their own and
+  the subscription delivers.
+- **The UltraMessage module doc is compiled by the docs check.** Two of its
+  examples called functions of the reader's (`OpenPaths`, `Open`) without
+  declaring them; they are declared in `doc-check` comments now, and
+  `Docs/Modules/UltraMessage` is in `CHECKED_MODULE_DOCS`, so CI keeps it
+  compiling.
+- **`UltraCanvasDesktopShell::SetVirtualDesktopCount` adds desktops on
+  Windows.** It answered false; it now sends Explorer's Ctrl+Win+D once per
+  missing desktop, waits for Explorer to record them, and switches back to
+  the desktop that was current. A smaller count still answers false -
+  removing a desktop moves its windows and stays the user's, in Task View.
+
 #### 2026-11-21 *0.9.584*
 - **A second Android app: ChatCube.** The Android build no longer
   packages the demo alone. `scripts/android-package-apk.sh` takes

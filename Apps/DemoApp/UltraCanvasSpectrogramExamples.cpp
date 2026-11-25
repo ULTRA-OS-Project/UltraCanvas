@@ -239,7 +239,7 @@ namespace UltraCanvas {
         auto addLabel = [&](const std::string& id, const std::string& text) {
             auto l = DemoKit::AddText(panel, id, text);
             l->SetFontSize(11);
-            l->SetTextColor(Color(100, 110, 125, 255));
+            l->SetTextColor(DemoKit::Themed(Color(100, 110, 125, 255)));
         };
         auto addDropdown = [&](const std::string& id,
                                const std::vector<std::string>& items, int selected,
@@ -366,7 +366,7 @@ namespace UltraCanvas {
         // ----- Info line: live readout of the most recent transform -----
         st->info = DemoKit::AddText(root, "SpecInfo", "");
         st->info->SetFontSize(11);
-        st->info->SetTextColor(Color(100, 110, 125, 255));
+        st->info->SetTextColor(DemoKit::Themed(Color(100, 110, 125, 255)));
         RefreshInfo(st);
 
         return root;

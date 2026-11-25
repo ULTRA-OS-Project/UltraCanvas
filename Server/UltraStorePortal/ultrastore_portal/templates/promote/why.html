@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Why this advertisement - UltraStore{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Why you saw this advertisement</h1>
+  <p class="text-secondary"><b>{{ campaign.publisher.name }}</b> paid for <a href="{{ app.get_absolute_url }}">{{ app.name }}</a> to be shown here: {{ placement.area_name }}, {{ placement.name|lower }}.</p>
+  <ul>{% for reason in reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+  <p><b>Nothing about you was used.</b> The store chooses an advertisement from what is on the page - a search, a category, the app beside it - and from nothing else: not what you looked at before, not what you bought, not your account. Nobody who looks at the same page is shown it for another reason.</p>
+  <p class="text-secondary">Editor's picks, the lists and the order of a search's results are never for sale. What is paid for is marked <i>Sponsored</i>, always.</p>
+  <p class="mt-4"><a class="btn btn-outline-secondary" href="{% url 'promote:report' token %}" rel="nofollow">Report this advertisement</a></p>
+</div>
+{% endblock %}

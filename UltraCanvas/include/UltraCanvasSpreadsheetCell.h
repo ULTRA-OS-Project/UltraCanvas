@@ -1,5 +1,9 @@
 // include/UltraCanvasSpreadsheetCell.h
 // Spreadsheet cell data structure with value, formatting, and formula support
+// Version: 1.4.0 - a typed "nan", "inf" or "0x10" is text, not a number
+// Version: 1.3.0 - a typed "45%" is the percentage 0.45 (it was text); a percentage under General shows as one
+// Version: 1.2.0 - DataValidationListItems
+// Version: 1.1.0 - ValidateValue checks the cell's rule (it accepted everything); CheckDataValidation
 // Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.0.0
 // Last Modified: 2026-10-08
@@ -8,11 +12,14 @@
 
 #include "UltraCanvasSpreadsheetTypes.h"
 #include <string>
+#include <vector>
 #include <memory>
 #include <optional>
 #include <functional>
 #include <cstring>
 #include <cstdio>
+#include <cctype>
+#include <cmath>
 
 namespace UltraCanvas {
 
@@ -248,7 +255,9 @@ public:
     void SetValidation(const DataValidation& validation);
     void RemoveValidation() { validation_.reset(); }
     
-    // Validate current value against validation rules
+    // True when the cell's value passes its own validation rule (always,
+    // when it has none). On false, `errorMessage` gets the rule's error
+    // message, or a default one. See CheckDataValidation below.
     bool ValidateValue(std::string* errorMessage = nullptr) const;
     
     // ===== MERGE =====
@@ -295,6 +304,26 @@ private:
     // Default style singleton
     static const CellStyle& GetDefaultStyle();
 };
+
+// Checks `cell` (null: an empty cell) against `validation`, as a spreadsheet
+// application does when a value is entered:
+// - an empty cell passes when the rule allows blanks;
+// - WholeNumber, Decimal, Date and Time need a number (a date or time is its
+//   serial number) compared with formula1 / formula2 by the rule's operator;
+//   WholeNumber also needs it whole. The bounds are dot-decimal numbers; a
+//   Date bound may also be "YYYY-MM-DD" and a Time bound "HH:MM[:SS]";
+// - TextLength compares the number of characters (not bytes) of the shown text;
+// - List needs the shown text to be one of formula1's comma- or
+//   semicolon-separated items (surrounding spaces and quotes ignored);
+// - Custom (a formula) is not evaluated and passes, as does Any.
+// A bound that cannot be read fails the check rather than passing it.
+// On false, `errorMessage` gets the rule's errorMessage, or a default one.
+bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell* cell,
+                         std::string* errorMessage = nullptr);
+
+// The items of a List rule's formula1, in order, as CheckDataValidation reads
+// them (empty items dropped); empty for any other rule.
+std::vector<std::string> DataValidationListItems(const DataValidation& validation);
 
 // ============================================================================
 // IMPLEMENTATION
@@ -576,20 +605,39 @@ inline void SpreadsheetCell::SetValueFromString(const std::string& input) {
         return;
     }
     
-    // Try to parse as number
-    try {
-        size_t pos;
-        double num = std::stod(input, &pos);   // locale-ok: cell entry - what the user typed, in their locale
-        if (pos == input.length()) {
-            // Check if it looks like a percentage
-            if (input.back() == '%') {
-                SetPercentage(num / 100.0);
-            } else {
-                SetNumber(num);
+    // A number, or a percentage: "45%", "12.5 %", "-3%" is the number with
+    // the sign taken off and divided by 100. The number must be all of what
+    // is left - std::stod stops at the '%', which is why "45%" used to be
+    // stored as text.
+    std::string number = input;
+    while (!number.empty() && std::isspace(static_cast<unsigned char>(number.back()))) number.pop_back();
+    const bool percent = !number.empty() && number.back() == '%';
+    if (percent) {
+        number.pop_back();
+        while (!number.empty() && std::isspace(static_cast<unsigned char>(number.back()))) number.pop_back();
+    }
+    // Only what a person writes a number with: digits, a sign, the decimal
+    // point or comma, an exponent ("1.5e3"). std::stod also reads "nan",
+    // "inf", "infinity" and hexadecimal ("0x10", "0x1p3"), which typed into
+    // a cell are words, not numbers - "nan" became a NaN, "0x10" became 16.
+    const size_t first = number.find_first_not_of(" \t");
+    bool plain = first != std::string::npos;
+    for (size_t k = plain ? first : 0; plain && k < number.size(); ++k) {
+        const char ch = number[k];
+        plain = std::isdigit(static_cast<unsigned char>(ch)) || ch == '+' || ch == '-' ||
+                ch == '.' || ch == ',' || ch == 'e' || ch == 'E';
+    }
+    if (plain) {
+        try {
+            size_t pos;
+            double num = std::stod(number, &pos);   // locale-ok: cell entry - what the user typed, in their locale
+            if (pos == number.length() && std::isfinite(num)) {
+                if (percent) SetPercentage(num / 100.0);
+                else SetNumber(num);
+                return;
             }
-            return;
-        }
-    } catch (...) {}
+        } catch (...) {}
+    }
     
     // Default to text
     SetText(input);
@@ -800,14 +848,9 @@ inline void SpreadsheetCell::SetValidation(const DataValidation& validation) {
     validation_ = std::make_unique<DataValidation>(validation);
 }
 
-inline bool SpreadsheetCell::ValidateValue(std::string* errorMessage) const {
-    (void)errorMessage;
-    if (!validation_) return true;
-    
-    // TODO: Implement validation logic based on ValidationType and ValidationOperator
-    // For now, return true
-    return true;
-}
+// ValidateValue is defined in core/UltraCanvasSpreadsheetSheet.cpp, beside
+// CheckDataValidation, which does the work for it and for
+// SpreadsheetSheet::ValidateCell.
 
 // ===== COMPARISON =====
 
@@ -885,9 +928,18 @@ inline void SpreadsheetCell::UpdateDisplayValue() const {
             break;
             
         case CellValueType::Number:
-        case CellValueType::Percentage:
             if (auto* num = std::get_if<double>(&value_)) {
                 displayValue_ = FormatNumber(*num);
+            }
+            break;
+
+        case CellValueType::Percentage:
+            // Under General a percentage shows as one ("45%", "12.5%");
+            // a format the cell was given decides otherwise.
+            if (auto* num = std::get_if<double>(&value_)) {
+                displayValue_ = GetStyle().numberFormat.category == NumberFormatCategory::General
+                                    ? FormatNumber(*num * 100.0) + "%"
+                                    : FormatNumber(*num);
             }
             break;
             

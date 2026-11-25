@@ -2,20 +2,24 @@
 {% block title %}Publishers - Operator{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Publishers</h1></div>
-<div class="panel">
-  <table>
-    <tr><th>Publisher</th><th>Contact</th><th>State</th><th>Terms</th><th>Since</th><th></th></tr>
+<div class="card"><div class="card-body">
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Publisher</th><th>Contact</th><th>State</th><th>Terms</th><th>Since</th><th></th></tr></thead>
+    <tbody>
     {% for publisher in publishers %}
     <tr>
-      <td><b>{{ publisher.name }}</b><div class="mono muted">{{ publisher.slug }}</div></td>
+      <td><b>{{ publisher.name }}</b><div class="font-monospace text-secondary">{{ publisher.slug }}</div></td>
       <td>{{ publisher.support_email }}</td>
       <td>{% include "_state.html" with state=publisher.state label=publisher.get_state_display %}</td>
       <td>{{ publisher.terms_version|default:"-" }}</td>
       <td>{{ publisher.created|date:"j M Y" }}</td>
-      <td class="num"><a class="button plain small" href="{% url 'operator:publisher' publisher.slug %}">Open</a></td>
+      <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'operator:publisher' publisher.slug %}">Open</a></td>
     </tr>
-    {% empty %}<tr><td colspan="6" class="muted">No publisher yet.</td></tr>
+    {% empty %}<tr><td colspan="6" class="text-secondary">No publisher yet.</td></tr>
     {% endfor %}
+    </tbody>
   </table>
-</div>
+  </div>
+</div></div>
 {% endblock %}

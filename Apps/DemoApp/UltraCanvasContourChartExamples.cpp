@@ -70,7 +70,7 @@ namespace UltraCanvas {
                                                                        const std::string& text) {
         auto lbl = DemoKit::CreateText(id, text);
         lbl->SetFontSize(11);
-        lbl->SetTextColor(Color(70, 70, 80, 255));
+        lbl->SetTextColor(DemoKit::Themed(Color(70, 70, 80, 255)));
         lbl->SetMargin(10, 12, 4, 12);
         return lbl;
     }
@@ -80,7 +80,7 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasLabel> MakeContourInteractionLine(const std::string& id,
                                                                         const std::string& text) {
         auto lbl = DemoKit::CreateCaption(id, text);
-        lbl->SetTextColor(Color(55, 105, 170, 255));
+        lbl->SetTextColor(DemoKit::Themed(Color(55, 105, 170, 255)));
         lbl->SetMargin(2, 12, 4, 12);
         return lbl;
     }
@@ -380,13 +380,13 @@ namespace UltraCanvas {
         // Tab 1: Interactive
         // =====================================================================
         auto tab1 = std::make_shared<UltraCanvasContainer>("CtTabInteractive", 0, 0, INNER_W, INNER_H);
-        tab1->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab1->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab1->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // As wide as its widest option (296 px at least) and the tab's height;
         // it scrolls when the options are taller than the tab.
         auto panel = std::make_shared<UltraCanvasContainer>("CtPanel");
-        panel->SetBackgroundColor(Color(247, 247, 250, 255));
+        panel->SetBackgroundColor(DemoKit::Themed(Color(247, 247, 250, 255)));
         panel->SetPadding(12, 14, 12, 14);
         panel->layout.SetFlexColumn().SetFlexGap(4)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -432,7 +432,7 @@ namespace UltraCanvas {
 
         auto tab1Right = std::make_shared<UltraCanvasContainer>("CtTabInteractiveRight", 0, 0,
                                                                 INNER_W - 306, INNER_H);
-        tab1Right->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab1Right->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab1Right->layout.SetFlexColumn().SetFlexGap(2)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab1Right, MakeContourInteractionLine("CtInteractiveInfo",
@@ -447,7 +447,7 @@ namespace UltraCanvas {
         // Tab 2: Filled contour with labelled isolines
         // =====================================================================
         auto tab2 = std::make_shared<UltraCanvasContainer>("CtTabFilled", 0, 0, INNER_W, INNER_H);
-        tab2->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab2->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab2->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab2, MakeContourTabDescription("CtFilledDesc",
                 Tr("Filled contour bands with black isolines stroked on top and the level value set "
@@ -486,7 +486,7 @@ namespace UltraCanvas {
         // Tab 3: Kernel-density contour with a discrete band legend
         // =====================================================================
         auto tab3 = std::make_shared<UltraCanvasContainer>("CtTabDensity", 0, 0, INNER_W, INNER_H);
-        tab3->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab3->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab3->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab3, MakeContourTabDescription("CtDensityDesc",
                 Tr("The points themselves are not drawn: 4000 samples from two overlapping clusters are "
@@ -520,7 +520,7 @@ namespace UltraCanvas {
         // Tab 4: Line-only contour, each line coloured by its level
         // =====================================================================
         auto tab4 = std::make_shared<UltraCanvasContainer>("CtTabLines", 0, 0, INNER_W, INNER_H);
-        tab4->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab4->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab4->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab4, MakeContourTabDescription("CtLinesDesc",
                 Tr("No fill at all: every isoline takes its own colour from the diverging ramp and is "
@@ -560,7 +560,7 @@ namespace UltraCanvas {
         // Tab 5: Dark-theme density contour over its own scatter
         // =====================================================================
         auto tab5 = std::make_shared<UltraCanvasContainer>("CtTabDark", 0, 0, INNER_W, INNER_H);
-        tab5->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab5->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab5->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab5, MakeContourTabDescription("CtDarkDesc",
                 Tr("The same density pipeline on a dark theme, with the source points faintly overlaid "
@@ -613,7 +613,7 @@ namespace UltraCanvas {
         // Tab 6: 3D banded contour surface over categorical axes
         // =====================================================================
         auto tab6 = std::make_shared<UltraCanvasContainer>("CtTab3DBands", 0, 0, INNER_W, INNER_H);
-        tab6->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab6->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab6->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab6, MakeContourTabDescription("Ct3DBandsDesc",
                 Tr("The spreadsheet-style 3D contour: a coarse grid over two categorical axes, the "
@@ -653,7 +653,7 @@ namespace UltraCanvas {
         // Tab 7: 3D terrain with isolines drawn onto the surface
         // =====================================================================
         auto tab7 = std::make_shared<UltraCanvasContainer>("CtTab3DTerrain", 0, 0, INNER_W, INNER_H);
-        tab7->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab7->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab7->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab7, MakeContourTabDescription("Ct3DTerrainDesc",
                 Tr("A smooth-shaded elevation surface with contour lines traced onto it. Each cell's "
@@ -722,7 +722,7 @@ namespace UltraCanvas {
         // Tab 8: GL-backed 3D contour surface - the UC OpenGL element
         // =====================================================================
         auto tab8 = std::make_shared<UltraCanvasContainer>("CtTab3DGL", 0, 0, INNER_W, INNER_H);
-        tab8->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab8->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab8->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddContourFlexChild(tab8, MakeContourTabDescription("Ct3DGLDesc",
                 Tr("The same contour-surface pipeline rendered by UltraCanvasContourSurfaceGLElement "

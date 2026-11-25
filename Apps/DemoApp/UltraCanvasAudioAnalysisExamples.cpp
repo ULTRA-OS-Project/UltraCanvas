@@ -265,7 +265,7 @@ namespace UltraCanvas {
                            const std::shared_ptr<UltraCanvasUIElement>& chart,
                            std::function<void(int)> onSignal) {
             auto tab = std::make_shared<UltraCanvasContainer>(id, 0, 0, INNER_W, INNER_H);
-            tab->SetBackgroundColor(Color(255, 255, 255, 255));
+            tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tab->layout.SetFlexColumn().SetFlexGap(6)
                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 

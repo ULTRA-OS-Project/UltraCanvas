@@ -408,6 +408,8 @@
   "UltraFiler - Settings": "UltraFiler - الإعدادات",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler البسيطة - أيقونات المجلد والورقة المرسومة",
   "UltraViewer could not be started: {0}": "تعذّر تشغيل UltraViewer: {0}",
+  "Edit in {0}": "تحرير في {0}",
+  "{0} could not be started: {1}": "تعذّر تشغيل {0}: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "يعرض UltraViewer الصورة أو الملف الصوتي أو الفيديو بالحجم الكامل، وبقية مجلده على بُعد ضغطة مفتاح. وعندما لا يكون UltraViewer مثبتًا، أو يكون هذا الخيار متوقفًا، يُعامَل هذا الملف مثل أي ملف آخر، وفق الخيار الموجود أسفله.",
   "Upload: the name is already taken": "رفع: الاسم مستخدم بالفعل",
   "Uploaded: {0}": "المرفوع: {0}",

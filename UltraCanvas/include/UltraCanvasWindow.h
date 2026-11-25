@@ -1,5 +1,10 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.13.0 - IsOnCurrentDesktop / MoveToCurrentDesktop: a window on another virtual desktop
+//                   comes to the one in view; RaiseAndFocus does that first (X11)
+// Version: 2.12.4 - iOS: the UIKit backend in OS/iOS; tvOS, visionOS and watchOS stop with an #error
+// Version: 2.12.3 - WindowType::Overlay documented: the screen-area picker's window, keyable above the
+//                   menu bar on macOS
 // Version: 2.12.2 - alwaysOnTop and SetTransientParent say what each is for: a dialog is
 //                  kept above its parent, not above every application (on macOS too, as
 //                  the parent's child window)
@@ -22,7 +27,7 @@
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -77,7 +82,13 @@ namespace UltraCanvas {
         // window.
         Popup,
         Tool,
-        Fullscreen, Borderless, Overlay,
+        Fullscreen, Borderless,
+        // Over everything, the screen-area picker's window: on macOS
+        // borderless above the menu bar and the Dock, on every Space, and
+        // given the keyboard, which a borderless NSWindow otherwise never is;
+        // on Wayland undecorated. UltraCanvasScreenAreaPicker uses it on
+        // macOS only (Borderless elsewhere).
+        Overlay,
         // The desktop itself: undecorated, the size of the screen, kept below
         // every other window, on every virtual desktop and out of taskbars
         // (_NET_WM_WINDOW_TYPE_DESKTOP on X11). The window a desktop shell
@@ -409,7 +420,23 @@ namespace UltraCanvas {
         virtual void Show() = 0;
         virtual void Hide() = 0;
         // Window state
+        // In front of every other window, with the keyboard. A window that
+        // is on another virtual desktop (workspace) than the one in view is
+        // brought to this one first, with the window it belongs to: the
+        // person asked for it here, and a window manager asked only to
+        // activate it marks it "wants attention" where it lies, or changes
+        // the desktop under them. On X11; elsewhere the system decides.
         virtual void RaiseAndFocus() = 0;
+        // False while the window lies on another virtual desktop than the
+        // one in view - shown, yet not where the person can see it. True
+        // for a window on every desktop, one not shown, and wherever the
+        // platform does not say (anything but X11 so far).
+        virtual bool IsOnCurrentDesktop() const { return true; }
+        // Brings the window to the virtual desktop in view, and the window
+        // it belongs to (its parent) with it; nothing else changes - it is
+        // neither raised nor focused. True when a move was asked for, false
+        // when the window was there already or the platform cannot move it.
+        virtual bool MoveToCurrentDesktop() { return false; }
         virtual void SetWindowTitle(const std::string& title) = 0;
         virtual void SetWindowIcon(const std::string& iconPath) = 0;
         virtual void SetWindowPosition(int x, int y) = 0;
@@ -795,7 +822,12 @@ namespace UltraCanvas {
             using UltraCanvasWindow = UltraCanvasMacOSWindow;
         }
     #elif TARGET_OS_IPHONE
-        // iOS
+        // iOS: the UIKit backend (Docs/UltraCanvas/iOSPortInvestigation.md).
+        // TARGET_OS_IPHONE is set for tvOS, visionOS and watchOS as well,
+        // which the backend does not cover: they stop here.
+        #if !TARGET_OS_IOS
+            #error "No backend for this Apple platform: OS/iOS covers iOS only"
+        #endif
         #include "../OS/iOS/UltraCanvasiOSWindow.h"
         namespace UltraCanvas {
             using UltraCanvasWindow = UltraCanvasiOSWindow;

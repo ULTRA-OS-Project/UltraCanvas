@@ -22,6 +22,7 @@
 #include "UltraCanvasListModel.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8 / PathFromUtf8 for the file name
+#include "UltraCanvasDemoPageKit.h"   // DemoKit::Themed
 #include <cmath>
 #include <memory>
 #include <string>
@@ -33,18 +34,18 @@ namespace UltraCanvas {
         const int PAD = 15;
 
         auto mainContainer = std::make_shared<UltraCanvasContainer>("pmMainContainer", 0, 0, 1140, 800);
-        mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
+        mainContainer->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
 
         auto headerContainer = std::make_shared<UltraCanvasContainer>("pmHeader", 0, 0, 1140, 90);
-        headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
+        headerContainer->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         mainContainer->AddChild(headerContainer);
 
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("pmMainTitle", 30, 15, 640, 35);
+        auto mainTitle = std::make_shared<UltraCanvasLabel>("pmMainTitle", 30, 12, 640, 40);   // 40: a CJK title line is taller than a Latin one
         mainTitle->SetText(Tr("Performance Matrix"));
         mainTitle->SetFontSize(22);
         mainTitle->SetFontWeight(FontWeight::Bold);
         mainTitle->SetAlignment(TextAlignment::Left);
-        mainTitle->SetTextColor(Color(33, 37, 41, 255));
+        mainTitle->SetTextColor(DemoKit::Themed(Color(33, 37, 41, 255)));
         headerContainer->AddChild(mainTitle);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("pmSubtitle", 30, 52, 640, 30);
@@ -131,7 +132,7 @@ namespace UltraCanvas {
             matrix->SetShowTotals(!example.model.items.empty());
 
             auto tabContent = std::make_shared<UltraCanvasContainer>("pmTab" + std::to_string(i), 0, 0, 860, 632);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(matrix);
             tabbedContainer->AddTab(example.tab, tabContent);
             matrices.push_back(matrix);
@@ -139,7 +140,7 @@ namespace UltraCanvas {
 
         // ===== SIDEBAR =====
         auto sidebar = std::make_shared<UltraCanvasContainer>("pmSidebar", 900, 20, 220, 670);
-        sidebar->SetBackgroundColor(Color(255, 255, 255, 255));
+        sidebar->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         contentContainer->AddChild(sidebar);
         const int SIDEBAR_W = 190;
 
@@ -148,7 +149,7 @@ namespace UltraCanvas {
             caption->SetText(text);
             caption->SetFontSize(10);
             caption->SetFontWeight(FontWeight::Bold);
-            caption->SetTextColor(Color(73, 80, 87, 255));
+            caption->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
             caption->SetAlignment(TextAlignment::Left);
             sidebar->AddChild(caption);
         };
@@ -197,7 +198,7 @@ namespace UltraCanvas {
         selection->SetFontSize(10);
         selection->SetWrap(TextWrap::WrapWord);   // tooltips and the hint are sentences, not lines
         selection->SetAlignment(TextAlignment::Left);
-        selection->SetBackgroundColor(Color(248, 249, 250, 255));
+        selection->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         selection->SetPadding(10);
         selection->SetText(Tr("Click a box or a person. On Calibration, tick Allow moves to drag "
                            "people, or move one with Ctrl+arrows."));

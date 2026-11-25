@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.19.1 - iOS: the UIKit backend in OS/iOS; fontconfig paths compiled for iOS too
 // Version: 1.19.0 - Appearance.conf over the host, the settings watcher (a change reaches a running application)
 // Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
 // Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
@@ -64,7 +65,7 @@ namespace UltraCanvas {
     // a name from kEmbeddedAllFonts appends to it as it is.
     std::string GetBundledFontsDir();
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
     // The platform's generic family aliases - "sans-serif", "sans", "serif",
     // "monospace" and Pango's "emoji" onto real families - as a <fontconfig>
     // document of <alias> elements alone. The fonts.conf the framework writes
@@ -728,7 +729,10 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplica
         #include "../OS/MacOS/UltraCanvasMacOSApplication.h"
         namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasMacOSApplication; }
     #elif TARGET_OS_IPHONE
-        // iOS
+        // iOS: the UIKit backend (Docs/UltraCanvas/iOSPortInvestigation.md).
+        #if !TARGET_OS_IOS
+            #error "No backend for this Apple platform: OS/iOS covers iOS only"
+        #endif
         #include "../OS/iOS/UltraCanvasiOSApplication.h"
         namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasiOSApplication; }
     #else

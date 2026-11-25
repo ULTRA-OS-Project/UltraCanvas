@@ -282,6 +282,7 @@ cascade. The rules, with their weights:
 | `sender-company-mismatch` | 25 (12 from a proven domain) | The display name names a company whose own domain the message itself gives — `Luka Deveric \| BUG Rohrreinigung <no-reply@danpetersonmusic.net>` writing "questions to fibu@bug-rohrreinigung.de" — and the mail came from an unrelated domain. Matched when the domain's name is the display name's words (`bug-rohrreinigung`, `bugrohrreinigung`, or one long word of it); not from a free mailbox, not "… via …", not when the sender's domain carries the company's name; from a domain DKIM or DMARC proves (an invoicing service sending in a customer's name) only 12 |
 | `counterfeit-goods` | 30 / 40 / 45 (15) | A luxury watch or bag offered below what any genuine one costs ("Rolex Watches Starting at Just $250": Rolex from 2,000, Patek Philippe and Audemars Piguet from 5,000, Cartier and Breitling from 1,000, Louis Vuitton from 500 ...) – 30; called a replica ("1:1 replica", "AAA quality", "super clone") – 40; both – 45. Brands count by names nothing else has ("Omega Seamaster", not "Omega"; a "Birkin" or "Hermès bag", not the parcel service). Not from the brand's own domain; from a domain proven to be the sender's own, in its bulk mail, a low price alone is 15 |
 | `seo-solicitation` | 35 / 30 / 22 (10), +10, at most 40 | An offer of search engine services to the reader's own website – an SEO term ("SEO" – in capitals, since "Seo" is also a name –, "first page of Google", "backlinks", "organic traffic"), "your website" and a pitch ("audit", "report", "would you like", "following up"): 35 from a free mailbox, 30 from a domain nothing proved, 22 from a proven one, 10 in a proven domain's bulk mail; +10 for a "Re:" with no `In-Reply-To` or `References` (a reply to a mail never sent). Not from a proven registry brand. **Only from strangers**: the badge does not call a contact's mail spam when this is all the scan found (`FindingOnlyFromStrangers`) |
+| `unsolicited-reply` | 30, +10, +5, +5, at most 40 | A subject that starts with a reply or forward prefix – `Re`, `AW`, `Antw`, `SV`, `VS`, `Odp`, `Rif`, `Fw`, `Fwd`, `WG`, `TR`, `RV`, `Enc`, `Doorst`, `VL`, also `Re[2]:` and behind a server's tag (`*** VIRUS ***WG: …`, `[SPAM] Re: …`): 30; +10 when it names no message it answers (no `In-Reply-To` or `References`) or only messages of another domain than the sender's (a forward of `kemink-fleisch.de`'s invoice from `automobielbeheersing.com`); +5 when it is bulk mail (an unsubscribe link: a mailing tool's "follow-up", not a person's reply); +5 when it is about a bill ("Rechnung", "invoice", "facture" …). A proven sender's −10 applies, so a signed sales "Re:" in its own thread scores 25. Not for a mailing list's post (`List-Id`), a proven registry brand, or an SEO pitch (its own "Re:" counts there). **Only from strangers** (`FindingOnlyFromStrangers`): UltraMail adds everyone the reader writes to to the address book, so a genuine reply comes from a contact; the warning strip offers **Add to contacts** for a sender the reader knows |
 | `link-disguised-address` | 25 | A link written `https:////shop.example.ru/` or `https:\\shop.example.ru`: the browser opens `shop.example.ru` all the same, but a filter reading the address as written finds no site. The link keeps its host for every other link rule |
 | `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |
 | `insecure-login-link` | 20 | A sign-in link over plain `http://` |
@@ -433,6 +434,7 @@ from a domain of its own. Where the brand table already reported the claim
 | Spam, as the server marked it | `spam-flag` |
 | Fake designer goods | `counterfeit-goods` |
 | SEO offers from strangers | `seo-solicitation` |
+| "Re:" or "Fw:" from a sender never written to | `unsolicited-reply` |
 
 A kind switched off is not reported: its findings are dropped and add
 nothing to the score, so a message is labelled as if those rules did not
@@ -473,6 +475,17 @@ The lists are `SenderLists` (`UltraMailThreatScan.h`), kept in
 `@example.com`). An address is on one list or the other: trusting a blocked
 address unblocks it, and blocking a trusted one stops trusting it. A trusted
 address under a blocked domain stays trusted — the exception to the block.
+
+A no-reply address that carries a code of its own in every message —
+`no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com`, the next one with
+another — is one sender: the lists keep it, and look it up, as the no-reply
+word and the domain alone (`no-reply@mail.anthropic.com`,
+`SenderLists::StableAddress`; `no-reply`, `noreply`, `no_reply`,
+`do-not-reply`, `donotreply` followed by `-`, `_`, `.` or `+` and a code).
+Trusting or blocking it from one message covers all of them, and so does
+*Show images – Always from this sender*. A "+tag" on any mailbox is dropped
+the same way (`orders+Q7x2Lm@shop.example` is `orders@shop.example`). An
+entry kept with its code or tag before this still matches its own message.
 
 * **Blocked:** the scan adds `blocked-sender` (30, so at least
   **Suspicious**): the orange frame, and the strip above the message says

@@ -32,7 +32,7 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
 ## The window
 
 - **The band at the top** names the app and how many accounts it holds, with
-  *Settings* (the sliders) and **Lock** at its right.
+  *Recovery* (below), *Settings* (the sliders) and **Lock** at its right.
 - **Under it**, the ways to add an account — **Scan QR code**, then *Enter
   key* — and, to the right, what acts on the whole vault: *Password…*
   (change the master password), *Back up…* and *Restore…*.
@@ -94,7 +94,8 @@ below).
 decrypted vault is dropped from memory — when you press **Lock**, after a
 period without input to the window (5 minutes by default, or never; see
 *Settings*), and when the window is minimised. The lock screen accepts only
-the master password or *Quit*; it cannot be closed or escaped. After three
+the master password, *Forgot password* (*Recovery*, below) or *Quit*; it
+cannot be closed or escaped. After three
 wrong passwords each further attempt waits twice as long as the last, up to
 five minutes, and the wait is enforced by the vault code, not by the
 dialog. The same screen, with the same back-off, is what opens the app: a
@@ -174,15 +175,62 @@ own; each is stated here so the app is not credited with more than it does.
   to the real one in seconds. Time-based codes do not resist this; only
   phishing-resistant methods (hardware keys, passkeys) do. Check the address
   bar before you type a code.
-- **A lost master password.** It is not stored anywhere and cannot be
-  recovered. Without it, the vault is unreadable — by you and by everyone
-  else. Keep a backup (encrypted, with its own passphrase) somewhere safe.
+- **A lost master password, without Recovery.** The password is not stored
+  anywhere. Unless *Recovery* was turned on (below), without it the vault is
+  unreadable — by you and by everyone else. Keep a backup (encrypted, with
+  its own passphrase) somewhere safe.
+- **Someone with your vault file *and* your mailbox.** With Recovery kept
+  with your UltraAccount, the vault file plus a code mailed to the account's
+  address (or texted to its phone) opens the vault. That is the trade
+  Recovery makes; the account tells you by mail and notice every time a
+  recovery key is released, and *Remove* in UltraAccount, or *Turn off*
+  here, withdraws it. The same goes for the vault file plus the paper with
+  the recovery code.
 - **A wrong clock.** Time-based codes are computed from the system clock. If
   the clock is minutes off, every code is rejected by the service and the
   app cannot tell. Keep the system time synchronised.
 - **Text you type into a password field.** The framework's text field keeps
   its own copy of what was typed until it is cleared; the app clears its
   fields after every use, but that copy is the widget's, not the app's.
+
+## Recovery from a forgotten master password
+
+*Recovery*, in the top band, gives the vault a second way in for the day the
+master password is gone. Turning it on asks for the master password, then:
+
+- draws a random **recovery key** in two halves: one is kept in the vault
+  file's header, the other leaves the vault;
+- with *Keep the recovery key with my UltraAccount* (the default when
+  UltraAccount is signed in on this machine, or signed in from the dialog),
+  that other half is left with your
+  [UltraAccount](../UltraAccount/README.md), which releases it only for a
+  code sent to the account's verified email - or, with UltraAccount Plus, by
+  text message to its verified phone;
+- and shows that half once as a **recovery code** - thirteen groups of four
+  letters and digits - to write down and keep away from the computer. It
+  works without the account and without a network.
+
+On the lock screen, **Forgot password** opens the recovery: choose where the
+code goes (the masked address and number are shown), type the code - or the
+recovery code - and a new master password, twice. The vault opens with it.
+
+What holds it together: neither half opens anything alone. The account
+service never sees the vault file, and the file never holds the service's
+half, so a stolen file is no more use than before, and neither is a breach
+of the service. A recovery **spends** the key - the slot is removed from the
+vault and, when this machine is signed in to the account, the account's copy
+too - so turn Recovery on again afterwards. *Renew* replaces the key (and
+the recovery code); *Turn off* removes it. Changing the master password
+keeps Recovery as it is.
+
+How the vault carries it: since container version 2 the accounts are
+sealed with a random data key, and the header holds that key twice - sealed
+with the key derived from the master password, and sealed with the recovery
+key (HKDF-SHA-256 over both halves) - plus where the account half is kept:
+the service and the recovery key's id. Those two are readable without the
+password, because the person who forgot it needs them; every byte of the
+header is authenticated with the accounts. A version 1 vault (up to 0.2)
+still opens and becomes version 2 at its first write.
 
 ## Settings
 

@@ -110,3 +110,48 @@ TEST(vm_boot_with_home_share) {
     CHECK(!info.homeShared);  // share daemon ends with the machine
     UltraWin_Shutdown();
 }
+
+// QEMU and virtiofsd make the machine's two sockets themselves, and a
+// socket's address holds a path of 107 bytes. In a machine folder longer
+// than that QEMU refused its control socket and the machine never started
+// ("QEMU did not answer on QMP"), and virtiofsd refused its own. Both are
+// now started in the folder and given the sockets by name, and the control
+// socket is reached through its folder.
+TEST(vm_boot_in_a_folder_longer_than_a_socket_address) {
+    UltraWin_Shutdown();
+    UltraWinConfig cfg = VmConfig();
+    cfg.vmDirectory = ScratchRoot() + "/" + std::string(120, 'm') + "/vm";
+    cfg.vmRdpHostPort = 23392;
+    REQUIRE(cfg.vmDirectory.size() + std::string("/qmp.sock").size() > 110);
+    REQUIRE(UltraWin_Initialize(cfg));
+    if (FindQemuBinary().empty() || FindQemuImgBinary().empty())
+        SKIP("no QEMU on this host");
+
+    UltraWinVmOptions opt;
+    opt.diskSizeGB = 24;
+    opt.memoryMB = 1024;
+    opt.cpus = 1;
+    REQUIRE(UltraWin_VmProvision(opt));
+    auto started = UltraWin_VmStart();
+    REQUIRE(started);
+    REQUIRE_EQ(UltraWin_VmGetState(), UltraWinVmState::Running);
+    // The control socket is in the machine's folder, where it always was.
+    CHECK(fs::is_socket(UltraCanvas::PathFromUtf8(cfg.vmDirectory + "/qmp.sock")));
+
+    // Every later command goes over the long path too.
+    REQUIRE(UltraWin_VmSuspend());
+    REQUIRE_EQ(UltraWin_VmGetState(), UltraWinVmState::Suspended);
+    REQUIRE(UltraWin_VmResume());
+    REQUIRE_EQ(UltraWin_VmGetState(), UltraWinVmState::Running);
+
+    const char* home = std::getenv("HOME");
+    if (!FindVirtiofsdBinary().empty() && home && *home == '/') {
+        UltraWinVmInfo info;
+        REQUIRE(UltraWin_VmGetInfo(&info));
+        CHECK(info.homeShared);  // virtiofsd's socket made, and QEMU on it
+    }
+
+    REQUIRE(UltraWin_VmKill());
+    REQUIRE_EQ(UltraWin_VmGetState(), UltraWinVmState::Stopped);
+    UltraWin_Shutdown();
+}

@@ -54,6 +54,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # UltraNotifications keeps the notifications after their toast has gone and
 # counts the unread for UltraDesktop's bell.
 # UltraToDo is the task list, with reminders and alarms.
+# UltraAccount is the ULTRA OS account: sign-up, email and phone, subscription.
 # UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 # UltraCanvasStart, the setup application, is in the bundle like every app;
 # scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
@@ -62,8 +63,8 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # WordPress import - and, given a site folder, the editor window. Outputs
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
-      UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraToDo UltraWeb UltraCanvasStart UltraPress
+      UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UOS-Localisation UltraClaude
+      UltraAuthenticator UltraAccount UltraPassword UltraClipboard UltraNotifications UltraToDo UltraWeb UltraCanvasStart UltraPress
       SmartHomeCenter UltraDBAdmin)
 
 # AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,

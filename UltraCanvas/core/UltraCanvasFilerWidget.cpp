@@ -51,6 +51,12 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.61.0 - openMenuProvider: the host's entries after "Open with"
+// Version: 1.60.0 - a favorite can stand out by a solid fill, a border or a shade in a colour of the
+//                  host's (SetFavoriteHighlight), and the heart can be switched off
+// Version: 1.59.1 - a rescan of the folder shown keeps the previews of unchanged files: deleting one
+//                  file no longer redraws the whole folder with type glyphs before the thumbnails
+// Version: 1.59.0 - letting a selection rectangle go fires onSelectionChanged once more (IsDragInProgress)
 // Version: 1.57.0 - Run in background: the progress window's button, onBackgroundProgress on every
 //                  tick, BringOperationToFront; queued archive jobs stay in the background
 // Version: 1.56.0 - the progress window's figures, route and Pause: copies, moves and deletes count the
@@ -191,7 +197,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -3798,6 +3804,21 @@ namespace UltraCanvas {
         renamedFromPath.clear();
         renamedToPath.clear();
 
+        // The folder already shown, listed again (a delete, a rename, a copy
+        // in, the folder watch): the thumbnails of the files that are still
+        // there, unchanged, stay. Dropping them all redrew the whole folder
+        // with type glyphs and the thumbnails a moment later, every time one
+        // file was deleted. Each file's stamp is kept to tell a file that
+        // changed (same name, new content) from one that did not.
+        const bool keepPreviews = !fileListMode && !currentPath.empty() &&
+                                  currentPath == thumbCacheFolder;
+        std::unordered_map<std::string, std::pair<std::time_t, uint64_t>> previousStamps;
+        if (keepPreviews) {
+            const std::vector<FilerEntry>& listed = filterAllEntries.empty() ? entries : filterAllEntries;
+            previousStamps.reserve(listed.size());
+            for (const FilerEntry& e : listed) previousStamps[e.path] = {e.modifiedTime, e.size};
+        }
+
         entries.clear();
         effectiveSizesValid = false;
         hoveredIndex = -1;
@@ -3815,7 +3836,16 @@ namespace UltraCanvas {
             statsQueue.clear();
             folderStatsCache.clear();
             aspectQueue.clear();
-            aspectCache.clear();
+            // A picture's proportions are kept with its thumbnail on a
+            // rescan of the same folder (PruneThumbnailCache drops those of
+            // changed files), so the rows keep their heights; a 0 is also
+            // the "probe queued" mark, and the queue was just emptied.
+            if (keepPreviews) {
+                for (auto it = aspectCache.begin(); it != aspectCache.end();)
+                    it = it->second == 0.0f ? aspectCache.erase(it) : std::next(it);
+            } else {
+                aspectCache.clear();
+            }
             mediaQueue.clear();
             mediaInfoCache.clear();
             lockQueue.clear();
@@ -3826,7 +3856,8 @@ namespace UltraCanvas {
         // An open question still counting a folder lost its walk with the
         // stats above: queue it again.
         RefreshLiveDialogFacts();
-        DropThumbnailCache();
+        if (!keepPreviews) DropThumbnailCache();
+        thumbCacheFolder = fileListMode ? std::string() : currentPath;
 
         std::error_code ec;
         // A remote drive's path is the host's to answer (see remoteListing),
@@ -4070,6 +4101,23 @@ namespace UltraCanvas {
         }
 
         SortEntries();
+
+        if (keepPreviews) {
+            // What is still listed, with the stamp it had: its previews stay.
+            // What changed (same name, new size or time) is decoded again in
+            // the background, keeping its old picture until the new one is in.
+            std::unordered_set<std::string> unchanged, changed;
+            const std::vector<FilerEntry>& listed = filterAllEntries.empty() ? entries : filterAllEntries;
+            for (const FilerEntry& e : listed) {
+                auto it = previousStamps.find(e.path);
+                if (it == previousStamps.end()) continue;
+                if (it->second.first == e.modifiedTime && it->second.second == e.size)
+                    unchanged.insert(e.path);
+                else
+                    changed.insert(e.path);
+            }
+            PruneThumbnailCache(unchanged, changed);
+        }
 
         // A delete that wiped out the whole selection left the entry that
         // inherits it here (SetSelectNextAfterDelete): it replaces the restore
@@ -12308,6 +12356,13 @@ namespace UltraCanvas {
                 ctx->PushState();
                 ctx->SetAlpha(dimmedEntryOpacity);
             }
+            // A favorite's highlight goes under the item (a fill, a shade)
+            // and over it (a border); the name colours a fill set are put
+            // back once the item is drawn.
+            const bool favorite = favoriteMarkProvider && favoriteMarkProvider(entries[item.entryIndex]);
+            const Color savedText = style.textColor;
+            const Color savedSecondary = style.secondaryTextColor;
+            const bool inked = favorite && DrawFavoriteHighlightUnder(ctx, item);
             switch (viewType) {
                 case FilerViewType::Details: DrawDetailsRow(ctx, item, hov); break;
                 case FilerViewType::List:    DrawListItem(ctx, item, hov); break;
@@ -12315,8 +12370,14 @@ namespace UltraCanvas {
                 case FilerViewType::TreeMap: DrawTreeMapCell(ctx, item, hov); break;
                 default:                     DrawThumbnailTile(ctx, item, hov); break;
             }
-            if (favoriteMarkProvider && favoriteMarkProvider(entries[item.entryIndex]))
-                DrawFavoriteMark(ctx, item);
+            if (inked) {
+                style.textColor = savedText;
+                style.secondaryTextColor = savedSecondary;
+            }
+            if (favorite) {
+                DrawFavoriteHighlightOver(ctx, item);
+                if (favoriteHeartShown) DrawFavoriteMark(ctx, item);
+            }
             if (dimmed) ctx->PopState();
             // Ghost entries that are pending a "cut": wash the tile toward the
             // background so it reads as dimmed until the move is pasted.
@@ -13204,8 +13265,13 @@ namespace UltraCanvas {
                 }
                 if (!blob) {
                     if (it->second.state == ThumbState::Failed) return nullptr;
-                    // Pending: fall through and re-record the want so the
-                    // item keeps its place when the queue is rebuilt.
+                    // Pending: re-record the want so the item keeps its place
+                    // when the queue is rebuilt - and a file that changed on
+                    // disk keeps showing its old thumbnail meanwhile.
+                    if (it->second.stalePixmap) {
+                        thumbFrameWants.push_back(ThumbRequest{path, w, h, fit, scale, 0});
+                        return it->second.stalePixmap;
+                    }
                 }
             } else {
                 ThumbSlot fresh;
@@ -13631,6 +13697,69 @@ namespace UltraCanvas {
         textSlots.clear();
         peekQueue.clear();
         peekSlots.clear();
+    }
+
+    void UltraCanvasFilerWidget::PruneThumbnailCache(const std::unordered_set<std::string>& keepPaths,
+                                                     const std::unordered_set<std::string>& changedPaths) {
+        // A slot's key is "<path>|<w>x<h>|<fit>|<scale>": the path is what
+        // stands before the last three separators.
+        auto pathOfKey = [](const std::string& key) {
+            size_t end = key.size();
+            for (int i = 0; i < 3; ++i) {
+                if (end == 0) return key;
+                end = key.rfind('|', end - 1);
+                if (end == std::string::npos) return key;
+            }
+            return key.substr(0, end);
+        };
+        {
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            for (auto it = thumbSlots.begin(); it != thumbSlots.end();) {
+                const std::string path = pathOfKey(it->first);
+                if (keepPaths.count(path)) { ++it; continue; }
+                // Changed, not gone: decoded again, and until then the tile
+                // keeps the picture it had (a compressed slot's from its hot
+                // copy, or inflated here - a few tiles, not the folder).
+                std::shared_ptr<UCPixmap> previous;
+                if (changedPaths.count(path)) {
+                    if (it->second.state == ThumbState::Ready) {
+                        previous = it->second.pixmap;
+                        if (!previous) {
+                            auto hot = thumbHot.find(it->first);
+                            if (hot != thumbHot.end()) previous = hot->second.pixmap;
+                            else if (it->second.qoi) previous = QoiDecompressPixmap(*it->second.qoi);
+                        }
+                    } else {
+                        previous = it->second.stalePixmap;   // changed again while re-decoding
+                    }
+                }
+                ReleaseThumbSlotLocked(it->first, it->second);
+                if (previous) {
+                    ThumbSlot fresh;
+                    fresh.tick = it->second.tick;
+                    fresh.nativeIcon = it->second.nativeIcon;
+                    fresh.stalePixmap = std::move(previous);
+                    it->second = std::move(fresh);
+                    ++it;
+                } else {
+                    it = thumbSlots.erase(it);
+                }
+            }
+            // Queued work for files that are gone or changed is let go; what
+            // the kept tiles still want is asked for again by the next frame.
+            thumbQueue.clear();
+            textQueue.clear();
+            peekQueue.clear();
+            for (auto it = thumbFailedPaths.begin(); it != thumbFailedPaths.end();)
+                it = keepPaths.count(*it) ? std::next(it) : thumbFailedPaths.erase(it);
+            for (auto it = textSlots.begin(); it != textSlots.end();)
+                it = keepPaths.count(it->first) ? std::next(it) : textSlots.erase(it);
+            for (auto it = peekSlots.begin(); it != peekSlots.end();)
+                it = keepPaths.count(it->first) ? std::next(it) : peekSlots.erase(it);
+        }
+        std::lock_guard<std::mutex> lk(statsMutex);
+        for (auto it = aspectCache.begin(); it != aspectCache.end();)
+            it = keepPaths.count(it->first) ? std::next(it) : aspectCache.erase(it);
     }
 
     void UltraCanvasFilerWidget::SetCompressedThumbnails(bool enabled) {
@@ -14086,6 +14215,7 @@ namespace UltraCanvas {
                     slot.nativeIcon = nativeIcon;
                     if (pm) {
                         slot.state = ThumbState::Ready;
+                        slot.stalePixmap.reset();   // the new picture replaces the old
                         slot.rawBytes = static_cast<size_t>(pm->GetRawWidth())
                                       * static_cast<size_t>(pm->GetRawHeight()) * 4;
                         if (blob) {
@@ -14133,6 +14263,7 @@ namespace UltraCanvas {
                                               kUnreadableRetryDelay * slot.attempts;
                         } else {
                             slot.state = ThumbState::Failed;
+                            slot.stalePixmap.reset();
                             producedNothing = true;
                             // Its row no longer shrinks for it (EntryAspect).
                             if (!nativeIcon &&
@@ -14652,7 +14783,77 @@ namespace UltraCanvas {
     int UltraCanvasFilerWidget::FavoriteMarkGutter() const {
         // Room for a heart of up to 12 px plus a pixel either side. Only the
         // row views use it; tiles and treemap cells have space of their own.
-        return favoriteMarkProvider ? 14 : 0;
+        return (favoriteMarkProvider && favoriteHeartShown) ? 14 : 0;
+    }
+
+    bool UltraCanvasFilerWidget::DrawFavoriteHighlightUnder(IRenderContext* ctx,
+                                                           const ItemLayout& item) {
+        if (favoriteHighlight != FilerFavoriteHighlight::Fill &&
+            favoriteHighlight != FilerFavoriteHighlight::Shade) return false;
+        // A treemap cell's colour is its file type; the selection colour is
+        // what says a selected item is selected. Neither is painted over.
+        if (viewType == FilerViewType::TreeMap) return false;
+        const bool selected = item.entryIndex < frameSelected.size() && frameSelected[item.entryIndex];
+        if (selected) return false;
+        const Color& c = favoriteHighlightColor;
+        const Rect2Dd box(item.rect);
+        if (favoriteHighlight == FilerFavoriteHighlight::Fill) {
+            ctx->SetFillPaint(c);
+            ctx->FillRoundedRectangle(box, 5);
+            // The name and columns in white or dark, whichever reads on the
+            // colour - unless the style's own already does.
+            if (UltraCanvasTheme::Contrast(style.textColor, c) < 4.5) {
+                const Color dark(32, 32, 36, 255);
+                const Color ink = UltraCanvasTheme::Contrast(c, Colors::White) >=
+                                  UltraCanvasTheme::Contrast(c, dark) ? Colors::White : dark;
+                style.textColor = ink;
+                style.secondaryTextColor = Color(ink.r, ink.g, ink.b, 200);
+                return true;
+            }
+            return false;
+        }
+        // Shade: the colour at the top, gone at the bottom - the name below
+        // the picture sits on the ground as before, so its colour stays.
+        ctx->PushState();
+        auto pattern = ctx->CreateLinearGradientPattern(
+                box.x, box.y, box.x, box.y + box.height,
+                {GradientStop(0.0, c), GradientStop(1.0, Color(c.r, c.g, c.b, 0))});
+        ctx->ClearPath();
+        ctx->RoundedRect(box.x, box.y, box.width, box.height, 5);
+        ctx->SetFillPaint(pattern);
+        ctx->FillPathPreserve();
+        ctx->ClearPath();
+        ctx->PopState();
+        return false;
+    }
+
+    void UltraCanvasFilerWidget::DrawFavoriteHighlightOver(IRenderContext* ctx,
+                                                          const ItemLayout& item) {
+        if (favoriteHighlight != FilerFavoriteHighlight::Border) return;
+        // Inside the item, so a neighbour's frame never covers it; on the
+        // selection colour too.
+        ctx->SetStrokePaint(favoriteHighlightColor);
+        ctx->SetStrokeWidth(2.0f);
+        const Rect2Dd frame(item.rect.x + 1.0, item.rect.y + 1.0,
+                            item.rect.width - 2.0, item.rect.height - 2.0);
+        ctx->DrawRoundedRectangle(frame, viewType == FilerViewType::TreeMap ? 0 : 5);
+    }
+
+    void UltraCanvasFilerWidget::SetFavoriteHighlight(FilerFavoriteHighlight look, const Color& color) {
+        if (favoriteHighlight == look && favoriteHighlightColor == color) return;
+        favoriteHighlight = look;
+        favoriteHighlightColor = color;
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetFavoriteHeartShown(bool shown) {
+        if (favoriteHeartShown == shown) return;
+        const int gutterBefore = FavoriteMarkGutter();
+        favoriteHeartShown = shown;
+        // The row views keep a gutter for the heart: losing or gaining it
+        // moves every icon and name, a relayout.
+        if (gutterBefore != FavoriteMarkGutter()) InvalidateFilerLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::DrawFavoriteMark(IRenderContext* ctx,
@@ -17207,6 +17408,11 @@ namespace UltraCanvas {
             }
             menu.AddItem(openWith);
         }
+        // The host's own ways to open these (openMenuProvider), beside the
+        // system's.
+        if (hasSel && openMenuProvider) {
+            for (const MenuItemData& item : openMenuProvider(targets)) menu.AddItem(item);
+        }
         // A program inside an archive: the one way to start it. Only shown
         // where it applies - greyed out on every other entry, it would be
         // noise in the menu of every file.
@@ -17624,6 +17830,11 @@ namespace UltraCanvas {
             // which keeps its old meaning — clear the selection (a Ctrl
             // click on empty space leaves it alone).
             if (!marqueeAdditive) HandleItemClick(-1, false, false);
+        } else {
+            // The rectangle is let go: the selection it leaves, once more,
+            // now that IsDragInProgress() is false - a host that waited for
+            // the drag to end (a preview pane) follows it from here.
+            FireSelectionChanged();
         }
         marqueeBaseSelection.clear();
         RequestRedraw();

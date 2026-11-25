@@ -65,6 +65,16 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.53.0 - Edit in ArtCreator: a drawing's context menu starts ArtCreator with it
+// Version: 1.52.0 - Edit in UltraPaint: a picture's context menu starts UltraPaint with it
+//                  (BuildOpenMenuItems, on every folder display's openMenuProvider)
+// Version: 1.51.0 - IsOpen (MobilePC hands a later start's folders to an open window)
+// Version: 1.50.0 - Settings > Display > Favorite folders applied to every file display
+//                  (ApplyFavoriteHighlight): a fill, border or shade, its colour, the heart
+// Version: 1.49.1 - the preview pane is left as it is while a selection rectangle is drawn in the
+//                  folder display, and follows the selection once it is let go
+// Version: 1.49.0 - the path bar in the colours of Settings > Display > Path bar: #E4E6E9 for the
+//                  folders on the way and #0078D7 for the folder shown, by default, as before
 // Version: 1.48.1 - the Computer page's drive cards follow a dark / light switch (ApplyLook rebuilds them)
 // Version: 1.48.0 - dark theme: the line-art icons (cloud, network, server, FTP, computer, phone)
 //                  in the tree and the file displays drawn in the theme's ink; any light
@@ -156,7 +166,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -170,10 +180,11 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
-#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files
+#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files, UltraPaint / ArtCreator to edit
+#include "UltraCanvasHostedApps.h"     // an editor carried by the same program (MobilePC)
 #include "UltraCanvasDiskCache.h"         // the cache entry of Extras > Open location
 #include "UltraCanvasFileAssociations.h"
-#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
+#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon; CanLoadVectorDocument
 #include "UltraCanvasMacBundle.h"      // a pinned application bundle, by path
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
@@ -1029,21 +1040,33 @@ namespace {
     // goes to rather than steps through, wear it.
     void StyleFlatToolButton(const std::shared_ptr<UltraCanvasButton>& b) { StyleToggleButton(b, false); }
 
-    BreadcrumbStyle MakePathBreadcrumbStyle() {
-        // The arrow shape with the theme's colours (Arrow() alone is the
-        // light look: light grey segments, which glare on a dark row).
-        // ApplyLook sets it again on a theme change - the bar does not
-        // follow the theme by itself, which would put the theme's soft
-        // accent back on the current segment.
+    // White or a near-black, whichever reads better on `ground`.
+    Color InkOn(const Color& ground) {
+        const Color dark(32, 32, 36, 255);
+        return UltraCanvasTheme::Contrast(ground, Colors::White) >= UltraCanvasTheme::Contrast(ground, dark)
+                   ? Colors::White : dark;
+    }
+
+    // The path bar: the arrow shape in the colours of Settings > Display >
+    // Path bar - the folders on the way (#E4E6E9 by default) and the folder
+    // shown (#0078D7, white on it), as the arrow bar was before it took the
+    // theme's grey and soft accent. The text on each is white or dark,
+    // whichever reads. Under a dark theme the default light grey would glare
+    // on the dark row, so the folders keep the theme's raised grey there
+    // unless a colour of the user's own was chosen; the seam between two
+    // segments is the row's ground in either look. ApplyLook sets it again on
+    // a theme change - the bar does not follow the theme by itself.
+    BreadcrumbStyle MakePathBreadcrumbStyle(const Color& folderColor, const Color& currentColor) {
         const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
         BreadcrumbStyle s = BreadcrumbStyle::FromTheme(theme, BreadcrumbStyle::Arrow());
-        if (theme.dark && !theme.highContrast) {
-            // Under Dark the folder you are in keeps the arrow's strong blue
-            // with white on it (4.6:1), the segments before it the raised
-            // dark grey, and the seam between two segments is the row's
-            // ground rather than a light grey line.
-            s.currentItemBackgroundColor = Color(0, 120, 215, 255);
-            s.currentItemTextColor = Colors::White;
+        if (!theme.highContrast) {
+            const bool themedFolders = theme.dark && folderColor == UltraFilerSettings::kDefaultPathBarFolderColor;
+            if (!themedFolders) {
+                s.itemBackgroundColor = folderColor;
+                s.itemTextColor = InkOn(folderColor);
+            }
+            s.currentItemBackgroundColor = currentColor;
+            s.currentItemTextColor = InkOn(currentColor);
             s.separatorColor = theme.roles.ground;
         }
         s.overflowMode = BreadcrumbOverflowMode::Collapse;
@@ -1768,7 +1791,7 @@ void UltraFilerWindow::ApplyLook() {
     // The path bars: the window's, and the split view's two (styled while
     // the right one is out of the window too)
     for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
-        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle());
+        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
     if (statusInfoLabel) statusInfoLabel->SetTextColor(look.inkMuted);
     if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
     if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
@@ -1778,6 +1801,7 @@ void UltraFilerWindow::ApplyLook() {
         statusProgress->SetTrackColor(look.line);
     }
     ApplyTreeColors();   // the default drive rows have a light and a dark tint
+    ApplyFavoriteHighlightEverywhere();   // ... and the default favorite colour
     if (computerPane) computerPane->SetBackgroundColor(look.panel);
     // The Computer page's drive cards take their colours when they are
     // built: the ring's border and free slice, the percentage in its hole,
@@ -1817,6 +1841,10 @@ void UltraFilerWindow::Show() {
     // The first fit: the text is measured with the window's render context,
     // which is there once the window is.
     ScheduleTreeFit();
+}
+
+bool UltraFilerWindow::IsOpen() const {
+    return window && window->GetState() != WindowState::Closed;
 }
 
 void UltraFilerWindow::OpenFolders(const std::vector<std::string>& paths) {
@@ -2051,6 +2079,47 @@ bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
     return true;
 }
 
+std::vector<MenuItemData> UltraFilerWindow::BuildOpenMenuItems(const std::vector<FilerEntry>& targets) {
+    // Every target a file on the disk: an entry inside an archive or on a
+    // remote drive is a path no other program can open.
+    if (targets.empty()) return {};
+    std::vector<std::string> paths;
+    bool pictures = true;   // all of them raster pictures: UltraPaint
+    bool drawings = true;   // all of them drawings a vector reader takes: ArtCreator
+    for (const FilerEntry& entry : targets) {
+        if (entry.isDirectory || entry.isShortcut) return {};
+        std::error_code ec;
+        if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) || ec) return {};
+        paths.push_back(entry.path);
+        if (entry.category != FilerFileCategory::Image) pictures = false;
+        // What ArtCreator opens is what the framework's vector readers read
+        // (SVG, EPS, DXF, CDR, ... - whichever plug-ins this build has); a
+        // raster picture is UltraPaint's even where a reader would take it.
+        if (entry.category == FilerFileCategory::Image ||
+            !UltraCanvasFileLoader::CanLoadVectorDocument(entry.path))
+            drawings = false;
+    }
+    // Only where the editor can be started: installed beside UltraFiler or
+    // on the PATH, or carried by the same program (MobilePC).
+    auto editIn = [this, &paths](const char* program, const char* icon) -> std::vector<MenuItemData> {
+        if (UltraCanvasHostedApps::IdForProgram(program).empty() &&
+            UltraCanvasDesktopShell::FindProgram(program).empty())
+            return {};
+        const std::string name = program;
+        return {MenuItemData::Action(
+                TrF("Edit in {0}", name),
+                NormalizePath(GetResourcesDir() + "media/appicon/" + icon),
+                [this, name, paths]() {
+                    std::string error;
+                    if (!UltraCanvasDesktopShell::LaunchProgram(name, paths, &error) && statusLabel)
+                        statusLabel->SetText(TrF("{0} could not be started: {1}", name, error));
+                })};
+    };
+    if (pictures) return editIn("UltraPaint", "UltraPaint.png");
+    if (drawings) return editIn("ArtCreator", "ArtCreator.png");
+    return {};
+}
+
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
     if (path.empty()) return;
     // The pane and the window would otherwise both hold the file open, which
@@ -2232,7 +2301,14 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
-    // Display > Path bar: the strips are rebuilt only when the choice moved.
+    // Display > Favorite folders: how a favorite stands out, on every display.
+    ApplyFavoriteHighlightEverywhere();
+    // Display > Path bar: its colours, on the window's strip and the split
+    // view's two (a restyle, no rebuild)...
+    for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
+        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor,
+                                                           settings.pathBarCurrentColor));
+    // ... and the strips are rebuilt only when the drive-name choice moved.
     if (pathBarVolumeNamesApplied != settings.pathBarVolumeNames) {
         pathBarVolumeNamesApplied = settings.pathBarVolumeNames;
         RefreshPathBars();
@@ -2692,6 +2768,23 @@ void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) 
     target->SetFavoriteMarkProvider([this](const FilerEntry& entry) {
         return favorites.IsFavorite(entry.path);
     });
+    ApplyFavoriteHighlight(target);
+}
+
+void UltraFilerWindow::ApplyFavoriteHighlight(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+    target->SetFavoriteHighlight(settings.favoriteHighlight,
+            settings.EffectiveFavoriteHighlightColor(theme.dark, theme.roles.ground));
+    target->SetFavoriteHeartShown(settings.favoriteHeart);
+}
+
+void UltraFilerWindow::ApplyFavoriteHighlightEverywhere() {
+    for (FilerTabState* state : FolderDisplayStates())
+        if (state->filer) ApplyFavoriteHighlight(state->filer.get());
+    ApplyFavoriteHighlight(folderPreview.get());
+    for (const auto& f : historyFilers) ApplyFavoriteHighlight(f.get());
+    for (const auto& f : favoritesFilers) ApplyFavoriteHighlight(f.get());
 }
 
 void UltraFilerWindow::RepaintFavoriteMarks() {
@@ -2931,7 +3024,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     row->AddChild(favoritesButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
-    breadcrumb->SetStyle(MakePathBreadcrumbStyle());
+    breadcrumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
@@ -7016,6 +7109,12 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // second file and opening again when one is left. The next selection
         // made without Ctrl brings it back in step.
         if (SelectionChangedWithCtrl()) return;
+        // A drag in the folder display - a selection rectangle being drawn -
+        // changes the selection with every file it crosses: the preview
+        // would open on one file, fold away on the second and open again,
+        // moving the files under the pointer. It waits for the drag to end;
+        // letting the rectangle go reports the selection once more.
+        if (tab->filer && tab->filer->IsDragInProgress()) return;
         UpdatePreviewPane();
     };
     // A drive's folder being fetched, or fetched again: what it waits for is
@@ -7204,6 +7303,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    tab->filer->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
     WireFavoriteMarkProvider(tab->filer.get());
@@ -7529,6 +7629,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        histFiler->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
         WireFavoriteMarkProvider(histFiler.get());
@@ -7793,6 +7894,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        favFiler->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
         WireDisplayFormatCallbacks(favFiler.get());
         WireFolderIconProvider(favFiler.get());
         favFiler->onViewTypeChanged = [this](FilerViewType) {
@@ -7933,6 +8035,7 @@ void UltraFilerWindow::BuildComputerPage() {
     computerFolders->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     computerFolders->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     computerFolders->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    computerFolders->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
     WireDisplayFormatCallbacks(computerFolders.get());
     // The tiles carry the tree's icons for these folders - the house for
     // Home, the cloud for a cloud folder - and otherwise whatever the folder
@@ -9904,7 +10007,7 @@ void UltraFilerWindow::BuildSplitViewPanes() {
         header->AddChild(button);
         crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,
                                                         0, 0, 0, 28);
-        crumb->SetStyle(MakePathBreadcrumbStyle());
+        crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
         crumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
         header->AddChild(crumb);

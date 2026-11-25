@@ -81,6 +81,10 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.42.0 - BuildOpenMenuItems: "Edit in ArtCreator" on a drawing's context menu too
+// Version: 1.41.0 - BuildOpenMenuItems: "Edit in UltraPaint" on a picture's context menu
+// Version: 1.40.0 - IsOpen: whether the window is still open (a host that
+//                  carries UltraFiler hands a later start's folders to it)
 // Version: 1.39.0 - ShowBackgroundProgress, statusShowButton: an operation run in the background
 // Version: 1.38.1 - ComputerDriveCard::noOwnSize: a RAM disc with no size of its own
 // Version: 1.38.0 - ApplyDisplayMode: Settings > Display > Display mode through the theme policy
@@ -118,7 +122,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -200,6 +204,10 @@ public:
     // start-up probe has answered it waits for it; a system that cannot
     // make RAM discs says so. The window comes forward either way.
     void OpenRamDisc();
+    // The window was made and has not been closed: a program that carries
+    // UltraFiler (MobilePC) hands a later start's folders to it, as the one
+    // copy per user does, and makes a new UltraFilerWindow otherwise.
+    bool IsOpen() const;
 
 private:
     // Per-tab browsing state: the folder widget of the tab plus its own
@@ -915,6 +923,11 @@ private:
     // or tile. Not on the Favorites view's own pages, where every entry is
     // one. RepaintFavoriteMarks() redraws the displays after a pin changes.
     void WireFavoriteMarkProvider(UltraCanvasFilerWidget* target);
+    // Settings > Display > Favorite folders on one display (the highlight,
+    // its colour for the theme shown, the heart), and on every display that
+    // marks favorites - after a settings change and a theme change.
+    void ApplyFavoriteHighlight(UltraCanvasFilerWidget* target);
+    void ApplyFavoriteHighlightEverywhere();
     void RepaintFavoriteMarks();
     // Extras > Set folder icon: opens the image file dialog and gives the
     // chosen picture — converted to QOI — to the selected folders (or, with
@@ -1205,6 +1218,11 @@ private:
     // or UltraViewer cannot be found or started; the caller then opens the
     // file the way it would have.
     bool OpenInUltraViewer(const FilerEntry& entry);
+    // The folder displays' openMenuProvider: "Edit in UltraPaint" when every
+    // target is a picture on the disk, "Edit in ArtCreator" when every one is
+    // a drawing a vector reader takes - each only where that editor can be
+    // started.
+    std::vector<MenuItemData> BuildOpenMenuItems(const std::vector<FilerEntry>& targets);
     // The tail the file display hangs under Display > Thumbnails and
     // Display > Detail view: "File formats...", which opens the matching
     // settings page.

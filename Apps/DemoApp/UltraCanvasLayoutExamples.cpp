@@ -73,7 +73,7 @@ namespace {
         // Create demo container for vertical layout
         auto vboxDemo = std::make_shared<UltraCanvasContainer>("VBoxDemo", 0, 0, 300, 0);
         SetMinimumHeight(vboxDemo, 200);
-        vboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
+        vboxDemo->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 250, 255)));
         vboxDemo->SetPadding(15);
 
         vboxDemo->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -83,7 +83,7 @@ namespace {
         auto vboxBtn3 = MakeLayoutButton("VBtn3", Tr("Button 3"), 150, 35);
 
         auto vboxStatus = std::make_shared<UltraCanvasLabel>("VStatus", Tr("Click any button"));
-        vboxStatus->SetTextColor(Color(0, 100, 200, 255));
+        vboxStatus->SetTextColor(DemoKit::Themed(Color(0, 100, 200, 255)));
         vboxStatus->SetFontSize(11);
         vboxStatus->SetWrap(TextWrap::WrapWord);
 
@@ -113,7 +113,7 @@ namespace {
 
         // Create demo container for horizontal layout
         auto hboxDemo = std::make_shared<UltraCanvasContainer>("HBoxDemo", 0, 0, 960, 50);
-        hboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
+        hboxDemo->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 250, 255)));
         hboxDemo->SetPadding(10);
 
         hboxDemo->layout.SetFlexRow().SetFlexGap(5).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -151,7 +151,7 @@ namespace {
         // Create demo container for grid layout
         auto gridDemo = std::make_shared<UltraCanvasContainer>("GridDemo", 0, 0, 450, 0);
         SetMinimumHeight(gridDemo, 200);
-        gridDemo->SetBackgroundColor(Color(245, 245, 250, 255));
+        gridDemo->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 250, 255)));
         gridDemo->SetPadding(10);
 
         gridDemo->layout.SetGrid()
@@ -172,7 +172,7 @@ namespace {
         // stretches the inputs across the fr column (and the button across both).
         auto makeFormLabel = [](const std::string& id, const std::string& text) {
             auto label = std::make_shared<UltraCanvasLabel>(id, text);
-            label->SetTextColor(Colors::Black);
+            label->SetTextColor(DemoKit::Themed(Colors::Black));
             label->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
             return label;
         };
@@ -216,7 +216,7 @@ namespace {
         // Create demo container for flex layout. As wide as the card and as
         // tall as its wrapped lines of cards.
         auto flexDemo = std::make_shared<UltraCanvasContainer>("FlexDemo", 0, 0, 0, 0);
-        flexDemo->SetBackgroundColor(Color(245, 245, 250, 255));
+        flexDemo->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 250, 255)));
         flexDemo->SetPadding(15);
 
         flexDemo->layout.SetFlexDirection(CSSLayout::FlexDirection::Row)
@@ -241,21 +241,21 @@ namespace {
                     0, 0, 220, 0
             );
             SetMinimumHeight(card, 110);
-            card->SetBackgroundColor(Color(255, 255, 255, 255));
+            card->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             card->SetPadding(15);
 
             card->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
             auto cardTitle = std::make_shared<UltraCanvasLabel>(
                     std::string("CardTitle") + std::to_string(i), cardTitles[i]);
-            cardTitle->SetTextColor(Colors::Black);
+            cardTitle->SetTextColor(DemoKit::Themed(Colors::Black));
             cardTitle->SetFontSize(14);
             cardTitle->SetFontWeight(FontWeight::Bold);
             cardTitle->SetWrap(TextWrap::WrapWord);
 
             auto cardText = std::make_shared<UltraCanvasLabel>(
                     std::string("CardText") + std::to_string(i), cardTexts[i]);
-            cardText->SetTextColor(Color(80, 80, 80, 255));
+            cardText->SetTextColor(DemoKit::Themed(Color(80, 80, 80, 255)));
             cardText->SetFontSize(11);
             cardText->SetWrap(TextWrap::WrapWord);
 

@@ -1,3 +1,74 @@
+#### 2026-11-25 *1.107.30*
+- **Edit in UltraPaint and Edit in ArtCreator.** Right-clicking a picture -
+  or a selection of pictures - offers *Edit in UltraPaint*, right after
+  *Open with*; a drawing (SVG, EPS, DXF and whatever else this build's vector
+  readers take) offers *Edit in ArtCreator*. Each opens the files in that
+  editor, in the window open already if there is one. An entry is there only
+  where its editor is installed beside UltraFiler, and in MobilePC, which
+  carries the editors itself; a file inside an archive or on a remote drive
+  does not get one. Both entries and the message when an editor cannot be
+  started are translated into every language UltraFiler has.
+- **UltraFiler runs inside MobilePC.** The Android desktop carries it as one of
+  its applications. For that its window says whether it is still open, so the
+  program that carries it can hand a later start's folders to it - in new
+  tabs, as a second start does on a computer - instead of opening another
+  window. Nothing changes on a computer.
+
+#### 2026-11-25 *1.107.29*
+- **Favorite folders can be highlighted.** Settings > Display > *Favorite
+  folders* chooses how a favorite stands out in the folder display - no
+  highlight, a solid background, a border around the box, or a shade from the
+  top - in one colour of your choice, with or without the heart, and shows it
+  on a live preview. With the default colour the border is drawn in the
+  heart's red, and under a dark theme a background or shade is a dark tint of
+  it. Kept in `config.ini` as `display.favorites.highlight`,
+  `display.favorites.color` and `display.favorites.heart`.
+
+#### 2026-11-25 *1.107.28*
+- **No more crash while thumbnails are made.** UltraFiler could crash ("exception
+  0xC0000005 ... libcairo-2.dll") in a folder with documents or slides, as
+  their thumbnails were drawn while the window drew its own text. The text of
+  each thread is now kept apart (framework: text layouts per thread).
+
+#### 2026-11-24 *1.107.27*
+- **Deleting a file no longer flashes the folder.** After a delete the whole
+  folder was drawn again with plain type icons, and the thumbnails came back
+  a moment later. Now the deleted file simply leaves, and every other tile
+  keeps its thumbnail. The same holds for a rename, a copy into the folder,
+  and a change noticed by the folder watch. A file whose content changed is
+  made again in the background, and its tile shows the old thumbnail until
+  the new one is ready.
+- **The preview stays put while you drag a selection rectangle.** Drawing a
+  rectangle over the files changed the selection with every file it crossed,
+  and the preview pane followed each change - opening on one file, folding
+  away on the second, opening again - so the files jumped under the pointer
+  mid-drag. The pane now stays as it was until the rectangle is let go, and
+  then shows what it ended on.
+- **Settings > Cache cut the thumbnail switches in seven languages.** Their
+  labels were one line in a fixed 440 px; German "Miniaturansichten zwischen
+  Programmläufen auf dem Datenträger behalten" needs about 620 px, and French,
+  Italian, Spanish, Polish, Hungarian and Greek ran over as well. A longer
+  label now wraps onto a second line.
+- **Find text cut its prompt in nineteen languages.** "Find files in this
+  folder and its sub folders that contain:" was one 428 px line (German needs
+  606 px); it now wraps onto a second line.
+
+#### 2026-11-23 *1.107.26*
+- **The path bar's old colours are back, and they are settings.** The folders
+  on the way to the one shown are light grey again (#E4E6E9) and the folder
+  shown is the strong blue (#0078D7) with white text, as before the bar took
+  the theme's grey and pale accent. Settings > Display > Path bar has a colour
+  box for each - *Parent folders colour* and *Current folder colour* - that
+  opens the colour picker, with the bar following while you pick, and
+  *Restore defaults*. The text on each segment is white or dark, whichever
+  reads on its colour. Under a dark theme the default light grey becomes the
+  theme's dark grey; a colour you choose is kept in either look.
+- **Word and LibreOffice documents in the preview pane.** Selecting a `.docx`,
+  `.doc` or `.odt` with Preview on left the pane closed, though spreadsheets
+  and presentations showed there. The pane now shows the document's pages as
+  they print - fitted to the pane's width, with the page strip, zoom and
+  search - and a password-protected one offers Unlock.
+
 #### 2026-11-21 *1.107.25*
 - **The drive rings follow a dark / light switch.** The Computer page's drive
   cards kept the colours of the look they were built in: switched from dark to

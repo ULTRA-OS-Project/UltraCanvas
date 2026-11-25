@@ -63,7 +63,7 @@ namespace UltraCanvas {
         auto status = DemoKit::AddText(page, "AudioStatus", "");
         if (UltraCanvasAudioDevices::IsAvailable()) {
             status->SetText(TrF("Backend: {0} — ready", UltraCanvasAudioDevices::GetBackendName()));
-            status->SetTextColor(Color(40, 120, 40));
+            status->SetTextColor(DemoKit::Themed(Color(40, 120, 40)));
         } else {
             status->SetText(Tr("Audio backend not compiled in. "
                                "Rebuild with -DULTRACANVAS_ENABLE_AUDIO=ON."));

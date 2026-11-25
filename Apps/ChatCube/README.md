@@ -170,7 +170,29 @@ a back arrow. Building, packaging and what is not there yet:
    Add `#channel` to join a channel or a nickname for a private chat; the
    network's own conversation shows its notices and takes IRC commands.
    IRC has no files - share a link.
-5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
+5. The icons beside the message field are its features: the paperclip,
+   smileys & stickers, a screenshot, a location, a voice and a video
+   message. Some are in the field's row, the rest behind the **+** at its
+   left, which opens a menu of them (the + is not shown while nothing is
+   behind it); *Settings > Display > Feature icons* puts each one in the
+   field, behind the +, or away. The smiley opens a grid of the set used
+   last - an emoji goes into the text at the caret, a sticker into the
+   strip as a 256 x 256 picture - and the arrow beside it lists the sets,
+   each by one example (Smileys, Hands, Hearts, Animals, Food & drink,
+   Celebrations & things, and the example sticker set *Cubes*). Location
+   opens a window with an OpenStreetMap map (UltraCanvasMapView): search a
+   place by name or address (Nominatim), click the map to put the pin there
+   (it is named by what is there), or press *My position* - where the
+   system's location service says this computer is (UltraCanvasGeolocation:
+   GeoClue, Location Services, Windows' location; hidden where there is
+   none); the wheel and +/- zoom, a drag moves the map. Insert writes
+   "📍 the place" and its openstreetmap.org link into the message. In the
+   chat any message holding an openstreetmap.org link with a marker shows
+   as a map card - the map, its pin and the place's name - and a click on
+   the card opens the place in the browser; other programs show the text.
+   The map and the search need tile.openstreetmap.org and
+   nominatim.openstreetmap.org.
+6. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
    blue `✓✓` read, *Not sent* when it could not go - and, hovering over the
@@ -178,7 +200,9 @@ a back arrow. Building, packaging and what is not there yet:
    have no check mark). The paperclip puts a picture, a video or any file
    in a strip above the message field - so does Ctrl+V with a picture on
    the clipboard (a screenshot, a copy from a browser or a drawing program)
-   or a file copied in a file manager, and so do files dropped on the
+   or a file copied in a file manager, the Screenshot feature (the window
+   hides, a window is clicked or an area dragged on the frozen screen), a
+   sticker, and files dropped on the
    window (on a chat in the list, that chat opens and takes them; anywhere
    else, the open chat does) - each with a × to take it out again;
    Enter or the send button sends them to the open chat (every network but
@@ -218,9 +242,10 @@ a back arrow. Building, packaging and what is not there yet:
 
    The field over the messages searches the chat: what you type finds the
    messages with those words in all of its history, and the list shows only
-   them (with how many) until the × shows the whole chat again. The chips
-   under it - *All*, *Pictures*, *Videos*, *Audio*, *Files*, *Links* - show
-   only that kind of message, with or without words.
+   them (with how many) until the × shows the whole chat again. Beside it,
+   in the same row, a segmented control - *All*, then pictures, videos,
+   audio, files and links as icons that name themselves in a tooltip -
+   shows only that kind of message, with or without words.
 
    The microphone beside the field records a **voice message** - the bar in
    its place shows how long, × throws it away, the send button sends it -
@@ -233,7 +258,7 @@ a back arrow. Building, packaging and what is not there yet:
    writes when this build has the Opus encoder; otherwise it goes as a file);
    the other networks get it as a sound file, and IRC takes neither.
 
-6. **Call** rings the open contact, **Video** makes it a video call (1:1;
+7. **Call** rings the open contact, **Video** makes it a video call (1:1;
    the buttons are off for groups and while not connected). A bar across
    the top shows the call: *Accept* / *Decline* when it rings here, *Mute*,
    *Camera off* (video) and *Hang up* during it, with its duration. A video
@@ -241,7 +266,7 @@ a back arrow. Building, packaging and what is not there yet:
    you turns the camera off the other sees "camera off" instead of a frozen
    picture.
 
-7. **A right-click on a chat** in the list opens its menu, and leaves the
+8. **A right-click on a chat** in the list opens its menu, and leaves the
    open chat as it is. Every chat: *Open*, *Mark as read* / *Mark as
    unread* (a dot until you open it) and *Pin to top* / *Unpin* (pinned
    chats stay first, with a pin). A person: *Voice call*, *Video call*,
@@ -263,12 +288,13 @@ a back arrow. Building, packaging and what is not there yet:
    Telegram groups only administrators rename or take people out) says so
    on the status line. Pins and unread marks are kept in the settings file.
 
-8. **Settings** - the gear beside the copy button at the top of the sidebar
+9. **Settings** - the gear beside the copy button at the top of the sidebar
    - opens a window laid out as UltraFiler's: the sections on the left, the
    chosen page on the right, *Restore defaults* and *Close* at the foot.
    *Appearance*: the look - System, Light or Dark, shown at once - and how
    times and dates are written (`14:05` or `2:05 PM`; `31.10.2026`,
-   `2026-10-31` or `10/31/2026`). *Messages*: whether Enter or Ctrl+Enter
+   `2026-10-31` or `10/31/2026`). *Display*: the feature icons - for each,
+   in the message field, behind the + button, or not shown. *Messages*: whether Enter or Ctrl+Enter
    sends, and whether typing is shown to the other side and to you. Someone
    typing shows in the chat's header and in its row of the list, in the
    accent colour - in a group with their name ("Anna is typing…", "Anna and
@@ -391,6 +417,9 @@ card or the sidebar moves them; the pictures then show where they landed.
 | `ui/ChatCubeViews.*` | list models and delegates: conversation rows, chat bubbles, date separators |
 | `ui/ChatCubeSettings.*` | the preferences the Settings window sets, in `settings.json` |
 | `ui/ChatCubeSettingsWindow.*` | the Settings window: the tree of pages, each page, Restore defaults |
+| `ui/ChatCubeFeatures.*` | the feature icons around the message field and where each one is (the field, behind the +, off) |
+| `ui/ChatCubeEmoji.*` | the smiley button's sets and picker: the emoji grids, the sticker grid, the list of sets by example |
+| `ui/ChatCubeLocationWindow.*` | Insert a location: Nominatim search, the map with its pin (UltraCanvasMapView), My position (UltraCanvasGeolocation); the location text and its parsing for the map cards |
 | `ui/ChatCubeTheme.*` | the look: the light and the dark theme, avatars, icons, the colours the views paint with |
 | `peer/main.cpp` | `chatcube-peer` |
 | `tools/screenshot.sh`, `tools/xinput.c` | screenshots of the app under Xvfb, driven through XTest |

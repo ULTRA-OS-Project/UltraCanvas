@@ -1,5 +1,8 @@
 // Plugins/Gauges/UltraCanvasGaugeDiagramElement.h
 // Comprehensive gauge element supporting analog, digital, progress, and specialized gauge modes
+// Version: 2.7.0 - follows the theme: in a dark one its neutral greys and the default text,
+//                  background, track and clock colours take the dark look
+//                  (UltraCanvasTheme::ForDarkLook); a colour set by hand is kept
 // Version: 2.6.0 - LinearBar's track takes SetTrackColor too
 // Version: 2.5.0 - SetRingCompact / SetRingValueText: CircularRing as a small inline marker
 // Version: 2.4.0 - SetClockHandColor / SetClockTickColor: an analog clock on a dark face
@@ -404,6 +407,15 @@ public:
     void SetLowLevelLimit(double limit);
     double GetLowLevelLimit() const { return lowLevelLimit; }
     // Colour used by both warnings (default red).
+    // ===== THEME =====
+    // Under a dark theme the gauge's own greys - captions, ticks, unlit
+    // segments, the face - and its default text, background, track, ring
+    // border and clock colours are drawn in the dark look. A colour given
+    // with its setter is drawn as given; the value colours (the gauge
+    // colour, ranges, warnings) are kept either way.
+    void ApplyTheme(const UltraCanvasTheme& theme) override;
+    bool IsDarkLook() const { return darkLook; }
+
     void SetWarningColor(const Color& c);
     const Color& GetWarningColor() const { return warningColor; }
 
@@ -484,6 +496,23 @@ private:
     bool lowLevelWarning = false;        // blink the fill at/below the limit
     double lowLevelLimit = 10.0;         // limit (gauge units) for the blink
     Color warningColor = Color(230, 55, 45, 255);
+
+    // Theme: whether the dark look is on, and which colours the
+    // application set (kept as given whatever the look)
+    enum : unsigned {
+        ByHandText = 1u << 0, ByHandBackground = 1u << 1, ByHandTrack = 1u << 2,
+        ByHandClockHand = 1u << 3, ByHandClockTick = 1u << 4, ByHandRingBorder = 1u << 5
+    };
+    bool darkLook = false;
+    unsigned coloursByHand = 0;
+    // A colour chosen for the light look, in the current one
+    Color Look(const Color& lightLookColour) const {
+        return darkLook ? UltraCanvasTheme::ForDarkLook(lightLookColour) : lightLookColour;
+    }
+    // A colour field: as set by hand, or its default in the current look
+    Color Own(const Color& colour, unsigned byHandBit) const {
+        return (coloursByHand & byHandBit) ? colour : Look(colour);
+    }
     uint32_t warningBlinkTimerId = 0;
     bool warningBlinkOn = true;          // current blink phase (true = shown)
 

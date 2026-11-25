@@ -2,44 +2,55 @@
 {% block title %}{{ app.name }} - Developer console{% endblock %}
 {% block content %}
 <div class="page-head">
-  {% if app.icon %}<img class="icon s64" src="{{ app.icon.url }}" alt="" width="64" height="64">{% else %}<span class="icon s64">{{ app.name|slice:":1" }}</span>{% endif %}
-  <div><h1>{{ app.name }}</h1><span class="mono muted">{{ app.app_id }}</span></div>
-  {% if app.suspended %}<span class="badge red">Suspended</span>{% elif live %}<span class="badge green">Published {{ live.version }}</span>{% else %}<span class="badge">Not published</span>{% endif %}
-  <a class="button right" href="{% url 'console:release_new' app.app_id %}">New release</a>
+  {% if app.icon %}<img class="app-icon" src="{{ app.icon.url }}" alt="" width="64" height="64">{% else %}<span class="app-icon">{{ app.name|slice:":1" }}</span>{% endif %}
+  <div><h1>{{ app.name }}</h1><span class="font-monospace text-secondary">{{ app.app_id }}</span></div>
+  {% if app.suspended %}<span class="badge bg-danger-subtle text-danger-emphasis">Suspended</span>{% elif live %}<span class="badge bg-success-subtle text-success-emphasis">Published {{ live.version }}</span>{% else %}<span class="badge">Not published</span>{% endif %}
+  {# A release goes to review with the listing: no new one before the listing has what a review needs. #}
+  <div class="ms-auto d-flex flex-wrap gap-2">
+  {% if promote_on and app.kind == "app" and live %}<a class="btn btn-soft-primary" href="{% url 'console:promote' app.app_id %}">Promote</a>{% endif %}
+  {% if problems %}<a class="btn btn-primary" href="{% url 'console:listing' app.app_id %}">Edit the store listing</a>
+  {% else %}<a class="btn btn-primary" href="{% url 'console:release_new' app.app_id %}">New release</a>{% endif %}
+  </div>
 </div>
 <div class="panels">
-{% if app.suspended %}<div class="note error"><b>The operator suspended this app.</b> {{ app.suspend_reason }}</div>{% endif %}
+{% if app.suspended %}<div class="alert alert-danger"><b>The operator suspended this app.</b> {{ app.suspend_reason }}</div>{% endif %}
 {% if problems %}
-<div class="note warning"><b>Before the first review, the store listing needs:</b>
+<div class="alert alert-warning"><b>Before the first release, the store listing needs:</b>
   <ul>{% for problem in problems %}<li>{{ problem }}</li>{% endfor %}</ul>
-  <p style="margin:10px 0 0"><a class="button small" href="{% url 'console:listing' app.app_id %}">Edit the store listing</a></p>
+  <p class="mt-2 mb-0">A release can be created once the listing is filled in.</p>
 </div>
 {% endif %}
-<div class="tiles">
-  <div class="tile"><span class="muted">In the store</span><b>{% if live %}{{ live.version }}{% else %}-{% endif %}</b></div>
-  <div class="tile"><span class="muted">Price</span><b>{{ app.price_label }}</b></div>
-  <div class="tile"><span class="muted">Web downloads</span><b>{{ app.downloads }}</b></div>
-  <div class="tile"><span class="muted">Releases</span><b>{{ releases|length }}</b></div>
-</div>
-<div class="panel">
+<div><div class="row row-cols-2 row-cols-lg-4 g-3">
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">In the store</span><b>{% if live %}{{ live.version }}{% else %}-{% endif %}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Price</span><b>{{ app.price_label }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Web downloads</span><b>{{ app.downloads }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Releases</span><b>{{ releases|length }}</b></div></div></div>
+</div></div>
+<div class="card"><div class="card-body">
   <h2>Releases</h2>
   {% if releases %}
-  <table>
-    <tr><th>Version</th><th>Channel</th><th>State</th><th>Packages</th><th>Created</th><th></th></tr>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Version</th><th>Channel</th><th>State</th><th>Packages</th><th>Created</th><th></th></tr></thead>
+    <tbody>
     {% for release in releases %}
     <tr>
       <td><a href="{% url 'console:release' app.app_id release.pk %}"><b>{{ release.version }}</b></a></td>
       <td>{{ release.get_channel_display }}</td>
       <td>{% include "_state.html" with state=release.state label=release.get_state_display %}</td>
-      <td>{% for package in release.packages.all %}<span class="badge">{{ package.os }}/{{ package.arch }}</span> {% empty %}<span class="muted">none</span>{% endfor %}</td>
+      <td>{% for package in release.packages.all %}<span class="badge">{{ package.os }}/{{ package.arch }}</span> {% empty %}<span class="text-secondary">none</span>{% endfor %}</td>
       <td>{{ release.created|date:"j M Y" }}</td>
-      <td class="num"><a class="button plain small" href="{% url 'console:release' app.app_id release.pk %}">Open</a></td>
+      <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'console:release' app.app_id release.pk %}">Open</a></td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
+  </div>
+  {% elif problems %}
+  <div class="empty">No release yet. A release is one version of the app with a package per system. <a href="{% url 'console:listing' app.app_id %}">Fill in the store listing</a> first.</div>
   {% else %}
   <div class="empty">No release yet. A release is one version of the app with a package per system. <a href="{% url 'console:release_new' app.app_id %}">Create the first one</a>.</div>
   {% endif %}
-</div>
+</div></div>
 </div>
 {% endblock %}

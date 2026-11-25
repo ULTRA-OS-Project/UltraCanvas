@@ -138,11 +138,18 @@ the right-hand monitor the primary.
   bar: the time large as an analog face and in figures (the gauge's digital
   clock), today in words, and the month on the calendar view with today
   marked.
-- **Desktop organiser**: the virtual desktops as numbered toggles — as many
-  as the window manager has (read at start-up and followed when it changes),
-  the settings' count only where there is no window manager to ask; choosing
-  a count in the settings asks the window manager for that many — the
-  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot*. A click
+- **Desktop organiser**: the virtual desktops as numbered toggles — the
+  settings' count, or more where the window manager has more (read at
+  start-up and followed when it changes); choosing a count in the settings
+  asks the window manager for that many, and a button past the manager's
+  count asks for it when clicked. Desktop 1 is the wallpaper's: a click on
+  it while on it minimises its windows. Then the tool group: the
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard*,
+  *screenshot* and *UltraToDo* (which opens [UltraToDo](../UltraToDo/README.md)).
+  The windows of UltraClipboard, UltraSnip and UltraToDo stay off the
+  taskbar's running applications, since their buttons are here, unless
+  `toolAppsOnTaskbar` is set (UOS-Settings → Desktop → *Tool applications*,
+  or the wallpaper's right-click menu). A click
   on the screenshot button opens [UltraSnip](../UltraSnip/README.md) to snip
   an area; its right-click menu offers a window, the whole screen, a video
   recording of each, *Screenshot now, to Pictures* (the whole screen to
@@ -521,9 +528,11 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
-(the framework's `media/images/landscape.jpg` where a package lacks it or
-cannot read AVIF). An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`.
+Each of ULTRA OS's pictures there has a JPEG beside it (`ULTRA OS A.jpg`):
+a build that cannot read AVIF (no libheif - Android's, whose APK carries only
+the JPEGs) shows that, and the framework's `media/images/landscape.jpg` only
+where neither can be read. An
 empty `ramDiscPath` leaves the RAM disc button out; `"ultrafiler"`, the
 default, asks UltraFiler for its RAM disc (with another `filerProgram` the
 button just opens it), and a folder opens that folder. A file holding the
@@ -688,7 +697,7 @@ same.
 |---|---|
 | Running applications | every window Explorer's taskbar would show, with its program's icon; Microsoft Store apps by the program inside their frame |
 | Applications window | the Start menu's programs, named as the Start menu names them, and the Microsoft Store apps (Calculator, Photos, Settings …) with their tile icons; instead of Explorer the Win key opens it |
-| Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
+| Virtual desktops | the organiser shows at least the settings' count of Windows' desktops and switches between them while Explorer runs; a button for a desktop Task View lacks adds it (Explorer's Ctrl+Win+D), removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
 | Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
 | Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
 | RAM disc | UltraFiler's RAM disc - an ImDisk drive, or a folder in `%TEMP%` without ImDisk, which UltraFiler's dialog says |

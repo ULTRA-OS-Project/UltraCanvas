@@ -7,6 +7,8 @@
 //   xinput rclick X Y       the same with the right button (a context menu)
 //   xinput move X Y         the pointer to X, Y and no button: a hover, which
 //                           opens a menu's submenu
+//   xinput drag X1 Y1 X2 Y2 press the left button at X1, Y1, move to X2, Y2
+//                           in steps and release there (a rectangle dragged)
 //   xinput type "text"      type ASCII text (a capital or a shifted symbol
 //                           holds Shift)
 //   xinput key KeySym       one key by its X name: Return, Tab, Escape
@@ -15,9 +17,10 @@
 // The verbs follow one another on one command line, in order.
 // Build: cc -O1 -o xinput xinput.c -lX11 -lXtst (screenshot.sh does it).
 //
+// Version: 0.1.2 - drag: a rectangle dragged with the left button (the screenshot picker)
 // Version: 0.1.1 - rclick and move: a right-click menu, and a hover that opens its submenus
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -63,6 +66,24 @@ int main(int argc, char** argv) {
             XFlush(display);
             usleep(120000);
             i += 2;
+        } else if (!strcmp(argv[i], "drag") && i + 4 < argc) {
+            const int x1 = atoi(argv[i + 1]), y1 = atoi(argv[i + 2]);
+            const int x2 = atoi(argv[i + 3]), y2 = atoi(argv[i + 4]);
+            XTestFakeMotionEvent(display, -1, x1, y1, 0);
+            XFlush(display);
+            usleep(80000);
+            XTestFakeButtonEvent(display, 1, True, 0);
+            XFlush(display);
+            usleep(60000);
+            for (int step = 1; step <= 10; ++step) {
+                XTestFakeMotionEvent(display, -1, x1 + (x2 - x1) * step / 10, y1 + (y2 - y1) * step / 10, 0);
+                XFlush(display);
+                usleep(30000);
+            }
+            XTestFakeButtonEvent(display, 1, False, 0);
+            XFlush(display);
+            usleep(150000);
+            i += 4;
         } else if (!strcmp(argv[i], "move") && i + 2 < argc) {
             XTestFakeMotionEvent(display, -1, atoi(argv[i + 1]), atoi(argv[i + 2]), 0);
             XFlush(display);

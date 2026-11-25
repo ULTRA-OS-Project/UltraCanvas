@@ -46,7 +46,7 @@ before adding cross-module code.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
   index / full concatenation of the docs corpus for LLM consumption.
   **Written on `main`, never by a branch**: `.github/workflows/llms-regenerate.yml`
-  regenerates them after every docs change lands, and `llms-txt.yml` refuses
+  regenerates them after every docs change lands, and `source-checks.yml` refuses
   a pull request that changes them. They are the whole corpus, so two docs
   pull requests that each carried them always conflicted there - the
   changelog's line 1 all over again, with the same cure. Running
@@ -97,7 +97,7 @@ before adding cross-module code.
   constructor always did. The constructors cannot refuse the old use, since
   both are one string: a label built from `Tr("...")` alone still compiles
   and shows nothing. `scripts/check_label_identifiers.py` refuses that in CI
-  (`label-identifiers.yml`; no baseline), and refuses a new element whose
+  (`source-checks.yml`; no baseline), and refuses a new element whose
   one-string constructor takes a text; for what it cannot read - a
   variable - the framework says so on `debugOutput`
   (`WarnIfIdentifierReadsAsText`). An identifier that really reads as text
@@ -121,7 +121,7 @@ before adding cross-module code.
   handful of entities. A tree of your own (SVG, XML) matches CSS selectors by
   supplying a ten-line Traits type, not a matcher. What the module lacks is
   added to it, so the next caller finds it. `scripts/check_html_reuse.py`
-  enforces this in CI (`html-reuse.yml`); `scripts/html_reuse_baseline.txt`
+  enforces this in CI (`source-checks.yml`); `scripts/html_reuse_baseline.txt`
   listed the sites that predated the rule; it has been empty since
   2026-10-08 and stays so. A site that must
   stay says why with `// html-reuse-exempt: <why>`. Doc:
@@ -193,7 +193,7 @@ before adding cross-module code.
   Windows before 10 version 1903 ignores it. For the same reason, hand a
   path to a Win32 call through the `W` API (`LoadLibraryW(p.c_str())`), not
   the `A` one. `scripts/check_path_string.py` enforces this in CI
-  (`path-strings.yml`), and `scripts/path_string_baseline.txt` is empty and
+  (`source-checks.yml`), and `scripts/path_string_baseline.txt` is empty and
   must stay that way. A path built from a wide string or a `std::u8string`
   is already correct; say so at the site with `// path-string-ok: <why>`.
   The implicit forms are just as wrong and are checked too: a UTF-8 string
@@ -243,7 +243,7 @@ before adding cross-module code.
   must keep is made safe by an `#undef` in the Windows platform headers next
   to the existing `#undef DrawText` (`UltraCanvasWindowsApplication.h`,
   `UltraCanvasWindowsWindow.h`). `scripts/check_platform_names.py` enforces
-  this in CI (`platform-names.yml`) from the name list in
+  this in CI (`source-checks.yml`) from the name list in
   `scripts/win32_aw_macros.txt`; `scripts/platform_names_baseline.txt` holds
   the sites that predate the check and only shrinks. A site that is correct as it
   stands says so with `// win32-name-ok: <why>`.
@@ -256,7 +256,7 @@ before adding cross-module code.
   Say what the value means instead - `ErrorCode::Ok`, `BorderStyle::NoBorder`,
   `ArcEdgeType::AboveBaseline` - and never add an `#undef None` guard: it
   only moves the failure to the next file. `scripts/check_platform_names.py`
-  enforces this in CI (`platform-names.yml`, the same check as the Win32 one)
+  enforces this in CI (`source-checks.yml`, the same check as the Win32 one)
   from the name list in `scripts/x11_macro_names.txt` (generated from the X11
   headers); its X11 entries in `scripts/platform_names_baseline.txt` are none
   and stay so. A site that is
@@ -276,7 +276,7 @@ before adding cross-module code.
   `normal`, `bold`, `italic`, ..., at global scope, and `kInvalidID` as a
   macro: the same file-scope rule covers them, from the list
   `scripts/mactypes_global_names.txt` generated from that header.
-  `scripts/check_platform_names.py` enforces this in CI (`platform-names.yml`,
+  `scripts/check_platform_names.py` enforces this in CI (`source-checks.yml`,
   the same check again); its Objective-C entries in
   `scripts/platform_names_baseline.txt` are none and stay so. A site that is
   correct as it stands says so with `// objc-name-ok: <why>`.
@@ -418,34 +418,63 @@ recognises it; and no leg's `restore-keys` prefix may be the start of another
 leg's key. `vcpkg-macos-15-` once matched `vcpkg-macos-15-intel-...`, and the
 arm64 leg restored x86_64 libraries and rebuilt them all; name a leg by its
 runner and its architecture (`vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-`).
-`scripts/check_cache_keys.py` enforces the first rule in CI (`cache-keys.yml`):
+`scripts/check_cache_keys.py` enforces the first rule in CI (`source-checks.yml`):
 a key ending in a commit hash or carrying `github.run_number` is never
 pruned, the combined `actions/cache` with a run-numbered key saves on every
 run of every branch (restore on every run, save on `main` alone), and a
 workflow that saves run-numbered caches must be on `cache-prune.yml`'s list.
 A release build saves its ccache only when it compiled something, and merges
 that land within minutes of each other are folded and released together:
-`changelog-fold.yml` runs every ten minutes and folds once `main` has been
-quiet for ten, or when the oldest pending entry has waited twenty.
+a merge that adds a `changelog.d/` entry starts `changelog-fold.yml`, which
+folds ten minutes later unless another such merge cancels the wait and starts
+its own, and twenty minutes after the oldest pending entry at the latest. Its
+ten-minute schedule is only the fallback: GitHub ran it every six to ten
+hours, and until a fold builds, every pull request recompiles what was merged
+since the last one (main's ccache is saved by release builds alone).
 A pull request builds three rows - Linux x86_64, Windows x86_64 and macOS
-on Apple silicon - and the other three (Linux arm64, Windows ARM, macOS
-Intel) on main, where the release is made. The `ci:distro` label asks for
-all six on a pull request (the distribution build) and `ci:intel` for the
-Intel row alone; adding either starts a run with them. Ask for `ci:distro`
-when a change touches what only those rows would catch - a platform layer,
-the packaging, a bundled library, or code that behaves differently by
-platform (rule 8 of *Branch and pull-request rules*) - and add it when the
+on Apple silicon - and main builds Linux arm64 as well, where the release
+is made. Windows ARM is built on a release dispatch (changelog-fold.yml's,
+the run that makes nearly every release - not a plain push to main), with
+the `ci:distro` label, and on a dispatch with the `windows_arm` input; outside
+a release build it builds and tests but skips its half-hour installer, the
+MSIX and UltraCanvasStart. The sixth, macOS Intel, is not built on main
+either, only when asked for: a pull request labelled `ci:intel`, or a Build dispatch
+with its `intel` input (a release dispatch with it set is the only release
+that carries x86_64 macOS archives). Its runner is five to ten times slower
+than the rest and held the scarce macOS runners for up to three hours a
+run. The `ci:distro` label asks for Linux arm64 and Windows ARM on a pull
+request (the distribution build); adding either label starts a run with its
+rows. Ask
+for `ci:distro` when a change touches what only those rows would catch - a
+platform layer, the packaging, a bundled library, or code that behaves
+differently by platform (rule 8 of *Branch and pull-request rules*) - with
+`ci:intel` as well where it touches macOS, and add `ci:distro` when the
 user asks for a "distro build" with a pull request. A left-out row reports
 under its own name, so a required check never waits on it - and it reports
 **success** after a few seconds, with a notice that it was not built: a
 green row is not a build unless it ran for minutes.
-Every night at 02:23 UTC the same workflow builds all six rows on `main`'s
-head (`schedule` in `build.yml`), as a validation run - nothing signed or
-published. It catches a change in a runner image or in the libraries the
-runners install fresh (MSYS2, Homebrew, apt) on a day nothing merged, before
-it turns somebody's unrelated pull request red; a red nightly run on a commit
-whose own build was green is that, not the last merge. Its result becomes that
-commit's "Build result" status (`build-result.yml` follows the newest run).
+The Android build (`android-build.yml`) builds arm64-v8a alone on a pull
+request; x86_64 and the emulator jobs that run it - the demo at two
+densities, MobilePC on a second display - run on `main`, the weekly run and a
+manual dispatch, and on a pull request labelled `ci:emulator`. Ask for
+`ci:emulator` on a change to the Android layer or to what MobilePC carries,
+so it is seen running on a device before it merges rather than after;
+adding the label starts a run with those jobs. Without it they are left out
+under the names *android emulator (${{ matrix.label }})* and *android
+emulator (MobilePC, second display)*, reported **skipped**.
+There is no nightly run (switched off on 2026-11-25; `build.yml`'s `on:`
+says how to turn it back on). A change in a runner image or in the
+libraries the runners install fresh (MSYS2, Homebrew, apt) therefore shows
+first on the next merge or pull request: a row that goes red on a change
+that cannot have caused it is that, not the change.
+The Android build (`android-build.yml`) builds arm64-v8a alone on a pull
+request; the x86_64 build, ChatCube's two and the three emulator jobs run
+on main (a push, the weekly run, a dispatch).
+The iOS and WebAssembly builds (`ios-build.yml`, `wasm-build.yml`) run on
+main only, not on pull requests: a pull request that changes the iOS or
+WebAssembly backend, its sysroot or the demo's branches for it starts them
+by hand against its branch (Actions tab -> *Run workflow*) and says in the
+pull request that it did.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
 llama.cpp adapter is built (the engine is fetched from GitHub, or taken from
@@ -531,7 +560,7 @@ fails rather than skips when `ULTRACANVAS_TEST_DISPLAY_REQUIRED` is set,
 which those steps do: its skip asks `DisplayTest::DisplayRequired()`
 (`Tests/DisplayRequired.h`, which includes nothing of the framework's and
 which `DisplayTestSupport.h` brings along) first.
-`scripts/check_window_tests.py` enforces both in CI (`window-tests.yml`) for
+`scripts/check_window_tests.py` enforces both in CI (`source-checks.yml`) for
 every test source that reads `DISPLAY` or calls `XOpenDisplay`. A source
 that is no window test says so with `// window-test-exempt: <why>`, and one
 ctest entry of several built from a source - a mode of the binary that opens
@@ -711,12 +740,14 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
 | `Docs/SmartHomeCenter/CHANGELOG.md` | SmartHome Center — the home control window |
 | `Docs/UltraDesktop/CHANGELOG.md` | UltraDesktop — the ULTRA OS desktop |
+| `Docs/MobilePC/CHANGELOG.md` | MobilePC — UltraDesktop on a TV or monitor, run by an Android phone |
 | `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
 | `Docs/UltraAIServerAdmin/CHANGELOG.md` | UltraAI ServerAdmin — the model server's admin tool |
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
+| `Docs/UltraAccount/CHANGELOG.md` | UltraAccount — the ULTRA OS account: sign-up, email and phone, subscription |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
 | `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
@@ -724,6 +755,8 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraSnip/CHANGELOG.md` | UltraSnip — screenshots and screen recordings |
 | `Docs/UltraToDo/CHANGELOG.md` | UltraToDo — the task list, with reminders and alarms |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
+| `Docs/UOSLocalisation/CHANGELOG.md` | UOS-Localisation — the ULTRA OS translation editor |
+| `Docs/UltraOffice/CHANGELOG.md` | UltraOffice — documents, spreadsheets and presentations |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
 | `Docs/UltraNetMonitor/CHANGELOG.md` | UltraNetMonitor |
@@ -865,7 +898,7 @@ and never introduce a new literal copy of one:
   and commits them with the new line 1, so a branch with a `changelog.d/`
   entry leaves them alone. Run it yourself only after a hand-written top entry
   for either app (the hotfix case); a CMake configure on any platform warns
-  when they are stale, and `scripts/check_changelog.py` (CI's `changelog.yml`)
+  when they are stale, and `scripts/check_changelog.py` (CI's `source-checks.yml`)
   fails the pull request - the warning alone let UltraFiler 1.72.4 ship with
   a 1.72.3 version resource. Nothing else may hold a literal — UltraFiler's compile
   definition did, and titled its window `UltraFiler 0.8.0` for thirteen
@@ -982,7 +1015,7 @@ and never introduce a new literal copy of one:
    `*Examples.md` docs pass it. CI runs it over every doc under
    `Docs/UltraCanvas/` but the changelog, and over the module docs listed in
    `CHECKED_MODULE_DOCS` in the script (`Docs/Modules/` FileLoader,
-   UltraCrypt, UltraLocalisation, UltraNet and UltraSite so far)
+   UltraCrypt, UltraLocalisation, UltraMessage, UltraNet and UltraSite so far)
    (`--all --strict`, `doc-examples.yml`) whenever a doc or a public header
    changes, and fails on any finding a component doc has. A module doc
    joins that list once its examples compile, and is fixed, not baselined. The design documents (a Proposal,
@@ -1268,10 +1301,13 @@ For assistants:
 
 8. **Label a platform-specific change `ci:distro` - and read the rows before
    "green".** A pull request builds Linux x86_64, Windows x86_64 and macOS
-   on Apple silicon; Windows ARM, Linux arm64 and macOS Intel are built only
-   on `main` or with the `ci:distro` label (*Building and testing*). Add the
-   label when you open the PR (or right after - adding it starts a run with
-   all six rows) whenever the change:
+   on Apple silicon; Linux arm64 is built only on `main` or with the
+   `ci:distro` label, Windows ARM only on a release dispatch or with
+   `ci:distro`, and macOS Intel only with the `ci:intel`
+   label (or a dispatch with `intel` set) - not on `main` either (*Building
+   and testing*). Add `ci:distro` when you open the PR (or right after -
+   adding it starts a run with those rows), and `ci:intel` as well when the
+   change touches macOS, whenever the change:
 
    - touches a platform layer (`UltraCanvas/OS/<Platform>/`), the
      packaging, CI's build, or a bundled library; or
@@ -1281,10 +1317,15 @@ For assistants:
      `__APPLE__` branches, ARM-specific intrinsics; or
    - the user asks for a "distro build".
 
+   A change to the Android layer (`UltraCanvas/OS/Android/`) or to what
+   MobilePC carries also gets `ci:emulator`: a pull request otherwise builds
+   arm64 alone and runs no emulator (*Building and testing*).
+
    And when you report CI or merge "on green", count only the rows that
    built: a row the PR leaves out reports **success** in a few seconds with
    the notice *"... is built on main and on a pull request labelled
-   ci:distro"*. Say which rows built and which were left out, and treat
+   ci:distro"* (or, for macOS Intel, *"... is built only when asked
+   for"*). Say which rows built and which were left out, and treat
    "Build result" (the commit status `build-result.yml` keeps) as the
    verdict of the Build run - it is green only when that run succeeded with
    jobs. (#1243 changed Windows and macOS file naming without the label: its

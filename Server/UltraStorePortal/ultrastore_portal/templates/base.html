@@ -3,49 +3,81 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}UltraStore{% endblock %}</title>
+<title>{% block title %}{{ brand }}{% endblock %}</title>
 <meta name="description" content="{% block description %}UltraStore: the apps of ULTRA OS and UltraCanvas for Linux, Windows and macOS.{% endblock %}">
 {% block meta %}{% endblock %}
+<link rel="stylesheet" href="{% static 'portal/vendor/bootstrap/bootstrap.min.css' %}">
 <link rel="stylesheet" href="{% static 'portal/portal.css' %}">
 </head>
 <body class="{% block body_class %}{% endblock %}">
-<header class="top">
-  <div class="column">
-    <a class="brand" href="{% url 'store:home' %}"><span class="mark">U</span>UltraStore</a>
-    <form class="search" action="{% url 'store:browse' %}" method="get" role="search">
-      <label class="small" for="q" hidden>Search apps</label>
-      <input id="q" type="search" name="q" value="{{ q|default:'' }}" placeholder="Search apps" aria-label="Search apps">
-    </form>
-    <nav class="nav" aria-label="Main">
-      <a href="{% url 'store:browse' %}">Apps</a>
+{% if account_site %}
+<nav class="navbar bg-white border-bottom sticky-top" aria-label="Main">
+  <div class="container">
+    <a class="navbar-brand" href="{% url 'account:profile' %}"><span class="brand-mark">U</span>{{ brand }}</a>
+    <ul class="navbar-nav flex-row ms-auto align-items-center gap-3">
       {% if user.is_authenticated %}
-        <a href="{% url 'console:home' %}">Developer console</a>
-        {% if user.is_staff %}<a href="{% url 'operator:home' %}">Operator</a>{% endif %}
-        <a href="{% url 'account:profile' %}">{{ user.display_name }}</a>
-        <form class="inline" method="post" action="{% url 'account:signout' %}">{% csrf_token %}<button class="button plain small">Sign out</button></form>
+        <li class="nav-item"><a class="nav-link" href="{% url 'account:profile' %}">{{ user.display_name }}</a></li>
+        <li class="nav-item"><form method="post" action="{% url 'account:signout' %}">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">Sign out</button></form></li>
       {% else %}
-        <a href="{% url 'console:home' %}">Publish an app</a>
-        <a class="button small" href="{% url 'account:signin' %}">Sign in</a>
+        <li class="nav-item"><a class="btn btn-primary btn-sm" href="{% url 'account:signin' %}">Sign in</a></li>
       {% endif %}
-    </nav>
+    </ul>
   </div>
-</header>
+</nav>
+{% else %}
+<nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top" aria-label="Main">
+  <div class="container">
+    <a class="navbar-brand" href="{% url 'store:home' %}"><span class="brand-mark">U</span>UltraStore</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main-nav" aria-controls="main-nav" aria-expanded="false" aria-label="Menu"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="main-nav">
+      <form class="search flex-grow-1 mx-lg-3 my-2 my-lg-0" action="{% url 'store:browse' %}" method="get" role="search">
+        <input class="form-control" id="q" type="search" name="q" value="{{ q|default:'' }}" placeholder="Search apps" aria-label="Search apps">
+      </form>
+      <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
+        <li class="nav-item"><a class="nav-link" href="{% url 'store:browse' %}">Apps</a></li>
+        {% if user.is_authenticated %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'console:home' %}">Developer console</a></li>
+          {% if user.is_staff %}<li class="nav-item"><a class="nav-link" href="{% url 'operator:home' %}">Operator</a></li>{% endif %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'account:profile' %}">{{ user.display_name }}</a></li>
+          <li class="nav-item ms-lg-1 my-1 my-lg-0"><form method="post" action="{% url 'account:signout' %}">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">Sign out</button></form></li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'console:home' %}">Publish an app</a></li>
+          <li class="nav-item ms-lg-1 my-1 my-lg-0"><a class="btn btn-primary btn-sm" href="{% url 'account:signin' %}">Sign in</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+</nav>
+{% endif %}
 {% block shell %}
 <main>
-  <div class="column">
+  <div class="container">
     {% include "_messages.html" %}
     {% block content %}{% endblock %}
   </div>
 </main>
 {% endblock %}
+{% if account_site %}
 <footer>
-  <div class="column">
+  <div class="container d-flex flex-wrap gap-3">
+    <span>{{ brand }} - ULTRA OS Project</span>
+    <a href="{{ store_root }}/">UltraStore</a>
+  </div>
+</footer>
+{% else %}
+<footer>
+  <div class="container d-flex flex-wrap gap-3">
     <span>UltraStore - ULTRA OS Project</span>
     <a href="{% url 'store:terms' %}">Publisher terms</a>
     <a href="{% url 'console:home' %}">Developer console</a>
     <a href="{% url 'api:catalog' %}">catalog.json</a>
+    {% if promote_on %}<a href="{% url 'promote:library' %}">Advertisements in the store</a>{% endif %}
     {% if store_download_url %}<a href="{{ store_download_url }}">Get the UltraStore app</a>{% endif %}
   </div>
 </footer>
+{% endif %}
+<script src="{% static 'portal/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+{% block scripts %}{% endblock %}
+<script src="{% static 'portal/portal.js' %}"></script>
 </body>
 </html>

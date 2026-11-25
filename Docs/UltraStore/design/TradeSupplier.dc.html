@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Trade - Supplier (Nordfertigung GmbH)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+<a href="TradeHome.dc.html" aria-label="UltraStore Trade home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Trade</span>
+</a>
+<form role="search" style="flex: 1 1 420px; display: flex; align-items: stretch; height: 46px; border-radius: 999px; border: 2px solid {{accent}}; overflow: hidden; background: #ffffff">
+<div role="group" aria-label="Search for" style="display: flex; border-right: 1px solid #e2e8f0; background: #f8fafc">
+<button type="button" onClick="{{modeProducts}}" aria-pressed="{{isProducts}}" style="{{productsStyle}}">Products</button>
+<button type="button" onClick="{{modeSuppliers}}" aria-pressed="{{isSuppliers}}" style="{{suppliersStyle}}">Suppliers</button>
+</div>
+<label for="search-trade" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search</label>
+<input id="search-trade" type="search" placeholder="{{placeholder}}" style="flex: 1 1 auto; min-width: 0; border: 0; padding: 0 16px; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+<button type="submit" aria-label="Search" style="width: 56px; border: 0; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+</form>
+<nav aria-label="Account" style="display: flex; gap: 4px; align-items: center">
+<a href="TradeRFQ.dc.html" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 12px; border-radius: 12px; text-decoration: none; color: #0f172a; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Nordlicht Handel GmbH</span><span style="font-weight: 700; font-size: 14px">Buyer desk</span></a>
+<a href="#messages" aria-label="Messages, 2 unread" style="position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5z"></path></svg><span style="position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">2</span></a>
+<a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px">Get quotes</a>
+</nav>
+</div>
+<nav aria-label="Trade" style="border-top: 1px solid #f1f5f9">
+<div style="max-width: 1280px; margin: 0 auto; padding: 0 32px; box-sizing: border-box; display: flex; gap: 2px; flex-wrap: wrap; align-items: center">
+<a href="TradeHome.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Categories</a><a href="TradeHome.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Ready to ship</a><a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Request for quotation</a><a href="TradeSupplier.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #0f172a; font-weight: 700; font-size: 14px; border-bottom: 2px solid {{accent}}">Verified suppliers</a><a href="#assurance" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Trade assurance</a><a href="#logistics" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Logistics</a>
+<a href="#sell" style="margin-left: auto; display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 600; font-size: 14px">Become a supplier</a>
+</div>
+</nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 24px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 40px">
+
+<section style="display: flex; flex-direction: column; gap: 0; border-radius: 24px; overflow: hidden; border: 1px solid #e2e8f0">
+<div aria-hidden="true" style="height: 220px; border-radius: 0px; background: linear-gradient(120deg, #0f172a, #0ea5e9 60%, #99f6e4); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Factory, Bremen</div>
+<div style="display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; padding: 24px 28px 28px">
+<span aria-hidden="true" style="width: 88px; height: 88px; border-radius: 20px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); margin-top: -64px; border: 4px solid #ffffff; flex: 0 0 auto"></span>
+<div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center"><h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Nordfertigung GmbH</h1><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #ccfbf1; color: #115e59; font-size: 12px; font-weight: 700; white-space: nowrap; "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path></svg> Verified manufacturer</span><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700; white-space: nowrap; ">Trade assurance</span></div>
+<span style="color: #64748b">Manufacturer · Bremen, Germany · industrial electronics and battery systems · 120 employees · on the store since 2012</span>
+<p style="margin: 0; max-width: 72ch; color: #334155">Design and assembly of connectivity hardware and energy storage for machine builders and utilities. Two SMT lines, a potting line, in-house EMC pre-compliance; firmware and enclosure customisation from 500 pieces.</p>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<a href="#contact" style="display: inline-flex; align-items: center; justify-content: center; height: 48px; padding: 0 22px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Send an inquiry</a>
+<a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; justify-content: center; height: 48px; padding: 0 22px; border-radius: 999px; border: 1px solid #cbd5e1; color: #0f172a; text-decoration: none; font-weight: 700">Request a quotation</a>
+</div>
+</div>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 14px 20px"><dt style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Responds in</dt><dd style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800">≤ 4 h</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 14px 20px"><dt style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">On-time delivery</dt><dd style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800">97 %</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 14px 20px"><dt style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Orders, 12 months</dt><dd style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800">412</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 14px 20px"><dt style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Through escrow</dt><dd style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800">€3.1 M</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 14px 20px"><dt style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Disputes upheld</dt><dd style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800">2 of 412</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 14px 20px"><dt style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Buyer rating</dt><dd style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800">4.8 / 5</dd></div>
+</dl>
+</section>
+
+<section style="display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 28px; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 40px; min-width: 0">
+<section aria-labelledby="mp-title" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Main products</h2><span style="color: #64748b">41 products listed; the six most ordered</span></div>
+<a href="TradeHome.dc.html" style="font-weight: 600; font-size: 14px; text-decoration: none">All 41 products</a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px"><a href="TradeProduct.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 120px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 600; font-size: 14px; line-height: 1.3">Industrial IoT gateway, 4G, RS-485</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800">€41.00 – 48.00</span><span style="font-size: 12px; color: #64748b">MOQ 100 · per piece, by quantity</span></a><a href="TradeProduct.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 120px; border-radius: 12px; background: linear-gradient(135deg, #34d399, #065f46); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 600; font-size: 14px; line-height: 1.3">LiFePO4 battery module 48 V 100 Ah</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800">€575 – 640</span><span style="font-size: 12px; color: #64748b">MOQ 10 · per piece, by quantity</span></a><a href="TradeProduct.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 120px; border-radius: 12px; background: linear-gradient(135deg, #64748b, #1e293b); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 600; font-size: 14px; line-height: 1.3">Modbus I/O module, 8 DI / 8 DO</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800">€38.00 – 44.00</span><span style="font-size: 12px; color: #64748b">MOQ 100 · per piece, by quantity</span></a><a href="TradeProduct.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 120px; border-radius: 12px; background: linear-gradient(135deg, #38bdf8, #0369a1); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 600; font-size: 14px; line-height: 1.3">Industrial 8-port PoE switch</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800">€96.00 – 110.00</span><span style="font-size: 12px; color: #64748b">MOQ 50 · per piece, by quantity</span></a><a href="TradeProduct.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 120px; border-radius: 12px; background: linear-gradient(135deg, #475569, #0f172a); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 600; font-size: 14px; line-height: 1.3">4G outdoor antenna, 2 × SMA</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800">€11.20 – 13.50</span><span style="font-size: 12px; color: #64748b">MOQ 200 · per piece, by quantity</span></a><a href="TradeProduct.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 120px; border-radius: 12px; background: linear-gradient(135deg, #22d3ee, #155e75); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 600; font-size: 14px; line-height: 1.3">Battery management system 16S</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800">€84.00 – 92.00</span><span style="font-size: 12px; color: #64748b">MOQ 50 · per piece, by quantity</span></a></div>
+</section>
+<section aria-labelledby="cap-title" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Capabilities</h2><span style="color: #64748b">What the factory can take on, as the supplier states it and the operator saw it</span></div>
+
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; font-size: 13px">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 18px; box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">Production</span><span style="color: #475569">2 SMT lines (Fuji NXT), 1 THT line, potting, final assembly; 60,000 gateways a year; MES with serial tracking</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 18px; box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">Testing</span><span style="color: #475569">In-circuit and functional test on every unit, burn-in 24 h on battery modules, EMC pre-compliance chamber in house</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 18px; box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">Customisation</span><span style="color: #475569">Firmware images, logo and enclosure colour from 500 pieces; connector sets and cable looms from 1,000; NRE quoted per project</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 18px; box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">Trade capacity</span><span style="color: #475569">Exports to 19 countries; 68 % of turnover within the EU, 22 % UK and CH, 10 % overseas; Incoterms EXW, FCA, DAP</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 18px; box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">Lead times</span><span style="color: #475569">Stock items 12 days; a production run 21 to 35 days; a custom firmware build adds 10 working days for the acceptance test</span></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 18px; box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">After sales</span><span style="color: #475569">24-month warranty, RMA handled from Bremen within the EU, firmware updates for 5 years from the last shipment</span></div>
+</div>
+</section>
+<section id="contact" aria-labelledby="inq-title" style="display: flex; flex-direction: column; gap: 14px; padding: 24px; box-sizing: border-box; border-radius: 20px; background: #f0fdfa; border: 1px solid #99f6e4">
+<h2 id="inq-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em">Send an inquiry</h2>
+<span style="font-size: 13px; color: #475569">Goes to the supplier through the store with your company's name; the reply lands in your buyer desk and by mail.</span>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #64748b">Product<input type="text" value="Industrial IoT gateway, 4G, RS-485" style="height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; background: #ffffff"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #64748b">Quantity<input type="text" value="800 pieces, then 400 a quarter" style="height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; background: #ffffff"></label>
+</div>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #64748b">Message<textarea rows="3" style="padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; background: #ffffff; resize: vertical">Can the gateway ship with our APN and a custom boot logo at 800 pieces? What is the NRE for a firmware build with our MQTT broker preset?</textarea></label>
+<button type="button" style="align-self: flex-start; height: 48px; padding: 0 22px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Send</button>
+</section>
+</div>
+
+<aside style="display: flex; flex-direction: column; gap: 20px">
+<section aria-labelledby="ver-title" style="display: flex; flex-direction: column; gap: 6px; padding: 20px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0">
+<h2 id="ver-title" style="margin: 0; font-size: 18px; font-weight: 700">Verification</h2>
+<span style="font-size: 12px; color: #64748b">What the operator checked when the supplier applied for a shop, and keeps checking yearly.</span>
+<ul style="margin: 6px 0 0; padding: 0; list-style: none; font-size: 13px"><li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid #f1f5f9"><span style="width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: #dcfce7; color: #166534"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span><span style="display: flex; flex-direction: column; line-height: 1.3"><span style="font-weight: 600">Company register</span><span style="font-size: 12px; color: #64748b">HRB 21 408, Amtsgericht Bremen · 2011</span></span></li><li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid #f1f5f9"><span style="width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: #dcfce7; color: #166534"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span><span style="display: flex; flex-direction: column; line-height: 1.3"><span style="font-weight: 600">VAT id</span><span style="font-size: 12px; color: #64748b">DE 27 … verified with VIES · 2026-10</span></span></li><li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid #f1f5f9"><span style="width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: #dcfce7; color: #166534"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span><span style="display: flex; flex-direction: column; line-height: 1.3"><span style="font-weight: 600">Factory</span><span style="font-size: 12px; color: #64748b">Hansestraße 12, Bremen · visited by the operator 2025-06</span></span></li><li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid #f1f5f9"><span style="width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: #dcfce7; color: #166534"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span><span style="display: flex; flex-direction: column; line-height: 1.3"><span style="font-weight: 600">ISO 9001:2015</span><span style="font-size: 12px; color: #64748b">Certificate 0417-QM, TÜV Nord · to 2027-03</span></span></li><li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid #f1f5f9"><span style="width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: #dcfce7; color: #166534"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span><span style="display: flex; flex-direction: column; line-height: 1.3"><span style="font-weight: 600">ISO 14001</span><span style="font-size: 12px; color: #64748b">Certificate 0417-UM, TÜV Nord · to 2027-03</span></span></li><li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid #f1f5f9"><span style="width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; background: #fef3c7; color: #92400e"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span><span style="display: flex; flex-direction: column; line-height: 1.3"><span style="font-weight: 600">Product certificates</span><span style="font-size: 12px; color: #64748b">CE, RED, RoHS on 38 of 41 products; 3 pending</span></span></li></ul>
+</section>
+<section aria-labelledby="tx-title" style="display: flex; flex-direction: column; gap: 10px; padding: 20px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0">
+<h2 id="tx-title" style="margin: 0; font-size: 18px; font-weight: 700">Recent orders through the store</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: #334155">
+<li style="display: flex; justify-content: space-between; gap: 8px"><span>IoT gateway · 1,200 · NL</span><span style="color: #64748b">delivered in 11 d</span></li>
+<li style="display: flex; justify-content: space-between; gap: 8px"><span>Battery module · 40 · DE</span><span style="color: #64748b">delivered in 28 d</span></li>
+<li style="display: flex; justify-content: space-between; gap: 8px"><span>PoE switch · 150 · CH</span><span style="color: #64748b">delivered in 9 d</span></li>
+<li style="display: flex; justify-content: space-between; gap: 8px"><span>I/O module · 600 · FR</span><span style="color: #64748b">in production</span></li>
+</ul>
+<span style="font-size: 12px; color: #64748b">The buyer's name stays with the operator; the product, the quantity, the country and the days are the order's own record.</span>
+</section>
+</aside>
+</section>
+</main>
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore Trade</span>
+<span>· manufacturers and bulk buyers, on the ULTRA OS marketplace</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#sell" style="color: #475569; text-decoration: none; font-weight: 500">Become a supplier</a>
+<a href="#assurance" style="color: #475569; text-decoration: none; font-weight: 500">Trade assurance</a>
+<a href="#logistics" style="color: #475569; text-decoration: none; font-weight: 500">Logistics</a>
+<a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#0f766e","options":["#0f766e","#2563eb","#0f172a","#b45309"]},"$preview":{"width":1440,"height":2340}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'products' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#0f766e';
+    const mode = this.state.mode;
+    const seg = (on) => 'border: 0; height: 100%; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: transparent; color: #334155');
+    const search = { isProducts: mode === 'products', isSuppliers: mode === 'suppliers', productsStyle: seg(mode === 'products'), suppliersStyle: seg(mode === 'suppliers'),
+      placeholder: mode === 'products' ? 'Search products, e.g. "IoT gateway RS-485", "corrugated boxes"' : 'Search suppliers by name, product or country',
+      modeProducts: () => this.setState({ mode: 'products' }), modeSuppliers: () => this.setState({ mode: 'suppliers' }) };
+    return { accent, ...search };
+  }
+}
+</script>
+</body>
+</html>

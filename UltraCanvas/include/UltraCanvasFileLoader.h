@@ -4,6 +4,7 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.19.0 - DetectOfficeDocumentKind, AddOfficeDocumentLoadTypes, AddPresentationSaveTypes
 // Version: 1.18.0 - SaveTextDocument and SavePresentation write .odp / .otp / .fodp too
 // Version: 1.17.0 - SaveTextDocument writes a .pptx (the document laid out as a deck); SavePresentation
 // Version: 1.16.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
@@ -279,16 +280,17 @@ namespace UltraCanvas {
 
         // Opens the native file dialog and parses the chosen word-processing
         // document into a UCRichDocument (see Plugins/Documents/Word). Formats:
-        // .odt and .docx are fully parsed (detection is signature-based, so
-        // renamed files still load); .tex is imported by the LaTeX document
+        // .odt and .docx are fully parsed, and a legacy Word 97-2003 .doc is
+        // read by the DOC reader (read-only: it is saved as .docx or .odt);
+        // detection is signature-based, so renamed files still load. A .doc
+        // the reader cannot make sense of fails with a loadError that
+        // asks for it to be saved as .docx or .odt. .tex is imported by the LaTeX document
         // reader (article subset, formulas kept for the math engine);
         // a PowerPoint deck (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm) and an
         // OpenDocument presentation (.odp, .otp, .fodp) read as an outline of
         // their slides (UltraCanvasPresentationPptx.h, UltraCanvasPresentationOdp.h);
         // .md/.markdown parse as Markdown; anything
-        // else readable as text becomes plain paragraphs. Legacy Word 97-2003
-        // .doc files are detected and rejected with a clear loadError telling
-        // the user to convert to .docx. A password-protected .docx asks for
+        // else readable as text becomes plain paragraphs. A password-protected .docx asks for
         // its password first (RequestDocumentPassword); cancelling that
         // reports Cancel, like the file dialog. If the caller supplies no filters,
         // AddTextDocumentLoadTypes' are offered. On cancel, onResult fires
@@ -352,6 +354,27 @@ namespace UltraCanvas {
         // The Save dialog's file types for SaveTextDocument, each under its
         // name, ODT first.
         static void AddTextDocumentSaveTypes(FileDialogOptions& opts);
+
+        // ===== OFFICE DOCUMENTS =====
+        // Which kind of office file a path is - what an office suite opens it
+        // as: a word-processing document (.odt, .docx, .doc, .md, .tex ...), a
+        // spreadsheet (.ods, .xlsx, .xls, .csv, .tsv), or a presentation
+        // (.pptx and kin, .odp and kin). The extension decides; a file
+        // without a known one is looked into: an OpenDocument package by its
+        // mimetype entry, an Office Open XML package by its main part
+        // (word/, xl/, ppt/). Unknown for anything else. Reads nothing beyond a
+        // ZIP's directory and its mimetype entry.
+        enum class OfficeDocumentKind { Unknown, Document, Spreadsheet, Presentation };
+        static OfficeDocumentKind DetectOfficeDocumentKind(const std::string& filePath);
+        // The Open dialog's types for an office suite: one filter with every
+        // type of the three kinds, then one filter per kind (Documents,
+        // Spreadsheets, Presentations) - decks are not offered among the
+        // documents here, as AddTextDocumentLoadTypes offers them (an
+        // outline), but as presentations.
+        static void AddOfficeDocumentLoadTypes(FileDialogOptions& opts);
+        // The Save dialog's types for a deck: every type SavePresentation
+        // writes, each under its name, PowerPoint first.
+        static void AddPresentationSaveTypes(FileDialogOptions& opts);
 
         // ===== VECTOR DOCUMENTS =====
         // Editable drawings: SVG, XAR, EMF, WMF, DXF, DWG, AI ... read into

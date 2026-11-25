@@ -392,6 +392,8 @@
   "UltraFiler - Settings": "UltraFiler - Ρυθμίσεις",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler απλό - τα σχεδιασμένα εικονίδια φακέλου και φύλλου",
   "UltraViewer could not be started: {0}": "Δεν ήταν δυνατή η εκκίνηση του UltraViewer: {0}",
+  "Edit in {0}": "Επεξεργασία στο {0}",
+  "{0} could not be started: {1}": "Δεν ήταν δυνατή η εκκίνηση του {0}: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "Το UltraViewer δείχνει την εικόνα, το αρχείο ήχου ή το βίντεο σε πλήρες μέγεθος, με τον υπόλοιπο φάκελο ένα πάτημα πλήκτρου μακριά. Όταν το UltraViewer δεν είναι εγκατεστημένο ή αυτή η επιλογή είναι απενεργοποιημένη, ένα τέτοιο αρχείο αντιμετωπίζεται όπως κάθε άλλο, με την επιλογή που ακολουθεί.",
   "Upload: the name is already taken": "Μεταφόρτωση: το όνομα χρησιμοποιείται ήδη",
   "Uploaded: {0}": "Μεταφορτωμένο: {0}",

@@ -1,3 +1,35 @@
+#### 2026-11-23 *0.2.40*
+- **Closing a tab that is not on show brings it to the front first.** The
+  tab's **×** now shows the image it closes and asks "Close *name*?" before
+  it goes, so a click on the wrong tab's cross loses nothing. The tab on
+  show, without changes, still closes at once, as does *File ▸ Close Tab*
+  (`Ctrl+W`) on it.
+- **Closing an image with unsaved changes offers to save it.** The question
+  is now *Save the changes to name before closing it?* with **Save**, **Don't
+  save** and **Cancel**, where it used to offer only to discard them. Save
+  writes the image to its file - or asks where, through *Save As*, for an
+  untitled one - and closes the tab once it is saved; a save cancelled or
+  failed leaves the tab open.
+- **Closing the window or quitting asks about each unsaved image.** Instead
+  of "N images have unsaved changes. Close anyway?", each image with unsaved
+  changes is brought to the front in turn and asks **Save**, **Don't save**
+  or **Cancel**. Save writes it (Save As for an untitled one) and goes on to
+  the next; Cancel - or a save cancelled or failed - keeps the window open,
+  with every image as it was. *File ▸ Quit* does this window by window.
+- **Files dropped on the start page open.** While no image is open, a file
+  dropped anywhere on the window opens as a drop on the canvas does; it used
+  to be ignored.
+- **The start page, the clipboard history picker and the save question are
+  translated** into the 30 languages UltraPaint ships.
+- **A start page instead of a blank canvas.** A window started without files,
+  and one whose last tab has closed, shows three buttons one under the other
+  in the middle of the canvas area, each in a pastel of its own: **Create new
+  bitmap** (the New Image dialog), **Paste image** (the clipboard's picture as
+  a new image) and **Clipboard history**, which shows the 20 images copied
+  last as thumbnails - a click opens one as a new image. `Ctrl+V` on the start
+  page pastes as a new image. The commands that need an image do nothing
+  until one is open.
+
 #### 2026-11-19 *0.2.39*
 - **Scale Image lets you choose how the pixels are worked out.** A new
   *Resampling* list offers Lanczos 3 (the sharpest, still the default),

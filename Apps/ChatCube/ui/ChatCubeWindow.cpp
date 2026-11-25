@@ -1,5 +1,13 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.12 - the search and the kinds in one row: the kinds a segmented control (All, then
+//                   pictures, videos, audio, files and links as icons with tooltips), the field narrower
+// Version: 0.3.11 - the feature icons (ApplyFeatureIcons): the + menu, smileys & stickers with
+//                   the list of sets, a location from OpenStreetMap, each placed by
+//                   Settings > Display > Feature icons
+// Version: 0.3.10 - the screenshot button beside the paperclip: an area of the screen into the
+//                   composer (UltraCanvasScreenAreaPicker); hidden where the screen is not captured
+// Version: 0.3.9 - the composer's text one row high, growing with its text to four rows, then scrolling
 // Version: 0.3.8 - the compact layout (a phone, a narrow window): the list and the conversation take
 //                  turns, a back arrow and Android's back key return to the list; network buttons only
 //                  for the networks this build reaches; the microphone and camera asked for on Android
@@ -40,7 +48,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-21
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -68,8 +76,10 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSelection.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasMapView.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasTextArea.h"
@@ -83,6 +93,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
@@ -106,18 +117,58 @@ constexpr int   kSidebarWidth = 320;
 // phone held upright is 360 to 430; the side-by-side window needs the
 // sidebar and a conversation of about as much again.
 constexpr int   kCompactWidth = 640;
-constexpr int   kInputHeight = 48;
+constexpr int   kInputHeight = 28;     // the composer's text before its first fit: one row
+constexpr int   kInputMaxRows = 4;     // the composer grows to this many rows, then scrolls
 constexpr int   kTileSide = 64;         // a staged picture's tile in the composer
 constexpr int   kFileTileWidth = 180;   // a staged file's tile: its name and size
 constexpr int   kTileClose = 20;        // the x on a tile
 constexpr size_t  kMenuMembers = 40;     // members listed in a group's menu before "and N more"
 constexpr int64_t kTypingShownMs = 5000;
 constexpr int64_t kTypingResendMs = 3000;
+constexpr unsigned kScreenshotSettleMs = 350;   // the hidden window has left the screen by then
 
 int64_t NowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::system_clock::now().time_since_epoch()).count();
 }
+
+// The composer's text: one row high while the message is one line, growing
+// with every row the words wrap or break into up to kInputMaxRows, and
+// scrolling past that with the text area's own scrollbar. It fits itself
+// when its text changes and when the layout gives it a new width (a wider
+// window wraps fewer rows).
+class ComposerTextArea : public UltraCanvasTextArea {
+public:
+    using UltraCanvasTextArea::UltraCanvasTextArea;
+
+    void FitToText() {
+        if (GetWidth() <= 0.0f) return;
+        auto ctx = GetRenderContext();
+        if (!ctx) return;
+        const TextAreaStyle& st = GetStyle();
+        ctx->PushState();
+        ctx->SetFontStyle(st.fontStyle);
+        ctx->SetFontWeight(FontWeight::Normal);
+        const float row = std::max(1.0f, std::floor(static_cast<float>(ctx->GetTextLineHeight("M")) * st.lineHeight));
+        ctx->PopState();
+        const float content = MeasureContentHeight();
+        const float text = std::clamp(content, row, row * static_cast<float>(kInputMaxRows));
+        // textPadding above and below, and a pixel of slack so the last row
+        // clears the padding (GetTextLineHeight rounds down).
+        const float height = std::ceil(text + st.textPadding * 2.0f + 2.0f);
+        fittedWidth_ = GetWidth();
+        if (std::abs(height - GetHeight()) < 0.5f) return;
+        SetElementSize(size.width, CSSLayout::Dimension::Px(height));
+    }
+
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
+        UltraCanvasTextArea::Arrange(finalRect, ctx);
+        if (std::abs(GetWidth() - fittedWidth_) >= 0.5f) FitToText();
+    }
+
+private:
+    float fittedWidth_ = -1.0f;
+};
 
 // A network's button in the sidebar (Matrix, Telegram): always the network's
 // name, which is what fits the third of the sidebar it has - where the
@@ -243,7 +294,9 @@ ChatCubeWindow::~ChatCubeWindow() {
         if (recordTimer_) app->StopTimer(recordTimer_);
         if (searchTimer_) app->StopTimer(searchTimer_);
         if (publicTimer_) app->StopTimer(publicTimer_);
+        if (screenshotTimer_) app->StopTimer(screenshotTimer_);
     }
+    if (mapTilesListener_) MapTiles::RemoveListener(mapTilesListener_);
     // A recording under way goes with the window, nothing sent.
     if (voiceRecorder_) {
         voiceRecorder_->Stop();
@@ -896,14 +949,17 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     header->AddChild(videoCall_);
     pane->AddChild(header);
 
-    // ----- search: a field over the chat, the list showing what matches -----
+    // ----- search: one row over the chat - the field, how many match, the
+    // kinds (All, then pictures, videos, sound, files and links as icons, each
+    // naming itself in its tooltip) and the x - the list showing what matches -----
     searchRow_ = MakeRow("cc-search-row", 8);
     searchRow_->SetPadding(6, 14, 6, 14);
+    searchRow_->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     OnLook(searchRow_, [](UltraCanvasContainer& c) {
         c.SetBackgroundColor(L().panel);
         c.SetBorderBottom(1, L().line);
     });
-    searchInput_ = MakeInput("cc-search", Tr("Search in this chat"), 260, true);
+    searchInput_ = MakeInput("cc-search", Tr("Search in this chat"), 160, true);
     searchInput_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     searchInput_->onTextChanged = [this](const std::string&) {
         if (!settingSearch_) ScheduleSearch();
@@ -916,36 +972,56 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     searchInfo_ = MakeLabel("cc-search-info", "", 9.0f, &Look::inkMuted);
     searchInfo_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     searchRow_->AddChild(searchInfo_);
+    // The kinds: the list shows only pictures, videos, sound, files or
+    // messages with a link (with the words, when some are typed)
+    struct KindSegment { UltraIMSearchKind kind; const char* icon; std::string tooltip; };
+    const KindSegment kinds[] = {
+        {UltraIMSearchKind::AnyKind, "", Tr("Everything in this chat")},
+        {UltraIMSearchKind::Images, "filter-pictures", Tr("Pictures")},
+        {UltraIMSearchKind::Videos, "filter-videos", Tr("Videos")},
+        {UltraIMSearchKind::Audio, "filter-audio", Tr("Audio")},
+        {UltraIMSearchKind::Files, "filter-files", Tr("Files")},
+        {UltraIMSearchKind::Links, "filter-links", Tr("Links")}};
+    filterControl_ = CreateSegmentedControl("cc-filter", 0, 0, 0, 30);
+    filterControl_->SetWidthMode(SegmentWidthMode::FitContent);
+    filterKinds_.clear();
+    for (const KindSegment& k : kinds) {
+        const int index = k.icon[0] ? filterControl_->AddSegment("", IconPath(k.icon))
+                                    : filterControl_->AddSegment(Tr("All"));
+        filterControl_->SetSegmentTooltip(index, k.tooltip);
+        filterKinds_.push_back(k.kind);
+    }
+    filterControl_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    OnLook(filterControl_, [](UltraCanvasSegmentedControl& control) {
+        SegmentedControlStyle st = control.GetStyle();
+        st.fontSize = 9.5f;
+        st.iconSize = 16;
+        st.iconAsMask = true;
+        st.paddingHorizontal = 10;
+        st.paddingVertical = 4;
+        st.cornerRadius = 8.0f;
+        st.normalColor = L().panel;
+        st.hoverColor = L().hover;
+        st.selectedColor = L().accent;
+        st.normalTextColor = st.hoverTextColor = L().ink;
+        st.selectedTextColor = L().onAccent;
+        st.disabledTextColor = L().inkFaint;
+        st.borderColor = L().line;
+        st.separatorColor = L().line;
+        control.SetStyle(st);
+    });
+    filterControl_->SetSelectedIndex(0);
+    filterControl_->onSegmentSelected = [this](int index) {
+        if (settingSearch_ || index < 0 || index >= static_cast<int>(filterKinds_.size())) return;
+        SetSearchKind(filterKinds_[static_cast<size_t>(index)]);
+    };
+    searchRow_->AddChild(filterControl_);
     auto searchClear = MakeIconButton("cc-search-clear", "close", "", kIconButton, false, true);
     searchClear->SetTooltip(Tr("Show the whole chat again"));
     searchClear->SetOnClick([this]() { ClearSearch(true); });
     searchRow_->AddChild(searchClear);
     searchRow_->SetVisible(false);
     pane->AddChild(searchRow_);
-    // Under it, the kinds: the list shows only pictures, videos, sound,
-    // files or messages with a link (with the words, when some are typed).
-    auto filterRow = MakeRow("cc-filter-row", 6);
-    filterRow->SetPadding(0, 14, 6, 14);
-    OnLook(filterRow, [](UltraCanvasContainer& c) {
-        c.SetBackgroundColor(L().panel);
-        c.SetBorderBottom(1, L().line);
-    });
-    const std::pair<UltraIMSearchKind, std::string> kinds[] = {
-        {UltraIMSearchKind::AnyKind, Tr("All")},      {UltraIMSearchKind::Images, Tr("Pictures")},
-        {UltraIMSearchKind::Videos, Tr("Videos")},    {UltraIMSearchKind::Audio, Tr("Audio")},
-        {UltraIMSearchKind::Files, Tr("Files")},      {UltraIMSearchKind::Links, Tr("Links")}};
-    for (const auto& [kind, words] : kinds) {
-        auto chip = MakeButton("cc-filter-" + std::to_string(static_cast<int>(kind)), words, 82,
-                               kind == UltraIMSearchKind::AnyKind);
-        chip->size.height = CSSLayout::Dimension::Px(26);
-        chip->SetOnClick([this, k = kind]() { SetSearchKind(k); });
-        filterRow->AddChild(chip);
-        filterChips_.push_back({kind, chip});
-    }
-    // Shown with the search row (OpenConversation / CloseConversationView).
-    filterRow->SetVisible(false);
-    filterRow_ = filterRow;
-    pane->AddChild(filterRow);
 
     // ----- messages -----
     auto empty = std::make_shared<UltraCanvasContainer>("cc-empty-box");
@@ -1007,6 +1083,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         // Sound plays in its bubble, a video in the chat; anything else opens.
         if (row < 0 || row >= static_cast<int>(rows.size())) return;
         const UltraIMMessage& clicked = rows[static_cast<size_t>(row)].message;
+        // A location's card: the place on openstreetmap.org, in the browser
+        MapPlace place;
+        if (LocationOf(clicked, place)) {
+            if (!place.url.empty()) OpenURL(place.url);
+            return;
+        }
         if (IsAudioMessage(clicked)) ToggleVoicePlayback(row);
         else if (clicked.type == UltraIMMessageType::Video) PlayVideoInChat(row);
         else OpenAttachment(row);
@@ -1023,6 +1105,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         ShowMessageMenu(row, event.pointerWindow.x, event.pointerWindow.y);
     };
     pane->AddChild(messageList_);
+    // A location's map card draws again as its tiles come in
+    mapTilesListener_ = MapTiles::AddListener([this]() {
+        if (messageList_ && messageList_->IsVisible()) messageList_->RequestRedraw();
+    });
 
     // ----- a video played in the chat: a player over the field, and a x -----
     videoPlayerPanel_ = std::make_shared<UltraCanvasContainer>("cc-video-player-panel");
@@ -1176,17 +1262,53 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     composerRow_ = composerRow;
     composerRow->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::End);
     composerRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The + first: the features put behind it (Settings > Display >
+    // Feature icons), then those in the field.
+    plus_ = MakeIconButton("cc-plus", "plus", "", kIconButton);
+    plus_->SetTooltip(Tr("More: pictures, screenshots, places and more"));
+    plus_->SetOnClick([this]() { OpenFeatureMenu(); });
+    composerRow->AddChild(plus_);
     attach_ = MakeIconButton("cc-attach", "attach", "", kIconButton);
     attach_->SetTooltip(Tr("Send a picture, a video or a file"));
     attach_->SetDisabled(true);
     attach_->SetOnClick([this]() { AttachFile(); });
     composerRow->AddChild(attach_);
-    input_ = std::make_shared<UltraCanvasTextArea>("cc-input", 0, 0, 300, kInputHeight);
+    screenshot_ = MakeIconButton("cc-screenshot", "screenshot", "", kIconButton);
+    screenshot_->SetTooltip(Tr("Insert a screenshot: choose a window or drag an area"));
+    screenshot_->SetDisabled(true);
+    screenshot_->SetOnClick([this]() { TakeScreenshot(); });
+    composerRow->AddChild(screenshot_);
+    // Smileys & stickers: the face opens the set chosen last, the narrow
+    // arrow beside it lists the sets
+    emoji_ = MakeIconButton("cc-emoji", "smile", "", kIconButton);
+    emoji_->SetTooltip(Tr("Smileys & stickers"));
+    emoji_->SetOnClick([this]() { OpenEmojiGrid(); });
+    composerRow->AddChild(emoji_);
+    emojiSets_ = MakeIconButton("cc-emoji-sets", "chevron-down", "", 16);
+    emojiSets_->SetIconSize(12, 12);
+    emojiSets_->GetStyle().cornerRadius = 6.0f;
+    emojiSets_->SetTooltip(Tr("Choose the smileys or stickers"));
+    emojiSets_->SetOnClick([this]() { OpenEmojiSets(); });
+    composerRow->AddChild(emojiSets_);
+    emojiPicker_.onEmoji = [this](const std::string& emoji) { InsertIntoMessage(emoji); };
+    emojiPicker_.onSticker = [this](const std::string& path) { StageSticker(path); };
+    emojiPicker_.onSetChosen = [this](const std::string& key) {
+        settings_.emojiSet = key;
+        settings_.Save();
+    };
+    location_ = MakeIconButton("cc-location", "location", "", kIconButton);
+    location_->SetTooltip(Tr("Insert a location (OpenStreetMap)"));
+    location_->SetOnClick([this]() { OpenLocation(); });
+    composerRow->AddChild(location_);
+    auto composerText = std::make_shared<ComposerTextArea>("cc-input", 0, 0, 300, kInputHeight);
+    input_ = composerText;
     input_->SetEditingMode(TextAreaEditingMode::PlainText);
     input_->SetWordWrap(true);
     input_->SetShowLineNumbers(false);
     input_->SetFontSize(11.0f);
-    input_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    // Centred on the buttons while it is one row; taller, it sets the row's
+    // height and the buttons stay at the bottom, by the last line.
+    input_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Center);
     OnLook(input_, [](UltraCanvasTextArea& area) {
         TextAreaStyle st = area.GetStyle();
         st.backgroundColor = L().well;
@@ -1221,7 +1343,9 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
                            (e.virtualKey == UCKeys::Insert && e.shift && !e.ctrl && !e.alt);
         return paste && PasteAttachment();
     };
-    input_->SetOnTextChanged([this](const std::string& text) {
+    std::weak_ptr<ComposerTextArea> fitText = composerText;
+    input_->SetOnTextChanged([this, fitText](const std::string& text) {
+        if (auto area = fitText.lock()) area->FitToText();
         if (activeConversation_.empty() || text.empty() || !settings_.sendTyping) return;
         const int64_t now = NowMs();
         if (now - lastTypingSentMs_ < kTypingResendMs) return;
@@ -1244,6 +1368,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     composerRow->AddChild(send_);
     composer->AddChild(composerRow);
     inputRow->AddChild(composer);
+    ApplyFeatureIcons();
     pane->AddChild(inputRow);
     return pane;
 }
@@ -2217,7 +2342,6 @@ void ChatCubeWindow::CloseConversationView() {
     ClearComposerMode();
     ClearSearch(false);
     searchRow_->SetVisible(false);
-    filterRow_->SetVisible(false);
     activeConversation_.clear();
     messages_->Clear();
     messageList_->SetVisible(false);
@@ -3012,7 +3136,6 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     emptyHint_->SetVisible(false);
     messageList_->SetVisible(true);
     searchRow_->SetVisible(true);
-    filterRow_->SetVisible(true);
     fillingList_ = true;
     const int row = conversations_->FindRow(conversationId);
     if (row >= 0) conversationList_->GetSelection()->Select(row);
@@ -3047,9 +3170,7 @@ void ChatCubeWindow::UpdateHeader() {
         subtitle_->SetText("");
         headerAvatar_->SetVisible(false);
         headerPhoto_->SetVisible(false);
-        attach_->SetDisabled(true);
-        recordVoice_->SetDisabled(true);
-        recordVideo_->SetDisabled(true);
+        ApplyFeatureIcons();
         return;
     }
     title_->SetText(c->title);
@@ -3073,11 +3194,11 @@ void ChatCubeWindow::UpdateHeader() {
     headerPhoto_->SetVisible(photo);
     // The paperclip, for a network that takes pictures or files.
     const bool attachments = AttachmentsPossible();
-    attach_->SetDisabled(!attachments);
     attach_->SetTooltip(attachments ? Tr("Send a picture, a video or a file")
                                     : Tr("This network does not take pictures or files yet"));
-    recordVoice_->SetDisabled(!attachments);
-    recordVideo_->SetDisabled(!attachments);
+    screenshot_->SetTooltip(attachments ? Tr("Insert a screenshot: choose a window or drag an area")
+                                        : Tr("This network does not take pictures or files yet"));
+    ApplyFeatureIcons();
     if (const std::string typing = TypingText(*c); !typing.empty()) {
         subtitle_->SetText(typing);
     } else if (c->isGroup) {
@@ -3274,25 +3395,12 @@ bool ChatCubeWindow::PasteAttachment() {
     // Into a file of ChatCube's own, in its cache: the provider reads the
     // file, and the bubble shows it from there. PNG and JPEG as they came;
     // anything else (a bitmap, say) decoded and written as PNG.
-    std::error_code ec;
-    const std::filesystem::path folder = UltraCanvasDataFolder("ChatCube") / "cache" / "pasted";
-    std::filesystem::create_directories(folder, ec);
-    const std::time_t now = std::time(nullptr);
-    std::tm local{};
-#if defined(_WIN32) || defined(_WIN64)
-    localtime_s(&local, &now);
-#else
-    localtime_r(&now, &local);
-#endif
-    char stamp[32];
-    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
-    std::string name = std::string("Pasted-") + stamp;
-    for (int n = 1; std::filesystem::exists(folder / PathFromUtf8(name + ".png"), ec) ||
-                    std::filesystem::exists(folder / PathFromUtf8(name + ".jpg"), ec); ++n)
-        name = std::string("Pasted-") + stamp + "-" + std::to_string(n);
+    const std::string base = NewCachedPicturePath("Pasted");
     std::string path;
-    if (format == "image/png" || format == "image/jpeg") {
-        path = PathToUtf8(folder / PathFromUtf8(name + (format == "image/png" ? ".png" : ".jpg")));
+    if (base.empty()) {
+        // no cache folder: reported below as unreadable
+    } else if (format == "image/png" || format == "image/jpeg") {
+        path = base + (format == "image/png" ? ".png" : ".jpg");
         std::FILE* out = OpenFileUtf8(path, "wb");
         const bool written = out && std::fwrite(bytes.data(), 1, bytes.size(), out) == bytes.size();
         if (out) std::fclose(out);
@@ -3300,7 +3408,7 @@ bool ChatCubeWindow::PasteAttachment() {
     } else {
         UCImagePtr image = UCImage::LoadFromMemory(bytes);
         if (image && image->IsValid()) {
-            path = PathToUtf8(folder / PathFromUtf8(name + ".png"));
+            path = base + ".png";
             UCImageSave::ImageExportOptions options;
             options.format = UCImageSaveFormat::PNG;
             if (!image->Save(path, options).empty()) path.clear();
@@ -3312,6 +3420,283 @@ bool ChatCubeWindow::PasteAttachment() {
     }
     StageAttachment(path, true);
     return true;
+}
+
+std::string ChatCubeWindow::NewCachedPicturePath(const std::string& prefix) const {
+    std::error_code ec;
+    const std::filesystem::path folder = UltraCanvasDataFolder("ChatCube") / "cache" / "pasted";
+    std::filesystem::create_directories(folder, ec);
+    if (!std::filesystem::is_directory(folder, ec)) return {};
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32) || defined(_WIN64)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
+    std::string name = prefix + "-" + stamp;
+    for (int n = 1; std::filesystem::exists(folder / PathFromUtf8(name + ".png"), ec) ||
+                    std::filesystem::exists(folder / PathFromUtf8(name + ".jpg"), ec); ++n)
+        name = prefix + "-" + stamp + "-" + std::to_string(n);
+    return PathToUtf8(folder / PathFromUtf8(name));
+}
+
+// ===== THE FEATURE ICONS =====
+
+bool ChatCubeWindow::FeatureUsable(Feature feature) const {
+    if (activeConversation_.empty()) return false;
+    switch (feature) {
+        case Feature::Emoji:
+        case Feature::Location:
+            return true;        // text (a location is its link); a sticker only where pictures go
+        case Feature::Screenshot:
+            return UltraCanvasDesktopShell::CanCaptureScreen() && AttachmentsPossible();
+        case Feature::Attach:
+        case Feature::VoiceMessage:
+        case Feature::VideoMessage:
+            break;
+    }
+    return AttachmentsPossible();
+}
+
+void ChatCubeWindow::ApplyFeatureIcons() {
+    if (!plus_) return;
+    const auto button = [this](Feature f) -> std::shared_ptr<UltraCanvasButton> {
+        switch (f) {
+            case Feature::Attach: return attach_;
+            case Feature::Emoji: return emoji_;
+            case Feature::Screenshot: return screenshot_;
+            case Feature::Location: return location_;
+            case Feature::VoiceMessage: return recordVoice_;
+            case Feature::VideoMessage: return recordVideo_;
+        }
+        return nullptr;
+    };
+    bool anyBehindPlus = false;
+    for (Feature f : kAllFeatures) {
+        auto b = button(f);
+        if (!b) continue;
+        FeaturePlace place = settings_.features.Get(f);
+        // A screenshot where this system takes none: not offered anywhere
+        if (f == Feature::Screenshot && !UltraCanvasDesktopShell::CanCaptureScreen()) place = FeaturePlace::Off;
+        b->SetVisible(place == FeaturePlace::Field);
+        b->SetDisabled(!FeatureUsable(f));
+        if (f == Feature::Emoji && emojiSets_) {
+            emojiSets_->SetVisible(place == FeaturePlace::Field);
+            emojiSets_->SetDisabled(!FeatureUsable(f));
+        }
+        if (place == FeaturePlace::Menu) anyBehindPlus = true;
+    }
+    plus_->SetVisible(anyBehindPlus);
+    plus_->SetDisabled(activeConversation_.empty());
+    if (composerRow_) composerRow_->InvalidateLayout();
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::RunFeature(Feature feature) {
+    if (!FeatureUsable(feature)) return;
+    switch (feature) {
+        case Feature::Attach: AttachFile(); break;
+        case Feature::Emoji: OpenEmojiGrid(); break;
+        case Feature::Screenshot: TakeScreenshot(); break;
+        case Feature::Location: OpenLocation(); break;
+        case Feature::VoiceMessage: StartVoiceRecording(); break;
+        case Feature::VideoMessage: OpenVideoRecorder(); break;
+    }
+}
+
+Rect2Di ChatCubeWindow::WindowRectOf(UltraCanvasUIElement& element) const {
+    const Point2Df at = element.GetPositionInWindow();
+    return Rect2Di(static_cast<int>(at.x), static_cast<int>(at.y), static_cast<int>(element.GetWidth()),
+                   static_cast<int>(element.GetHeight()));
+}
+
+void ChatCubeWindow::OpenFeatureMenu() {
+    if (!window_ || !plus_) return;
+    featureMenu_ = std::make_shared<UltraCanvasMenu>("cc-feature-menu", 0, 0, 260, 0);
+    featureMenu_->SetMenuType(MenuType::PopupMenu);
+    int items = 0;
+    for (Feature f : kAllFeatures) {
+        if (settings_.features.Get(f) != FeaturePlace::Menu) continue;
+        if (f == Feature::Screenshot && !UltraCanvasDesktopShell::CanCaptureScreen()) continue;
+        // After the menu has gone: a feature may open a window or a popup
+        MenuItemData item = MenuItemData::Action(FeatureName(f), IconPath(FeatureIcon(f)), [this, f]() {
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+                app->PostToUIThread([this, f, alive = std::weak_ptr<bool>(alive_)]() {
+                    if (auto a = alive.lock(); a && *a) RunFeature(f);
+                });
+            }
+        });
+        item.enabled = FeatureUsable(f);
+        featureMenu_->AddItem(item);
+        ++items;
+    }
+    if (items == 0) return;
+    featureMenu_->OpenMenuAnchored(WindowRectOf(*plus_), *window_, PopupElementSettings());
+}
+
+void ChatCubeWindow::OpenEmojiGrid() {
+    if (!window_ || activeConversation_.empty()) return;
+    // From its own button when that is shown, else from the + it is behind
+    UltraCanvasUIElement* anchor = emoji_ && emoji_->IsVisible() ? static_cast<UltraCanvasUIElement*>(emoji_.get())
+                                                                 : static_cast<UltraCanvasUIElement*>(plus_.get());
+    if (!anchor) return;
+    emojiPicker_.OpenGrid(*window_, WindowRectOf(*anchor), settings_.emojiSet);
+}
+
+void ChatCubeWindow::OpenEmojiSets() {
+    if (!window_ || !emojiSets_ || activeConversation_.empty()) return;
+    emojiPicker_.OpenSetList(*window_, WindowRectOf(*emoji_));
+}
+
+void ChatCubeWindow::InsertIntoMessage(const std::string& text) {
+    if (!input_ || text.empty()) return;
+    input_->SetFocus(true);
+    input_->InsertText(text);
+}
+
+void ChatCubeWindow::StageSticker(const std::string& svgPath) {
+    if (!AttachmentsPossible()) {
+        SetStatus(Tr("This network does not take pictures yet."));
+        return;
+    }
+    // As a PNG, which every network shows; the drawing itself if that
+    // cannot be made
+    const std::string base = NewCachedPicturePath("Sticker");
+    if (!base.empty()) {
+        UCImagePtr drawing = UCImage::Get(svgPath);
+        if (drawing && drawing->IsValid()) {
+            const std::string path = base + ".png";
+            UCImageSave::ImageExportOptions options;
+            options.format = UCImageSaveFormat::PNG;
+            options.targetWidth = 256;
+            options.targetHeight = 256;
+            if (drawing->Save(path, options).empty()) {
+                StageAttachment(path, true);
+                return;
+            }
+        }
+    }
+    std::error_code ec;
+    const std::string copy = base.empty() ? std::string() : base + ".svg";
+    if (!copy.empty() && std::filesystem::copy_file(PathFromUtf8(svgPath), PathFromUtf8(copy), ec)) {
+        StageAttachment(copy, true);
+    } else {
+        SetStatus(Tr("The sticker could not be prepared."));
+    }
+}
+
+void ChatCubeWindow::OpenLocation() {
+    if (!window_ || activeConversation_.empty()) return;
+    if (!locationWindow_) {
+        locationWindow_ = std::make_unique<ChatCubeLocationWindow>(
+            version_, [this](const MapPlace& place) { InsertLocation(place); });
+    }
+    locationWindow_->Show(window_.get());
+}
+
+void ChatCubeWindow::InsertLocation(const MapPlace& place) {
+    if (activeConversation_.empty() || !input_) return;
+    // The text alone: ChatCube shows it as a map card, every other program
+    // as the place's name and its link
+    std::string text = LocationText(place);
+    // On a line of its own after what is written already
+    const std::string written = input_->GetText();
+    if (!written.empty() && written.back() != '\n') text = "\n" + text;
+    input_->MoveCursorToEnd();
+    InsertIntoMessage(text);
+    if (window_) window_->RaiseAndFocus();
+}
+
+// ===== A SCREENSHOT INTO THE COMPOSER =====
+
+void ChatCubeWindow::TakeScreenshot() {
+    if (activeConversation_.empty() || screenshotRunning_ || !window_) return;
+    if (!AttachmentsPossible()) {
+        SetStatus(Tr("This network does not take pictures yet."));
+        return;
+    }
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    // Out of the picture: hidden, and given a moment to leave the screen
+    // (the window system takes it off after the call returns)
+    screenshotRunning_ = true;
+    window_->Hide();
+    screenshotTimer_ = app->StartTimer(kScreenshotSettleMs, false, [this](TimerId) {
+        screenshotTimer_ = 0;
+        PickScreenArea();
+    });
+}
+
+void ChatCubeWindow::PickScreenArea() {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    std::string error;
+    if (!app || !UltraCanvasDesktopShell::CaptureScreenImage(screenShot_, &error)) {
+        EndScreenshot();
+        SetStatus(TrF("The screen could not be captured: {0}", error));
+        return;
+    }
+    // A window clicked or an area dragged; where the platform lists no
+    // windows (Wayland, macOS), an area, Enter taking the whole screen
+    std::vector<ScreenAreaWindow> windows = ScreenArea::ListPickableWindows();
+    const ScreenAreaMode mode = windows.empty() ? ScreenAreaMode::Rectangle : ScreenAreaMode::Window;
+    screenPicker_ = std::make_unique<UltraCanvasScreenAreaPicker>();
+    screenPicker_->SetTitle("ChatCube");
+    // The picker is let go of from the UI thread's queue, not from inside
+    // its own callback
+    std::weak_ptr<bool> alive = alive_;
+    screenPicker_->onSelected = [this, app, alive](const Rect2Di& area) {
+        app->PostToUIThread([this, area, alive]() {
+            if (auto a = alive.lock(); !a || !*a) return;
+            screenPicker_.reset();
+            StageScreenshot(area);
+            EndScreenshot();
+        });
+    };
+    screenPicker_->onCancelled = [this, app, alive]() {
+        app->PostToUIThread([this, alive]() {
+            if (auto a = alive.lock(); !a || !*a) return;
+            screenPicker_.reset();
+            EndScreenshot();
+        });
+    };
+    if (!screenPicker_->Open(screenShot_, mode, windows, &error)) {
+        screenPicker_.reset();
+        EndScreenshot();
+        SetStatus(error);
+    }
+}
+
+void ChatCubeWindow::StageScreenshot(const Rect2Di& area) {
+    ClipboardDib::RgbaImage image;
+    std::vector<uint8_t> png;
+    const std::string base = NewCachedPicturePath("Screenshot");
+    if (base.empty() || !ScreenArea::CropToRgba(screenShot_, area, image) || !ClipboardDib::EncodePng(image, png)) {
+        SetStatus(Tr("The screenshot could not be kept."));
+        return;
+    }
+    const std::string path = base + ".png";
+    std::FILE* out = OpenFileUtf8(path, "wb");
+    const bool written = out && std::fwrite(png.data(), 1, png.size(), out) == png.size();
+    const bool closed = out && std::fclose(out) == 0;
+    if (!written || !closed) {
+        std::error_code ec;
+        std::filesystem::remove(PathFromUtf8(path), ec);
+        SetStatus(Tr("The screenshot could not be kept."));
+        return;
+    }
+    StageAttachment(path, true);
+}
+
+void ChatCubeWindow::EndScreenshot() {
+    screenShot_ = DesktopScreenImage();     // the whole screen's pixels, let go of
+    screenshotRunning_ = false;
+    if (!window_) return;
+    window_->Show();
+    window_->RaiseAndFocus();
+    if (input_) input_->SetFocus(true);
 }
 
 void ChatCubeWindow::StageAttachment(const std::string& path, bool ownFile) {
@@ -3762,12 +4147,10 @@ void ChatCubeWindow::ClearSearch(bool reload) {
     const bool searched = !searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind;
     searchText_.clear();
     searchKind_ = shownKind_ = UltraIMSearchKind::AnyKind;
-    for (const auto& [kind, chip] : filterChips_) StyleButton(chip, kind == UltraIMSearchKind::AnyKind);
-    if (searchInput_) {
-        settingSearch_ = true;
-        searchInput_->SetText("");
-        settingSearch_ = false;
-    }
+    settingSearch_ = true;
+    if (filterControl_) filterControl_->SetSelectedIndex(0);    // All
+    if (searchInput_) searchInput_->SetText("");
+    settingSearch_ = false;
     if (searchInfo_) searchInfo_->SetText("");
     if (reload && searched) LoadMessages();
 }
@@ -4019,7 +4402,6 @@ void ChatCubeWindow::StopVoicePlayback() {
 
 void ChatCubeWindow::SetSearchKind(UltraIMSearchKind kind) {
     searchKind_ = kind;
-    for (const auto& [k, chip] : filterChips_) StyleButton(chip, k == kind);
     RunSearch();
     if (window_) window_->RequestRedraw();
 }
@@ -4507,6 +4889,7 @@ void ChatCubeWindow::ApplySettings() {
                                    : Tr("Message\xE2\x80\xA6  (Enter sends, Shift+Enter for a new line)"));
     }
     if (send_) UpdateAttachmentStrip();     // the button's tooltip names the key
+    ApplyFeatureIcons();                    // Display > Feature icons
     // Typing: nothing more goes out, and what was shown goes.
     if (!settings_.sendTyping && !activeConversation_.empty() && lastTypingSentMs_ != 0) {
         lastTypingSentMs_ = 0;

@@ -320,7 +320,7 @@ namespace UltraCanvas {
 
         auto status = DemoKit::CreateText("LPStatus", "");
         status->SetFontSize(11);
-        status->SetTextColor(Color(60, 60, 60, 255));
+        status->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
 
         auto refreshStatus = [canvas, status]() {
             std::string style;
@@ -350,7 +350,7 @@ namespace UltraCanvas {
         auto sectionLabel = [&](const std::string& id, const std::string& text) {
             auto l = DemoKit::AddHeading(controls, id, text);
             l->SetFontSize(11);
-            l->SetTextColor(Color(50, 50, 150, 255));
+            l->SetTextColor(DemoKit::Themed(Color(50, 50, 150, 255)));
         };
 
         auto addSwitch = [&](const std::string& id, const std::string& text, bool initial,

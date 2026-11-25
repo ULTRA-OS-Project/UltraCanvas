@@ -145,7 +145,7 @@ namespace UltraCanvas {
                 Tr("Key Statistics: Germany (83.6M, 49.1% M / 50.9% F, Median Age 45.5) | "
                 "Russia (144M, 46.4% M / 53.6% F, Median Age 40.3)"));
         statsLabel->SetFontSize(11);
-        statsLabel->SetTextColor(Color(60, 60, 60));
+        statsLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60)));
 
         DemoKit::AddCaption(statsCard, "InsightsLabel",
                 Tr("Notable: Russia has 72% more population but Germany has older age structure. "

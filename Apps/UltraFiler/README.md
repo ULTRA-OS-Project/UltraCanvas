@@ -139,6 +139,16 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   the number of entries *Settings > Extras > History & Favorites > Limit of
   entries* is set to (10–1000, 300 by default), counted per section, with the
   oldest dropping off the end; *Settings ▸ Clear History* empties them.
+- **Edit in UltraPaint / Edit in ArtCreator:** the file context menu has
+  **Edit in UltraPaint** right after *Open with* when every selected entry is
+  a picture, and **Edit in ArtCreator** when every one is a drawing a vector
+  reader of this build takes (SVG, EPS, DXF, CDR, ... - whatever
+  `UltraCanvasFileLoader::CanLoadVectorDocument` answers for). Each needs the
+  files on the disk (not inside an archive, not on a remote drive) and the
+  editor startable - beside UltraFiler, on the `PATH`, or carried by the same
+  program (MobilePC). It starts the editor with the files; a copy already
+  running takes them (`BuildOpenMenuItems`, the folder displays'
+  `openMenuProvider`).
 - **Favorites (pinning):** the heart button next to the clock shows the
   Favorites view — the same **Files** / **Folders** / **Apps** layout as the
   History view, but listing what was pinned deliberately instead of what was

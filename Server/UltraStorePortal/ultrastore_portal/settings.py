@@ -1,6 +1,11 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.5.0 - advertising (PROMOTE, PROMOTE_TOPUPS, PROMOTE_CURRENCY)
+Version: 0.4.0 - the account's own address (ACCOUNT_URL) and the OpenID
+                 Connect provider's settings (OIDC_...)
+Version: 0.3.0 - the portal_ui template library, messages as Bootstrap alerts;
+                 a password is 8 to 64 characters
 Version: 0.1.0
 """
 
@@ -71,12 +76,37 @@ if not SECRET_KEY:
 STORE_ROOT_URL = "https://store.ultraos.eu"
 BASE_URL = env("BASE_URL", "http://127.0.0.1:8000" if (DEBUG or RUNNING_TESTS) else STORE_ROOT_URL).rstrip("/")
 _base = urlsplit(BASE_URL)
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS") or [_base.hostname or "localhost"]
+# The account's own root: where a person signs up and signs in, and the
+# issuer other services sign in through (identity/hosts.py). Unset, the
+# account lives under the store's root, as it did (<root>/account/). Set -
+# https://account.ultraos.eu - it is a second host this same service
+# answers, and the store's host signs people in through it like any other
+# service. It is written into every token for good: choose it before the
+# first service is registered, and do not change it afterwards.
+ACCOUNT_URL = env("ACCOUNT_URL").rstrip("/")
+ACCOUNT_NAME = env("ACCOUNT_NAME", "ULTRA OS account")
+_account = urlsplit(ACCOUNT_URL or BASE_URL)
+if ACCOUNT_URL:
+    if _account.scheme not in ("http", "https") or not _account.hostname or _account.path.strip("/"):
+        raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_ACCOUNT_URL is a host's root (https://account.ultraos.eu): {ACCOUNT_URL}")
+    if _account.scheme != _base.scheme:
+        raise ImproperlyConfigured("ULTRASTORE_PORTAL_ACCOUNT_URL and ULTRASTORE_PORTAL_BASE_URL are both https, or both http on a developer's machine")
+TWO_HOSTS = _account.netloc.lower() != _base.netloc.lower()
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS") or sorted({_base.hostname or "localhost", _account.hostname})
 if DEBUG or RUNNING_TESTS:
     ALLOWED_HOSTS += ["localhost", "127.0.0.1", "testserver"]
 HTTPS = _base.scheme == "https"
 if HTTPS:
-    CSRF_TRUSTED_ORIGINS = [f"https://{_base.netloc}"]
+    # With two hosts neither is told to trust the other: no form is posted
+    # from one to the other, and each host's own origin needs no listing
+    # (the web server passes Host and X-Forwarded-Proto on, deploy/nginx.conf).
+    # Their cookies are __Host- cookies then: bound to the one host that set
+    # them, which no other host under ultraos.eu can set or overwrite.
+    if TWO_HOSTS:
+        SESSION_COOKIE_NAME = "__Host-sessionid"
+        CSRF_COOKIE_NAME = "__Host-csrftoken"
+    else:
+        CSRF_TRUSTED_ORIGINS = [f"https://{_base.netloc}"]
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -95,16 +125,20 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "ultrastore_portal.accounts",
+    "ultrastore_portal.identity",
     "ultrastore_portal.store",
     "ultrastore_portal.billing",
+    "ultrastore_portal.promote",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "ultrastore_portal.identity.hosts.AccountHostMiddleware",   # before anything looks an address up
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "ultrastore_portal.identity.sessions.SignInMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -124,6 +158,8 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "ultrastore_portal.web.context.portal",
             ],
+            # {% load portal_ui %}: a form's field drawn with Bootstrap's classes (web/ui.py).
+            "libraries": {"portal_ui": "ultrastore_portal.web.ui"},
         },
     },
 ]
@@ -139,14 +175,34 @@ AUTH_USER_MODEL = "accounts.User"
 LOGIN_URL = "account:signin"
 LOGIN_REDIRECT_URL = "console:home"
 LOGOUT_REDIRECT_URL = "store:home"
+# A password is 8 to 64 characters - characters of Unicode text, not bytes
+# (accounts/validators.py). The two numbers are named once, here: the forms
+# say them and the validators check them.
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 64
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 12}},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": PASSWORD_MIN_LENGTH}},
+    {"NAME": "ultrastore_portal.accounts.validators.MaximumLengthValidator", "OPTIONS": {"max_length": PASSWORD_MAX_LENGTH}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 # A mailed link (the address proven, a password reset) is good this long.
 PASSWORD_RESET_TIMEOUT = 2 * 24 * 3600
+
+# Signing in for other services (identity/, OpenID Connect). The key the
+# identity tokens are signed with: a PEM file (an RSA key, 2048 bits or
+# more), or unset - one is made on first use and kept in the database. The
+# secret a person's subject is derived with: unset, made once and kept in
+# the database; it must never change. Then how long each thing lasts, in
+# seconds: the code, the access token, the identity token, a refresh token
+# that is not used.
+OIDC_KEY_FILE = env("OIDC_KEY_FILE")
+OIDC_SUBJECT_SECRET = env("OIDC_SUBJECT_SECRET")
+OIDC_CODE_TTL = int(env("OIDC_CODE_TTL", "120"))
+OIDC_ACCESS_TOKEN_TTL = int(env("OIDC_ACCESS_TOKEN_TTL", "3600"))
+OIDC_ID_TOKEN_TTL = int(env("OIDC_ID_TOKEN_TTL", "3600"))
+OIDC_REFRESH_TOKEN_TTL = int(env("OIDC_REFRESH_TOKEN_TTL", str(90 * 24 * 3600)))
 
 LANGUAGE_CODE = "en"
 TIME_ZONE = "UTC"
@@ -237,6 +293,15 @@ RESTRICTED_TTL = int(env("RESTRICTED_TTL", "600"))
 # path under the root as well.
 STORE_DOWNLOAD_URL = _under_root("STORE_DOWNLOAD_PATH")
 
+# Advertising (promote/, UltraAds): sponsored listings in the store. Off
+# unless switched on: with it off there is no Promote button, no page of it
+# and no advertisement anywhere. Paying into an advertising balance is a
+# second switch, off until the store writes tax invoices: until then a
+# balance comes from the operator's vouchers. One currency for balances.
+PROMOTE = env("PROMOTE", "0") == "1"
+PROMOTE_TOPUPS = env("PROMOTE_TOPUPS", "0") == "1"
+PROMOTE_CURRENCY = (env("PROMOTE_CURRENCY") or "EUR").upper()
+
 # Mail: smtp://user:password@host:587 or smtps://...:465; empty prints the
 # mail to the log, which is what a developer's machine wants.
 DEFAULT_FROM_EMAIL = env("MAIL_FROM", "UltraStore <noreply@localhost>")
@@ -256,6 +321,9 @@ elif RUNNING_TESTS:
     EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# A message's level as the Bootstrap alert that shows it (templates/_messages.html).
+MESSAGE_TAGS = {10: "secondary", 20: "primary", 25: "success", 30: "warning", 40: "danger"}
 
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 

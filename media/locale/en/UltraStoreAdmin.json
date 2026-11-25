@@ -1,6 +1,7 @@
 {
   "@language": "en",
   "@inherited": [
+    "(none)",
     "Access",
     "Apply",
     "Cancel",
@@ -34,7 +35,6 @@
   "(clause {0})": "(clause {0})",
   "(licence taken back)": "(licence taken back)",
   "(nobody)": "(nobody)",
-  "(none)": "(none)",
   "(none: a discount code)": "(none: a discount code)",
   "(off)": "(off)",
   "A job is already running": "A job is already running",

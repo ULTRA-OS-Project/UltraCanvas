@@ -45,6 +45,9 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.17.0 - GetPointerPosition: where the mouse pointer is on the screen
+// Version: 1.16.0 - CanCaptureScreen; macOS captures the screen (ScreenCaptureKit, the main
+//                   display, in its pixels with 0,0 at its top-left corner)
 // Version: 1.15.0 - UltraCanvasGlobalShortcut::StartExclusive: the key reaches nothing else
 //                  (Windows: a low-level hook that swallows it - Print Screen past the Snipping Tool)
 // Version: 1.14.0 - CaptureWindowImage (a taskbar's window previews);
@@ -72,7 +75,7 @@
 // Version: 1.4.0 - instead of the system's desktop (DesktopReplacement::Instead),
 //                  the notification area (UltraCanvasTrayHost), EndSession
 // Version: 1.3.0 - in place of the system's desktop (ReplaceSystemDesktop)
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -316,6 +319,11 @@ namespace UltraCanvas {
         // A desktop covers the ones its own window does not with windows of
         // WindowType::Desktop and WindowConfig::desktopArea.
         static std::vector<DesktopScreenInfo> ListScreens();
+        // Where the mouse pointer is, in the pixels of ListScreens - to open
+        // a window on the monitor the person is working on. X11 and Windows
+        // say; false (with 0,0) on Wayland, which tells a client the pointer
+        // only over its own windows, and on macOS.
+        static bool GetPointerPosition(int& x, int& y);
         // Reserve strips along the screen's edges for `windowId` - a desktop's
         // bars, a dock - so that maximised and tiled windows stop short of
         // them (EWMH _NET_WM_STRUT_PARTIAL on X11, an appbar per edge on
@@ -324,6 +332,22 @@ namespace UltraCanvas {
         // whole length of its edge. Call it again to change or, with four
         // zeros, to release. `windowId` is the window's native handle.
         static bool ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom);
+        // For a desktop that is the session's shell, on Windows without
+        // Explorer's taskbar: minimized windows kept out of sight, as
+        // Explorer has them, not parked as small title bars along the
+        // screen's bottom edge - Windows' own behaviour when no shell says
+        // otherwise. Switches that on for the session (ARW_HIDE) whenever
+        // something turned it off, and moves a window parked meanwhile off
+        // the screen, still minimized. Cheap enough to call every few
+        // seconds. False where Explorer's taskbar runs and on other systems.
+        static bool KeepMinimizedWindowsHidden();
+        // Whether this build can capture the screen at all: Linux (X11, and
+        // Wayland through the desktop portal), the BSDs, Windows and macOS
+        // 14 and later (the main display; the first capture asks for the
+        // Screen Recording permission). False on Android and in a browser,
+        // where a screenshot button is better not shown. True does not
+        // promise a capture: it can still fail, with its reason.
+        static bool CanCaptureScreen();
         // The whole screen, written as PNG to `pngPath`. The directory is
         // created. False with the reason in `error`.
         static bool CaptureScreen(const std::string& pngPath, std::string* error = nullptr);
@@ -354,6 +378,19 @@ namespace UltraCanvas {
         // False with the reason; `out` is then empty.
         static bool CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
                                        std::string* error = nullptr);
+        // A live picture of window `sourceId` drawn by the compositor into
+        // window `destinationId` - one of this program's own - inside the
+        // rectangle x, y, width, height of its client area (physical
+        // pixels), the source's proportions kept and centred, kept up to
+        // date as the source changes. Unlike CaptureWindowImage it shows a
+        // minimized window too, as it last looked: a window minimized
+        // before this program started has a picture all the same. Windows
+        // only (DWM, as Explorer's taskbar thumbnails); 0 elsewhere and on
+        // failure, and the caller captures instead. The handle ends with
+        // HideWindowThumbnail, or with the destination window.
+        static uint64_t ShowWindowThumbnail(uint64_t destinationId, uint64_t sourceId, int x, int y, int width,
+                                            int height);
+        static void HideWindowThumbnail(uint64_t thumbnail);
         // "<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png" - the
         // user's Pictures folder through GetWellKnownUserFolders, the home
         // directory when there is none. Only names the file; CaptureScreen
@@ -395,7 +432,9 @@ namespace UltraCanvas {
         // executable first (a build tree, a bundle), then on PATH. On macOS,
         // where every application is a bundle of its own, the <name>.app
         // beside this application's bundle and in ~/Applications and
-        // /Applications are tried before PATH.
+        // /Applications are tried before PATH. An application hosted in this
+        // program that stands in for `program` (UltraCanvasHostedApps,
+        // HostedAppInfo::programs) is started instead, with the arguments.
         static bool LaunchProgram(const std::string& program,
                                   const std::vector<std::string>& arguments = {},
                                   std::string* error = nullptr);

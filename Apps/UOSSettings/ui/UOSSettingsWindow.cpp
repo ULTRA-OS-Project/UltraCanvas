@@ -1,6 +1,9 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.20.0 - Language > Translations is gone: the localisation editor is
+//                  UOS-Localisation, a program of its own, which the Language
+//                  page's "Translate applications..." button starts
 // Version: 0.18.1 - the scrolled pages and tables take the theme's scrollbars
 //                  (ContainerStyle::FromTheme), not the light default
 // Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
@@ -137,7 +140,6 @@ namespace {
     constexpr const char* kPageEmoji          = "appearance/emoji";
     constexpr const char* kPageLook           = "appearance/look";
     constexpr const char* kPageLanguage       = "language";
-    constexpr const char* kPageTranslations   = "translations";
     constexpr const char* kSectionNotifications = "notifications";
     constexpr const char* kPageRegistrations  = "notifications/registrations";
     constexpr const char* kSectionDevices     = "devices";
@@ -351,7 +353,6 @@ bool UOSSettingsWindow::Create() {
     AddTreeNode("settings", kPageDesktop, Tr("Desktop"));
     AddTreeNode(kPageDesktop, kPageInfoBar, Tr("Info bar"));
     AddTreeNode("settings", kPageLanguage, Tr("Language"));
-    AddTreeNode(kPageLanguage, kPageTranslations, Tr("Translations"));
     AddTreeNode("settings", kSectionFileDialogs, Tr("File dialogs"));
     AddTreeNode(kSectionFileDialogs, kPageLastFolder, Tr("Last used folder"));
     AddTreeNode("settings", kSectionAppearance, Tr("Appearance"));
@@ -368,7 +369,6 @@ bool UOSSettingsWindow::Create() {
     BuildInfoBarPage();
     BuildLastFolderPage();
     BuildLanguagePage();
-    BuildTranslationsPage();
     BuildLookPage();
     BuildEmojiPage();
     BuildNotificationsPage();
@@ -385,7 +385,6 @@ bool UOSSettingsWindow::Create() {
         if (pageId == kPageLook) RefreshLookPage();
         if (pageId == kPageEmoji) RefreshEmojiPage();
         if (pageId == kPageLanguage) RefreshLanguagePage();
-        if (pageId == kPageTranslations) RefreshTranslationsPage();
         if (pageId == kPageRegistrations) RefreshNotificationsPage();
     };
     // Opens on the desktop's page - what the desktop's settings button is
@@ -623,6 +622,17 @@ void UOSSettingsWindow::BuildDesktopPage() {
     };
     addRow("uos-dt-desktops-row", Tr("Virtual desktops"), desktops_);
 
+    // UltraClipboard, UltraSnip and UltraToDo: only on the right bar's tool
+    // group, or listed on the taskbar as well.
+    toolApps_ = std::make_shared<UltraCanvasDropdown>("uos-dt-toolapps", 0, 0, 220, 28);
+    toolApps_->AddItem(Tr("Only on the tool group"), "group");
+    toolApps_->AddItem(Tr("On the taskbar too"), "taskbar");
+    toolApps_->SetTooltip(Tr("UltraClipboard, UltraSnip and UltraToDo have buttons on the right bar; their windows show on the taskbar only when chosen here."));
+    toolApps_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-toolapps-row", Tr("Tool applications"), toolApps_);
+
     // The Apps window: its view, when a category is split into its
     // sub-categories, and how many applications Recent shows.
     appsView_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appsview", 0, 0, 200, 28);
@@ -792,6 +802,7 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
     if (desktops_) desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
+    if (toolApps_) toolApps_->SetSelectedIndex(settings.toolAppsOnTaskbar ? 1 : 0, false);
     if (appsView_) appsView_->SetSelectedIndex(settings.appsView == "tree" ? 1 : 0, false);
     if (appsSplit_) appsSplit_->SetSelectedIndex(NearestChoice(kAppsSplitChoices, settings.appsSplitAbove), false);
     if (recentShown_) recentShown_->SetSelectedIndex(NearestChoice(kRecentShownChoices, settings.recentAppsShown), false);
@@ -850,6 +861,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
     if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();
     if (desktops_) settings.virtualDesktops = std::clamp(desktops_->GetSelectedIndex() + 1, 1, 9);
+    if (toolApps_) settings.toolAppsOnTaskbar = toolApps_->GetSelectedIndex() == 1;
     if (appsView_) settings.appsView = appsView_->GetSelectedIndex() == 1 ? "tree" : "tiles";
     if (appsSplit_) settings.appsSplitAbove = ChoiceAt(kAppsSplitChoices, appsSplit_->GetSelectedIndex(), 8);
     if (recentShown_) settings.recentAppsShown = ChoiceAt(kRecentShownChoices, recentShown_->GetSelectedIndex(), 8);
@@ -1200,6 +1212,14 @@ void UOSSettingsWindow::BuildLookPage() {
     page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    {
+        // Its rows, preview and notes outgrow the window at a large font,
+        // so it scrolls rather than cutting the notes off at the bottom.
+        ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
+        cs.autoShowScrollbars = true;
+        cs.autoShowHorizontalScrollbar = false;
+        page->SetContainerStyle(cs);
+    }
 
     auto title = MakeLabel("uos-look-title", Tr("Look"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
@@ -1212,6 +1232,10 @@ void UOSSettingsWindow::BuildLookPage() {
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
+    // Every row's caption in one column, as wide as the widest caption
+    // (FitCaptionColumn, below): the controls all start at one x, in every
+    // language, instead of each just after its own caption.
+    std::vector<std::shared_ptr<UltraCanvasLabel>> captions;
     auto row = [&](const std::string& id, const std::string& label, int topMargin) {
         auto r = std::make_shared<UltraCanvasContainer>(id);
         r->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -1219,7 +1243,7 @@ void UOSSettingsWindow::BuildLookPage() {
         r->size.height = CSSLayout::Dimension::Px(32);
         r->SetMargin(static_cast<float>(topMargin), 0, 0, 0);
         auto l = MakeLabel(id + "-label", label);
-        l->SetWidth(90);
+        captions.push_back(l);
         r->AddChild(l);
         page->AddChild(r);
         return r;
@@ -1289,27 +1313,37 @@ void UOSSettingsWindow::BuildLookPage() {
 
     lightText_ = segmented("uos-look-lighttext", {Tr("Firm"), Tr("Plain")}, 200);
     row("uos-look-lighttext-row", Tr("Light text:"), 10)->AddChild(lightText_);
+    FitCaptionColumn(captions);
 
     // The preview: a few elements styled from the theme the choices give,
     // on that theme's panel - the page shows the result by being it.
     lookPreview_ = std::make_shared<UltraCanvasContainer>("uos-look-preview");
-    lookPreview_->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    // The label on a line of its own, the controls in a row below it: on one
+    // line a long translated label pushed the dropdown past the panel's edge.
+    lookPreview_->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Start);
     lookPreview_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    lookPreview_->size.height = CSSLayout::Dimension::Px(56);
     lookPreview_->SetPadding(12, 12, 12, 12);
     lookPreview_->SetMargin(16, 0, 0, 0);
     previewLabel_ = std::make_shared<UltraCanvasLabel>("uos-look-preview-label", 0, 0, 160, 28, Tr("A label in the look"));
-    previewButton_ = std::make_shared<UltraCanvasButton>("uos-look-preview-button", 0, 0, 90, 28, Tr("Button"));
+    previewLabel_->size.width = CSSLayout::Dimension::Auto();   // as wide as its text
+    previewLabel_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    lookPreview_->AddChild(previewLabel_);
+    auto previewControls = std::make_shared<UltraCanvasContainer>("uos-look-preview-controls");
+    previewControls->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    previewControls->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    previewControls->size.height = CSSLayout::Dimension::Px(28);
+    previewButton_ = std::make_shared<UltraCanvasButton>("uos-look-preview-button", 0, 0, 110, 28, Tr("Button"));
     previewInput_ = std::make_shared<UltraCanvasTextInput>("uos-look-preview-input", 0, 0, 160, 28);
     previewInput_->SetText(Tr("A field"));
-    previewPick_ = std::make_shared<UltraCanvasDropdown>("uos-look-preview-pick", 0, 0, 120, 28);
+    previewPick_ = std::make_shared<UltraCanvasDropdown>("uos-look-preview-pick", 0, 0, 140, 28);
     previewPick_->AddItem(DropdownItem(Tr("A choice")));
     previewPick_->SetSelectedIndex(0);
     for (const std::shared_ptr<UltraCanvasUIElement>& e :
-         std::initializer_list<std::shared_ptr<UltraCanvasUIElement>>{previewLabel_, previewButton_, previewInput_, previewPick_}) {
+         std::initializer_list<std::shared_ptr<UltraCanvasUIElement>>{previewButton_, previewInput_, previewPick_}) {
         e->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        lookPreview_->AddChild(e);
+        previewControls->AddChild(e);
     }
+    lookPreview_->AddChild(previewControls);
     page->AddChild(lookPreview_);
 
     lookStatus_ = MakeLabel("uos-look-status", "", TextFontSize(), MutedTextColor());
@@ -1554,7 +1588,9 @@ void UOSSettingsWindow::BuildLanguagePage() {
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->size.height = CSSLayout::Dimension::Px(32);
     row->SetMargin(14, 0, 0, 0);
-    row->AddChild(MakeLabel("uos-lang-label", Tr("Language:")));
+    // The two captions in one column, so the two fields start at one x.
+    auto languageCaption = MakeLabel("uos-lang-label", Tr("Language:"));
+    row->AddChild(languageCaption);
     language_ = std::make_shared<UltraCanvasDropdown>("uos-lang-dropdown", 0, 0, 300, 28);
     language_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     language_->onSelectionChanged = [this](int index, const DropdownItem&) {
@@ -1576,7 +1612,9 @@ void UOSSettingsWindow::BuildLanguagePage() {
     translatorRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     translatorRow->size.height = CSSLayout::Dimension::Px(32);
     translatorRow->SetMargin(10, 0, 0, 0);
-    translatorRow->AddChild(MakeLabel("uos-lang-translator-label", Tr("Translator:")));
+    auto translatorCaption = MakeLabel("uos-lang-translator-label", Tr("Translator:"));
+    translatorRow->AddChild(translatorCaption);
+    FitCaptionColumn({languageCaption, translatorCaption});
     translator_ = std::make_shared<UltraCanvasTextInput>("uos-lang-translator", 0, 0, 300, 28);
     translator_->SetPlaceholder(Tr("Your name, for the catalogues you edit"));
     translator_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -1594,6 +1632,24 @@ void UOSSettingsWindow::BuildLanguagePage() {
     translatorRow->AddChild(translator_);
     page->AddChild(translatorRow);
 
+    // The translations themselves are edited in UOS-Localisation, a program
+    // of its own (until 0.20 the Translations page here): started in the
+    // language chosen above.
+    auto translateRow = std::make_shared<UltraCanvasContainer>("uos-lang-translate-row");
+    translateRow->layout.SetFlexRow().SetFlexGap(12)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    translateRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    translateRow->size.height = CSSLayout::Dimension::Px(36);
+    translateRow->SetMargin(14, 0, 0, 0);
+    auto translate = std::make_shared<UltraCanvasButton>("uos-lang-translate", 0, 0, 220, 28,
+                                                         Tr("Translate applications..."));
+    translate->SetFontSize(TextFontSize());
+    translate->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    translate->SetTooltip(Tr("Opens UOS-Localisation, the translation editor"));
+    translate->SetOnClick([this]() { OpenTranslationEditor(); });
+    translateRow->AddChild(translate);
+    page->AddChild(translateRow);
+
     languageStatus_ = MakeLabel("uos-lang-status", "", TextFontSize(), MutedTextColor());
     languageStatus_->SetMargin(10, 0, 0, 0);
     page->AddChild(languageStatus_);
@@ -1609,8 +1665,8 @@ void UOSSettingsWindow::BuildLanguagePage() {
             Tr("An application uses a change the next time it starts. The command line "
                "(--lang) and the ULTRACANVAS_LANG variable override this setting for "
                "one start."),
-            Tr("The translator's name goes into the catalogues the localisation editor "
-               "saves, so a draft says who reviewed it.")});
+            Tr("The translator's name goes into the catalogues UOS-Localisation, the "
+               "translation editor, saves, so a draft says who reviewed it.")});
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
@@ -1618,47 +1674,18 @@ void UOSSettingsWindow::BuildLanguagePage() {
     pageArea->AddChild(page);
 }
 
-void UOSSettingsWindow::BuildTranslationsPage() {
-    auto page = std::make_shared<UltraCanvasContainer>("uos-page-translations");
-    page->layout.SetFlexColumn().SetFlexGap(0)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
-    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    auto title = MakeLabel("uos-translations-title", Tr("Translations"), TitleFontSize());
-    title->SetFontWeight(FontWeight::Bold);
-    page->AddChild(title);
-    auto caption = MakeText("uos-translations-caption",
-            Tr("Every set an application's texts come from in one grid - its own set, the base sets "
-               "it takes and the standard set - for any application and any language. A save goes "
-               "into the source tree when the catalogues are writable, else into the UltraCanvas "
-               "settings folder, where a running application picks it up; the status line says where."));
-    caption->SetMargin(6, 0, 0, 0);
-    page->AddChild(caption);
-
-    translations_ = std::make_shared<UltraCanvasLocalisationEditor>("uos-translations-editor");
-    translations_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
-                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    translations_->SetMargin(12, 0, 0, 0);
-    page->AddChild(translations_);
-
-    pages[kPageTranslations] = page;
-    pageArea->AddChild(page);
-}
-
-void UOSSettingsWindow::RefreshTranslationsPage() {
-    if (!translations_) return;
-    const std::string settingsFolder = PathToUtf8(UltraCanvasSettingsFolder());
-    const std::string shipped = UltraLocalisation::ShippedFolder().empty()
-            ? NormalizePath(GetResourcesDir() + "media/locale") : UltraLocalisation::ShippedFolder();
-    translations_->SetFolders(shipped, settingsFolder);
-    translations_->SetTranslatorName(LanguageSettings::Load(settingsFolder).translator);
-    if (translations_->GetWorkspace().Application().empty()) {
-        const LanguageSettings settings = LanguageSettings::Load(settingsFolder);
-        const std::string language = settings.language == "system" || settings.language.empty()
-                ? UltraLocalisation::CurrentLanguage() : settings.language;
-        translations_->Open("", language.empty() ? "en" : language);
+void UOSSettingsWindow::OpenTranslationEditor() {
+    // The language chosen here, unless that is "System": then the editor's own choice.
+    std::vector<std::string> arguments;
+    const LanguageSettings settings = LanguageSettings::Load(PathToUtf8(UltraCanvasSettingsFolder()));
+    if (!settings.language.empty() && settings.language != "system") arguments = {"--lang", settings.language};
+    std::string error;
+    if (UltraCanvasDesktopShell::LaunchProgram("UOS-Localisation", arguments, &error)) {
+        if (languageStatus_) languageStatus_->SetText(Tr("UOS-Localisation is starting."));
+        return;
+    }
+    if (languageStatus_) {
+        languageStatus_->SetText(TrF("UOS-Localisation, the translation editor, could not be started: {0}", error));
     }
 }
 

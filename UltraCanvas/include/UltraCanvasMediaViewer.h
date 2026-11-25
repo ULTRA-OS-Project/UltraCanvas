@@ -87,6 +87,9 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.32.0 - a word-processing document (.odt, .docx, .doc) opens in the document view as its
+//                   pages, laid out as print lays them out (IsWordProcessingFile); a password-protected
+//                   one waits for Unlock
 // Version: 1.31.0 - a presentation opens as its slides in the document view (UltraCanvasPresentationPages),
 //                   the info bar naming the slide and its speaker notes; SetPresentationOutline (O);
 //                   StartPresenting / StopPresenting (F5 / Shift+F5, Escape): the slide show
@@ -792,6 +795,13 @@ public:
     // tables and notes - as UltraCanvasFileLoader::LoadTextDocument reads
     // them; a password-protected one is locked until Unlock, as a PDF is.
     static bool IsPresentationFile(const std::string& path);
+    // Word-processing documents (.odt, .docx, .doc), by name. Shown in the
+    // document view as their pages - laid out as print and PDF export lay
+    // them out, on white paper, with headers, footers, pictures and tables -
+    // with the PDF view's zoom, page strip and search. A password-protected
+    // .docx or .odt is locked until Unlock, as a PDF is. False in a build
+    // without the PDF view.
+    static bool IsWordProcessingFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
     // The panel the "Details" button opens over the display area: a group box
@@ -1067,7 +1077,7 @@ private:
 
     // The shown file is password-protected and not unlocked: which kind,
     // so Unlock knows how to open it (see IsLocked()).
-    enum class MediaLock { NotLocked, UCDImage, PDF, Presentation };
+    enum class MediaLock { NotLocked, UCDImage, PDF, Presentation, WordDocument };
     MediaLock locked = MediaLock::NotLocked;
     bool unlocked = false;            // ... or it is, and was opened with its password (IsUnlocked)
     bool askingForPassword = false;   // Unlock's question is up

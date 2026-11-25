@@ -5,64 +5,40 @@
   <div><h1>{{ app.name }} {{ release.version }}</h1><a class="small" href="{% url 'console:app' app.app_id %}">All releases</a></div>
   {% include "_state.html" with state=release.state label=release.get_state_display %}
   <span class="badge">{{ release.get_channel_display }}</span>
-  <div class="right row">
-    {% if release.editable %}
-      <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'submit' %}">{% csrf_token %}<button class="button"{% if problems %} disabled title="See what is missing below" style="opacity:.5;cursor:not-allowed"{% endif %}>Send for review</button></form>
-    {% endif %}
-    {% if release.state == "submitted" %}
-      <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'withdraw' %}">{% csrf_token %}<button class="button plain">Withdraw from review</button></form>
-    {% endif %}
-    {% if release.state == "published" %}
-      <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'withdraw' %}" onsubmit="return confirm('Take this version out of the store?')">{% csrf_token %}<button class="button danger">Unpublish</button></form>
-    {% endif %}
-    {% if release.editable or release.state == "rejected" or release.state == "withdrawn" %}
-      <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'delete' %}" onsubmit="return confirm('Delete this release and its packages?')">{% csrf_token %}<button class="button danger">Delete</button></form>
-    {% endif %}
-  </div>
+  <div class="ms-auto d-flex flex-wrap gap-2" id="release-actions">{% include "console/_release_actions.html" %}</div>
 </div>
 <div class="panels">
 {% if release.review_message %}
-  <div class="note {% if release.state == 'published' %}success{% else %}warning{% endif %}"><b>The reviewer wrote{% if release.reviewed_at %} on {{ release.reviewed_at|date:"j F Y" }}{% endif %}:</b><br>{{ release.review_message|linebreaksbr }}</div>
+  <div class="alert {% if release.state == 'published' %}alert-success{% else %}alert-warning{% endif %}"><b>The reviewer wrote{% if release.reviewed_at %} on {{ release.reviewed_at|date:"j F Y" }}{% endif %}:</b><br>{{ release.review_message|linebreaksbr }}</div>
 {% endif %}
-{% if release.state == "submitted" %}<div class="note">In review since {{ release.submitted_at|date:"j F Y, H:i" }}. The release cannot be changed while the review runs; withdraw it to edit.</div>{% endif %}
-{% if release.state == "published" %}<div class="note success">Published {{ release.published_at|date:"j F Y" }}. A published release is never changed: a fix is a new version.</div>{% endif %}
-{% if problems %}
-  <div class="note warning"><b>Before this release can go to review:</b><ul>{% for problem in problems %}<li>{{ problem }}</li>{% endfor %}</ul></div>
-{% endif %}
+{% if release.state == "submitted" %}<div class="alert alert-primary">In review since {{ release.submitted_at|date:"j F Y, H:i" }}. The release cannot be changed while the review runs; withdraw it to edit.</div>{% endif %}
+{% if release.state == "published" %}<div class="alert alert-success">Published {{ release.published_at|date:"j F Y" }}. A published release is never changed: a fix is a new version.</div>{% endif %}
+<div id="release-problems">{% include "console/_release_problems.html" %}</div>
 
-<div class="panel">
+<div class="card"><div class="card-body">
   <h2>Packages</h2>
-  {% if packages %}
-  <table>
-    <tr><th>System</th><th>Processor</th><th>Needs</th><th>Entry</th><th>File</th><th class="num">Size</th><th></th></tr>
-    {% for package in packages %}
-    <tr>
-      <td>{{ package.os_name }}</td><td>{{ package.arch }}</td>
-      <td>{% if package.min_os %}{{ package.min_os }}+{% endif %} {{ package.variant }}</td>
-      <td class="mono">{{ package.entry }}</td>
-      <td><div>{{ package.original_name }}</div><div class="mono muted">sha256 {{ package.sha256 }}</div></td>
-      <td class="num">{{ package.size|filesizeformat }}</td>
-      <td class="num">{% if release.editable %}<form method="post" action="{% url 'console:package_delete' app.app_id release.pk package.pk %}">{% csrf_token %}<button class="link">Remove</button></form>{% endif %}</td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}<p class="muted">No package yet. Add one archive per system and processor.</p>{% endif %}
+  <div id="packages">{% include "console/_packages.html" %}</div>
   {% if package_form %}
-  <form method="post" enctype="multipart/form-data" action="{% url 'console:package_add' app.app_id release.pk %}" class="form wide" style="margin-top:22px">
+  {# Sent by the page's script: the upload shows its progress, the new package appears in the table above, and the release details typed below stay. #}
+  <form method="post" enctype="multipart/form-data" action="{% url 'console:package_add' app.app_id release.pk %}" class="form-wide mt-4" data-in-place data-choices="{{ package_form.choices_json }}">
     {% csrf_token %}
-    <fieldset><legend>Add a package</legend>
-      {% include "_form.html" with form=package_form %}
+    <fieldset><legend class="h3">Add a package</legend>
+      <div class="alert alert-danger" data-form-error hidden></div>
+      {% include "console/_package_fields.html" with form=package_form %}
     </fieldset>
-    <button class="button soft">Upload package</button>
-    <span class="small muted" style="margin-left:10px">Up to {{ max_mb }} MB. The store checks the archive and records its SHA-256.</span>
+    <div class="progress mb-3" role="progressbar" aria-label="Upload" aria-valuemin="0" aria-valuemax="100" data-progress hidden><div class="progress-bar" style="width:0"></div></div>
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <button class="btn btn-soft-primary">Upload package</button>
+      <span class="small text-secondary">Up to {{ max_mb }} MB. The store checks the archive and records its SHA-256.</span>
+    </div>
   </form>
   {% endif %}
-</div>
+</div></div>
 
-<div class="panel form wide">
+<div class="card form-wide"><div class="card-body">
   <h2>Release details</h2>
   {% if form %}
-  <form method="post" class="stack">{% csrf_token %}{% include "_form.html" %}<button class="button">Save</button></form>
+  <form method="post">{% csrf_token %}{% include "_form.html" %}<button class="btn btn-primary">Save</button></form>
   {% else %}
   <dl class="facts">
     <dt>Version</dt><dd>{{ release.version }}</dd>
@@ -71,6 +47,9 @@
     <dt>What's new</dt><dd>{{ release.notes|linebreaksbr|default:"-" }}</dd>
   </dl>
   {% endif %}
+</div></div>
 </div>
-</div>
+
+{# The dialog a package is edited in: its form is fetched from the package's edit address (console/_package_edit.html). #}
+<div class="modal fade" id="dialog" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"></div></div></div>
 {% endblock %}

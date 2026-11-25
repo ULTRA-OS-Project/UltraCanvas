@@ -8,16 +8,22 @@
 //     .pptx reader makes of the original
 //   - presentation-features.fodp, a flat deck written by hand: white space,
 //     nested and unnumbered lists, inherited styles, groups, hyperlinked
-//     shapes, slide furniture and prompts left out, a hidden slide, a table
+//     shapes, slide furniture and prompts left out (a prompting placeholder
+//     kept empty), a hidden slide, a table
 //     with a covered cell, an embedded object left out, an inline picture, a
 //     page comment left out
+//   - a flat deck written in the test for the look as drawn: style parents and
+//     defaults, ODF's shape types, paths, lines, gradients, numbering, a
+//     table template, backgrounds
 //   - a password-protected package and other ODF types refused with a reason
 //   - UltraCanvasFileLoader (LoadTextDocument, the Open dialog's types, text
 //     extraction) and UltraFiler's preview page take the new types
+// Version: 1.1.1 - a prompting placeholder is kept as an empty one (an editor types into it)
+// Version: 1.1.0 - the look as drawn: a flat deck written in the test
 // Version: 1.0.1 - the protected package's manifest is a whole one (it now opens with a password;
 //                  OdfEncryptionTest reads real ones)
 // Version: 1.0.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -245,7 +251,12 @@ void TestFlatDeck() {
               FindShape(first, PptxShapeKind::Text, "Shape")->paragraphs[0].Text() == "Grouped",
           "a shape inside a group is read");
     Check(FindShape(first, PptxShapeKind::Text, "LinkedBox") != nullptr, "a frame behind a hyperlink is read");
-    Check(first.shapes.size() == 5, "a rectangle without text is no shape of the outline");
+    Check(first.shapes.size() == 6, "a rectangle without text is no shape of the outline (the empty placeholder is)");
+    const PptxShape* prompt = nullptr;
+    for (const PptxShape& shape : first.shapes)
+        if (shape.kind == PptxShapeKind::Body && shape.width == 360000 && shape.height == 360000) prompt = &shape;
+    Check(prompt && prompt->placeholder == "body" && prompt->paragraphs.size() == 1 && prompt->paragraphs[0].Text().empty(),
+          "a prompting placeholder is kept empty, without its prompt");
     Check(first.notes.size() == 2 && first.notes[0].Text() == "Speaker note one" &&
               first.notes[1].Text() == "Speaker note two",
           "both paragraphs of the speaker notes");
@@ -390,11 +401,232 @@ void TestFileLoader() {
           "... and a .fodp's (\"" + (lines.empty() ? std::string() : lines.front()) + "\")");
 }
 
+// The look as drawn, from a flat deck written here: style parents and the
+// family defaults, a share of the size under it, font faces, ODF's own shape
+// types, a turn, a mirrored enhanced path, a rounded rectangle, an ellipse, a
+// line with a marker, a polyline, an SVG path, a regular polygon, a dotted
+// outline, radial and linear gradients (LibreOffice's bare tenths of a
+// degree), numbering placed by label alignment and continued across lists, a
+// link to a page by its name, a table template, and backgrounds from the page
+// and from its master page.
+const char* kLookDeck = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink"
+ xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+ xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+ office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.presentation">
+ <office:font-face-decls>
+  <style:font-face style:name="Body" svg:font-family="'Liberation Sans'"/>
+ </office:font-face-decls>
+ <office:styles>
+  <style:default-style style:family="graphic">
+   <style:graphic-properties draw:fill="solid" draw:fill-color="#729fcf" draw:stroke="solid" svg:stroke-color="#3465a4"/>
+   <style:text-properties fo:font-size="20pt" fo:color="#333333" style:font-name="Body"/>
+  </style:default-style>
+  <style:style style:name="Base" style:family="graphic">
+   <style:graphic-properties draw:fill="solid" draw:fill-color="#112233" draw:stroke="none" draw:textarea-vertical-align="bottom"/>
+  </style:style>
+  <style:style style:name="Child" style:family="graphic" style:parent-style-name="Base">
+   <style:graphic-properties draw:stroke="dash" draw:stroke-dash="Dots" svg:stroke-color="#ff0000" svg:stroke-width="0.1cm"/>
+   <style:text-properties fo:font-size="150%"/>
+  </style:style>
+  <draw:stroke-dash draw:name="Dots" draw:style="round" draw:dots1="1" draw:dots1-length="0.02cm" draw:distance="0.05cm"/>
+  <draw:gradient draw:name="Radial" draw:style="radial" draw:start-color="#000000" draw:end-color="#ffffff" draw:angle="0"/>
+  <draw:gradient draw:name="Tenths" draw:style="linear" draw:start-color="#ff0000" draw:end-color="#00ff00" draw:angle="900"/>
+  <draw:marker draw:name="Arrow" svg:viewBox="0 0 20 30" svg:d="M10 0l-10 30h20z"/>
+  <style:style style:name="HeadCell" style:family="table-cell">
+   <style:table-cell-properties fo:background-color="#203040"/>
+   <style:text-properties fo:color="#ffffff" fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="BodyCell" style:family="table-cell">
+   <style:table-cell-properties fo:background-color="#eeeeee" fo:border="0.05cm solid #000000" style:vertical-align="middle" fo:padding="0.2cm"/>
+  </style:style>
+  <table:table-template table:name="Banded">
+   <table:first-row table:style-name="HeadCell"/>
+   <table:body table:style-name="BodyCell"/>
+  </table:table-template>
+  <text:list-style style:name="Num">
+   <text:list-level-style-number text:level="1" style:num-format="I" style:num-suffix="." text:start-value="2">
+    <style:list-level-properties text:list-level-position-and-space-mode="label-alignment">
+     <style:list-level-label-alignment fo:margin-left="1.27cm" fo:text-indent="-0.635cm"/>
+    </style:list-level-properties>
+   </text:list-level-style-number>
+  </text:list-style>
+ </office:styles>
+ <office:automatic-styles>
+  <style:page-layout style:name="PM1">
+   <style:page-layout-properties fo:page-width="25.4cm" fo:page-height="19.05cm"/>
+  </style:page-layout>
+  <style:style style:name="dpMaster" style:family="drawing-page">
+   <style:drawing-page-properties draw:fill="solid" draw:fill-color="#fafad2"/>
+  </style:style>
+  <style:style style:name="dp1" style:family="drawing-page"><style:drawing-page-properties/></style:style>
+  <style:style style:name="dp2" style:family="drawing-page">
+   <style:drawing-page-properties draw:fill="solid" draw:fill-color="#000080"/>
+  </style:style>
+  <style:style style:name="gr1" style:family="graphic" style:parent-style-name="Child"><style:graphic-properties/></style:style>
+  <style:style style:name="gr2" style:family="graphic">
+   <style:graphic-properties draw:fill="gradient" draw:fill-gradient-name="Radial"/>
+  </style:style>
+  <style:style style:name="gr3" style:family="graphic">
+   <style:graphic-properties draw:fill="gradient" draw:fill-gradient-name="Tenths" draw:stroke="none"/>
+  </style:style>
+  <style:style style:name="gr4" style:family="graphic">
+   <style:graphic-properties draw:fill="none" draw:stroke="solid" svg:stroke-color="#00ff00" draw:marker-start="Arrow"/>
+  </style:style>
+  <style:style style:name="gr5" style:family="graphic">
+   <style:graphic-properties draw:fill="none" draw:stroke="none"/>
+  </style:style>
+  <style:style style:name="T1" style:family="text"><style:text-properties style:use-window-font-color="true"/></style:style>
+ </office:automatic-styles>
+ <office:master-styles>
+  <style:master-page style:name="M" style:page-layout-name="PM1" draw:style-name="dpMaster"/>
+ </office:master-styles>
+ <office:body>
+  <office:presentation>
+   <draw:page draw:name="First" draw:style-name="dp1" draw:master-page-name="M">
+    <draw:custom-shape draw:name="Oval" draw:style-name="gr1" svg:x="1cm" svg:y="1cm" svg:width="4cm" svg:height="2cm">
+     <text:p>Big</text:p>
+     <draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="ellipse"/>
+    </draw:custom-shape>
+    <draw:custom-shape draw:name="Tri" svg:width="4cm" svg:height="2cm" draw:transform="rotate (1.5707963267949) translate (2cm 8cm)">
+     <draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="isosceles-triangle"/>
+    </draw:custom-shape>
+    <draw:custom-shape draw:name="Free" draw:style-name="gr3" svg:x="6cm" svg:y="1cm" svg:width="2cm" svg:height="2cm">
+     <draw:enhanced-geometry svg:viewBox="0 0 21600 21600" draw:type="non-primitive" draw:mirror-vertical="true"
+      draw:enhanced-path="M 0 0 L 21600 0 10800 21600 Z N"/>
+    </draw:custom-shape>
+    <draw:rect draw:name="Rounded" draw:style-name="gr2" draw:corner-radius="0.5cm" svg:x="9cm" svg:y="1cm" svg:width="3cm" svg:height="2cm"/>
+    <draw:ellipse draw:name="Disc" svg:x="13cm" svg:y="1cm" svg:width="2cm" svg:height="2cm"/>
+    <draw:line draw:name="Line" draw:style-name="gr4" svg:x1="10cm" svg:y1="5cm" svg:x2="6cm" svg:y2="7cm"/>
+    <draw:polyline draw:name="Zig" draw:style-name="gr4" svg:x="1cm" svg:y="12cm" svg:width="4cm" svg:height="2cm"
+     svg:viewBox="0 0 100 100" draw:points="0,0 50,100 100,0"/>
+    <draw:path draw:name="Blob" svg:x="6cm" svg:y="12cm" svg:width="4cm" svg:height="2cm" svg:viewBox="0 0 200 100"
+     svg:d="M0 0 h200 v100 q-100 -50 -200 0 z"/>
+    <draw:regular-polygon draw:name="Hex" draw:corners="6" svg:x="11cm" svg:y="12cm" svg:width="2cm" svg:height="2cm"/>
+    <draw:frame draw:name="Listed" draw:style-name="gr5" svg:x="14cm" svg:y="4cm" svg:width="8cm" svg:height="6cm">
+     <draw:text-box>
+      <text:list text:style-name="Num">
+       <text:list-item><text:p>Two <text:span text:style-name="T1">auto</text:span></text:p></text:list-item>
+       <text:list-item><text:p>Three</text:p></text:list-item>
+      </text:list>
+      <text:p>Go to <text:a xlink:type="simple" xlink:href="#Second">the second</text:a></text:p>
+      <text:list text:style-name="Num" text:continue-numbering="true">
+       <text:list-item><text:p>Four</text:p></text:list-item>
+      </text:list>
+     </draw:text-box>
+    </draw:frame>
+    <draw:frame draw:name="Grid" svg:x="1cm" svg:y="15cm" svg:width="6cm" svg:height="2cm">
+     <table:table table:template-name="Banded" table:use-first-row-styles="true">
+      <table:table-column table:number-columns-repeated="2" table:style-name="co1"/>
+      <table:table-row><table:table-cell><text:p>H1</text:p></table:table-cell><table:table-cell><text:p>H2</text:p></table:table-cell></table:table-row>
+      <table:table-row><table:table-cell><text:p>B1</text:p></table:table-cell><table:table-cell><text:p>B2</text:p></table:table-cell></table:table-row>
+     </table:table>
+    </draw:frame>
+   </draw:page>
+   <draw:page draw:name="Second" draw:style-name="dp2" draw:master-page-name="M"/>
+  </office:presentation>
+ </office:body>
+</office:document>
+)XML";
+
+void TestLookByHand() {
+    std::cout << "\n=== The look as drawn (a flat deck written here) ===\n";
+    PptxPresentation deck;
+    std::string error;
+    const std::string xml = kLookDeck;
+    if (!ReadOdpPresentationFromMemory(std::vector<uint8_t>(xml.begin(), xml.end()), deck, error) ||
+        deck.slides.size() != 2) {
+        Check(false, "the deck reads (" + error + ")");
+        return;
+    }
+    const PptxSlide& first = deck.slides[0];
+    Check(first.background == "FAFAD2" && deck.slides[1].background == "000080",
+          "backgrounds: the master page's where the page says none, else the page's");
+    auto named = [&](const char* name) -> const PptxShape* {
+        for (const PptxShape& shape : first.shapes)
+            if (shape.name == name) return &shape;
+        return nullptr;
+    };
+    const PptxShape* oval = named("Oval");
+    Check(oval && oval->geometry == "ellipse" && oval->fill == "112233" && oval->line == "FF0000" &&
+              std::abs(oval->lineWidthPt - 2.835) < 0.01 && oval->dash == RichShape::Dash::Dotted &&
+              oval->anchor == PptxAnchor::Bottom,
+          "a style through its parent: the parent's fill and anchor, its own dotted red outline");
+    Check(oval && !oval->paragraphs.empty() && !oval->paragraphs[0].runs.empty() &&
+              oval->paragraphs[0].runs[0].sizePt == 30.0f && oval->paragraphs[0].runs[0].font == "Liberation Sans" &&
+              oval->paragraphs[0].runs[0].color == "333333",
+          "text: 150 % of the default's 20 pt, the default's font face and colour");
+    const PptxShape* tri = named("Tri");
+    Check(tri && tri->geometry == "triangle" && std::abs(tri->rotationDeg - 270.0) < 0.01 && Near(tri->x, 360000) &&
+              Near(tri->y, 1800000) && tri->width == 1440000 && tri->fill == "729FCF" && tri->line == "3465A4",
+          "an ODF type as its preset, turned a quarter counter-clockwise about its corner, the defaults' fill and line");
+    const PptxShape* free = named("Free");
+    Check(free && free->customPath.size() == 4 && free->customPath[2].x == 0.5f && free->customPath[2].y == 1.0f &&
+              free->flipV && free->gradientStops.size() == 2 && free->gradientStops[0].color == "FF0000" &&
+              std::abs(free->gradientAngleDeg) < 0.01 && free->line.empty(),
+          "an enhanced path, mirrored; a gradient at LibreOffice's bare tenths of a degree (900: left to right)");
+    const PptxShape* rounded = named("Rounded");
+    Check(rounded && rounded->geometry == "roundRect" && rounded->gradientRadial && rounded->gradientStops.size() == 2 &&
+              rounded->gradientStops[0].color == "FFFFFF" && rounded->gradientStops[1].color == "000000",
+          "a rounded rectangle; a radial gradient from the centre (ODF's end colour) out");
+    const PptxShape* disc = named("Disc");
+    Check(disc && disc->geometry == "ellipse", "an ellipse");
+    const PptxShape* line = named("Line");
+    Check(line && line->kind == PptxShapeKind::Connector && line->x == 2160000 && line->width == 1440000 &&
+              line->flipH && !line->flipV && line->arrowStart && !line->arrowEnd && line->line == "00FF00",
+          "a line drawn right to left: its box, mirrored, an arrowhead at its start");
+    const PptxShape* zig = named("Zig");
+    Check(zig && zig->kind == PptxShapeKind::Connector && zig->customPath.size() == 3 && zig->customPath[1].x == 0.5f &&
+              zig->customPath[1].y == 1.0f,
+          "a polyline: an open path, a line");
+    const PptxShape* blob = named("Blob");
+    Check(blob && blob->kind == PptxShapeKind::Text && blob->customPath.size() == 5 &&
+              blob->customPath[1].x == 1.0f && blob->customPath[3].op == RichShape::PathPoint::Op::Curve &&
+              blob->customPath[3].x == 0.0f && blob->customPath[3].y == 1.0f,
+          "an SVG path: relative lines and a quadratic curve, closed");
+    const PptxShape* hex = named("Hex");
+    Check(hex && hex->customPath.size() == 7, "a regular polygon: its six corners");
+    const PptxShape* listed = named("Listed");
+    if (!listed || listed->paragraphs.size() != 4) {
+        Check(false, "the list box: four paragraphs");
+    } else {
+        const auto& p = listed->paragraphs;
+        Check(p[0].numbered && p[0].numberScheme == "romanUcPeriod" &&
+                  PptxNumberLabel(p[0].numberScheme, p[0].numberStartAt) == "II." &&
+                  PptxNumberLabel(p[1].numberScheme, p[1].numberStartAt + 1) == "III." &&
+                  PptxNumberLabel(p[3].numberScheme, p[3].numberStartAt) == "IV." && p[0].marginLeft == 457200 &&
+                  p[0].indent == -228600 && !p[2].bullet,
+              "numbering from II., placed by label alignment, continued across lists");
+        Check(p[0].runs.size() == 2 && p[0].runs[0].color == "333333" && p[0].runs[1].color.empty(),
+              "the window's text colour: no colour of its own");
+        Check(p[2].runs.size() == 2 && p[2].runs[1].hyperlink == "#slide2", "a link to a page by its name: to its slide");
+    }
+    const PptxShape* grid = FindShape(first, PptxShapeKind::Table, "Grid");
+    if (!grid || grid->cellStyles.size() != 2 || grid->cellStyles[1].size() != 2) {
+        Check(false, "the table: two rows of two");
+    } else {
+        Check(grid->cellStyles[0][0].fill == "203040" && grid->rows[0][0][0].runs[0].color == "FFFFFF" &&
+                  grid->rows[0][0][0].runs[0].bold,
+              "a table template's first row: its fill, white bold text");
+        const PptxCellStyle& body = grid->cellStyles[1][1];
+        Check(body.fill == "EEEEEE" && body.left.color == "000000" && std::abs(body.bottom.widthPt - 1.417) < 0.01 &&
+                  body.anchor == PptxAnchor::Middle && body.insetLeft == 72000 && grid->rows[1][1][0].runs[0].color == "333333",
+              "... its body: fill, borders, anchor and padding from the table cell properties");
+    }
+}
+
 } // namespace
 
 int main() {
     TestLibreOfficeDeck();
     TestFlatDeck();
+    TestLookByHand();
     TestRefusals();
     TestFileLoader();
     std::cout << "\n" << (g_failures == 0 ? "All checks passed" : "FAILURES: ")

@@ -3,28 +3,28 @@
 {% block content %}
 <div class="page-head"><h1>Report about {{ report.target }}</h1>{% include "_state.html" with state=report.state label=report.get_state_display %}</div>
 <div class="panels">
-<div class="panel">
+<div class="card"><div class="card-body">
   <dl class="facts">
-    <dt>About</dt><dd>{{ report.get_target_kind_display }} <span class="mono">{{ report.target }}</span>{% if app %} - <a href="{{ app.get_absolute_url }}">{{ app.name }}</a>{% endif %}</dd>
+    <dt>About</dt><dd>{{ report.get_target_kind_display }} <span class="font-monospace">{{ report.target }}</span>{% if app %} - <a href="{{ app.get_absolute_url }}">{{ app.name }}</a>{% endif %}</dd>
     <dt>Kind</dt><dd>{{ report.kind }}</dd>
     <dt>Sent</dt><dd>{{ report.created|date:"j F Y, H:i" }}</dd>
-    <dt>Reporter</dt><dd>{{ report.reporter|default:"anonymous" }} <span class="muted small">(the operator's to see, never the publisher's)</span></dd>
+    <dt>Reporter</dt><dd>{{ report.reporter|default:"anonymous" }} <span class="text-secondary small">(the operator's to see, never the publisher's)</span></dd>
     <dt>Text</dt><dd>{{ report.text|linebreaksbr }}</dd>
     {% if report.outcome %}<dt>Outcome</dt><dd>{{ report.outcome }}</dd><dt>Findings</dt><dd>{{ report.findings|linebreaksbr }}</dd>{% endif %}
   </dl>
-</div>
+</div></div>
 {% if report.state == "open" %}
-<div class="panel form wide">
+<div class="card form-wide"><div class="card-body">
   <h2>Close the report</h2>
   <form method="post">
     {% csrf_token %}
-    {% if form.non_field_errors %}<div class="note error">{{ form.non_field_errors }}</div>{% endif %}
-    <div class="field"><label for="findings">Findings (the operator's only)</label><textarea id="findings" name="findings" rows="4"></textarea></div>
-    <div class="field"><label for="outcome">The line the reporter reads</label><input id="outcome" type="text" name="outcome" maxlength="300" required>
-      {% for error in form.outcome.errors %}<div class="error">{{ error }}</div>{% endfor %}</div>
-    <div class="row"><button class="button" name="action" value="resolve">Resolve</button><button class="button plain" name="action" value="dismiss">Dismiss</button></div>
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="mb-3"><label class="form-label" for="findings">Findings (the operator's only)</label><textarea class="form-control" id="findings" name="findings" rows="4"></textarea></div>
+    <div class="mb-3"><label class="form-label" for="outcome">The line the reporter reads</label><input class="form-control" id="outcome" type="text" name="outcome" maxlength="300" required>
+      {% for error in form.outcome.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+    <div class="d-flex flex-wrap align-items-center gap-2"><button class="btn btn-primary" name="action" value="resolve">Resolve</button><button class="btn btn-outline-secondary" name="action" value="dismiss">Dismiss</button></div>
   </form>
-</div>
+</div></div>
 {% endif %}
 </div>
 {% endblock %}

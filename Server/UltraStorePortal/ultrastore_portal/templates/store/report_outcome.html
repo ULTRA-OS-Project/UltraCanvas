@@ -4,8 +4,8 @@
 {% block content %}
 <div class="narrow">
   <h1>Your report</h1>
-  <p class="muted">About {{ report.target }}, sent {{ report.created|date:"j F Y" }}.</p>
-  <p><span class="badge {% if report.state == 'open' %}amber{% else %}green{% endif %}">{{ report.get_state_display }}</span></p>
+  <p class="text-secondary">About {{ report.target }}, sent {{ report.created|date:"j F Y" }}.</p>
+  <p><span class="badge {% if report.state == 'open' %}bg-warning-subtle text-warning-emphasis{% else %}bg-success-subtle text-success-emphasis{% endif %}">{{ report.get_state_display }}</span></p>
   <p>{{ report.outcome|default:"The operator has not answered yet." }}</p>
 </div>
 {% endblock %}

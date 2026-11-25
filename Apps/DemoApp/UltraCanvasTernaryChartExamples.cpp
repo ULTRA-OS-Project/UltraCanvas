@@ -68,7 +68,7 @@ namespace UltraCanvas {
                 chart->SetShowPoints(false);
             }
             auto tabContent = std::make_shared<UltraCanvasContainer>("ternaryTab" + std::to_string(i), 0, 0, 760, 602);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(chart);
             tabbedContainer->AddTab(examples[i].tab, tabContent);
             charts.push_back(chart);
@@ -141,7 +141,7 @@ namespace UltraCanvas {
                 "it. Drag across the triangle to zoom in; double-click to zoom out. Click a "
                 "legend entry to hide a series."));
         selection->SetTextColor(DemoKit::BodyText());
-        selection->SetBackgroundColor(Color(248, 249, 250, 255));
+        selection->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         selection->SetPadding(10);
 
         // ===== CALLBACKS (raw pointers: no cycle through the elements) =====

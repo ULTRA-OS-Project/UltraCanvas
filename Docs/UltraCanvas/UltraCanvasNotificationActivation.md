@@ -159,7 +159,7 @@ them after the program has quit, are still to be tried.
 Every application under `Apps/` that posts a notification registers its
 activator, or says why not (`// notification-activator-exempt: <why>`):
 `scripts/check_notification_activators.py`, run by CI
-(`notification-activators.yml`).
+(`source-checks.yml`).
 
 Tested in `Tests/UltraMessage/test_adapters.cpp` (the arguments, the CLSID, the
 toast XML carrying them) and UltraMail's `test_newmail.cpp` (its launch string).

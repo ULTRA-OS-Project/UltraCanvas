@@ -1,0 +1,22 @@
+{% if packages %}
+<div class="table-responsive">
+<table class="table align-middle">
+  <thead><tr><th>System</th><th>Processor</th><th>Needs</th><th>Entry</th><th>File</th><th class="text-end">Size</th><th></th></tr></thead>
+  <tbody>
+  {% for package in packages %}
+  <tr>
+    <td>{{ package.os_name }}</td><td>{{ package.arch }}</td>
+    <td>{% if package.min_os %}{{ package.min_os }}+{% endif %} {{ package.variant }}</td>
+    <td class="font-monospace">{{ package.entry }}</td>
+    <td><div>{{ package.original_name }}</div><div class="font-monospace text-secondary">sha256 {{ package.sha256 }}</div></td>
+    <td class="text-end text-nowrap">{{ package.size|filesizeformat }}</td>
+    <td class="text-end text-nowrap">{% if release.editable %}
+      <a class="btn btn-link btn-sm" href="{% url 'console:package_edit' app.app_id release.pk package.pk %}" data-dialog>Edit</a>
+      <form class="d-inline ms-2" method="post" action="{% url 'console:package_delete' app.app_id release.pk package.pk %}" data-in-place data-confirm="Remove the {{ package.os_name }} {{ package.arch }} package? Its archive is deleted.">{% csrf_token %}<button class="btn btn-link btn-sm text-danger">Remove</button></form>
+    {% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}<p class="text-secondary mb-0">No package yet. Add one archive per system and processor.</p>{% endif %}

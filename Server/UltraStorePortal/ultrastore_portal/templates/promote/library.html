@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Advertisements in the store - UltraStore{% endblock %}
+{% block content %}
+<h1>Advertisements in the store</h1>
+<p class="text-secondary mt-1">Every advertisement that runs, or ran in the last twelve months: what is promoted, who pays for it, where it appears and what it is shown for. Advertisements here are chosen from what is on the page, never from who is looking.</p>
+<form method="get" class="d-flex gap-2 my-4" role="search"><input class="form-control" style="max-width:24rem" type="search" name="q" value="{{ q }}" placeholder="An app or a publisher" aria-label="Search the advertisements"><button class="btn btn-outline-secondary">Search</button></form>
+{% if page.object_list %}
+<div class="table-responsive"><table class="table align-middle">
+  <thead><tr><th>Promoted</th><th>Paid for by</th><th>Shown</th><th>Where</th><th>Shown for</th></tr></thead>
+  <tbody>
+  {% for row in page %}
+  <tr><td><a href="{{ row.app.get_absolute_url }}"><b>{{ row.app.name }}</b></a></td><td><a href="{{ row.publisher.get_absolute_url }}">{{ row.publisher.name }}</a></td>
+    <td>{{ row.first|date:"j M Y" }} - {% if row.running %}<span class="badge bg-success-subtle text-success-emphasis">runs now</span>{% else %}{{ row.last|date:"j M Y" }}{% endif %}</td>
+    <td>{% for place in row.places %}<div class="small">{{ place.area_name }}: {{ place.name|lower }}</div>{% endfor %}</td><td class="small">{{ row.shown_for }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if page.has_other_pages %}<div class="d-flex align-items-center justify-content-center gap-3 mt-4">
+  {% if page.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?q={{ q|urlencode }}&amp;page={{ page.previous_page_number }}">Previous</a>{% endif %}
+  <span class="text-secondary">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a class="btn btn-outline-secondary btn-sm" href="?q={{ q|urlencode }}&amp;page={{ page.next_page_number }}">Next</a>{% endif %}
+</div>{% endif %}
+{% else %}<div class="empty">{% if q %}No advertisement for that.{% else %}No advertisement has been shown yet.{% endif %}</div>{% endif %}
+{% endblock %}

@@ -32,10 +32,16 @@ the desktop (ticked by default in its *Start with the desktop* menu): no
 window, the Print Screen key held, and the screenshot button and
 Super+Shift+S answered at once by the copy that runs. Its window, once a
 snip has shown it, hides when closed instead of ending UltraSnip. A second
-`--background` start reaches the running copy and changes nothing.
+`--background` start reaches the running copy and changes nothing. Starting
+UltraSnip from the applications while it runs in the background brings its
+bar up at once, over the dimmed screen; should the running copy not answer
+(a build without the UltraMessage bus), the new start opens a window of its
+own instead of saying that UltraSnip is already running.
 
-**From the window.** Start UltraSnip from the applications: until there is
-a snip its window is just its bar. Choose the shape and the kind (icons;
+**From the window.** Start UltraSnip from the applications: its bar opens
+at the top centre of the screen the mouse pointer is on (on Wayland and macOS,
+which do not say where the pointer is, the primary screen), over the screen
+already dimmed. Until there is a snip its window is just its bar. Choose the shape and the kind (icons;
 each names itself in its tooltip) and the delay, and click *Start*
 (Ctrl+N):
 
@@ -127,10 +133,10 @@ change is kept in the settings folder and shows at the next start.
 | Path | What is in it |
 |---|---|
 | `ui/UltraSnipTypes.h` | The request: shape, kind, delay, as JSON between starts |
-| `ui/UltraSnipCapture.*` | No UI: the rectangle from a drag, the crop of a capture into RGBA, the topmost window under a point, where the recording bar goes, files written and copied |
+| `ui/UltraSnipCapture.*` | No UI: where the recording bar goes, files written and copied; the rectangle from a drag, the crop of a capture into RGBA and the topmost window under a point are the framework's `ScreenArea` (`UltraCanvasScreenAreaPicker.h`), named here as before |
 | `ui/UltraSnipSettings.*` | The settings file, through `UltraCanvasAppSettings`: the picture and video types and folders, the frame rate, the after-snip behaviour; the paths of a new snip |
 | `ui/UltraSnipSettingsDialog.*` | The settings window: `UltraCanvasTreeView` of pages on the left, a page of `UltraCanvasRadio` / `UltraCanvasCheckbox` / `UltraCanvasSlider` / `UltraCanvasDropdown` controls on the right, the notes block at the foot - UltraFiler's settings window's skeleton |
-| `ui/UltraSnipOverlay.*` | The selection: a borderless window the size of the screen showing the frozen capture (`UltraCanvasImageElement`) under the marquee element (the dimming, the rectangle and its size, the crosshair, the outlined window, the hint) |
+| *(framework)* `UltraCanvasScreenAreaPicker` | The selection: a borderless window the size of the screen showing the frozen capture (`UltraCanvasImageElement`) under the marquee element (the dimming, the rectangle and its size, the crosshair, the outlined window, the hint). It was `ui/UltraSnipOverlay.*`; it moved to the framework so ChatCube's screenshot button uses the same one - `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md` |
 | `ui/UltraSnipRecorder.*` | The recording thread: `CaptureScreenArea` at the frame rate into `VideoFXFrameRecorder`; the clock that leaves pauses out |
 | `ui/UltraSnipRecordingBar.*` | The floating bar: a notification-type window (above everything, never taking the keyboard) with the time, Pause / Resume and Stop |
 | `ui/UltraSnipWindow.*` | The window: the bar (`UltraCanvasButton`, two `UltraCanvasSegmentedControl`s, an `UltraCanvasDropdown`), the result (`UltraCanvasImageElement` / `UltraCanvasMediaViewer`), the actions and the Settings button, and the capture step by step |

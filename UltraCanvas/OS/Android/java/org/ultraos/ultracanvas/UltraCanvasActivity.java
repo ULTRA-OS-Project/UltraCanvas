@@ -14,10 +14,16 @@
 //       <meta-data android:name="android.app.lib_name" android:value="YourAppLib"/>
 //   </activity>
 //
+// It also carries desktop mode's Java half (UltraCanvasAndroidDesktop): a
+// Presentation on an external display whose surface the desktop is drawn
+// into, and the mouse captured while it shows (see DESKTOP MODE below).
+//
 // It is OPTIONAL: with a plain NativeActivity the C++ side finds no bridge
 // methods and every dialog falls back to its "cancelled" stub, so an app that
 // never opens a native dialog needs no Java at all.
 //
+// Version: 1.3.0 - shared storage: hasAllFilesAccess, openAllFilesAccessSettings,
+//                  getSharedStoragePath (a file manager's access to every file)
 // Version: 1.2.0 - immersive: the system bars no longer cover the app's top and bottom
 // Version: 1.1.0
 // Author: UltraCanvas Framework
@@ -26,6 +32,7 @@ package org.ultraos.ultracanvas;
 
 import android.app.AlertDialog;
 import android.app.NativeActivity;
+import android.app.Presentation;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.DialogInterface;
@@ -35,6 +42,11 @@ import android.content.pm.PackageManager;
 import android.hardware.display.DisplayManager;
 import android.os.Bundle;
 import android.view.Display;
+import android.view.InputDevice;
+import android.view.MotionEvent;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import android.util.DisplayMetrics;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -639,6 +651,66 @@ public class UltraCanvasActivity extends NativeActivity {
         }
     }
 
+    // ===== SHARED STORAGE =====
+
+    /**
+     * Whether the app may read and write every file on the shared storage
+     * (/storage/emulated/0) by path, as a file manager must. From Android 11
+     * that is "All files access" (MANAGE_EXTERNAL_STORAGE), which the user
+     * switches on in Settings; before, the storage runtime permission.
+     * Implemented for UltraCanvasAndroidPermissions.cpp; any thread.
+     */
+    public boolean hasAllFilesAccess() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                return android.os.Environment.isExternalStorageManager();
+            }
+            return checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Android 11 and later: opens Settings at this app's "All files access"
+     * switch - or the list of every app's, where a device has no page per
+     * app. There is no answer to wait for: the user comes back, and
+     * hasAllFilesAccess says what they chose. False before Android 11, where
+     * the storage permission is asked for instead (requestPermissionAsync).
+     */
+    public boolean openAllFilesAccessSettings() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return false;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    startActivity(new Intent(
+                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:" + getPackageName())));
+                } catch (Throwable t) {
+                    try {
+                        startActivity(new Intent(
+                                android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                    } catch (Throwable ignored) {
+                        // No Settings page for it on this device: nothing to open.
+                    }
+                }
+            }
+        });
+        return true;
+    }
+
+    /** The shared storage's top folder (/storage/emulated/0 on most devices), "" when unknown. */
+    @SuppressWarnings("deprecation")
+    public String getSharedStoragePath() {
+        try {
+            return android.os.Environment.getExternalStorageDirectory().getAbsolutePath();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     // ===== DISPLAY ROTATION =====
 
     // Reports every turn of the display to the native side, which the camera
@@ -657,10 +729,14 @@ public class UltraCanvasActivity extends NativeActivity {
         if (displays == null) return;
         displayListener = new DisplayManager.DisplayListener() {
             @Override
-            public void onDisplayAdded(int displayId) { }
+            public void onDisplayAdded(int displayId) {
+                if (desktopMode) updateExternalDisplay();
+            }
 
             @Override
-            public void onDisplayRemoved(int displayId) { }
+            public void onDisplayRemoved(int displayId) {
+                if (desktopMode) updateExternalDisplay();
+            }
 
             @Override
             public void onDisplayChanged(int displayId) {
@@ -697,6 +773,139 @@ public class UltraCanvasActivity extends NativeActivity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemBars();
+        // A focus loss ends a pointer capture; it is asked for again.
+        if (hasFocus && pointerCaptureWanted) applyPointerCapture();
+    }
+
+    // ===== DESKTOP MODE: AN EXTERNAL DISPLAY, AND THE MOUSE CAPTURED =====
+    //
+    // UltraCanvasAndroidDesktop turns it on (setDesktopMode). From then on the
+    // first presentation display - a monitor on a USB-C cable or dock, a TV on
+    // an OEM wireless display, the emulator's simulated secondary display -
+    // gets a Presentation holding a SurfaceView, and that surface is handed to
+    // the native side, which draws the desktop into it. The Presentation never
+    // takes the input focus: keys, the IME and a mouse stay with this
+    // activity, which passes them to the desktop's focused window. While the
+    // desktop is on that display a mouse is captured (requestPointerCapture on
+    // the input view), so its motion moves the desktop's pointer whichever
+    // display Android would have put its own pointer on.
+
+    private boolean desktopMode;               // UI thread only
+    private DesktopPresentation presentation;  // UI thread only
+    private boolean pointerCaptureWanted;      // UI thread only
+
+    /** Called over JNI (any thread) when the app turns desktop mode on or off. */
+    public void setDesktopMode(final boolean on) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                desktopMode = on;
+                if (on) updateExternalDisplay();
+                else dismissPresentation();
+            }
+        });
+    }
+
+    /** Called over JNI while the desktop moves to the external display or off it. */
+    public void setPointerCaptureWanted(final boolean want) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                pointerCaptureWanted = want;
+                applyPointerCapture();
+            }
+        });
+    }
+
+    /** UI thread only. */
+    private void applyPointerCapture() {
+        InputView view = ensureInputView();
+        if (view == null) return;
+        if (pointerCaptureWanted) {
+            if (!view.hasFocus()) view.requestFocus();
+            if (!view.hasPointerCapture()) view.requestPointerCapture();
+        } else if (view.hasPointerCapture()) {
+            view.releasePointerCapture();
+        }
+    }
+
+    /** UI thread only: a Presentation on the first presentation display, or none. */
+    @SuppressWarnings("deprecation")
+    private void updateExternalDisplay() {
+        DisplayManager displays = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+        if (displays == null) return;
+        final int own = getWindowManager().getDefaultDisplay().getDisplayId();
+        Display target = null;
+        for (Display display : displays.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)) {
+            if (display.getDisplayId() != own && display.getDisplayId() != Display.DEFAULT_DISPLAY) {
+                target = display;
+                break;
+            }
+        }
+        if (presentation != null && target != null
+                && presentation.getDisplay().getDisplayId() == target.getDisplayId()) {
+            return;   // already there
+        }
+        dismissPresentation();
+        if (target == null) return;
+        try {
+            presentation = new DesktopPresentation(this, target);
+            presentation.show();
+            android.util.Log.i("UltraCanvas", "desktop mode: presentation on display "
+                    + target.getDisplayId() + " (" + target.getName() + ")");
+        } catch (WindowManager.InvalidDisplayException e) {
+            presentation = null;   // gone again before it could be shown
+        }
+    }
+
+    /** UI thread only. Its surface's destruction tells the native side. */
+    private void dismissPresentation() {
+        if (presentation == null) return;
+        DesktopPresentation gone = presentation;
+        presentation = null;
+        gone.dismiss();
+    }
+
+    /** The external display's window: one SurfaceView, never focused. */
+    private static final class DesktopPresentation extends Presentation
+            implements SurfaceHolder.Callback {
+        DesktopPresentation(Context outerContext, Display display) {
+            super(outerContext, display);
+        }
+
+        @Override
+        protected void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                               | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            SurfaceView view = new SurfaceView(getContext());
+            view.getHolder().addCallback(this);
+            setContentView(view);
+        }
+
+        @Override
+        public void surfaceCreated(SurfaceHolder holder) { }
+
+        @Override
+        @SuppressWarnings("deprecation")   // getRealMetrics: the one call from API 28 on
+        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            DisplayMetrics metrics = new DisplayMetrics();
+            getDisplay().getRealMetrics(metrics);
+            try {
+                nativeOnExternalSurface(holder.getSurface(), width, height, metrics.densityDpi);
+            } catch (UnsatisfiedLinkError e) {
+                // The app's library has no desktop mode; nothing is drawn here.
+            }
+        }
+
+        @Override
+        public void surfaceDestroyed(SurfaceHolder holder) {
+            try {
+                nativeOnExternalSurfaceGone();
+            } catch (UnsatisfiedLinkError e) {
+                // As above.
+            }
+        }
     }
 
     // ===== JNI: MAKING THE native METHODS RESOLVABLE =====
@@ -763,6 +972,7 @@ public class UltraCanvasActivity extends NativeActivity {
 
     @Override
     protected void onDestroy() {
+        dismissPresentation();
         if (displayListener != null) {
             DisplayManager displays = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
             if (displays != null) displays.unregisterDisplayListener(displayListener);
@@ -835,7 +1045,8 @@ public class UltraCanvasActivity extends NativeActivity {
                 if (imm != null) {
                     imm.hideSoftInputFromWindow(inputView.getWindowToken(), 0);
                 }
-                inputView.clearFocus();
+                // A captured mouse needs the view focused.
+                if (!pointerCaptureWanted) inputView.clearFocus();
             }
         });
     }
@@ -899,6 +1110,46 @@ public class UltraCanvasActivity extends NativeActivity {
             if (keyCode == KeyEvent.KEYCODE_BACK) return super.onKeyUp(keyCode, event);
             nativeOnJavaKeyEvent(false, keyCode, event.getMetaState(), 0);
             return true;
+        }
+
+        // Desktop mode: the captured mouse. Its motion is relative - a delta
+        // per sample, the batched history included - and goes to the
+        // desktop's pointer with the buttons and the wheel.
+        @Override
+        public boolean onCapturedPointerEvent(MotionEvent event) {
+            if (!event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)) return false;
+            float dx = 0;
+            float dy = 0;
+            final int history = event.getHistorySize();
+            for (int i = 0; i < history; i++) {
+                dx += event.getHistoricalX(i);
+                dy += event.getHistoricalY(i);
+            }
+            dx += event.getX();
+            dy += event.getY();
+            try {
+                nativeOnCapturedPointer(event.getActionMasked(), event.getActionButton(),
+                        event.getButtonState(), dx, dy,
+                        event.getAxisValue(MotionEvent.AXIS_VSCROLL),
+                        event.getAxisValue(MotionEvent.AXIS_HSCROLL));
+            } catch (UnsatisfiedLinkError e) {
+                return false;
+            }
+            return true;
+        }
+
+        @Override
+        public void onPointerCaptureChange(boolean hasCapture) {
+            // Lost while still wanted (another window took the focus for a
+            // moment): asked for again once this window has it back.
+            if (!hasCapture && pointerCaptureWanted && hasWindowFocus()) {
+                post(new Runnable() {
+                    @Override
+                    public void run() {
+                        applyPointerCapture();
+                    }
+                });
+            }
         }
     }
 
@@ -1033,4 +1284,12 @@ public class UltraCanvasActivity extends NativeActivity {
     private static native void nativeOnJavaKeyEvent(boolean down, int keyCode,
                                                     int metaState, int codePoint);
     private static native void nativeOnDeleteSurroundingText(int before, int after);
+
+    // Implemented in UltraCanvasAndroidDesktop.cpp.
+    private static native void nativeOnExternalSurface(android.view.Surface surface, int width,
+                                                       int height, int densityDpi);
+    private static native void nativeOnExternalSurfaceGone();
+    private static native void nativeOnCapturedPointer(int action, int actionButton, int buttonState,
+                                                       float dx, float dy, float vscroll,
+                                                       float hscroll);
 }

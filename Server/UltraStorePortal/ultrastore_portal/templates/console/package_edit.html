@@ -1,0 +1,7 @@
+{% extends "console/base.html" %}
+{% block title %}Edit a package of {{ app.name }} {{ release.version }} - Developer console{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ app.name }} {{ release.version }}</h1><a class="small" href="{% url 'console:release' app.app_id release.pk %}">Back to the release</a></div></div>
+{# The dialog's form on a page of its own, for a browser without the script. #}
+<div class="card form-narrow"><div class="modal-content border-0">{% include "console/_package_edit.html" %}</div></div>
+{% endblock %}

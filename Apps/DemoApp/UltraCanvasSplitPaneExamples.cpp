@@ -30,7 +30,7 @@ namespace UltraCanvas {
         // as tall as its wrapped lines. A pane dragged narrow wraps its text
         // taller than itself, so it scrolls rather than cutting the text off.
         void SetupPane(const std::shared_ptr<UltraCanvasContainer>& pane, const Color& background) {
-            pane->SetBackgroundColor(background);
+            pane->SetBackgroundColor(DemoKit::ThemedFill(background));
             pane->SetPadding(8);
             pane->layout.SetFlexColumn().SetFlexGap(2)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -42,7 +42,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> AddPaneTitle(const std::shared_ptr<UltraCanvasContainer>& pane,
                                                        const std::string& id, const std::string& text) {
             auto l = DemoKit::AddHeading(pane, id, text);
-            l->SetTextColor(Color(40, 40, 40, 255));
+            l->SetTextColor(DemoKit::Themed(Color(40, 40, 40, 255)));
             l->SetMargin(0, 0, 8, 0);
             return l;
         }
@@ -52,7 +52,7 @@ namespace UltraCanvas {
                                                        int fontSize = 12) {
             auto l = DemoKit::AddText(pane, id, text);
             l->SetFontSize(fontSize);
-            l->SetTextColor(Color(60, 60, 60, 255));
+            l->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
             return l;
         }
 
@@ -85,7 +85,7 @@ namespace UltraCanvas {
 
         auto statusA = DemoKit::CreateText("SplitAStatus", Tr("Weights: 1.00 : 2.00 : 1.00"));
         statusA->SetFontSize(11);
-        statusA->SetTextColor(Color(0, 100, 200, 255));
+        statusA->SetTextColor(DemoKit::Themed(Color(0, 100, 200, 255)));
 
         auto splitH = CreateHorizontalSplitPane("SplitPaneA", 0, 0, 960, 240);
         splitH->SetBorders(1, Color(180, 180, 180, 255));
@@ -211,7 +211,7 @@ namespace UltraCanvas {
         SetupPane(innerTop, Color(252, 252, 252, 255));
         AddPaneTitle(innerTop, "pcInnerEditor", Tr("Editor"));
         AddInfoLabel(innerTop, "pcInnerE1", "auto pane = split->AddPane(1.0);", 12);
-        AddInfoLabel(innerTop, "pcInnerE2", "pane->SetBackgroundColor(Colors::White);", 12);
+        AddInfoLabel(innerTop, "pcInnerE2", "pane->SetBackgroundColor(DemoKit::Themed(Colors::White));", 12);
         AddInfoLabel(innerTop, "pcInnerE3", "pane->AddChild(makeWidget());", 12);
 
         SetupPane(innerBottom, Color(245, 245, 245, 255));
@@ -328,7 +328,7 @@ namespace UltraCanvas {
 
         auto statusE = DemoKit::CreateText("SplitEStatus", Tr("Click an icon on a split line."));
         statusE->SetFontSize(11);
-        statusE->SetTextColor(Color(0, 100, 200, 255));
+        statusE->SetTextColor(DemoKit::Themed(Color(0, 100, 200, 255)));
 
         auto splitIcons = CreateHorizontalSplitPane("SplitPaneE", 0, 0, 960, 230);
         splitIcons->SetBorders(1, Color(180, 180, 180, 255));

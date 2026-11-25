@@ -99,7 +99,7 @@ namespace UltraCanvas {
         // cheeky reminder that this button expects a right-click.
         auto contextWrongClickPopup = std::make_shared<UltraCanvasContainer>(
                 "ContextWrongClickPopup", 0, 0, 340, 64);
-        contextWrongClickPopup->SetBackgroundColor(Color(255, 255, 225, 255));
+        contextWrongClickPopup->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 225, 255)));
         contextWrongClickPopup->SetBorders(1, Color(118, 118, 118, 255), 3.0f);
 
         auto contextWrongClickIcon = std::make_shared<UltraCanvasImageElement>(
@@ -293,7 +293,7 @@ namespace UltraCanvas {
         // longest item (at least the 300 px it had), each item as tall as
         // its text.
         auto listContainer = DemoKit::CreateColumn("ListContainer", 5);
-        listContainer->SetBackgroundColor(Color(255, 255, 255, 255));
+        listContainer->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         listContainer->SetBorders(1, Color(200, 200, 200, 255));
         listContainer->SetPadding(10);
         DemoKit::AddFixed(popupCard, listContainer);
@@ -307,7 +307,7 @@ namespace UltraCanvas {
         for (int i = 0; i < 5; i++) {
             auto itemLabel = DemoKit::CreateText("ListItem" + std::to_string(i),
                     TrF("Item {0} - Right-click for options", i + 1));
-            itemLabel->SetBackgroundColor(Color(250, 250, 250, 255));
+            itemLabel->SetBackgroundColor(DemoKit::Themed(Color(250, 250, 250, 255)));
 
             // Create item-specific popup menu
             auto itemMenu = std::make_shared<UltraCanvasMenu>(
@@ -333,7 +333,7 @@ namespace UltraCanvas {
             // cheeky reminder that these items expect a right-click.
             auto wrongClickPopup = std::make_shared<UltraCanvasContainer>(
                     "WrongClickPopup" + std::to_string(i), 0, 0, 340, 64);
-            wrongClickPopup->SetBackgroundColor(Color(255, 255, 225, 255));
+            wrongClickPopup->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 225, 255)));
             wrongClickPopup->SetBorders(1, Color(118, 118, 118, 255), 3.0f);
 
             auto wrongClickIcon = std::make_shared<UltraCanvasImageElement>(

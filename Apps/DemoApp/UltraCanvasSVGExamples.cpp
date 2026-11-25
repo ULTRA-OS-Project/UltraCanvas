@@ -31,8 +31,8 @@ namespace UltraCanvas {
         auto statusLabel = DemoKit::CreateText("SVGStatus",
                 Tr("Ready. Click on an SVG file to open it in the media viewer."));
         statusLabel->SetFontSize(11);
-        statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+        statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(230, 230, 230, 255)));
         statusLabel->SetPadding(4.0f);
 
         auto tilesCard = DemoKit::AddCard(container, "SVGTilesCard");
@@ -43,7 +43,7 @@ namespace UltraCanvas {
         auto makeTile = [&](const std::string& id, const std::string& fileName) {
             auto tile = DemoKit::CreateColumn(id, 8);
             tile->SetPadding(14.0f);
-            tile->SetBackgroundColor(Color(250, 250, 250, 255));
+            tile->SetBackgroundColor(DemoKit::Themed(Color(250, 250, 250, 255)));
             tile->SetBorders(2, Color(180, 180, 180, 255));
             CSSLayout::BoxConstraints limits;
             limits.minWidth = CSSLayout::Dimension::Px(240);

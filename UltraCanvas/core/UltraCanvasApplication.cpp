@@ -86,7 +86,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasProxySettings.h"     // UseSharedProxySettings
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
 #include <fontconfig/fontconfig.h>
 #endif
 #if defined(ULTRACANVAS_HAS_PANGOFT2)
@@ -94,7 +94,7 @@
 #endif
 #include <pango/pangocairo.h>
 #include "UltraCanvasPathUtf8.h"
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
 #include "../libspecific/Cairo/RenderContextCairo.h"   // the text caches, after the font set changed
 #endif
 #include <condition_variable>
@@ -299,7 +299,7 @@ namespace UltraCanvas {
         return p;
     }
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
     // ===== RUNTIME FONTCONFIG BOOTSTRAP =====
     // Packaged builds ship no fonts.conf (the MSYS2 Windows ZIP most
     // visibly), so the very first fontconfig call made from inside
@@ -668,7 +668,7 @@ namespace UltraCanvas {
         conf << "</fontconfig>\n";
         return conf.str();
     }
-#endif // !__APPLE__
+#endif // !__APPLE__ || ULTRACANVAS_IOS
 
     namespace {
         // GetFontSetGeneration's count; 1 for the fonts of the start.
@@ -677,7 +677,7 @@ namespace UltraCanvas {
 
     unsigned long GetFontSetGeneration() { return fontSetGeneration.load(); }
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
     namespace {
         // The system fonts' scan (SetupBundledFontconfig, Windows): one per process,
         // on a thread of its own. Leaked on purpose - the thread may still be
@@ -901,7 +901,7 @@ namespace UltraCanvas {
 #endif
 
     bool AdoptSystemFontsWithin(int waitMs) {
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         SystemFontScan& scan = FontScan();
         FcConfig* config = nullptr;
         {
@@ -938,7 +938,7 @@ namespace UltraCanvas {
     }
 
     SystemFontScanStatus GetSystemFontScanStatus() {
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         SystemFontScan& scan = FontScan();
         std::lock_guard<std::mutex> lock(scan.mutex);
         return scan.status;
@@ -948,7 +948,7 @@ namespace UltraCanvas {
     }
 
     void SetSystemFontsSwitchedHandler(std::function<void(const SystemFontScanStatus&)> handler) {
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         SystemFontScan& scan = FontScan();
         std::lock_guard<std::mutex> lock(scan.mutex);
         scan.onSwitched = std::move(handler);
@@ -958,8 +958,9 @@ namespace UltraCanvas {
     }
 
     void SetupBundledFontconfig() {
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(ULTRACANVAS_IOS)
         // macOS renders text through CoreText - fontconfig is not in the stack.
+        // (iOS does not: its Pango is fontconfig and FreeType, as on Android.)
 #else
         if (SystemFontconfigConfigFound()) return;
 
@@ -1066,7 +1067,7 @@ namespace UltraCanvas {
 
     void RefreshFontConfiguration() {
         ++fontSetGeneration;
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         // FcConfigAppFontAddFile only records the file; the FontSet FcMatch
         // (and therefore Pango) searches is materialised by FcConfigBuildFonts.
         if (FcConfig* cfg = FcConfigGetCurrent()) FcConfigBuildFonts(cfg);

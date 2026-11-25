@@ -3,6 +3,11 @@
 // election, one reader thread per endpoint, delivery through the UI
 // dispatcher or the pending queue, subscriptions, the Wimp send set, and the
 // journal calls forwarded to the broker as control RPCs.
+// Version: 0.2.1 - why a connect failed, as a person is shown it, goes through Tr
+// Version: 0.2.0 - an endpoint whose connection drops (the process hosting the
+//   broker ended) reconnects on its own, hosting the next broker when it may,
+//   and registers its subscriptions again (autoReconnect); UltraMsg_IsConnected
+//   says false meanwhile
 // Version: 0.1.1 - a delivery queued for the UI thread is dropped once its
 //   subscription ends (UltraMsg_Unsubscribe / UltraMsg_Disconnect)
 // Version: 0.1.1 - the at-exit shutdown does nothing while Windows ends the process
@@ -13,6 +18,7 @@
 #include "UltraMessageBroker.h"
 #include "UltraMessageInternal.h"
 #include "UltraMessageTransport.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // Tr: why a connect failed, as a person is shown it
 
 #include <UltraDatabase/UltraDatabaseConnection.h>
 
@@ -28,6 +34,9 @@
 
 using namespace UltraMessage::Internal;
 using UltraCanvas::JSONValue;
+// Unqualified, as scripts/extract_ui_strings.py reads the sites.
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -92,8 +101,14 @@ struct PendingRequest {
 struct EndpointRec : std::enable_shared_from_this<EndpointRec> {
     UltraMsgHandle handle = UltraMsgInvalidHandle;
     UltraMsgConnectOptions options;
-    ConnectionPtr connection;
+    ConnectionPtr connection;                // swapped by a reconnection: read it through CurrentConnection
+    std::mutex connectionMutex;
     std::thread reader;
+    // One reconnection or disconnection at a time.
+    std::mutex reconnectMutex;
+    std::atomic<int64_t> disconnectedAtMs{0};
+    int64_t nextRetryMs = 0;                 // under reconnectMutex
+    int retryDelayMs = 0;
     std::atomic<bool> connected{false};
     std::atomic<bool> closing{false};
 
@@ -127,6 +142,7 @@ struct Module {
 
     std::thread timer;
     std::atomic<bool> timerRunning{false};
+    std::thread reconnector;
 };
 
 Module& GetModule() {
@@ -192,13 +208,19 @@ void Dispatch(const EndpointPtr& endpoint, bool onWorkerThread, std::function<vo
     endpoint->pending.push_back(std::move(task));
 }
 
+ConnectionPtr CurrentConnection(const EndpointPtr& endpoint) {
+    std::lock_guard<std::mutex> lock(endpoint->connectionMutex);
+    return endpoint->connection;
+}
+
 bool SendFrame(const EndpointPtr& endpoint, const JSONValue& frame, UltraMsgResult* error = nullptr) {
-    if (!endpoint->connected.load()) {
+    const ConnectionPtr connection = endpoint->connected.load() ? CurrentConnection(endpoint) : nullptr;
+    if (!connection) {
         if (error) *error = NotConnected();
         return false;
     }
     std::string message;
-    if (!endpoint->connection->SendFrame(frame, message)) {
+    if (!connection->SendFrame(frame, message)) {
         if (error) *error = UltraMsgResult::Error(UltraMsgResultCode::NotConnected, message);
         return false;
     }
@@ -372,16 +394,17 @@ void FailEverythingPending(const EndpointPtr& endpoint) {
         if (!endpoint->welcomed) {
             endpoint->welcomed = true;
             endpoint->welcomeOk = false;
-            if (endpoint->welcomeError.empty()) endpoint->welcomeError = "connection closed before welcome";
+            if (endpoint->welcomeError.empty())
+                endpoint->welcomeError = Tr("connection closed before welcome");
         }
     }
     endpoint->welcomeCv.notify_all();
 }
 
-void ReaderLoop(EndpointPtr endpoint) {
+void ReaderLoop(EndpointPtr endpoint, ConnectionPtr connection) {
     JSONValue frame;
     std::string error;
-    while (!endpoint->closing.load() && endpoint->connection->ReceiveFrame(frame, error)) {
+    while (!endpoint->closing.load() && connection->ReceiveFrame(frame, error)) {
         const std::string type = Str(frame, "t");
         if (type == Frame::Deliver) HandleDeliver(endpoint, frame);
         else if (type == Frame::Ctlr) HandleControlReply(endpoint, frame);
@@ -390,6 +413,7 @@ void ReaderLoop(EndpointPtr endpoint) {
         else if (type == Frame::Ping) { JSONValue pong = MakeFrame(Frame::Pong); SendFrame(endpoint, pong); }
         // overflow, pong and unknown frames are ignored
     }
+    endpoint->disconnectedAtMs.store(NowMs());
     endpoint->connected.store(false);
     FailEverythingPending(endpoint);
 }
@@ -424,11 +448,14 @@ void TimerLoop() {
     }
 }
 
+void ReconnectLoop();   // below, with the reconnection
+
 void EnsureTimer() {
     Module& module = GetModule();
     bool expected = false;
     if (module.timerRunning.compare_exchange_strong(expected, true)) {
         module.timer = std::thread(TimerLoop);
+        module.reconnector = std::thread(ReconnectLoop);
     }
 }
 
@@ -525,6 +552,183 @@ UltraMsgResult SendMessage(const EndpointPtr& endpoint, const UltraMsgMessage& m
     return result;
 }
 
+// Connects to `bus`, or - when `hostIfAbsent` - starts this process's
+// broker there when nobody answers, until `timeoutMs` has passed.
+ConnectionPtr ConnectOrHost(const std::string& bus, bool hostIfAbsent, const std::string& journalPath,
+                            int timeoutMs, UltraMsgResultCode& code, std::string& why) {
+    Module& module = GetModule();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs > 0 ? timeoutMs : 2000);
+    std::string connectError;
+    for (;;) {
+        ConnectionPtr connection = ConnectToBus(bus, 500, connectError);
+        if (connection) return connection;
+        code = UltraMsgResultCode::BrokerUnavailable;
+        if (!hostIfAbsent) {
+            why = connectError;
+            return nullptr;
+        }
+        bool alreadyInUse = false;
+        {
+            std::lock_guard<std::mutex> lock(module.brokerMutex);
+            if (!module.broker || !module.broker->IsRunning()) {
+                auto broker = std::make_unique<Broker>();
+                Broker::Config config;
+                config.busPath = bus;
+                config.journalPath = journalPath;
+                UltraMsgResult started = broker->Start(config, alreadyInUse);
+                if (started.ok) {
+                    module.broker = std::move(broker);
+                } else if (!alreadyInUse) {
+                    why = TrF("cannot start a broker: {0}", started.message);
+                    return nullptr;
+                }
+            }
+        }
+        if (alreadyInUse) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        if (std::chrono::steady_clock::now() > deadline) {
+            why = TrF("no broker reachable on {0}", bus);
+            return nullptr;
+        }
+    }
+}
+
+// Puts `connection` under the endpoint, starts its reader and introduces the
+// endpoint to the broker. False, with the reason, when the broker does not
+// welcome it; the connection is then closed and its reader ended.
+bool Handshake(const EndpointPtr& endpoint, const ConnectionPtr& connection, std::string& why) {
+    {
+        std::lock_guard<std::mutex> lock(endpoint->welcomeMutex);
+        endpoint->welcomed = false;
+        endpoint->welcomeOk = false;
+        endpoint->welcomeError.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lock(endpoint->connectionMutex);
+        endpoint->connection = connection;
+    }
+    endpoint->connected.store(true);
+    endpoint->reader = std::thread([endpoint, connection] { ReaderLoop(endpoint, connection); });
+
+    const UltraMsgConnectOptions& options = endpoint->options;
+    JSONValue hello = MakeFrame(Frame::Hello);
+    hello.Set("app", options.appId);
+    hello.Set("name", options.displayName);
+    hello.Set("icon", options.iconPath);
+    hello.Set("pid", static_cast<int64_t>(CurrentProcessId()));
+    hello.Set("version", kVersion);
+    UltraMsgResult sendResult;
+    bool ok = SendFrame(endpoint, hello, &sendResult);
+    if (!ok) {
+        why = sendResult.message;
+    } else {
+        std::unique_lock<std::mutex> lock(endpoint->welcomeMutex);
+        endpoint->welcomeCv.wait_for(lock, std::chrono::milliseconds(kWelcomeTimeoutMs),
+                                     [&] { return endpoint->welcomed; });
+        if (!endpoint->welcomed || !endpoint->welcomeOk) {
+            why = endpoint->welcomeError.empty() ? Tr("the broker did not welcome us")
+                                                 : endpoint->welcomeError;
+            ok = false;
+        }
+    }
+    if (!ok) {
+        connection->Close();
+        if (endpoint->reader.joinable()) endpoint->reader.join();
+        endpoint->connected.store(false);
+    }
+    return ok;
+}
+
+// The endpoint's subscriptions, registered with the broker it has just
+// reconnected to: the broker numbers them anew. A subscription that asked
+// for a replay gets what was recorded since the connection dropped.
+void Resubscribe(const EndpointPtr& endpoint) {
+    std::vector<std::shared_ptr<SubscriptionRec>> subscriptions;
+    {
+        std::lock_guard<std::mutex> lock(endpoint->mutex);
+        for (auto& [id, subscription] : endpoint->subscriptions) subscriptions.push_back(subscription);
+        endpoint->subscriptions.clear();
+    }
+    const int64_t since = endpoint->disconnectedAtMs.load();
+    for (const auto& subscription : subscriptions) {
+        if (!subscription->active.load()) continue;
+        JSONValue args = JSONValue::MakeObject();
+        args.Set("pattern", subscription->pattern);
+        args.Set("manualAck", subscription->options.manualAck);
+        args.Set("includeOwn", subscription->options.includeOwn);
+        args.Set("replaySince", subscription->options.replaySinceMs > 0 ? since : int64_t{0});
+        UltraMsgResult result;
+        Control(endpoint, Op::Subscribe, std::move(args), result, [&](const JSONValue& reply) {
+            if (!JsonBool(reply, "ok", false)) return;
+            std::lock_guard<std::mutex> lock(endpoint->mutex);
+            if (!subscription->active.load()) return;   // unsubscribed meanwhile
+            subscription->brokerId = static_cast<uint64_t>(Int(Obj(reply, "result"), "sub"));
+            endpoint->subscriptions[subscription->brokerId] = subscription;
+        });
+    }
+}
+
+constexpr int kReconnectFirstDelayMs = 200;
+constexpr int kReconnectMaxDelayMs = 5000;
+constexpr int kReconnectTickMs = 100;
+constexpr int kReconnectTimeoutMs = 1000;
+
+// One try at bringing a dropped endpoint back; a failure waits longer each
+// time, up to five seconds.
+void TryReconnect(const EndpointPtr& endpoint) {
+    std::unique_lock<std::mutex> guard(endpoint->reconnectMutex, std::try_to_lock);
+    if (!guard.owns_lock() || endpoint->closing.load() || endpoint->connected.load()) return;
+    const int64_t now = NowMs();
+    if (endpoint->nextRetryMs == 0) {
+        endpoint->retryDelayMs = kReconnectFirstDelayMs;
+        endpoint->nextRetryMs = now + endpoint->retryDelayMs;   // let the old host finish going
+        return;
+    }
+    if (now < endpoint->nextRetryMs) return;
+    auto later = [&] {
+        endpoint->retryDelayMs = (std::min)(kReconnectMaxDelayMs, endpoint->retryDelayMs * 2);
+        endpoint->nextRetryMs = NowMs() + endpoint->retryDelayMs;
+    };
+    // The reader of the dropped connection has ended, or is just ending.
+    if (endpoint->reader.joinable()) endpoint->reader.join();
+
+    const UltraMsgConnectOptions& options = endpoint->options;
+    const std::string bus = options.busPath.empty() ? DefaultBusPath() : options.busPath;
+    UltraMsgResultCode code = UltraMsgResultCode::BrokerUnavailable;
+    std::string why;
+    ConnectionPtr connection = ConnectOrHost(bus, options.startBrokerIfAbsent, options.journalPath,
+                                             kReconnectTimeoutMs, code, why);
+    if (!connection) {
+        later();
+        return;
+    }
+    if (endpoint->closing.load()) {
+        connection->Close();
+        return;
+    }
+    if (!Handshake(endpoint, connection, why)) {
+        later();
+        return;
+    }
+    endpoint->nextRetryMs = 0;
+    Resubscribe(endpoint);
+}
+
+void ReconnectLoop() {
+    Module& module = GetModule();
+    while (module.timerRunning.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(kReconnectTickMs));
+        std::vector<EndpointPtr> endpoints;
+        {
+            std::lock_guard<std::mutex> lock(module.mutex);
+            for (auto& [handle, endpoint] : module.endpoints) {
+                if (endpoint->options.autoReconnect && !endpoint->connected.load() && !endpoint->closing.load())
+                    endpoints.push_back(endpoint);
+            }
+        }
+        for (const auto& endpoint : endpoints) TryReconnect(endpoint);
+    }
+}
+
 } // namespace
 
 // ===========================================================================
@@ -548,6 +752,7 @@ void UltraMsg_Shutdown() {
     for (UltraMsgHandle handle : handles) UltraMsg_Disconnect(handle);
     if (module.timerRunning.exchange(false)) {
         if (module.timer.joinable()) module.timer.join();
+        if (module.reconnector.joinable()) module.reconnector.join();
     }
     std::lock_guard<std::mutex> lock(module.brokerMutex);
     if (module.broker) {
@@ -622,71 +827,21 @@ UltraMsgHandle UltraMsg_Connect(const UltraMsgConnectOptions& options, UltraMsgR
 
     Module& module = GetModule();
     const std::string bus = options.busPath.empty() ? DefaultBusPath() : options.busPath;
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::milliseconds(options.connectTimeoutMs > 0 ? options.connectTimeoutMs : 2000);
-
-    ConnectionPtr connection;
-    std::string connectError;
-    for (;;) {
-        connection = ConnectToBus(bus, 500, connectError);
-        if (connection) break;
-        if (!options.startBrokerIfAbsent) return fail(UltraMsgResultCode::BrokerUnavailable, connectError);
-        bool alreadyInUse = false;
-        {
-            std::lock_guard<std::mutex> lock(module.brokerMutex);
-            if (!module.broker || !module.broker->IsRunning()) {
-                auto broker = std::make_unique<Broker>();
-                Broker::Config config;
-                config.busPath = bus;
-                config.journalPath = options.journalPath;
-                UltraMsgResult started = broker->Start(config, alreadyInUse);
-                if (started.ok) {
-                    module.broker = std::move(broker);
-                } else if (!alreadyInUse) {
-                    return fail(UltraMsgResultCode::BrokerUnavailable, "cannot start a broker: " + started.message);
-                }
-            }
-        }
-        if (alreadyInUse) std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        if (std::chrono::steady_clock::now() > deadline)
-            return fail(UltraMsgResultCode::BrokerUnavailable, "no broker reachable on " + bus);
-    }
+    UltraMsgResultCode code = UltraMsgResultCode::BrokerUnavailable;
+    std::string why;
+    ConnectionPtr connection = ConnectOrHost(bus, options.startBrokerIfAbsent, options.journalPath,
+                                             options.connectTimeoutMs, code, why);
+    if (!connection) return fail(code, why);
 
     auto endpoint = std::make_shared<EndpointRec>();
     endpoint->options = options;
-    endpoint->connection = connection;
-    endpoint->connected.store(true);
     endpoint->info.appId = options.appId;
     endpoint->info.displayName = options.displayName;
     endpoint->info.iconPath = options.iconPath;
-    endpoint->reader = std::thread([endpoint] { ReaderLoop(endpoint); });
-
-    JSONValue hello = MakeFrame(Frame::Hello);
-    hello.Set("app", options.appId);
-    hello.Set("name", options.displayName);
-    hello.Set("icon", options.iconPath);
-    hello.Set("pid", static_cast<int64_t>(CurrentProcessId()));
-    hello.Set("version", kVersion);
-    UltraMsgResult sendResult;
-    if (!SendFrame(endpoint, hello, &sendResult)) {
+    endpoint->closing.store(false);
+    if (!Handshake(endpoint, connection, why)) {
         endpoint->closing.store(true);
-        connection->Close();
-        endpoint->reader.join();
-        return fail(UltraMsgResultCode::BrokerUnavailable, sendResult.message);
-    }
-    {
-        std::unique_lock<std::mutex> lock(endpoint->welcomeMutex);
-        endpoint->welcomeCv.wait_for(lock, std::chrono::milliseconds(kWelcomeTimeoutMs),
-                                     [&] { return endpoint->welcomed; });
-        if (!endpoint->welcomed || !endpoint->welcomeOk) {
-            const std::string why = endpoint->welcomeError.empty() ? "the broker did not welcome us"
-                                                                     : endpoint->welcomeError;
-            lock.unlock();
-            endpoint->closing.store(true);
-            connection->Close();
-            endpoint->reader.join();
-            return fail(UltraMsgResultCode::BrokerUnavailable, why);
-        }
+        return fail(UltraMsgResultCode::BrokerUnavailable, why);
     }
     {
         std::lock_guard<std::mutex> lock(module.mutex);
@@ -722,7 +877,9 @@ UltraMsgResult UltraMsg_Disconnect(UltraMsgHandle handle) {
         SendFrame(endpoint, bye);
     }
     endpoint->closing.store(true);
-    endpoint->connection->Close();
+    // After a reconnection under way: it sees `closing` and gives up.
+    std::lock_guard<std::mutex> reconnecting(endpoint->reconnectMutex);
+    if (const ConnectionPtr connection = CurrentConnection(endpoint)) connection->Close();
     if (endpoint->reader.joinable()) {
         if (endpoint->reader.get_id() == std::this_thread::get_id()) endpoint->reader.detach();
         else endpoint->reader.join();

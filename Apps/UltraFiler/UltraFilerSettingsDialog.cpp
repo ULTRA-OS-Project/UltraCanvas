@@ -46,6 +46,10 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.24.0 - Display > Favorite folders: a solid background, a border or a shade in one
+//                  colour, the heart on or off, and a preview of sample folders
+// Version: 1.23.0 - Display > Path bar: the colours of the parent folders and of the current folder
+//                  (colour boxes that open the colour picker), and Restore defaults
 // Version: 1.22.0 - Display > Display mode: UltraFiler light, dark, or as the desktop says;
 //                  the window's own switches follow a theme change (FollowKitLook)
 // Version: 1.21.2 - Display > Thumbnails / Detail view name the file kinds in the reader's
@@ -132,6 +136,7 @@ namespace {
     constexpr const char* kPageFileIcons = "display/file-icons";
     constexpr const char* kPageFilesInUse = "display/files-in-use";
     constexpr const char* kPagePathBar = "display/path-bar";
+    constexpr const char* kPageFavorites = "display/favorite-folders";
     constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageHandling = "handling";
     constexpr const char* kPageDragDrop = "handling/drag-drop";
@@ -187,6 +192,20 @@ namespace {
         std::shared_ptr<UltraCanvasCheckbox> lockMarkingBox;
         // Display > Path bar: the "drive's volume name" checkbox.
         std::shared_ptr<UltraCanvasCheckbox> pathBarVolumeNamesBox;
+        // ... and its two colours.
+        std::shared_ptr<UltraCanvasButton> pathBarFolderColorBox;
+        std::shared_ptr<UltraCanvasButton> pathBarCurrentColorBox;
+        // Display > Favorite folders: the look, the heart, the colour, and a
+        // small file display of sample folders showing the result.
+        UltraCanvasRadioGroup              favoriteLookGroup;
+        std::shared_ptr<UltraCanvasRadio>  favoriteNoneRadio;
+        std::shared_ptr<UltraCanvasRadio>  favoriteFillRadio;
+        std::shared_ptr<UltraCanvasRadio>  favoriteBorderRadio;
+        std::shared_ptr<UltraCanvasRadio>  favoriteShadeRadio;
+        std::shared_ptr<UltraCanvasCheckbox> favoriteHeartBox;
+        std::shared_ptr<UltraCanvasButton> favoriteColorBox;
+        std::shared_ptr<UltraCanvasFilerWidget> favoritePreview;
+        std::string favoritePreviewFolder;
         // Display > Thumbnails: the "pictures inside a folder on its icon"
         // checkbox above the kind list.
         std::shared_ptr<UltraCanvasCheckbox> folderPreviewsBox;
@@ -1246,6 +1265,202 @@ namespace {
         AddNote(parts, "ufl-set-pathbar-note2",
                 Tr("Off, the path bar is shorter: the letter alone, which "
                    "leaves more room for the folders of a deep path."));
+
+        // The colours: the segments of the folders leading to the one shown,
+        // and the segment of the folder shown. A click opens the colour
+        // picker; the bar follows while a colour is being picked.
+        auto pathBarColorBox = [d](const char* id, Color UltraFilerSettings::* field,
+                                   std::shared_ptr<UltraCanvasButton> DialogState::* box,
+                                   const std::string& tooltip, const std::string& title) {
+            d->*box = MakeColorBox(id, d->settings->*field, tooltip, [d, field, box, title]() {
+                ShowColorPickerPopup(d, title, d->settings->*field,
+                        [d, field, box](const Color& c) {       // live preview
+                    d->settings->*field = c;
+                    SetColorBoxColor(d->*box, c);
+                    if (d->onChanged) d->onChanged();
+                },
+                        [d, field, box](const Color& c) {       // kept
+                    d->settings->*field = c;
+                    SetColorBoxColor(d->*box, c);
+                    ApplyAndSave(d);
+                });
+            });
+        };
+        pathBarColorBox("ufl-set-pathbar-folders-color", &UltraFilerSettings::pathBarFolderColor,
+                        &DialogState::pathBarFolderColorBox,
+                        Tr("Background of the folders leading to the one shown"),
+                        Tr("Parent folders colour"));
+        parts.body->AddChild(MakeColorRow("ufl-set-pathbar-folders-row",
+                Tr("Parent folders colour:"), d->pathBarFolderColorBox));
+        pathBarColorBox("ufl-set-pathbar-current-color", &UltraFilerSettings::pathBarCurrentColor,
+                        &DialogState::pathBarCurrentColorBox,
+                        Tr("Background of the folder shown"),
+                        Tr("Current folder colour"));
+        parts.body->AddChild(MakeColorRow("ufl-set-pathbar-current-row",
+                Tr("Current folder colour:"), d->pathBarCurrentColorBox));
+        AddNote(parts, "ufl-set-pathbar-note3",
+                Tr("The text on each segment is white or dark, whichever reads on "
+                   "its colour. Under a dark theme the default light grey of the "
+                   "parent folders becomes the theme's dark grey; a colour you "
+                   "choose is kept in either look."));
+
+        d->resets[kPagePathBar] = PageReset{Tr("Restore defaults"), 170, [d]() {
+            if (!d->settings) return;
+            d->settings->pathBarVolumeNames = true;
+            d->settings->pathBarFolderColor = UltraFilerSettings::kDefaultPathBarFolderColor;
+            d->settings->pathBarCurrentColor = UltraFilerSettings::kDefaultPathBarCurrentColor;
+            if (d->pathBarVolumeNamesBox) d->pathBarVolumeNamesBox->SetChecked(true);
+            SetColorBoxColor(d->pathBarFolderColorBox, d->settings->pathBarFolderColor);
+            SetColorBoxColor(d->pathBarCurrentColorBox, d->settings->pathBarCurrentColor);
+            ApplyAndSave(d);
+        }};
+        return parts.page;
+    }
+
+    // ===== DISPLAY > FAVORITE FOLDERS =====
+    // The sample display: what the settings give, as the folder display draws
+    // it - the same widget, the colour the main window uses for this theme.
+    void UpdateFavoritePreview(DialogState* d) {
+        if (!d->favoritePreview || !d->settings) return;
+        const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+        d->favoritePreview->SetFavoriteHighlight(d->settings->favoriteHighlight,
+                d->settings->EffectiveFavoriteHighlightColor(theme.dark, theme.roles.ground));
+        d->favoritePreview->SetFavoriteHeartShown(d->settings->favoriteHeart);
+    }
+
+    // Three folders to show the looks on: an ordinary one, a favorite, and a
+    // favorite that is selected. UltraFiler's own scratch folders, made once.
+    std::string MakeFavoritePreviewFolder(std::string& documents, std::string& work) {
+        std::error_code ec;
+        const std::filesystem::path root = std::filesystem::temp_directory_path(ec) / "UltraFiler-favorite-preview";
+        if (ec) return {};
+        const std::filesystem::path docs = root / PathFromUtf8(Tr("Documents"));
+        const std::filesystem::path workDir = root / PathFromUtf8(Tr("Work"));
+        std::filesystem::create_directories(root / PathFromUtf8(Tr("Projects")), ec);
+        std::filesystem::create_directories(docs, ec);
+        std::filesystem::create_directories(workDir, ec);
+        documents = PathToUtf8(docs);
+        work = PathToUtf8(workDir);
+        return PathToUtf8(root);
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildFavoritesPage(DialogState* d) {
+        // Taller than a small settings window (the preview): the page scrolls,
+        // and its notes sit under the caption where they are read first.
+        PageParts parts = MakePage("ufl-set-page-favorites", Tr("Favorite folders"),
+                Tr("How a favorite folder stands out in the folder display:"), true);
+
+        AddBodyCaption(parts, "ufl-set-fav-look-caption", Tr("Highlight"));
+        const FilerFavoriteHighlight look = d->settings->favoriteHighlight;
+        d->favoriteNoneRadio = MakeChoice("ufl-set-fav-none", Tr("None"),
+                look == FilerFavoriteHighlight::NoHighlight);
+        d->favoriteFillRadio = MakeChoice("ufl-set-fav-fill",
+                Tr("Solid background - the whole box, picture and name"),
+                look == FilerFavoriteHighlight::Fill);
+        d->favoriteBorderRadio = MakeChoice("ufl-set-fav-border", Tr("Border around the box"),
+                look == FilerFavoriteHighlight::Border);
+        d->favoriteShadeRadio = MakeChoice("ufl-set-fav-shade",
+                Tr("Shaded - the colour at the top, fading out to the bottom"),
+                look == FilerFavoriteHighlight::Shade);
+        for (const auto& radio : {d->favoriteNoneRadio, d->favoriteFillRadio,
+                                  d->favoriteBorderRadio, d->favoriteShadeRadio}) {
+            d->favoriteLookGroup.AddRadioButton(radio);
+            parts.body->AddChild(radio);
+        }
+        d->favoriteLookGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->favoriteHighlight =
+                    selected == d->favoriteFillRadio   ? FilerFavoriteHighlight::Fill
+                  : selected == d->favoriteBorderRadio ? FilerFavoriteHighlight::Border
+                  : selected == d->favoriteShadeRadio  ? FilerFavoriteHighlight::Shade
+                                                       : FilerFavoriteHighlight::NoHighlight;
+            UpdateFavoritePreview(d);
+            ApplyAndSave(d);
+        };
+
+        d->favoriteHeartBox = MakeCheckbox("ufl-set-fav-heart", Tr("Show the heart (as before)"),
+                kTextWidth, d->settings->favoriteHeart, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->favoriteHeart = on;
+            UpdateFavoritePreview(d);
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->favoriteHeartBox);
+
+        d->favoriteColorBox = MakeColorBox("ufl-set-fav-color",
+                d->settings->favoriteHighlightColor,
+                Tr("Colour of the highlight of a favorite folder"), [d]() {
+            ShowColorPickerPopup(d, Tr("Highlight colour"), d->settings->favoriteHighlightColor,
+                    [d](const Color& c) {       // live preview
+                d->settings->favoriteHighlightColor = c;
+                SetColorBoxColor(d->favoriteColorBox, c);
+                UpdateFavoritePreview(d);
+                if (d->onChanged) d->onChanged();
+            },
+                    [d](const Color& c) {       // kept
+                d->settings->favoriteHighlightColor = c;
+                SetColorBoxColor(d->favoriteColorBox, c);
+                UpdateFavoritePreview(d);
+                ApplyAndSave(d);
+            });
+        });
+        parts.body->AddChild(MakeColorRow("ufl-set-fav-color-row", Tr("Highlight colour:"),
+                                          d->favoriteColorBox));
+
+        // The preview: a real file display of three sample folders, so it
+        // shows exactly what the folder display will.
+        AddBodyCaption(parts, "ufl-set-fav-preview-caption", Tr("Preview"));
+        std::string documents, work;
+        d->favoritePreviewFolder = MakeFavoritePreviewFolder(documents, work);
+        if (!d->favoritePreviewFolder.empty()) {
+            auto preview = std::make_shared<UltraCanvasFilerWidget>("ufl-set-fav-preview", 0, 0,
+                                                                    kTextWidth, 150);
+            preview->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            preview->SetFolderWatchEnabled(false);
+            preview->SetHoverIconMenuEnabled(false);
+            preview->SetSelectionInfoVisible(false);
+            preview->SetViewType(FilerViewType::ThumbnailsMedium);
+            preview->SetFavoriteMarkProvider([documents, work](const FilerEntry& e) {
+                return e.path == documents || e.path == work;
+            });
+            const std::string root = d->favoritePreviewFolder;
+            preview->SetPath(root);
+            preview->SelectPath(work);
+            // A sample, not a place to go: a double-click does not leave it.
+            std::weak_ptr<UltraCanvasFilerWidget> weak = preview;
+            preview->onPathChanged = [weak, root, work](const std::string& path) {
+                auto p = weak.lock();
+                if (!p || path == root) return;
+                p->SetPath(root);
+                p->SelectPath(work);
+            };
+            d->favoritePreview = preview;
+            parts.body->AddChild(preview);
+            UpdateFavoritePreview(d);
+        }
+
+        AddNote(parts, "ufl-set-fav-note1",
+                Tr("The text on a solid background is white or dark, whichever reads "
+                   "on the colour. In the list and Details views the whole row is "
+                   "highlighted; a selected favorite keeps the selection colour, and "
+                   "a border or the heart still shows on it."));
+        AddNote(parts, "ufl-set-fav-note2",
+                Tr("With the default colour, a border is drawn in the heart's red, and "
+                   "under a dark theme a background or shade is a dark tint of it. A "
+                   "colour you choose is used as it is, in either look."));
+
+        d->resets[kPageFavorites] = PageReset{Tr("Restore defaults"), 170, [d]() {
+            if (!d->settings) return;
+            d->settings->favoriteHighlight = FilerFavoriteHighlight::NoHighlight;
+            d->settings->favoriteHighlightColor = UltraFilerSettings::kDefaultFavoriteHighlightColor;
+            d->settings->favoriteHeart = true;
+            // SelectButton does not report the change: the settings are set here.
+            if (d->favoriteNoneRadio) d->favoriteLookGroup.SelectButton(d->favoriteNoneRadio);
+            if (d->favoriteHeartBox) d->favoriteHeartBox->SetChecked(true);
+            SetColorBoxColor(d->favoriteColorBox, d->settings->favoriteHighlightColor);
+            UpdateFavoritePreview(d);
+            ApplyAndSave(d);
+        }};
         return parts.page;
     }
 
@@ -2295,10 +2510,15 @@ namespace {
             themed.base.textHoverColor = TextColor();
             s.SetVisualStyle(themed);
         });
-        // Explicit sizes: content measuring needs a render context, which the
-        // dialog does not have while it is first laid out.
+        // An explicit width: content measuring needs a render context, which
+        // the dialog does not have while it is first laid out. A longer
+        // translation wraps onto a second line instead of being cut off
+        // (German needs 620 px for the disk-cache switch).
+        sw->SetLabelWrap(true);
         sw->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        sw->size.height = CSSLayout::Dimension::Px(kControlHeight);
+        sw->size.height = CSSLayout::Dimension::Auto();
+        sw->boxConstraints = CSSLayout::BoxConstraints{};
+        sw->boxConstraints->minHeight = CSSLayout::Dimension::Px(kControlHeight);
         sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         sw->onStateChanged = [onChange](CheckedState, CheckedState now) {
             if (onChange) onChange(now == CheckedState::Checked);
@@ -2711,6 +2931,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageTreeview, Tr("Treeview"));
         AddTreeNode(d, kPageDisplay, kPageTabStyle, Tr("Tab style"));
         AddTreeNode(d, kPageDisplay, kPagePathBar, Tr("Path bar"));
+        AddTreeNode(d, kPageDisplay, kPageFavorites, Tr("Favorite folders"));
         AddTreeNode(d, kPageDisplay, kPageNewTab, Tr("New tab"));
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, Tr("Home folder"));
         AddTreeNode(d, kPageDisplay, kPageCopyDialog, Tr("Copy dialog style"));
@@ -2741,6 +2962,7 @@ namespace {
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
         AddPage(d, kPageTabStyle, BuildTabStylePage(d));
         AddPage(d, kPagePathBar, BuildPathBarPage(d));
+        AddPage(d, kPageFavorites, BuildFavoritesPage(d));
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
         AddPage(d, kPageCopyDialog, BuildCopyDialogPage(d));
         AddPage(d, kPageFiles, BuildFilesPage(d));

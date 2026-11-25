@@ -851,7 +851,6 @@ private:
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
 
-    struct FurnitureLayout;                       // below, with the pages
     // ===== FLOATING PICTURES =====
     // A floating picture where the placement pass put it: x from the text
     // column's left edge, y in content coordinates.

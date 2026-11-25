@@ -71,7 +71,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
     auto status = DemoKit::AddText(card, "LocalisationEditorStatus", Tr("Ready."));
-    status->SetTextColor(Color(90, 90, 90, 255));
+    status->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
 
     auto editor = std::make_shared<UltraCanvasLocalisationEditor>("LocalisationEditorDemo");
     editor->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))

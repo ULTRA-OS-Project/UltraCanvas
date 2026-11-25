@@ -577,6 +577,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasUnixSocketAddress** (`UltraCanvasUnixSocketAddress.h`,
+  header-only, not Windows) — the address of a Unix socket at a path of any
+  length. `UnixSocketAddress::Resolve(path, error)` fills a `sockaddr_un`;
+  a path longer than the 107 bytes it holds is reached through its folder
+  on Linux (`/proc/self/fd/<n>/<file>`), and refused with the reason on
+  macOS and the BSDs. `Fits(path)` says whether a path needs that. Used by
+  UltraMessage's transport and UltraWin's QMP client. See
+  `Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md`.
+
 - **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
   `SettingsPageKit`) — the look of an application's settings window, once:
   `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
@@ -605,7 +614,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
   UltraClipboard, UltraNotifications, UltraSnip, UltraToDo, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
-  UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
+  UltraAuthenticator, UltraAccount, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
   ArtCreator, UltraVideo, AnchorPoint). See
@@ -830,15 +839,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   See `Docs/UltraCanvas/UltraCanvasDrawingML.md`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
-  presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into
+  presentations (`.odp`, `.otp` templates, flat `.fodp`) read into
   UltraCanvasPresentationPptx's model (`PptxPresentation` and the rest), so
-  `PptxPresentationToRichDocument` outlines either kind of deck:
-  `ReadOdpPresentation`, `ReadOdpPresentationFromMemory` (a package or a flat
-  file's XML), `IsOdpPresentationFile` (by content), `IsOdpExtension`. Titles,
-  subtitles, outline and text-box paragraphs with list levels, bullets and
-  numbering from the list styles, bold / italic / underline through the style
-  parents, groups, tables (covered cells kept as empty cells), pictures,
-  speaker notes, hidden slides, the slide size from the master's page layout;
+  `PptxPresentationToRichDocument` outlines either kind of deck and
+  `RenderPptxSlide` draws it: `ReadOdpPresentation`,
+  `ReadOdpPresentationFromMemory` (a package or a flat file's XML; with
+  `withPictures` the pictures' bytes), `IsOdpPresentationFile` (by content),
+  `IsOdpExtension`. Titles, subtitles, outline and text-box paragraphs with
+  list levels, bullets and numbering from the list styles, groups, tables
+  (covered cells kept as empty cells), pictures, speaker notes, hidden slides,
+  the slide size from the master's page layout; the look as drawn, each style
+  through its parents and defaults: fills and gradients, outlines (dashes,
+  arrowheads), outlines' shapes (Office presets, ODF types, enhanced and SVG
+  paths, lines and connectors), turns and mirroring, text areas, runs' size,
+  colour, typeface and decoration, paragraphs' spacing and margins, list
+  labels, table cells' fills, borders and padding (table templates too),
+  backgrounds, the theme's colours;
   slide furniture, prompting placeholders, embedded objects and page comments
   left out. A password-protected deck opens with its password
   (UltraCanvasOdfEncryption). Charts are read as chart objects
@@ -1106,6 +1122,33 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   zoom and pan over a dark lightbox; this is the general one.
   See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
 
+- **UltraCanvasScreenAreaPicker** (`UltraCanvasScreenAreaPicker.h`) — an
+  area of the screen chosen over a frozen capture: dimmed, a rectangle
+  dragged or a window clicked, Enter for the window under the pointer or the
+  whole screen, Escape to give up; the answer in screen pixels, cropped out
+  of the capture with `ScreenArea::CropToRgba`. Moved from UltraSnip, which
+  takes its snips with it; ChatCube's screenshot button puts the area into
+  the message being written. On macOS placed in points above the menu bar
+  (`WindowType::Overlay`). Core in `core/UltraCanvasScreenAreaPicker.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md`.
+
+- **UltraCanvasMapView** (`UltraCanvasMapView.h`) — a map of the world from
+  OpenStreetMap's tiles (or another slippy-map server): the element (drag,
+  wheel zoom, a pin by a click), `DrawMap` into any rectangle (a map card in
+  a list's row) and `RenderMapToRgba` (a map picture); one tile cache for
+  the program, fetched through UltraNet within OpenStreetMap's usage policy.
+  Moved from ChatCube's location window. Core in `core/UltraCanvasMapView.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasMapView.md`.
+
+- **UltraCanvasGeolocation** (`UltraCanvasGeolocation.h`) — where this device
+  is: one position from the system's location service, answered on the UI
+  thread with its accuracy. GeoClue 2 over D-Bus on Linux
+  (`OS/Linux/UltraCanvasLinuxGeolocation.cpp`), CoreLocation on macOS
+  (`OS/MacOS/UltraCanvasMacOSGeolocation.mm`), Windows.Devices.Geolocation
+  through C++/WinRT on Windows (`OS/MSWindows/UltraCanvasWindowsGeolocation.cpp`,
+  where the projection headers are); none elsewhere. Core in
+  `core/UltraCanvasGeolocation.cpp`. See `Docs/UltraCanvas/UltraCanvasGeolocation.md`.
+
 - **UltraCanvasDesktopShell** (`UltraCanvasDesktopShell.h`) — the running
   desktop as a shell sees it: the windows other applications have open and
   which is active, the virtual desktops, the installed applications a launcher
@@ -1136,7 +1179,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   lock (logind), loudspeaker (libpulse) and tray (StatusNotifierItem) in
   `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`,
   `UltraCanvasLinuxDesktopShellAudio.cpp` and `UltraCanvasLinuxTrayHost.cpp`;
-  a null backend elsewhere. On
+  a null backend elsewhere - except the screen capture on macOS
+  (ScreenCaptureKit, the main display) in
+  `OS/MacOS/UltraCanvasMacOSScreenCapture.mm`; `CanCaptureScreen` says
+  whether a build captures at all. On
   Windows also the standalone **UltraCanvasShellGuard** program
   (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
   instead of Explorer. Public surface:
@@ -1213,6 +1259,30 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     Linux the StatusNotifierWatcher and host on the session bus with the
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasEmbeddedWindowManager** (`UltraCanvasEmbeddedWindowManager.h`)
+  — a window manager inside the program, for a backend that draws many
+  windows onto one surface: stacking bands, focus, placement, title bars kept
+  with their windows (`AttachFrame`; the bar itself is
+  `UltraCanvasEmbeddedWindowFrame`, a borderless window of an
+  `UltraCanvasLabel` and three `UltraCanvasButton`s), moving and resizing,
+  maximize into the work area reserved edges leave, pointer routing with the
+  button grab, damage, and compositing with a drawn pointer. Platform-neutral;
+  the Android backend's desktop mode (`OS/Android/UltraCanvasAndroidDesktop`,
+  MobilePC) runs on it, and through it answers `UltraCanvasDesktopShell` as
+  its embedded host. Core in `core/UltraCanvasEmbeddedWindowManager.cpp` and
+  `core/UltraCanvasEmbeddedWindowFrame.cpp`; tested by
+  `Tests/EmbeddedWindowManagerTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md`.
+
+- **UltraCanvasHostedApps** (`UltraCanvasHostedApps.h`) — applications that
+  run inside their host program (MobilePC's): registered with an entry
+  point, listed by `UltraCanvasDesktopShell::ListApplications` where the
+  platform has none of its own, started in the process by
+  `LaunchApplication` - and by `LaunchProgram` with the name of a program an
+  application stands in for (`programs`: MobilePC's UltraFiler answers
+  "UltraFiler"). Core in `core/UltraCanvasHostedApps.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
 
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
   operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
@@ -3233,7 +3303,7 @@ framework's `Tr` keys and the curated application vocabulary) and
 `media/locale/en/base/<Base>.json` (the sixteen base sets);
 `scripts/extract_ui_strings.py` rewrites them from the sources,
 `scripts/check_locale_catalogues.py` is the CI gate over every
-translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+translation (`source-checks.yml`, `scripts/locale_catalogues_baseline.txt`),
 and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
 `Tr` for review. `ultralocalisation-draft` (`Apps/UltraLocalisationDraft`,
 on UltraAI's translator) drafts a language's catalogue, driven per set by
@@ -3241,9 +3311,10 @@ on UltraAI's translator) drafts a language's catalogue, driven per set by
 languages under `media/locale/<lang>/`. The localisation editor
 `UltraCanvasLocalisationEditor` (`include/UltraCanvasLocalisationEditor.h`,
 in the core, with `LocalisationWorkspace` as its model) shows every set an
-application's texts come from in one grid and merges them; UOS-Settings
-hosts it under Language > Translations, `ShowLocalisationEditorDialog`
-opens it on the running application. The DemoApp page *ULTRA OS modules >
+application's texts come from in one grid and merges them, in a Compact
+arrangement for a page or a dialog and a Window one with a row panel;
+UOS-Localisation (`Apps/UOSLocalisation`) is it in a window of its own,
+`ShowLocalisationEditorDialog` opens it on the running application. The DemoApp page *ULTRA OS modules >
 Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) shows
 the four calls live in a picked language, with the layer that answered
 each, and the catalogue files of the three layers. See

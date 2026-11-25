@@ -392,6 +392,8 @@
   "UltraFiler - Settings": "UltraFiler – Asetukset",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler yksinkertainen – piirretyt kansio- ja arkkikuvakkeet",
   "UltraViewer could not be started: {0}": "UltraVieweria ei voitu käynnistää: {0}",
+  "Edit in {0}": "Muokkaa ohjelmassa {0}",
+  "{0} could not be started: {1}": "Ohjelmaa {0} ei voitu käynnistää: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer näyttää kuvan, äänitiedoston tai videon täysikokoisena, ja muu kansio on näppäinpainalluksen päässä. Kun UltraVieweria ei ole asennettu tai tämä on poistettu käytöstä, tällainen tiedosto käsitellään kuten mikä tahansa muu, alla olevan valinnan mukaan.",
   "Upload: the name is already taken": "Lähetys palvelimeen: nimi on jo käytössä",
   "Uploaded: {0}": "Lähetetty palvelimeen: {0}",

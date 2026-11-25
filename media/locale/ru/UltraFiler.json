@@ -396,6 +396,8 @@
   "UltraFiler - Settings": "UltraFiler — Настройки",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler простые — нарисованные значки папок и листов",
   "UltraViewer could not be started: {0}": "Не удалось запустить UltraViewer: {0}",
+  "Edit in {0}": "Редактировать в {0}",
+  "{0} could not be started: {1}": "Не удалось запустить {0}: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer показывает изображение, аудиофайл или видео в полном размере, а остальное содержимое папки — на расстоянии одного нажатия клавиши. Если UltraViewer не установлен или этот параметр выключен, такой файл обрабатывается как любой другой — согласно выбору ниже.",
   "Upload: the name is already taken": "Отправка на сервер: это имя уже занято",
   "Uploaded: {0}": "Отправляемый: {0}",

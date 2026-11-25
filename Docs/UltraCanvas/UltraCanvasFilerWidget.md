@@ -78,6 +78,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [What the extension cannot say](#what-the-extension-cannot-say)
 - [Folder icons](#folder-icons)
 - [Favorite mark](#favorite-mark)
+  - [Favorite highlight](#favorite-highlight)
 - [Folder previews](#folder-previews)
 - [Selection access](#selection-access)
 - [Hover icon menu](#hover-icon-menu)
@@ -471,6 +472,9 @@ Open with      >  clicking the entry opens the selection with the OS default
                   registers for the selected files (default app first), then
                   entries added via AddOpenWithApp(), then "Other
                   application…" (file dialog)
+(host entries)    what openMenuProvider returns for the selection — in the
+                  UltraFiler: "Edit in UltraPaint" on pictures, "Edit in
+                  ArtCreator" on drawings
 Extract and Run   (only on a program inside an archive — see below)
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
@@ -1037,8 +1041,14 @@ stuck; failed ones mean the files would not decode, and the log names each of
 them. `workerCount`, `longestJobPath` and `longestJobSeconds` name the job
 that has kept a worker busy longest: one running past 20 s is taken to be
 stuck, and another worker is started beside it (up to eight extra), so a
-single file that never finishes cannot stop every other thumbnail. Rescanning
-the folder or changing the view drops everything.
+single file that never finishes cannot stop every other thumbnail. Opening
+another folder or changing the view drops everything. A rescan of the folder
+already shown - a file deleted, renamed, copied in, or the folder watch
+noticing a change - keeps what was made for every file whose name, size and
+modification time are unchanged, so deleting one file does not redraw the
+folder with type glyphs before the thumbnails come back. A file that changed
+is made again in the background, and its tile keeps the old thumbnail until
+the new one is in.
 
 ### Thumbnails between runs
 
@@ -2011,6 +2021,29 @@ button's Files / Folders / Apps tabs, `UltraFilerFavorites::IsFavorite`) — not
 with folders pinned only into the folder tree's *Pinned* section — and leaves
 the Favorites view's own pages without it, where every entry would carry one.
 
+### Favorite highlight
+
+Beside (or instead of) the heart, a favorite can stand out as a whole:
+
+```cpp
+filer->SetFavoriteHighlight(FilerFavoriteHighlight::Fill, Color(253, 226, 228, 255));
+filer->SetFavoriteHeartShown(false);      // the highlight alone, no heart
+```
+
+| `FilerFavoriteHighlight` | What a favorite gets |
+|---|---|
+| `NoHighlight` (default) | Nothing beyond the heart |
+| `Fill` | The whole tile or row filled in the colour; its name and details are drawn in white or dark, whichever reads on it (contrast 4.5 : 1) |
+| `Border` | A 2 px rounded border around the tile, row or treemap cell |
+| `Shade` | The colour at the top, fading out to the bottom of the tile or row |
+
+A selected favorite keeps the selection colour - `Fill` and `Shade` give way
+to it, `Border` is drawn over it. In the treemap only `Border` is drawn, the
+cells carry their own colours. The colour is used as given; the widget does
+not adapt it to the theme, the host does (UltraFiler tints its default for a
+dark theme). `SetFavoriteHeartShown(false)` drops the heart and, in the row
+views, its gutter; the provider still decides which entries are favorites.
+
 ## Folder previews
 
 A folder drawn as the built-in shape shows the **first pictures inside it
@@ -2062,8 +2095,9 @@ What it costs, and where it is drawn:
   on its way — or failed — shows as a blank sheet, so a folder never pops from
   "open" back to "closed".
 
-The listings are dropped with the thumbnail cache — on a rescan, so the folder
-watch's rescan after a change is what makes the previews current — and are
+The listings are dropped with the thumbnail cache — a subfolder's on a rescan
+that finds its modification time changed, so the folder watch's rescan after a
+change is what makes the previews current — and are
 capped at 4096 folders, past which everything outside the current frame goes.
 
 `FolderPreviewCardRects(box, count)` is the card geometry, public and pure so
@@ -3034,6 +3068,20 @@ auto-scrolls at the viewport edge, Escape abandons it (the previous
 selection returns), and a press-and-release without movement keeps its old
 meaning — a plain click on empty space clears the selection (a Ctrl click
 leaves it alone).
+While the band is drawn, `onSelectionChanged` fires with every entry it takes
+in or lets go. A host that follows the selection with something that opens,
+closes or reflows - a preview pane beside the list - waits for the drag to
+end: `IsDragInProgress()` is true while a band is drawn or entries are
+dragged, and letting the band go fires `onSelectionChanged` once more with it
+false, so the host sees where the band ended.
+
+```cpp
+std::function<void(const std::vector<FilerEntry>&)> showInPreview;   // the host's preview
+filer->onSelectionChanged = [&](const std::vector<FilerEntry>& selected) {
+    if (filer->IsDragInProgress()) return;   // the band's last state comes on release
+    showInPreview(selected);
+};
+```
 Double-clicking an entry with the **left** button opens/activates it (folders
 and archives are entered, files fire `onFileActivated`); the right and middle
 buttons do not, although Windows reports a double-click for those too — a
@@ -3377,7 +3425,9 @@ reports what the system hides, not what the host asked for.
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)); a folder drawn as the shape shows the first pictures inside it (see [Folder previews](#folder-previews)) |
 | `SetFavoriteMarkProvider(fn(entry) -> bool)` | Per entry while it is drawn — `true` draws the red favorite heart at the entry's left (see [Favorite mark](#favorite-mark)) |
+| `SetFavoriteHighlight(look, colour)` / `SetFavoriteHeartShown(bool)` | How a favorite stands out besides the heart - background, border or shade - and whether the heart is drawn (see [Favorite highlight](#favorite-highlight)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
+| `openMenuProvider(targets) -> vector<MenuItemData>` | Called on every context-menu open of a file or selection, with the entries the menu acts on; the items go right after *Open with* - offer one only where it applies (UltraFiler's *Edit in UltraPaint* for pictures, *Edit in ArtCreator* for drawings). Not asked for the folder background's menu |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
 | `onOpenPath(entry)` | Open Path item (default: `SetPath(parent)`) |

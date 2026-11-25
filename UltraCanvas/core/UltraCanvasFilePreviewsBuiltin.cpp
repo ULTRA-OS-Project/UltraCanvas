@@ -10,6 +10,7 @@
 // and a format that moves into a runtime module takes its provider with it
 // and registers it from the module's init.
 //
+// Version: 1.4.1 - an .odp deck's first slide is drawn with its pictures
 // Version: 1.4.0 - a deck's thumbnail is its first slide as drawn (RenderPptxSlide), not a page of
 //                  its outline
 // Version: 1.3.0 - an OpenDocument presentation (.odp, .otp, .fodp) previews its slides' text,
@@ -20,7 +21,7 @@
 // Version: 1.1.0 - a PDF's first page on white paper: the page the engine left transparent showed
 //                  the tile under it (a dark page with white patches on a dark tile)
 // Version: 1.0.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilePreviews.h"
@@ -278,7 +279,7 @@ std::shared_ptr<UCPixmap> RenderDeckFirstSlide(const std::string& path, const Fi
     if (r.width <= 0 || r.height <= 0) return nullptr;
     PptxPresentation deck;
     std::string error;
-    const bool read = IsOdpExtension(path) ? ReadOdpPresentation(path, deck, error)
+    const bool read = IsOdpExtension(path) ? ReadOdpPresentation(path, deck, error, "", true)
                                            : ReadPptxPresentation(path, deck, error, "", true);
     if (!read || deck.slides.empty()) return nullptr;
     const double slideW = deck.slideWidth > 0 ? static_cast<double>(deck.slideWidth) : 12192000.0;

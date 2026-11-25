@@ -1,5 +1,10 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.9.3 - the bar opens at the top centre of the screen the mouse pointer is on
+//                  (the primary where the platform does not say), also when the window
+//                  of a resident UltraSnip comes back
+// Version: 0.9.2 - the overlay and the pickable windows are the framework's
+//                  (UltraCanvasScreenAreaPicker), the same as before
 // Version: 0.9.1 - zoomed to 200 % or more, the picture's pixels are hard-edged squares
 // Version: 0.9.0 - the picture in an UltraCanvasZoomPanImage: the wheel zooms it about the
 //                  cursor, a drag moves it while it is larger than the pane (never off it),
@@ -449,7 +454,12 @@ void UltraSnipWindow::Arm() {
     // window forward, as it is
     if (armed_ || capturing_ || (recorder_ && recorder_->IsRecording()) || result_ != ResultKind::Nothing ||
         !compact_) {
+        // Hidden (a resident UltraSnip whose window was closed): back at the
+        // top of the screen the person is working on
+        const bool hidden = !window_->IsWindowVisible();
+        if (hidden && !armed_ && !capturing_) PlaceBarTopCentre();
         Show();
+        if (hidden && !armed_ && !capturing_) PlaceBarTopCentre();   // once mapped, as ArmNow does
         return;
     }
     // The screen is taken without the bar on it
@@ -477,7 +487,8 @@ void UltraSnipWindow::ArmNow() {
         return;
     }
     screenBounds_ = Rect2Di(shot_.x, shot_.y, shot_.width, shot_.height);
-    overlay_ = std::make_unique<UltraSnipOverlay>();
+    overlay_ = std::make_unique<UltraCanvasScreenAreaPicker>();
+    overlay_->SetTitle("UltraSnip");
     overlay_->onSelected = [this](const Rect2Di& area) {
         app_.PostToUIThread([this, area]() {
             overlay_.reset();
@@ -537,8 +548,10 @@ void UltraSnipWindow::Disarm() {
     shot_ = DesktopScreenImage();
 }
 
-// Centred across the primary screen (the first one without a primary), at
-// its top: in the pixels of ListScreens, which SetWindowPosition takes
+// Centred across the screen the mouse pointer is on, at its top - the
+// primary one (the first one without a primary) where the platform does not
+// say where the pointer is: in the pixels of ListScreens, which
+// SetWindowPosition takes
 void UltraSnipWindow::PlaceBarTopCentre() {
     if (!window_) return;
     const std::vector<DesktopScreenInfo> screens = UltraCanvasDesktopShell::ListScreens();
@@ -546,6 +559,15 @@ void UltraSnipWindow::PlaceBarTopCentre() {
     DesktopScreenInfo screen = screens.front();
     for (const DesktopScreenInfo& s : screens)
         if (s.primary) screen = s;
+    int px = 0, py = 0;
+    if (UltraCanvasDesktopShell::GetPointerPosition(px, py)) {
+        for (const DesktopScreenInfo& s : screens) {
+            if (px >= s.x && px < s.x + s.width && py >= s.y && py < s.y + s.height) {
+                screen = s;
+                break;
+            }
+        }
+    }
     int w = 0, h = 0;
     window_->GetNativeWindowSize(w, h);
     const float scale = window_->GetDeviceScale() > 0.0f ? window_->GetDeviceScale() : 1.0f;
@@ -555,17 +577,7 @@ void UltraSnipWindow::PlaceBarTopCentre() {
 }
 
 std::vector<SnipWindowBounds> UltraSnipWindow::ListPickableWindows() const {
-    std::vector<SnipWindowBounds> windows;
-    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
-        if (w.minimized || w.skipTaskbar) continue;
-        SnipWindowBounds b;
-        if (!UltraCanvasDesktopShell::GetWindowBounds(w.id, b.bounds.x, b.bounds.y, b.bounds.width, b.bounds.height))
-            continue;
-        b.id = w.id;
-        b.title = w.title;
-        windows.push_back(b);
-    }
-    return windows;
+    return ScreenArea::ListPickableWindows();
 }
 
 // ===== THE CAPTURE =====
@@ -612,7 +624,8 @@ void UltraSnipWindow::TakeScreen() {
     }
     std::vector<SnipWindowBounds> windows;
     if (pending_.mode == SnipMode::Window) windows = ListPickableWindows();
-    overlay_ = std::make_unique<UltraSnipOverlay>();
+    overlay_ = std::make_unique<UltraCanvasScreenAreaPicker>();
+    overlay_->SetTitle("UltraSnip");
     overlay_->onSelected = [this](const Rect2Di& area) {
         app_.PostToUIThread([this, area]() {
             overlay_.reset();

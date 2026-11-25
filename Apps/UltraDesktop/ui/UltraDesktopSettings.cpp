@@ -2,6 +2,7 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.14.0 - toolAppsOnTaskbar, IsToolApplication
 // Version: 0.13.0 - lookMigrated
 // Version: 0.12.0 - hiddenInfoItems, InfoItems
 // Version: 0.11.0 - batteryPercent
@@ -32,6 +33,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -127,6 +129,7 @@ std::string DesktopSettings::ToJson() const {
     root.Set("theme", theme);
     root.Set("dropFilesOn", dropFilesOn);
     root.Set("batteryPercent", batteryPercent);
+    root.Set("toolAppsOnTaskbar", toolAppsOnTaskbar);
     root.Set("lookMigrated", lookMigrated);
     JSONValue hidden = JSONValue::MakeArray();
     for (const std::string& id : hiddenInfoItems) hidden.Append(JSONValue(id));
@@ -209,6 +212,7 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     if (loaded.ramDiscPath == "/dev/shm") loaded.ramDiscPath = kRamDiscFromFiler;
     loaded.filerProgram = root.Get("filerProgram").GetString(loaded.filerProgram);
     loaded.batteryPercent = root.Get("batteryPercent").GetBoolean(loaded.batteryPercent);
+    loaded.toolAppsOnTaskbar = root.Get("toolAppsOnTaskbar").GetBoolean(loaded.toolAppsOnTaskbar);
     loaded.lookMigrated = root.Get("lookMigrated").GetBoolean(false);
     const JSONValue& hidden = root.Get("hiddenInfoItems");
     for (size_t i = 0; i < hidden.GetSize(); ++i) {
@@ -323,6 +327,13 @@ bool DesktopSettings::IsTheme(const std::string& theme) {
 
 bool DesktopSettings::IsDropTarget(const std::string& target) {
     return target == "board" || target == "desktop";
+}
+
+bool DesktopSettings::IsToolApplication(const std::string& appClass) {
+    std::string name;
+    for (const char c : appClass) name += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (name.size() > 4 && name.compare(name.size() - 4, 4, ".exe") == 0) name.resize(name.size() - 4);
+    return name == "ultraclipboard" || name == "ultrasnip" || name == "ultratodo";
 }
 
 void DesktopSettings::NoteAppStarted(const std::string& key) {

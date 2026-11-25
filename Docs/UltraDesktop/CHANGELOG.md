@@ -1,3 +1,100 @@
+#### 2026-11-25 *0.4.27*
+- **A window already open on another virtual desktop comes to the one you
+  are on (Linux, X11).** With UOS-Settings, UltraClipboard, UltraSnip or
+  UltraToDo open on desktop 1, *Desktop settings...* and the tool buttons did
+  nothing on desktop 2: the running application asked the window manager to
+  activate its window, and the manager only marked it "wants attention" on
+  the desktop it was on. The window now moves to the current desktop and
+  comes to the front there - the desktop's own Applications and Task Manager
+  windows too. This is the framework's (`RaiseAndFocus`, see its changelog), so every
+  ULTRA OS application started a second time does the same. A program that is
+  not ours still decides for itself: some bring their window over, some
+  switch to its desktop, some open a second window.
+- **The Sticker board's button brings the board over instead of hiding it
+  where nobody is looking.** With the board open on another desktop, a click
+  on its button closed it there - nothing to see - and a second click opened
+  it here. One click now brings it to the current desktop; the button hides
+  it only when it is on the desktop you are on. Files dropped on the
+  wallpaper bring it over the same way, so they are seen to land.
+
+#### 2026-11-25 *0.4.26*
+- **Instead of Explorer, minimized windows no longer appear as title bars
+  along the bottom of the screen.** UltraDesktop now keeps them out of sight
+  itself, every two seconds (`UltraCanvasDesktopShell::KeepMinimizedWindowsHidden`),
+  as Explorer does: they are on the taskbar's buttons only, also after
+  Explorer was started and ended during the session, which switched Windows
+  back to parking them.
+- **A tray icon no longer shows its initial beside its picture.** A program
+  that adds its notification-area icon before its picture is ready got a
+  button with its initial ("W" for WhatsApp); when the picture came, it was
+  put beside the letter instead of in its place. Now the letter stands in
+  only while there is no picture. The running applications' buttons do the
+  same: an icon found after the button was made (a Store application's)
+  replaces the letter, which they never did before - the letter stayed.
+
+#### 2026-11-24 *0.4.25*
+- **UltraDesktop builds without the message centre.** Its window kept the
+  notification toasts' host as a member whatever the build had, so a build
+  without UltraMessage (Android's, MobilePC's) did not compile; the member is
+  now there only when the toasts are.
+- **The loudspeaker, Wi-Fi and Bluetooth panels cut their switch labels in
+  longer languages.** The mute switch was 80 px wide, so German showed
+  "Stumm" for "Stummschalten" (Italian "Disattiva audio" likewise), and the
+  power switches were 70 px, too narrow for Polish "Włączone". The switches
+  now take the width of their text; the volume slider fills what is left.
+- **Device panel buttons ran past the panel's edge in Cyrillic, Greek, Thai,
+  Hindi, Japanese, Vietnamese and French.** A button's width was guessed from
+  its label's length in bytes, so a Cyrillic letter counted twice and a Thai
+  or Devanagari one three times: Ukrainian "Task Manager" ended at 453 px in
+  a 340 px panel, and Hindi "Safely remove" pushed the USB list out with it.
+  The buttons now take the width of their text.
+- **The clipboard panel's "Open UltraClipboard" ran past the edge** in
+  Czech, Greek, Hungarian and Romanian, beside the recording switch. The
+  panel is 420 px wide instead of 386.
+- **ULTRA OS's wallpapers as JPEG too.** A build that cannot read AVIF -
+  Android's (MobilePC), or a desktop build without libheif - showed the
+  framework's landscape instead of ULTRA OS's picture. Each picture in
+  `media/images/desktop` now has a JPEG beside it, which the desktop shows
+  when the AVIF cannot be read or is not there.
+
+#### 2026-11-23 *0.4.24*
+- **The taskbar's window previews show minimized windows.** Resting the
+  pointer on a running application's button showed only the icon for a
+  window that was minimized - LINE in the tray, say - until it had been
+  opened once, because a minimized window cannot be asked to draw itself.
+  On Windows the previews are now DWM's live thumbnails, which show a
+  minimized window as it last looked, also one minimized before the desktop
+  started, and follow a window that changes while the strip is open.
+  Elsewhere a minimized window shows the last picture captured of it.
+
+#### 2026-11-22 *0.4.23*
+- **The settings button's menu has a title.** Its right-click menu opens
+  under an "UltraDesktop" header, drawn on the framework's new darker header
+  band, so the title is told apart from "ULTRA OS settings" below it.
+- **The taskbar's application icons no longer turn black.** The pinned and
+  running applications' icons, right at start-up, became black silhouettes
+  once the bar was re-styled - the running group tightening its spacing when
+  it filled up, or the look being refreshed. The cause was in the
+  framework's toolbar (see the framework changelog); nothing changes here.
+- **UltraToDo on the tool group.** The right bar's tool group (Sticker board,
+  notes, clipboard, screenshot) gains an UltraToDo button
+  (`media/icons/desktop/todo.svg`) that opens the task list.
+- **The tool applications stay off the taskbar.** The windows of
+  UltraClipboard, UltraSnip and UltraToDo are no longer listed among the
+  taskbar's running applications, since each has its button on the tool
+  group; `toolAppsOnTaskbar` in `desktop.json` (UOS-Settings → Desktop →
+  *Tool applications*, or *Tool applications on the taskbar too* on the
+  wallpaper's right-click menu) lists them there as well.
+- **The organiser showed one desktop when three were set.** The window
+  manager's count won over the settings', and Windows' Task View starts with
+  one desktop, so a setting of 3 showed a lone "1". The organiser now shows
+  at least the settings' count; clicking a desktop the manager lacks asks it
+  for more (on Windows through the framework's new
+  `SetVirtualDesktopCount`).
+- **Desktop 1 is the wallpaper's.** Clicking button 1 switches to desktop 1;
+  clicking it while already there minimises that desktop's windows so the
+  wallpaper shows.
+
 #### 2026-11-16 *0.4.22*
 - **The desktop can be translated, and is, in thirty languages.** Six in
   seven of its texts were written straight into the code - every tooltip of

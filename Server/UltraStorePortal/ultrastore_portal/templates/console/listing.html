@@ -1,39 +1,64 @@
 {% extends "console/base.html" %}
+{% load static portal_ui %}
 {% block title %}Store listing of {{ app.name }} - Developer console{% endblock %}
 {% block content %}
-<div class="page-head"><h1>Store listing</h1><span class="muted">{{ app.name }}</span></div>
-<div class="panels">
-{% if app.is_public %}<div class="note">This app is in the store: what you save here is live at once.</div>{% endif %}
-<div class="panel">
-  <h2>Screenshots</h2>
-  <div class="thumbs">
-    {% for shot in app.screenshots.all %}
-    <figure><img src="{{ shot.image.url }}" alt="Screenshot {{ forloop.counter }}">
-      <form method="post" action="{% url 'console:screenshot_delete' app.app_id shot.pk %}">{% csrf_token %}<button class="link small">Remove</button></form></figure>
-    {% empty %}<p class="muted">None yet. An app needs at least one to go to review.</p>
-    {% endfor %}
+<div class="page-head"><h1>Store listing</h1><span class="text-secondary">{{ app.name }}</span></div>
+<div class="panels form-wide">
+{% if app.is_public %}<div class="alert alert-primary">This app is in the store: what you save here is live at once.</div>{% endif %}
+<div id="listing-problems">{% include "console/_listing_problems.html" %}</div>
+
+{# The pictures are saved as soon as they are chosen or dropped, each by a request of its own: the form below is not sent and keeps what was typed. #}
+<div class="card"><div class="card-body">
+  <h2>Icon and screenshots</h2>
+  <p class="text-secondary">A picture is saved as soon as you choose or drop it. Nothing typed below is lost.</p>
+
+  <div class="form-label">Icon</div>
+  <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+    <div id="icon">{% include "console/_icon.html" %}</div>
+    <div class="upload-area flex-grow-1" tabindex="0" role="button" aria-label="Upload the icon"
+         data-upload="{% url 'console:icon_upload' app.app_id %}" data-param="icon" data-accept="image/png,image/jpeg,image/webp" data-max-mb="{{ max_image_mb }}"
+         data-queue="#icon-queue" data-csrf="{{ csrf_token }}" hidden>
+      <b>Drop the icon here</b> or click to choose a file
+      <div class="small">A square PNG, JPEG or WebP, 128 px or more on each side (256 px or more looks best).</div>
+    </div>
   </div>
-  <form method="post" enctype="multipart/form-data" action="{% url 'console:screenshot_add' app.app_id %}" class="row" style="margin-top:16px">
+  <div class="upload-queue mb-2" id="icon-queue"></div>
+  <form method="post" enctype="multipart/form-data" action="{% url 'console:icon_upload' app.app_id %}" class="d-flex flex-wrap gap-2 align-items-start mb-2" data-without-script>
     {% csrf_token %}
-    <div class="field" style="margin:0;flex:1;min-width:240px"><label for="{{ shot_form.image.id_for_label }}" hidden>Screenshot</label>{{ shot_form.image }}</div>
-    <button class="button soft">Add screenshot</button>
+    <div class="flex-grow-1"><label class="visually-hidden" for="{{ icon_form.icon.id_for_label }}">Icon</label>{{ icon_form.icon|bs }}
+      <div class="form-text">A square PNG, JPEG or WebP, 128 px or more on each side.</div></div>
+    <button class="btn btn-soft-primary">Upload icon</button>
   </form>
-  <p class="help small muted" style="margin-top:8px">PNG, JPEG or WebP, 320 px or more on each side, up to {{ max_screenshots }} pictures.</p>
-</div>
-<div class="panel form wide">
-  <form method="post" enctype="multipart/form-data">
+
+  <div class="form-label mt-4">Screenshots</div>
+  <div id="shots" class="mb-3">{% include "console/_screenshots.html" %}</div>
+  <div class="upload-area{% if shots|length >= max_screenshots %} is-full{% endif %}" id="shot-area" tabindex="0" role="button" aria-label="Upload screenshots"
+       data-upload="{% url 'console:screenshot_add' app.app_id %}" data-param="image" data-accept="image/png,image/jpeg,image/webp" data-max-mb="{{ max_image_mb }}"
+       data-multiple data-queue="#shot-queue" data-csrf="{{ csrf_token }}" hidden>
+    <b>Drop screenshots here</b> or click to choose files
+    <div class="small">PNG, JPEG or WebP, 320 px or more on each side, up to {{ max_screenshots }} pictures.</div>
+  </div>
+  <div class="upload-queue mt-2" id="shot-queue"></div>
+  <form method="post" enctype="multipart/form-data" action="{% url 'console:screenshot_add' app.app_id %}" class="d-flex flex-wrap gap-2 align-items-start" data-without-script>
     {% csrf_token %}
-    {% if form.non_field_errors %}<div class="note error">{{ form.non_field_errors }}</div>{% endif %}
-    {% for title, fields in form.grouped %}
-    <fieldset><legend>{{ title }}</legend>
-      {% for field in fields %}
-        {% if field.name == "icon" and app.icon %}<div class="row" style="margin-bottom:8px"><img class="icon s64" src="{{ app.icon.url }}" alt="The current icon" width="64" height="64"><span class="muted small">The current icon. Choose a file to replace it.</span></div>{% endif %}
-        {% include "_field.html" %}
-      {% endfor %}
+    <div class="flex-grow-1"><label class="visually-hidden" for="{{ shot_form.image.id_for_label }}">Screenshot</label>{{ shot_form.image|bs }}
+      <div class="form-text">PNG, JPEG or WebP, 320 px or more on each side, up to {{ max_screenshots }} pictures.</div></div>
+    <button class="btn btn-soft-primary">Add screenshot</button>
+  </form>
+</div></div>
+
+<form method="post" data-depends="{{ form.depends_json }}" class="panels">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+  {% for title, fields in form.grouped %}
+  <div class="card"><div class="card-body">
+    <fieldset><legend class="h3">{{ title }}</legend>
+      {% for field in fields %}{% include "_field.html" %}{% endfor %}
     </fieldset>
-    {% endfor %}
-    <button class="button big">Save the listing</button>
-  </form>
-</div>
+  </div></div>
+  {% endfor %}
+  <div><button class="btn btn-primary btn-lg">Save the listing</button></div>
+</form>
 </div>
 {% endblock %}
+{% block scripts %}<script src="{% static 'portal/vendor/dropzone/dropzone.min.js' %}"></script>{% endblock %}

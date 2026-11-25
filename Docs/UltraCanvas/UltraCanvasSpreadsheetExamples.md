@@ -32,6 +32,7 @@
   - [6. Save: ODS Directly, CSV via Export Dialog](#6-save-ods-directly-csv-via-export-dialog)
   - [7. Working with Multiple Sheets](#7-working-with-multiple-sheets)
   - [8. Reading Cell Values Back](#8-reading-cell-values-back)
+- [Named ranges](#named-ranges)
 - [Formula language and functions](#formula-language-and-functions)
 - [Column widths](#column-widths)
 - [Cell formatting menu](#cell-formatting-menu)
@@ -41,7 +42,9 @@
 - [Pointing at cells in a formula](#pointing-at-cells-in-a-formula)
 - [Sheet tab menu](#sheet-tab-menu)
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
+- [Data validation](#data-validation)
 - [Best Practices](#best-practices)
+- [Printing and PDF](#printing-and-pdf)
 - [See Also](#see-also)
 
 ## Overview
@@ -172,7 +175,8 @@ void  SelectColumn(int col);
 void  SelectAll();
 bool  IsCellSelected(int row, int col) const;
 
-void  MoveActiveCell(int rowDelta, int colDelta);
+void  MoveActiveCell(int rowDelta, int colDelta);     // selects the cell it lands on (the arrows, Enter, Tab)
+void  ExtendSelectionBy(int rowDelta, int colDelta);  // Shift+arrow: the far corner moves, the active cell stays
 void  ScrollToCell(int row, int col);
 void  EnsureCellVisible(int row, int col);
 ```
@@ -237,13 +241,46 @@ void FreezePanes(int rows, int cols);
 void UnfreezePanes();
 ```
 
+Inserting or deleting rows or columns moves the references in formulas with
+the cells, on every sheet, as a spreadsheet does. Say two rows are inserted
+above row 2:
+
+- `=A2+$B$5` becomes `=A4+$B$7`. `$`-anchored references move too: the `$`
+  stops a reference moving when it is copied, not when the sheet changes.
+- `=SUM(A1:A5)` becomes `=SUM(A1:A7)`: a range across the insertion grows.
+- `=Data.A3` on another sheet moves when the rows were inserted on Data.
+
+Deleting rows moves the references below them up and shrinks the ranges
+across them. A reference wholly inside the deleted rows becomes `#REF!`, so
+`=A2*2` becomes `=#REF!*2`. Text in quotes, and everything else in the
+formula, is kept as it was written. Workbook names covering the sheet move
+with it (see [Named ranges](#named-ranges)). Each insert or delete is one undo step: undo puts back the
+cells, row and column sizes, merges and the formulas on every sheet as they
+were, deleted cells included, and redo does it again. For a formula
+string of your own, the same rewrite is
+`MoveFormulaReferencesForRowsColumns(formula, sheetName, onThatSheet, columns, at, count)`
+(`UltraCanvasSpreadsheetSheet.h`).
+
 ### Clipboard, Undo/Redo, Formula Engine
+
+Copy and Cut keep the cells whole for a paste in the same program and put
+them on the system clipboard as other programs read them: the shown values
+as tab-separated text, beside an HTML table. Paste takes the grid's own copy
+while the system clipboard still holds it - a copied formula's references
+move with it (`=B2*2` copied from B3 to B8 is `=B7*2`), a cut one's stay -
+and otherwise another program's HTML table (spanned cells kept apart) or
+tab-, comma- or semicolon-separated text, each value read as if typed.
+Every paste is one undo step.
 
 ```cpp
 void Cut();
 void Copy();
 void Paste();
 void PasteSpecial(const PasteOptions& options);
+std::string RangeAsText(const CellRange& range) const;   // what Copy puts on the clipboard
+std::string RangeAsHtml(const CellRange& range) const;
+bool PasteHtml(const std::string& html);                 // another program's cells, at the active cell
+bool PasteText(const std::string& text);
 
 void Undo();
 void Redo();
@@ -336,6 +373,46 @@ quotes exactly as the spreadsheet does:
 // separator, the quote or a line break; a quote inside doubled), then the
 // options' line ending. UTF-8; CSVEncodeFromUtf8 turns it into the charset.
 std::string CSVFormatRecord(const std::vector<std::string>& fields, const CSVExportOptions& opt);
+```
+
+#### What a workbook file keeps
+
+Besides the cells, their styles, column widths, row heights and merges,
+`.xlsx` and `.ods` both read and write what a sheet holds around them, so a
+workbook opened and saved again comes back as it was:
+
+| | `.xlsx` | `.ods` |
+|---|---|---|
+| Frozen rows and columns | the frozen `pane` of `sheetViews` | the split (mode 2) in `settings.xml` |
+| Hidden rows and columns | `hidden="1"` | `table:visibility="collapse"` |
+| Named ranges, the workbook's and a sheet's | `definedNames` (a sheet's with `localSheetId`) | `table:named-expressions` of the document and of the table |
+| Auto-filter, and columns filtered to values | `autoFilter`, `_xlnm._FilterDatabase` | `table:database-range` with filter buttons |
+| Print area | `_xlnm.Print_Area` | `table:print-ranges` |
+| Rows / columns repeated on every page | `_xlnm.Print_Titles` | header rows / columns |
+| Page setup, header and footer, page breaks | `printOptions`, `pageMargins`, `pageSetup`, `headerFooter`, `rowBreaks` / `colBreaks` | the page layout and master page in `styles.xml`, `fo:break-before` |
+
+Header and footer texts are kept in Excel's codes (`&P` page, `&N` pages,
+`&A` sheet, `&F` file, `&D` date, `&T` time, `&&` an ampersand), which an
+`.ods` holds as text fields. A workbook name whose range names no sheet
+(it covers the sheet of the formula using it) has no such form in Excel: an
+`.xlsx` gives it the first sheet.
+
+```cpp
+auto grid = std::make_shared<UltraCanvasSpreadsheet>("Report", 0, 0, 900, 600);
+SpreadsheetSheet* report = grid->GetActiveSheet();
+report->FreezeRows(1);
+report->SetColumnHidden(4, true);                        // column E
+report->SetAutoFilter(CellRange(0, 0, 99, 5));           // A1:F100
+grid->AddNamedRange("Amounts", CellRange(1, 2, 99, 2), report->GetName());   // scoped to the sheet
+
+PrintSettings& print = report->GetPrintSettings();
+print.orientation = PageOrientation::Landscape;
+print.paperSize = PaperSize::A4;
+print.repeatRowsFirst = 0;                               // row 1 on every page
+print.repeatRowsLast = 0;
+print.footerCenter = "Page &P of &N";
+report->SetPrintArea(CellRange(0, 0, 99, 5));
+grid->SaveToFile("report.xlsx");                         // or "report.ods": the same survives
 ```
 
 ### View Settings
@@ -510,6 +587,16 @@ SeedSampleData(sheet.get());
 
 Set formula cells with `SetCellFormula`, then call `Recalculate()` so the engine evaluates dependencies. Formulas use A1 notation and are 1-based in text (`B2:B8` is rows 1..7).
 
+`Recalculate()` calculates every formula whose result may have changed since
+the last call: formulas set or changed, formulas reading a cell that changed,
+directly or through other formulas, on any sheet, the formulas that name a
+range, and the volatile ones (`NOW`, `TODAY`, `RAND`, `RANDBETWEEN`). It
+finds the changes itself, however a cell was changed: through the grid
+(typing, paste, fill, clear, sort, undo) or by writing into a sheet directly
+(`GetActiveSheet()->SetCellValue(...)`). A change that has not been
+recalculated yet is calculated before the grid draws. Inserting or deleting
+rows or columns recalculates everything; so does `RecalculateAll()`.
+
 ```cpp
 const int totalRow = 9;
 sheet->SetCellValue(totalRow, 0, std::string("07 to 12/2016"));
@@ -683,6 +770,42 @@ std::string shown = sheet->GetCellDisplayValue(2, 2); // formatted, e.g. "30,913
 std::string text  = sheet->GetCellText(0, 0);         // "Month"
 std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
 ```
+
+## Named ranges
+
+A workbook name stands for a range in formulas (`=SUM(Amounts)`). It is
+visible from every sheet, or, given a `sheetScope`, only from that sheet:
+
+```cpp
+CellRange rates(0, 0, 0, 0);                         // A1
+rates.start.sheetName = rates.end.sheetName = "Settings";
+grid->AddNamedRange("Rate", rates);                  // every sheet: Settings.A1
+
+grid->AddNamedRange("Total", CellRange(9, 1, 9, 1), "Jan");   // on Jan: Jan.B10
+grid->AddNamedRange("Total", CellRange(9, 1, 9, 1), "Feb");   // on Feb: Feb.B10
+
+CellRange r = grid->ResolveNamedRange("Total", "Feb");        // what =Total means on Feb
+bool both = grid->HasNamedRange("Total", "Jan") && grid->HasNamedRange("Total", "Feb");
+grid->RemoveNamedRange("Total", "Jan");                       // that one only
+```
+
+- **One name per scope.** The same name can exist once for the workbook and
+  once for each sheet, as Excel files often have ("Total" on each month's
+  sheet).
+- **Lookup from a formula.** A formula looks for the name scoped to its own
+  sheet first, then for the workbook's. It never sees a name scoped to
+  another sheet; that gives `#NAME?`, as a name that does not exist does.
+- **Case.** Names are matched without regard to case.
+- **Which sheet a name covers.** It covers the sheet its range names
+  (`range.start.sheetName`). A scoped name whose range names none covers its
+  own sheet. A workbook name whose range names none covers the sheet of the
+  formula using it.
+- **Following the sheet.** Renaming a sheet renames the scope and the covered
+  sheet of its names. Inserting or deleting rows or columns moves the names
+  covering that sheet.
+- **Deleting a sheet.** The names scoped to it go with it. Workbook names
+  covering it stay, and a formula using one shows `#REF!` (`#NAME?` is for a
+  name that does not exist). Undoing the delete brings both back.
 
 ## Formula language and functions
 
@@ -1078,16 +1201,121 @@ Turn the warning off with `SetSortFormulaWarningEnabled(false)`.
 and `SpreadsheetSheet::CountFormulaCells(range)` gives the count if you want
 to warn in your own way.
 
+## Data validation
+
+A rule says what a cell may hold. It is set on a range of the sheet, or on one
+cell, and is checked when someone **types** into the cell and commits the
+entry (Enter, Tab, a click elsewhere). Values set from code, pasted or filled
+are not checked; `SpreadsheetSheet::ValidateCell` checks any cell on demand.
+
+```cpp
+DataValidation quantity;
+quantity.type = ValidationType::WholeNumber;     // also Decimal, Date, Time, TextLength, List
+quantity.op = ValidationOperator::Between;
+quantity.formula1 = "1";                         // dot-decimal; a Date bound may be "2026-01-31",
+quantity.formula2 = "99";                        // a Time bound "17:30"
+quantity.alertStyle = ValidationAlertStyle::Stop;
+quantity.errorTitle = "Quantity";
+quantity.errorMessage = "Order between 1 and 99 pieces.";
+grid->GetActiveSheet()->SetValidation(CellRange(1, 2, 50, 2), quantity);   // C2:C51
+
+DataValidation status;
+status.type = ValidationType::List;
+status.formula1 = "Open, In progress, Done";     // or ODF's "\"Open\";\"Done\""
+grid->GetActiveSheet()->SetValidation(CellRange(1, 3, 50, 3), status);     // D2:D51
+```
+
+An entry that breaks its rule is answered as the rule's `alertStyle` says,
+in a dialog titled with `errorTitle` that shows `errorMessage` (or a default):
+
+| Alert style | Buttons | What they do |
+|---|---|---|
+| `Stop` | Retry, Cancel | Retry opens the entry again on its cell, all of it selected; Cancel puts the old value back. A Stop rule never keeps the entry. |
+| `Warning` | Yes, No, Cancel | Yes keeps it; No edits it again; Cancel puts the old value back. |
+| `Information` | OK, Cancel | OK keeps it; Cancel puts the old value back. |
+
+A refused entry leaves no undo step. A rule with `showErrorAlert = false`
+keeps whatever is typed, and blanks pass while `allowBlank` is true (the
+default). Custom (formula) rules are not evaluated yet and always pass.
+
+To ask in your own way, set `onValidationFailed`. It replaces the dialog, and
+`answer` may be called at once or later, exactly once:
+
+```cpp
+grid->onValidationFailed = [statusLabel](const UltraCanvasSpreadsheet::ValidationFailure& failure,
+                                         std::function<void(UltraCanvasSpreadsheet::ValidationAnswer)> answer) {
+    statusLabel->SetText(failure.message);       // also failure.row, col, enteredText, rule
+    answer(UltraCanvasSpreadsheet::ValidationAnswer::Retry);   // or Accept, Cancel
+};
+```
+
+A `List` rule with `showDropdown` (the default) puts a small arrow just right
+of the active cell. A click on it, or Alt+Down, opens the rule's items with
+the cell's current value ticked; the one picked is entered as if typed, as one
+undo step. From code:
+
+```cpp
+std::vector<std::string> items = grid->GetValidationListItems(1, 3);   // {"Open", "In progress", "Done"}
+grid->ChooseValidationListItem(1, 3, "Done");                          // false for an item not offered
+```
+
+The list's items are the rule's own text; a list taken from a range of cells
+(`$F$1:$F$5`) is not read yet. Neither ODS nor XLSX reads or writes rules yet,
+so they are set from code.
+
 ## Best Practices
 
 - **Create with the factory.** Use `CreateSpreadsheetElement(...)` so the element is a `shared_ptr` (matching the rest of the framework). Capture that `shared_ptr` in async callbacks (file dialogs) so the grid stays alive, and call `RequestRedraw()` after mutating it from a callback.
 - **Set values, then format.** `SetCellValue` / `SetCellFormula` define the value; use `GetCell(row, col)->SetNumberFormat(...)` / `SetBold(...)` to style. Number formats are factories (`NumberFormat::Currency`, `NumberFormat::Percentage`).
-- **Call `Recalculate()` after setting formulas** when you need results immediately (e.g. right after seeding data); the engine recalculates dirty cells automatically during normal editing when auto-calculate is enabled.
+- **Call `Recalculate()` after writing into a sheet directly** when you need the results at once (e.g. right after seeding data). The grid's own setters (`SetCellValue`, `SetCellFormula`, ...) recalculate as they go while auto-calculate is enabled.
 - **Mind coordinate systems.** The API is 0-based `(row, col)`; formula text and `CellAddress::ToString()` are 1-based A1 notation (`SetCellFormula(9, 1, "=SUM(B2:B8)")`).
 - **Prefer the auto-detecting loaders for a quick "Open"** (`LoadFromFile`, single-arg `LoadCSV`); use the `*WithOptions` variants plus the import/export dialogs when the user needs to choose charset, separators, or quoting.
 - **Always check the return value and `GetLastError()`** after any `Load*`/`Save*` call to surface a clear reason to the user.
 - **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
+
+## Printing and PDF
+
+`SpreadsheetPrintPages` (`UltraCanvasSpreadsheetPrint.h`) cuts a sheet into
+pages and draws them, for a PDF file and for printers. It prints the print
+area, or every cell in use, and follows the sheet's `PrintSettings`:
+
+| Setting | What it does on paper |
+|---|---|
+| `paperSize`, `orientation` | the page; Custom prints on Letter for now |
+| `marginTop` / `Bottom` / `Left` / `Right` (inches) | the room for cells |
+| `scale` (%), or `fitToWidth` / `fitToHeight` (pages) | the size; fitting never enlarges |
+| `rowBreaks`, `colBreaks` | a page starts at each of these rows (columns) |
+| `printGridlines`, `printRowColHeaders` | lines between the cells; column letters and row numbers |
+| `centerHorizontally`, `centerVertically` | the block of cells centred in the room |
+| `headerLeft` ... `footerRight`, `headerMargin`, `footerMargin` | lines in the margins; `&P` the page, `&N` the pages, `&A` the sheet, `&D` the date, `&&` an ampersand |
+
+Pages run down, then across. Hidden rows and columns are left out, a merged
+block is drawn once per page it reaches, and every cell is drawn by
+`UltraCanvasSpreadsheet::PaintCell`, the grid's own painter, so paper shows
+what the screen does: 100 % on paper is the size on screen at 100 %.
+`SetTitleRows` / `SetTitleColumns` repeat lines on every page after the ones
+they are on.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; UltraCanvasWindow* window; -->
+```cpp
+#include "UltraCanvasSpreadsheetPrint.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
+
+grid->GetPrintSettings().orientation = PageOrientation::Landscape;
+grid->GetPrintSettings().fitToWidth = 1;          // every column across one page
+grid->SetPrintArea(CellRange(0, 0, 49, 7));      // A1:H50
+
+auto pages = CreateSpreadsheetPrintPages(*grid);  // the sheet on show, copied
+pages->SetTitleRows(0, 0);                        // row 1 on every page
+std::string error;
+pages->ExportPdf("Budget.pdf", error);
+
+// Printing: the PDF for printers that take one, the pages for those that draw.
+std::vector<uint8_t> pdf;
+if (pages->ExportPdf(pdf, error))
+    PrintDocumentWithDialog("Budget", pdf, "application/pdf", window, pages);
+```
 
 ## See Also
 
@@ -1099,3 +1327,4 @@ to warn in your own way.
 - [`include/UltraCanvasSpreadsheetFormatMenu.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormatMenu.h) - Cell formatting menu and number-format presets
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
+- [`include/UltraCanvasSpreadsheetPrint.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetPrint.h) - A sheet's pages for PDF and printers

@@ -287,6 +287,7 @@ bluetooth_usage() {
 location_usage() {
     case "$1" in
         UltraDesktop) echo "macOS shows the names of the Wi-Fi networks in reach only to apps allowed to use Location Services. UltraDesktop uses it for that list and nothing else." ;;
+        ChatCube) echo "ChatCube puts your current position on the map when you press My position, to send it as a location. It is asked for only then and sent only when you insert it." ;;
     esac
 }
 
@@ -1780,6 +1781,16 @@ package_if_built "UltraToDo" build_app_bundle \
     "com.cloverleaf.UltraToDo" \
     "media/appicon/UltraToDo.png" \
     "public.app-category.productivity" \
+    ""
+
+# Package UltraAccount, the ULTRA OS account: sign-up, the email and phone
+# verified, the subscription, the recovery keys
+package_if_built "UltraAccount" build_app_bundle \
+    "UltraAccount" \
+    "UltraAccount" \
+    "com.cloverleaf.UltraAccount" \
+    "media/appicon/UltraAccount.png" \
+    "public.app-category.utilities" \
     ""
 
 # Package UltraSnip, the screenshot and screen-recording tool (libVideoFX and

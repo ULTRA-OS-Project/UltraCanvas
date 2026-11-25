@@ -473,7 +473,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     auto statsContainer = DemoKit::AddCard(infoColumn, "MFStatsPanel", Tr("What the reader found"));
     auto statsText = DemoKit::AddText(statsContainer, "MFStatsText", "");
     statsText->SetFontSize(11);
-    statsText->SetTextColor(Color(50, 50, 50, 255));
+    statsText->SetTextColor(DemoKit::Themed(Color(50, 50, 50, 255)));
 
     // ===== CAPABILITY PANEL =====
     // The capability grid is a fixed twelve lines, but the per-sample note
@@ -481,7 +481,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     auto capsContainer = DemoKit::AddCard(infoColumn, "MFCapsPanel", Tr("What the format can carry"));
     auto capsText = DemoKit::AddText(capsContainer, "MFCapsText", "");
     capsText->SetFontSize(11);
-    capsText->SetTextColor(Color(50, 50, 50, 255));
+    capsText->SetTextColor(DemoKit::Themed(Color(50, 50, 50, 255)));
 
     // ===== VIEWER PANEL =====
     // Named for STL, but it takes a Mesh3D and knows nothing about where the
@@ -495,7 +495,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     auto nameLabel = DemoKit::AddText(viewerPanel, "MFName", "");
     nameLabel->SetFontSize(11);
     nameLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
-    nameLabel->SetTextColor(Color(60, 60, 60, 255));
+    nameLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
 
     // ===== HOW IT WORKS =====
     auto howContainer = DemoKit::AddCard(container, "MFHowPanel");
@@ -505,12 +505,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
             "Mesh3D mesh = ModelDocumentToMesh3D(*doc);\n"
             "\n" + OmittedNote());
     howText->SetFontSize(11);
-    howText->SetTextColor(Color(50, 50, 50, 255));
+    howText->SetTextColor(DemoKit::Themed(Color(50, 50, 50, 255)));
 
     auto statusLabel = DemoKit::AddText(container, "MFStatus", "");
     statusLabel->SetFontSize(11);
-    statusLabel->SetTextColor(Color(60, 60, 60, 255));
-    statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+    statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
+    statusLabel->SetBackgroundColor(DemoKit::Themed(Color(230, 230, 230, 255)));
     statusLabel->SetPadding(4.0f);
 
     auto currentIndex = std::make_shared<size_t>(0);

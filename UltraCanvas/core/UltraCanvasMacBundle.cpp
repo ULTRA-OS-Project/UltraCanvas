@@ -168,7 +168,8 @@ namespace UltraCanvas {
                std::memcmp(magic, "alis", 4) == 0;
     }
 
-#ifndef __APPLE__
+// iOS has no Finder aliases to follow, and no OS/MacOS/UltraCanvasMacOSAlias.mm.
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
     bool ResolveFinderAlias(const std::string&, std::string&) {
         // Bookmark data is opaque: it is a set of hints (volume, inode, path,
         // creation date) that only the system that wrote it can follow, and

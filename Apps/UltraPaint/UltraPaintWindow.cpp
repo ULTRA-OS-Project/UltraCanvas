@@ -3,6 +3,12 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.5.0 - closing a tab with unsaved changes asks Save / Don't save / Cancel; Save
+//                  closes the tab once the image is written (Save As for an untitled one)
+// Version: 2.4.0 - the start page in place of a blank canvas while no image is open: Create new
+//                  bitmap, Paste image and Clipboard history (the 20 images copied last, as
+//                  thumbnails to pick from); the window runs with no image, the commands
+//                  that need one doing nothing
 // Version: 2.3.1 - the pasted layers' names in the person's language
 // Version: 2.3.0 - the blend mode on a row of its own beside "Blend mode", the list as wide as the panel
 // Version: 2.2.0 - every text a person reads goes through Tr / TrF / TrN (UltraLocalisation): whole
@@ -389,13 +395,10 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
             if (auto dlg = settingsDialog.lock()) dlg->Close();
             return true;
         }
-        // One image has a sentence of its own; TrN's forms all carry the count
-        ConfirmDiscard(unsaved == 1
-                           ? Tr("An image in this window has unsaved changes. Close anyway?")
-                           : TrN("{n} image in this window has unsaved changes. Close anyway?",
-                                 "{n} images in this window have unsaved changes. Close anyway?", unsaved),
-                       [this]() {
-            for (const auto& tab : documentTabs) if (tab->document) tab->document->SetModified(false);
+        // Each unsaved image asks in turn: Save, Don't save or Cancel.
+        std::weak_ptr<bool> alive = lifeToken;
+        ReviewUnsavedTabs([this, alive]() {
+            if (alive.expired()) return;
             window->Close();   // comes back through here, and closes the settings window
         });
         return false;
@@ -410,8 +413,10 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     };
 
     // ----- the first documents -----
-    NewImage(lastNewImage);
+    // No blank canvas: the start page offers what to begin with, until a
+    // file given on the command line takes its place.
     SelectTool(PaintToolId::Brush);
+    ShowStartPage(true);
     OpenPaths(paths);
     return true;
 }
@@ -614,14 +619,14 @@ void UltraPaintWindow::BuildMenuBar() {
         .AddSubmenu(Tr("Adjust"), adjustItems)
         .AddSubmenu(Tr("Filter"), filterItems)
         .AddSubmenu(Tr("View"), {
-            M::ActionWithShortcut(Tr("Zoom In"), "+", MenuIconPath("zoom-in.svg"), [this]() { surface->ZoomIn(); }),
-            M::ActionWithShortcut(Tr("Zoom Out"), "-", MenuIconPath("zoom-out.svg"), [this]() { surface->ZoomOut(); }),
-            M::ActionWithShortcut(Tr("Fit to Window"), "Ctrl+0", MenuIconPath("zoom-fit.svg"), [this]() { surface->ZoomToFit(); }),
-            M::ActionWithShortcut(Tr("Actual Pixels"), "Ctrl+1", MenuIconPath("zoom-100.svg"), [this]() { surface->ZoomToActual(); }),
+            M::ActionWithShortcut(Tr("Zoom In"), "+", MenuIconPath("zoom-in.svg"), [this]() { if (surface) surface->ZoomIn(); }),
+            M::ActionWithShortcut(Tr("Zoom Out"), "-", MenuIconPath("zoom-out.svg"), [this]() { if (surface) surface->ZoomOut(); }),
+            M::ActionWithShortcut(Tr("Fit to Window"), "Ctrl+0", MenuIconPath("zoom-fit.svg"), [this]() { if (surface) surface->ZoomToFit(); }),
+            M::ActionWithShortcut(Tr("Actual Pixels"), "Ctrl+1", MenuIconPath("zoom-100.svg"), [this]() { if (surface) surface->ZoomToActual(); }),
             M::Separator(),
-            WithIcon(M::Checkbox(Tr("Pixel Grid (at 8x and above)"), true, [this](bool on) { surface->SetShowPixelGrid(on); }),
+            WithIcon(M::Checkbox(Tr("Pixel Grid (at 8x and above)"), true, [this](bool on) { if (surface) surface->SetShowPixelGrid(on); }),
                      MenuIconPath("pixel-grid.svg")),
-            WithIcon(M::Checkbox(Tr("Show Selection Outline"), true, [this](bool on) { surface->SetShowSelection(on); }),
+            WithIcon(M::Checkbox(Tr("Show Selection Outline"), true, [this](bool on) { if (surface) surface->SetShowSelection(on); }),
                      MenuIconPath("selection-outline.svg")),
         })
         .AddSubmenu(Tr("Help"), {
@@ -649,10 +654,10 @@ void UltraPaintWindow::BuildToolbar() {
     redoButton = toolbar->AddButton("up-tb-redo", "", TexterIconPath("redo.svg"), [this]() { CmdRedo(); });
     redoButton->SetTooltip(Tr("Redo (Ctrl+Y)"));
     toolbar->AddSeparator("up-tb-s2");
-    toolbar->AddButton("up-tb-zoomout", "", TexterIconPath("zoom-out.svg"), [this]() { surface->ZoomOut(); })->SetTooltip(Tr("Zoom out (-)"));
-    toolbar->AddButton("up-tb-zoomin", "", TexterIconPath("zoom-in.svg"), [this]() { surface->ZoomIn(); })->SetTooltip(Tr("Zoom in (+)"));
-    toolbar->AddButton("up-tb-fit", "", IconPath("zoom-fit.svg"), [this]() { surface->ZoomToFit(); })->SetTooltip(Tr("Fit to window (Ctrl+0)"));
-    toolbar->AddButton("up-tb-100", "", IconPath("zoom-100.svg"), [this]() { surface->ZoomToActual(); })->SetTooltip(Tr("Actual pixels (Ctrl+1)"));
+    toolbar->AddButton("up-tb-zoomout", "", TexterIconPath("zoom-out.svg"), [this]() { if (surface) surface->ZoomOut(); })->SetTooltip(Tr("Zoom out (-)"));
+    toolbar->AddButton("up-tb-zoomin", "", TexterIconPath("zoom-in.svg"), [this]() { if (surface) surface->ZoomIn(); })->SetTooltip(Tr("Zoom in (+)"));
+    toolbar->AddButton("up-tb-fit", "", IconPath("zoom-fit.svg"), [this]() { if (surface) surface->ZoomToFit(); })->SetTooltip(Tr("Fit to window (Ctrl+0)"));
+    toolbar->AddButton("up-tb-100", "", IconPath("zoom-100.svg"), [this]() { if (surface) surface->ZoomToActual(); })->SetTooltip(Tr("Actual pixels (Ctrl+1)"));
     toolbar->AddSeparator("up-tb-s3");
     toolbar->AddButton("up-tb-layer", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip(Tr("New layer (Ctrl+Shift+N)"));
     toolbar->AddButton("up-tb-export", "", IconPath("export.svg"), [this]() { CmdExport(); })->SetTooltip(Tr("Export with options (Ctrl+E)"));
@@ -1039,8 +1044,8 @@ void UltraPaintWindow::InstallShortcuts() {
                 case UCKeys::J: CmdLayerDuplicate(); return true;
                 case UCKeys::M: if (e.shift) CmdLayerMergeDown(); else CmdCurves(); return true;
                 case UCKeys::Backspace: CmdFill(false); return true;
-                case UCKeys::Key0: surface->ZoomToFit(); return true;
-                case UCKeys::Key1: surface->ZoomToActual(); return true;
+                case UCKeys::Key0: if (surface) surface->ZoomToFit(); return true;
+                case UCKeys::Key1: if (surface) surface->ZoomToActual(); return true;
                 default: break;
             }
             return false;
@@ -1109,6 +1114,7 @@ void UltraPaintWindow::BuildDocumentTabs() {
     tabPages->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     canvasColumn->AddChild(tabPages);
     tabStrip->SetContentHost(tabPages);
+    BuildStartPage();
 
     tabStrip->onTabChange = [this](int, int newIndex) {
         if (closingTab) return;   // RemoveTabNow picks the tab on show itself
@@ -1165,6 +1171,7 @@ void UltraPaintWindow::WireSurface(const std::shared_ptr<UltraCanvasPaintSurface
 
 void UltraPaintWindow::AddDocumentTab(std::shared_ptr<UCRasterDocument> doc) {
     if (!doc || !tabStrip) return;
+    ShowStartPage(false);
     auto tab = std::make_shared<DocumentTab>();
     tab->surface = CreatePaintSurface("up-surface-" + std::to_string(++surfaceSerial));
     tab->surface->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -1201,6 +1208,155 @@ void UltraPaintWindow::ShowInTab(std::shared_ptr<UCRasterDocument> doc) {
         return;
     }
     AddDocumentTab(std::move(doc));
+}
+
+// ===========================================================================
+// THE START PAGE
+// ===========================================================================
+
+namespace {
+    std::shared_ptr<UCRasterLayer> DecodeClipboardImage(std::vector<uint8_t>& bytes);   // under PASTE
+}
+
+void UltraPaintWindow::BuildStartPage() {
+    startPage = std::make_shared<UltraCanvasContainer>("up-start", 0, 0, 0, 0);
+    startPage->layout.SetFlexColumn().SetFlexGap(14)
+              .SetFlexAlignItems(CSSLayout::AlignItems::Center)
+              .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+    startPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    startPage->SetVisible(false);
+    canvasColumn->AddChild(startPage);
+
+    // Files dropped anywhere on the window while the start page shows open
+    // the way a drop on the canvas does (there is no canvas to drop on).
+    window->InstallEventFilter("up-start-drop", [this](const UCEvent& e) -> bool {
+        if (e.type != UCEventType::Drop || e.droppedFiles.empty()) return false;
+        if (!startPage || !startPage->IsVisible()) return false;
+        HandleDroppedFiles(e.droppedFiles);
+        return true;
+    }, { UCEventType::Drop });
+
+    // Each a pastel of its own, with dark ink: they read the same under a
+    // light and a dark theme.
+    auto add = [this](const std::string& id, const std::string& text, const std::string& icon,
+                      const Color& face, const Color& hover, const std::string& tooltip,
+                      std::function<void()> action) {
+        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 300, 64, text);
+        b->SetIcon(icon);
+        b->SetIconPosition(ButtonIconPosition::Left);
+        b->SetIconSize(32, 32);
+        b->SetIconSpacing(14);
+        b->SetFontSize(15.0f);
+        b->SetColors(face, hover);
+        b->SetTextColors(Color(40, 44, 52, 255));
+        b->SetBorder(1.0f, Color(0, 0, 0, 30));
+        b->SetCornerRadius(10.0f);
+        b->SetTooltip(tooltip);
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        b->onClick = std::move(action);
+        startPage->AddChild(b);
+    };
+    add("up-start-new", Tr("Create new bitmap"), IconPath("new.svg"),
+        Color(205, 239, 217, 255), Color(184, 229, 199, 255),
+        Tr("A new, empty image: its size and background are asked first (Ctrl+N)"),
+        [this]() { CmdNew(); });
+    add("up-start-paste", Tr("Paste image"), MenuIconPath("paste-image.svg"),
+        Color(255, 222, 196, 255), Color(250, 205, 170, 255),
+        Tr("The picture on the clipboard as a new image (Ctrl+V)"),
+        [this]() { CmdPasteAsNew(); });
+#ifdef ULTRAPAINT_HAVE_CLIPBOARD_HISTORY
+    add("up-start-history", Tr("Clipboard history"), MenuIconPath("paste-last.svg"),
+        Color(206, 226, 250, 255), Color(184, 212, 246, 255),
+        Tr("The last 20 images copied, to pick one from"),
+        [this]() { CmdClipboardHistory(); });
+#endif
+}
+
+void UltraPaintWindow::ShowStartPage(bool show) {
+    if (!startPage || startPage->IsVisible() == show) return;
+    startPage->SetVisible(show);
+    if (tabStrip) tabStrip->SetVisible(!show);
+    if (tabPages) tabPages->SetVisible(!show);
+    if (show) {
+        // Nothing is open: the panels that show an image are emptied.
+        if (magnifierFrame) magnifierFrame->SetVisible(false);
+        if (layerRows) layerRows->ClearChildren();
+        if (undoButton) undoButton->SetDisabled(true);
+        if (redoButton) redoButton->SetDisabled(true);
+        for (const auto& label : {statusPos, statusZoom, statusSize}) if (label) label->SetText("");
+        if (window) window->SetWindowTitle("UltraPaint " ULTRAPAINT_VERSION);
+    }
+    if (canvasColumn) {
+        canvasColumn->InvalidateLayout();
+        canvasColumn->RequestRedraw();
+    }
+}
+
+void UltraPaintWindow::CmdClipboardHistory() {
+#ifdef ULTRAPAINT_HAVE_CLIPBOARD_HISTORY
+    namespace fs = std::filesystem;
+    constexpr size_t kShown = 20;
+    std::vector<ClipboardHistoryEntry> entries;
+    std::error_code ec;
+    // Only a history the desktop or UltraClipboard keeps: none is started here.
+    if (UltraCanvasClipboardHistory::IsAvailable() &&
+        fs::is_directory(PathFromUtf8(UltraCanvasClipboardHistory::DefaultDirectory()), ec)) {
+        UltraCanvasClipboardHistory history;
+        if (history.Open()) {
+            ClipboardHistoryQuery query;
+            query.kinds = {ClipboardEntryKind::Image};
+            query.newestFirst = true;
+            query.limit = kShown;
+            entries = history.List(query);
+        }
+    }
+    if (entries.empty()) {
+        UltraCanvasDialogManager::ShowInformation(Tr("There is no image in the clipboard history"), "UltraPaint",
+                                                  nullptr, window.get());
+        return;
+    }
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+    std::vector<UltraPaintPickerItem> items;
+    std::vector<int64_t> ids;
+    for (const auto& e : entries) {
+        UltraPaintPickerItem item;
+        if (!e.thumbnailPath.empty() && fs::is_regular_file(PathFromUtf8(e.thumbnailPath), ec))
+            item.thumbnailPath = e.thumbnailPath;
+        item.caption = TrF("{0} x {1}", e.width, e.height);
+        item.tooltip = TrF("Copied {0}", FormatClipboardAge(e.lastUsedAt, now));
+        items.push_back(std::move(item));
+        ids.push_back(e.id);
+    }
+    auto dlg = std::make_shared<UltraPaintImagePickerDialog>(Tr("Clipboard History"), items,
+                                                             MenuIconPath("paste-image.svg"));
+    std::weak_ptr<bool> alive = lifeToken;
+    dlg->onPick = [this, alive, ids, entries](int index) {
+        if (alive.expired() || index < 0 || index >= static_cast<int>(ids.size())) return;
+        UltraCanvasClipboardHistory history;
+        ClipboardSnapshot snapshot;
+        std::shared_ptr<UCRasterLayer> layer;
+        if (history.Open() && history.ReadFormats(ids[index], snapshot.formats)) {
+            if (const ClipboardFormat* image = snapshot.FindImage()) {
+                std::string extension;
+                std::vector<uint8_t> bytes = ClipboardImageFile(*image, extension);
+                layer = DecodeClipboardImage(bytes);
+            }
+        }
+        if (!layer || !layer->IsValid()) {
+            if (statusHint) statusHint->SetText(Tr("That image could not be read from the clipboard history"));
+            return;
+        }
+        const int64_t at = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        PasteAsNewImage(layer, PastedFrom::CopiedWhen);
+        if (statusHint) {
+            statusHint->SetText(PastedText(PastedFrom::CopiedWhen, FormatClipboardAge(entries[index].lastUsedAt, at),
+                                           layer->GetWidth(), layer->GetHeight(), true));
+        }
+    };
+    ShowDialog(dlg);
+#endif
 }
 
 bool UltraPaintWindow::IsPristine(const DocumentTab& tab) const {
@@ -1277,16 +1433,107 @@ void UltraPaintWindow::CloseTab(int index) {
     if (index < 0 || index >= static_cast<int>(documentTabs.size())) return;
     if (index == activeTab) CommitTextEdit();
     auto doc = documentTabs[index]->document;
-    if (!doc || !doc->IsModified()) { RemoveTabNow(index); return; }
+    const bool modified = doc && doc->IsModified();
+    // The image on show, unchanged, goes at once. Any other image is brought
+    // to the front first, so the person sees what they are closing, and the
+    // close waits for their yes.
+    if (!doc || (!modified && index == activeTab)) { RemoveTabNow(index); return; }
     if (index != activeTab && tabStrip) tabStrip->SetActiveTab(index);   // the image the question is about
     const std::string name = tabStrip ? tabStrip->GetTabTitle(index) : std::string();
     std::weak_ptr<bool> alive = lifeToken;
     std::weak_ptr<UCRasterDocument> weakDoc = doc;
-    ConfirmDiscard(TrF("{0} has unsaved changes. Close it anyway?", name), [this, alive, weakDoc]() {
+    auto removeIt = [this, alive, weakDoc]() {
         if (alive.expired()) return;
         auto d = weakDoc.lock();
         const int at = d ? TabIndexOf(d.get()) : -1;   // the tabs may have moved meanwhile
         if (at >= 0) RemoveTabNow(at);
+    };
+    if (!modified) {
+        ConfirmDiscard(TrF("Close {0}?", name), removeIt);
+        return;
+    }
+    // Unsaved: Save (then close, once it is saved), Don't save, or Cancel.
+    AskSaveBeforeClosing(name, [this, alive, weakDoc, removeIt](SaveAnswer answer) {
+        if (alive.expired()) return;
+        if (answer == SaveAnswer::Discard) { removeIt(); return; }
+        if (answer != SaveAnswer::Save) return;
+        auto d = weakDoc.lock();
+        const int at = d ? TabIndexOf(d.get()) : -1;
+        if (at < 0) return;
+        // Saving works on the image on show: this one, brought to the front
+        // above (or back to it, should another tab have been picked since).
+        if (at != activeTab && tabStrip) tabStrip->SetActiveTab(at);
+        CmdSave(removeIt);   // Save As for an untitled image; a cancelled save keeps the tab
+    });
+}
+
+void UltraPaintWindow::AskSaveBeforeClosing(const std::string& name, const std::function<void(SaveAnswer)>& onAnswer) {
+    DialogConfig config;
+    config.title = "UltraPaint";
+    config.message = TrF("Save the changes to {0} before closing it?", name);
+    config.dialogType = DialogType::Question;
+    config.buttons = DialogButtons::NoButtons;
+    config.width = 460;
+    config.height = 170;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->AddCustomButton(Tr("Don't save"), DialogResult::No, DialogButtonRole::Destructive);
+    dialog->AddCustomButton(Tr("Save"), DialogResult::Yes, DialogButtonRole::Default);
+    dialog->SetFollowTheme(true);
+    UltraCanvasDialogManager::ShowDialog(dialog, [onAnswer](DialogResult result) {
+        if (!onAnswer) return;
+        if (result == DialogResult::Yes) onAnswer(SaveAnswer::Save);
+        else if (result == DialogResult::No) onAnswer(SaveAnswer::Discard);
+        else onAnswer(SaveAnswer::Cancel);
+    }, window.get());
+}
+
+void UltraPaintWindow::ReviewUnsavedTabs(const std::function<void()>& done) {
+    CommitTextEdit();
+    ReviewUnsavedFrom(std::make_shared<std::vector<const UCRasterDocument*>>(), done);
+}
+
+void UltraPaintWindow::ReviewUnsavedFrom(std::shared_ptr<std::vector<const UCRasterDocument*>> letGo,
+                                         const std::function<void()>& done) {
+    // The first image, in the strip's order, with changes nobody has
+    // answered for yet.
+    int index = -1;
+    for (size_t i = 0; i < documentTabs.size(); ++i) {
+        const auto& d = documentTabs[i]->document;
+        if (d && d->IsModified() && std::find(letGo->begin(), letGo->end(), d.get()) == letGo->end()) {
+            index = static_cast<int>(i);
+            break;
+        }
+    }
+    if (index < 0) {
+        // Every one answered: the ones let go of lose their mark now, so
+        // closing does not ask about them again.
+        for (const auto& tab : documentTabs)
+            if (tab->document && std::find(letGo->begin(), letGo->end(), tab->document.get()) != letGo->end())
+                tab->document->SetModified(false);
+        if (done) done();
+        return;
+    }
+    if (index != activeTab && tabStrip) tabStrip->SetActiveTab(index);   // the image the question is about
+    const std::string name = tabStrip ? tabStrip->GetTabTitle(index) : std::string();
+    std::weak_ptr<bool> alive = lifeToken;
+    std::weak_ptr<UCRasterDocument> weakDoc = documentTabs[index]->document;
+    AskSaveBeforeClosing(name, [this, alive, weakDoc, letGo, done](SaveAnswer answer) {
+        if (alive.expired() || answer == SaveAnswer::Cancel) return;
+        auto d = weakDoc.lock();
+        if (!d) { ReviewUnsavedFrom(letGo, done); return; }   // closed meanwhile
+        if (answer == SaveAnswer::Discard) {
+            letGo->push_back(d.get());
+            ReviewUnsavedFrom(letGo, done);
+            return;
+        }
+        const int at = TabIndexOf(d.get());
+        if (at < 0) { ReviewUnsavedFrom(letGo, done); return; }
+        if (at != activeTab && tabStrip) tabStrip->SetActiveTab(at);
+        // Saved, it has no changes left; a save cancelled or failed stops here.
+        CmdSave([this, alive, letGo, done]() {
+            if (!alive.expired()) ReviewUnsavedFrom(letGo, done);
+        });
     });
 }
 
@@ -1314,8 +1561,8 @@ void UltraPaintWindow::RemoveTabNow(int index) {
     tabStrip->RemoveTab(index);
     closingTab = false;
     if (documentTabs.empty()) {
-        // The window stays, with a blank canvas.
-        NewImage(lastNewImage);
+        // The window stays, with the start page.
+        ShowStartPage(true);
         return;
     }
     // The strip keeps its active index where it was, which after a removal
@@ -2034,7 +2281,7 @@ PaintTool* UltraPaintWindow::ActiveTool() const {
 void UltraPaintWindow::SelectTool(PaintToolId id) {
     if (id != PaintToolId::Text) CommitTextEdit();
     ShowTextBar(id == PaintToolId::Text);
-    if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
+    if (auto* old = ActiveTool()) { if (old->id != id && surface) old->Deactivate(toolContext); }
     activeTool = id;
     PaintTool* t = ActiveTool();
     // The slot of the tool's group shows it (on an adaptive toolbar) and is
@@ -2045,12 +2292,13 @@ void UltraPaintWindow::SelectTool(PaintToolId id) {
         if (slot->IsPressed() != on) slot->SetPressed(on);
     }
     if (!t) return;
+    if (statusHint) statusHint->SetText(t->name + ": " + t->hint);
+    RebuildToolOptions();
+    if (!surface) return;   // the start page: SwitchToTab activates it on the first image
     t->Activate(toolContext);
     surface->SetToolCursor(t->Cursor());
     surface->SetCursorRadius(t->CursorRadius(toolContext));
     surface->SetCursorSquare(t->CursorSquare(toolContext));
-    if (statusHint) statusHint->SetText(t->name + ": " + t->hint);
-    RebuildToolOptions();
     UpdateMagnifierVisibility();
     surface->Refresh();
 }
@@ -2131,14 +2379,14 @@ void UltraPaintWindow::ApplySettings() {
     magnifierFrame->size.height = CSSLayout::Dimension::Px(size);
     PlaceMagnifier(magnifierCorner);
     UpdateMagnifierVisibility();
-    if (magnifier && magnifier->IsVisible() && pointerInside)
+    if (magnifier && magnifier->IsVisible() && pointerInside && surface)
         magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
 }
 
 void UltraPaintWindow::UpdateMagnifierVisibility() {
     if (!magnifierFrame) return;
     PaintTool* t = ActiveTool();
-    const bool show = settings.magnifierEnabled && t && t->WantsMagnifier() && document;
+    const bool show = settings.magnifierEnabled && t && t->WantsMagnifier() && document && surface;
     if (show == magnifierFrame->IsVisible()) return;
     magnifierFrame->SetVisible(show);
     if (show) {
@@ -2172,7 +2420,7 @@ void UltraPaintWindow::PlaceMagnifier(int corner) {
 }
 
 void UltraPaintWindow::UpdateMagnifier(double imageX, double imageY, const Point2Di& view) {
-    if (!magnifier || !magnifierFrame || !magnifierFrame->IsVisible()) return;
+    if (!magnifier || !magnifierFrame || !magnifierFrame->IsVisible() || !surface) return;
     magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, imageX, imageY);
 
     // The canvas may have been resized since the glass was placed (the window
@@ -2209,7 +2457,7 @@ void UltraPaintWindow::RebuildToolOptions() {
     if (!t) return;
     optionsPanel->SetTitle(t->name);
     t->BuildOptions(toolContext, *optionsPanel, [this]() {
-        if (auto* a = ActiveTool()) {
+        if (auto* a = ActiveTool(); a && surface) {
             surface->SetCursorRadius(a->CursorRadius(toolContext));
             surface->SetCursorSquare(a->CursorSquare(toolContext));
         }
@@ -2921,20 +3169,22 @@ std::string UltraPaintWindow::SaveLossQuestion(const std::string& path, bool lay
     return std::string();
 }
 
-void UltraPaintWindow::CmdSave() {
+void UltraPaintWindow::CmdSave(const std::function<void()>& afterSaved) {
     CommitTextEdit();
     if (!document) return;
-    if (document->GetFilePath().empty()) { CmdSaveAs(); return; }
+    if (document->GetFilePath().empty()) { CmdSaveAs(afterSaved); return; }
     // What the file would lose, said once.
     const std::string question = SaveLossQuestion(document->GetFilePath(), true);
     if (!question.empty()) {
-        ConfirmDiscard(question, [this]() { SaveToPath(document->GetFilePath()); });
+        ConfirmDiscard(question, [this, afterSaved]() {
+            if (SaveToPath(document->GetFilePath()) && afterSaved) afterSaved();
+        });
         return;
     }
-    SaveToPath(document->GetFilePath());
+    if (SaveToPath(document->GetFilePath()) && afterSaved) afterSaved();
 }
 
-void UltraPaintWindow::CmdSaveAs() {
+void UltraPaintWindow::CmdSaveAs(const std::function<void()>& afterSaved) {
     CommitTextEdit();
     if (!document) return;
     FileDialogOptions opts;
@@ -2950,18 +3200,20 @@ void UltraPaintWindow::CmdSaveAs() {
         // it at another size.
         .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
-                                                       const FileSaveImageSize& size) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, afterSaved](DialogResult r, const std::string& path,
+                                                                   const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
         // The type was picked here, so its layers go without a word; a
         // password going is not something a file type says.
         const std::string question = SaveLossQuestion(path, false);
         if (!question.empty()) {
-            ConfirmDiscard(question, [this, path, size]() { SaveToPath(path, size); });
+            ConfirmDiscard(question, [this, path, size, afterSaved]() {
+                if (SaveToPath(path, size) && afterSaved) afterSaved();
+            });
             return;
         }
-        SaveToPath(path, size);
+        if (SaveToPath(path, size) && afterSaved) afterSaved();
     });
 }
 
@@ -3040,12 +3292,23 @@ void UltraPaintWindow::CmdQuit() {
     }
     auto go = []() { if (auto* app = UltraCanvasApplication::GetInstance()) app->RequestExit(); };
     if (unsaved == 0) { go(); return; }
-    // One image has a sentence of its own; TrN's forms all carry the count
-    ConfirmDiscard(unsaved == 1
-                       ? Tr("An image has unsaved changes. Quit anyway?")
-                       : TrN("{n} image has unsaved changes. Quit anyway?",
-                             "{n} images have unsaved changes. Quit anyway?", unsaved),
-                   go);
+    // Window by window, each unsaved image asks Save, Don't save or Cancel;
+    // a Cancel anywhere keeps the application running.
+    std::vector<std::weak_ptr<UltraPaintWindow>> windows;
+    for (const auto& editor : OpenWindows()) if (editor) windows.push_back(editor);
+    auto next = std::make_shared<std::function<void(size_t)>>();
+    *next = [windows, go, weakNext = std::weak_ptr<std::function<void(size_t)>>(next)](size_t i) {
+        while (i < windows.size() && !windows[i].lock()) ++i;
+        if (i >= windows.size()) { go(); return; }
+        auto editor = windows[i].lock();
+        auto self = weakNext.lock();
+        if (!self) return;
+        if (editor->window) editor->window->RaiseAndFocus();
+        editor->ReviewUnsavedTabs([self, i]() { (*self)(i + 1); });
+    };
+    // While a question is open, its callback holds the chain; once the last
+    // window has answered (or one cancels) it goes with it.
+    (*next)(0);
 }
 
 // ===========================================================================
@@ -3171,7 +3434,7 @@ UltraPaintWindow::PasteSource UltraPaintWindow::ReadPasteSource() {
 
 void UltraPaintWindow::CmdPaste() {
     CommitTextEdit();
-    if (!document) return;
+    if (!document) { CmdPasteAsNew(); return; }   // the start page: the paste becomes the image
     PasteSource source = ReadPasteSource();
     std::string layerName = TrC("layer name", "Pasted");
     if (!source.file.empty()) {

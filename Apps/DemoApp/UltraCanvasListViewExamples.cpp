@@ -490,7 +490,7 @@ namespace UltraCanvas {
             auto status = DemoKit::CreateText("DashboardStatus",
                     TrN("{n} domain", "{n} domains", state->model->GetRowCount()));
             status->SetFontSize(11);
-            status->SetBackgroundColor(Colors::White);
+            status->SetBackgroundColor(DemoKit::Themed(Colors::White));
             status->SetBorders(1.0f);
             status->SetPadding(6, 8);
             status->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
@@ -584,7 +584,7 @@ namespace UltraCanvas {
                 Tr("Click any list item to see feedback here.\n"
                 "Hover a row (or a column header) to see its tooltip."));
         statusLabel->SetFontSize(11);
-        statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
         CSSLayout::BoxConstraints statusLimits;

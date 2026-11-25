@@ -234,6 +234,72 @@ StoreResult AccountStore::ChangePassword(
     return vault_.ChangePassword(newPassword);
 }
 
+StoreResult AccountStore::VerifyPassword(const UltraCryptSecureBuffer& password) const {
+    EncryptedFileStore probe;
+    StoreResult opened = probe.Open(path_, password);
+    if (!opened) {
+        return StoreResult::Error(StoreResultCode::AuthenticationFailed,
+                                  "That password is not correct.");
+    }
+    probe.Close();
+    return StoreResult::Ok();
+}
+
+StoreResult AccountStore::EnableRecovery(const UltraCryptSecureBuffer& masterPassword,
+                                         const UltraCryptSecureBuffer& serverShare,
+                                         const std::string& escrowId,
+                                         const std::string& serviceUrl) {
+    if (!vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+    StoreResult verified = VerifyPassword(masterPassword);
+    if (!verified) return verified;
+    return vault_.EnableRecovery(serverShare, escrowId, serviceUrl);
+}
+
+StoreResult AccountStore::DisableRecovery(const UltraCryptSecureBuffer& masterPassword) {
+    if (!vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+    StoreResult verified = VerifyPassword(masterPassword);
+    if (!verified) return verified;
+    return vault_.DisableRecovery();
+}
+
+VaultRecoveryInfo AccountStore::LockedRecoveryInfo() const {
+    VaultRecoveryInfo info;
+    if (!path_.empty()) EncryptedFileStore::ReadRecoveryInfo(path_, info);
+    return info;
+}
+
+StoreResult AccountStore::Recover(const UltraCryptSecureBuffer& serverShare,
+                                  const UltraCryptSecureBuffer& newPassword,
+                                  int64_t nowUnix) {
+    if (path_.empty()) {
+        return StoreResult::Error(StoreResultCode::NotOpen,
+                                  "no vault has been opened in this session");
+    }
+    if (vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "the vault is not locked");
+    }
+    const uint32_t wait = throttle_.SecondsUntilAllowed(nowUnix);
+    if (wait > 0) {
+        return StoreResult::Error(StoreResultCode::TooManyAttempts,
+                                  "too many attempts — try again in " +
+                                      std::to_string(wait) + " s");
+    }
+    StoreResult opened = vault_.OpenWithRecovery(path_, serverShare, newPassword);
+    if (!opened) {
+        if (opened.code == StoreResultCode::AuthenticationFailed) {
+            throttle_.RecordFailure(nowUnix);
+        }
+        return opened;
+    }
+    throttle_.RecordSuccess();
+    return StoreResult::Ok();
+}
+
 StoreResult AccountStore::Reveal(const std::string& key,
                                  const UltraCryptSecureBuffer& password,
                                  UltraCryptSecureBuffer& outUri) const {

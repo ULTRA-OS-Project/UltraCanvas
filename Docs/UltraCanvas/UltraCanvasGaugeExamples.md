@@ -224,6 +224,19 @@ void SetClockHandColor(const Color& c);   // AnalogClock: hour and minute hands,
 void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbers
 ```
 
+The gauge follows the theme. Under a dark one its own greys - captions,
+ticks, unlit segments, the face - and the default text, background, track,
+ring border and clock colours are drawn in the dark look
+(`UltraCanvasTheme::ForDarkLook`); a colour given with its setter is drawn
+as given, and the value colours (the gauge colour, ranges, warnings) are
+kept in either look. The speedometer's face is dark in both looks, so its
+value is light unless `SetTextColor` chose otherwise.
+
+```cpp
+void ApplyTheme(const UltraCanvasTheme& theme); // called for it when the theme changes
+bool IsDarkLook() const;
+```
+
 ### Round-Gauge (CircularRing) Styling
 
 ```cpp

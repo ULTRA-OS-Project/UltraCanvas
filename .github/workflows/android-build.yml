@@ -16,10 +16,20 @@ name: Android build
 # headers standing in; this is the build those headers stand in for.
 #
 # Runs on a pull request, and on a push to main, that touches what the
-# Android build is made of (the paths below). The sysroot takes the better
+# Android build is made of (the paths below) - a pull request the arm64-v8a
+# build alone, main every job (see the android job's matrix). A pull request
+# labelled `ci:emulator` gets main's set: x86_64 as well, and the emulator
+# jobs that run it (the demo at two densities, MobilePC on a second display),
+# so an Android change is seen running before it merges rather than after.
+# Adding the label starts that run without a push. The sysroot takes the better
 # part of an hour to build from nothing; vcpkg's binary cache keeps every
 # library it built, so a run on a warm cache only builds the framework. A
 # manual dispatch from the Actions tab works against any branch.
+#
+# MobilePC (Apps/MobilePC: UltraDesktop and the applications it starts, on
+# the framework's desktop mode) is built in the same job against the same
+# sysroot, packaged as the run's MobilePC-<abi> artifact, and run by the
+# emulator-mobilepc job with a simulated second display.
 #
 # The chatcube job builds ChatCube for Android the same way: the sysroot with
 # its chatcube feature as well (UltraNet's OpenSSL, c-ares and curl, SQLite,
@@ -42,14 +52,33 @@ name: Android build
 
 on:
   pull_request:
+    # The default types plus `labeled`, for `ci:emulator` (above): adding it
+    # starts a run with the emulator jobs. Any other label added starts a run
+    # too - GitHub cannot filter by label here - in which every job is skipped
+    # (the android job's `if`) and nothing in progress is cancelled (the
+    # concurrency group below).
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/vcpkg_seed_gnu_sources.py'
       - 'scripts/android-package-apk.sh'
+      - 'scripts/strip_method_parameters.py'
       - 'scripts/android-emulator-smoke.sh'
+      - 'scripts/android-mobilepc-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
+      - 'UltraCanvas/core/UltraCanvasEmbedded*'
+      - 'UltraCanvas/core/UltraCanvasHostedApps.cpp'
+      - 'UltraCanvas/core/UltraCanvasDesktopShell.cpp'
       - 'Apps/DemoApp/**'
       - 'Apps/ChatCube/**'
+      - 'Apps/MobilePC/**'
+      - 'Apps/UltraDesktop/**'
+      - 'Apps/Texter/**'
+      - 'Apps/UltraViewer/**'
+      - 'Apps/UltraPaint/**'
+      - 'Apps/ArtCreator/**'
+      - 'Apps/UltraFiler/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -58,11 +87,24 @@ on:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/vcpkg_seed_gnu_sources.py'
       - 'scripts/android-package-apk.sh'
+      - 'scripts/strip_method_parameters.py'
       - 'scripts/android-emulator-smoke.sh'
+      - 'scripts/android-mobilepc-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
+      - 'UltraCanvas/core/UltraCanvasEmbedded*'
+      - 'UltraCanvas/core/UltraCanvasHostedApps.cpp'
+      - 'UltraCanvas/core/UltraCanvasDesktopShell.cpp'
       - 'Apps/DemoApp/**'
       - 'Apps/ChatCube/**'
+      - 'Apps/MobilePC/**'
+      - 'Apps/UltraDesktop/**'
+      - 'Apps/Texter/**'
+      - 'Apps/UltraViewer/**'
+      - 'Apps/UltraPaint/**'
+      - 'Apps/ArtCreator/**'
+      - 'Apps/UltraFiler/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -74,24 +116,33 @@ on:
 
 # A newer push cancels a pull request's run in progress; on main nothing is
 # cancelled, so the weekly run and a push's run each finish (as build.yml).
+# A label other than ci:emulator gets a group of its own: its run, all
+# skipped, must not cancel the pull request's build in progress.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}${{ github.event.action == 'labeled' && github.event.label.name != 'ci:emulator' && '-other-label' || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   android:
     name: android (${{ matrix.abi }})
+    # A run started by adding a label builds only for ci:emulator; any other
+    # label leaves the pull request's earlier results as they are.
+    if: github.event.action != 'labeled' || github.event.label.name == 'ci:emulator'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
       # One ABI failing says nothing about the other; let both finish.
       fail-fast: false
+      # A pull request builds arm64-v8a alone, what phones run; main (a
+      # push, the weekly run, a dispatch) builds x86_64 as well, the ABI the
+      # emulator jobs run (since 2026-11-25: the second ABI, ChatCube's two
+      # and the three emulator jobs held six runners on every pull request
+      # that touched the paths above). The list is chosen whole: a row
+      # dropped with `exclude` comes back as a job of its own from its
+      # `include` entry (build.yml's gate says how). A pull request labelled
+      # `ci:emulator` builds both, as main does, for the emulator jobs.
       matrix:
-        include:
-          - abi: arm64-v8a
-            triplet: arm64-android
-          - abi: x86_64
-            triplet: x64-android
+        include: ${{ fromJSON((github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci:emulator')) && '[{"abi":"arm64-v8a","triplet":"arm64-android"}]' || '[{"abi":"arm64-v8a","triplet":"arm64-android"},{"abi":"x86_64","triplet":"x64-android"}]') }}
     env:
       ABI: ${{ matrix.abi }}
       TRIPLET: ${{ matrix.triplet }}
@@ -338,6 +389,56 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # MobilePC: UltraDesktop, UltraFiler, Texter, UltraViewer, UltraPaint and ArtCreator in one
+      # app library on the desktop mode, against the same sysroot.
+      - name: Build the MobilePC app library
+        run: |
+          sysroot="$RUNNER_TEMP/android-sysroot/$TRIPLET"
+          export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
+          cmake --build build-android --target MobilePC --parallel "$(nproc)" -- -k 0
+
+      # As the demo's: the activity's entry point and every native method.
+      - name: Check the MobilePC library's entry points
+        run: |
+          lib="$(find build-android -name libMobilePC.so -print -quit)"
+          if [ -z "$lib" ]; then
+            echo "::error::libMobilePC.so was not built"
+            exit 1
+          fi
+          readelf="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          exported="$("$readelf" --dyn-syms --wide "$lib" | awk '$7 != "UND" {print $8}')"
+          missing=0
+          for sym in ANativeActivity_onCreate $(grep -ho 'Java_org_ultraos_[A-Za-z0-9_]*(' UltraCanvas/OS/Android/*.cpp | tr -d '(' | sort -u); do
+            if ! grep -qx "$sym" <<<"$exported"; then
+              echo "::error::$lib does not export $sym"
+              missing=1
+            fi
+          done
+          ls -l "$lib"
+          exit "$missing"
+
+      # Its own manifest, assets and icon, and its own version (line 1 of
+      # Docs/MobilePC/CHANGELOG.md).
+      - name: Package the MobilePC APK
+        run: |
+          version="$(sed -n '1s/^#### [0-9-]* \*\([0-9.]*\)\*.*/\1/p' Docs/MobilePC/CHANGELOG.md)"
+          scripts/android-package-apk.sh --abi "$ABI" \
+            --lib build-android/lib/libMobilePC.so \
+            --out "apk/MobilePC-$ABI.apk" \
+            --ndk "$ANDROID_NDK_LATEST_HOME" \
+            --manifest Apps/MobilePC/android/AndroidManifest.xml \
+            --assets Apps/MobilePC/android/assets.txt \
+            --icon media/appicon/MobilePC.png \
+            --version-name "$version"
+
+      - name: Upload the MobilePC APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: MobilePC-${{ matrix.abi }}
+          path: apk/MobilePC-${{ matrix.abi }}.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload the CMake logs
         if: failure()
         uses: actions/upload-artifact@v6
@@ -353,6 +454,9 @@ jobs:
   # feature and ChatCube's library, manifest and assets.
   chatcube:
     name: android chatcube (${{ matrix.abi }})
+    # Main only (a push, the weekly run, a dispatch), not on a pull request:
+    # see the android job's matrix.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -567,6 +671,9 @@ jobs:
   emulator:
     name: android emulator (${{ matrix.label }})
     needs: android
+    # It runs the x86_64 APK, which main builds, and a pull request labelled
+    # ci:emulator (see the android job).
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:emulator')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -617,5 +724,55 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: emulator-smoke/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # MobilePC on the emulator with a second display: the desktop must be drawn
+  # there, UltraPaint and UltraFiler must start on it, and the desktop must come back to the
+  # phone's screen when the display goes (scripts/android-mobilepc-smoke.sh).
+  # It needs only the x86_64 APK: an arm64 leg that failed (a vcpkg mirror
+  # timing out on a source download) must not keep it from running, and the
+  # download step below fails it when the x86_64 leg built no APK.
+  emulator-mobilepc:
+    name: android emulator (MobilePC, second display)
+    needs: android
+    # It runs the x86_64 APK, which main builds, and a pull request labelled
+    # ci:emulator. Not after a run whose android job was skipped (a label
+    # other than ci:emulator added): there is no APK to download.
+    if: ${{ !cancelled() && needs.android.result != 'skipped' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:emulator')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download the x86_64 MobilePC APK
+        uses: actions/download-artifact@v6
+        with:
+          name: MobilePC-x86_64
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run MobilePC on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: scripts/android-mobilepc-smoke.sh apk/MobilePC-x86_64.apk mobilepc-smoke
+
+      - name: Upload the screenshots and logcat
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-mobilepc-smoke
+          path: mobilepc-smoke/
           if-no-files-found: ignore
           retention-days: 14

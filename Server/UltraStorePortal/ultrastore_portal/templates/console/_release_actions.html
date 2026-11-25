@@ -1,0 +1,12 @@
+{% if release.editable %}
+  <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'submit' %}">{% csrf_token %}<button class="btn btn-primary"{% if problems %} disabled title="See what is missing below"{% endif %}>Send for review</button></form>
+{% endif %}
+{% if release.state == "submitted" %}
+  <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'withdraw' %}">{% csrf_token %}<button class="btn btn-outline-secondary">Withdraw from review</button></form>
+{% endif %}
+{% if release.state == "published" %}
+  <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'withdraw' %}" onsubmit="return confirm('Take this version out of the store?')">{% csrf_token %}<button class="btn btn-soft-danger">Unpublish</button></form>
+{% endif %}
+{% if release.editable or release.state == "rejected" or release.state == "withdrawn" %}
+  <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'delete' %}" onsubmit="return confirm('Delete this release and its packages?')">{% csrf_token %}<button class="btn btn-soft-danger">Delete</button></form>
+{% endif %}

@@ -31,6 +31,7 @@ those elements, the tabbed container and the text area
   - [Readability](#readability)
 - [Using it](#using-it)
   - [Following the theme](#following-the-theme)
+  - [Colours chosen for the light look](#colours-chosen-for-the-light-look)
 - [Fonts and text roles](#fonts-and-text-roles)
 - [The theme from the host](#the-theme-from-the-host)
 - [The policy](#the-policy)
@@ -307,6 +308,25 @@ brand.SetRole("rating.on", Color(242, 165, 58));                 // the brand's 
 brand.SetRole("calendar.weekend", brand.roles.inkMuted);         // weekends quiet, not red
 CheckboxVisualStyle box = CheckboxVisualStyle::FromTheme(brand); // the accent for the mark: not named
 RatingStyle stars = RatingStyle::FromTheme(brand, RatingStyle());
+```
+
+### Colours chosen for the light look
+
+An element (or a page) that draws with colours of its own - a caption's
+grey, a pale panel, an unlit segment - can carry them into a dark theme
+without a second palette: `ForDarkLook` turns a colour's lightness over
+into the dark look's range and keeps its hue, so white lands near the
+panel, black near white ink, a pale green panel becomes a dark green one
+and grey text light grey. Alpha is kept. `ForThisLook` does it under a dark
+theme and returns the colour unchanged under a light one. The gauge draws
+its greys through it (`UltraCanvasGaugeDiagramElement`), and the demo app's
+pages through `DemoKit::Themed`. Value colours - an accent, a warning red,
+a chart's palette - are better left as they are.
+
+```cpp
+const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+Color caption = theme.ForThisLook(Color(110, 110, 120));     // grey text, light grey in the dark
+Color panel = UltraCanvasTheme::ForDarkLook(Color(232, 245, 233)); // a pale green panel, dark green
 ```
 
 ## Fonts and text roles

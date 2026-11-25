@@ -69,6 +69,151 @@ static const char* kSeed = "otpauth://totp/Example:alice@example.com"
                            "?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Example";
 static const char* kPassword = "correct horse battery staple";
 
+static UltraCryptSecureBuffer RandomShare() {
+    UltraCryptSecureBuffer share;
+    UltraCrypt_RandomSecureBuffer(kRecoveryShareBytes, share);
+    return share;
+}
+
+// A vault as UltraAuthenticator 0.2 wrote it - container version 1, the
+// entries sealed with the password key itself - built here by hand, so the
+// reader of version 1 stays tested after the writer moved on.
+static void WriteVersion1Vault(const std::string& path, const std::string& password,
+                               const std::string& key, const std::string& value) {
+    UltraCryptKdfParams kdf = UltraCrypt_RecommendedKdfParams();
+    UltraCryptSecureBuffer derived;
+    UltraCrypt_DeriveKeyFromPassword(Buf(password), kdf, derived);
+    auto u32 = [](std::vector<uint8_t>& out, uint32_t v) {
+        for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
+    };
+    std::vector<uint8_t> plain;
+    u32(plain, 1);
+    plain.push_back(static_cast<uint8_t>(key.size()));
+    plain.push_back(0);
+    plain.insert(plain.end(), key.begin(), key.end());
+    u32(plain, static_cast<uint32_t>(value.size()));
+    plain.insert(plain.end(), value.begin(), value.end());
+
+    std::vector<uint8_t> header = {'U', 'C', 'A', 'V', 'A', 'U', 'L', 'T', 1, 1, 1, 0};
+    u32(header, kdf.iterations);
+    u32(header, kdf.memoryKiB);
+    header.insert(header.end(), kdf.salt.begin(), kdf.salt.end());
+    UltraCryptAeadParams aead;
+    aead.nonce.assign(24, 0);
+    UltraCrypt_RandomBytes(aead.nonce.data(), aead.nonce.size());
+    header.insert(header.end(), aead.nonce.begin(), aead.nonce.end());
+    aead.associatedData = header;
+    std::vector<uint8_t> cipher;
+    UltraCrypt_AeadSeal(derived, aead, plain.data(), plain.size(), cipher);
+    header.insert(header.end(), cipher.begin(), cipher.end());
+    WriteFileBytes(path, header);
+}
+
+// Recovery from a forgotten master password (container version 2): the
+// recovery slot opens with the server share and only with it, the header
+// names the escrow without the password, a recovery spends the slot and sets
+// the new password, an edited slot is refused, and the password slot keeps
+// working beside it. Then a version 1 vault: it opens, and its next write
+// makes it version 2 with the same entries.
+static void TestRecovery(const std::filesystem::path& dir) {
+    std::printf("Recovery\n");
+    const std::string path = UltraCanvas::PathToUtf8(dir / "recovery.ucvault");
+    UltraCryptSecureBuffer share = RandomShare();
+    const std::string escrowId = "e-0123456789abcdef0123456789abcdef";
+    const std::string service = "https://account.ultraos.example";
+    {
+        EncryptedFileStore store;
+        Check(static_cast<bool>(store.Create(path, Buf(kPassword))), "a vault for recovery is created");
+        Check(store.GetContainerVersion() == 2, "a new vault is container version 2");
+        store.Put("account-1", Buf(kSeed));
+        Check(!store.GetRecoveryInfo().enabled, "recovery starts off");
+        Check(!store.EnableRecovery(Buf("short"), escrowId, service), "a share of the wrong size is refused");
+        Check(static_cast<bool>(store.EnableRecovery(share, escrowId, service)), "recovery is turned on");
+        Check(store.GetRecoveryInfo().enabled && store.GetRecoveryInfo().escrowId == escrowId,
+              "the open vault reports the escrow");
+    }
+    {
+        VaultRecoveryInfo info;
+        Check(static_cast<bool>(EncryptedFileStore::ReadRecoveryInfo(path, info)) && info.enabled &&
+                  info.escrowId == escrowId && info.serviceUrl == service,
+              "the header names the escrow and the service without the password");
+        const std::vector<uint8_t> raw = ReadFileBytes(path);
+        Check(std::search(raw.begin(), raw.end(), share.Data(), share.Data() + share.GetSize()) == raw.end(),
+              "the server share is not in the file");
+        EncryptedFileStore store;
+        Check(static_cast<bool>(store.Open(path, Buf(kPassword))), "the password still opens a vault with recovery on");
+        store.Put("account-2", Buf("second"));
+        Check(static_cast<bool>(store.ChangePassword(Buf("an interim password"))), "the password changes");
+        Check(store.GetRecoveryInfo().enabled, "a password change keeps the recovery slot");
+    }
+    {
+        EncryptedFileStore store;
+        UltraCryptSecureBuffer wrong = RandomShare();
+        auto refused = store.OpenWithRecovery(path, wrong, Buf("new password"));
+        Check(!refused && refused.code == StoreResultCode::AuthenticationFailed, "a wrong share is refused");
+        Check(!store.IsOpen(), "a refused recovery leaves the vault closed");
+
+        // An edited recovery slot: the local share, then the escrow id.
+        const std::vector<uint8_t> original = ReadFileBytes(path);
+        const std::string tampered = UltraCanvas::PathToUtf8(dir / "recovery-tampered.ucvault");
+        for (size_t offset : {size_t(108 + 3), size_t(108 + 32 + 24 + 48 + 1 + 4)}) {
+            std::vector<uint8_t> bad = original;
+            bad[offset] ^= 0x01;
+            WriteFileBytes(tampered, bad);
+            EncryptedFileStore probe;
+            Check(!probe.OpenWithRecovery(tampered, share, Buf("new password")),
+                  "an edited recovery slot is refused (byte " + std::to_string(offset) + ")");
+            Check(!probe.Open(tampered, Buf("an interim password")),
+                  "an edited recovery slot also fails the password open (byte " + std::to_string(offset) + ")");
+        }
+    }
+    {
+        EncryptedFileStore store;
+        auto recovered = store.OpenWithRecovery(path, share, Buf("the new password"));
+        Check(static_cast<bool>(recovered), "the server share recovers the vault: " + recovered.message);
+        Check(store.Count() == 2, "every entry is there after the recovery");
+        Check(!store.GetRecoveryInfo().enabled, "the recovery slot is spent");
+    }
+    {
+        EncryptedFileStore store;
+        Check(static_cast<bool>(store.Open(path, Buf("the new password"))), "the new password opens it");
+        Check(!store.Open(path, Buf("an interim password")), "the forgotten one no longer does");
+        EncryptedFileStore again;
+        Check(!again.OpenWithRecovery(path, share, Buf("x")), "the spent share opens nothing");
+    }
+    {
+        EncryptedFileStore store;
+        store.Open(path, Buf("the new password"));
+        store.EnableRecovery(share, "", "");
+        Check(store.GetRecoveryInfo().enabled && store.GetRecoveryInfo().escrowId.empty(),
+              "a recovery code alone, with no account, is a recovery slot too");
+        Check(static_cast<bool>(store.DisableRecovery()) && !store.GetRecoveryInfo().enabled, "recovery turns off");
+        EncryptedFileStore probe;
+        Check(!probe.OpenWithRecovery(path, share, Buf("x")), "a vault with recovery off refuses every share");
+    }
+
+    std::printf("Version 1 vault\n");
+    const std::string oldPath = UltraCanvas::PathToUtf8(dir / "version1.ucvault");
+    WriteVersion1Vault(oldPath, kPassword, "account-1", kSeed);
+    {
+        EncryptedFileStore store;
+        auto opened = store.Open(oldPath, Buf(kPassword));
+        Check(static_cast<bool>(opened), "a version 1 vault opens: " + opened.message);
+        Check(store.GetContainerVersion() == 1, "it reports version 1 until it is written");
+        UltraCryptSecureBuffer value;
+        Check(static_cast<bool>(store.Get("account-1", value)) && BufferEquals(value, kSeed), "its entry reads back");
+        Check(!EncryptedFileStore().Open(oldPath, Buf("wrong")), "a wrong password is refused on version 1 too");
+        store.Put("account-2", Buf("second"));
+        Check(store.GetContainerVersion() == 2, "the first write makes it version 2");
+    }
+    {
+        Check(ReadFileBytes(oldPath)[8] == 2, "the file on disk is version 2");
+        EncryptedFileStore store;
+        Check(static_cast<bool>(store.Open(oldPath, Buf(kPassword))) && store.Count() == 2,
+              "the upgraded vault opens with both entries");
+    }
+}
+
 // Compared as paths, so the separator the platform joins with does not matter.
 static bool SamePath(const std::string& actual, const std::filesystem::path& expected) {
     return UltraCanvas::PathFromUtf8(actual).lexically_normal() == expected.lexically_normal();
@@ -435,6 +580,8 @@ int main() {
         Check(!missing && missing.code == StoreResultCode::IoError,
               "opening a missing file reports IoError");
     }
+
+    TestRecovery(dir);
 
     std::filesystem::remove_all(dir, ec);
 

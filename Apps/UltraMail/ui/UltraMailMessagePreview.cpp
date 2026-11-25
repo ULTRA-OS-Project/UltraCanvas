@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.26.0 - a "Re:" / "Fw:" from a stranger (unsolicited-reply) is named in the
+//                   warning strip ("fraud"), with "Add to contacts" for a sender the
+//                   reader knows; SetContacts shows the message again when its sender
+//                   joined the address book
 // Version: 0.25.0 - fake designer goods (counterfeit-goods) and SEO offers from strangers
 //                   (seo-solicitation, called spam) are named in the warning strip, with
 //                   their own advice
@@ -528,6 +532,20 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     warning_->AddChild(warningText_);
     warningTitle_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     warningText_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // "Add to contacts": shown for a "Re:" / "Fw:" from a stranger, which the
+    // reader may know after all - once added, the warning goes.
+    warningAddContact_ = CreateButton("prevWarningAddContact", 0, 0, 120, Theme::kControlHeight,
+                                      Tr("Add to contacts"));
+    Theme::FitToLabel(warningAddContact_, 120);
+    Theme::StyleSecondary(warningAddContact_);
+    warningAddContact_->SetTooltip(Tr("You know this sender: add them to your address book, "
+                                      "and their replies are no longer flagged"));
+    warningAddContact_->onClick = [this]() {
+        if (onAddContact && hasMessage_ && !curEnv_.fromAddr.empty()) onAddContact(curEnv_);
+    };
+    warning_->AddChild(warningAddContact_);
+    warningAddContact_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start).SetFlexShrink(0);
+    warningAddContact_->SetVisible(false);
     root_->AddChild(warning_);
     warning_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     warning_->SetVisible(false);
@@ -1075,7 +1093,7 @@ void MessagePreview::UpdateRemoteBar() {
     // Never offer to trust a sender whose message looks like spam or a scam.
     remoteAlways_->SetVisible(!remoteDangerous_ && !curEnv_.fromAddr.empty());
     if (!remoteDangerous_ && !curEnv_.fromAddr.empty())
-        remoteAlways_->SetText("Always from " + curEnv_.fromAddr);
+        remoteAlways_->SetText("Always from " + SenderLists::Normalize(curEnv_.fromAddr));
 }
 
 void MessagePreview::FetchTrustedHostImages() {
@@ -1274,6 +1292,12 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                                          const MessageSecurity& security,
                                          const std::string& raw) {
     if (!warning_ || !warningTitle_ || !warningText_) return;
+    // A "Re:" / "Fw:" from someone the reader never wrote to: they may know
+    // the sender after all, and say so by adding them.
+    const bool strangerReply = security.HasFinding("unsolicited-reply");
+    if (warningAddContact_)
+        warningAddContact_->SetVisible(strangerReply && !status.inAddressBook && onAddContact &&
+                                       !curEnv_.fromAddr.empty());
 
     const bool romance = security.HasFinding("romance-scam");
     const bool loan = security.HasFinding("loan-offer-fraud");
@@ -1350,6 +1374,8 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     const std::string what = romance                ? Tr("romance scam")
                            : counterfeit            ? Tr("counterfeit goods")
                            : seoOffer && !phishing  ? Tr("spam")
+                           : strangerReply && !phishing && !webPage && !lookalike
+                                                    ? Tr("fraud")
                            : phishing || lookalike || webPage ? Tr("phishing")
                            : cryptoScam ? Tr("cryptocurrency scam")
                            : loan       ? Tr("loan scam")
@@ -1420,6 +1446,11 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         advice = Tr("Do not pay any fee, insurance or charge to receive a loan, and do not "
                  "send copies of your passport or bank details. Ask your own bank if you need "
                  "credit.");
+    else if (strangerReply && !romance && !phishing && !webPage)
+        advice = Tr("Do not pay, open attachments or follow links in it until you have checked "
+                 "with the sender at an address or phone number you already know. A forwarded "
+                 "invoice or a \"reply\" from a stranger is how fake bills and changed bank "
+                 "details arrive. If you do know the sender, add them to your contacts.");
     else if (webPage && !romance)
         advice = Tr("Do not open the attached web page, and do not sign in or pay on a page it "
                  "opens. If you are unsure whether you owe something, contact the company at an "
@@ -1444,6 +1475,12 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     else if (phishing || lookalike || webPage)
         footnote = "* " + Tr("Phishing emails are emails that try to get your credentials "
                    "to hack your accounts on other websites.");
+    else if (strangerReply && !cryptoScam)
+        footnote = "* " + Tr("Fraudsters start with \"Re:\", \"Fw:\" or \"WG:\" so that a "
+                   "first message looks like part of a conversation you already had - an "
+                   "invoice passed on by a colleague, an answer to your enquiry. A genuine "
+                   "reply comes from someone you wrote to, and UltraMail keeps everyone you "
+                   "write to in your address book.");
     else if (loan && !cryptoScam)
         footnote = "* " + Tr("Loan scams offer credit or \"project funding\" - often "
                    "millions at a few percent - to strangers by email. Only a bank may lend, and "
@@ -1458,6 +1495,18 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     warningText_->SetTextIsMarkup(true);
     warningText_->SetText(text);
     warning_->SetVisible(true);
+}
+
+void MessagePreview::SetContacts(ContactIndex contacts) {
+    const bool shown = hasMessage_ && !curEnv_.fromAddr.empty();
+    const bool before = shown && badges_.Contacts().Contains(curEnv_.fromAddr);
+    badges_.SetContacts(std::move(contacts));
+    // The sender joined (or left) the address book: their badge and the
+    // warning strip change with it ("Add to contacts" was pressed).
+    if (shown && before != badges_.Contacts().Contains(curEnv_.fromAddr)) {
+        const MessageEnvelope again = curEnv_;   // Show replaces curEnv_
+        Show(again);
+    }
 }
 
 void MessagePreview::ShowBodyNote(const std::string& note) {
@@ -1499,6 +1548,7 @@ void MessagePreview::Clear() {
     if (header_)  header_->SetVisible(false);
     if (rule_)    rule_->SetVisible(false);
     if (warning_) warning_->SetVisible(false);
+    if (warningAddContact_) warningAddContact_->SetVisible(false);
     if (from_)    from_->SetText("");
     if (to_)      to_->SetText("");
     if (date_)    date_->SetText("");

@@ -1,3 +1,25 @@
+#### 2026-11-22 *0.28.0*
+- **Desktop → Tool applications.** A new row chooses whether UltraClipboard,
+  UltraSnip and UltraToDo show only on UltraDesktop's tool group (the
+  default) or on the taskbar too (`toolAppsOnTaskbar`).
+- **The Look page's controls start at one x.** Each row's caption was as
+  wide as its own text, so every control began at a different place.
+  The captions now share one column as wide as the widest of them,
+  measured in the font they are drawn in (`FitCaptionColumn`, as on the
+  Desktop page), in every language.
+- **The preview shows all of itself.** Its label stands on a line of its
+  own above the button, field and choice: on one line a translated label
+  ("Eine Beschriftung im Aussehen") was cut short at a fixed 160 px, and
+  at full width pushed the choice past the panel's edge.
+- **The page scrolls** instead of cutting off the notes at its foot.
+- **The Translations page moves out, into UOS-Localisation.** The
+  localisation editor was squeezed into a settings page about 620 px wide;
+  it is now a program of its own, UOS-Localisation, laid out for a whole
+  window. The *Language* page's new **Translate applications...** button
+  starts it in the language chosen there, and says so on the page when it
+  cannot be found. The *Translator* name stays on the *Language* page
+  (Language.conf), and UOS-Localisation writes it into what it saves.
+
 #### 2026-11-21 *0.27.0*
 - **Why the look could not be saved.** Appearance's "Could not write
   ...\Appearance.conf." now gives the system's reason after the path (the file

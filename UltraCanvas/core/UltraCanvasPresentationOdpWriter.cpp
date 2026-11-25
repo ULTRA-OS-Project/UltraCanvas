@@ -2,8 +2,14 @@
 // OpenDocument presentation (.odp / .otp / .fodp) writer - see
 // UltraCanvasPresentationOdp.h: a PptxPresentation written as an Impress deck
 // LibreOffice and the reader open.
+// Version: 1.1.0 - the deck's masters as master pages (name, background, placeholder frames, their
+//                  presentation styles), its layouts as presentation page layouts, each slide on its
+//                  layout's master; transitions (smil type, speed, auto-advance, the exact length
+//                  as the page's anim:transitionFilter)
+// Version: 1.0.1 - a turned shape's gradient is turned with it (ODF's angle is on the page), and a
+//                  radial gradient starts at the edge, as ODF reads it
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #include "UltraCanvasOdfChart.h"
 #include "UltraCanvasPathUtf8.h"
@@ -210,13 +216,17 @@ std::string EnhancedPath(const std::vector<RichShape::PathPoint>& path, bool& op
 
 class Styles {
 public:
+    // `prefix` goes before every name: a master page's styles ("M...") share
+    // a flat file's automatic styles with the slides'.
+    explicit Styles(std::string prefix = std::string()) : prefix_(std::move(prefix)) {}
+
     // A named style of `family` for `properties` (the elements inside it).
     std::string Get(const std::string& family, const std::string& prefix, const std::string& properties,
                     const std::string& extra = std::string()) {
         const std::string key = family + "|" + extra + "|" + properties;
         auto found = names_.find(key);
         if (found != names_.end()) return found->second;
-        const std::string name = prefix + std::to_string(++counts_[prefix]);
+        const std::string name = prefix_ + prefix + std::to_string(++counts_[prefix]);
         names_.emplace(key, name);
         xml_ += "<style:style style:name=\"" + name + "\" style:family=\"" + family + "\"" + extra + ">" + properties +
                 "</style:style>";
@@ -225,7 +235,7 @@ public:
     std::string List(const std::string& levels) {
         auto found = lists_.find(levels);
         if (found != lists_.end()) return found->second;
-        const std::string name = "L" + std::to_string(lists_.size() + 1);
+        const std::string name = prefix_ + "L" + std::to_string(lists_.size() + 1);
         lists_.emplace(levels, name);
         xml_ += "<text:list-style style:name=\"" + name + "\">" + levels + "</text:list-style>";
         return name;
@@ -234,7 +244,7 @@ public:
         const std::string key = from + to + Fixed(angleDeg, 1) + (radial ? "r" : "l");
         auto found = gradients_.find(key);
         if (found != gradients_.end()) return found->second;
-        const std::string name = "Gradient_" + std::to_string(gradients_.size() + 1);
+        const std::string name = prefix_ + "Gradient_" + std::to_string(gradients_.size() + 1);
         gradients_.emplace(key, name);
         // ODF turns a gradient counter-clockwise from top-to-bottom;
         // DrawingML clockwise from left-to-right.
@@ -249,6 +259,7 @@ public:
     const std::string& Common() const { return common_; }
 
 private:
+    std::string prefix_;
     std::map<std::string, std::string> names_;
     std::map<std::string, int> counts_;
     std::map<std::string, std::string> lists_;
@@ -263,14 +274,16 @@ class OdpWriter {
 public:
     OdpWriter(const PptxPresentation& deck, bool flat) : deck_(deck), flat_(flat) {}
 
-    // content.xml's automatic styles and body (or a flat file's).
+    // The master pages and page layouts, then content.xml's automatic
+    // styles and body (or a flat file's).
     void Build() {
+        BuildDesign();
         for (size_t i = 0; i < deck_.slides.size(); ++i) body_ += Page(deck_.slides[i], static_cast<int>(i + 1));
     }
 
     std::string Content() const {
         return std::string(kXmlHead) + "<office:document-content " + Namespaces() + "><office:automatic-styles>" +
-               styles_.Automatic() + "</office:automatic-styles><office:body><office:presentation>" + body_ +
+               contentStyles_.Automatic() + "</office:automatic-styles><office:body><office:presentation>" + body_ +
                "</office:presentation></office:body></office:document-content>";
     }
 
@@ -282,7 +295,8 @@ public:
                "<draw:marker draw:name=\"Arrow\" svg:viewBox=\"0 0 20 30\" svg:d=\"M10 0 L20 30 L0 30 Z\"/>"
                "<draw:stroke-dash draw:name=\"Dash\" draw:style=\"rect\" draw:dots1=\"1\" draw:dots1-length=\"300%\" "
                "draw:distance=\"200%\"/><draw:stroke-dash draw:name=\"Dot\" draw:style=\"round\" draw:dots1=\"1\" "
-               "draw:dots1-length=\"100%\" draw:distance=\"150%\"/>" + styles_.Common() + "</office:styles>";
+               "draw:dots1-length=\"100%\" draw:distance=\"150%\"/>" + contentStyles_.Common() + masterStyles_.Common() +
+               designCommon_ + "</office:styles>";
     }
 
     // The page layouts and the master page every slide is on.
@@ -293,16 +307,11 @@ public:
                (Width() >= Height() ? "landscape" : "portrait") + "\"/></style:page-layout>"
                "<style:page-layout style:name=\"PM2\"><style:page-layout-properties fo:margin-top=\"0cm\" "
                "fo:margin-bottom=\"0cm\" fo:margin-left=\"0cm\" fo:margin-right=\"0cm\" fo:page-width=\"21cm\" "
-               "fo:page-height=\"29.7cm\" style:print-orientation=\"portrait\"/></style:page-layout>"
-               "<style:style style:name=\"Mdp1\" style:family=\"drawing-page\"><style:drawing-page-properties "
-               "draw:background-size=\"full\" draw:fill=\"solid\" draw:fill-color=\"#ffffff\"/></style:style>";
+               "fo:page-height=\"29.7cm\" style:print-orientation=\"portrait\"/></style:page-layout>" +
+               masterStyles_.Automatic();
     }
 
-    std::string MasterStyles() const {
-        return "<office:master-styles><style:master-page style:name=\"Default\" style:page-layout-name=\"PM1\" "
-               "draw:style-name=\"Mdp1\"><presentation:notes style:page-layout-name=\"PM2\"/></style:master-page>"
-               "</office:master-styles>";
-    }
+    std::string MasterStyles() const { return "<office:master-styles>" + masterPages_ + "</office:master-styles>"; }
 
     // The package's other parts: pictures and chart objects.
     const std::vector<std::pair<std::string, std::vector<uint8_t>>>& Pictures() const { return pictures_; }
@@ -311,8 +320,15 @@ public:
 private:
     const PptxPresentation& deck_;
     bool flat_;
-    Styles styles_;
+    Styles contentStyles_;
+    Styles masterStyles_{"M"};
+    Styles* styles_ = &contentStyles_;   // the slides', or the master pages' while they are written
     std::string body_;
+    std::string masterPages_;            // office:master-styles' master pages
+    std::string designCommon_;           // the masters' presentation styles and the page layouts (office:styles)
+    std::vector<std::string> masterNames_;   // each master page's style:name
+    bool ownMasters_ = false;            // the deck's masters are written (else one plain "Default")
+    std::string pageMaster_;             // the master page of the slide being written
     std::map<std::string, std::string> pictureParts_;                      // target -> Pictures/imageN.ext
     std::vector<std::pair<std::string, std::vector<uint8_t>>> pictures_;   // part -> bytes
     std::vector<std::string> charts_;                                       // Object N/content.xml
@@ -391,7 +407,7 @@ private:
                 span = "<text:a xlink:type=\"simple\" xlink:href=\"" + Escape(href) + "\">" + span + "</text:a>";
             }
             if (!props.empty()) {
-                const std::string name = styles_.Get("text", "T", "<style:text-properties" + props + "/>");
+                const std::string name = styles_->Get("text", "T", "<style:text-properties" + props + "/>");
                 span = "<text:span text:style-name=\"" + name + "\">" + span + "</text:span>";
             }
             out += span;
@@ -428,7 +444,7 @@ private:
             const std::string t = TextProperties(first);
             if (!t.empty()) text = "<style:text-properties" + t + "/>";
         }
-        return styles_.Get("paragraph", "P", "<style:paragraph-properties" + props + "/>" + text);
+        return styles_->Get("paragraph", "P", "<style:paragraph-properties" + props + "/>" + text);
     }
 
     // A list style for one paragraph's label at its level: its character or
@@ -463,7 +479,7 @@ private:
                           "/></text:list-level-style-bullet>";
             }
         }
-        return styles_.List(levels);
+        return styles_->List(levels);
     }
 
     // The paragraphs of a text box, shape or cell; a bulleted one in a list
@@ -539,9 +555,14 @@ private:
             double angle = shape.gradientAngleDeg;
             if (shape.flipH) angle = 180.0 - angle;
             if (shape.flipV) angle = -angle;
+            // ODF's angle is on the page: the shape's turn goes into it, as
+            // LibreOffice reads an Office deck.
+            if (!shape.gradientRadial) angle += shape.rotationDeg;
+            // A radial gradient starts at the edge in ODF, at the centre in the model.
             if (!from.empty() && !to.empty())
                 props += " draw:fill=\"gradient\" draw:fill-gradient-name=\"" +
-                         styles_.Gradient(from, to, angle, shape.gradientRadial) + "\"";
+                         (shape.gradientRadial ? styles_->Gradient(to, from, angle, true)
+                                               : styles_->Gradient(from, to, angle, false)) + "\"";
         } else if (const std::string fill = Colour(shape.fill); !fill.empty()) {
             props += " draw:fill=\"solid\" draw:fill-color=\"" + fill + "\"";
         } else {
@@ -604,7 +625,7 @@ private:
         const char* cls = shape.kind == PptxShapeKind::Title ? "title"
                         : shape.kind == PptxShapeKind::Subtitle ? "subtitle"
                                                                 : "outline";
-        const std::string style = styles_.Get("presentation", "pr", GraphicProperties(shape, true));
+        const std::string style = styles_->Get("presentation", "pr", GraphicProperties(shape, true), ParentStyle(cls));
         PptxShape placed = shape;
         if (placed.width <= 0 || placed.height <= 0) {
             // No place anywhere: where PowerPoint's own layout puts it.
@@ -624,7 +645,7 @@ private:
         const bool plainBox = shape.customPath.empty() && (shape.geometry.empty() || shape.geometry == "rect") &&
                               Colour(shape.fill).empty() && shape.gradientStops.size() < 2 && Colour(shape.line).empty() &&
                               !shape.flipH && !shape.flipV && shape.textRotation == 0;
-        const std::string style = styles_.Get("graphic", "gr", GraphicProperties(shape, true));
+        const std::string style = styles_->Get("graphic", "gr", GraphicProperties(shape, true));
         if (plainBox) {
             return "<draw:frame draw:style-name=\"" + style + "\" draw:layer=\"layout\"" + Name(shape, "TextBox") +
                    Place(shape) + "><draw:text-box>" + Paragraphs(shape.paragraphs, shape.kind) + "</draw:text-box></draw:frame>";
@@ -684,7 +705,7 @@ private:
     std::string Connector(const PptxShape& shape) {
         PptxShape lined = shape;
         if (Colour(lined.line).empty()) lined.line = "000000";
-        const std::string style = styles_.Get("graphic", "gr", GraphicProperties(lined, false));
+        const std::string style = styles_->Get("graphic", "gr", GraphicProperties(lined, false));
         RichShape outline;
         if (!shape.customPath.empty()) {
             outline.kind = RichShape::Kind::Path;
@@ -779,7 +800,7 @@ private:
         PptxShape outlined = shape;
         outlined.fill.clear();
         outlined.gradientStops.clear();
-        const std::string style = styles_.Get("graphic", "gr", GraphicProperties(outlined, false));
+        const std::string style = styles_->Get("graphic", "gr", GraphicProperties(outlined, false));
         std::string image;
         if (flat_) {
             image = "<draw:image><office:binary-data>" + Base64Encode(bytes->second, false) + "</office:binary-data></draw:image>";
@@ -860,14 +881,14 @@ private:
                                        : Colour(accentFound->second);
         std::string xml = "<table:table>";
         for (size_t c = 0; c < columns; ++c) {
-            const std::string col = styles_.Get("table-column", "co",
+            const std::string col = styles_->Get("table-column", "co",
                                                 "<style:table-column-properties style:column-width=\"" +
                                                     Cm(static_cast<double>(std::max<int64_t>(1, widths[c]))) + "\"/>");
             xml += "<table:table-column table:style-name=\"" + col + "\"/>";
         }
         for (size_t r = 0; r < shape.rows.size(); ++r) {
             const int64_t h = r < shape.rowHeights.size() && shape.rowHeights[r] > 0 ? shape.rowHeights[r] : 370840;
-            const std::string row = styles_.Get("table-row", "ro",
+            const std::string row = styles_->Get("table-row", "ro",
                                                 "<style:table-row-properties style:row-height=\"" + Cm(static_cast<double>(h)) + "\"/>");
             xml += "<table:table-row table:style-name=\"" + row + "\">";
             for (size_t c = 0; c < columns; ++c) {
@@ -891,7 +912,7 @@ private:
                     fill = r == 0 ? accent : (r % 2 ? "#cfd5ea" : "#e9ebf5");
                     borders = " fo:border=\"0.75pt solid #ffffff\"";
                 }
-                const std::string cell = styles_.Get(
+                const std::string cell = styles_->Get(
                     "table-cell", "ce",
                     "<style:graphic-properties draw:fill=\"" + std::string(fill.empty() ? "none" : "solid") + "\"" +
                         (fill.empty() ? "" : " draw:fill-color=\"" + fill + "\"") + "/><style:table-cell-properties" +
@@ -922,16 +943,284 @@ private:
         return "<draw:frame draw:layer=\"layout\"" + Name(shape, "Table") + Place(frame) + ">" + xml + "</draw:frame>";
     }
 
+    // ----- Masters and layouts -----
+
+    // A style name from a display name, as Impress makes one: what is not a
+    // letter, digit, '-' or '.' as _xx_ (its UTF-8 bytes in hex).
+    static std::string StyleName(const std::string& display) {
+        std::string out;
+        for (unsigned char c : display) {
+            if (std::isalnum(c) || ((c == '-' || c == '.') && !out.empty())) {
+                out += static_cast<char>(c);
+            } else {
+                char hex[8];
+                std::snprintf(hex, sizeof(hex), "_%x_", c);
+                out += hex;
+            }
+        }
+        return out;
+    }
+
+    // A placeholder's type: the model's, else its kind's; empty for a shape that is none.
+    static std::string PlaceholderType(const PptxShape& shape) {
+        if (!shape.placeholder.empty()) return shape.placeholder;
+        switch (shape.kind) {
+            case PptxShapeKind::Title: return "title";
+            case PptxShapeKind::Subtitle: return "subTitle";
+            case PptxShapeKind::Body: return "body";
+            default: return "";
+        }
+    }
+
+    // A placeholder type as the presentation class of a master page's frame
+    // ("title", "subtitle", "outline", "date-time", "footer", "page-number").
+    static std::string PresentationClass(const std::string& type) {
+        if (type == "title" || type == "ctrTitle") return "title";
+        if (type == "subTitle") return "subtitle";
+        if (type == "dt") return "date-time";
+        if (type == "ftr") return "footer";
+        if (type == "sldNum") return "page-number";
+        return type.empty() ? "" : "outline";
+    }
+
+    // A placeholder type as the object of a presentation page layout's placeholder.
+    static std::string LayoutObject(const std::string& type) {
+        if (type == "title" || type == "ctrTitle") return "title";
+        if (type == "subTitle") return "subtitle";
+        if (type == "dt" || type == "ftr" || type == "sldNum" || type.empty()) return "";
+        if (type == "pic") return "graphic";
+        if (type == "chart") return "chart";
+        if (type == "tbl") return "table";
+        if (type == "dgm") return "orgchart";
+        return "outline";
+    }
+
+    // The presentation style a slide's frame of `presentationClass` takes
+    // its master's look from ("<master>-title", "-subtitle", "-outline1").
+    std::string ParentStyle(const std::string& presentationClass) const {
+        if (!ownMasters_ || pageMaster_.empty()) return "";
+        const std::string suffix = presentationClass == "title"      ? "title"
+                                 : presentationClass == "subtitle"   ? "subtitle"
+                                 : presentationClass == "outline"    ? "outline1"
+                                                                     : "";
+        return suffix.empty() ? "" : " style:parent-style-name=\"" + pageMaster_ + "-" + suffix + "\"";
+    }
+
+    // The common presentation styles of master `name`: its title's,
+    // subtitle's and outline levels' look, from its placeholders' text.
+    std::string MasterPresentationStyles(const std::string& name, const std::string& display, const PptxMaster& master) {
+        const PptxShape* title = nullptr;
+        const PptxShape* subtitle = nullptr;
+        const PptxShape* body = nullptr;
+        for (const PptxShape& shape : master.placeholders) {
+            const std::string cls = PresentationClass(PlaceholderType(shape));
+            if (cls == "title" && !title) title = &shape;
+            else if (cls == "subtitle" && !subtitle) subtitle = &shape;
+            else if (cls == "outline" && !body) body = &shape;
+        }
+        auto look = [&](const PptxParagraph* p) {
+            if (!p) return std::string();
+            static const char* const kAlign[] = {"start", "center", "end", "justify"};
+            std::string xml = "<style:paragraph-properties fo:text-align=\"" +
+                              std::string(kAlign[static_cast<int>(p->align)]) + "\"/>";
+            if (!p->runs.empty()) {
+                PptxRun run = p->runs.front();
+                run.hyperlink.clear();
+                xml += "<style:text-properties" + TextProperties(run) + "/>";
+            }
+            return xml;
+        };
+        auto first = [](const PptxShape* shape, int level) -> const PptxParagraph* {
+            if (!shape) return nullptr;
+            for (const PptxParagraph& p : shape->paragraphs)
+                if (p.level == level) return &p;
+            return nullptr;
+        };
+        auto style = [&](const std::string& suffix, const std::string& parent, const std::string& graphic,
+                         const PptxParagraph* p) {
+            return "<style:style style:name=\"" + name + "-" + suffix + "\" style:display-name=\"" + Escape(display) + "-" +
+                   suffix + "\" style:family=\"presentation\"" +
+                   (parent.empty() ? std::string() : " style:parent-style-name=\"" + name + "-" + parent + "\"") + ">" +
+                   graphic + look(p) + "</style:style>";
+        };
+        const std::string box = "<style:graphic-properties draw:stroke=\"none\" draw:fill=\"none\" "
+                                "draw:textarea-vertical-align=\"";
+        std::string xml = style("background", "", "<style:graphic-properties draw:stroke=\"none\" draw:fill=\"none\"/>",
+                                nullptr) +
+                          style("backgroundobjects", "", "", nullptr) +
+                          style("title", "", box + "middle\"/>", first(title, 0)) +
+                          style("subtitle", "", box + "middle\"/>", first(subtitle ? subtitle : body, 0)) +
+                          style("notes", "", "", nullptr);
+        for (int level = 0; level < 9; ++level)
+            xml += style("outline" + std::to_string(level + 1), level ? "outline" + std::to_string(level) : "",
+                         level ? "" : box + "top\"/>", first(body, level));
+        return xml;
+    }
+
+    // A master page's frame for one of its placeholders, in the master's
+    // styles: the title, subtitle and outline with their (prompt) text, the
+    // date, footer and number as Impress's fields.
+    std::string MasterFrame(const PptxShape& shape, const std::string& masterName) {
+        const std::string type = PlaceholderType(shape);
+        const std::string cls = PresentationClass(type);
+        if (cls.empty() || shape.kind == PptxShapeKind::Picture || shape.kind == PptxShapeKind::Table ||
+            shape.kind == PptxShapeKind::Chart || shape.kind == PptxShapeKind::Connector) {
+            std::string xml = Shape(shape);   // decoration on the master
+            const size_t layer = xml.find("draw:layer=\"layout\"");
+            if (layer != std::string::npos) xml.replace(layer, 19, "draw:layer=\"backgroundobjects\"");
+            return xml;
+        }
+        const std::string parent = cls == "title" || cls == "subtitle" || cls == "outline"
+                                       ? " style:parent-style-name=\"" + masterName + "-" +
+                                             (cls == "outline" ? std::string("outline1") : cls) + "\""
+                                       : std::string();
+        const std::string style = styles_->Get("presentation", "pr", GraphicProperties(shape, true), ownMasters_ ? parent : "");
+        std::string text;
+        const char* field = cls == "date-time" ? "<presentation:date-time/>"
+                          : cls == "footer"    ? "<presentation:footer/>"
+                          : cls == "page-number" ? "<text:page-number>&lt;number&gt;</text:page-number>"
+                                                 : nullptr;
+        if (field) {
+            const PptxParagraph p = shape.paragraphs.empty() ? PptxParagraph() : shape.paragraphs.front();
+            std::string span = field;
+            for (const PptxRun& run : p.runs) {
+                if (run.text.empty() || run.text == "\n") continue;
+                PptxRun look = run;
+                look.hyperlink.clear();
+                if (const std::string props = TextProperties(look); !props.empty())
+                    span = "<text:span text:style-name=\"" +
+                           styles_->Get("text", "T", "<style:text-properties" + props + "/>") + "\">" + field + "</text:span>";
+                break;
+            }
+            const double sizePt = !p.runs.empty() && p.runs.front().sizePt > 0 ? p.runs.front().sizePt : 12.0;
+            text = "<text:p text:style-name=\"" + ParagraphStyle(p, sizePt) + "\">" + span + "</text:p>";
+        } else {
+            text = Paragraphs(shape.paragraphs, shape.kind);
+        }
+        PptxShape placed = shape;
+        if (placed.width <= 0 || placed.height <= 0) {
+            const int64_t w = Width(), h = Height();
+            placed.x = w / 13;
+            placed.width = w - 2 * (w / 13);
+            placed.y = cls == "title" ? h / 19 : cls == "outline" || cls == "subtitle" ? h / 4 : h * 11 / 12;
+            placed.height = cls == "title" ? h / 6 : cls == "outline" || cls == "subtitle" ? h * 2 / 3 : h / 16;
+        }
+        return "<draw:frame presentation:style-name=\"" + style + "\" draw:layer=\"backgroundobjects\"" +
+               Name(shape, cls.c_str()) + Place(placed) + " presentation:class=\"" + cls + "\"><draw:text-box>" + text +
+               "</draw:text-box></draw:frame>";
+    }
+
+    // The master pages (the deck's masters, else one plain "Default") with
+    // their presentation styles, and the deck's layouts as presentation
+    // page layouts ("UCL1" ...) named as the deck names them.
+    void BuildDesign() {
+        styles_ = &masterStyles_;
+        const int shapeCount = shapeCount_;
+        ownMasters_ = !deck_.masters.empty();
+        const size_t count = std::max<size_t>(1, deck_.masters.size());
+        std::set<std::string> taken;
+        for (size_t m = 0; m < count; ++m) {
+            const PptxMaster master = ownMasters_ ? deck_.masters[m] : PptxMaster();
+            std::string display = master.name.empty() ? (ownMasters_ ? "Master " + std::to_string(m + 1) : "Default")
+                                                      : master.name;
+            std::string name = StyleName(display);
+            for (int n = 2; taken.count(name); ++n) name = StyleName(display) + "_" + std::to_string(n);
+            taken.insert(name);
+            masterNames_.push_back(name);
+            const std::string bg = Colour(master.background);
+            const std::string pageStyle = styles_->Get(
+                "drawing-page", "dp", "<style:drawing-page-properties draw:background-size=\"full\" draw:fill=\"solid\" "
+                                      "draw:fill-color=\"" + (bg.empty() ? std::string("#ffffff") : bg) + "\"/>");
+            std::string frames;
+            for (const PptxShape& shape : master.placeholders) frames += MasterFrame(shape, name);
+            masterPages_ += "<style:master-page style:name=\"" + name + "\"" +
+                            (name != display ? " style:display-name=\"" + Escape(display) + "\"" : std::string()) +
+                            " style:page-layout-name=\"PM1\" draw:style-name=\"" + pageStyle + "\">" + frames +
+                            "<presentation:notes style:page-layout-name=\"PM2\"/></style:master-page>";
+            if (ownMasters_) designCommon_ += MasterPresentationStyles(name, display, master);
+        }
+        for (size_t i = 0; i < deck_.layouts.size(); ++i) {
+            const PptxLayout& layout = deck_.layouts[i];
+            std::string xml = "<style:presentation-page-layout style:name=\"UCL" + std::to_string(i + 1) + "\"" +
+                              (layout.name.empty() ? std::string() : " style:display-name=\"" + Escape(layout.name) + "\"") +
+                              ">";
+            for (const PptxShape& shape : layout.placeholders) {
+                const std::string object = LayoutObject(PlaceholderType(shape));
+                if (object.empty()) continue;
+                xml += "<presentation:placeholder presentation:object=\"" + object + "\" svg:x=\"" +
+                       Cm(static_cast<double>(shape.x)) + "\" svg:y=\"" + Cm(static_cast<double>(shape.y)) +
+                       "\" svg:width=\"" + Cm(static_cast<double>(std::max<int64_t>(0, shape.width))) + "\" svg:height=\"" +
+                       Cm(static_cast<double>(std::max<int64_t>(0, shape.height))) + "\"/>";
+            }
+            designCommon_ += xml + "</style:presentation-page-layout>";
+        }
+        shapeCount_ = shapeCount;
+        styles_ = &contentStyles_;
+    }
+
+    // The slide's transition as drawing-page properties (smil:type and
+    // subtype, the speed, automatic advance after its duration), and its
+    // exact length for the page's timing root; empty type for none.
+    struct TransitionOut {
+        std::string properties, type, subtype;
+        double seconds = 0;
+    };
+    static TransitionOut Transition(const PptxTransition& t) {
+        TransitionOut out;
+        switch (t.kind) {
+            case PptxTransitionKind::Fade: out.type = "fade"; out.subtype = "crossfade"; break;
+            case PptxTransitionKind::Push: out.type = "pushWipe"; out.subtype = "fromRight"; break;
+            case PptxTransitionKind::Wipe: out.type = "barWipe"; out.subtype = "leftToRight"; break;
+            case PptxTransitionKind::Split: out.type = "barnDoorWipe"; out.subtype = "vertical"; break;
+            case PptxTransitionKind::Cover: out.type = "slideWipe"; out.subtype = "fromRight"; break;
+            case PptxTransitionKind::Zoom: out.type = "zoom"; break;
+            case PptxTransitionKind::NoTransition: break;
+        }
+        out.seconds = t.durationSec > 0 ? t.durationSec : 0.5;
+        if (!out.type.empty()) {
+            const char* speed = out.seconds <= 0.5 ? "fast" : out.seconds <= 0.75 ? "medium" : "slow";
+            out.properties += std::string(" presentation:transition-speed=\"") + speed + "\" smil:type=\"" + out.type + "\"";
+            if (!out.subtype.empty()) out.properties += " smil:subtype=\"" + out.subtype + "\"";
+        }
+        if (t.advanceAfterSec >= 0)
+            out.properties += " presentation:transition-type=\"automatic\" presentation:duration=\"PT" +
+                              Fixed(t.advanceAfterSec, 3) + "S\"";
+        return out;
+    }
+
     std::string Page(const PptxSlide& slide, int number) {
+        // Its layout (the first when it names none) and that layout's master.
+        int layout = -1;
+        if (!deck_.layouts.empty())
+            layout = slide.layoutIndex >= 0 && slide.layoutIndex < static_cast<int>(deck_.layouts.size()) ? slide.layoutIndex : 0;
+        size_t master = 0;
+        if (layout >= 0 && ownMasters_)
+            master = static_cast<size_t>(std::clamp(deck_.layouts[static_cast<size_t>(layout)].masterIndex, 0,
+                                                    static_cast<int>(masterNames_.size()) - 1));
+        pageMaster_ = masterNames_.empty() ? std::string("Default") : masterNames_[master];
+        const TransitionOut transition = Transition(slide.transition);
         std::string page = "<style:drawing-page-properties presentation:background-visible=\"true\" "
                            "presentation:background-objects-visible=\"true\"";
         if (const std::string bg = Colour(slide.background); !bg.empty())
             page += " draw:background-size=\"full\" draw:fill=\"solid\" draw:fill-color=\"" + bg + "\"";
         if (slide.hidden) page += " presentation:visibility=\"hidden\"";
-        const std::string style = styles_.Get("drawing-page", "dp", page + "/>");
-        std::string xml = "<draw:page draw:name=\"page" + std::to_string(number) + "\" draw:style-name=\"" + style +
-                          "\" draw:master-page-name=\"Default\">";
+        page += transition.properties;
+        const std::string style = styles_->Get("drawing-page", "dp", page + "/>");
+        const std::string id = "page" + std::to_string(number);
+        std::string xml = "<draw:page draw:name=\"" + id + "\" draw:style-name=\"" + style +
+                          "\" draw:master-page-name=\"" + pageMaster_ + "\"";
+        if (layout >= 0) xml += " presentation:presentation-page-layout-name=\"UCL" + std::to_string(layout + 1) + "\"";
+        if (!transition.type.empty()) xml += " draw:id=\"" + id + "\" xml:id=\"" + id + "\"";
+        xml += ">";
         for (const PptxShape& shape : slide.shapes) xml += Shape(shape);
+        if (!transition.type.empty()) {
+            // The exact length, where Impress keeps it: the page's timing root.
+            xml += "<anim:par presentation:node-type=\"timing-root\"><anim:par smil:begin=\"" + id +
+                   ".begin\"><anim:transitionFilter smil:dur=\"" + Fixed(transition.seconds, 3) + "s\" smil:type=\"" +
+                   transition.type + "\"" +
+                   (transition.subtype.empty() ? std::string() : " smil:subtype=\"" + transition.subtype + "\"") +
+                   "/></anim:par></anim:par>";
+        }
         // The speaker notes: the notes page's notes frame.
         bool notes = false;
         for (const PptxParagraph& p : slide.notes) notes = notes || !p.Text().empty();

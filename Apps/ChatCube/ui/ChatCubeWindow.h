@@ -82,6 +82,16 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.18 - the search's kinds a segmented control in the search row (filterControl_); no filter row
+// Version: 0.3.17 - a location shows as a map card (its click opens openstreetmap.org); My position
+//                   in the location window
+// Version: 0.3.16 - the feature icons: a + button with a menu of the features put behind it, the
+//                   smileys & stickers (a grid, and an arrow listing the sets by an example of
+//                   each), a location from OpenStreetMap; Settings > Display > Feature icons
+//                   says which are in the field, behind the +, or not shown
+// Version: 0.3.15 - a screenshot into the composer: the button beside the paperclip hides the
+//                   window, an area of the screen is chosen (UltraCanvasScreenAreaPicker) and
+//                   the picture waits in the strip like a pasted one; the field grows with its text
 // Version: 0.3.14 - the compact layout: on a window narrower than kCompactWidth (a phone) the list and the
 //                  open conversation take turns, with a back arrow; the buttons of networks this build
 //                  cannot reach are hidden (Telegram and Signal on Android); the microphone and the camera
@@ -132,7 +142,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-21
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -140,9 +150,12 @@
 #include "ChatCubeProfileWindow.h"
 #include "ChatCubeSettings.h"
 #include "ChatCubeSettingsWindow.h"
+#include "ChatCubeEmoji.h"
+#include "ChatCubeLocationWindow.h"
 #include "ChatCubeViews.h"
 
 #include "UltraCanvasMediaViewerWindow.h"
+#include "UltraCanvasScreenAreaPicker.h"
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMTypes.h"
 
@@ -166,6 +179,7 @@ class UltraCanvasImageElement;
 class UltraCanvasLabel;
 class UltraCanvasListView;
 class UltraCanvasMenu;
+class UltraCanvasSegmentedControl;
 class UltraCanvasQRCode;
 class UltraCanvasTextArea;
 class UltraCanvasTextInput;
@@ -318,6 +332,38 @@ private:
     // the file, or the picture written to a file of ChatCube's own, into the
     // strip. False when the clipboard holds neither (text pastes as text).
     bool PasteAttachment();
+    // The screenshot button: the window hides, the screen is captured once
+    // it has gone, an area of it chosen (a window clicked, or a rectangle
+    // dragged; Esc gives up), and the picture goes into the strip like a
+    // pasted one. The window comes back either way.
+    void TakeScreenshot();
+    void PickScreenArea();
+    void StageScreenshot(const UltraCanvas::Rect2Di& area);
+    void EndScreenshot();
+    // A new file in ChatCube's cache for a picture of its own (pasted, a
+    // screenshot): "<prefix>-<date>-<time>[-n]" with no extension yet, free
+    // as .png and .jpg; "" when the folder cannot be made.
+    std::string NewCachedPicturePath(const std::string& prefix) const;
+    // The feature icons as Settings > Display > Feature icons places them:
+    // shown in the field's row, behind the + (its menu), or not at all; a
+    // feature the open conversation cannot use is greyed out
+    void ApplyFeatureIcons();
+    // Whether a feature can be used in the open conversation now
+    bool FeatureUsable(Feature feature) const;
+    // A feature started, from its icon or from the + menu
+    void RunFeature(Feature feature);
+    void OpenFeatureMenu();
+    // Smileys & stickers: the grid of the set chosen last, or the list of
+    // sets (the arrow beside it)
+    void OpenEmojiGrid();
+    void OpenEmojiSets();
+    void InsertIntoMessage(const std::string& text);
+    void StageSticker(const std::string& svgPath);
+    // The location window; its place into the message
+    void OpenLocation();
+    void InsertLocation(const MapPlace& place);
+    // Where an element is in the window, for a menu or popup beside it
+    UltraCanvas::Rect2Di WindowRectOf(UltraCanvas::UltraCanvasUIElement& element) const;
     // Files dropped on the window (an event filter on it): onto a chat in
     // the list, that chat opens and they wait in its strip; anywhere else,
     // they wait in the open chat's. False when the drop carries no file.
@@ -612,6 +658,21 @@ private:
     std::shared_ptr<MessageBubbleDelegate>             bubbles_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    attach_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    screenshot_;    // hidden where the screen is not captured
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    plus_;          // the menu of the features behind it
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    emoji_;         // smileys & stickers ...
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    emojiSets_;     // ... and the arrow listing the sets
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    location_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu>      featureMenu_;
+    EmojiPicker                                        emojiPicker_;
+    std::unique_ptr<ChatCubeLocationWindow>            locationWindow_;   // made when first opened
+    int                                                mapTilesListener_ = 0;   // map cards redrawn as tiles come
+    // A screenshot in flight: the wait for the window to leave the screen,
+    // the frozen screen, and the picker over it
+    uint64_t screenshotTimer_ = 0;
+    bool     screenshotRunning_ = false;
+    UltraCanvas::DesktopScreenImage screenShot_;
+    std::unique_ptr<UltraCanvas::UltraCanvasScreenAreaPicker> screenPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    send_;
     // What goes with the next message, in the strip above the field.
     struct StagedAttachment {
@@ -630,11 +691,12 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> searchRow_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     searchInfo_;
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> filterRow_;
     std::string searchText_;            // what the list shows the matches of ("" all)
     UltraIMSearchKind searchKind_ = UltraIMSearchKind::AnyKind;
     UltraIMSearchKind shownKind_ = UltraIMSearchKind::AnyKind;   // what the list shows now
-    std::vector<std::pair<UltraIMSearchKind, std::shared_ptr<UltraCanvas::UltraCanvasButton>>> filterChips_;
+    // The kinds of the search (All, pictures, ...), in the search row
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> filterControl_;
+    std::vector<UltraIMSearchKind> filterKinds_;   // the control's segments, in order
     uint64_t    searchTimer_ = 0;
     int         searchSerial_ = 0;      // the answer of an older search is dropped
     bool        settingSearch_ = false; // the field set by hand, not typed

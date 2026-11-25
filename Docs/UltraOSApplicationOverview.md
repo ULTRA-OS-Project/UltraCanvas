@@ -22,6 +22,7 @@ first lines as of 2026-10-18.
 | [UltraVideo](#ultravideo) | Video editor with timeline and one-button export | 0.7.0 | VideoFX |
 | [UltraViewer](#ultraviewer) | Universal media viewer | 1.0.7 | MediaViewer |
 | **Documents and files** | | | |
+| [UltraOffice](#ultraoffice) | Documents, spreadsheets and presentations in one window | 0.1.0 | RichTextEdit, Spreadsheet, SlideEdit, FileLoader |
 | [Texter](#texter) | Text, code and word-processing editor | 1.67 | TextArea, RichTextEdit, FileLoader |
 | [UltraFiler](#ultrafiler) | Windows Explorer-style file manager | 1.75.0 | FilerWidget, VirtualFS, UltraCloud |
 | [AnchorPoint](#anchorpoint) | Peer-to-peer file transfer | 0.2.4 | UltraCrypt |
@@ -47,6 +48,7 @@ first lines as of 2026-10-18.
 | [UltraStoreAdmin](#ultrastoreadmin) | The store's admin backend: apps and settings, packages, the signing key, translations, the signed catalog | 0.1.0 | UltraStore core, UltraDatabase, UltraCrypt, UltraAI |
 | [UltraStoreOperator](#ultrastoreoperator) | The marketplace operator's window and command line: merchants, the app review and the catalog publish, reports, notices, terms, the audit log | 0.1.0 | UltraStoreAdmin core, UltraNet |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
+| [UOS-Localisation](#uos-localisation) | The translation editor: every set of an application's texts in one grid | 0.1.0 | core, UltraLocalisation |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
 | [UltraNetMonitor](#ultranetmonitor) | Which process holds which network connection | 0.17 | NetworkMonitor |
@@ -175,6 +177,27 @@ edits word-processing documents.
 **Built on:** TextArea, RichTextEdit, TabbedContainer, PDFView, FileLoader.
 **Version:** 1.67 (2026-10-14).
 **Docs:** [Apps/Texter/README.md](../Apps/Texter/README.md).
+
+### UltraOffice
+
+**Purpose:** one window for the office documents: text documents,
+spreadsheets and presentations, each in a tab marked with its kind.
+
+**Capabilities:**
+- Documents in page view (RichTextEdit): styles, fonts, lists, alignment,
+  tables, pictures, links, footnotes, contents; .odt and .docx read and
+  written, .doc, Markdown and LaTeX read; Export as PDF and Print.
+- Spreadsheets (Spreadsheet): number formats, sort, filter, fill, SUM,
+  freeze panes; .ods, .xlsx, .csv and .tsv read and written, .xls read.
+- Presentations (.pptx, .odp) edited in the slide editor (slides from
+  layouts, shapes moved, resized and turned, text in place, pictures),
+  presented full screen, exported as PDF and printed.
+- The toolbar follows the tab; a Start tab with the recent files; new
+  files saved as Office Open XML or OpenDocument.
+
+**Built on:** RichTextEdit, Spreadsheet, SlideEdit and FileLoader.
+**Version:** 0.1.0 (2026-11-25).
+**Docs:** [UltraOffice/README.md](UltraOffice/README.md).
 
 ### UltraFiler
 
@@ -622,6 +645,26 @@ the system rather than to one app.
 
 **Built on:** the UltraCanvas core and UltraDesktop's settings code.
 **Version:** 0.5.0 (2026-10-15).
+
+### UOS-Localisation
+
+**Purpose:** the ULTRA OS translation editor, for translating any
+application into any language.
+
+**Capabilities:**
+- Every set an application's texts come from (its own, its base sets, the
+  standard set) in one grid, with where each shown text comes from.
+- A panel beside the grid with the selected row whole and its edit; a
+  comparison language; search and filters (untranslated, drafts,
+  overrides, collisions, changed).
+- Takes base sets, promotes and demotes rows between the application and a
+  base; saves into the source tree or the settings folder; exports JSON or
+  gettext PO.
+- Formerly UOS-Settings' Language > Translations page.
+
+**Built on:** the UltraCanvas core (UltraCanvasLocalisationEditor) and
+UltraLocalisation.
+**Version:** 0.1.0 (2026-11-22).
 
 ### UltraClipboard
 

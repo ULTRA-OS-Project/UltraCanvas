@@ -90,8 +90,8 @@ namespace {
         // The status line under the tiles; it grows with the reader's warnings.
         auto statusLabel = DemoKit::CreateText("DWGStatus", Tr("Ready. Click a drawing to open it in the media viewer."));
         statusLabel->SetFontSize(11);
-        statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+        statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(230, 230, 230, 255)));
         statusLabel->SetPadding(6);
 
         // One tile per sample. The flat drawings live in media/vector/; the one
@@ -104,7 +104,7 @@ namespace {
             // As wide as the drawing it frames (280 + padding + border); as tall
             // as its caption needs.
             auto tile = DemoKit::CreateColumn(id, 4);
-            tile->SetBackgroundColor(Colors::White);
+            tile->SetBackgroundColor(DemoKit::Themed(Colors::White));
             tile->SetBorders(2, Color(180, 180, 180, 255));
             tile->SetPadding(10);
 

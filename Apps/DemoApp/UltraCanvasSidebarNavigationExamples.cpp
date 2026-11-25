@@ -48,7 +48,7 @@ namespace UltraCanvas {
         pageArea->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         pageArea->SetFont("", 20.0f, FontWeight::Bold);
         pageArea->layoutItem.SetFlexGrow(1);
-        pageArea->SetBackgroundColor(Color(250, 250, 252, 255));
+        pageArea->SetBackgroundColor(DemoKit::Themed(Color(250, 250, 252, 255)));
         frame->AddChild(pageArea);
         nav->Select("discover", false);
         nav->onSelectionChanged = [pageArea, n = nav.get()](const std::string& id) {
@@ -56,7 +56,7 @@ namespace UltraCanvas {
             pageArea->SetText(item ? item->label : Tr("(nothing selected)"));
         };
         auto activatedOut = DemoKit::CreateText("SnActivated", Tr("Double-click or press Return on an item to activate it"));
-        activatedOut->SetBackgroundColor(Color(240, 240, 240));
+        activatedOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         activatedOut->SetPadding(3);
         nav->onItemActivated = [activatedOut](const std::string& id) { activatedOut->SetText(TrF("Activated: {0}", id)); };
         DemoKit::AddStretched(storeCard, frame);
@@ -70,7 +70,7 @@ namespace UltraCanvas {
         toggle->onClick = [n = nav.get()]() { n->SetCompact(!n->IsCompact()); };
         DemoKit::AddFixed(compactRow, toggle);
         auto compactOut = DemoKit::CreateText("SnCompactOut", Tr("Expanded (220 px)"));
-        compactOut->SetBackgroundColor(Color(240, 240, 240));
+        compactOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         compactOut->SetPadding(3);
         nav->onCompactChanged = [compactOut, n = nav.get()](bool compact) {
             const int width = static_cast<int>(n->PreferredWidth());
@@ -98,7 +98,7 @@ namespace UltraCanvas {
         auto longOut = CreateLabel("SnLongOut", 0, 0, 0, 0, TrF("Item {0}", 1));
         longOut->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         longOut->layoutItem.SetFlexGrow(1);
-        longOut->SetBackgroundColor(Color(250, 250, 252, 255));
+        longOut->SetBackgroundColor(DemoKit::Themed(Color(250, 250, 252, 255)));
         longFrame->AddChild(longOut);
         longNav->onSelectionChanged = [longOut, n = longNav.get()](const std::string& id) {
             const SidebarItem* item = n->FindItem(id);

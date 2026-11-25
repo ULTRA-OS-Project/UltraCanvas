@@ -104,6 +104,14 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.61.0 - openMenuProvider: a host's entries right after "Open with" in a file's
+//                  context menu (UltraFiler's "Edit in UltraPaint" / "Edit in ArtCreator")
+// Version: 1.60.0 - SetFavoriteHighlight (FilerFavoriteHighlight: Fill, Border, Shade) and
+//                  SetFavoriteHeartShown: how a favorite stands out beyond the heart
+// Version: 1.59.1 - a rescan of the folder shown keeps the thumbnails, text pages, folder peeks and
+//                  picture proportions of the files that did not change (PruneThumbnailCache)
+// Version: 1.59.0 - IsDragInProgress; letting a selection rectangle go fires onSelectionChanged once
+//                  more, so a host that waited for the drag to end sees the final selection
 // Version: 1.58.0 - folderIconIsLineArt: a one-colour folder icon drawn in the view's text colour,
 //                  so a black line icon reads on a dark theme
 // Version: 1.57.0 - Run in background: onBackgroundProgress, HasBackgroundOperation,
@@ -185,7 +193,7 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -501,6 +509,25 @@ namespace UltraCanvas {
         NoneBadge,
         Bar,
         Icon
+    };
+
+    // ===== HOW A FAVORITE STANDS OUT =====
+    // Beyond the heart (SetFavoriteHeartShown), a favorite entry
+    // (SetFavoriteMarkProvider) can carry one of these, in the colour
+    // SetFavoriteHighlight gives:
+    //   NoHighlight — nothing more (the default).
+    //   Fill        — the whole item, picture and name, on a solid colour; the
+    //                 name and columns turn white or dark, whichever reads.
+    //   Border      — a 2 px frame around the item.
+    //   Shade       — the colour at the top, fading out towards the bottom.
+    // A selected item keeps the selection colour (a border still shows on
+    // it); a treemap cell, whose colour is its file type, only takes the
+    // border.
+    enum class FilerFavoriteHighlight {
+        NoHighlight,
+        Fill,
+        Border,
+        Shade
     };
 
     // ===== HOW A DETAILS COLUMN SPLITTER RESIZES =====
@@ -1503,6 +1530,16 @@ namespace UltraCanvas {
         // cached. Pass an empty function to drop the marks and the gutter.
         void SetFavoriteMarkProvider(std::function<bool(const FilerEntry&)> provider);
         bool HasFavoriteMarkProvider() const { return bool(favoriteMarkProvider); }
+        // How a favorite stands out beyond the heart (FilerFavoriteHighlight),
+        // and in which colour - used as given, so a host that follows the
+        // theme passes the colour for the look shown. A repaint, no relayout.
+        void SetFavoriteHighlight(FilerFavoriteHighlight look, const Color& color);
+        FilerFavoriteHighlight GetFavoriteHighlight() const { return favoriteHighlight; }
+        const Color& GetFavoriteHighlightColor() const { return favoriteHighlightColor; }
+        // Whether a favorite carries the heart (on by default). Off, the row
+        // views give back the gutter they keep for it.
+        void SetFavoriteHeartShown(bool shown);
+        bool IsFavoriteHeartShown() const { return favoriteHeartShown; }
         // The menu label of a badge mode ("Bar"), shared by the Display
         // submenu and by an application's settings page.
         static const char* ExtensionBadgeLabel(FilerExtensionBadge badge);
@@ -1770,6 +1807,15 @@ namespace UltraCanvas {
             return renamingIndex >= 0 || draggingItems || marqueeActive ||
                    compressDlg.active;
         }
+        // True while the pointer is dragging in the widget: a selection
+        // rectangle being drawn, or entries being dragged. While a rectangle
+        // is drawn, onSelectionChanged fires on every file it takes in or
+        // lets go; a host that follows the selection with something that
+        // opens, closes or reflows (a preview pane) waits until this is
+        // false. Letting the rectangle go fires onSelectionChanged once more,
+        // with this false, so a host that waited sees where it ended. (An
+        // entry drag never changes the selection.)
+        bool IsDragInProgress() const { return draggingItems || marqueeActive; }
 
         // ===== FILE OPERATIONS (also wired to the context / icon menus) =====
         // Copy / Cut mirror the selection to the OS clipboard (file-manager
@@ -2151,6 +2197,12 @@ namespace UltraCanvas {
         // that noticed it, so the host may set label text from it.
         std::function<void()> onSelectionInfoChanged;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
+        // Host entries placed right after "Open with" in the context menu of
+        // a file or a selection, asked every time the menu opens with the
+        // entries it acts on - so a host offers an entry only where it applies
+        // (UltraFiler's "Edit in UltraPaint" for pictures); an empty result
+        // adds nothing. Not asked for the menu of the folder's background.
+        std::function<std::vector<MenuItemData>(const std::vector<FilerEntry>& targets)> openMenuProvider;
         // Host-provided tail of the context menu's Extras submenu, called
         // every time the menu opens (so item flags can follow the host's
         // state); non-empty results are appended behind a separator. The
@@ -2256,6 +2308,9 @@ namespace UltraCanvas {
         FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
         // SetFavoriteMarkProvider: which entries carry the heart.
         std::function<bool(const FilerEntry&)> favoriteMarkProvider;
+        FilerFavoriteHighlight favoriteHighlight = FilerFavoriteHighlight::NoHighlight;
+        Color favoriteHighlightColor = Color(253, 226, 228, 255);
+        bool favoriteHeartShown = true;
         // Display > File icons: whose icons an entry with no picture of its
         // own is drawn with.
         FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
@@ -2705,6 +2760,10 @@ namespace UltraCanvas {
             // Not before this: a retry that runs immediately runs inside the
             // same moment that just failed, and spends the attempts on it.
             std::chrono::steady_clock::time_point retryAfter{};
+            // A file that changed on disk is decoded again; until the new
+            // thumbnail is in, the tile keeps showing the one it had rather
+            // than falling back to its type glyph (PruneThumbnailCache).
+            std::shared_ptr<UCPixmap> stalePixmap;
         };
         struct ThumbRequest {
             std::string path;
@@ -2786,7 +2845,19 @@ namespace UltraCanvas {
         void StartThumbnailWorkersLocked();
         void StopThumbnailWorkers();
         void ThumbnailWorkerMain();
-        void DropThumbnailCache();              // on rescan / view change
+        void DropThumbnailCache();              // on a new folder / view change
+        // A rescan of the folder already shown (a delete, a rename, a copy
+        // in, the folder watch): what was drawn for the files that are still
+        // there, unchanged, is kept - only the slots of files gone or
+        // modified (path, modification time and size) are dropped. Dropping
+        // everything redrew the whole folder with type glyphs and then the
+        // thumbnails a moment later, after deleting one file.
+        // A file in `changedPaths` (still listed, new content) is decoded
+        // again in the background, its old thumbnail drawn until the new one
+        // is in.
+        void PruneThumbnailCache(const std::unordered_set<std::string>& keepPaths,
+                                 const std::unordered_set<std::string>& changedPaths = {});
+        std::string thumbCacheFolder;           // the folder the slots were drawn for
         void PostThumbnailRedraw();
         static std::string ThumbSlotKey(const std::string& path, int w, int h,
                                         ImageFitMode fit, float scale);
@@ -3383,6 +3454,11 @@ namespace UltraCanvas {
         // of the item, vertically centred, and the width the row views keep
         // free for it left of the icon (0 without a provider).
         void DrawFavoriteMark(IRenderContext* ctx, const ItemLayout& item);
+        // The favorite highlight under the item (Fill, Shade) and over it
+        // (Border). Under returns true when it set the name colours for this
+        // item, which the caller puts back after drawing it.
+        bool DrawFavoriteHighlightUnder(IRenderContext* ctx, const ItemLayout& item);
+        void DrawFavoriteHighlightOver(IRenderContext* ctx, const ItemLayout& item);
         int  FavoriteMarkGutter() const;
         // The box an entry's icon is drawn in, per view - the geometry the
         // badges are placed against, so their hit tests land where they are

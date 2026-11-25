@@ -1,0 +1,290 @@
+name: iOS build
+
+# Phase 1 of Docs/UltraCanvas/iOSPortInvestigation.md: the dependency stack
+# for iOS. scripts/ios-bootstrap-sysroot.sh builds cairo, pango, glib,
+# harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips (with the codecs
+# the Android build carries) as static libraries with vcpkg and the runner's
+# Xcode, once for the iOS simulator and once for devices, and
+# scripts/ios-check-sysroot.sh checks every archive was built for the
+# platform its triplet names and every pkg-config file the core asks for is
+# there.
+#
+# Phase 2: against the simulator's sysroot, the core library (with the UIKit
+# backend in UltraCanvas/OS/iOS) and DemoApp as UltraCanvasDemo.app are
+# built, the app is installed on a booted simulator and launched, and the run
+# keeps its screenshot and output (the UltraCanvasDemo-ios-simulator
+# artifact). It fails when the app is not running a while after launch, or
+# when its screenshot is one colour (scripts/ios-check-screenshot.py).
+#
+# Runs on a push to main - not on pull requests, see `on:` - that touches
+# what the iOS sysroot is made of (the paths below), and by hand from the
+# Actions tab against any branch. A cold build takes the better part of an hour per
+# triplet; vcpkg's binary cache keeps every library built, so a warm run
+# builds only what changed.
+
+on:
+  # Main only, not on pull requests (2026-11-25): its two jobs take two of
+  # the few macOS runners an account gets at once, and on 2026-11-24 a pull
+  # request's iOS run waited 98 minutes for one while the build rows'
+  # macOS legs queued behind it. A pull request that changes the iOS
+  # backend or its sysroot runs this by hand: Actions tab -> iOS build ->
+  # Run workflow, against its branch.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - 'scripts/ios-bootstrap-sysroot.sh'
+      - 'scripts/ios-check-sysroot.sh'
+      - 'scripts/ios-check-screenshot.py'
+      - 'UltraCanvas/OS/iOS/**'
+      - 'MacOS/deps/ports/libvips/**'
+      - 'Apps/DemoApp/**'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
+  workflow_dispatch:
+
+# A newer push cancels a pull request's run in progress; on main nothing is
+# cancelled (as android-build.yml).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  sysroot:
+    name: ios (${{ matrix.kind }})
+    # Apple silicon: the simulator triplet is arm64, and the host tools vcpkg
+    # builds (pkgconf, glib's generators) run natively.
+    runs-on: macos-15
+    timeout-minutes: 180
+    strategy:
+      # One SDK failing says nothing about the other; let both finish.
+      fail-fast: false
+      matrix:
+        include:
+          - kind: simulator
+            triplet: arm64-ios-simulator-ultracanvas
+          - kind: device
+            triplet: arm64-ios-ultracanvas
+    # bash -eo pipefail (GitHub's `shell: bash`), not the default bash -e: a
+    # step that pipes the sysroot script into `tail` must fail when the
+    # script does - without it a failed build passed with an empty prefix.
+    defaults:
+      run:
+        shell: bash
+    env:
+      KIND: ${{ matrix.kind }}
+      TRIPLET: ${{ matrix.triplet }}
+      VCPKG_CACHE: ${{ github.workspace }}/.vcpkg/binary-cache
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.vcpkg/downloads
+    steps:
+      - uses: actions/checkout@v5
+
+      # What vcpkg's ports build with on macOS besides Xcode's compilers (the
+      # same list build.yml's macOS rows install).
+      - name: Install host tools
+        run: |
+          brew untap aws/tap 2>/dev/null || true
+          brew install pkg-config autoconf autoconf-archive automake libtool nasm ninja
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      # vcpkg's binary cache, keyed by the manifest, the triplets, the libvips
+      # overlay and the script (which pins the vcpkg commit); restore-keys
+      # falls back to the newest. Saved only when a run built something, a
+      # failed run too, so the libraries it did build are kept (the reasons
+      # are android-build.yml's). The key carries the run attempt: a key can
+      # be written once.
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.VCPKG_CACHE }}
+          key: ios-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/iOS/packaging/**', 'MacOS/deps/ports/libvips/**', 'scripts/ios-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ios-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/iOS/packaging/**', 'MacOS/deps/ports/libvips/**', 'scripts/ios-bootstrap-sysroot.sh') }}-
+            ios-vcpkg-${{ env.TRIPLET }}-
+
+      - name: Count the restored cache
+        id: cache-before
+        run: |
+          mkdir -p "$VCPKG_CACHE" "$VCPKG_DOWNLOADS"
+          echo "files=$(find "$VCPKG_CACHE" -type f | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Build the sysroot
+        id: sysroot
+        timeout-minutes: 150
+        env:
+          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg/binary-cache,readwrite
+          # Report every port that fails in one run, not just the first.
+          UC_VCPKG_KEEP_GOING: "1"
+          # Outside the workspace: CMake refuses to export a link directory
+          # from inside the source tree.
+          UC_IOS_SYSROOT: ${{ runner.temp }}/ios-sysroot
+        run: |
+          prefix=$(scripts/ios-bootstrap-sysroot.sh "$KIND" | tail -n 1)
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "Libraries for $KIND in $prefix"
+
+      - name: Count the cache after the build
+        id: cache-after
+        if: always()
+        run: |
+          mkdir -p "$VCPKG_CACHE"
+          echo "files=$(find "$VCPKG_CACHE" -type f | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.cache-after.outputs.files != steps.cache-before.outputs.files
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.VCPKG_CACHE }}
+          key: ios-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/iOS/packaging/**', 'MacOS/deps/ports/libvips/**', 'scripts/ios-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Check the sysroot
+        run: scripts/ios-check-sysroot.sh "${{ steps.sysroot.outputs.prefix }}" "$KIND"
+
+      # What is in it, for the run's summary: each library's pkg-config
+      # version, so a later phase can see what it links against.
+      - name: List the libraries
+        if: success()
+        run: |
+          prefix="${{ steps.sysroot.outputs.prefix }}"
+          export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+          {
+            echo "### iOS sysroot ($KIND, $TRIPLET)"
+            echo
+            echo "| module | version |"
+            echo "|---|---|"
+            for pc in $(pkg-config --list-package-names | sort); do
+              echo "| $pc | $(pkg-config --modversion "$pc") |"
+            done
+            echo
+            echo "$(find "$prefix/lib" -maxdepth 1 -name '*.a' | wc -l | tr -d ' ') static archives, $(du -sh "$prefix/lib" | cut -f1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # What the sysroot holds when something failed: which libraries and
+      # pkg-config files each port really installed, for a link that says a
+      # library is "not found".
+      - name: List the sysroot on failure
+        if: failure()
+        run: |
+          for dir in "$RUNNER_TEMP"/ios-sysroot/*/lib "$RUNNER_TEMP"/ios-sysroot/*/lib/pkgconfig; do
+            [ -d "$dir" ] || continue
+            echo "== $dir"
+            ls -la "$dir" | head -200
+          done
+          for pc in "$RUNNER_TEMP"/ios-sysroot/*/lib/pkgconfig/libtiff-4.pc; do
+            [ -f "$pc" ] && { echo "== $pc"; cat "$pc"; }
+          done
+          true
+
+      # What vcpkg's logs say when a port fails: the build trees hold them.
+      - name: Upload vcpkg logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-vcpkg-logs-${{ matrix.kind }}
+          path: |
+            .vcpkg/vcpkg/buildtrees/*/*.log
+          if-no-files-found: ignore
+
+      # ===== Phase 2: the core and DemoApp, on the simulator =====
+      # pkg-config sees the sysroot only (PKG_CONFIG_LIBDIR, not _PATH), so
+      # nothing can fall back to a library Homebrew installed on the runner,
+      # and asks for the static link lists (the sysroot is static). Libraries
+      # found with find_library come from the sysroot or the SDK only.
+      - name: Configure (simulator)
+        if: matrix.kind == 'simulator'
+        run: |
+          prefix="${{ steps.sysroot.outputs.prefix }}"
+          sdk="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+          cmake -G Ninja -B build-ios \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DCMAKE_FIND_ROOT_PATH="$prefix;$sdk" \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+            -DPKG_CONFIG_ARGN=--static \
+            -DCMAKE_BUILD_TYPE=Release
+
+      # -k 0: past a failing source, so one run lists every one (the core
+      # had never been compiled for iOS before this workflow).
+      - name: Build the core library (simulator)
+        if: matrix.kind == 'simulator'
+        run: |
+          prefix="${{ steps.sysroot.outputs.prefix }}"
+          export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+          cmake --build build-ios --target UltraCanvas --parallel "$(sysctl -n hw.ncpu)" -- -k 0
+
+      - name: Build DemoApp (simulator)
+        if: matrix.kind == 'simulator'
+        run: |
+          prefix="${{ steps.sysroot.outputs.prefix }}"
+          export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+          cmake --build build-ios --target UltraCanvasDemo --parallel "$(sysctl -n hw.ncpu)" -- -k 0
+          app="$(find build-ios -maxdepth 3 -name UltraCanvasDemo.app -type d -print -quit)"
+          if [ -z "$app" ]; then
+            echo "::error::UltraCanvasDemo.app was not built"
+            exit 1
+          fi
+          echo "APP=$app" >> "$GITHUB_ENV"
+          du -sh "$app"
+          plutil -p "$app/Info.plist"
+
+      # The first iPhone simulator the runner's Xcode has, booted, the app
+      # installed and launched with its output in a file; after a while it
+      # must still be running, and the screenshot shows what it drew.
+      - name: Run DemoApp on a simulator
+        if: matrix.kind == 'simulator'
+        timeout-minutes: 20
+        run: |
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime in sorted(data, reverse=True):
+              if "iOS" not in runtime: continue
+              for d in data[runtime]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit(0)
+          sys.exit(1)')"
+          echo "Simulator: $udid"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$APP"
+          mkdir -p ios-run
+          xcrun simctl launch --terminate-running-process \
+            --stdout="$PWD/ios-run/stdout.txt" --stderr="$PWD/ios-run/stderr.txt" \
+            "$udid" org.ultraos.UltraCanvasDemo
+          sleep 45
+          xcrun simctl io "$udid" screenshot ios-run/screenshot.png || true
+          running=0
+          if xcrun simctl spawn "$udid" launchctl list | grep -q UltraCanvasDemo; then running=1; fi
+          echo "--- stdout"; tail -n 80 ios-run/stdout.txt || true
+          echo "--- stderr"; tail -n 80 ios-run/stderr.txt || true
+          xcrun simctl spawn "$udid" log show --last 2m --style compact \
+            --predicate 'process == "UltraCanvasDemo"' > ios-run/system-log.txt 2>&1 || true
+          # The app's own log lines go to the unified log, not to stdout: the
+          # tail goes into this job's log too, readable without the artifact.
+          echo "--- system log (last 80 lines)"; tail -n 80 ios-run/system-log.txt || true
+          if [ "$running" != 1 ]; then
+            echo "::error::UltraCanvasDemo is not running 45 s after launch (see the artifact's logs)"
+            ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i UltraCanvas || true
+            cp ~/Library/Logs/DiagnosticReports/UltraCanvasDemo* ios-run/ 2>/dev/null || true
+            exit 1
+          fi
+          echo "UltraCanvasDemo is running"
+          # Running is not drawing: a frame that never reached the screen
+          # leaves it one colour (the root view's black).
+          if ! python3 scripts/ios-check-screenshot.py ios-run/screenshot.png; then
+            echo "::error::UltraCanvasDemo runs but its screen is empty (screenshot in the artifact)"
+            exit 1
+          fi
+
+      - name: Upload the simulator run
+        if: always() && matrix.kind == 'simulator'
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvasDemo-ios-simulator
+          path: ios-run/
+          if-no-files-found: ignore
+

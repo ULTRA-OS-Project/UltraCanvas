@@ -24,6 +24,7 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.7.0 - GetPointerPosition (XQueryPointer on the root window)
 // Version: 1.6.3 - CaptureWindowImage: the window's rectangle of the screen
 // Version: 1.6.2 - KillProcess moved to UltraCanvasLinuxDesktopShellSession.cpp,
 //                  shared with the Wayland backend
@@ -52,7 +53,7 @@
 //                  the tray, which on X11 is a protocol of its own)
 // Version: 1.1.2 - ListNativeApplications (none: desktop entries are the list);
 //                  ReplaceSystemDesktop (none: the session starts the desktop)
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -511,6 +512,11 @@ bool GetScreenSize(int& width, int& height) {
     return width > 0 && height > 0;
 }
 
+// Root-window pixels, the same as RandR's monitors.
+bool GetPointerPosition(int& x, int& y) {
+    return X11::QueryPointerPosition(x, y);
+}
+
 // RandR's monitors - what the window code reads for each monitor's DPI.
 std::vector<DesktopScreenInfo> ListScreens() {
     std::vector<DesktopScreenInfo> screens;
@@ -547,6 +553,9 @@ std::vector<DesktopScreenInfo> ListScreens() {
     }
     return distinct;
 }
+
+// A minimized window is the window manager's to show or not.
+bool KeepMinimizedWindowsHidden() { return false; }
 
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     std::lock_guard<std::mutex> lock(g_queryMutex);
@@ -702,6 +711,10 @@ bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& 
     const int area[4] = {x, y, width, height};
     return CaptureScreenLocked(out, error, area);
 }
+
+// No compositor thumbnails here: the caller captures the window instead.
+uint64_t ShowWindowThumbnail(uint64_t, uint64_t, int, int, int, int) { return 0; }
+void HideWindowThumbnail(uint64_t) {}
 
 bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {
     // X11 keeps no picture of a covered window without a compositor, so the
