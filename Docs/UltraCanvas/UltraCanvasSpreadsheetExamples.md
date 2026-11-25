@@ -174,7 +174,8 @@ void  SelectColumn(int col);
 void  SelectAll();
 bool  IsCellSelected(int row, int col) const;
 
-void  MoveActiveCell(int rowDelta, int colDelta);
+void  MoveActiveCell(int rowDelta, int colDelta);     // selects the cell it lands on (the arrows, Enter, Tab)
+void  ExtendSelectionBy(int rowDelta, int colDelta);  // Shift+arrow: the far corner moves, the active cell stays
 void  ScrollToCell(int row, int col);
 void  EnsureCellVisible(int row, int col);
 ```

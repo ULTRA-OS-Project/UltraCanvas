@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.10.0 - MoveActiveCell selects the cell it lands on; ExtendSelectionBy (Shift+arrow)
 // Version: 1.9.0 - deleting a sheet removes the names scoped to it and makes those covering it #REF!
 //                  (IsNamedRangeVisible); undo brings them back
 // Version: 1.8.0 - named ranges: one per scope and name, a scoped one visible only from its sheet and
@@ -349,7 +350,10 @@ public:
     bool IsCellSelected(int row, int col) const;
     
     // ===== NAVIGATION =====
-    void MoveActiveCell(int rowDelta, int colDelta);
+    void MoveActiveCell(int rowDelta, int colDelta);   // selects the cell it lands on
+    // Shift+arrow: the range grows or shrinks at the corner away from the
+    // active cell, which stays where it is.
+    void ExtendSelectionBy(int rowDelta, int colDelta);
     void MoveToCellBegin();
     void MoveToCellEnd();
     void MoveToRowBegin();

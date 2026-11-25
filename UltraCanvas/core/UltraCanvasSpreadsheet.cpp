@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.8.0 - a keyboard move selects the cell it lands on, not only the active cell; Shift+arrow extends the range
 // Version: 1.7.0 - every change a sheet reports reaches the formula engine; Paste recalculates
 // Version: 1.6.0 - data validation on a typed entry (dialog or onValidationFailed), the list rule's arrow
 //                  and Alt+Down; a typed plain value is an undo step and fires onCellChange
@@ -1621,18 +1622,22 @@ void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
     switch (event.virtualKey) {
         case UCKeys::Up:
             if (ctrl) MoveToDataRegionEdge(-1, 0);
+            else if (shift) ExtendSelectionBy(-1, 0);
             else MoveActiveCell(-1, 0);
             break;
         case UCKeys::Down:
             if (ctrl) MoveToDataRegionEdge(1, 0);
+            else if (shift) ExtendSelectionBy(1, 0);
             else MoveActiveCell(1, 0);
             break;
         case UCKeys::Left:
             if (ctrl) MoveToDataRegionEdge(0, -1);
+            else if (shift) ExtendSelectionBy(0, -1);
             else MoveActiveCell(0, -1);
             break;
         case UCKeys::Right:
             if (ctrl) MoveToDataRegionEdge(0, 1);
+            else if (shift) ExtendSelectionBy(0, 1);
             else MoveActiveCell(0, 1);
             break;
         case UCKeys::Home:
@@ -2571,18 +2576,38 @@ void UltraCanvasSpreadsheet::InsertTextAtCursor(const std::string& text) {
 // ============================================================================
 // NAVIGATION
 // ============================================================================
+// A move by the keyboard (arrows, Enter, Tab, Home, End, Page Up / Down,
+// Ctrl+arrow) selects the cell it lands on: moving only the active cell left
+// the old range selected, so the next Bold or number format went to the cell
+// the caret had left.
 
 void UltraCanvasSpreadsheet::MoveActiveCell(int rowDelta, int colDelta) {
     CellAddress active = GetActiveCell();
     int newRow = std::max(0, std::min(active.row + rowDelta, SpreadsheetLimits::MaxRows - 1));
     int newCol = std::max(0, std::min(active.col + colDelta, SpreadsheetLimits::MaxColumns - 1));
     
-    SetActiveCell(newRow, newCol);
+    SelectCell(newRow, newCol);
     EnsureCellVisible(newRow, newCol);
 }
 
+void UltraCanvasSpreadsheet::ExtendSelectionBy(int rowDelta, int colDelta) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+    const CellAddress active = GetActiveCell();
+    const CellRange range = GetSelection();
+    // The corner that moves is the one across the range from the active cell.
+    CellAddress corner(active.row == range.start.row ? range.end.row : range.start.row,
+                       active.col == range.start.col ? range.end.col : range.start.col);
+    corner.row = std::max(0, std::min(corner.row + rowDelta, SpreadsheetLimits::MaxRows - 1));
+    corner.col = std::max(0, std::min(corner.col + colDelta, SpreadsheetLimits::MaxColumns - 1));
+    sheet->SelectRange(CellRange(std::min(active.row, corner.row), std::min(active.col, corner.col),
+                                 std::max(active.row, corner.row), std::max(active.col, corner.col)));
+    sheet->SetActiveCell(active);
+    EnsureCellVisible(corner.row, corner.col);
+}
+
 void UltraCanvasSpreadsheet::MoveToCellBegin() {
-    SetActiveCell(0, 0);
+    SelectCell(0, 0);
     ScrollToCell(0, 0);
 }
 
@@ -2591,13 +2616,13 @@ void UltraCanvasSpreadsheet::MoveToCellEnd() {
     if (!sheet) return;
     
     CellRange used = sheet->GetUsedRange();
-    SetActiveCell(used.end.row, used.end.col);
+    SelectCell(used.end.row, used.end.col);
     EnsureCellVisible(used.end.row, used.end.col);
 }
 
 void UltraCanvasSpreadsheet::MoveToRowBegin() {
     CellAddress active = GetActiveCell();
-    SetActiveCell(active.row, 0);
+    SelectCell(active.row, 0);
     EnsureCellVisible(active.row, 0);
 }
 
@@ -2609,7 +2634,7 @@ void UltraCanvasSpreadsheet::MoveToRowEnd() {
     CellRange used = sheet->GetUsedRange();
     int endCol = std::max(0, used.end.col);
     
-    SetActiveCell(active.row, endCol);
+    SelectCell(active.row, endCol);
     EnsureCellVisible(active.row, endCol);
 }
 
@@ -2649,7 +2674,7 @@ void UltraCanvasSpreadsheet::MoveToDataRegionEdge(int rowDir, int colDir) {
         col = nextCol;
     }
     
-    SetActiveCell(row, col);
+    SelectCell(row, col);
     EnsureCellVisible(row, col);
 }
 

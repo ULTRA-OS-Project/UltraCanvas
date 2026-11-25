@@ -5410,6 +5410,23 @@ add_test(NAME SpreadsheetValidationGridTest COMMAND SpreadsheetValidationGridTes
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetValidationGridTest")
 
+# ===== SPREADSHEET KEYBOARD MOVE TEST =====
+# A keyboard move (arrows, Enter, Tab, Home, End, Ctrl+arrow) selects the
+# cell it lands on; Shift+arrow still extends. No window.
+message(STATUS "  Building SpreadsheetKeyboardMoveTest...")
+add_executable(SpreadsheetKeyboardMoveTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetKeyboardMoveTest.cpp
+)
+target_include_directories(SpreadsheetKeyboardMoveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetKeyboardMoveTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetKeyboardMoveTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetKeyboardMoveTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetKeyboardMoveTest COMMAND SpreadsheetKeyboardMoveTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetKeyboardMoveTest")
+
 # ===== SPREADSHEET RECALC TEST =====
 # Formulas follow their inputs - through chains, ranges, other sheets and
 # names - however a cell changes: typing, clearing, paste, undo, inserting a
