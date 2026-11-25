@@ -3,6 +3,7 @@
 // private bus driven over the real transport by several endpoints —
 // subscriptions, recorded delivery with bounce, request/reply, the journal
 // and its queries, replay, lifecycle notices, the typed topic helpers.
+// Version: 0.1.2 - a bus on a path longer than a socket's address
 // Version: 0.1.1 - the notification it posts is Silent: tests show nothing on screen
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -240,6 +241,77 @@ UltraMsgHandle ConnectTo(const std::string& bus, const std::string& appId, bool 
 }
 
 } // namespace
+
+// A Unix socket's address holds a path of 107 bytes on Linux, and the bus lies
+// under the user's runtime folder, which can be longer. Such a bus was out of
+// reach for the broker and for every endpoint ("bus path too long for a Unix
+// socket"), so a second start of a single-instance application could not ask
+// the running copy forward and said "already running". On Linux it is now
+// reached through its folder; elsewhere the error still says why.
+#ifndef _WIN32
+TEST(bus_on_a_path_longer_than_a_socket_address) {
+    namespace fs = std::filesystem;
+    const fs::path folder = UltraCanvas::PathFromUtf8(TestBusPath()).parent_path() / std::string(120, 'r');
+    const std::string bus = UltraCanvas::PathToUtf8(folder / "bus.sock");
+    REQUIRE(bus.size() > static_cast<size_t>(110));
+    struct Cleanup {
+        fs::path folder;
+        ~Cleanup() {
+            std::error_code ec;
+            fs::remove_all(folder, ec);
+        }
+    } cleanup{folder};
+
+    UltraMsgConnectOptions lonely;
+    lonely.appId = "org.test.far.lonely";
+    lonely.busPath = bus;
+    lonely.startBrokerIfAbsent = false;
+    UltraMsgResult error;
+#if defined(__linux__)
+    // Nothing there yet - not even the folder: that is "no broker", as on a
+    // short path, not a path that cannot be used.
+    REQUIRE(UltraMsg_Connect(lonely, &error) == UltraMsgInvalidHandle);
+    REQUIRE(error.code == UltraMsgResultCode::BrokerUnavailable);
+    REQUIRE(error.message.find("too long") == std::string::npos);
+    REQUIRE(!UltraMsg_IsAvailable(bus));
+
+    auto broker = StartBroker(bus);
+    // The socket is where it was asked for, not somewhere shorter.
+    std::error_code ec;
+    REQUIRE(fs::is_socket(folder / "bus.sock", ec));
+    REQUIRE(UltraMsg_IsAvailable(bus));
+
+    // What a second start does: finds the running copy and asks it.
+    Scoped running{ConnectTo(bus, "org.test.far.running")};
+    Scoped second{ConnectTo(bus, "org.test.far.second")};
+    std::vector<std::string> instances;
+    REQUIRE(UltraMsg_ResolveApp(second.handle, "org.test.far.running", instances).ok);
+    REQUIRE_EQ(instances.size(), static_cast<size_t>(1));
+    UltraMsgSubscribeOptions onWorker;
+    onWorker.onWorkerThread = true;
+    const UltraMsgHandle sub = UltraMsg_Subscribe(running.handle, "org.test.far.show",
+        [&](const UltraMsgMessage& request) {
+            JSONValue answer = JSONValue::MakeObject();
+            answer.Set("page", request.body.Get("page").GetString());
+            UltraMsg_Reply(running.handle, request, answer);
+        }, onWorker);
+    REQUIRE(sub != UltraMsgInvalidHandle);
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("page", "desktop");
+    UltraMsgMessage reply;
+    REQUIRE(UltraMsg_Request(second.handle, instances[0], "org.test.far.show", body, 3000, reply).ok);
+    REQUIRE_EQ(reply.body.Get("page").GetString(), std::string("desktop"));
+
+    broker->Stop();
+    broker.reset();
+    REQUIRE(!fs::exists(folder / "bus.sock", ec));   // taken away again, by its full path
+#else
+    // No /proc to reach it through: the reason is said, to the caller.
+    REQUIRE(UltraMsg_Connect(lonely, &error) == UltraMsgInvalidHandle);
+    REQUIRE(error.message.find("too long") != std::string::npos);
+#endif
+}
+#endif
 
 TEST(endpoint_reconnects_and_keeps_its_subscriptions_when_the_broker_returns) {
     const std::string bus = ReconnectBusPath("reconnect");

@@ -2,6 +2,9 @@
 // Local stream transport: Unix domain sockets (Linux, macOS, BSD) and Windows
 // named pipes behind one Connection / Listener pair. Every blocking wait also
 // watches a private wake-up object so Close() from another thread returns it.
+// Version: 0.1.3 - a bus path longer than a Unix socket's address holds is reached through
+//                  its folder on Linux (/proc/self/fd/<n>/bus.sock): a long XDG_RUNTIME_DIR
+//                  left every application without a bus
 // Version: 0.1.2 - Windows listener: a cancelled ConnectNamedPipe is waited for
 //                  before its stack OVERLAPPED goes out of scope
 // Version: 0.1.1 - ProcessIsTerminating
@@ -103,16 +106,71 @@ int WaitReadable(int fd, int wakeFd, int timeoutMs) {
     }
 }
 
-bool FillSockaddr(const std::string& path, sockaddr_un& addr, std::string& error) {
-    std::memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    if (path.size() >= sizeof(addr.sun_path)) {
+// The address of the Unix socket at a path. A socket's address holds a path
+// of 107 bytes on Linux (103 on macOS and the BSDs), and the bus lies under
+// the user's runtime folder, which can be longer than that - a session with
+// a runtime folder of its own, a sandbox, a test's private one. No
+// application then reached the bus: a second start of a single-instance
+// application could not ask the running copy forward, and said "already
+// running" instead. On Linux such a socket is reached through its folder:
+// the folder is opened, which takes a path of any length, and the socket
+// named as /proc/self/fd/<n>/<file>, which the kernel resolves to the same
+// file. The bus stays where it is; only the way to name it is shorter. The
+// address keeps the folder open, so it lives until bind() or connect() has
+// returned.
+class SocketAddress {
+public:
+    SocketAddress() = default;
+    ~SocketAddress() { CloseFd(folder_); }
+    SocketAddress(const SocketAddress&) = delete;
+    SocketAddress& operator=(const SocketAddress&) = delete;
+
+    // False with `error`. `folderMissing` is set when the path was too long
+    // and its folder is not there, which to a client means "no broker yet".
+    bool Resolve(const std::string& path, std::string& error, bool* folderMissing = nullptr) {
+        if (folderMissing) *folderMissing = false;
+        CloseFd(folder_);
+        std::memset(&addr_, 0, sizeof(addr_));
+        addr_.sun_family = AF_UNIX;
+        if (Fits(path)) {
+            std::memcpy(addr_.sun_path, path.c_str(), path.size() + 1);
+            return true;
+        }
+#if defined(__linux__)
+        const size_t slash = path.rfind('/');
+        if (slash != std::string::npos && slash > 0 && slash + 1 < path.size()) {
+            folder_ = ::open(path.substr(0, slash).c_str(), O_PATH | O_DIRECTORY | O_CLOEXEC);
+            if (folder_ < 0) {
+                if (folderMissing) *folderMissing = errno == ENOENT || errno == ENOTDIR;
+                error = Errno("open the bus folder") + " (" + path + ")";
+                return false;
+            }
+            // "/bus.sock" comes along with its slash.
+            const std::string through = "/proc/self/fd/" + std::to_string(folder_) + path.substr(slash);
+            if (Fits(through)) {
+                if (::access("/proc/self/fd", X_OK) != 0) {
+                    error = "bus path too long for a Unix socket, and no /proc to reach it through its folder: " +
+                            path;
+                    return false;
+                }
+                std::memcpy(addr_.sun_path, through.c_str(), through.size() + 1);
+                return true;
+            }
+        }
+#endif
         error = "bus path too long for a Unix socket: " + path;
         return false;
     }
-    std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
-    return true;
-}
+
+    const sockaddr* Get() const { return reinterpret_cast<const sockaddr*>(&addr_); }
+    socklen_t Size() const { return static_cast<socklen_t>(sizeof(addr_)); }
+
+private:
+    bool Fits(const std::string& path) const { return path.size() < sizeof(addr_.sun_path); }
+
+    sockaddr_un addr_{};
+    int folder_ = -1;   // the socket's folder, while its path is too long to name
+};
 
 } // namespace
 
@@ -249,8 +307,8 @@ std::unique_ptr<Listener> Listener::Create(const std::string& busPath, std::stri
         return nullptr;
     }
 
-    sockaddr_un addr{};
-    if (!FillSockaddr(busPath, addr, error)) {
+    SocketAddress address;
+    if (!address.Resolve(busPath, error)) {
         listener->path_.clear();
         return nullptr;
     }
@@ -265,7 +323,7 @@ std::unique_ptr<Listener> Listener::Create(const std::string& busPath, std::stri
     }
     ::fcntl(listener->fd_, F_SETFD, FD_CLOEXEC);
     const mode_t previous = ::umask(0077);
-    const int bound = ::bind(listener->fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+    const int bound = ::bind(listener->fd_, address.Get(), address.Size());
     ::umask(previous);
     if (bound != 0) {
         error = Errno("bind");
@@ -311,8 +369,13 @@ ConnectionPtr Listener::Accept() {
 }
 
 ConnectionPtr ConnectToBus(const std::string& busPath, int timeoutMs, std::string& error) {
-    sockaddr_un addr{};
-    if (!FillSockaddr(busPath, addr, error)) return nullptr;
+    SocketAddress address;
+    bool folderMissing = false;
+    if (!address.Resolve(busPath, error, &folderMissing)) {
+        // As ENOENT from connect() below: nothing has made the bus yet.
+        if (folderMissing) error = "no broker listens on " + busPath;
+        return nullptr;
+    }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
     for (;;) {
         const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -322,7 +385,7 @@ ConnectionPtr ConnectToBus(const std::string& busPath, int timeoutMs, std::strin
         }
         ::fcntl(fd, F_SETFD, FD_CLOEXEC);
         int rc;
-        do { rc = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)); }
+        do { rc = ::connect(fd, address.Get(), address.Size()); }
         while (rc != 0 && errno == EINTR);
         if (rc == 0) {
             ConnectionPtr connection(new Connection());

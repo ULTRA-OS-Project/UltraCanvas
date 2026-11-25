@@ -207,6 +207,15 @@ that is set, on every platform: the framework's machine-local data root
 on Linux is moved into `UltraMessage` on the first broker start. Socket, lock
 file and directories are owner-only.
 
+A Unix socket's address holds a path of 107 bytes on Linux and 103 on macOS
+and the BSDs. A bus path longer than that - a long `$XDG_RUNTIME_DIR`, a
+sandbox's, a test's private folder - is reached through its folder on Linux
+(the folder is opened and the socket named as `/proc/self/fd/<n>/bus.sock`),
+so the bus stays where the path says and broker and endpoints need nothing
+set. On macOS and the BSDs such a path is refused, and the error says so
+(`bus path too long for a Unix socket: ...`): give a shorter `busPath` or
+`TMPDIR` there.
+
 ### 3.5 Schemas and topics
 
 `UltraMsg_RegisterSchema`, `UltraMsg_GetSchema`, `UltraMsg_ListSchemas`,
