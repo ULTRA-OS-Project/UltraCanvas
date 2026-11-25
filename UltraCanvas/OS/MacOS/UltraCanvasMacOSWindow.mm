@@ -1,5 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
+// Version: 2.12.0 - a move closes an open menu (ClosePopupsIfWindowMoved): the title bar's press never
+//                   reaches the program
 // Version: 2.11.0 - WindowType::Overlay: borderless and above the menu bar and the Dock (the
 //                   screen saver's level), on every Space, and it takes the keyboard (a
 //                   borderless NSWindow is never key otherwise) - the screen-area picker
@@ -1106,7 +1108,10 @@ namespace UltraCanvas {
             const NSRect frame = [nsWindow frame];
             config_.x = static_cast<int>(std::lround(frame.origin.x));
             config_.y = UCTopLeftY(frame);
-            // The windows of its popups follow it
+            // Dragged by its title bar, which the program never sees pressed:
+            // an open menu closes. The windows of the popups that stay open
+            // follow it.
+            ClosePopupsIfWindowMoved();
             _needsPopupHostSync = true;
             RequestRedraw();
 

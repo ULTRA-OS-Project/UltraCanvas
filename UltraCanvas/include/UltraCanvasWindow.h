@@ -1,5 +1,8 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.15.0 - a popup in its own window closes when another window of the application comes to the
+//                   front, and when its window is hidden or minimised (HandleWindowHidden); a menu closes
+//                   when its window is moved on X11 and macOS too (ClosePopupsIfWindowMoved)
 // Version: 2.14.0 - ClosePopupsOnFramePress: a press on the window's frame closes the popups that
 //                   close on a click outside; MovePopupHostsWithWindow for a platform's move loop
 // Version: 2.13.0 - IsOnCurrentDesktop / MoveToCurrentDesktop: a window on another virtual desktop
@@ -764,11 +767,23 @@ namespace UltraCanvas {
         // to being composited onto this window
         void ForgetPopupHost(UltraCanvasWindowBase* host);
         // Focus left the window: popups in their own windows that close on a
-        // click outside them close once focus has left the application
+        // click outside them close once the focus has settled anywhere but
+        // on this window or a dialog of it - another program, or another
+        // window of this application
         void ClosePopupsInOwnWindowsOnBlur();
+        // `other` is this window, or a dialog of it (its transient parent,
+        // or its parent's, is this window)
+        bool IsSelfOrDialogOfSelf(UltraCanvasWindowBase* other);
         // Closes the popups that close on a click outside them, the newest
         // first (only those in windows of their own with `ownWindowsOnly`)
         void ClosePopupsClosedByClickOutside(bool ownWindowsOnly);
+        // The window has moved since its first open popup opened - dragged
+        // by a title bar the window manager keeps to itself (X11, macOS):
+        // the popups that close on a click outside close, as a press on the
+        // frame closes them where the program sees it (Windows)
+        void ClosePopupsIfWindowMoved();
+        Point2Di _popupsOrigin;
+        bool _popupsOriginKnown = false;
         // The window moved: its popups' windows are put back beside it now,
         // not at the next frame - for a platform that moves a window in a
         // loop of its own, where no frame is drawn until the move ends

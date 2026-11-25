@@ -343,12 +343,15 @@ macOS and Wayland), so the rounded corners show whatever is beneath. It has no
 drop shadow of its own - macOS and a compositing window manager give a popup
 window one - and it does not fade in: `enableAnimations` shows it in full at
 once. It closes on a click outside it, as before, and also when the focus
-leaves the application, since it would otherwise float above other programs'
-windows. A press on the window's frame - its title bar or a border, to drag or
-size it - counts as a click outside on Windows
-(`UltraCanvasWindowBase::ClosePopupsOnFramePress`), so the menu closes rather
-than staying behind while the window moves away; a popup that does not close
-on a click outside follows its window instead. In the browser and on Android, and with
+goes to another window - another program's, or another window of the same
+application brought to the front - since it would otherwise float above that
+window (a dialog of the menu's own window taking the focus leaves it open). It
+closes when its window is hidden or minimised, and when its window is moved:
+on Windows a press on the frame - the title bar or a border - counts as a click
+outside (`UltraCanvasWindowBase::ClosePopupsOnFramePress`); on X11 and macOS,
+where the window manager keeps that press to itself, the move does
+(`ClosePopupsIfWindowMoved`). A popup that does not close on a click outside
+follows its window instead. In the browser and on Android, and with
 `SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
 described above.
 
