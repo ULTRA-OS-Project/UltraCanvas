@@ -33,6 +33,7 @@ doc file name. For the prose on a given element, use
 | Single-line text | `UltraCanvasTextInput` | `UltraCanvasTextInput.h` |
 | Multi-line text or code | `UltraCanvasTextArea` | `UltraCanvasTextArea.h` |
 | A **formatted document** edited as it looks — fonts, sizes, colours, headings, lists, tables, images ([doc](UltraCanvasRichTextEdit.md)) | `UltraCanvasRichTextEdit` | `UltraCanvasRichTextEdit.h` |
+| A **document navigator** beside an `UltraCanvasRichTextEdit` — the headings as a tree that follows the caret (promote, demote, move or drag a chapter), tables, pictures, charts, comments with their authors, bookmarks, notes and tracked changes, a search box that filters them and lists the finds ([doc](UltraCanvasDocumentNavigator.md)) | `UltraCanvasDocumentNavigator` | `UltraCanvasDocumentNavigator.h` |
 | The **text formatting bar** over text the user sets — Font (every installed family, each shown in itself), Size, Bold, Italic, Underline, Strikethrough, alignment, line and letter spacing; reports each change, helpers for an `UltraCanvasRichTextEdit` typed on a canvas ([doc](UltraCanvasTextFormatBar.md)) | `UltraCanvasTextFormatBar` | `UltraCanvasTextFormatBar.h` |
 | Text with a suggestion list | `UltraCanvasAutoComplete` | `UltraCanvasAutoComplete.h` |
 | Tokens / tags typed into a field | `UltraCanvasTagInput` | `UltraCanvasChip.h` |

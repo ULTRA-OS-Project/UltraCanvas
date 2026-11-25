@@ -91,7 +91,6 @@
   "Heading 2": "標題 2",
   "Heading 3": "標題 3",
   "Heading 4": "標題 4",
-  "Headings": "標題",
   "Hidden in the show": "放映時隱藏",
   "How this slide comes on in the show": "此投影片在放映中的出現方式",
   "In front of every other shape": "位於其他所有圖案之前",
@@ -117,6 +116,7 @@
   "Memo": "備忘錄",
   "Mark what is typed and deleted": "標記輸入與刪除的內容",
   "More decimal places": "增加小數位數",
+  "Navigator": "導覽器",
   "New document": "新增文件",
   "New files are saved as": "新檔案的儲存格式",
   "New from template": "從範本新增",
@@ -196,6 +196,7 @@
   "Show comments": "顯示註解",
   "Show the comments and their pane": "顯示註解及其窗格",
   "Show the document as pages": "以頁面方式顯示文件",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "在文件旁顯示標題、表格、圖片和註解 (F5)",
   "Show the slides full screen, from the first": "從第一張開始全螢幕放映投影片",
   "Show the slides full screen, from this one": "從目前投影片開始全螢幕放映",
   "Shrink the sheet so every column fits across one page": "縮小工作表，讓所有欄都能容納在一頁的寬度內",
@@ -251,7 +252,6 @@
   "{0} could not be restored: {1}": "無法還原 {0}：{1}",
   "{0} could not be saved: {1}": "無法儲存 {0}：{1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} 不是 UltraOffice 可以開啟的文件、試算表或簡報。",
-  "{0} rows, {1} columns": "{0} 列 {1} 欄",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "other": "{n} 份文件有未儲存的變更。要關閉 UltraOffice 並捨棄這些變更嗎？"
   },

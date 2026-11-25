@@ -33,6 +33,10 @@ This app versions itself: [`Docs/Texter/CHANGELOG.md`](../../Docs/Texter/CHANGEL
   WYSIWYG editor (`UltraCanvasRichTextEdit`): fonts, sizes, colours,
   alignment, styles, embedded images, tables with merged and editable cells.
   Saving writes the same document back, so formatting survives a round trip.
+  *View > Navigator (documents)*, or F5, shows the framework's navigator at
+  the tab's left: the headings as a tree that follows the caret (promote,
+  demote and move chapters), the tables, pictures, comments, notes and
+  tracked changes, and a search box that filters them.
 - **Presentations as an outline.** A PowerPoint deck (`.pptx`, `.pptm`,
   `.ppsx`, `.ppsm`, `.potx`, `.potm`) or an OpenDocument one (`.odp`, `.otp`,
   `.fodp`) opens in the same editor as the outline of its slides - each

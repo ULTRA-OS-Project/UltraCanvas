@@ -91,7 +91,6 @@
   "Heading 2": "Címsor 2",
   "Heading 3": "Címsor 3",
   "Heading 4": "Címsor 4",
-  "Headings": "Fejlécek",
   "Hidden in the show": "Rejtett a vetítésben",
   "How this slide comes on in the show": "Hogyan jelenik meg ez a dia a vetítésben",
   "In front of every other shape": "Minden más alakzat előtt",
@@ -117,6 +116,7 @@
   "Memo": "Feljegyzés",
   "Mark what is typed and deleted": "A beírt és törölt szöveg megjelölése",
   "More decimal places": "Több tizedesjegy",
+  "Navigator": "Navigátor",
   "New document": "Új dokumentum",
   "New files are saved as": "Az új fájlok mentési formátuma",
   "New from template": "Új sablonból",
@@ -196,6 +196,7 @@
   "Show comments": "Megjegyzések megjelenítése",
   "Show the comments and their pane": "A megjegyzések és ablaktáblájuk megjelenítése",
   "Show the document as pages": "A dokumentum megjelenítése oldalakként",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "A címsorok, táblázatok, képek és megjegyzések megjelenítése a dokumentum mellett (F5)",
   "Show the slides full screen, from the first": "A diák vetítése teljes képernyőn, az elsőtől",
   "Show the slides full screen, from this one": "A diák vetítése teljes képernyőn, ettől a diától",
   "Shrink the sheet so every column fits across one page": "A munkalap kicsinyítése, hogy minden oszlop elférjen egy oldal szélességében",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "{0} nem állítható vissza: {1}",
   "{0} could not be saved: {1}": "A(z) {0} nem menthető: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "A(z) {0} nem olyan dokumentum, táblázat vagy bemutató, amelyet az UltraOffice meg tud nyitni.",
-  "{0} rows, {1} columns": "{0} sor, {1} oszlop",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} dokumentum nem mentett módosításokat tartalmaz. Bezárja az UltraOffice-t, és elveti őket?",
     "other": "{n} dokumentum nem mentett módosításokat tartalmaz. Bezárja az UltraOffice-t, és elveti őket?"

@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.20.0 - document observers; GoToPosition, GoToRange; heading sections moved and promoted
 // Version: 1.19.0 - SetPageSetup, SetParagraphFormat, Get/SetTableProperties, Get/SetSelectedImageWrap,
 //                   InsertNote with its text, GoToPreviousChange, GoToNextComment / GoToPreviousComment /
 //                   GoToComment; an undo or redo that changes the page lays the document out again
@@ -432,6 +433,7 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
         if (furnitureEdit) SyncFurnitureToDocument();
         ScheduleFontReport();
         if (onDocumentChanged) onDocumentChanged();
+        NotifyDocumentObservers(true);
     };
     editor.onSelectionChanged = [this]() {
         // Selection is painted as layout attributes, so a changed selection
@@ -442,6 +444,7 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
         AnnounceAccessibility(editor.HasSelection() ? AccessibilityEventType::SelectionChanged
                                                     : AccessibilityEventType::CaretMoved);
         if (onSelectionChanged) onSelectionChanged();
+        NotifyDocumentObservers(false);
     };
     SetMouseCursor(UCMouseCursor::Text);
     // Typing gets a word processor's corrections (smart quotes, dashes,
@@ -4783,7 +4786,11 @@ void UltraCanvasRichTextEdit::ScrollToCaret() {
         top = BlockToContentY(bl, static_cast<float>(cursor.y));
         bottom = top + static_cast<float>(std::max(cursor.height, 4));
     }
-    if (top < scrollOffset) {
+    const bool toTop = caretToTop;
+    caretToTop = false;
+    if (toTop && (top < scrollOffset || bottom > scrollOffset + visibleArea.height)) {
+        SetScrollOffset(std::max(0.0f, top - 24.0f));       // a little of what is above it shows
+    } else if (top < scrollOffset) {
         SetScrollOffset(top);
     } else if (bottom > scrollOffset + visibleArea.height) {
         SetScrollOffset(bottom - visibleArea.height);
@@ -6495,6 +6502,8 @@ void UltraCanvasRichTextEdit::FinishHeaderFooterEditing() {
     caretMoved = true;
     if (onHeaderFooterEditingChanged) onHeaderFooterEditingChanged(false);
     if (onSelectionChanged) onSelectionChanged();
+    // The body's caret is back: what it is in has changed for a listener.
+    NotifyDocumentObservers(true);
 }
 
 float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
@@ -7097,6 +7106,81 @@ bool UltraCanvasRichTextEdit::RejectChangeAtCaret() {
     if (readOnly || furnitureEdit || !editor.RejectChangeAt(editor.GetCaret())) return false;
     AfterEdit();
     return true;
+}
+
+bool UltraCanvasRichTextEdit::GoToPosition(const RichDocPosition& position) {
+    return GoToRange(RichDocRange(position, position));
+}
+
+bool UltraCanvasRichTextEdit::GoToRange(const RichDocRange& range) {
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (range.start.blockIndex < 0 || range.end.blockIndex >= editor.GetBlockCount()) return false;
+    const RichDocPosition start = editor.ClampPosition(range.start);
+    const RichDocPosition end = editor.ClampPosition(range.end);
+    editor.BreakUndoCoalescing();
+    if (start == end) editor.SetCaret(start);
+    else editor.SetSelection(start, end);
+    imageSelected = false;
+    caretMoved = true;
+    caretToTop = true;
+    AfterSelectionChange();
+    return true;
+}
+
+// ===== HEADING SECTIONS =====
+
+bool UltraCanvasRichTextEdit::AfterBodyEdit(bool changed) {
+    if (!changed) return false;
+    imageSelected = false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::MoveHeadingSection(int headingBlock, int beforeBlock) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    return AfterBodyEdit(editor.MoveHeadingSection(headingBlock, beforeBlock));
+}
+
+bool UltraCanvasRichTextEdit::MoveHeadingSectionUp(int headingBlock) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    return AfterBodyEdit(editor.MoveHeadingSectionUp(headingBlock));
+}
+
+bool UltraCanvasRichTextEdit::MoveHeadingSectionDown(int headingBlock) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    return AfterBodyEdit(editor.MoveHeadingSectionDown(headingBlock));
+}
+
+bool UltraCanvasRichTextEdit::ChangeHeadingSectionLevel(int headingBlock, int delta) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    return AfterBodyEdit(editor.ChangeHeadingSectionLevel(headingBlock, delta));
+}
+
+// ===== OBSERVERS =====
+
+int UltraCanvasRichTextEdit::AddDocumentObserver(std::function<void(bool documentChanged)> observer) {
+    if (!observer) return 0;
+    const int id = nextObserverId++;
+    documentObservers.emplace_back(id, std::move(observer));
+    return id;
+}
+
+void UltraCanvasRichTextEdit::RemoveDocumentObserver(int id) {
+    documentObservers.erase(std::remove_if(documentObservers.begin(), documentObservers.end(),
+                                           [id](const auto& entry) { return entry.first == id; }),
+                            documentObservers.end());
+}
+
+void UltraCanvasRichTextEdit::NotifyDocumentObservers(bool documentChanged) {
+    // A copy: a listener may add or remove one.
+    const auto observers = documentObservers;
+    for (const auto& entry : observers) {
+        if (entry.second) entry.second(documentChanged);
+    }
 }
 
 bool UltraCanvasRichTextEdit::GoToNextChange() {

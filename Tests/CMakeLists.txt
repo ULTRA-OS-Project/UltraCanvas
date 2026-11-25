@@ -2602,6 +2602,30 @@ add_test(NAME RichTextEditorTest COMMAND RichTextEditorTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: RichTextEditorTest")
 
+# ===== RICH DOCUMENT OUTLINE TEST =====
+# The model side of the document navigator: the outline read from a
+# UCRichDocument (headings by level, tables, pictures, charts, comments,
+# bookmarks, notes, tracked changes), the outline following edits, and the
+# heading sections the editing core moves, promotes and demotes with undo.
+# UI-free, like the editing core: no display, no UI stack.
+message(STATUS "  Building RichDocumentOutlineTest...")
+add_executable(RichDocumentOutlineTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/RichDocumentOutlineTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocumentOutline.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocumentEditor.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocument.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
+)
+target_link_libraries(RichDocumentOutlineTest PRIVATE HTMLReaderTestCore)
+target_include_directories(RichDocumentOutlineTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(RichDocumentOutlineTest PRIVATE cxx_std_20)
+set_target_properties(RichDocumentOutlineTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME RichDocumentOutlineTest COMMAND RichDocumentOutlineTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: RichDocumentOutlineTest")
+
 # ===== HTML RICH IMPORT TEST =====
 # HTML → UCRichDocument (HTMLRichDocumentImporter), the blocks' quote level
 # and how the serializers and the editing core treat it - replying to and
@@ -7616,6 +7640,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: RichTextDialogsTest")
 else()
     message(STATUS "  RichTextDialogsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DOCUMENT NAVIGATOR ELEMENT TEST =====
+# UltraCanvasDocumentNavigator beside an UltraCanvasRichTextEdit in a real
+# window: rows from the document, a click going there, the current heading
+# following the caret, the search, promote / move buttons, a dragged heading
+# and the debounced refresh. Needs a display; skips without one (runs under
+# Xvfb in the framework window tests of build.yml).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DocumentNavigatorElementTest...")
+    add_executable(DocumentNavigatorElementTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DocumentNavigatorElementTest.cpp
+    )
+    target_include_directories(DocumentNavigatorElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DocumentNavigatorElementTest PRIVATE cxx_std_20)
+    target_link_libraries(DocumentNavigatorElementTest PRIVATE UltraCanvas)
+    set_target_properties(DocumentNavigatorElementTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DocumentNavigatorElementTest COMMAND DocumentNavigatorElementTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DocumentNavigatorElementTest")
+else()
+    message(STATUS "  DocumentNavigatorElementTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== PROCESS RUNNER TEST =====

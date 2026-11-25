@@ -15,6 +15,9 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
+// Version: 1.7.0 - heading sections, what a navigator moves: HeadingSectionEnd, MoveHeadingSection,
+//                  MoveHeadingSectionUp / Down, ChangeHeadingSectionLevel (promote, demote), each
+//                  one undo step; SiblingHeading
 // Version: 1.6.0 - what the document dialogs set, each one undo step: SetParagraphFormat
 //                  (RichParagraphFormat), SetPageSetup (the page is part of the step),
 //                  SetTableProperties (RichTableProperties), SetImageWrap (a picture of its own
@@ -450,6 +453,37 @@ public:
     // go to every cell; a border of the document's own (borderWidthPt >= 0)
     // makes the table draw the cells' lines rather than the view's grid.
     bool SetTableProperties(int blockIndex, const RichTableProperties& properties);
+
+    // ===== HEADING SECTIONS =====
+    // What a navigator or an outline view moves. A heading's section is the
+    // heading and every block after it up to the next heading of its level
+    // or a higher one (a smaller number), or the end of the document: its
+    // text and the subheadings under it. A heading is a Heading block of
+    // level 1..6.
+    //
+    // One past the last block of the section of the heading at
+    // `headingBlock`; -1 when that block is no heading.
+    static int HeadingSectionEnd(const std::vector<RichDocBlock>& blocks, int headingBlock);
+    int HeadingSectionEnd(int headingBlock) const { return HeadingSectionEnd(doc->blocks, headingBlock); }
+    // The heading of the same level before (forward false) or after the one
+    // at `headingBlock` under the same parent heading - the section a move up
+    // or down swaps with - or -1 when there is none.
+    static int SiblingHeading(const std::vector<RichDocBlock>& blocks, int headingBlock, bool forward);
+    // Moves the section to stand before block `beforeBlock` (GetBlockCount()
+    // = after the last block), as one undo step, and puts the caret at the
+    // start of the moved heading. Levels are kept. False when the target is
+    // inside the section, the move would change nothing, or the block is no
+    // heading.
+    bool MoveHeadingSection(int headingBlock, int beforeBlock);
+    // Swaps the section with its sibling's before / after it (SiblingHeading).
+    bool MoveHeadingSectionUp(int headingBlock);
+    bool MoveHeadingSectionDown(int headingBlock);
+    // Gives the heading and every heading in its section a level `delta`
+    // away: -1 promotes (Heading 2 becomes Heading 1, its Heading 3s become
+    // Heading 2s), +1 demotes. One undo step; a heading in its level's
+    // heading style (or in none) takes the new level's style. False when one
+    // of them would leave levels 1..6, or nothing changes.
+    bool ChangeHeadingSectionLevel(int headingBlock, int delta);
 
     // ===== STRUCTURE =====
     void InsertHorizontalRule();

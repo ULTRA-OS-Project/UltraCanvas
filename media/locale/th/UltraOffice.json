@@ -91,7 +91,6 @@
   "Heading 2": "หัวเรื่อง 2",
   "Heading 3": "หัวเรื่อง 3",
   "Heading 4": "หัวเรื่อง 4",
-  "Headings": "หัวเรื่อง",
   "Hidden in the show": "ซ่อนในการนำเสนอสไลด์",
   "How this slide comes on in the show": "วิธีที่สไลด์นี้ปรากฏในการนำเสนอ",
   "In front of every other shape": "อยู่หน้ารูปร่างอื่นทั้งหมด",
@@ -117,6 +116,7 @@
   "Memo": "บันทึกข้อความ",
   "Mark what is typed and deleted": "ทำเครื่องหมายสิ่งที่พิมพ์และลบ",
   "More decimal places": "เพิ่มตำแหน่งทศนิยม",
+  "Navigator": "ตัวนำทาง",
   "New document": "เอกสารใหม่",
   "New files are saved as": "บันทึกไฟล์ใหม่เป็น",
   "New from template": "สร้างใหม่จากแม่แบบ",
@@ -196,6 +196,7 @@
   "Show comments": "แสดงความคิดเห็น",
   "Show the comments and their pane": "แสดงความคิดเห็นและบานหน้าต่าง",
   "Show the document as pages": "แสดงเอกสารเป็นหน้า",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "แสดงหัวเรื่อง ตาราง รูปภาพ และข้อคิดเห็นข้างเอกสาร (F5)",
   "Show the slides full screen, from the first": "แสดงสไลด์เต็มหน้าจอ ตั้งแต่สไลด์แรก",
   "Show the slides full screen, from this one": "แสดงสไลด์เต็มหน้าจอ ตั้งแต่สไลด์นี้",
   "Shrink the sheet so every column fits across one page": "ย่อแผ่นงานให้ทุกคอลัมน์พอดีในความกว้างหนึ่งหน้า",
@@ -251,7 +252,6 @@
   "{0} could not be restored: {1}": "ไม่สามารถกู้คืน {0}: {1}",
   "{0} could not be saved: {1}": "ไม่สามารถบันทึก {0} ได้: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} ไม่ใช่เอกสาร สเปรดชีต หรืองานนำเสนอที่ UltraOffice เปิดได้",
-  "{0} rows, {1} columns": "{0} แถว {1} คอลัมน์",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "other": "มีเอกสาร {n} รายการที่ยังไม่ได้บันทึกการเปลี่ยนแปลง ปิด UltraOffice และละทิ้งการเปลี่ยนแปลงเหล่านั้นหรือไม่"
   },

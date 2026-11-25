@@ -91,7 +91,6 @@
   "Heading 2": "Título 2",
   "Heading 3": "Título 3",
   "Heading 4": "Título 4",
-  "Headings": "Encabezados",
   "Hidden in the show": "Oculta en la presentación",
   "How this slide comes on in the show": "Cómo entra esta diapositiva en la presentación",
   "In front of every other shape": "Delante de todas las demás formas",
@@ -117,6 +116,7 @@
   "Memo": "Memorando",
   "Mark what is typed and deleted": "Marcar lo que se escribe y se borra",
   "More decimal places": "Más decimales",
+  "Navigator": "Navegador",
   "New document": "Nuevo documento",
   "New files are saved as": "Los archivos nuevos se guardan como",
   "New from template": "Nuevo a partir de plantilla",
@@ -196,6 +196,7 @@
   "Show comments": "Mostrar comentarios",
   "Show the comments and their pane": "Mostrar los comentarios y su panel",
   "Show the document as pages": "Mostrar el documento como páginas",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Mostrar los títulos, tablas, imágenes y comentarios junto al documento (F5)",
   "Show the slides full screen, from the first": "Mostrar las diapositivas a pantalla completa, desde la primera",
   "Show the slides full screen, from this one": "Mostrar las diapositivas a pantalla completa, desde esta",
   "Shrink the sheet so every column fits across one page": "Reducir la hoja para que todas las columnas quepan en el ancho de una página",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "No se pudo restaurar {0}: {1}",
   "{0} could not be saved: {1}": "No se pudo guardar {0}: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} no es un documento, una hoja de cálculo ni una presentación que UltraOffice pueda abrir.",
-  "{0} rows, {1} columns": "{0} filas, {1} columnas",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} documento tiene cambios sin guardar. ¿Cerrar UltraOffice y perderlos?",
     "other": "{n} documentos tienen cambios sin guardar. ¿Cerrar UltraOffice y perderlos?"

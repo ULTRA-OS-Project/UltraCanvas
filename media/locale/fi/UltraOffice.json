@@ -91,7 +91,6 @@
   "Heading 2": "Otsikko 2",
   "Heading 3": "Otsikko 3",
   "Heading 4": "Otsikko 4",
-  "Headings": "Otsikot",
   "Hidden in the show": "Piilotettu diaesityksestä",
   "How this slide comes on in the show": "Miten tämä dia tulee esiin diaesityksessä",
   "In front of every other shape": "Kaikkien muiden muotojen eteen",
@@ -117,6 +116,7 @@
   "Memo": "Muistio",
   "Mark what is typed and deleted": "Merkitse, mitä kirjoitetaan ja poistetaan",
   "More decimal places": "Enemmän desimaaleja",
+  "Navigator": "Navigaattori",
   "New document": "Uusi asiakirja",
   "New files are saved as": "Uudet tiedostot tallennetaan muodossa",
   "New from template": "Uusi mallista",
@@ -196,6 +196,7 @@
   "Show comments": "Näytä kommentit",
   "Show the comments and their pane": "Näytä kommentit ja niiden ruutu",
   "Show the document as pages": "Näytä asiakirja sivuina",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Näytä otsikot, taulukot, kuvat ja kommentit asiakirjan vieressä (F5)",
   "Show the slides full screen, from the first": "Näytä diat koko näytössä ensimmäisestä alkaen",
   "Show the slides full screen, from this one": "Näytä diat koko näytössä tästä alkaen",
   "Shrink the sheet so every column fits across one page": "Pienennä taulukkoa niin, että kaikki sarakkeet mahtuvat yhden sivun leveydelle",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "Kohdetta {0} ei voitu palauttaa: {1}",
   "{0} could not be saved: {1}": "Kohdetta {0} ei voitu tallentaa: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} ei ole asiakirja, laskentataulukko tai esitys, jonka UltraOffice voi avata.",
-  "{0} rows, {1} columns": "{0} riviä, {1} saraketta",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} asiakirjassa on tallentamattomia muutoksia. Suljetaanko UltraOffice ja hylätään ne?",
     "other": "{n} asiakirjassa on tallentamattomia muutoksia. Suljetaanko UltraOffice ja hylätään ne?"

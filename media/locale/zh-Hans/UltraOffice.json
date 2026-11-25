@@ -91,7 +91,6 @@
   "Heading 2": "标题 2",
   "Heading 3": "标题 3",
   "Heading 4": "标题 4",
-  "Headings": "标题",
   "Hidden in the show": "放映时隐藏",
   "How this slide comes on in the show": "此幻灯片在放映中的出现方式",
   "In front of every other shape": "位于所有其他形状之前",
@@ -117,6 +116,7 @@
   "Memo": "备忘录",
   "Mark what is typed and deleted": "标记输入和删除的内容",
   "More decimal places": "增加小数位数",
+  "Navigator": "导航器",
   "New document": "新建文档",
   "New files are saved as": "新文件保存格式",
   "New from template": "从模板新建",
@@ -196,6 +196,7 @@
   "Show comments": "显示批注",
   "Show the comments and their pane": "显示批注及其窗格",
   "Show the document as pages": "以页面形式显示文档",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "在文档旁显示标题、表格、图片和批注 (F5)",
   "Show the slides full screen, from the first": "从第一张开始全屏放映幻灯片",
   "Show the slides full screen, from this one": "从当前幻灯片开始全屏放映",
   "Shrink the sheet so every column fits across one page": "缩小工作表，使所有列都能容纳在一页的宽度内",
@@ -251,7 +252,6 @@
   "{0} could not be restored: {1}": "无法恢复 {0}：{1}",
   "{0} could not be saved: {1}": "无法保存 {0}：{1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} 不是 UltraOffice 可以打开的文档、电子表格或演示文稿。",
-  "{0} rows, {1} columns": "{0} 行 {1} 列",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "other": "{n} 个文档有未保存的更改。要关闭 UltraOffice 并丢弃这些更改吗？"
   },

@@ -18,6 +18,10 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.22.0 - what a navigator needs (UltraCanvasDocumentNavigator.h): AddDocumentObserver /
+//                   RemoveDocumentObserver, more than one listener to edits and caret moves;
+//                   GoToPosition, GoToRange; MoveHeadingSection, MoveHeadingSectionUp / Down,
+//                   ChangeHeadingSectionLevel on the body, each one undo step
 // Version: 1.21.0 - what the document dialogs (UltraCanvasRichTextEditDialogs.h) set, each one undo
 //                   step: SetParagraphFormat, SetPageSetup, SetTableProperties,
 //                   SetSelectedImageWrap; InsertNote with its text; GoToPreviousChange,
@@ -396,6 +400,31 @@ public:
     // Puts the caret at a bookmark and scrolls it into view. Ctrl+click on a
     // cross-reference, a table of contents entry or a link to "#name" does it.
     bool GoToBookmark(const std::string& name);
+    // Puts the caret at a body position (or selects a body range) and
+    // scrolls it into view - near the view's top when it was out of view -
+    // ending the editing of a header, footer, note or frame first. False
+    // when the position is not in the document.
+    bool GoToPosition(const RichDocPosition& position);
+    bool GoToRange(const RichDocRange& range);
+
+    // ===== HEADING SECTIONS =====
+    // A heading with the text and subheadings under it, moved or promoted
+    // in the body as a navigator does it (UCRichDocumentEditor, which
+    // defines the section): one undo step each, laid out again at once.
+    bool MoveHeadingSection(int headingBlock, int beforeBlock);
+    bool MoveHeadingSectionUp(int headingBlock);
+    bool MoveHeadingSectionDown(int headingBlock);
+    bool ChangeHeadingSectionLevel(int headingBlock, int delta);
+
+    // ===== OBSERVERS =====
+    // Besides onDocumentChanged and onSelectionChanged (the host's own), any
+    // number of listeners - a navigator, an outline, a word count - are told
+    // of every change: `documentChanged` true after an edit (undo, a new
+    // document, a header's text included), false after the caret or the
+    // selection moved. Returns an id for RemoveDocumentObserver. A listener
+    // that does not outlive the element removes itself when it goes.
+    int AddDocumentObserver(std::function<void(bool documentChanged)> observer);
+    void RemoveDocumentObserver(int id);
 
     // Structure.
     void InsertHorizontalRule();
@@ -1239,6 +1268,9 @@ private:
     bool layoutsDirty = true;
     bool visibleAreaDirty = true;
     bool caretMoved = false;
+    // GoToPosition / GoToRange: the place, when out of view, comes in at the
+    // view's top (as a navigator's jump does), not just inside its edge.
+    bool caretToTop = false;
 
     // ===== FONT REPORT AND NOTICE =====
     FontReport fontReport;
@@ -1277,6 +1309,13 @@ private:
     std::string commentAuthor;
     bool showComments = true;
     bool commentPaneShown = false;
+    // AddDocumentObserver's listeners, by id.
+    std::vector<std::pair<int, std::function<void(bool)>>> documentObservers;
+    int nextObserverId = 1;
+    void NotifyDocumentObservers(bool documentChanged);
+    // A body edit made through the editing core by one of the calls above:
+    // laid out again, the host told.
+    bool AfterBodyEdit(bool changed);
     struct CommentBox {
         int index = -1;
         Rect2Df rect{0, 0, 0, 0};             // element coordinates

@@ -91,7 +91,6 @@
   "Heading 2": "Titolo 2",
   "Heading 3": "Titolo 3",
   "Heading 4": "Titolo 4",
-  "Headings": "Intestazioni",
   "Hidden in the show": "Nascosta nella presentazione",
   "How this slide comes on in the show": "Come entra questa diapositiva nella presentazione",
   "In front of every other shape": "Davanti a tutte le altre forme",
@@ -117,6 +116,7 @@
   "Memo": "Promemoria",
   "Mark what is typed and deleted": "Segna ciò che viene digitato ed eliminato",
   "More decimal places": "Più decimali",
+  "Navigator": "Navigatore",
   "New document": "Nuovo documento",
   "New files are saved as": "I nuovi file vengono salvati come",
   "New from template": "Nuovo da modello",
@@ -196,6 +196,7 @@
   "Show comments": "Mostra commenti",
   "Show the comments and their pane": "Mostra i commenti e il loro riquadro",
   "Show the document as pages": "Mostra il documento come pagine",
+  "Show the headings, tables, pictures and comments beside the document (F5)": "Mostra titoli, tabelle, immagini e commenti accanto al documento (F5)",
   "Show the slides full screen, from the first": "Mostra le diapositive a schermo intero, dalla prima",
   "Show the slides full screen, from this one": "Mostra le diapositive a schermo intero, da questa",
   "Shrink the sheet so every column fits across one page": "Riduci il foglio in modo che tutte le colonne stiano nella larghezza di una pagina",
@@ -252,7 +253,6 @@
   "{0} could not be restored: {1}": "Impossibile ripristinare {0}: {1}",
   "{0} could not be saved: {1}": "Impossibile salvare {0}: {1}",
   "{0} is not a document, spreadsheet or presentation UltraOffice can open.": "{0} non è un documento, un foglio di calcolo o una presentazione che UltraOffice può aprire.",
-  "{0} rows, {1} columns": "{0} righe, {1} colonne",
   "{n} document has unsaved changes. Close UltraOffice and lose them?": {
     "one": "{n} documento ha modifiche non salvate. Chiudere UltraOffice e perderle?",
     "other": "{n} documenti hanno modifiche non salvate. Chiudere UltraOffice e perderle?"
