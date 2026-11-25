@@ -1,3 +1,8 @@
+#### 2026-11-25 *1.90*
+- **The start-up log no longer prints a "Build Date".** It came from
+  `__DATE__` / `__TIME__`, which differ on every build, so `main.cpp` missed
+  the compiler cache on every CI run.
+
 #### 2026-11-24 *1.89*
 - **Info > File Statistics cut its column headers** in at least 29 of the 31 languages:
   each header was an 80 px label whatever its column, and the columns were

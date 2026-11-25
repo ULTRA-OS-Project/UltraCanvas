@@ -1,5 +1,8 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.0.19 - the text-layout cache is per thread: a Pango layout is never used by a thread other
+//                   than the one that made it (UltraFiler's crash in cairo's glyph lookup while
+//                   thumbnail workers drew document pages)
 // Version: 1.0.18 - text sits on the pixel grid (SnapTextOrigin): the left edge of its ink and its
 //                   baseline on whole device pixels. A label centred at a half pixel, or a letter
 //                   with a fractional side bearing, drew its first stem as two grey columns - an R
@@ -33,6 +36,7 @@
 #include "../libspecific/Cairo/RenderContextCairo.h"
 #include <cstring>
 #include <cmath>
+#include <thread>
 #include <sstream>
 #include <algorithm>
 #include <iostream>
@@ -347,6 +351,15 @@ namespace UltraCanvas {
 //                  << static_cast<int>(g_TextHintStyle)
 //                  << static_cast<int>(g_TextHintMetrics) << "|"
                   << "|r" << static_cast<int>(g_PangoResolution * 100)
+                  // The thread asking. A layout is a Pango object made with
+                  // the asking thread's Pango context and fonts, and Pango
+                  // objects are not to be used from two threads: a layout a
+                  // thumbnail worker made (a document page, a slide) was
+                  // measured by the UI thread while the worker drew it, and
+                  // UltraFiler crashed in cairo's glyph lookup. Each thread
+                  // gets layouts of its own; the UI thread's are shared by
+                  // all its windows as before.
+                  << "|t" << std::this_thread::get_id()
                   // The whole text, never a prefix: two strings that only
                   // differ after the cut shared one layout, and the second
                   // was drawn - and measured - as the first.

@@ -2202,6 +2202,22 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilePreviewsTest")
 endif()
 
+# ===== TEXT RENDER THREADS TEST =====
+# Text measured and drawn on five threads at once, in offscreen contexts of
+# their own - the UI thread and the Filer's thumbnail workers - must not
+# crash (UltraFiler's access violation in cairo's glyph lookup, when every
+# context shared one cache of Pango layouts). Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextRenderThreadsTest...")
+    add_executable(TextRenderThreadsTest ${CMAKE_CURRENT_SOURCE_DIR}/TextRenderThreadsTest.cpp)
+    target_include_directories(TextRenderThreadsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextRenderThreadsTest PRIVATE cxx_std_20)
+    target_link_libraries(TextRenderThreadsTest PRIVATE UltraCanvas)
+    set_target_properties(TextRenderThreadsTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME TextRenderThreadsTest COMMAND TextRenderThreadsTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextRenderThreadsTest")
+endif()
+
 # ===== ELEMENT MODULES TEST =====
 # The selectable widgets (ULTRACANVAS_WIDGETS) and charts (ULTRACANVAS_CHARTS)
 # through the element registry, by type name: registered at startup when
