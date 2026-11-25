@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "«Re:» o «Fw:» da un mittente a cui non hai mai scritto",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "Impossibile scrivere «{0}» nella cache degli allegati in {1}. Controlla che la cartella esista e sia scrivibile.",
+  "\"{0}\" is still being downloaded from {1}.": "«{0}» è ancora in fase di download da {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "«{0}» è ancora in fase di upload su {1}.",
   "(unnamed)": "(senza nome)",
+  "... and {n} more.": {
+    "one": "... e altri {n}.",
+    "other": "... e altri {n}."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "La posta di un mittente bloccato viene segnata come spam: la cornice arancione e la striscia sopra il messaggio. Un dominio bloccato blocca anche i suoi sottodomini. Non viene spostato né eliminato nulla: «Segna come spam» sposta un messaggio nella cartella della posta indesiderata.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Un controllo ancora in corso quando scade il successivo viene lasciato terminare: un account non viene mai controllato due volte contemporaneamente.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Un pagamento in criptovalute non si può annullare: chi lo riceve lo tiene. Nessun portafoglio, exchange o assistenza genuini chiedono la tua frase di recupero (seed phrase) o la chiave privata, e nessun investimento genuino garantisce un guadagno. Non inviare mai criptovalute a qualcuno che conosci solo via e-mail o Internet.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Una truffa in criptovalute: una frase di recupero, un portafoglio su cui pagare",
   "A dangerous attachment - a program, or one dressed as a document": "Un allegato pericoloso: un programma, o uno travestito da documento",
+  "A download is still running — quit anyway?": "Un download è ancora in corso: uscire comunque?",
   "A horizontal line": "Una linea orizzontale",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Un server JMAP si raggiunge tramite HTTPS, di solito sulla porta 443, e risponde su /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus e Apache James: l'host di posta). La posta viene letta e inviata tramite esso: il server in uscita (SMTP) è facoltativo; lascialo vuoto per inviare tramite JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Una lettera a nome di FBI, Interpol, FMI ...",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Server, accesso e nome di un account si trovano nelle sue Impostazioni account. Ogni modifica qui si applica subito e viene salvata; non c'è nulla da confermare.",
   "An address looks like you@example.com.": "Un indirizzo ha l'aspetto di tu@esempio.it.",
   "An advance-fee letter - millions waiting for a small fee": "Una lettera di anticipo spese: milioni in attesa dietro una piccola somma",
+  "An upload is still running — quit anyway?": "Un upload è ancora in corso: uscire comunque?",
   "Any mail about cryptocurrency (a word of caution)": "Qualsiasi e-mail sulle criptovalute (un avvertimento)",
   "App-specific password": "Password specifica per l'app",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Come suggerimento, l'indirizzo compare accanto al puntatore mentre sta su un link e la barra di stato resta libera per la posta stessa.",
@@ -256,6 +264,8 @@
   "Privacy": "Privacy",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Privacy: quando vengono scaricate le immagini sul web (sempre, solo da siti e mittenti attendibili e dai tuoi contatti, o mai da sole), se vengono scaricate le icone dei mittenti noti e una Password principale richiesta a ogni avvio.",
   "Quit UltraMail?": "Uscire da UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Uscendo viene interrotto e il file non arriva.",
+  "Quitting stops them, and the files do not arrive.": "Uscendo vengono interrotti e i file non arrivano.",
   "Reading": "Lettura",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Lettura: dove si apre un messaggio, quanto è larga la lista delle cartelle, se la posta HTML è mostrata formattata o come testo semplice, la dimensione del testo, quale posta conta come in attesa di risposta e dove vengono mostrati gli allegati di un messaggio.",
   "recipient@example.com, …": "destinatario@esempio.it, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Icone dei siti web: per ogni altro mittente la cui posta ha superato il controllo anticruffa, la home page del dominio da cui scrive viene letta per la sua icona, una volta e di nuovo dopo una settimana se non c'era. Questo comunica al server web del mittente che qualcuno ha guardato, ma non quale messaggio; non viene mai fatto per spam, truffe, la cartella della posta indesiderata o un fornitore di caselle come gmail.com.",
   "What a colour is for: the text, or the background behind it": "A cosa serve un colore: il testo o lo sfondo dietro di esso",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Cosa protegge: le password dei tuoi account di posta e la chiave con cui è cifrata la posta memorizzata su questo computer, cioè la casella, la rubrica, la posta in uscita e ogni messaggio scaricato. Senza di essa nessuno può leggerli, nemmeno chi copia l'intera cartella dei dati.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Ciò che è stato inviato viene rimosso da {0} la prossima volta che UltraMail lo usa.",
   "When a message has been sent successfully:": "Quando un messaggio è stato inviato con successo:",
   "When new mail arrives while UltraMail runs:": "Quando arriva nuova posta mentre UltraMail è in esecuzione:",
   "When the pictures a message links to on the web are downloaded:": "Quando vengono scaricate le immagini a cui un messaggio rimanda sul web:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "Le password della tua posta non possono essere sbloccate in questa versione.",
   "Your password": "La tua password",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: inserisci una password per app (account Yahoo > Sicurezza dell'account > Genera password per app).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} download è ancora in corso: uscire comunque?",
+    "other": "{n} download sono ancora in corso: uscire comunque?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} messaggio è in attesa di invio. UltraMail riprova da solo, prima se la connessione torna. Un messaggio che il server continua a rifiutare si può correggere (Modifica) o eliminare qui.",
     "other": "{n} messaggi sono in attesa di invio. UltraMail riprova da solo, prima se la connessione torna. Un messaggio che il server continua a rifiutare si può correggere (Modifica) o eliminare qui."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} trasferimento è ancora in corso: uscire comunque?",
+    "other": "{n} trasferimenti sono ancora in corso: uscire comunque?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} upload è ancora in corso: uscire comunque?",
+    "other": "{n} upload sono ancora in corso: uscire comunque?"
   }
 }

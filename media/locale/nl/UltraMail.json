@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "'Re:' of 'Fw:' van een afzender aan wie u nooit hebt geschreven",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "'{0}' kon niet naar de bijlagencache in {1} worden geschreven. Controleer of de map bestaat en beschrijfbaar is.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" wordt nog gedownload van {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" wordt nog geüpload naar {1}.",
   "(unnamed)": "(naamloos)",
+  "... and {n} more.": {
+    "one": "... en nog {n}.",
+    "other": "... en nog {n}."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "De e-mail van een geblokkeerde afzender wordt als spam gemarkeerd: het oranje kader en de strook boven het bericht. Een geblokkeerd domein blokkeert ook de subdomeinen. Er wordt niets verplaatst of verwijderd - 'Markeren als spam' verplaatst een bericht naar de map met ongewenste e-mail.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Een controle die nog loopt wanneer de volgende aan de beurt is, mag afmaken - een account wordt nooit twee keer tegelijk gecontroleerd.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Een cryptobetaling kan niet worden teruggedraaid: wie haar ontvangt, houdt haar. Geen enkele echte wallet, beurs of helpdesk vraagt naar uw herstelzin (seed phrase) of privésleutel, en geen enkele echte investering garandeert winst. Stuur nooit crypto naar iemand die u alleen kent van e-mail of internet.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Een cryptocurrency-oplichting - een herstelzin, een wallet om naartoe te betalen",
   "A dangerous attachment - a program, or one dressed as a document": "Een gevaarlijke bijlage - een programma, of een programma vermomd als document",
+  "A download is still running — quit anyway?": "Er loopt nog een download - toch afsluiten?",
   "A horizontal line": "Een horizontale lijn",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Een JMAP-server wordt via HTTPS bereikt, meestal op poort 443, en antwoordt op /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus en Apache James: de mailhost). Er wordt via JMAP gelezen en verzonden: de uitgaande server (SMTP) is optioneel - laat leeg om via JMAP te verzenden.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Een brief namens de FBI, Interpol, het IMF ...",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "De servers, aanmelding en naam van een account staan in zijn eigen Accountinstellingen. Elke wijziging hier wordt meteen toegepast en opgeslagen; er is niets te bevestigen.",
   "An address looks like you@example.com.": "Een adres ziet eruit als u@voorbeeld.nl.",
   "An advance-fee letter - millions waiting for a small fee": "Een voorschotbrief - miljoenen die wachten op een kleine vergoeding",
+  "An upload is still running — quit anyway?": "Er loopt nog een upload - toch afsluiten?",
   "Any mail about cryptocurrency (a word of caution)": "Alle e-mail over cryptocurrency (een woord van voorzichtigheid)",
   "App-specific password": "App-specifiek wachtwoord",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Als tooltip verschijnt het adres naast de aanwijzer terwijl die op een link rust, en blijft de statusbalk vrij voor de e-mail zelf.",
@@ -256,6 +264,8 @@
   "Privacy": "Privacy",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Privacy - wanneer afbeeldingen op het web worden gedownload (altijd, alleen van websites en afzenders die u vertrouwt en uw contacten, of nooit uit zichzelf), of de pictogrammen van bekende afzenders worden opgehaald, en een hoofdwachtwoord dat bij elke start wordt gevraagd.",
   "Quit UltraMail?": "UltraMail afsluiten?",
+  "Quitting stops it, and the file does not arrive.": "Door af te sluiten wordt deze gestopt en komt het bestand niet aan.",
+  "Quitting stops them, and the files do not arrive.": "Door af te sluiten worden ze gestopt en komen de bestanden niet aan.",
   "Reading": "Lezen",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Lezen - waar een bericht opent, hoe breed de maplijst is, of HTML-e-mail opgemaakt of als platte tekst wordt getoond, de grootte van de tekst, welke e-mail geldt als wachtend op uw antwoord, en waar de bijlagen van een bericht worden getoond.",
   "recipient@example.com, …": "ontvanger@voorbeeld.nl, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Websitepictogrammen: voor elke andere afzender wiens e-mail de oplichtingscontrole doorstond, wordt de startpagina van het domein waarvan hij schrijft gelezen voor zijn pictogram - eenmalig, en na een week opnieuw als er geen was. Dat vertelt de webserver van de afzender dat iemand heeft gekeken, maar niet welk bericht; nooit gevraagd voor spam, oplichting, de map met ongewenste e-mail of een mailboxprovider zoals gmail.com.",
   "What a colour is for: the text, or the background behind it": "Waarvoor een kleur dient: de tekst, of de achtergrond erachter",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Wat het beschermt: de wachtwoorden van uw e-mailaccounts, en de sleutel waarmee de e-mail op deze computer is versleuteld - de mailbox, het adresboek, Postvak UIT en elk gedownload bericht. Zonder kan niemand ze lezen, zelfs niet iemand die de hele gegevensmap kopieert.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Wat is verzonden, wordt van {0} verwijderd de volgende keer dat UltraMail het gebruikt.",
   "When a message has been sent successfully:": "Wanneer een bericht met succes is verzonden:",
   "When new mail arrives while UltraMail runs:": "Wanneer nieuwe e-mail binnenkomt terwijl UltraMail draait:",
   "When the pictures a message links to on the web are downloaded:": "Wanneer de afbeeldingen waarnaar een bericht op het web linkt, worden gedownload:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "Uw e-mailwachtwoorden kunnen in deze versie niet worden ontgrendeld.",
   "Your password": "Uw wachtwoord",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: voer een app-wachtwoord in (Yahoo-account > Accountbeveiliging > App-wachtwoord genereren).",
+  "{n} download is still running — quit anyway?": {
+    "one": "Er loopt nog {n} download - toch afsluiten?",
+    "other": "Er lopen nog {n} downloads - toch afsluiten?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} bericht wacht om te worden verzonden. UltraMail probeert het zelf opnieuw - eerder zodra de verbinding terug is. Een bericht dat de server blijft weigeren, kunt u hier corrigeren (Bewerken) of verwijderen.",
     "other": "{n} berichten wachten om te worden verzonden. UltraMail probeert het zelf opnieuw - eerder zodra de verbinding terug is. Een bericht dat de server blijft weigeren, kunt u hier corrigeren (Bewerken) of verwijderen."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "Er loopt nog {n} overdracht - toch afsluiten?",
+    "other": "Er lopen nog {n} overdrachten - toch afsluiten?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "Er loopt nog {n} upload - toch afsluiten?",
+    "other": "Er lopen nog {n} uploads - toch afsluiten?"
   }
 }

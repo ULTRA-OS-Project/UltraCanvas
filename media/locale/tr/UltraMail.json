@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "Hiç yazışmadığınız bir göndericiden gelen “Re:” veya “Fw:”",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "“{0}”, {1} içindeki ek önbelleğine yazılamadı. Klasörün var olduğunu ve yazılabilir olduğunu denetleyin.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" hâlâ {1} hesabından indiriliyor.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" hâlâ {1} hesabına yükleniyor.",
   "(unnamed)": "(adsız)",
+  "... and {n} more.": {
+    "one": "... ve {n} tane daha.",
+    "other": "... ve {n} tane daha."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Engellenen bir göndericinin postası istenmeyen olarak işaretlenir: turuncu çerçeve ve iletinin üstündeki şerit. Engellenen bir alan adı alt alan adlarını da engeller. Hiçbir şey taşınmaz veya silinmez; “İstenmeyen olarak işaretle” iletiyi gereksiz klasörüne taşır.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Bir sonraki denetim vakti geldiğinde hâlâ çalışan bir denetim bitene kadar bırakılır; bir hesap aynı anda iki kez denetlenmez.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Kripto para ödemesi geri alınamaz: alan kişi parayı elinde tutar. Hiçbir gerçek cüzdan, borsa veya yardım masası kurtarma ifadenizi (seed phrase) ya da özel anahtarınızı istemez, hiçbir gerçek yatırım da kâr garanti etmez. E-postadan veya internetten tanıdığınız birine asla kripto para göndermeyin.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Kripto para dolandırıcılığı: bir kurtarma ifadesi, ödeme yapılacak bir cüzdan",
   "A dangerous attachment - a program, or one dressed as a document": "Tehlikeli bir ek: bir program veya belge kılığına girmiş bir program",
+  "A download is still running — quit anyway?": "Bir indirme hâlâ sürüyor — yine de çıkılsın mı?",
   "A horizontal line": "Yatay çizgi",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "JMAP sunucusuna HTTPS üzerinden, genellikle 443 numaralı bağlantı noktasından ulaşılır ve /.well-known/jmap adresinde yanıt verir (Fastmail: api.fastmail.com; Stalwart, Cyrus ve Apache James: posta sunucusu). Posta bunun üzerinden okunur ve gönderilir: giden (SMTP) sunucusu isteğe bağlıdır; JMAP üzerinden göndermek için boş bırakın.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "FBI, Interpol, IMF adına yazılmış bir mektup ...",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Bir hesabın sunucuları, oturum açma bilgileri ve adı kendi Hesap Ayarlarındadır. Burada yapılan her değişiklik hemen uygulanır ve kaydedilir; onaylanacak bir şey yoktur.",
   "An address looks like you@example.com.": "Bir adres you@example.com gibi görünür.",
   "An advance-fee letter - millions waiting for a small fee": "Ön ödeme mektubu: küçük bir ücret karşılığında bekleyen milyonlar",
+  "An upload is still running — quit anyway?": "Bir yükleme hâlâ sürüyor — yine de çıkılsın mı?",
   "Any mail about cryptocurrency (a word of caution)": "Kripto paraya ilişkin her posta (bir uyarı notu)",
   "App-specific password": "Uygulamaya özel parola",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "İpucu olarak, işaretçi bir bağlantı üzerinde durduğunda adres işaretçinin yanında görünür ve durum çubuğu postanın kendisine ayrılır.",
@@ -256,6 +264,8 @@
   "Privacy": "Gizlilik",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Gizlilik: web’deki resimlerin ne zaman indirileceği (her zaman, yalnızca güvendiğiniz web siteleri, göndericiler ve kişilerinizden veya kendiliğinden hiç), bilinen göndericilerin simgelerinin alınıp alınmayacağı ve her başlatmada sorulan bir Ana Parola.",
   "Quit UltraMail?": "UltraMail’den çıkılsın mı?",
+  "Quitting stops it, and the file does not arrive.": "Çıkmak onu durdurur ve dosya ulaşmaz.",
+  "Quitting stops them, and the files do not arrive.": "Çıkmak bunları durdurur ve dosyalar ulaşmaz.",
   "Reading": "Okuma",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Okuma: bir iletinin nerede açılacağı, klasör listesinin ne kadar geniş olacağı, HTML postanın biçimlendirilmiş mi düz metin olarak mı gösterileceği, metin boyutu, hangi postanın yanıt beklediği sayılacağı ve eklerin nerede gösterileceği.",
   "recipient@example.com, …": "alici@example.com, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Web sitesi simgeleri: dolandırıcılık denetimini geçen diğer göndericiler için, yazdıkları alan adının ana sayfası simgesi için okunur; bir kez, simge yoksa bir hafta sonra yeniden. Bu, göndericinin web sunucusuna birinin baktığını bildirir, ancak hangi iletinin olduğunu değil; istenmeyen postalar, dolandırıcılıklar, gereksiz klasörü veya gmail.com gibi bir posta sağlayıcısı için asla istenmez.",
   "What a colour is for: the text, or the background behind it": "Bir rengin ne için olduğu: metin veya arkasındaki arka plan",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Neyi korur: posta hesaplarınızın parolalarını ve bu bilgisayarda saklanan postanın şifrelendiği anahtarı; yani posta kutusu, adres defteri, giden kutusu ve indirilen her ileti. Onsuz kimse bunları okuyamaz; tüm veri klasörünü kopyalayan biri bile.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Gönderilenler, UltraMail {0} hesabını bir sonraki kullanışında ondan kaldırılır.",
   "When a message has been sent successfully:": "Bir ileti başarıyla gönderildiğinde:",
   "When new mail arrives while UltraMail runs:": "UltraMail çalışırken yeni posta geldiğinde:",
   "When the pictures a message links to on the web are downloaded:": "Bir iletinin web’de bağlandığı resimler ne zaman indirilecek:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "Posta parolalarınızın kilidi bu derlemede açılamıyor.",
   "Your password": "Parolanız",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: bir uygulama parolası girin (Yahoo hesabı > Hesap güvenliği > Uygulama parolası oluştur).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} indirme hâlâ sürüyor — yine de çıkılsın mı?",
+    "other": "{n} indirme hâlâ sürüyor — yine de çıkılsın mı?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} ileti gönderilmeyi bekliyor. UltraMail kendiliğinden yeniden dener; bağlantı geri geldiğinde daha erken. Sunucunun reddetmeyi sürdürdüğü bir ileti burada düzeltilebilir (Düzenle) veya silinebilir.",
     "other": "{n} ileti gönderilmeyi bekliyor. UltraMail kendiliğinden yeniden dener; bağlantı geri geldiğinde daha erken. Sunucunun reddetmeyi sürdürdüğü bir ileti burada düzeltilebilir (Düzenle) veya silinebilir."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} aktarım hâlâ sürüyor — yine de çıkılsın mı?",
+    "other": "{n} aktarım hâlâ sürüyor — yine de çıkılsın mı?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} yükleme hâlâ sürüyor — yine de çıkılsın mı?",
+    "other": "{n} yükleme hâlâ sürüyor — yine de çıkılsın mı?"
   }
 }

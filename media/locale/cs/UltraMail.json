@@ -3,12 +3,20 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "„Re:“ nebo „Fw:“ od odesílatele, kterému jste nikdy nepsali",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "„{0}“ nelze zapsat do mezipaměti příloh v {1}. Zkontrolujte, zda složka existuje a lze do ní zapisovat.",
+  "\"{0}\" is still being downloaded from {1}.": "Soubor „{0}“ se stále stahuje z účtu {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "Soubor „{0}“ se stále nahrává do účtu {1}.",
   "(unnamed)": "(bez názvu)",
+  "... and {n} more.": {
+    "one": "... a {n} další.",
+    "few": "... a {n} další.",
+    "other": "... a {n} dalších."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Pošta blokovaného odesílatele je označena jako spam: oranžový rámeček a pruh nad zprávou. Blokovaná doména blokuje i své subdomény. Nic se nepřesouvá ani neodstraňuje – „Označit jako spam“ přesune zprávu do složky nevyžádané pošty.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Kontrola, která ještě běží, když je na řadě další, se nechá dokončit – účet se nikdy nekontroluje dvakrát současně.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Platba kryptoměnou nelze vzít zpět: kdo ji přijme, ten si ji ponechá. Žádná skutečná peněženka, burza ani podpora nežádá o vaši obnovovací frázi (seed phrase) nebo soukromý klíč a žádná skutečná investice nezaručuje zisk. Nikdy neposílejte kryptoměnu někomu, koho znáte jen z e-mailu nebo internetu.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Podvod s kryptoměnami – obnovovací fráze, peněženka k zaplacení",
   "A dangerous attachment - a program, or one dressed as a document": "Nebezpečná příloha – program nebo program vydávající se za dokument",
+  "A download is still running — quit anyway?": "Stahování stále probíhá – přesto ukončit?",
   "A horizontal line": "Vodorovná čára",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "K serveru JMAP se přistupuje přes HTTPS, obvykle na portu 443, a odpovídá na /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus a Apache James: poštovní hostitel). Pošta se jím čte i odesílá: odchozí server (SMTP) je volitelný – ponechte jej prázdný, chcete-li odesílat přes JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Dopis jménem FBI, Interpolu, MMF…",
@@ -59,6 +67,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Servery účtu, přihlášení a jméno jsou v jeho vlastním Nastavení účtu. Každá změna zde se použije okamžitě a uloží se; není co potvrzovat.",
   "An address looks like you@example.com.": "Adresa vypadá takto: vy@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Zálohový podvod – milióny čekají za malý poplatek",
+  "An upload is still running — quit anyway?": "Nahrávání stále probíhá – přesto ukončit?",
   "Any mail about cryptocurrency (a word of caution)": "Jakákoli pošta o kryptoměnách (upozornění)",
   "App-specific password": "Heslo pro aplikaci",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Jako nápověda se adresa zobrazí vedle ukazatele, když spočívá na odkazu, a stavový řádek zůstane volný pro samotnou poštu.",
@@ -258,6 +267,8 @@
   "Privacy": "Soukromí",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Soukromí – kdy se stahují obrázky z webu (vždy, jen z důvěryhodných webů a od důvěryhodných odesílatelů a z vašich kontaktů, nebo nikdy samy), zda se stahují ikony známých odesílatelů a hlavní heslo vyžadované při každém spuštění.",
   "Quit UltraMail?": "Ukončit UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Ukončením se zastaví a soubor nedorazí.",
+  "Quitting stops them, and the files do not arrive.": "Ukončením se zastaví a soubory nedorazí.",
   "Reading": "Čtení",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Čtení – kde se zpráva otevírá, jak široký je seznam složek, zda se HTML pošta zobrazuje formátovaně, nebo jako prostý text, velikost jejího textu, jaká pošta se počítá jako čekající na vaši odpověď a kde se zobrazují přílohy zprávy.",
   "recipient@example.com, …": "prijemce@example.com, …",
@@ -485,6 +496,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Ikony webů: u každého jiného odesílatele, jehož pošta prošla kontrolou podvodů, se z domovské stránky domény, ze které píše, přečte její ikona – jednou a po týdnu znovu, pokud žádná nebyla. Webový server odesílatele se tím dozví, že se někdo díval, ne však na kterou zprávu; nikdy se nezjišťuje u spamu, podvodů, složky nevyžádané pošty ani poskytovatele schránek jako gmail.com.",
   "What a colour is for: the text, or the background behind it": "K čemu barva slouží: k textu, nebo k pozadí za ním",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Co chrání: hesla vašich poštovních účtů a klíč, kterým je šifrována pošta uložená v tomto počítači – schránka, adresář, pošta k odeslání a každá stažená zpráva. Bez něj je nikdo nepřečte, ani ten, kdo zkopíruje celou složku s daty.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "To, co bylo odesláno, se z účtu {0} odstraní při příštím použití aplikací UltraMail.",
   "When a message has been sent successfully:": "Po úspěšném odeslání zprávy:",
   "When new mail arrives while UltraMail runs:": "Když za běhu UltraMail dorazí nová pošta:",
   "When the pictures a message links to on the web are downloaded:": "Kdy se stahují obrázky, na které zpráva na webu odkazuje:",
@@ -504,9 +516,24 @@
   "Your mail passwords cannot be unlocked on this build.": "Hesla k poště nelze v tomto sestavení odemknout.",
   "Your password": "Vaše heslo",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: zadejte heslo aplikace (účet Yahoo > Zabezpečení účtu > Vytvořit heslo aplikace).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} stahování stále probíhá – přesto ukončit?",
+    "few": "{n} stahování stále probíhají – přesto ukončit?",
+    "other": "{n} stahování stále probíhá – přesto ukončit?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} zpráva čeká na odeslání. UltraMail to zkusí znovu sám – dříve, až se obnoví připojení. Zprávu, kterou server stále odmítá, lze zde opravit (Upravit) nebo odstranit.",
     "few": "{n} zprávy čekají na odeslání. UltraMail to zkusí znovu sám – dříve, až se obnoví připojení. Zprávu, kterou server stále odmítá, lze zde opravit (Upravit) nebo odstranit.",
     "other": "{n} zpráv čeká na odeslání. UltraMail to zkusí znovu sám – dříve, až se obnoví připojení. Zprávu, kterou server stále odmítá, lze zde opravit (Upravit) nebo odstranit."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} přenos stále probíhá – přesto ukončit?",
+    "few": "{n} přenosy stále probíhají – přesto ukončit?",
+    "other": "{n} přenosů stále probíhá – přesto ukončit?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} nahrávání stále probíhá – přesto ukončit?",
+    "few": "{n} nahrávání stále probíhají – přesto ukončit?",
+    "other": "{n} nahrávání stále probíhá – přesto ukončit?"
   }
 }

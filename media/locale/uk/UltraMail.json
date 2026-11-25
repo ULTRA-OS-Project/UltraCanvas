@@ -3,12 +3,20 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "«Re:» або «Fw:» від відправника, якому ви ніколи не писали",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "Не вдалося записати «{0}» до кешу вкладень у {1}. Переконайтеся, що папка існує й доступна для запису.",
+  "\"{0}\" is still being downloaded from {1}.": "Файл «{0}» усе ще завантажується з облікового запису {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "Файл «{0}» усе ще вивантажується до облікового запису {1}.",
   "(unnamed)": "(без назви)",
+  "... and {n} more.": {
+    "one": "... і ще {n}.",
+    "few": "... і ще {n}.",
+    "many": "... і ще {n}."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Пошта заблокованого відправника позначається як спам: помаранчева рамка й смуга над повідомленням. Заблокований домен блокує й свої піддомени. Нічого не переміщується й не видаляється: «Позначити як спам» переміщує повідомлення до папки небажаної пошти.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Перевірка, яка ще виконується, коли настає час наступної, завершується: обліковий запис ніколи не перевіряється двічі одночасно.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Криптоплатіж не можна скасувати: той, хто його отримав, залишає його собі. Жоден справжній гаманець, біржа чи служба підтримки не просить вашу фразу відновлення (seed-фразу) або приватний ключ, і жодна справжня інвестиція не гарантує прибутку. Ніколи не надсилайте криптовалюту тому, кого знаєте лише з електронної пошти чи інтернету.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Шахрайство з криптовалютою: фраза відновлення, гаманець для платежу",
   "A dangerous attachment - a program, or one dressed as a document": "Небезпечне вкладення: програма або програма, що видає себе за документ",
+  "A download is still running — quit anyway?": "Завантаження ще триває — усе одно вийти?",
   "A horizontal line": "Горизонтальна лінія",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Сервер JMAP доступний через HTTPS, зазвичай на порту 443, і відповідає за адресою /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus та Apache James: поштовий хост). Пошту читають і надсилають через нього: сервер вихідної пошти (SMTP) необов’язковий — залиште його порожнім, щоб надсилати через JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Лист від імені ФБР, Інтерполу, МВФ…",
@@ -59,6 +67,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Сервери, вхід і назва облікового запису містяться в його власних налаштуваннях. Кожна зміна тут застосовується й зберігається одразу; підтверджувати нічого не потрібно.",
   "An address looks like you@example.com.": "Адреса виглядає як you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Лист про аванс: мільйони чекають на невелику оплату",
+  "An upload is still running — quit anyway?": "Вивантаження ще триває — усе одно вийти?",
   "Any mail about cryptocurrency (a word of caution)": "Будь-який лист про криптовалюту (застереження)",
   "App-specific password": "Пароль програми",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Як підказка: адреса з’являється біля вказівника, поки той стоїть на посиланні, а рядок стану залишається вільним для самої пошти.",
@@ -258,6 +267,8 @@
   "Privacy": "Конфіденційність",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Конфіденційність: коли завантажуються зображення з вебу (завжди, лише з довірених вами вебсайтів і відправників та з ваших контактів або ніколи самостійно), чи завантажуються значки відомих відправників, а також основний пароль, що запитується під час кожного запуску.",
   "Quit UltraMail?": "Вийти з UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Під час виходу воно зупиниться, і файл не надійде.",
+  "Quitting stops them, and the files do not arrive.": "Під час виходу вони зупиняться, і файли не надійдуть.",
   "Reading": "Читання",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Читання: де відкривається повідомлення, яка ширина списку папок, чи показується пошта HTML з форматуванням або звичайним текстом, розмір її тексту, яка пошта вважається такою, що очікує вашої відповіді, і де показуються вкладення повідомлення.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -485,6 +496,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Значки вебсайтів: для кожного іншого відправника, чия пошта пройшла перевірку на шахрайство, читається головна сторінка домену, з якого він пише, щоб отримати її значок — один раз, і ще раз через тиждень, якщо значка не було. Це повідомляє вебсерверу відправника, що хтось дивився, хоча й не яке саме повідомлення; ніколи не запитується для спаму, шахрайства, папки небажаної пошти чи постачальника поштових скриньок на кшталт gmail.com.",
   "What a colour is for: the text, or the background behind it": "Для чого колір: для тексту чи для тла за ним",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Що він захищає: паролі ваших облікових записів пошти та ключ, яким зашифровано пошту, збережену на цьому комп’ютері: поштову скриньку, адресну книгу, вихідні й кожне завантажене повідомлення. Без нього ніхто не може їх прочитати, навіть той, хто скопіює всю папку даних.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Надіслане буде видалено з {0} під час наступного звернення UltraMail до цього облікового запису.",
   "When a message has been sent successfully:": "Коли повідомлення успішно надіслано:",
   "When new mail arrives while UltraMail runs:": "Коли надходить нова пошта, поки працює UltraMail:",
   "When the pictures a message links to on the web are downloaded:": "Коли завантажуються зображення з вебу, на які посилається повідомлення:",
@@ -504,9 +516,24 @@
   "Your mail passwords cannot be unlocked on this build.": "У цій збірці паролі вашої пошти не можна розблокувати.",
   "Your password": "Ваш пароль",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: введіть пароль програми (обліковий запис Yahoo > Безпека облікового запису > Створити пароль програми).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} завантаження ще триває — усе одно вийти?",
+    "few": "{n} завантаження ще тривають — усе одно вийти?",
+    "many": "{n} завантажень ще тривають — усе одно вийти?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} повідомлення очікує надсилання. UltraMail пробує знову сам — швидше, коли з’єднання відновиться. Повідомлення, яке сервер постійно відхиляє, можна виправити («Редагувати») або видалити тут.",
     "few": "{n} повідомлення очікують надсилання. UltraMail пробує знову сам — швидше, коли з’єднання відновиться. Повідомлення, які сервер постійно відхиляє, можна виправити («Редагувати») або видалити тут.",
     "many": "{n} повідомлень очікують надсилання. UltraMail пробує знову сам — швидше, коли з’єднання відновиться. Повідомлення, які сервер постійно відхиляє, можна виправити («Редагувати») або видалити тут."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} передавання ще триває — усе одно вийти?",
+    "few": "{n} передавання ще тривають — усе одно вийти?",
+    "many": "{n} передавань ще тривають — усе одно вийти?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} вивантаження ще триває — усе одно вийти?",
+    "few": "{n} вивантаження ще тривають — усе одно вийти?",
+    "many": "{n} вивантажень ще тривають — усе одно вийти?"
   }
 }

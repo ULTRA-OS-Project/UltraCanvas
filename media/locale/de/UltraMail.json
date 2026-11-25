@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "„Re:“ oder „Fw:“ von einem Absender, dem Sie nie geschrieben haben",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "„{0}“ konnte nicht in den Anhang-Cache in {1} geschrieben werden. Prüfen Sie, ob der Ordner existiert und beschreibbar ist.",
+  "\"{0}\" is still being downloaded from {1}.": "„{0}“ wird noch von {1} heruntergeladen.",
+  "\"{0}\" is still being uploaded to {1}.": "„{0}“ wird noch zu {1} hochgeladen.",
   "(unnamed)": "(ohne Namen)",
+  "... and {n} more.": {
+    "one": "... und {n} weitere.",
+    "other": "... und {n} weitere."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Eine Nachricht eines blockierten Absenders wird als Spam markiert: durch den orangefarbenen Rahmen und den Streifen über der Nachricht. Eine blockierte Domain blockiert auch ihre Subdomains. Es wird nichts verschoben oder gelöscht – „Als Spam markieren“ verschiebt eine Nachricht in den Spam-Ordner.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Eine Prüfung, die noch läuft, wenn die nächste fällig ist, wird zu Ende geführt – ein Konto wird nie zweimal gleichzeitig geprüft.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Eine Kryptozahlung lässt sich nicht zurückholen: Wer sie erhält, behält sie. Keine echte Wallet, Börse und kein echter Support fragt nach Ihrer Wiederherstellungsphrase (Seed-Phrase) oder Ihrem privaten Schlüssel, und keine echte Geldanlage garantiert einen Gewinn. Senden Sie nie Kryptowährung an jemanden, den Sie nur aus E-Mails oder dem Internet kennen.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Ein Kryptobetrug – eine Wiederherstellungsphrase, eine Wallet zum Einzahlen",
   "A dangerous attachment - a program, or one dressed as a document": "Ein gefährlicher Anhang – ein Programm oder eines, das sich als Dokument ausgibt",
+  "A download is still running — quit anyway?": "Ein Download läuft noch – trotzdem beenden?",
   "A horizontal line": "Eine horizontale Linie",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Ein JMAP-Server wird über HTTPS erreicht, meist auf Port 443, und antwortet unter /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus und Apache James: der Mailhost). Darüber werden E-Mails gelesen und gesendet: Der Postausgangsserver (SMTP) ist optional – lassen Sie ihn leer, um über JMAP zu senden.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Ein Brief im Namen des FBI, von Interpol, des IWF …",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Die Server, die Anmeldung und der Name eines Kontos stehen in dessen eigenen Kontoeinstellungen. Jede Änderung hier wird sofort angewendet und gespeichert; es gibt nichts zu bestätigen.",
   "An address looks like you@example.com.": "Eine Adresse sieht so aus: sie@beispiel.de.",
   "An advance-fee letter - millions waiting for a small fee": "Ein Vorschussbetrug – Millionen warten gegen eine kleine Gebühr",
+  "An upload is still running — quit anyway?": "Ein Upload läuft noch – trotzdem beenden?",
   "Any mail about cryptocurrency (a word of caution)": "Jede E-Mail über Kryptowährung (ein Hinweis zur Vorsicht)",
   "App-specific password": "App-spezifisches Passwort",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Als Tooltip erscheint die Adresse neben dem Zeiger, solange er auf einem Link ruht, und die Statusleiste bleibt für die E-Mail selbst frei.",
@@ -256,6 +264,8 @@
   "Privacy": "Datenschutz",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Datenschutz – wann Bilder aus dem Web heruntergeladen werden (immer, nur von Websites und Absendern, denen Sie vertrauen, und Ihren Kontakten oder nie von selbst), ob die Symbole bekannter Absender abgerufen werden und ein bei jedem Start abgefragtes Hauptpasswort.",
   "Quit UltraMail?": "UltraMail beenden?",
+  "Quitting stops it, and the file does not arrive.": "Beim Beenden wird er abgebrochen, und die Datei kommt nicht an.",
+  "Quitting stops them, and the files do not arrive.": "Beim Beenden werden sie abgebrochen, und die Dateien kommen nicht an.",
   "Reading": "Lesen",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Lesen – wo eine Nachricht geöffnet wird, wie breit die Ordnerliste ist, ob HTML-E-Mails formatiert oder als reiner Text angezeigt werden, die Größe ihres Textes, welche E-Mails als auf Ihre Antwort wartend gelten und wo die Anhänge einer Nachricht angezeigt werden.",
   "recipient@example.com, …": "empfaenger@beispiel.de, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Website-Symbole: Bei jedem anderen Absender, dessen E-Mail die Betrugsprüfung bestanden hat, wird die Startseite der Domain, von der er schreibt, nach ihrem Symbol gelesen – einmal und nach einer Woche erneut, falls es keines gab. Das teilt dem Webserver des Absenders mit, dass jemand nachgesehen hat, aber nicht, bei welcher Nachricht; nie bei Spam, Betrug, dem Spam-Ordner oder einem E-Mail-Anbieter wie gmail.com.",
   "What a colour is for: the text, or the background behind it": "Wofür eine Farbe gilt: den Text oder den Hintergrund dahinter",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Was es schützt: die Passwörter Ihrer E-Mail-Konten und den Schlüssel, mit dem die auf diesem Computer gespeicherten E-Mails verschlüsselt sind – das Postfach, das Adressbuch, der Postausgang und jede heruntergeladene Nachricht. Ohne es kann sie niemand lesen, nicht einmal jemand, der den ganzen Datenordner kopiert.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Was gesendet wurde, wird bei der nächsten Verwendung von {0} durch UltraMail entfernt.",
   "When a message has been sent successfully:": "Wenn eine Nachricht erfolgreich gesendet wurde:",
   "When new mail arrives while UltraMail runs:": "Wenn neue E-Mails eintreffen, während UltraMail läuft:",
   "When the pictures a message links to on the web are downloaded:": "Wann die Bilder heruntergeladen werden, auf die eine Nachricht im Web verweist:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "Ihre E-Mail-Passwörter können in diesem Build nicht entsperrt werden.",
   "Your password": "Ihr Passwort",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: Geben Sie ein App-Passwort ein (Yahoo-Konto > Kontosicherheit > App-Passwort generieren).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} Download läuft noch – trotzdem beenden?",
+    "other": "{n} Downloads laufen noch – trotzdem beenden?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} Nachricht wartet auf das Senden. UltraMail versucht es selbst erneut – früher, wenn die Verbindung wieder da ist. Eine Nachricht, die der Server immer wieder ablehnt, kann hier korrigiert (Bearbeiten) oder gelöscht werden.",
     "other": "{n} Nachrichten warten auf das Senden. UltraMail versucht es selbst erneut – früher, wenn die Verbindung wieder da ist. Eine Nachricht, die der Server immer wieder ablehnt, kann hier korrigiert (Bearbeiten) oder gelöscht werden."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} Übertragung läuft noch – trotzdem beenden?",
+    "other": "{n} Übertragungen laufen noch – trotzdem beenden?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} Upload läuft noch – trotzdem beenden?",
+    "other": "{n} Uploads laufen noch – trotzdem beenden?"
   }
 }

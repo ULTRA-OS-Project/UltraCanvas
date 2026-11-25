@@ -3,12 +3,18 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "한 번도 메일을 보낸 적 없는 발신자의 \"Re:\" 또는 \"Fw:\"",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "\"{0}\"을(를) {1}의 첨부 파일 캐시에 쓸 수 없습니다. 폴더가 있고 쓰기 가능한지 확인하세요.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" 파일을 {1}에서 아직 다운로드하는 중입니다.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" 파일을 {1}에 아직 업로드하는 중입니다.",
   "(unnamed)": "(이름 없음)",
+  "... and {n} more.": {
+    "other": "... 외 {n}개."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "차단한 발신자의 메일은 주황색 테두리와 메시지 위의 띠로 스팸 표시됩니다. 차단한 도메인은 하위 도메인도 차단합니다. 이동하거나 삭제되는 것은 없으며, \"스팸으로 표시\"를 선택하면 메시지가 정크 폴더로 이동합니다.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "다음 확인 시각에 이전 확인이 아직 실행 중이면 끝날 때까지 기다리며, 계정은 동시에 두 번 확인되지 않습니다.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "암호화폐 송금은 되돌릴 수 없으며 받은 사람이 가져갑니다. 정상적인 지갑, 거래소, 고객 센터는 복구 문구(시드 문구)나 개인 키를 절대 요구하지 않으며, 수익을 보장하는 정상적인 투자는 없습니다. 전자 메일이나 인터넷으로만 아는 사람에게 암호화폐를 보내지 마세요.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "암호화폐 사기 - 복구 문구 요구, 송금할 지갑 주소 제시",
   "A dangerous attachment - a program, or one dressed as a document": "위험한 첨부 파일 - 프로그램 또는 문서로 위장한 파일",
+  "A download is still running — quit anyway?": "다운로드가 아직 진행 중입니다. 그래도 종료하시겠습니까?",
   "A horizontal line": "가로줄",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "JMAP 서버는 HTTPS(보통 443 포트)로 접속하며 /.well-known/jmap에서 응답합니다(Fastmail: api.fastmail.com, Stalwart, Cyrus, Apache James: 메일 호스트). 메일은 이를 통해 읽고 보냅니다. 보내는 메일(SMTP) 서버는 선택 사항이며 비워 두면 JMAP으로 보냅니다.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "FBI, 인터폴, IMF 등의 이름으로 온 편지",
@@ -55,6 +61,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "계정의 서버, 로그인, 이름은 각 계정 설정에 있습니다. 여기서 변경하는 모든 내용은 즉시 적용되고 저장되며 확인할 것이 없습니다.",
   "An address looks like you@example.com.": "주소는 you@example.com 형식입니다.",
   "An advance-fee letter - millions waiting for a small fee": "선불 수수료 편지 - 소액의 수수료만 내면 수백만 원이 기다린다는 내용",
+  "An upload is still running — quit anyway?": "업로드가 아직 진행 중입니다. 그래도 종료하시겠습니까?",
   "Any mail about cryptocurrency (a word of caution)": "암호화폐에 관한 모든 메일(주의 문구)",
   "App-specific password": "앱 전용 암호",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "툴팁으로 설정하면 링크 위에 포인터를 올려 둘 동안 주소가 포인터 옆에 표시되며, 상태 표시줄은 메일 자체를 위해 비워 둡니다.",
@@ -254,6 +261,8 @@
   "Privacy": "개인정보 보호",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "개인정보 보호 - 웹의 그림을 언제 다운로드할지(항상, 신뢰하는 웹사이트·발신자·내 연락처에서만, 또는 자동으로 하지 않음), 알려진 발신자의 아이콘을 가져올지, 시작할 때마다 기본 암호를 요구할지 설정합니다.",
   "Quit UltraMail?": "UltraMail을 종료하시겠습니까?",
+  "Quitting stops it, and the file does not arrive.": "종료하면 중단되며 파일이 전달되지 않습니다.",
+  "Quitting stops them, and the files do not arrive.": "종료하면 중단되며 파일이 전달되지 않습니다.",
   "Reading": "읽기",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "읽기 - 메시지를 여는 위치, 폴더 목록의 너비, HTML 메일을 서식 있게 표시할지 일반 텍스트로 표시할지, 텍스트 크기, 답변 대기로 볼 메일, 첨부 파일을 표시하는 위치를 설정합니다.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -477,6 +486,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "웹사이트 아이콘: 사기 검사를 통과한 다른 발신자는 발신 도메인의 홈페이지에서 아이콘을 한 번 읽으며, 없으면 일주일 후 다시 읽습니다. 이 경우 발신자의 웹 서버에 누군가 확인했다는 사실이 전달되지만 어느 메시지인지는 알 수 없습니다. 스팸, 사기, 정크 폴더, gmail.com 같은 메일 제공업체에는 요청하지 않습니다.",
   "What a colour is for: the text, or the background behind it": "색의 용도: 텍스트 또는 그 뒤의 배경",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "보호 대상: 메일 계정의 암호와 이 컴퓨터에 저장된 메일(메일함, 주소록, 보낼 편지함, 다운로드한 모든 메시지)을 암호화하는 키입니다. 이것이 없으면 데이터 폴더 전체를 복사해도 누구도 읽을 수 없습니다.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "보낸 내용은 UltraMail이 {0}을(를) 다음에 사용할 때 삭제됩니다.",
   "When a message has been sent successfully:": "메시지를 성공적으로 보냈을 때:",
   "When new mail arrives while UltraMail runs:": "UltraMail 실행 중 새 메일이 도착했을 때:",
   "When the pictures a message links to on the web are downloaded:": "메시지가 웹에서 링크한 그림을 다운로드하는 시점:",
@@ -496,7 +506,16 @@
   "Your mail passwords cannot be unlocked on this build.": "이 빌드에서는 메일 암호의 잠금을 해제할 수 없습니다.",
   "Your password": "내 암호",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: 앱 암호를 입력하세요(Yahoo 계정 > 계정 보안 > 앱 암호 생성).",
+  "{n} download is still running — quit anyway?": {
+    "other": "다운로드 {n}개가 아직 진행 중입니다. 그래도 종료하시겠습니까?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "other": "보내기를 기다리는 메시지가 {n}개 있습니다. UltraMail이 자동으로 다시 시도하며, 연결이 복구되면 더 빨리 시도합니다. 서버가 계속 거부하는 메시지는 여기서 수정(편집)하거나 삭제할 수 있습니다."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "전송 {n}개가 아직 진행 중입니다. 그래도 종료하시겠습니까?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "업로드 {n}개가 아직 진행 중입니다. 그래도 종료하시겠습니까?"
   }
 }

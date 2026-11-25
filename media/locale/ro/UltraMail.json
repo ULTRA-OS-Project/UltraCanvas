@@ -3,12 +3,20 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "„Re:” sau „Fw:” de la un expeditor căruia nu i-ați scris niciodată",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "„{0}” nu a putut fi scris în memoria cache a atașamentelor din {1}. Verificați dacă dosarul există și poate fi scris.",
+  "\"{0}\" is still being downloaded from {1}.": "„{0}” încă se descarcă de la {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "„{0}” încă se încarcă pe {1}.",
   "(unnamed)": "(fără nume)",
+  "... and {n} more.": {
+    "one": "... și încă {n}.",
+    "few": "... și încă {n}.",
+    "other": "... și încă {n}."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Mesajele unui expeditor blocat sunt marcate ca spam: cadrul portocaliu și banda de deasupra mesajului. Un domeniu blocat blochează și subdomeniile sale. Nimic nu este mutat sau șters - „Marchează ca spam” mută un mesaj în dosarul de nedorite.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "O verificare care încă rulează când se cuvine următoarea este lăsată să se termine - un cont nu este niciodată verificat de două ori simultan.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "O plată în criptomonede nu poate fi anulată: cine o primește o păstrează. Niciun portofel, nicio bursă și niciun serviciu de asistență real nu vă cere fraza de recuperare (seed) sau cheia privată, iar nicio investiție reală nu garantează profit. Nu trimiteți niciodată criptomonede cuiva pe care îl cunoașteți doar din e-mail sau de pe internet.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "O fraudă cu criptomonede - o frază de recuperare, un portofel în care să plătiți",
   "A dangerous attachment - a program, or one dressed as a document": "Un atașament periculos - un program sau unul deghizat în document",
+  "A download is still running — quit anyway?": "O descărcare este încă în curs — ieșiți oricum?",
   "A horizontal line": "O linie orizontală",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Un server JMAP se contactează prin HTTPS, de obicei pe portul 443, și răspunde la /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus și Apache James: gazda de e-mail). Poșta se citește și se trimite prin el: serverul de ieșire (SMTP) este opțional - lăsați-l gol pentru a trimite prin JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "O scrisoare în numele FBI, Interpol, FMI ...",
@@ -59,6 +67,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Serverele, conectarea și numele unui cont se află în propriile Setări cont. Fiecare modificare de aici se aplică imediat și este salvată; nu este nimic de confirmat.",
   "An address looks like you@example.com.": "O adresă arată ca dvs@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "O scrisoare cu taxă în avans - milioane care așteaptă pentru o taxă mică",
+  "An upload is still running — quit anyway?": "O încărcare este încă în curs — ieșiți oricum?",
   "Any mail about cryptocurrency (a word of caution)": "Orice e-mail despre criptomonede (un cuvânt de prudență)",
   "App-specific password": "Parolă specifică aplicației",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Ca sfat, adresa apare lângă cursor cât timp acesta stă pe un link, iar bara de stare rămâne liberă pentru e-mailul însuși.",
@@ -258,6 +267,8 @@
   "Privacy": "Confidențialitate",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Confidențialitate - când se descarcă imaginile de pe web (întotdeauna, doar de pe site-uri web și expeditori de încredere și de la contactele dvs. sau niciodată de la sine), dacă se preiau pictogramele expeditorilor cunoscuți și o parolă principală cerută la fiecare pornire.",
   "Quit UltraMail?": "Părăsiți UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Ieșirea o oprește, iar fișierul nu ajunge.",
+  "Quitting stops them, and the files do not arrive.": "Ieșirea le oprește, iar fișierele nu ajung.",
   "Reading": "Citire",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Citire - unde se deschide un mesaj, cât de lată este lista de dosare, dacă poșta HTML se afișează formatată sau ca text simplu, dimensiunea textului, ce poștă contează ca așteptând răspunsul dvs. și unde se afișează atașamentele unui mesaj.",
   "recipient@example.com, …": "destinatar@example.com, …",
@@ -485,6 +496,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Pictogramele site-urilor web: pentru orice alt expeditor al cărui mesaj a trecut verificarea de fraudă, pagina de start a domeniului de la care scrie este citită pentru pictograma ei - o singură dată și din nou după o săptămână dacă nu exista una. Aceasta spune serverului web al expeditorului că cineva a verificat, dar nu ce mesaj; nu se face niciodată pentru spam, fraude, dosarul de nedorite sau un furnizor de căsuțe poștale precum gmail.com.",
   "What a colour is for: the text, or the background behind it": "La ce servește o culoare: textul sau fundalul din spatele lui",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Ce protejează: parolele conturilor dvs. de e-mail și cheia cu care este criptată poșta stocată pe acest calculator - căsuța poștală, agenda, Ieșirea și fiecare mesaj descărcat. Fără ea nimeni nu le poate citi, nici măcar cine copiază întregul dosar de date.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Ce a fost trimis este eliminat din {0} data viitoare când UltraMail îl folosește.",
   "When a message has been sent successfully:": "Când un mesaj a fost trimis cu succes:",
   "When new mail arrives while UltraMail runs:": "Când sosește poștă nouă în timp ce rulează UltraMail:",
   "When the pictures a message links to on the web are downloaded:": "Când se descarcă imaginile la care trimite un mesaj de pe web:",
@@ -504,9 +516,24 @@
   "Your mail passwords cannot be unlocked on this build.": "Parolele dvs. de e-mail nu pot fi deblocate în această versiune.",
   "Your password": "Parola dvs.",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: introduceți o parolă de aplicație (cont Yahoo > Securitatea contului > Generare parolă de aplicație).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} descărcare este încă în curs — ieșiți oricum?",
+    "few": "{n} descărcări sunt încă în curs — ieșiți oricum?",
+    "other": "{n} de descărcări sunt încă în curs — ieșiți oricum?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} mesaj așteaptă să fie trimis. UltraMail reîncearcă singur - mai repede când conexiunea revine. Un mesaj pe care serverul îl refuză continuu poate fi corectat (Editare) sau șters aici.",
     "few": "{n} mesaje așteaptă să fie trimise. UltraMail reîncearcă singur - mai repede când conexiunea revine. Un mesaj pe care serverul îl refuză continuu poate fi corectat (Editare) sau șters aici.",
     "other": "{n} de mesaje așteaptă să fie trimise. UltraMail reîncearcă singur - mai repede când conexiunea revine. Un mesaj pe care serverul îl refuză continuu poate fi corectat (Editare) sau șters aici."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} transfer este încă în curs — ieșiți oricum?",
+    "few": "{n} transferuri sunt încă în curs — ieșiți oricum?",
+    "other": "{n} de transferuri sunt încă în curs — ieșiți oricum?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} încărcare este încă în curs — ieșiți oricum?",
+    "few": "{n} încărcări sunt încă în curs — ieșiți oricum?",
+    "other": "{n} de încărcări sunt încă în curs — ieșiți oricum?"
   }
 }

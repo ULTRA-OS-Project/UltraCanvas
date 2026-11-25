@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "”Re:” eller ”Fw:” från en avsändare du aldrig skrivit till",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "”{0}” kunde inte skrivas till bilagecachen i {1}. Kontrollera att mappen finns och är skrivbar.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" laddas fortfarande ned från {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" laddas fortfarande upp till {1}.",
   "(unnamed)": "(namnlös)",
+  "... and {n} more.": {
+    "one": "... och {n} till.",
+    "other": "... och {n} till."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Mejl från en blockerad avsändare markeras som skräppost: den orange ramen och remsan ovanför meddelandet. En blockerad domän blockerar även sina underdomäner. Inget flyttas eller tas bort – ”Markera som skräppost” flyttar ett meddelande till skräppostmappen.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "En kontroll som fortfarande pågår när nästa är på väg får avsluta sig – ett konto kontrolleras aldrig två gånger samtidigt.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "En kryptobetalning kan inte hävas: den som tar emot den behåller den. Ingen äkta plånbok, börs eller kundtjänst ber om din återställningsfras (seed-fras) eller privata nyckel, och ingen äkta investering garanterar vinst. Skicka aldrig krypto till någon du bara känner från e-post eller internet.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "En kryptobluff – en återställningsfras, en plånbok att betala in till",
   "A dangerous attachment - a program, or one dressed as a document": "En farlig bilaga – ett program, eller ett som klätt ut sig till dokument",
+  "A download is still running — quit anyway?": "En nedladdning pågår fortfarande – avsluta ändå?",
   "A horizontal line": "En vågrät linje",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "En JMAP-server nås över HTTPS, vanligen på port 443, och svarar på /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus och Apache James: mejlvärden). Mejl läses och skickas via den: den utgående servern (SMTP) är valfri – lämna den tom för att skicka via JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Ett brev i FBI:s, Interpols, IMF:s namn …",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Ett kontos servrar, inloggning och namn finns i dess egna Kontoinställningar. Varje ändring här gäller direkt och sparas; det finns inget att bekräfta.",
   "An address looks like you@example.com.": "En adress ser ut som du@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Ett förskottsbrev – miljoner som väntar mot en liten avgift",
+  "An upload is still running — quit anyway?": "En uppladdning pågår fortfarande – avsluta ändå?",
   "Any mail about cryptocurrency (a word of caution)": "Alla mejl om kryptovaluta (en varning)",
   "App-specific password": "Appspecifikt lösenord",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Som verktygstips visas adressen bredvid pekaren när den vilar på en länk, och statusraden förblir fri för själva mejlet.",
@@ -256,6 +264,8 @@
   "Privacy": "Integritet",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Integritet – när bilder på webben laddas ned (alltid, bara från webbplatser och avsändare du litar på och dina kontakter, eller aldrig av sig själva), om kända avsändares ikoner hämtas, och ett huvudlösenord som efterfrågas vid varje start.",
   "Quit UltraMail?": "Avsluta UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Om du avslutar stoppas den, och filen kommer inte fram.",
+  "Quitting stops them, and the files do not arrive.": "Om du avslutar stoppas de, och filerna kommer inte fram.",
   "Reading": "Läsning",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Läsning – var ett meddelande öppnas, hur bred mapplistan är, om HTML-mejl visas formaterade eller som oformaterad text, textstorleken, vilka mejl som räknas som väntande på ditt svar och var ett meddelandes bilagor visas.",
   "recipient@example.com, …": "mottagare@example.com, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Webbplatsikoner: för varje annan avsändare vars mejl klarade bluffkontrollen läses hemsidan för domänen den skriver från för sin ikon – en gång, och igen efter en vecka om det inte fanns någon. Det talar om för avsändarens webbserver att någon tittat, men inte vilket meddelande; frågas aldrig för skräppost, bluffar, skräppostmappen eller en e-postleverantör som gmail.com.",
   "What a colour is for: the text, or the background behind it": "Vad en färg är till för: texten, eller bakgrunden bakom den",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Vad det skyddar: lösenorden till dina e-postkonton, och nyckeln som mejlen som sparats på den här datorn krypteras med – brevlådan, adressboken, utkorgen och varje nedladdat meddelande. Utan det kan ingen läsa dem, inte ens någon som kopierar hela datamappen.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Det som skickades tas bort från {0} nästa gång UltraMail använder det.",
   "When a message has been sent successfully:": "När ett meddelande har skickats:",
   "When new mail arrives while UltraMail runs:": "När nya mejl kommer medan UltraMail körs:",
   "When the pictures a message links to on the web are downloaded:": "När bilderna ett meddelande länkar till på webben laddas ned:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "Dina e-postlösenord kan inte låsas upp i den här versionen.",
   "Your password": "Ditt lösenord",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: ange ett applösenord (Yahoo-konto > Kontosäkerhet > Skapa applösenord).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} nedladdning pågår fortfarande – avsluta ändå?",
+    "other": "{n} nedladdningar pågår fortfarande – avsluta ändå?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} meddelande väntar på att skickas. UltraMail försöker igen av sig själv – tidigare när anslutningen är tillbaka. Ett meddelande som servern fortsätter att avvisa kan rättas (Redigera) eller tas bort här.",
     "other": "{n} meddelanden väntar på att skickas. UltraMail försöker igen av sig själv – tidigare när anslutningen är tillbaka. Ett meddelande som servern fortsätter att avvisa kan rättas (Redigera) eller tas bort här."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} överföring pågår fortfarande – avsluta ändå?",
+    "other": "{n} överföringar pågår fortfarande – avsluta ändå?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} uppladdning pågår fortfarande – avsluta ändå?",
+    "other": "{n} uppladdningar pågår fortfarande – avsluta ändå?"
   }
 }

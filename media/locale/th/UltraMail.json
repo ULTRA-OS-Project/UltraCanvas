@@ -3,12 +3,18 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "“Re:” หรือ “Fw:” จากผู้ส่งที่คุณไม่เคยเขียนถึง",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "เขียน “{0}” ลงแคชไฟล์แนบใน {1} ไม่ได้ โปรดตรวจสอบว่ามีโฟลเดอร์นั้นและเขียนได้",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" ยังคงดาวน์โหลดจาก {1} อยู่",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" ยังคงอัปโหลดไปยัง {1} อยู่",
   "(unnamed)": "(ไม่มีชื่อ)",
+  "... and {n} more.": {
+    "other": "... และอีก {n} รายการ"
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "จดหมายจากผู้ส่งที่ถูกบล็อกจะถูกทำเครื่องหมายเป็นสแปม: กรอบสีส้มและแถบเหนือข้อความ โดเมนที่ถูกบล็อกจะบล็อกโดเมนย่อยด้วย ไม่มีอะไรถูกย้ายหรือลบ “ทำเครื่องหมายเป็นสแปม” จะย้ายข้อความไปที่โฟลเดอร์จดหมายขยะ",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "การตรวจสอบที่ยังทำงานอยู่เมื่อถึงเวลาตรวจครั้งถัดไปจะปล่อยให้เสร็จก่อน บัญชีจะไม่ถูกตรวจสองครั้งพร้อมกัน",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "การชำระเงินด้วยคริปโตเรียกคืนไม่ได้ ใครที่ได้รับก็ได้ไป กระเป๋าเงิน แพลตฟอร์มแลกเปลี่ยน หรือฝ่ายช่วยเหลือที่แท้จริงไม่มีทางขอวลีกู้คืน (seed phrase) หรือคีย์ส่วนตัวของคุณ และไม่มีการลงทุนที่แท้จริงใดรับประกันกำไร อย่าส่งคริปโตให้คนที่คุณรู้จักจากอีเมลหรืออินเทอร์เน็ตเท่านั้น",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "การหลอกลวงเกี่ยวกับสกุลเงินดิจิทัล - วลีกู้คืน กระเป๋าเงินที่ให้โอนเงินเข้า",
   "A dangerous attachment - a program, or one dressed as a document": "ไฟล์แนบอันตราย - โปรแกรม หรือโปรแกรมที่ปลอมเป็นเอกสาร",
+  "A download is still running — quit anyway?": "มีการดาวน์โหลดที่ยังทำงานอยู่ — ออกอยู่ดีหรือไม่",
   "A horizontal line": "เส้นแนวนอน",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "เซิร์ฟเวอร์ JMAP เชื่อมต่อผ่าน HTTPS โดยปกติที่พอร์ต 443 และตอบที่ /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus และ Apache James: โฮสต์เมล) อ่านและส่งเมลผ่านเซิร์ฟเวอร์นี้ เซิร์ฟเวอร์ขาออก (SMTP) เป็นทางเลือก ปล่อยว่างเพื่อส่งผ่าน JMAP",
   "A letter in the name of the FBI, Interpol, the IMF ...": "จดหมายในนามของ FBI, Interpol, IMF ...",
@@ -55,6 +61,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "เซิร์ฟเวอร์ การลงชื่อเข้าใช้ และชื่อของบัญชีอยู่ในการตั้งค่าบัญชีของบัญชีนั้น ทุกการเปลี่ยนแปลงที่นี่มีผลทันทีและถูกบันทึกไว้ ไม่ต้องยืนยัน",
   "An address looks like you@example.com.": "ที่อยู่มีลักษณะเช่น you@example.com",
   "An advance-fee letter - millions waiting for a small fee": "จดหมายเรียกค่าธรรมเนียมล่วงหน้า - เงินหลายล้านรอคุณอยู่ แลกกับค่าธรรมเนียมเล็กน้อย",
+  "An upload is still running — quit anyway?": "มีการอัปโหลดที่ยังทำงานอยู่ — ออกอยู่ดีหรือไม่",
   "Any mail about cryptocurrency (a word of caution)": "จดหมายใดๆ เกี่ยวกับสกุลเงินดิจิทัล (ข้อควรระวัง)",
   "App-specific password": "รหัสผ่านเฉพาะแอป",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "เมื่อเป็นคำแนะนำเครื่องมือ ที่อยู่จะปรากฏข้างตัวชี้ขณะวางบนลิงก์ และแถบสถานะจะว่างสำหรับตัวจดหมายเอง",
@@ -254,6 +261,8 @@
   "Privacy": "ความเป็นส่วนตัว",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "ความเป็นส่วนตัว - ดาวน์โหลดรูปภาพบนเว็บเมื่อใด (เสมอ เฉพาะจากเว็บไซต์และผู้ส่งที่เชื่อถือและผู้ติดต่อของคุณ หรือไม่โหลดเอง) ดึงไอคอนของผู้ส่งที่รู้จักหรือไม่ และขอรหัสผ่านหลักทุกครั้งที่เริ่มทำงาน",
   "Quit UltraMail?": "ออกจาก UltraMail หรือไม่",
+  "Quitting stops it, and the file does not arrive.": "การออกจะหยุดการทำงานนั้น และไฟล์จะไม่ถูกส่งไปถึง",
+  "Quitting stops them, and the files do not arrive.": "การออกจะหยุดการทำงานเหล่านั้น และไฟล์จะไม่ถูกส่งไปถึง",
   "Reading": "การอ่าน",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "การอ่าน - ข้อความเปิดที่ใด รายการโฟลเดอร์กว้างเท่าใด แสดงเมล HTML แบบจัดรูปแบบหรือข้อความธรรมดา ขนาดตัวอักษร เมลใดนับว่ารอการตอบกลับ และแสดงไฟล์แนบของข้อความที่ใด",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -477,6 +486,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "ไอคอนเว็บไซต์: สำหรับผู้ส่งอื่นที่เมลผ่านการตรวจหลอกลวง จะอ่านหน้าแรกของโดเมนที่ส่งมาเพื่อหาไอคอน ครั้งเดียว และอีกครั้งหลังหนึ่งสัปดาห์หากไม่มี ซึ่งบอกเว็บเซิร์ฟเวอร์ของผู้ส่งว่ามีคนดู แต่ไม่ได้บอกว่าข้อความใด และจะไม่ขอสำหรับสแปม การหลอกลวง โฟลเดอร์จดหมายขยะ หรือผู้ให้บริการอีเมลเช่น gmail.com",
   "What a colour is for: the text, or the background behind it": "สีใช้ทำอะไร: ข้อความ หรือพื้นหลังด้านหลัง",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "สิ่งที่ปกป้อง: รหัสผ่านของบัญชีอีเมล และคีย์ที่เข้ารหัสเมลที่เก็บบนคอมพิวเตอร์เครื่องนี้ ได้แก่ กล่องจดหมาย สมุดที่อยู่ กล่องจดหมายออก และทุกข้อความที่ดาวน์โหลด หากไม่มี จะไม่มีใครอ่านได้ แม้แต่คนที่คัดลอกโฟลเดอร์ข้อมูลทั้งหมด",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "สิ่งที่ส่งไปแล้วจะถูกลบออกจาก {0} ในครั้งถัดไปที่ UltraMail ใช้งาน",
   "When a message has been sent successfully:": "เมื่อส่งข้อความสำเร็จ:",
   "When new mail arrives while UltraMail runs:": "เมื่อมีเมลใหม่เข้ามาขณะ UltraMail ทำงาน:",
   "When the pictures a message links to on the web are downloaded:": "เมื่อดาวน์โหลดรูปภาพที่ข้อความลิงก์ไปบนเว็บ:",
@@ -496,7 +506,16 @@
   "Your mail passwords cannot be unlocked on this build.": "ปลดล็อกรหัสผ่านอีเมลของคุณบนบิลด์นี้ไม่ได้",
   "Your password": "รหัสผ่านของคุณ",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: ป้อนรหัสผ่านเฉพาะแอป (บัญชี Yahoo > ความปลอดภัยของบัญชี > สร้างรหัสผ่านแอป)",
+  "{n} download is still running — quit anyway?": {
+    "other": "ดาวน์โหลด {n} รายการยังทำงานอยู่ — ออกอยู่ดีหรือไม่"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "other": "มี {n} ข้อความรอส่ง UltraMail จะลองใหม่เอง เร็วขึ้นเมื่อการเชื่อมต่อกลับมา ข้อความที่เซิร์ฟเวอร์ปฏิเสธซ้ำสามารถแก้ไข (แก้ไข) หรือลบได้ที่นี่"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "การถ่ายโอน {n} รายการยังทำงานอยู่ — ออกอยู่ดีหรือไม่"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "อัปโหลด {n} รายการยังทำงานอยู่ — ออกอยู่ดีหรือไม่"
   }
 }

@@ -3,12 +3,18 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "一度も書いたことのない送信者からの「Re:」または「Fw:」",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "「{0}」を {1} の添付ファイルキャッシュに書き込めませんでした。フォルダーが存在し、書き込み可能か確認してください。",
+  "\"{0}\" is still being downloaded from {1}.": "「{0}」は{1}からまだダウンロード中です。",
+  "\"{0}\" is still being uploaded to {1}.": "「{0}」は{1}へまだアップロード中です。",
   "(unnamed)": "(名前なし)",
+  "... and {n} more.": {
+    "other": "... ほか {n} 件。"
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "ブロックした送信者のメールは迷惑メールとして表示されます。オレンジの枠と、メッセージ上部の帯が目印です。ブロックしたドメインは、そのサブドメインもブロックします。何も移動も削除もされません。「迷惑メールにする」を選ぶと、メッセージが迷惑メールフォルダーに移動します。",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "次の確認の時刻になっても実行中の確認は完了まで待ちます。アカウントが同時に2回確認されることはありません。",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "暗号資産の支払いは取り消せません。受け取った人がそのまま保持します。本物のウォレット、取引所、サポート窓口が、リカバリーフレーズ(シードフレーズ)や秘密鍵を尋ねることはなく、利益を保証する本物の投資もありません。メールやインターネットだけで知り合った相手に、暗号資産を送らないでください。",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "暗号資産の詐欺 - リカバリーフレーズ、支払い先のウォレット",
   "A dangerous attachment - a program, or one dressed as a document": "危険な添付ファイル - プログラム、またはドキュメントに見せかけたもの",
+  "A download is still running — quit anyway?": "ダウンロードがまだ実行中です。それでも終了しますか？",
   "A horizontal line": "水平線",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "JMAP サーバーには HTTPS(通常はポート 443)で接続し、/.well-known/jmap で応答します(Fastmail: api.fastmail.com、Stalwart、Cyrus、Apache James: メールホスト)。メールの読み取りと送信はこれを通して行われます。送信(SMTP)サーバーは任意で、空のままにすると JMAP で送信します。",
   "A letter in the name of the FBI, Interpol, the IMF ...": "FBI、インターポール、IMF などを名乗る手紙",
@@ -55,6 +61,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "アカウントのサーバー、サインイン、名前は、それぞれのアカウント設定にあります。ここでの変更はすぐに適用されて保存されます。確認は不要です。",
   "An address looks like you@example.com.": "アドレスは you@example.com の形式です。",
   "An advance-fee letter - millions waiting for a small fee": "前払い詐欺の手紙 - 少額の手数料で数百万が手に入る",
+  "An upload is still running — quit anyway?": "アップロードがまだ実行中です。それでも終了しますか？",
   "Any mail about cryptocurrency (a word of caution)": "暗号資産に関するメール(注意の表示)",
   "App-specific password": "アプリパスワード",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "ツールチップの場合、リンクの上にポインターを置いている間、アドレスがポインターの横に表示され、ステータスバーはメール自体のために空いたままになります。",
@@ -254,6 +261,8 @@
   "Privacy": "プライバシー",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "プライバシー - ウェブ上の画像をいつダウンロードするか(常に、信頼するウェブサイト・送信者・連絡先からのみ、または自動では読み込まない)、既知の送信者のアイコンを取得するか、起動のたびに求めるプライマリパスワード。",
   "Quit UltraMail?": "UltraMail を終了しますか?",
+  "Quitting stops it, and the file does not arrive.": "終了すると中断され、ファイルは届きません。",
+  "Quitting stops them, and the files do not arrive.": "終了すると中断され、ファイルは届きません。",
   "Reading": "読み取り",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "読み取り - メッセージを開く場所、フォルダー一覧の幅、HTML メールを書式付きで表示するかプレーンテキストにするか、テキストのサイズ、返信待ちとするメール、添付ファイルの表示場所。",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -477,6 +486,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "ウェブサイトアイコン: 詐欺チェックを通過したその他の送信者については、送信元ドメインのホームページを読み取ってアイコンを取得します。1回だけで、アイコンがなかった場合は1週間後にもう一度行います。送信者のウェブサーバーに誰かが見たことは伝わりますが、どのメッセージかは伝わりません。迷惑メール、詐欺、迷惑メールフォルダー、gmail.com のようなメールプロバイダーでは行われません。",
   "What a colour is for: the text, or the background behind it": "色の用途: テキストか、その背景か",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "保護するもの: メールアカウントのパスワードと、このコンピューターに保存されたメール(メールボックス、アドレス帳、送信トレイ、ダウンロード済みのすべてのメッセージ)の暗号化キー。これがないと、データフォルダー全体をコピーした人でも読めません。",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "送信済みの内容は、次に UltraMail が {0} を使用するときに削除されます。",
   "When a message has been sent successfully:": "メッセージの送信が成功したとき:",
   "When new mail arrives while UltraMail runs:": "UltraMail の実行中に新着メールが届いたとき:",
   "When the pictures a message links to on the web are downloaded:": "メッセージがウェブ上でリンクしている画像をダウンロードするタイミング:",
@@ -496,7 +506,16 @@
   "Your mail passwords cannot be unlocked on this build.": "このビルドでは、メールのパスワードのロックを解除できません。",
   "Your password": "パスワード",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: アプリパスワードを入力してください(Yahoo アカウント > アカウントのセキュリティ > アプリパスワードを生成)。",
+  "{n} download is still running — quit anyway?": {
+    "other": "ダウンロード {n} 件がまだ実行中です。それでも終了しますか？"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "other": "{n} 件のメッセージが送信待ちです。UltraMail は自動的に再試行し、接続が戻ればすぐに送信します。サーバーが拒否し続けるメッセージは、ここで修正(編集)または削除できます。"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "転送 {n} 件がまだ実行中です。それでも終了しますか？"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "アップロード {n} 件がまだ実行中です。それでも終了しますか？"
   }
 }

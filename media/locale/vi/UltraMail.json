@@ -3,12 +3,18 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "\"Re:\" hoặc \"Fw:\" từ người gửi bạn chưa từng viết thư",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "Không thể ghi \"{0}\" vào bộ nhớ đệm tệp đính kèm trong {1}. Hãy kiểm tra thư mục tồn tại và ghi được.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" vẫn đang được tải xuống từ {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" vẫn đang được tải lên {1}.",
   "(unnamed)": "(không tên)",
+  "... and {n} more.": {
+    "other": "... và {n} mục khác."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Thư của người gửi bị chặn được đánh dấu là spam: khung màu cam và dải phía trên thư. Tên miền bị chặn cũng chặn các miền con của nó. Không có gì bị di chuyển hay xóa - \"Đánh dấu là spam\" chuyển thư vào thư mục rác.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Lượt kiểm tra còn đang chạy khi lượt tiếp theo đến hạn sẽ được để chạy xong - một tài khoản không bao giờ bị kiểm tra hai lần cùng lúc.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Khoản thanh toán tiền mã hóa không thể thu hồi: ai nhận là giữ. Không ví, sàn giao dịch hay bộ phận hỗ trợ chính hãng nào hỏi cụm từ khôi phục (seed phrase) hoặc khóa riêng của bạn, và không khoản đầu tư chính hãng nào đảm bảo lợi nhuận. Đừng bao giờ gửi tiền mã hóa cho người bạn chỉ biết qua email hoặc Internet.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Lừa đảo tiền mã hóa - cụm từ khôi phục, ví để chuyển tiền vào",
   "A dangerous attachment - a program, or one dressed as a document": "Tệp đính kèm nguy hiểm - một chương trình, hoặc chương trình giả làm tài liệu",
+  "A download is still running — quit anyway?": "Một lượt tải xuống vẫn đang chạy — vẫn thoát?",
   "A horizontal line": "Một đường kẻ ngang",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Máy chủ JMAP được truy cập qua HTTPS, thường ở cổng 443, và trả lời tại /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus và Apache James: máy chủ thư). Thư được đọc và gửi qua nó: máy chủ gửi thư (SMTP) là tùy chọn - để trống để gửi qua JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Thư mạo danh FBI, Interpol, IMF ...",
@@ -55,6 +61,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Máy chủ, đăng nhập và tên của một tài khoản nằm trong Cài đặt tài khoản riêng của nó. Mọi thay đổi ở đây có hiệu lực ngay và được lưu; không cần xác nhận.",
   "An address looks like you@example.com.": "Địa chỉ có dạng you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Thư phí ứng trước - hàng triệu đang chờ để đổi lấy một khoản phí nhỏ",
+  "An upload is still running — quit anyway?": "Một lượt tải lên vẫn đang chạy — vẫn thoát?",
   "Any mail about cryptocurrency (a word of caution)": "Mọi thư về tiền mã hóa (một lời thận trọng)",
   "App-specific password": "Mật khẩu ứng dụng",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Dạng chú giải, địa chỉ hiện cạnh con trỏ khi nó dừng trên liên kết, và thanh trạng thái dành cho chính thư.",
@@ -254,6 +261,8 @@
   "Privacy": "Quyền riêng tư",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Quyền riêng tư - khi nào ảnh trên web được tải (luôn luôn, chỉ từ trang web và người gửi tin cậy cùng danh bạ của bạn, hoặc không bao giờ tự tải), có tải biểu tượng của người gửi đã biết không, và mật khẩu chính được hỏi mỗi lần khởi động.",
   "Quit UltraMail?": "Thoát UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Thoát sẽ dừng lượt đó và tệp sẽ không đến nơi.",
+  "Quitting stops them, and the files do not arrive.": "Thoát sẽ dừng các lượt đó và các tệp sẽ không đến nơi.",
   "Reading": "Đọc thư",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Đọc thư - thư mở ở đâu, danh sách thư mục rộng bao nhiêu, thư HTML hiện có định dạng hay dạng văn bản thuần, cỡ chữ, thư nào được tính là chờ bạn trả lời, và tệp đính kèm của thư hiện ở đâu.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -477,6 +486,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Biểu tượng trang web: với người gửi khác có thư qua kiểm tra lừa đảo, trang chủ của miền họ viết thư từ đó được đọc để lấy biểu tượng - một lần, và lại sau một tuần nếu chưa có. Việc này cho máy chủ web của người gửi biết có người đã xem, nhưng không biết thư nào; không bao giờ hỏi với spam, lừa đảo, thư mục rác hay nhà cung cấp hộp thư như gmail.com.",
   "What a colour is for: the text, or the background behind it": "Màu dùng để làm gì: văn bản, hay nền phía sau nó",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Nó bảo vệ gì: mật khẩu các tài khoản thư của bạn, và khóa mã hóa thư lưu trên máy tính này - hộp thư, sổ địa chỉ, hộp thư đi và mọi thư đã tải. Không có nó không ai đọc được, kể cả người sao chép cả thư mục dữ liệu.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Những gì đã gửi sẽ bị xóa khỏi {0} vào lần tiếp theo UltraMail sử dụng tài khoản này.",
   "When a message has been sent successfully:": "Khi thư đã được gửi thành công:",
   "When new mail arrives while UltraMail runs:": "Khi có thư mới trong lúc UltraMail đang chạy:",
   "When the pictures a message links to on the web are downloaded:": "Khi nào tải ảnh mà thư liên kết trên web:",
@@ -496,7 +506,16 @@
   "Your mail passwords cannot be unlocked on this build.": "Bản dựng này không mở khóa được mật khẩu thư của bạn.",
   "Your password": "Mật khẩu của bạn",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: hãy nhập mật khẩu ứng dụng (tài khoản Yahoo > Bảo mật tài khoản > Tạo mật khẩu ứng dụng).",
+  "{n} download is still running — quit anyway?": {
+    "other": "{n} lượt tải xuống vẫn đang chạy — vẫn thoát?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "other": "{n} thư đang chờ gửi. UltraMail tự thử lại - sớm hơn khi có lại kết nối. Thư mà máy chủ liên tục từ chối có thể sửa (Sửa) hoặc xóa ở đây."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "{n} lượt truyền vẫn đang chạy — vẫn thoát?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "{n} lượt tải lên vẫn đang chạy — vẫn thoát?"
   }
 }

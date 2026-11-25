@@ -3,12 +3,23 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "«Re:» أو «Fw:» من مرسل لم تراسله من قبل",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "تعذّرت كتابة «{0}» في ذاكرة المرفقات المؤقتة في {1}. تأكد من وجود المجلد وإمكانية الكتابة فيه.",
+  "\"{0}\" is still being downloaded from {1}.": "ما زال \"{0}\" قيد التنزيل من {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "ما زال \"{0}\" قيد الرفع إلى {1}.",
   "(unnamed)": "(بلا اسم)",
+  "... and {n} more.": {
+    "zero": "... و{n} أخرى.",
+    "one": "... و{n} أخرى.",
+    "two": "... و{n} أخرى.",
+    "few": "... و{n} أخرى.",
+    "many": "... و{n} أخرى.",
+    "other": "... و{n} أخرى."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "تُوسَم رسائل المرسل المحظور كبريد مزعج: الإطار البرتقالي والشريط أعلى الرسالة. حظر نطاق ما يحظر نطاقاته الفرعية أيضًا. لا يُنقل شيء ولا يُحذف - يؤدي «وضع علامة كبريد مزعج» إلى نقل الرسالة إلى مجلد غير المرغوب فيه.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "إذا كان فحص ما لا يزال جاريًا عند حلول موعد التالي، يُترك ليكتمل - فلا يُفحص الحساب مرتين في وقت واحد.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "لا يمكن استرجاع دفعة العملات المشفّرة: من يستلمها يحتفظ بها. لا تطلب أي محفظة أو منصة تداول أو خدمة دعم حقيقية عبارة الاسترداد (seed phrase) أو المفتاح الخاص، ولا يضمن أي استثمار حقيقي ربحًا. لا ترسل عملات مشفّرة أبدًا إلى شخص لا تعرفه إلا من البريد الإلكتروني أو الإنترنت.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "احتيال بالعملات المشفّرة - عبارة استرداد أو محفظة للدفع إليها",
   "A dangerous attachment - a program, or one dressed as a document": "مرفق خطير - برنامج، أو برنامج متنكّر في هيئة مستند",
+  "A download is still running — quit anyway?": "ما زال تنزيل جاريًا — هل تريد الخروج على أي حال؟",
   "A horizontal line": "خط أفقي",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "يُتصل بخادم JMAP عبر HTTPS، عادةً على المنفذ 443، ويستجيب على /.well-known/jmap (Fastmail: api.fastmail.com؛ وStalwart وCyrus وApache James: مضيف البريد). تُقرأ الرسائل وتُرسل عبره: خادم الصادر (SMTP) اختياري - اتركه فارغًا للإرسال عبر JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "رسالة باسم FBI أو الإنتربول أو صندوق النقد الدولي ...",
@@ -65,6 +76,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "خوادم الحساب وتسجيل الدخول واسمه في إعدادات الحساب الخاصة به. يُطبَّق كل تغيير هنا فورًا ويُحفظ؛ ولا شيء يحتاج إلى تأكيد.",
   "An address looks like you@example.com.": "يبدو العنوان هكذا: you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "رسالة رسوم مسبقة - ملايين في انتظار رسم صغير",
+  "An upload is still running — quit anyway?": "ما زال رفع جاريًا — هل تريد الخروج على أي حال؟",
   "Any mail about cryptocurrency (a word of caution)": "أي رسالة عن العملات المشفّرة (كلمة تحذير)",
   "App-specific password": "كلمة مرور خاصة بالتطبيق",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "كتلميح، يظهر العنوان بجانب المؤشر أثناء استقراره على رابط، ويبقى شريط الحالة حرًا لخدمة البريد نفسه.",
@@ -264,6 +276,8 @@
   "Privacy": "الخصوصية",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "الخصوصية - متى تُنزَّل الصور من الويب (دائمًا، أو فقط من المواقع والمرسلين الذين تثق بهم وجهات اتصالك، أو لا تُنزَّل تلقائيًا أبدًا)، وهل تُجلب أيقونات المرسلين المعروفين، وكلمة مرور أساسية تُطلب عند كل تشغيل.",
   "Quit UltraMail?": "هل تريد إنهاء UltraMail؟",
+  "Quitting stops it, and the file does not arrive.": "الخروج يوقفه ولن يصل الملف.",
+  "Quitting stops them, and the files do not arrive.": "الخروج يوقفها ولن تصل الملفات.",
   "Reading": "القراءة",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "القراءة - أين تُفتح الرسالة، وما عرض قائمة المجلدات، وهل يُعرض بريد HTML منسَّقًا أم نصًا عاديًا، وحجم نصه، وأي بريد يُعدّ في انتظار ردك، وأين تُعرض مرفقات الرسالة.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -497,6 +511,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "أيقونات المواقع: لأي مرسل آخر اجتازت رسائله فحص الاحتيال، تُقرأ الصفحة الرئيسية للنطاق الذي يراسل منه بحثًا عن أيقونته - مرة واحدة، ومرة أخرى بعد أسبوع إن لم توجد. وهذا يُعلم خادم ويب المرسل بأن أحدًا نظر، دون أن يعرف أي رسالة؛ ولا تُطلب أبدًا للبريد المزعج أو الاحتيال أو مجلد غير المرغوب فيه أو مزوّد صناديق البريد مثل gmail.com.",
   "What a colour is for: the text, or the background behind it": "ما الذي يخصصه اللون: النص أم الخلفية خلفه",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "ما تحميه: كلمات مرور حسابات بريدك، والمفتاح الذي يُشفَّر به البريد المخزَّن على هذا الحاسوب - صندوق البريد ودفتر العناوين وصندوق الصادر وكل رسالة منزَّلة. وبدونها لا يستطيع أحد قراءتها، حتى من ينسخ مجلد البيانات بأكمله.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "يُزال ما أُرسل من {0} في المرة التالية التي يستخدمه فيها UltraMail.",
   "When a message has been sent successfully:": "عند إرسال رسالة بنجاح:",
   "When new mail arrives while UltraMail runs:": "عند وصول بريد جديد أثناء تشغيل UltraMail:",
   "When the pictures a message links to on the web are downloaded:": "متى تُنزَّل الصور التي ترتبط بها الرسالة على الويب:",
@@ -516,6 +531,14 @@
   "Your mail passwords cannot be unlocked on this build.": "لا يمكن فتح كلمات مرور بريدك في هذا الإصدار.",
   "Your password": "كلمة المرور الخاصة بك",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: أدخل كلمة مرور تطبيق (حساب Yahoo > أمان الحساب > إنشاء كلمة مرور تطبيق).",
+  "{n} download is still running — quit anyway?": {
+    "zero": "{n} من عمليات التنزيل ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "one": "{n} تنزيل ما زال جاريًا — هل تريد الخروج على أي حال؟",
+    "two": "{n} تنزيلان ما زالا جاريين — هل تريد الخروج على أي حال؟",
+    "few": "{n} من عمليات التنزيل ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "many": "{n} من عمليات التنزيل ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "other": "{n} من عمليات التنزيل ما زالت جارية — هل تريد الخروج على أي حال؟"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "zero": "{n} رسالة في انتظار الإرسال. يعيد UltraMail المحاولة بنفسه - بشكل أسرع عند عودة الاتصال. يمكن تصحيح الرسالة التي يرفضها الخادم باستمرار (تحرير) أو حذفها هنا.",
     "one": "{n} رسالة في انتظار الإرسال. يعيد UltraMail المحاولة بنفسه - بشكل أسرع عند عودة الاتصال. يمكن تصحيح الرسالة التي يرفضها الخادم باستمرار (تحرير) أو حذفها هنا.",
@@ -523,5 +546,21 @@
     "few": "{n} رسائل في انتظار الإرسال. يعيد UltraMail المحاولة بنفسه - بشكل أسرع عند عودة الاتصال. يمكن تصحيح الرسالة التي يرفضها الخادم باستمرار (تحرير) أو حذفها هنا.",
     "many": "{n} رسالة في انتظار الإرسال. يعيد UltraMail المحاولة بنفسه - بشكل أسرع عند عودة الاتصال. يمكن تصحيح الرسالة التي يرفضها الخادم باستمرار (تحرير) أو حذفها هنا.",
     "other": "{n} رسالة في انتظار الإرسال. يعيد UltraMail المحاولة بنفسه - بشكل أسرع عند عودة الاتصال. يمكن تصحيح الرسالة التي يرفضها الخادم باستمرار (تحرير) أو حذفها هنا."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "zero": "{n} من عمليات النقل ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "one": "{n} عملية نقل ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "two": "{n} عمليتا نقل ما زالتا جاريتين — هل تريد الخروج على أي حال؟",
+    "few": "{n} من عمليات النقل ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "many": "{n} من عمليات النقل ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "other": "{n} من عمليات النقل ما زالت جارية — هل تريد الخروج على أي حال؟"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "zero": "{n} من عمليات الرفع ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "one": "{n} عملية رفع ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "two": "{n} عمليتا رفع ما زالتا جاريتين — هل تريد الخروج على أي حال؟",
+    "few": "{n} من عمليات الرفع ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "many": "{n} من عمليات الرفع ما زالت جارية — هل تريد الخروج على أي حال؟",
+    "other": "{n} من عمليات الرفع ما زالت جارية — هل تريد الخروج على أي حال؟"
   }
 }

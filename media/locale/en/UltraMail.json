@@ -66,13 +66,19 @@
   ],
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "\"Re:\" or \"Fw:\" from a sender you never wrote to",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" is still being downloaded from {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" is still being uploaded to {1}.",
   "(unnamed)": "(unnamed)",
+  "... and {n} more.": {
+    "one": "... and {n} more.",
+    "other": "... and {n} more."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "A cryptocurrency scam - a recovery phrase, a wallet to pay into",
   "A dangerous attachment - a program, or one dressed as a document": "A dangerous attachment - a program, or one dressed as a document",
-  "A download is": "A download is",
+  "A download is still running — quit anyway?": "A download is still running — quit anyway?",
   "A horizontal line": "A horizontal line",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "A letter in the name of the FBI, Interpol, the IMF ...",
@@ -121,7 +127,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.",
   "An address looks like you@example.com.": "An address looks like you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "An advance-fee letter - millions waiting for a small fee",
-  "An upload is": "An upload is",
+  "An upload is still running — quit anyway?": "An upload is still running — quit anyway?",
   "Any mail about cryptocurrency (a word of caution)": "Any mail about cryptocurrency (a word of caution)",
   "App-specific password": "App-specific password",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.",
@@ -321,6 +327,8 @@
   "Privacy": "Privacy",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.",
   "Quit UltraMail?": "Quit UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Quitting stops it, and the file does not arrive.",
+  "Quitting stops them, and the files do not arrive.": "Quitting stops them, and the files do not arrive.",
   "Reading": "Reading",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -546,6 +554,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.",
   "What a colour is for: the text, or the background behind it": "What a colour is for: the text, or the background behind it",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "What was sent is removed from {0} the next time UltraMail uses it.",
   "When a message has been sent successfully:": "When a message has been sent successfully:",
   "When new mail arrives while UltraMail runs:": "When new mail arrives while UltraMail runs:",
   "When the pictures a message links to on the web are downloaded:": "When the pictures a message links to on the web are downloaded:",
@@ -564,12 +573,21 @@
   "Your mail account passwords are locked. Enter your master password — sending a message or adding an account will ask for it — and syncing resumes.": "Your mail account passwords are locked. Enter your master password — sending a message or adding an account will ask for it — and syncing resumes.",
   "Your mail passwords cannot be unlocked on this build.": "Your mail passwords cannot be unlocked on this build.",
   "Your password": "Your password",
-  "{0} downloads are": "{0} downloads are",
-  "{0} transfers are": "{0} transfers are",
-  "{0} uploads are": "{0} uploads are",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: enter an app password (Yahoo account > Account security > Generate app password).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} download is still running — quit anyway?",
+    "other": "{n} downloads are still running — quit anyway?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.",
     "other": "{n} messages are waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} transfer is still running — quit anyway?",
+    "other": "{n} transfers are still running — quit anyway?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} upload is still running — quit anyway?",
+    "other": "{n} uploads are still running — quit anyway?"
   }
 }

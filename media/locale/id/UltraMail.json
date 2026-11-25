@@ -3,12 +3,18 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "\"Re:\" atau \"Fw:\" dari pengirim yang tidak pernah Anda tulisi",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "\"{0}\" tidak dapat ditulis ke cache lampiran di {1}. Periksa bahwa folder ada dan dapat ditulis.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" masih diunduh dari {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" masih diunggah ke {1}.",
   "(unnamed)": "(tanpa nama)",
+  "... and {n} more.": {
+    "other": "... dan {n} lainnya."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Email dari pengirim yang diblokir ditandai sebagai spam: bingkai oranye dan strip di atas pesan. Domain yang diblokir juga memblokir subdomainnya. Tidak ada yang dipindah atau dihapus - \"Tandai sebagai spam\" memindahkan pesan ke folder sampah.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Pemeriksaan yang masih berjalan saat yang berikutnya jatuh tempo dibiarkan selesai - sebuah akun tidak pernah diperiksa dua kali sekaligus.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Pembayaran kripto tidak dapat ditarik kembali: siapa yang menerimanya menyimpannya. Tidak ada dompet, bursa, atau help desk asli yang meminta frasa pemulihan (seed phrase) atau kunci privat Anda, dan tidak ada investasi asli yang menjamin keuntungan. Jangan pernah mengirim kripto kepada orang yang hanya Anda kenal lewat email atau internet.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Penipuan kripto - frasa pemulihan, dompet untuk membayar",
   "A dangerous attachment - a program, or one dressed as a document": "Lampiran berbahaya - sebuah program, atau yang menyamar sebagai dokumen",
+  "A download is still running — quit anyway?": "Ada unduhan yang masih berjalan — tetap keluar?",
   "A horizontal line": "Garis horizontal",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Server JMAP dijangkau lewat HTTPS, biasanya di port 443, dan menjawab di /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus, dan Apache James: host email). Email dibaca dan dikirim lewatnya: server keluar (SMTP) bersifat opsional - kosongkan untuk mengirim lewat JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Surat atas nama FBI, Interpol, IMF ...",
@@ -55,6 +61,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Server, proses masuk, dan nama sebuah akun ada di Pengaturan Akun miliknya. Setiap perubahan di sini langsung berlaku dan disimpan; tidak ada yang perlu dikonfirmasi.",
   "An address looks like you@example.com.": "Alamat berbentuk seperti you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Surat biaya di muka - jutaan menunggu dengan biaya kecil",
+  "An upload is still running — quit anyway?": "Ada unggahan yang masih berjalan — tetap keluar?",
   "Any mail about cryptocurrency (a word of caution)": "Setiap email tentang kripto (kata peringatan)",
   "App-specific password": "Kata sandi khusus aplikasi",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Sebagai tooltip, alamat muncul di samping penunjuk saat berhenti di atas tautan, dan bilah status tetap bebas untuk email itu sendiri.",
@@ -254,6 +261,8 @@
   "Privacy": "Privasi",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Privasi - kapan gambar di web diunduh (selalu, hanya dari situs web dan pengirim tepercaya serta kontak Anda, atau tidak pernah dengan sendirinya), apakah ikon pengirim yang dikenal diambil, dan Kata Sandi Utama yang diminta setiap kali mulai.",
   "Quit UltraMail?": "Keluar dari UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Keluar akan menghentikannya, dan berkas tidak akan sampai.",
+  "Quitting stops them, and the files do not arrive.": "Keluar akan menghentikannya, dan berkas tidak akan sampai.",
   "Reading": "Membaca",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Membaca - tempat pesan terbuka, selebar apa daftar folder, apakah email HTML ditampilkan berformat atau teks biasa, ukuran teksnya, email mana yang dihitung menunggu balasan Anda, dan tempat lampiran pesan ditampilkan.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -477,6 +486,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Ikon situs web: untuk pengirim lain yang emailnya lolos pemeriksaan penipuan, beranda domain tempat ia menulis dibaca untuk ikonnya - sekali, dan lagi setelah seminggu bila tidak ada. Itu memberi tahu server web pengirim bahwa seseorang melihat, meski bukan pesan mana; tidak pernah diminta untuk spam, penipuan, folder sampah, atau penyedia kotak surat seperti gmail.com.",
   "What a colour is for: the text, or the background behind it": "Untuk apa warna: teks, atau latar belakang di belakangnya",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Yang dilindunginya: kata sandi akun email Anda, dan kunci yang dipakai mengenkripsi email yang tersimpan di komputer ini - kotak surat, buku alamat, kotak keluar, dan setiap pesan yang diunduh. Tanpanya tidak ada yang dapat membacanya, bahkan orang yang menyalin seluruh folder data.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Yang telah dikirim akan dihapus dari {0} saat UltraMail menggunakannya lagi.",
   "When a message has been sent successfully:": "Bila pesan berhasil terkirim:",
   "When new mail arrives while UltraMail runs:": "Bila email baru tiba saat UltraMail berjalan:",
   "When the pictures a message links to on the web are downloaded:": "Kapan gambar yang ditautkan pesan di web diunduh:",
@@ -496,7 +506,16 @@
   "Your mail passwords cannot be unlocked on this build.": "Kata sandi email Anda tidak dapat dibuka kuncinya di build ini.",
   "Your password": "Kata sandi Anda",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: masukkan kata sandi aplikasi (akun Yahoo > Keamanan akun > Buat kata sandi aplikasi).",
+  "{n} download is still running — quit anyway?": {
+    "other": "{n} unduhan masih berjalan — tetap keluar?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "other": "{n} pesan menunggu dikirim. UltraMail mencoba lagi sendiri - lebih cepat bila koneksi kembali. Pesan yang terus ditolak server dapat dikoreksi (Edit) atau dihapus di sini."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "{n} transfer masih berjalan — tetap keluar?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "{n} unggahan masih berjalan — tetap keluar?"
   }
 }

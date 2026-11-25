@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "«Re:» ή «Fw:» από αποστολέα στον οποίο δεν έχετε γράψει ποτέ",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "Δεν ήταν δυνατή η εγγραφή του «{0}» στην προσωρινή μνήμη συνημμένων στο {1}. Ελέγξτε ότι ο φάκελος υπάρχει και είναι εγγράψιμος.",
+  "\"{0}\" is still being downloaded from {1}.": "Το «{0}» λαμβάνεται ακόμη από το {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "Το «{0}» μεταφορτώνεται ακόμη στο {1}.",
   "(unnamed)": "(χωρίς όνομα)",
+  "... and {n} more.": {
+    "one": "... και {n} ακόμη.",
+    "other": "... και {n} ακόμη."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Το μήνυμα ενός αποκλεισμένου αποστολέα επισημαίνεται ως ανεπιθύμητο: το πορτοκαλί πλαίσιο και η λωρίδα πάνω από το μήνυμα. Ένας αποκλεισμένος τομέας αποκλείει και τους υποτομείς του. Τίποτα δεν μετακινείται ή διαγράφεται - το «Επισήμανση ως ανεπιθύμητου» μετακινεί ένα μήνυμα στον φάκελο ανεπιθύμητων.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Ένας έλεγχος που εκτελείται ακόμη όταν έρθει η ώρα του επόμενου αφήνεται να ολοκληρωθεί - ένας λογαριασμός δεν ελέγχεται ποτέ δύο φορές ταυτόχρονα.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Μια πληρωμή σε κρυπτονομίσματα δεν μπορεί να ανακληθεί: όποιος τη λάβει την κρατά. Κανένα γνήσιο πορτοφόλι, ανταλλακτήριο ή γραφείο υποστήριξης δεν ζητά τη φράση ανάκτησης (seed phrase) ή το ιδιωτικό σας κλειδί και καμία γνήσια επένδυση δεν εγγυάται κέρδος. Μην στέλνετε ποτέ κρυπτονομίσματα σε κάποιον που γνωρίζετε μόνο από email ή το διαδίκτυο.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Απάτη με κρυπτονομίσματα - μια φράση ανάκτησης, ένα πορτοφόλι για πληρωμή",
   "A dangerous attachment - a program, or one dressed as a document": "Επικίνδυνο συνημμένο - ένα πρόγραμμα ή ένα που παριστάνει έγγραφο",
+  "A download is still running — quit anyway?": "Μια λήψη εκτελείται ακόμη — να γίνει έξοδος παρ' όλα αυτά;",
   "A horizontal line": "Μια οριζόντια γραμμή",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Ένας διακομιστής JMAP προσεγγίζεται μέσω HTTPS, συνήθως στη θύρα 443, και απαντά στο /.well-known/jmap (Fastmail: api.fastmail.com· Stalwart, Cyrus και Apache James: ο διακομιστής αλληλογραφίας). Η αλληλογραφία διαβάζεται και στέλνεται μέσω αυτού: ο διακομιστής εξερχομένων (SMTP) είναι προαιρετικός - αφήστε τον κενό για αποστολή μέσω JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Μια επιστολή στο όνομα του FBI, της Interpol, του ΔΝΤ ...",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Οι διακομιστές, η σύνδεση και το όνομα ενός λογαριασμού βρίσκονται στις δικές του Ρυθμίσεις λογαριασμού. Κάθε αλλαγή εδώ εφαρμόζεται αμέσως και αποθηκεύεται· δεν χρειάζεται επιβεβαίωση.",
   "An address looks like you@example.com.": "Μια διεύθυνση μοιάζει με you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Επιστολή προκαταβολής - εκατομμύρια σε αναμονή για ένα μικρό τέλος",
+  "An upload is still running — quit anyway?": "Μια μεταφόρτωση εκτελείται ακόμη — να γίνει έξοδος παρ' όλα αυτά;",
   "Any mail about cryptocurrency (a word of caution)": "Οποιαδήποτε αλληλογραφία για κρυπτονομίσματα (μια λέξη προσοχής)",
   "App-specific password": "Κωδικός πρόσβασης εφαρμογής",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Ως επεξήγηση, η διεύθυνση εμφανίζεται δίπλα στον δείκτη όσο αυτός βρίσκεται πάνω σε σύνδεσμο και η γραμμή κατάστασης μένει ελεύθερη για την ίδια την αλληλογραφία.",
@@ -256,6 +264,8 @@
   "Privacy": "Απόρρητο",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Απόρρητο - πότε λαμβάνονται οι εικόνες από το διαδίκτυο (πάντα, μόνο από ιστότοπους και αποστολείς που εμπιστεύεστε και τις επαφές σας, ή ποτέ από μόνες τους), αν λαμβάνονται τα εικονίδια των γνωστών αποστολέων και ένας κύριος κωδικός πρόσβασης που ζητείται σε κάθε εκκίνηση.",
   "Quit UltraMail?": "Έξοδος από το UltraMail;",
+  "Quitting stops it, and the file does not arrive.": "Η έξοδος τη διακόπτει και το αρχείο δεν φτάνει.",
+  "Quitting stops them, and the files do not arrive.": "Η έξοδος τις διακόπτει και τα αρχεία δεν φτάνουν.",
   "Reading": "Ανάγνωση",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Ανάγνωση - πού ανοίγει ένα μήνυμα, πόσο πλατιά είναι η λίστα φακέλων, αν η αλληλογραφία HTML εμφανίζεται μορφοποιημένη ή ως απλό κείμενο, το μέγεθος του κειμένου της, ποια αλληλογραφία θεωρείται ότι περιμένει απάντησή σας και πού εμφανίζονται τα συνημμένα ενός μηνύματος.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Εικονίδια ιστότοπων: για οποιονδήποτε άλλον αποστολέα του οποίου η αλληλογραφία πέρασε τον έλεγχο απάτης, διαβάζεται η αρχική σελίδα του τομέα από τον οποίο γράφει για το εικονίδιό της - μία φορά και ξανά μετά από μια εβδομάδα αν δεν υπήρχε. Αυτό λέει στον διακομιστή ιστού του αποστολέα ότι κάποιος κοίταξε, αλλά όχι ποιο μήνυμα· δεν ζητείται ποτέ για ανεπιθύμητα, απάτες, τον φάκελο ανεπιθύμητων ή πάροχο γραμματοκιβωτίων όπως το gmail.com.",
   "What a colour is for: the text, or the background behind it": "Για τι χρησιμεύει ένα χρώμα: το κείμενο ή το φόντο πίσω από αυτό",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Τι προστατεύει: τους κωδικούς πρόσβασης των λογαριασμών αλληλογραφίας σας και το κλειδί με το οποίο κρυπτογραφείται η αλληλογραφία που είναι αποθηκευμένη σε αυτόν τον υπολογιστή - το γραμματοκιβώτιο, το βιβλίο διευθύνσεων, τα εξερχόμενα και κάθε μήνυμα που έχει ληφθεί. Χωρίς αυτόν κανείς δεν μπορεί να τα διαβάσει, ούτε όποιος αντιγράψει ολόκληρο τον φάκελο δεδομένων.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Ό,τι στάλθηκε αφαιρείται από το {0} την επόμενη φορά που το UltraMail το χρησιμοποιεί.",
   "When a message has been sent successfully:": "Όταν ένα μήνυμα έχει σταλεί με επιτυχία:",
   "When new mail arrives while UltraMail runs:": "Όταν φτάνει νέα αλληλογραφία ενώ εκτελείται το UltraMail:",
   "When the pictures a message links to on the web are downloaded:": "Πότε λαμβάνονται οι εικόνες στις οποίες συνδέεται ένα μήνυμα στο διαδίκτυο:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "Οι κωδικοί πρόσβασης αλληλογραφίας σας δεν μπορούν να ξεκλειδωθούν σε αυτή την έκδοση.",
   "Your password": "Ο κωδικός πρόσβασής σας",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: εισαγάγετε έναν κωδικό πρόσβασης εφαρμογής (λογαριασμός Yahoo > Ασφάλεια λογαριασμού > Δημιουργία κωδικού πρόσβασης εφαρμογής).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} λήψη εκτελείται ακόμη — να γίνει έξοδος παρ' όλα αυτά;",
+    "other": "{n} λήψεις εκτελούνται ακόμη — να γίνει έξοδος παρ' όλα αυτά;"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} μήνυμα περιμένει αποστολή. Το UltraMail δοκιμάζει ξανά μόνο του - νωρίτερα όταν επανέλθει η σύνδεση. Ένα μήνυμα που ο διακομιστής συνεχίζει να απορρίπτει μπορεί να διορθωθεί (Επεξεργασία) ή να διαγραφεί εδώ.",
     "other": "{n} μηνύματα περιμένουν αποστολή. Το UltraMail δοκιμάζει ξανά μόνο του - νωρίτερα όταν επανέλθει η σύνδεση. Ένα μήνυμα που ο διακομιστής συνεχίζει να απορρίπτει μπορεί να διορθωθεί (Επεξεργασία) ή να διαγραφεί εδώ."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} μεταφορά εκτελείται ακόμη — να γίνει έξοδος παρ' όλα αυτά;",
+    "other": "{n} μεταφορές εκτελούνται ακόμη — να γίνει έξοδος παρ' όλα αυτά;"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} μεταφόρτωση εκτελείται ακόμη — να γίνει έξοδος παρ' όλα αυτά;",
+    "other": "{n} μεταφορτώσεις εκτελούνται ακόμη — να γίνει έξοδος παρ' όλα αυτά;"
   }
 }

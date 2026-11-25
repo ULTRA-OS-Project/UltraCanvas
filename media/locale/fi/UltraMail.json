@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "”Re:” tai ”Fw:” lähettäjältä, jolle et ole koskaan kirjoittanut",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "Kohdetta ”{0}” ei voitu kirjoittaa liitteiden välimuistiin kansiossa {1}. Tarkista, että kansio on olemassa ja siihen voi kirjoittaa.",
+  "\"{0}\" is still being downloaded from {1}.": "Tiedostoa \"{0}\" ladataan vielä tililtä {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "Tiedostoa \"{0}\" lähetetään vielä tilille {1}.",
   "(unnamed)": "(nimetön)",
+  "... and {n} more.": {
+    "one": "... ja {n} muuta.",
+    "other": "... ja {n} muuta."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "Estetyn lähettäjän posti merkitään roskapostiksi: oranssi kehys ja viestin yläpuolella oleva kaista. Estetty verkkotunnus estää myös sen aliverkkotunnukset. Mitään ei siirretä eikä poisteta – ”Merkitse roskapostiksi” siirtää viestin roskapostikansioon.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Tarkistus, joka on yhä käynnissä seuraavan erääntyessä, annetaan päättyä – tiliä ei koskaan tarkisteta kahdesti yhtä aikaa.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Kryptovaluuttamaksua ei voi perua: vastaanottaja pitää sen. Mikään aito lompakko, pörssi tai tukipalvelu ei kysy palautuslausettasi (siemenlausetta) tai yksityistä avaintasi, eikä mikään aito sijoitus takaa voittoa. Älä koskaan lähetä kryptovaluuttaa jollekulle, jonka tunnet vain sähköpostista tai internetistä.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Kryptovaluuttahuijaus – palautuslause, lompakko johon maksaa",
   "A dangerous attachment - a program, or one dressed as a document": "Vaarallinen liite – ohjelma tai asiakirjaksi naamioitu",
+  "A download is still running — quit anyway?": "Lataus on vielä käynnissä – lopetetaanko silti?",
   "A horizontal line": "Vaakaviiva",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "JMAP-palvelimeen otetaan yhteys HTTPS:llä, yleensä portissa 443, ja se vastaa osoitteessa /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus ja Apache James: postipalvelin). Posti luetaan ja lähetetään sen kautta: lähtevä (SMTP) palvelin on valinnainen – jätä tyhjäksi lähettääksesi JMAPin kautta.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Kirje FBI:n, Interpolin, IMF:n ... nimissä",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Tilin palvelimet, kirjautuminen ja nimi ovat sen omissa tilin asetuksissa. Jokainen tässä tehty muutos tulee voimaan heti ja tallennetaan; mitään ei tarvitse vahvistaa.",
   "An address looks like you@example.com.": "Osoite on muotoa sinä@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Ennakkomaksuhuijaus – miljoonia odottaa pientä maksua vastaan",
+  "An upload is still running — quit anyway?": "Lähetys on vielä käynnissä – lopetetaanko silti?",
   "Any mail about cryptocurrency (a word of caution)": "Kaikki kryptovaluuttaa koskeva posti (varoitus)",
   "App-specific password": "Sovelluskohtainen salasana",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Työkaluvihjeenä osoite näkyy osoittimen vieressä, kun se on linkin päällä, ja tilarivi jää vapaaksi itse postia varten.",
@@ -256,6 +264,8 @@
   "Privacy": "Yksityisyys",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Yksityisyys – milloin verkon kuvat ladataan (aina, vain luotetuilta sivustoilta ja lähettäjiltä sekä yhteystiedoiltasi tai ei koskaan itsestään), haetaanko tunnettujen lähettäjien kuvakkeet ja kysytäänkö pääsalasanaa jokaisella käynnistyksellä.",
   "Quit UltraMail?": "Lopetetaanko UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Lopettaminen pysäyttää sen, eikä tiedosto saavu perille.",
+  "Quitting stops them, and the files do not arrive.": "Lopettaminen pysäyttää ne, eikä tiedostot saavu perille.",
   "Reading": "Lukeminen",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Lukeminen – missä viesti avautuu, kuinka leveä kansioluettelo on, näytetäänkö HTML-posti muotoiltuna vai pelkkänä tekstinä, sen tekstin koko, mikä posti lasketaan vastaustasi odottavaksi ja missä viestin liitteet näytetään.",
   "recipient@example.com, …": "vastaanottaja@example.com, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Sivustojen kuvakkeet: muiden lähettäjien, joiden posti läpäisi huijaustarkistuksen, kuvake luetaan verkkotunnuksen kotisivulta, josta se kirjoittaa – kerran, ja uudelleen viikon kuluttua, jos sitä ei ollut. Se kertoo lähettäjän verkkopalvelimelle, että joku katsoi, mutta ei mitä viestiä; ei koskaan roskapostille, huijauksille, roskapostikansiolle eikä postipalvelun tarjoajalle kuten gmail.com.",
   "What a colour is for: the text, or the background behind it": "Mihin väriä käytetään: tekstiin vai sen taustaan",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Mitä se suojaa: postitiliesi salasanat ja avaimen, jolla tälle tietokoneelle tallennettu posti on salattu – postilaatikko, osoitekirja, lähtevät ja jokainen ladattu viesti. Ilman sitä kukaan ei voi lukea niitä, ei edes se, joka kopioi koko datakansion.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Lähetetty poistetaan tililtä {0}, kun UltraMail seuraavan kerran käyttää sitä.",
   "When a message has been sent successfully:": "Kun viesti on lähetetty onnistuneesti:",
   "When new mail arrives while UltraMail runs:": "Kun uutta postia saapuu UltraMailin ollessa käynnissä:",
   "When the pictures a message links to on the web are downloaded:": "Milloin viestin verkkoon linkittämät kuvat ladataan:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "Postisalasanojasi ei voi avata tässä versiossa.",
   "Your password": "Salasanasi",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: anna sovellussalasana (Yahoo-tili > Tilin suojaus > Luo sovellussalasana).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} lataus on vielä käynnissä – lopetetaanko silti?",
+    "other": "{n} latausta on vielä käynnissä – lopetetaanko silti?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} viesti odottaa lähetystä. UltraMail yrittää uudelleen itse – nopeammin, kun yhteys palaa. Viestin, jonka palvelin hylkää jatkuvasti, voi korjata (Muokkaa) tai poistaa täällä.",
     "other": "{n} viestiä odottaa lähetystä. UltraMail yrittää uudelleen itse – nopeammin, kun yhteys palaa. Viestin, jonka palvelin hylkää jatkuvasti, voi korjata (Muokkaa) tai poistaa täällä."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} siirto on vielä käynnissä – lopetetaanko silti?",
+    "other": "{n} siirtoa on vielä käynnissä – lopetetaanko silti?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} lähetys on vielä käynnissä – lopetetaanko silti?",
+    "other": "{n} lähetystä on vielä käynnissä – lopetetaanko silti?"
   }
 }

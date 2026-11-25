@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "«Re:» o «Fw:» d'un remitent a qui mai no heu escrit",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "No s'ha pogut escriure «{0}» a la memòria cau de fitxers adjunts a {1}. Comproveu que la carpeta existeix i que s'hi pot escriure.",
+  "\"{0}\" is still being downloaded from {1}.": "«{0}» encara s'està baixant de {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "«{0}» encara s'està pujant a {1}.",
   "(unnamed)": "(sense nom)",
+  "... and {n} more.": {
+    "one": "... i {n} més.",
+    "other": "... i {n} més."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "El correu d'un remitent bloquejat es marca com a correu brossa: el marc taronja i la franja sobre el missatge. Un domini bloquejat també bloqueja els seus subdominis. No es mou ni se suprimeix res: «Marca com a brossa» mou un missatge a la carpeta de correu brossa.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Una comprovació que encara s'executa quan toca la següent es deixa acabar: un compte no es comprova mai dues vegades alhora.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "Un pagament en criptomonedes no es pot revocar: qui el rep se'l queda. Cap cartera, borsa o servei d'assistència genuïns no us demanen la frase de recuperació (frase llavor) ni la clau privada, i cap inversió genuïna no garanteix un benefici. No envieu mai criptomonedes a algú que només coneixeu per correu o per Internet.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Una estafa de criptomonedes: una frase de recuperació, una cartera on pagar",
   "A dangerous attachment - a program, or one dressed as a document": "Un fitxer adjunt perillós: un programa, o un que es fa passar per document",
+  "A download is still running — quit anyway?": "Hi ha una baixada en curs: voleu sortir igualment?",
   "A horizontal line": "Una línia horitzontal",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "Un servidor JMAP s'hi accedeix per HTTPS, normalment pel port 443, i respon a /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus i Apache James: l'amfitrió de correu). Per ell es llegeix i s'envia el correu: el servidor de sortida (SMTP) és opcional; deixeu-lo buit per enviar per JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Una carta en nom de l'FBI, Interpol, el FMI ...",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "Els servidors, l'inici de sessió i el nom d'un compte són a la seva pròpia Configuració del compte. Cada canvi aquí s'aplica de seguida i es desa; no cal confirmar res.",
   "An address looks like you@example.com.": "Una adreça té aquest aspecte: you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Una carta de pagament avançat: milions que esperen per una petita taxa",
+  "An upload is still running — quit anyway?": "Hi ha una pujada en curs: voleu sortir igualment?",
   "Any mail about cryptocurrency (a word of caution)": "Qualsevol correu sobre criptomonedes (una paraula de precaució)",
   "App-specific password": "Contrasenya d'aplicació",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Com a descripció emergent, l'adreça apareix al costat del punter mentre és sobre un enllaç, i la barra d'estat queda lliure per al correu mateix.",
@@ -256,6 +264,8 @@
   "Privacy": "Privadesa",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Privadesa: quan es baixen les imatges del web (sempre, només de llocs web i remitents de confiança i dels vostres contactes, o mai per si soles), si s'obtenen les icones dels remitents coneguts, i una contrasenya principal que es demana a cada inici.",
   "Quit UltraMail?": "Voleu sortir d'UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "En sortir s'atura i el fitxer no arriba.",
+  "Quitting stops them, and the files do not arrive.": "En sortir s'aturen i els fitxers no arriben.",
   "Reading": "Lectura",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Lectura: on s'obre un missatge, quina amplada té la llista de carpetes, si el correu HTML es mostra amb format o com a text sense format, la mida del text, quin correu compta com a esperant resposta, i on es mostren els fitxers adjunts d'un missatge.",
   "recipient@example.com, …": "destinatari@example.com, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Icones de llocs web: per a qualsevol altre remitent el correu del qual hagi passat la comprovació d'estafes, es llegeix la pàgina d'inici del domini des del qual escriu per obtenir-ne la icona, una vegada, i de nou al cap d'una setmana si no n'hi havia. Això indica al servidor web del remitent que algú ha mirat, però no quin missatge; no es demana mai per a correu brossa, estafes, la carpeta de brossa ni un proveïdor de bústies com gmail.com.",
   "What a colour is for: the text, or the background behind it": "Per a què serveix un color: el text, o el fons que té al darrere",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Què protegeix: les contrasenyes dels vostres comptes de correu, i la clau amb què es xifra el correu desat en aquest ordinador: la bústia, la llibreta d'adreces, la safata de sortida i cada missatge baixat. Sense ella ningú no els pot llegir, ni tan sols qui copiï tota la carpeta de dades.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "El que s'ha enviat se suprimeix de {0} la propera vegada que UltraMail l'utilitzi.",
   "When a message has been sent successfully:": "Quan un missatge s'ha enviat correctament:",
   "When new mail arrives while UltraMail runs:": "Quan arriba correu nou mentre UltraMail s'executa:",
   "When the pictures a message links to on the web are downloaded:": "Quan es baixen les imatges a què un missatge enllaça al web:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "Les contrasenyes del correu no es poden desbloquejar en aquesta compilació.",
   "Your password": "La vostra contrasenya",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: introduïu una contrasenya d'aplicació (compte de Yahoo > Seguretat del compte > Genera una contrasenya d'aplicació).",
+  "{n} download is still running — quit anyway?": {
+    "one": "Hi ha {n} baixada en curs: voleu sortir igualment?",
+    "other": "Hi ha {n} baixades en curs: voleu sortir igualment?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "Hi ha {n} missatge esperant per ser enviat. UltraMail ho torna a provar per si sol, abans si la connexió torna. Un missatge que el servidor continua rebutjant es pot corregir (Edita) o suprimir aquí.",
     "other": "Hi ha {n} missatges esperant per ser enviats. UltraMail ho torna a provar per si sol, abans si la connexió torna. Un missatge que el servidor continua rebutjant es pot corregir (Edita) o suprimir aquí."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "Hi ha {n} transferència en curs: voleu sortir igualment?",
+    "other": "Hi ha {n} transferències en curs: voleu sortir igualment?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "Hi ha {n} pujada en curs: voleu sortir igualment?",
+    "other": "Hi ha {n} pujades en curs: voleu sortir igualment?"
   }
 }

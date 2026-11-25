@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "«Re:» eller «Fw:» fra en avsender du aldri har skrevet til",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "«{0}» kunne ikke skrives til vedleggsbufferen i {1}. Sjekk at mappen finnes og er skrivbar.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" lastes fortsatt ned fra {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" lastes fortsatt opp til {1}.",
   "(unnamed)": "(uten navn)",
+  "... and {n} more.": {
+    "one": "... og {n} til.",
+    "other": "... og {n} til."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "E-post fra en blokkert avsender merkes som søppelpost: den oransje rammen og stripen over meldingen. Et blokkert domene blokkerer også underdomenene. Ingenting flyttes eller slettes – «Merk som søppelpost» flytter en melding til søppelpostmappen.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "En sjekk som fortsatt kjører når den neste skal starte, får fullføre – en konto sjekkes aldri to ganger samtidig.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "En kryptobetaling kan ikke trekkes tilbake: den som mottar den, beholder den. Ingen ekte lommebok, børs eller kundestøtte ber om gjenopprettingsfrasen (seed-frasen) eller den private nøkkelen din, og ingen ekte investering garanterer overskudd. Send aldri krypto til noen du bare kjenner fra e-post eller internett.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Et kryptosvindelforsøk – en gjenopprettingsfrase, en lommebok du skal betale til",
   "A dangerous attachment - a program, or one dressed as a document": "Et farlig vedlegg – et program, eller et som er forkledd som dokument",
+  "A download is still running — quit anyway?": "En nedlasting pågår fortsatt — avslutt likevel?",
   "A horizontal line": "En horisontal linje",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "En JMAP-server nås over HTTPS, vanligvis på port 443, og svarer på /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus og Apache James: e-postverten). E-post leses og sendes gjennom den: den utgående serveren (SMTP) er valgfri – la den stå tom for å sende via JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Et brev i navnet til FBI, Interpol, IMF …",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "En kontos servere, pålogging og navn står i dens egne Kontoinnstillinger. Hver endring her gjelder med en gang og lagres; det er ingenting å bekrefte.",
   "An address looks like you@example.com.": "En adresse ser slik ut: deg@eksempel.no.",
   "An advance-fee letter - millions waiting for a small fee": "Et forskuddsbrev – millioner som venter mot et lite gebyr",
+  "An upload is still running — quit anyway?": "En opplasting pågår fortsatt — avslutt likevel?",
   "Any mail about cryptocurrency (a word of caution)": "All e-post om kryptovaluta (en advarsel)",
   "App-specific password": "App-spesifikt passord",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Som verktøytips vises adressen ved pekeren mens den hviler på en lenke, og statuslinjen holdes fri for selve e-posten.",
@@ -256,6 +264,8 @@
   "Privacy": "Personvern",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Personvern – når bilder på nettet lastes ned (alltid, bare fra nettsteder og avsendere du stoler på og kontaktene dine, eller aldri av seg selv), om ikonene til kjente avsendere hentes, og et hovedpassord det spørres etter ved hver start.",
   "Quit UltraMail?": "Avslutte UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Hvis du avslutter, stoppes den, og filen kommer ikke fram.",
+  "Quitting stops them, and the files do not arrive.": "Hvis du avslutter, stoppes de, og filene kommer ikke fram.",
   "Reading": "Lesing",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Lesing – hvor en melding åpnes, hvor bred mappelisten er, om HTML-e-post vises formatert eller som ren tekst, tekststørrelsen, hvilken e-post som regnes som ventende på svar, og hvor en meldings vedlegg vises.",
   "recipient@example.com, …": "mottaker@eksempel.no, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Nettstedsikoner: for enhver annen avsender hvis e-post besto svindelsjekken, leses hjemmesiden til domenet den skriver fra for ikonet – én gang, og igjen etter en uke hvis det ikke var noe. Det forteller avsenderens webserver at noen så etter, men ikke hvilken melding; det spørres aldri for søppelpost, svindel, søppelpostmappen eller en e-postleverandør som gmail.com.",
   "What a colour is for: the text, or the background behind it": "Hva en farge er til for: teksten, eller bakgrunnen bak den",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Hva det beskytter: passordene til e-postkontoene dine, og nøkkelen e-posten som er lagret på denne datamaskinen er kryptert med – postboksen, adresseboken, utboksen og hver nedlastede melding. Uten det kan ingen lese dem, ikke engang noen som kopierer hele datamappen.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Det som ble sendt, fjernes fra {0} neste gang UltraMail bruker den.",
   "When a message has been sent successfully:": "Når en melding er sendt:",
   "When new mail arrives while UltraMail runs:": "Når ny e-post kommer mens UltraMail kjører:",
   "When the pictures a message links to on the web are downloaded:": "Når bildene en melding lenker til på nettet, lastes ned:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "E-postpassordene dine kan ikke låses opp i denne versjonen.",
   "Your password": "Passordet ditt",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: skriv inn et app-passord (Yahoo-konto > Kontosikkerhet > Generer app-passord).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} nedlasting pågår fortsatt — avslutt likevel?",
+    "other": "{n} nedlastinger pågår fortsatt — avslutt likevel?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} melding venter på å bli sendt. UltraMail prøver igjen av seg selv – raskere når forbindelsen er tilbake. En melding serveren stadig avslår, kan rettes (Rediger) eller slettes her.",
     "other": "{n} meldinger venter på å bli sendt. UltraMail prøver igjen av seg selv – raskere når forbindelsen er tilbake. En melding serveren stadig avslår, kan rettes (Rediger) eller slettes her."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} overføring pågår fortsatt — avslutt likevel?",
+    "other": "{n} overføringer pågår fortsatt — avslutt likevel?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} opplasting pågår fortsatt — avslutt likevel?",
+    "other": "{n} opplastinger pågår fortsatt — avslutt likevel?"
   }
 }

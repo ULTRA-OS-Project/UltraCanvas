@@ -3,12 +3,18 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "寄件者是您從未寫信過的人，主旨卻以「Re:」或「Fw:」開頭",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "無法將「{0}」寫入 {1} 中的附件快取。請檢查資料夾是否存在且可寫入。",
+  "\"{0}\" is still being downloaded from {1}.": "「{0}」仍在從 {1} 下載。",
+  "\"{0}\" is still being uploaded to {1}.": "「{0}」仍在上傳到 {1}。",
   "(unnamed)": "（未命名）",
+  "... and {n} more.": {
+    "other": "... 還有 {n} 個。"
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "被封鎖寄件者的郵件會標示為垃圾郵件：橘色框線與郵件上方的橫條。封鎖網域時，其子網域也會一併封鎖。不會移動或刪除任何內容 -「標示為垃圾郵件」才會將郵件移到垃圾郵件資料夾。",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "下一次檢查到來時，若前一次仍在執行，會讓它完成 - 同一帳號絕不會同時檢查兩次。",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "加密貨幣付款無法追回：收款者會保有款項。真正的錢包、交易所或客服絕不會索取您的復原詞（助記詞）或私密金鑰，也沒有任何真正的投資能保證獲利。請勿將加密貨幣傳給僅透過電子郵件或網路認識的人。",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "加密貨幣詐騙 - 索取復原詞、要求匯入錢包",
   "A dangerous attachment - a program, or one dressed as a document": "危險的附件 - 程式，或偽裝成文件的程式",
+  "A download is still running — quit anyway?": "有下載仍在進行 - 仍要結束嗎？",
   "A horizontal line": "一條水平線",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "JMAP 伺服器透過 HTTPS 連線，通常使用連接埠 443，並在 /.well-known/jmap 回應（Fastmail：api.fastmail.com；Stalwart、Cyrus 與 Apache James：郵件主機）。收發郵件皆透過它：寄送 (SMTP) 伺服器為選填 - 留空則透過 JMAP 寄送。",
   "A letter in the name of the FBI, Interpol, the IMF ...": "冒用 FBI、國際刑警組織、IMF 等名義的信件",
@@ -55,6 +61,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "帳號的伺服器、登入與名稱位於其自己的「帳號設定」。此處每項變更都會立即套用並儲存，無需確認。",
   "An address looks like you@example.com.": "地址格式類似 you@example.com。",
   "An advance-fee letter - millions waiting for a small fee": "預付款詐騙信 - 數百萬等著領取，只需支付小額費用",
+  "An upload is still running — quit anyway?": "有上傳仍在進行 - 仍要結束嗎？",
   "Any mail about cryptocurrency (a word of caution)": "任何與加密貨幣有關的郵件（提醒一聲）",
   "App-specific password": "應用程式專用密碼",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "以工具提示顯示時，指標停在連結上會在旁邊顯示地址，狀態列則留給郵件本身使用。",
@@ -254,6 +261,8 @@
   "Privacy": "隱私",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "隱私 - 何時下載網路上的圖片（一律、僅從您信任的網站與寄件者及聯絡人、或絕不自動）、是否擷取已知寄件者的圖示，以及每次啟動時要求輸入的主要密碼。",
   "Quit UltraMail?": "要結束 UltraMail 嗎？",
+  "Quitting stops it, and the file does not arrive.": "結束會中止它，檔案將無法送達。",
+  "Quitting stops them, and the files do not arrive.": "結束會中止它們，檔案將無法送達。",
   "Reading": "閱讀",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "閱讀 - 郵件開啟的位置、資料夾清單的寬度、HTML 郵件以格式化或純文字顯示、文字大小、哪些郵件算是等待您回覆，以及郵件附件的顯示位置。",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -477,6 +486,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "網站圖示：對於其他通過詐騙檢查的寄件者，會讀取其所用網域首頁的圖示 - 一次，若沒有則一週後再試。這會讓寄件者的網站伺服器知道有人查看過，但不知道是哪封郵件；對垃圾郵件、詐騙、垃圾郵件資料夾，或 gmail.com 之類的信箱提供者則從不查詢。",
   "What a colour is for: the text, or the background behind it": "顏色的用途：文字，或其背後的背景",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "它保護的內容：您郵件帳號的密碼，以及用來加密儲存在此電腦上郵件的金鑰 - 信箱、通訊錄、寄件匣與每封已下載的郵件。沒有它，沒有人能讀取這些內容，即使複製整個資料資料夾也一樣。",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "已傳送的內容會在 UltraMail 下次使用 {0} 時從中刪除。",
   "When a message has been sent successfully:": "郵件成功寄出時：",
   "When new mail arrives while UltraMail runs:": "UltraMail 執行期間收到新郵件時：",
   "When the pictures a message links to on the web are downloaded:": "何時下載郵件連結到網路上的圖片：",
@@ -496,7 +506,16 @@
   "Your mail passwords cannot be unlocked on this build.": "此版本無法解鎖您的郵件密碼。",
   "Your password": "您的密碼",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}：請輸入應用程式密碼（Yahoo 帳號 > 帳號安全性 > 產生應用程式密碼）。",
+  "{n} download is still running — quit anyway?": {
+    "other": "{n} 個下載仍在進行 - 仍要結束嗎？"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "other": "有 {n} 封郵件等待寄出。UltraMail 會自動重試 - 連線恢復時更快。伺服器持續拒絕的郵件可在此更正（編輯）或刪除。"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "other": "{n} 個傳輸仍在進行 - 仍要結束嗎？"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "other": "{n} 個上傳仍在進行 - 仍要結束嗎？"
   }
 }

@@ -3,12 +3,21 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "\"Re:\" או \"Fw:\" משולח שמעולם לא כתבת לו",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "לא ניתן היה לכתוב את \"{0}\" למטמון הקבצים המצורפים ב-{1}. יש לוודא שהתיקייה קיימת וניתנת לכתיבה.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" עדיין בהורדה מ-{1}.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" עדיין בהעלאה אל {1}.",
   "(unnamed)": "(ללא שם)",
+  "... and {n} more.": {
+    "one": "... ועוד {n}.",
+    "two": "... ועוד {n}.",
+    "many": "... ועוד {n}.",
+    "other": "... ועוד {n}."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "דואר מנשלח חסום מסומן כדואר זבל: המסגרת הכתומה והרצועה שמעל ההודעה. דומיין חסום חוסם גם את תתי-הדומיינים שלו. דבר אינו מועבר או נמחק - \"סימון כדואר זבל\" מעביר הודעה לתיקיית דואר הזבל.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "בדיקה שעדיין רצה כשהבאה מגיעה מושארת להסתיים - חשבון אינו נבדק לעולם פעמיים בו-זמנית.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "תשלום בקריפטו אינו ניתן לביטול: מי שמקבל אותו שומר אותו. אף ארנק, בורסה או מוקד תמיכה אמיתיים אינם מבקשים את ביטוי השחזור (seed phrase) או את המפתח הפרטי שלך, ואף השקעה אמיתית אינה מבטיחה רווח. לעולם אין לשלוח קריפטו למי שמכירים רק מדואר אלקטרוני או מהאינטרנט.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "הונאת מטבעות קריפטוגרפיים - ביטוי שחזור, ארנק לתשלום אליו",
   "A dangerous attachment - a program, or one dressed as a document": "קובץ מצורף מסוכן - תוכנית, או כזו שמתחזה למסמך",
+  "A download is still running — quit anyway?": "הורדה עדיין מתבצעת — לצאת בכל זאת?",
   "A horizontal line": "קו אופקי",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "שרת JMAP נגיש דרך HTTPS, בדרך כלל בפורט 443, ועונה בכתובת /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus ו-Apache James: שרת הדואר). הדואר נקרא ונשלח דרכו: שרת הדואר היוצא (SMTP) אופציונלי - יש להשאיר אותו ריק כדי לשלוח דרך JMAP.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "מכתב בשם ה-FBI, אינטרפול, קרן המטבע הבינלאומית ...",
@@ -61,6 +70,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "השרתים, ההתחברות והשם של חשבון נמצאים בהגדרות החשבון שלו. כל שינוי כאן חל מיד ונשמר; אין מה לאשר.",
   "An address looks like you@example.com.": "כתובת נראית כך: you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "מכתב דמי מקדמה - מיליונים שממתינים תמורת תשלום קטן",
+  "An upload is still running — quit anyway?": "העלאה עדיין מתבצעת — לצאת בכל זאת?",
   "Any mail about cryptocurrency (a word of caution)": "כל דואר על מטבעות קריפטוגרפיים (מילת זהירות)",
   "App-specific password": "סיסמה ייעודית ליישום",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "כתיאור קופץ, הכתובת מופיעה לצד המצביע כשהוא נח על קישור, ושורת המצב נשארת פנויה לדואר עצמו.",
@@ -260,6 +270,8 @@
   "Privacy": "פרטיות",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "פרטיות - מתי מורדות תמונות מהאינטרנט (תמיד, רק מאתרים ושולחים מהימנים ומאנשי הקשר שלך, או לעולם לא מעצמן), האם נטענים סמלי שולחים מוכרים, וסיסמה ראשית הנשאלת בכל הפעלה.",
   "Quit UltraMail?": "לצאת מ-UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "היציאה תעצור אותה, והקובץ לא יגיע.",
+  "Quitting stops them, and the files do not arrive.": "היציאה תעצור אותן, והקבצים לא יגיעו.",
   "Reading": "קריאה",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "קריאה - היכן הודעה נפתחת, מה רוחב רשימת התיקיות, האם דואר HTML מוצג מעוצב או כטקסט רגיל, גודל הטקסט שלו, איזה דואר נחשב ממתין למענה שלך, והיכן מוצגים הקבצים המצורפים להודעה.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -489,6 +501,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "סמלי אתרים: עבור כל שולח אחר שדואר שלו עבר את בדיקת ההונאה, דף הבית של הדומיין שממנו הוא כותב נקרא לצורך הסמל שלו - פעם אחת, ושוב אחרי שבוע אם לא היה. זה מודיע לשרת האינטרנט של השולח שמישהו הציץ, אך לא באיזו הודעה; לעולם לא עבור ספאם, הונאות, תיקיית דואר הזבל או ספק תיבות דואר כמו gmail.com.",
   "What a colour is for: the text, or the background behind it": "למה משמש צבע: הטקסט, או הרקע שמאחוריו",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "מה היא מגנה עליו: סיסמאות חשבונות הדואר שלך, והמפתח שבו הדואר השמור במחשב הזה מוצפן - תיבת הדואר, פנקס הכתובות, הדואר היוצא וכל הודעה שהורדה. בלעדיה אף אחד אינו יכול לקרוא אותם, אפילו לא מי שמעתיק את כל תיקיית הנתונים.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "מה שנשלח יוסר מ-{0} בפעם הבאה ש-UltraMail ישתמש בו.",
   "When a message has been sent successfully:": "כשהודעה נשלחה בהצלחה:",
   "When new mail arrives while UltraMail runs:": "כשדואר חדש מגיע בזמן ש-UltraMail פועל:",
   "When the pictures a message links to on the web are downloaded:": "מתי מורדות התמונות שהודעה מקשרת אליהן באינטרנט:",
@@ -508,10 +521,28 @@
   "Your mail passwords cannot be unlocked on this build.": "לא ניתן לפתוח את סיסמאות הדואר שלך בגרסה זו.",
   "Your password": "הסיסמה שלך",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: יש להזין סיסמה ייעודית ליישום (חשבון Yahoo > אבטחת חשבון > יצירת סיסמה ייעודית ליישום).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} הורדה עדיין מתבצעת — לצאת בכל זאת?",
+    "two": "{n} הורדות עדיין מתבצעות — לצאת בכל זאת?",
+    "many": "{n} הורדות עדיין מתבצעות — לצאת בכל זאת?",
+    "other": "{n} הורדות עדיין מתבצעות — לצאת בכל זאת?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} הודעה ממתינה לשליחה. UltraMail מנסה שוב מעצמו - מוקדם יותר כשהחיבור חוזר. הודעה שהשרת ממשיך לדחות אפשר לתקן (עריכה) או למחוק כאן.",
     "two": "{n} הודעות ממתינות לשליחה. UltraMail מנסה שוב מעצמו - מוקדם יותר כשהחיבור חוזר. הודעה שהשרת ממשיך לדחות אפשר לתקן (עריכה) או למחוק כאן.",
     "many": "{n} הודעות ממתינות לשליחה. UltraMail מנסה שוב מעצמו - מוקדם יותר כשהחיבור חוזר. הודעה שהשרת ממשיך לדחות אפשר לתקן (עריכה) או למחוק כאן.",
     "other": "{n} הודעות ממתינות לשליחה. UltraMail מנסה שוב מעצמו - מוקדם יותר כשהחיבור חוזר. הודעה שהשרת ממשיך לדחות אפשר לתקן (עריכה) או למחוק כאן."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} העברה עדיין מתבצעת — לצאת בכל זאת?",
+    "two": "{n} העברות עדיין מתבצעות — לצאת בכל זאת?",
+    "many": "{n} העברות עדיין מתבצעות — לצאת בכל זאת?",
+    "other": "{n} העברות עדיין מתבצעות — לצאת בכל זאת?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} העלאה עדיין מתבצעת — לצאת בכל זאת?",
+    "two": "{n} העלאות עדיין מתבצעות — לצאת בכל זאת?",
+    "many": "{n} העלאות עדיין מתבצעות — לצאת בכל זאת?",
+    "other": "{n} העלאות עדיין מתבצעות — לצאת בכל זאת?"
   }
 }

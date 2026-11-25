@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "किसी ऐसे प्रेषक से “Re:” या “Fw:” जिसे आपने कभी नहीं लिखा",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "“{0}” को {1} के अनुलग्नक कैश में लिखा नहीं जा सका। जाँचें कि फ़ोल्डर मौजूद है और उसमें लिखा जा सकता है।",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" अभी भी {1} से डाउनलोड हो रही है।",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" अभी भी {1} पर अपलोड हो रही है।",
   "(unnamed)": "(बेनाम)",
+  "... and {n} more.": {
+    "one": "... और {n} अन्य।",
+    "other": "... और {n} अन्य।"
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "ब्लॉक किए गए प्रेषक का मेल स्पैम चिह्नित होता है: नारंगी फ़्रेम और संदेश के ऊपर की पट्टी। ब्लॉक किया गया डोमेन उसके सबडोमेन भी ब्लॉक करता है। कुछ भी हटाया या ले जाया नहीं जाता - “स्पैम चिह्नित करें” संदेश को जंक फ़ोल्डर में ले जाता है।",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "अगली जाँच के समय जो जाँच अभी चल रही हो उसे पूरा होने दिया जाता है - किसी खाते की जाँच एक साथ दो बार नहीं होती।",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "क्रिप्टो भुगतान वापस नहीं बुलाया जा सकता: जिसे मिलता है वही रखता है। कोई असली वॉलेट, एक्सचेंज या हेल्प डेस्क आपका रिकवरी वाक्यांश (सीड वाक्यांश) या निजी कुंजी नहीं माँगता, और कोई असली निवेश मुनाफ़े की गारंटी नहीं देता। जिसे आप केवल ईमेल या इंटरनेट से जानते हैं उसे कभी क्रिप्टो न भेजें।",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "क्रिप्टोकरेंसी घोटाला - रिकवरी वाक्यांश, भुगतान के लिए वॉलेट",
   "A dangerous attachment - a program, or one dressed as a document": "खतरनाक अनुलग्नक - प्रोग्राम, या दस्तावेज़ के भेष में प्रोग्राम",
+  "A download is still running — quit anyway?": "एक डाउनलोड अभी चल रहा है — फिर भी बंद करें?",
   "A horizontal line": "एक क्षैतिज रेखा",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "JMAP सर्वर HTTPS पर, आमतौर पर पोर्ट 443 पर, पहुँचा जाता है और /.well-known/jmap पर उत्तर देता है (Fastmail: api.fastmail.com; Stalwart, Cyrus और Apache James: मेल होस्ट)। मेल इसी से पढ़ा और भेजा जाता है: आउटगोइंग (SMTP) सर्वर वैकल्पिक है - JMAP से भेजने के लिए इसे खाली छोड़ें।",
   "A letter in the name of the FBI, Interpol, the IMF ...": "FBI, Interpol, IMF ... के नाम पर पत्र",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "खाते के सर्वर, साइन इन और नाम उसकी अपनी खाता सेटिंग में हैं। यहाँ हर बदलाव तुरंत लागू और सहेजा जाता है; पुष्टि करने को कुछ नहीं है।",
   "An address looks like you@example.com.": "पता ऐसा दिखता है: you@example.com।",
   "An advance-fee letter - millions waiting for a small fee": "अग्रिम-शुल्क पत्र - छोटे शुल्क पर प्रतीक्षारत लाखों",
+  "An upload is still running — quit anyway?": "एक अपलोड अभी चल रहा है — फिर भी बंद करें?",
   "Any mail about cryptocurrency (a word of caution)": "क्रिप्टोकरेंसी के बारे में कोई भी मेल (सावधानी का एक शब्द)",
   "App-specific password": "ऐप-विशिष्ट पासवर्ड",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "टूलटिप के रूप में, पता तब पॉइंटर के बगल में दिखता है जब वह लिंक पर टिका हो, और स्टेटस बार स्वयं मेल के लिए खाली रहता है।",
@@ -256,6 +264,8 @@
   "Privacy": "गोपनीयता",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "गोपनीयता - वेब के चित्र कब डाउनलोड हों (हमेशा, केवल आपकी विश्वसनीय वेबसाइटों और प्रेषकों और संपर्कों से, या अपने आप कभी नहीं), क्या ज्ञात प्रेषकों के आइकन लाए जाएँ, और हर शुरुआत पर माँगा जाने वाला प्राथमिक पासवर्ड।",
   "Quit UltraMail?": "UltraMail बंद करें?",
+  "Quitting stops it, and the file does not arrive.": "बंद करने पर वह रुक जाएगा और फ़ाइल नहीं पहुँचेगी।",
+  "Quitting stops them, and the files do not arrive.": "बंद करने पर वे रुक जाएँगे और फ़ाइलें नहीं पहुँचेंगी।",
   "Reading": "पढ़ना",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "पढ़ना - संदेश कहाँ खुले, फ़ोल्डर सूची कितनी चौड़ी हो, HTML मेल स्वरूपित दिखे या सादे टेक्स्ट में, उसके टेक्स्ट का आकार, कौन सा मेल आपके उत्तर की प्रतीक्षा में गिना जाए, और संदेश के अनुलग्नक कहाँ दिखें।",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "वेबसाइट आइकन: घोटाला-जाँच पास करने वाले किसी भी अन्य प्रेषक के लिए, जिस डोमेन से वह लिखता है उसका होम पेज उसके आइकन के लिए पढ़ा जाता है - एक बार, और यदि कोई नहीं मिला तो एक सप्ताह बाद फिर। इससे प्रेषक का वेब सर्वर जान जाता है कि किसी ने देखा, पर यह नहीं कि किस संदेश के लिए; स्पैम, घोटाले, जंक फ़ोल्डर या gmail.com जैसे मेलबॉक्स प्रदाता के लिए कभी नहीं माँगा जाता।",
   "What a colour is for: the text, or the background behind it": "रंग किसलिए है: टेक्स्ट, या उसके पीछे की पृष्ठभूमि",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "यह किसकी रक्षा करता है: आपके मेल खातों के पासवर्ड, और वह कुंजी जिससे इस कंप्यूटर पर रखा मेल एन्क्रिप्ट है - मेलबॉक्स, पता पुस्तिका, आउटबॉक्स और हर डाउनलोड किया संदेश। इसके बिना कोई उन्हें नहीं पढ़ सकता, पूरा डेटा फ़ोल्डर कॉपी करने वाला भी नहीं।",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "जो भेजा गया था, वह अगली बार UltraMail के {0} का उपयोग करने पर उससे हटा दिया जाएगा।",
   "When a message has been sent successfully:": "संदेश सफलतापूर्वक भेजे जाने पर:",
   "When new mail arrives while UltraMail runs:": "UltraMail चलते समय नया मेल आने पर:",
   "When the pictures a message links to on the web are downloaded:": "संदेश द्वारा वेब पर लिंक किए चित्र कब डाउनलोड हों:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "इस बिल्ड पर आपके मेल पासवर्ड अनलॉक नहीं किए जा सकते।",
   "Your password": "आपका पासवर्ड",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: ऐप पासवर्ड दर्ज करें (Yahoo खाता > खाता सुरक्षा > ऐप पासवर्ड बनाएँ)।",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} डाउनलोड अभी चल रहा है — फिर भी बंद करें?",
+    "other": "{n} डाउनलोड अभी चल रहे हैं — फिर भी बंद करें?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} संदेश भेजे जाने की प्रतीक्षा में है। UltraMail स्वयं फिर कोशिश करता है - कनेक्शन लौटने पर जल्दी। जिस संदेश को सर्वर लगातार अस्वीकार करता है उसे यहाँ ठीक (संपादित) या हटाया जा सकता है।",
     "other": "{n} संदेश भेजे जाने की प्रतीक्षा में हैं। UltraMail स्वयं फिर कोशिश करता है - कनेक्शन लौटने पर जल्दी। जिस संदेश को सर्वर लगातार अस्वीकार करता है उसे यहाँ ठीक (संपादित) या हटाया जा सकता है।"
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} ट्रांसफ़र अभी चल रहा है — फिर भी बंद करें?",
+    "other": "{n} ट्रांसफ़र अभी चल रहे हैं — फिर भी बंद करें?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} अपलोड अभी चल रहा है — फिर भी बंद करें?",
+    "other": "{n} अपलोड अभी चल रहे हैं — फिर भी बंद करें?"
   }
 }

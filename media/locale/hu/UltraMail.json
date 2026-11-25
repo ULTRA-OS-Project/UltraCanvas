@@ -3,12 +3,19 @@
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "„Re:” vagy „Fw:” olyan feladótól, akinek sosem írt",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "A(z) „{0}” nem írható a mellékletgyorsítótárba itt: {1}. Ellenőrizze, hogy a mappa létezik és írható.",
+  "\"{0}\" is still being downloaded from {1}.": "A(z) „{0}” letöltése még folyamatban van innen: {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "A(z) „{0}” feltöltése még folyamatban van ide: {1}.",
   "(unnamed)": "(névtelen)",
+  "... and {n} more.": {
+    "one": "... és még {n}.",
+    "other": "... és még {n}."
+  },
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "A letiltott feladó levelét levélszemétként jelöli: narancssárga keret és sáv az üzenet fölött. A letiltott tartomány az altartományait is letiltja. Semmi sem kerül át vagy törlődik – a „Megjelölés levélszemétként” a Levélszemét mappába helyezi az üzenetet.",
   "A check that is still running when the next one is due is left to finish - an account is never checked twice at once.": "Az az ellenőrzés, amely még fut, amikor a következő esedékes, befejeződhet – egy fiókot soha nem ellenőriz egyszerre kétszer.",
   "A crypto payment cannot be called back: whoever receives it keeps it. No genuine wallet, exchange or help desk asks for your recovery phrase (seed phrase) or private key, and no genuine investment guarantees a profit. Never send crypto to someone you only know from email or the internet.": "A kriptovalutás fizetés nem hívható vissza: aki megkapja, megtartja. Egyetlen valódi tárca, tőzsde vagy ügyfélszolgálat sem kéri a helyreállítási kifejezését (seed phrase) vagy a privát kulcsát, és egyetlen valódi befektetés sem garantál nyereséget. Soha ne küldjön kriptót olyannak, akit csak e-mailből vagy az internetről ismer.",
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "Kriptovalutás csalás – helyreállítási kifejezés, tárca, amelyre fizetni kell",
   "A dangerous attachment - a program, or one dressed as a document": "Veszélyes melléklet – program, vagy dokumentumnak álcázott fájl",
+  "A download is still running — quit anyway?": "Még folyamatban van egy letöltés – mégis kilép?",
   "A horizontal line": "Vízszintes vonal",
   "A JMAP server is reached over HTTPS, usually on port 443, and answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, Cyrus and Apache James: the mail host). Mail is read and sent through it: the outgoing (SMTP) server is optional - leave it empty to send through JMAP.": "A JMAP-kiszolgáló HTTPS-en érhető el, általában a 443-as porton, és a /.well-known/jmap címen válaszol (Fastmail: api.fastmail.com; Stalwart, Cyrus és Apache James: a levelezési gazdagép). A levelek olvasása és küldése ezen át történik: a kimenő (SMTP) kiszolgáló nem kötelező – hagyja üresen, ha JMAP-on át küld.",
   "A letter in the name of the FBI, Interpol, the IMF ...": "Levél az FBI, az Interpol, az IMF nevében ...",
@@ -57,6 +64,7 @@
   "An account's servers, sign-in and name are in its own Account Settings. Every change here applies straight away and is saved; there is nothing to confirm.": "A fiók kiszolgálói, bejelentkezése és neve a saját Fiókbeállításaiban van. Itt minden módosítás azonnal érvényesül és mentésre kerül; nincs mit megerősíteni.",
   "An address looks like you@example.com.": "A cím így néz ki: you@example.com.",
   "An advance-fee letter - millions waiting for a small fee": "Előlegcsalás-levél – milliók várnak egy kis díj ellenében",
+  "An upload is still running — quit anyway?": "Még folyamatban van egy feltöltés – mégis kilép?",
   "Any mail about cryptocurrency (a word of caution)": "Bármely kriptovalutáról szóló levél (óvatosságra intő megjegyzés)",
   "App-specific password": "Alkalmazásjelszó",
   "As a tooltip, the address appears beside the pointer while it rests on a link, and the status bar stays free for the mail itself.": "Súgószövegként a cím a mutató mellett jelenik meg, amíg az egy hivatkozáson áll, és az állapotsor szabad marad a levél számára.",
@@ -256,6 +264,8 @@
   "Privacy": "Adatvédelem",
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Adatvédelem – mikor töltődnek le a weben lévő képek (mindig, csak a megbízható webhelyekről és feladóktól és az ismerősöktől, vagy soha magától), lekérjük-e az ismert feladók ikonjait, és indításkor kérjen-e elsődleges jelszót.",
   "Quit UltraMail?": "Kilép az UltraMailből?",
+  "Quitting stops it, and the file does not arrive.": "A kilépés leállítja, és a fájl nem érkezik meg.",
+  "Quitting stops them, and the files do not arrive.": "A kilépés leállítja őket, és a fájlok nem érkeznek meg.",
   "Reading": "Olvasás",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Olvasás – hol nyílik meg az üzenet, milyen széles a mappalista, a HTML-levél formázva vagy egyszerű szövegként látszik-e, a szöveg mérete, melyik levél számít a válaszára várónak, és hol jelennek meg az üzenet mellékletei.",
   "recipient@example.com, …": "recipient@example.com, …",
@@ -481,6 +491,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Webhelyikonok: a csalásellenőrzésen átment más feladóknál az ikonért a levelezési tartomány kezdőlapját olvassa be – egyszer, és egy hét múlva újra, ha nem volt. Ez elárulja a feladó webkiszolgálójának, hogy valaki megnézte, bár azt nem, hogy melyik üzenetet; levélszemétnél, csalásnál, a Levélszemét mappánál vagy a gmail.com-hoz hasonló postafiók-szolgáltatónál soha nem kéri le.",
   "What a colour is for: the text, or the background behind it": "Mire való a szín: a szövegre vagy a mögötte lévő háttérre",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "Mit véd: a levelezési fiókok jelszavait és a számítógépen tárolt levelek titkosítási kulcsát – a postafiókot, a címjegyzéket, a Kimenő üzeneteket és minden letöltött üzenetet. Nélküle senki nem olvashatja őket, még az sem, aki a teljes adatmappát lemásolja.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "Ami el lett küldve, az törlődik a(z) {0} fiókból, amikor az UltraMail legközelebb használja.",
   "When a message has been sent successfully:": "Ha az üzenet sikeresen elküldve:",
   "When new mail arrives while UltraMail runs:": "Ha új levél érkezik, miközben az UltraMail fut:",
   "When the pictures a message links to on the web are downloaded:": "Mikor töltődnek le az üzenetben a weben hivatkozott képek:",
@@ -500,8 +511,20 @@
   "Your mail passwords cannot be unlocked on this build.": "A levelezési jelszavai ezen a buildön nem oldhatók fel.",
   "Your password": "Jelszava",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: adjon meg alkalmazásjelszót (Yahoo-fiók > Fiókbiztonság > Alkalmazásjelszó létrehozása).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} letöltés még folyamatban van – mégis kilép?",
+    "other": "{n} letöltés még folyamatban van – mégis kilép?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} üzenet vár elküldésre. Az UltraMail magától újra próbálkozik – hamarabb, ha helyreáll a kapcsolat. A kiszolgáló által folyton elutasított üzenet itt javítható (Szerkesztés) vagy törölhető.",
     "other": "{n} üzenet vár elküldésre. Az UltraMail magától újra próbálkozik – hamarabb, ha helyreáll a kapcsolat. A kiszolgáló által folyton elutasított üzenet itt javítható (Szerkesztés) vagy törölhető."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} átvitel még folyamatban van – mégis kilép?",
+    "other": "{n} átvitel még folyamatban van – mégis kilép?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} feltöltés még folyamatban van – mégis kilép?",
+    "other": "{n} feltöltés még folyamatban van – mégis kilép?"
   }
 }
