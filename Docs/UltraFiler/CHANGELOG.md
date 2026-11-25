@@ -1,3 +1,9 @@
+#### 2026-11-25 *1.107.28*
+- **No more crash while thumbnails are made.** UltraFiler could crash ("exception
+  0xC0000005 ... libcairo-2.dll") in a folder with documents or slides, as
+  their thumbnails were drawn while the window drew its own text. The text of
+  each thread is now kept apart (framework: text layouts per thread).
+
 #### 2026-11-24 *1.107.27*
 - **Deleting a file no longer flashes the folder.** After a delete the whole
   folder was drawn again with plain type icons, and the thumbnails came back
