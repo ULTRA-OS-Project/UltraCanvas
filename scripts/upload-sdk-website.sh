@@ -2,7 +2,7 @@
 # scripts/upload-sdk-website.sh <archive-dir> <version>
 # scripts/upload-sdk-website.sh --check
 #
-# Puts the six SDK archives of one release on the UltraOS website, the server
+# Puts the SDK archives of one release on the UltraOS website, the server
 # behind https://ultraos.eu/download-file/ (the page UltraCanvasStart's
 # Framework step opens - Apps/UltraCanvasStart/engine/StartSdk.cpp), so the
 # page can offer the version UltraCanvasStart names without anyone copying
@@ -15,7 +15,7 @@
 #
 #   $ULTRAOS_SFTP_DIR/                 must exist; the script never creates it
 #     <version>/                       created on the first upload
-#       UltraCanvas-SDK-<OS>-<version>-<arch>.<ext>   the six archives
+#       UltraCanvas-SDK-<OS>-<version>-<arch>.<ext>   the five (six) archives
 #       SHA256SUMS                     `sha256sum -c SHA256SUMS` checks them
 #
 # Each file goes up as <name>.part and is renamed to <name> once it is
@@ -149,10 +149,12 @@ if [ ${#archives[@]} -eq 0 ]; then
     ls -la "$ARCHIVE_DIR" >&2
     exit 1
 fi
-if [ ${#archives[@]} -ne 6 ]; then
+if [ ${#archives[@]} -lt 5 ]; then
     # The release job warns the same way: a leg that failed leaves a gap,
-    # and the archives that exist are still worth publishing.
-    echo "::warning::${#archives[@]} SDK archives for $VERSION instead of 6"
+    # and the archives that exist are still worth publishing. Five rows
+    # build on main; the macOS Intel one only when the release dispatch
+    # asks for it, which makes six.
+    echo "::warning::${#archives[@]} SDK archives for $VERSION instead of 5 (6 with the Intel row)"
 fi
 
 ( cd "$ARCHIVE_DIR" && sha256sum "${archives[@]}" ) > "$WORK/SHA256SUMS"

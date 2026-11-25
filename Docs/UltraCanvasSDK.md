@@ -13,7 +13,10 @@ running a forty-minute build.
 
 CI produces it on every pull request and every push to `main`, one per
 platform leg, as a workflow artifact, and every release build of `main`
-attaches the same six archives to a GitHub release:
+attaches the same archives to a GitHub release - five of them: the macOS
+x86_64 (Intel) SDK is built only when a release is dispatched with the
+Build workflow's `intel` input (or a pull request is labelled `ci:intel`),
+so most releases do not carry it:
 
 | Artifact | Contents |
 |---|---|
@@ -28,7 +31,7 @@ version in the name is the framework's, from the first line of
 `Docs/UltraCanvas/CHANGELOG.md`.
 
 **Where to get one.** Every release is on the UltraOS server, with a
-`SHA256SUMS` beside the six archives:
+`SHA256SUMS` beside the release's archives:
 
 ```
 https://start.ultraos.eu/pub/<version>/<archive>

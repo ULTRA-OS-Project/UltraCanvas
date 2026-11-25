@@ -30,8 +30,8 @@ name: WebAssembly build
 # without cross-origin isolation headers must serve, and since run 24 it
 # builds and passes its smoke test like the baseline.
 #
-# Runs on a pull request, and on a push to main, that touches what the
-# browser build is made of (the paths below): the backend, the sysroot
+# Runs on a push to main - not on pull requests, see `on:` - that touches
+# what the browser build is made of (the paths below): the backend, the sysroot
 # script and its patches, the CMake files with their EMSCRIPTEN branches,
 # the image loader with its libvips-free roads, the demo. Everything else
 # leaves it alone: the wasm sysroot (glib, cairo, pango, fontconfig,
@@ -43,26 +43,11 @@ name: WebAssembly build
 # with the Emscripten version as its one input.
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/wasm-build.yml'
-      - 'UltraCanvas/OS/WASM/**'
-      - 'cmake/UltraCanvasWasmSysroot.cmake'
-      - 'cmake/UltraCanvasWasmApp.cmake'
-      - 'CMakeLists.txt'
-      - 'UltraCanvas/CMakeLists.txt'
-      - 'UltraCanvas/libspecific/Cairo/**'
-      - 'UltraCanvas/third_party/stb/**'
-      - 'Apps/DemoApp/**'
-      - 'Apps/UltraDBAdmin/**'
-      - 'Apps/UltraStore/**'
-      - 'cmake/UltraStoreKeys.cmake'
-      - 'Tests/UltraDBAdmin/e2e/**'
-      - 'UltraCanvas/core/UltraDatabase/**'
-      - 'UltraCanvas/include/UltraDatabase/**'
-      - 'UltraCanvas/include/WasmHost/**'
-      - 'Apps/UltraWeb/**'
-      - 'UltraWeb/guest/**'
+  # Main only, not on pull requests (2026-11-25): the five jobs held five
+  # runners for 30-75 minutes on every pull request that touched the paths
+  # below. A pull request that changes the backend, the sysroot or the
+  # demo's browser branches runs it by hand: Actions tab -> WebAssembly
+  # build -> Run workflow, against its branch.
   push:
     branches: [main]
     paths:

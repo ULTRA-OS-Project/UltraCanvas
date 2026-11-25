@@ -10,7 +10,7 @@ GitHub alone**: Claude Code on the web, in the Claude app or in a cloud
 session, with the repository on GitHub, and no C++ toolchain on the machine in
 front of them. Every rule of the main guide still applies. What changes is
 *where things happen*: the assistant's container edits and commits, GitHub
-Actions compiles and tests on six platforms, and the built application comes
+Actions compiles and tests on up to six platforms, and the built application comes
 back as a download.
 
 The short version: **the pull request is your compiler.** Nothing is built,
@@ -41,7 +41,7 @@ reports.
 
 **Other assistants and hosts.** Any agent that reads `AGENTS.md` and can push
 to a branch fits the same workflow. GitLab, Bitbucket and the other hosts do
-not: the checks, the six-platform build and the version folding are GitHub
+not: the checks, the multi-platform build and the version folding are GitHub
 Actions workflows under `.github/workflows/`, so on another host there is no
 compiler until someone ports them.
 
@@ -53,14 +53,15 @@ is the only place the whole framework is compiled for everyone:
 | Leg | Platform | What it also does |
 |---|---|---|
 | ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64, shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
-| macos-15, macos-15-intel | Apple Silicon and Intel | builds the bundled libraries for macOS 14 (vcpkg, cached) and packages the app suite for macOS 14 and later; signs and notarises on `main` |
+| macos-15, macos-15-intel | Apple Silicon and Intel (Intel only with the `ci:intel` label, or a dispatch with `intel` set) | builds the bundled libraries for macOS 14 (vcpkg, cached) and packages the app suite for macOS 14 and later; signs and notarises on `main` |
 | windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 | packages the standalone zip |
 | Android backend check | syntax check against the NDK | — |
 
-Seven check workflows run beside it on every PR: the changelog guard, the
-llms-txt sync, UI reuse, callback cycles, UTF-8 path strings, locale-decimal
-numbers and Win32 names. Each is the CI form of a `scripts/check_*.py` script
-the assistant can run in its container before pushing.
+The source checks run beside it on every PR, as the steps of one job
+(`source-checks.yml`): the changelog guard, the llms-txt sync, UI and HTML
+reuse, callback cycles, UTF-8 path strings, locale-decimal numbers, platform
+names and the rest. Each is the CI form of a `scripts/check_*.py` script the
+assistant can run in its container before pushing.
 
 Three facts about CI decide how a cloud-only developer works:
 
@@ -120,7 +121,8 @@ looking.
    prompt recipes in `GettingStarted.md` do.
 2. **The assistant edits, runs the check scripts, commits and pushes** to the
    PR branch. The `Stop` hook stops it from ending a turn with unpushed work.
-3. **CI builds and tests.** Six platforms, the checks, the package consumer.
+3. **CI builds and tests.** Three platforms (five or six with the `ci:distro` /
+   `ci:intel` labels), the checks, the package consumer.
    Ten to twenty-five minutes.
 4. **The assistant reads the result.** A red leg is its job: it reads the
    job log, reproduces what it can in the container, fixes and pushes. A

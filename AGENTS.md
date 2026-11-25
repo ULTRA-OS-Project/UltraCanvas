@@ -428,24 +428,32 @@ that land within minutes of each other are folded and released together:
 `changelog-fold.yml` runs every ten minutes and folds once `main` has been
 quiet for ten, or when the oldest pending entry has waited twenty.
 A pull request builds three rows - Linux x86_64, Windows x86_64 and macOS
-on Apple silicon - and the other three (Linux arm64, Windows ARM, macOS
-Intel) on main, where the release is made. The `ci:distro` label asks for
-all six on a pull request (the distribution build) and `ci:intel` for the
-Intel row alone; adding either starts a run with them. Ask for `ci:distro`
-when a change touches what only those rows would catch - a platform layer,
-the packaging, a bundled library, or code that behaves differently by
-platform (rule 8 of *Branch and pull-request rules*) - and add it when the
+on Apple silicon - and main builds two more (Linux arm64, Windows ARM),
+where the release is made. The sixth, macOS Intel, is not built on main
+either, only when asked for: a pull request labelled `ci:intel`, or a Build dispatch
+with its `intel` input (a release dispatch with it set is the only release
+that carries x86_64 macOS archives). Its runner is five to ten times slower
+than the rest and held the scarce macOS runners for up to three hours a
+run. The `ci:distro` label asks for main's five on a pull request (the
+distribution build); adding either label starts a run with its rows. Ask
+for `ci:distro` when a change touches what only those rows would catch - a
+platform layer, the packaging, a bundled library, or code that behaves
+differently by platform (rule 8 of *Branch and pull-request rules*) - with
+`ci:intel` as well where it touches macOS, and add `ci:distro` when the
 user asks for a "distro build" with a pull request. A left-out row reports
 under its own name, so a required check never waits on it - and it reports
 **success** after a few seconds, with a notice that it was not built: a
 green row is not a build unless it ran for minutes.
-Every night at 02:23 UTC the same workflow builds all six rows on `main`'s
-head (`schedule` in `build.yml`), as a validation run - nothing signed or
-published. It catches a change in a runner image or in the libraries the
-runners install fresh (MSYS2, Homebrew, apt) on a day nothing merged, before
-it turns somebody's unrelated pull request red; a red nightly run on a commit
-whose own build was green is that, not the last merge. Its result becomes that
-commit's "Build result" status (`build-result.yml` follows the newest run).
+There is no nightly run (switched off on 2026-11-25; `build.yml`'s `on:`
+says how to turn it back on). A change in a runner image or in the
+libraries the runners install fresh (MSYS2, Homebrew, apt) therefore shows
+first on the next merge or pull request: a row that goes red on a change
+that cannot have caused it is that, not the change.
+The iOS and WebAssembly builds (`ios-build.yml`, `wasm-build.yml`) run on
+main only, not on pull requests: a pull request that changes the iOS or
+WebAssembly backend, its sysroot or the demo's branches for it starts them
+by hand against its branch (Actions tab -> *Run workflow*) and says in the
+pull request that it did.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
 llama.cpp adapter is built (the engine is fetched from GitHub, or taken from
@@ -1271,10 +1279,12 @@ For assistants:
 
 8. **Label a platform-specific change `ci:distro` - and read the rows before
    "green".** A pull request builds Linux x86_64, Windows x86_64 and macOS
-   on Apple silicon; Windows ARM, Linux arm64 and macOS Intel are built only
-   on `main` or with the `ci:distro` label (*Building and testing*). Add the
-   label when you open the PR (or right after - adding it starts a run with
-   all six rows) whenever the change:
+   on Apple silicon; Windows ARM and Linux arm64 are built only on `main`
+   or with the `ci:distro` label, and macOS Intel only with the `ci:intel`
+   label (or a dispatch with `intel` set) - not on `main` either (*Building
+   and testing*). Add `ci:distro` when you open the PR (or right after -
+   adding it starts a run with those rows), and `ci:intel` as well when the
+   change touches macOS, whenever the change:
 
    - touches a platform layer (`UltraCanvas/OS/<Platform>/`), the
      packaging, CI's build, or a bundled library; or
@@ -1287,7 +1297,8 @@ For assistants:
    And when you report CI or merge "on green", count only the rows that
    built: a row the PR leaves out reports **success** in a few seconds with
    the notice *"... is built on main and on a pull request labelled
-   ci:distro"*. Say which rows built and which were left out, and treat
+   ci:distro"* (or, for macOS Intel, *"... is built only when asked
+   for"*). Say which rows built and which were left out, and treat
    "Build result" (the commit status `build-result.yml` keeps) as the
    verdict of the Build run - it is green only when that run succeeded with
    jobs. (#1243 changed Windows and macOS file naming without the label: its

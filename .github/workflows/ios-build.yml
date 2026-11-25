@@ -16,24 +16,19 @@ name: iOS build
 # artifact). It fails when the app is not running a while after launch, or
 # when its screenshot is one colour (scripts/ios-check-screenshot.py).
 #
-# Runs on a pull request, and on a push to main, that touches what the iOS
-# sysroot is made of (the paths below), and by hand from the Actions tab
-# against any branch. A cold build takes the better part of an hour per
+# Runs on a push to main - not on pull requests, see `on:` - that touches
+# what the iOS sysroot is made of (the paths below), and by hand from the
+# Actions tab against any branch. A cold build takes the better part of an hour per
 # triplet; vcpkg's binary cache keeps every library built, so a warm run
 # builds only what changed.
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/ios-build.yml'
-      - 'scripts/ios-bootstrap-sysroot.sh'
-      - 'scripts/ios-check-sysroot.sh'
-      - 'scripts/ios-check-screenshot.py'
-      - 'UltraCanvas/OS/iOS/**'
-      - 'MacOS/deps/ports/libvips/**'
-      - 'Apps/DemoApp/**'
-      - 'CMakeLists.txt'
-      - 'UltraCanvas/CMakeLists.txt'
+  # Main only, not on pull requests (2026-11-25): its two jobs take two of
+  # the few macOS runners an account gets at once, and on 2026-11-24 a pull
+  # request's iOS run waited 98 minutes for one while the build rows'
+  # macOS legs queued behind it. A pull request that changes the iOS
+  # backend or its sysroot runs this by hand: Actions tab -> iOS build ->
+  # Run workflow, against its branch.
   push:
     branches: [main]
     paths:
