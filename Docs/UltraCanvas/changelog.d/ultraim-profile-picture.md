@@ -16,3 +16,12 @@
   picture. The editor row's buttons are reachable
   (`GetChooseButton`, `GetRemoveButton`) for an application that styles its
   own. Covered in `ProfilePictureTest`.
+- **Matrix and Mastodon: people's pictures.** Matrix fetches a room's
+  picture (`m.room.avatar`) and its members' (`avatar_url`) once each as a
+  96-pixel thumbnail - the authenticated media API, else the older one - and
+  Mastodon each account's `avatar_static` (not the server's grey
+  `missing.png`): `avatarPath` on the chats and contacts, `senderAvatarPath`
+  on their messages, with a `ConversationUpdate` when a picture arrives.
+  Covered in `MatrixProviderTests` (against Synapse: a picture set as
+  `avatar_url` shown at the other side) and `MastodonProviderTests` (the
+  fake server serves the avatars, and the grey stand-in for Carol).

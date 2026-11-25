@@ -12,3 +12,8 @@
   simply does not show the picture.
 - `chatcube-peer --picture <file>` sets the command-line identity's picture
   (`""` removes it), for trying the above without a second computer.
+- **Faces from Matrix and Mastodon too.** Your Matrix and Mastodon
+  contacts' profile pictures - and a Matrix room's own picture - now show in
+  the chat list, at the head of the chat and beside their messages, as
+  Telegram's already did. Someone on Mastodon without a picture keeps their
+  initials rather than the grey silhouette.
