@@ -129,8 +129,6 @@
   "Show the slides full screen, from the first": "从第一张开始全屏放映幻灯片",
   "Show the slides full screen, from this one": "从当前幻灯片开始全屏放映",
   "Shrink the sheet so every column fits across one page": "缩小工作表，使所有列都能容纳在一页的宽度内",
-  "Slide show": "幻灯片放映",
-  "Slide {0} of {1}": "幻灯片 {0}/{1}",
   "Sort A to Z": "从 A 到 Z 排序",
   "Sort the selection, largest first": "对选区排序，从大到小",
   "Sort the selection, smallest first": "对选区排序，从小到大",
