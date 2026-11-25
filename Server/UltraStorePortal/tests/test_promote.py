@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 from decimal import Decimal
+from pathlib import Path
 
 from django.core import mail
 from django.core.management import call_command
@@ -20,9 +21,13 @@ from ultrastore_portal.promote import decide, services
 from ultrastore_portal.promote.models import Attribution, Balance, Campaign, Click, DayCount, LedgerEntry, Placement, TopUp
 from ultrastore_portal.store.models import AuditEntry, Report, Setting
 
-from .test_portal import PortalCase
+from .test_portal import PASSWORD, PortalCase, User
 
-NOON = timezone.make_aware(dt.datetime(2026, 11, 24, 12, 0))   # half the day gone: the pacing allows 60 % of a day's budget
+def noon() -> dt.datetime:
+    """Today at twelve - half the day gone: the pacing allows 60 % of a
+    day's budget. Today's, whenever the tests run: a campaign starts on the
+    day it is made, and a noon of another day would be before its start."""
+    return timezone.make_aware(dt.datetime.combine(timezone.localdate(), dt.time(12, 0)))
 
 
 class PromoteCase(PortalCase):
@@ -156,6 +161,7 @@ class DecisionTests(PromoteCase):
         campaign = self.campaign(self.editor, daily="2.00")
         self.assertEqual(self.ads(q="photo")[0].price, Decimal("0.10"))
         place = Placement.objects.get(key="store-search")
+        NOON = noon()
         today = timezone.localdate(NOON)
         Setting.objects.filter(key="promote.pacing").update(value="1")
         DayCount.objects.create(campaign=campaign, placement=place, day=today, spent=Decimal("1.00"))
@@ -541,3 +547,211 @@ class ApiTests(PromoteCase):
         # Switched off, the answer is an empty list, not an error: a client need not know.
         with self.settings(PROMOTE=False):
             self.assertEqual(self.decide(placement="store-search", context={"q": "photo"}).json(), {"ads": []})
+
+
+class ConsoleTests(PromoteCase):
+    """Phase 2: what the console adds to a campaign."""
+
+    def setUp(self):
+        super().setUp()
+        from ultrastore_portal.promote.models import Keyword
+        self.Keyword = Keyword
+        self.fund(self.acme)
+        self.fund(self.other)
+        self.made = self.campaign(self.editor)
+
+    def word(self, text, match="broad", negative=False, campaign=None):
+        return services.add_keyword(campaign or self.made, text, match, negative, None)
+
+    def shown_for(self, q) -> bool:
+        return self.editor in [ad.app for ad in self.ads(q=q)]
+
+    def test_a_campaign_chooses_its_searches(self):
+        self.assertTrue(self.shown_for("photo"))                       # without words of its own: every search the listing answers
+        self.word("Retouch")
+        self.assertEqual(self.Keyword.objects.get().text, "retouch")
+        self.assertFalse(self.shown_for("photo"))                      # with words of its own: those searches, and no others
+        self.assertTrue(self.shown_for("picture retouch"))             # the word matches, and the listing holds half of what was searched
+        self.assertFalse(self.shown_for("retouch"))                    # the word matches - the listing holds nothing of it: not at any price
+        self.assertFalse(self.shown_for("retouch spreadsheet tables"))
+        # The words together and in order; and exactly the search.
+        self.word("raw photo", "phrase")
+        self.assertTrue(self.shown_for("edit raw photo"))
+        self.assertFalse(self.shown_for("photo raw"))
+        self.word("photo editor", "exact")
+        self.assertTrue(self.shown_for("Photo  Editor"))               # as it is compared: lower case, single spaces
+        self.assertFalse(self.shown_for("photo editor free"))
+        # What it excludes is never its search, whatever else matches - for a campaign without words of its own too.
+        self.word("free", negative=True)
+        self.assertFalse(self.shown_for("free raw photo"))
+        plain = self.campaign(self.rival)
+        self.word("develop", negative=True, campaign=plain)
+        self.assertIn(self.rival, [ad.app for ad in self.ads(q="photo")])
+        self.assertNotIn(self.rival, [ad.app for ad in self.ads(q="photo develop")])
+        # Words are for searches: a category list and the row on the front page do not ask them.
+        self.assertEqual(len(self.ads("store-category", category="graphics")), 2)
+        with self.assertRaises(services.Refused):
+            self.word("   ")
+        with self.assertRaises(services.Refused):
+            self.word("photo", "roughly")
+
+    def test_an_offer_for_one_place(self):
+        Campaign.objects.filter(pk=self.made.pk).update(max_click=Decimal("0.20"))
+        self.campaign(self.rival, max_click="0.30")
+        self.assertEqual([ad.app for ad in self.ads(q="photo")], [self.rival, self.editor])
+        services.set_bids(self.made, {"store-search": Decimal("0.50"), "market-search": Decimal("9.00")}, None)   # a place it is not ticked for is not its to bid on
+        first = self.ads(q="photo")
+        self.assertEqual([(ad.app, ad.price) for ad in first][0], (self.editor, Decimal("0.31")))   # ahead there, at what it took
+        self.assertEqual(self.ads("store-category", category="graphics")[0].app, self.rival)         # elsewhere its own offer still holds
+        self.assertEqual(self.made.bids.count(), 1)
+        with self.assertRaises(services.Refused):
+            services.set_bids(self.made, {"store-search": Decimal("0.02")}, None)                    # under the floor
+        services.set_bids(self.made, {"store-search": None}, None)
+        self.assertEqual(self.made.bids.count(), 0)
+
+    def test_what_was_searched_is_named_only_when_it_is_many_peoples(self):
+        for _ in range(12):
+            ad = [ad for ad in self.ads(q="photo") if ad.app == self.editor][0]
+            services.shown(ad.token)
+        services.clicked(ad.token, address="10.0.0.1")
+        for q in ("photo raw", "raw photo picture"):
+            services.shown([ad for ad in self.ads(q=q) if ad.app == self.editor][0].token)
+        rows = services.terms_report(self.made)
+        self.assertEqual([(row["term"], row["shown"], row["clicks"], row["named"]) for row in rows], [("photo", 12, 1, True), ("other searches", 2, 0, False)])
+        # As a file: a search that a spreadsheet would run as a formula is made plain text.
+        for _ in range(10):
+            services._count_term(self.made.pk, {"w": {"q": "=HYPERLINK(evil)"}}, shown=1)
+        table = services.report_csv(self.made, "terms")
+        self.assertIn(["'=hyperlink(evil)", "10", "0", "0.0"], table)
+        self.assertEqual(table[0], ["Search", "Shown", "Clicks", "Click rate %"])
+        # And it goes after a month, as the click rows do.
+        from ultrastore_portal.promote.models import TermCount
+        TermCount.objects.update(day=timezone.localdate() - dt.timedelta(days=40))
+        call_command("promote", "cleanup", stdout=io.StringIO())
+        self.assertEqual(TermCount.objects.count(), 0)
+
+    def test_the_advertising_policy(self):
+        from ultrastore_portal.promote.models import PolicyAcceptance, PolicyVersion
+        self.assertTrue(self.shown_for("photo"))                       # no policy in force: nothing to accept
+        PolicyVersion.objects.create(version=1, text="Advertise what the listing is.")
+        self.assertFalse(self.shown_for("photo"))                      # in force, and not accepted: it waits
+        self.assertEqual(services.standing(self.made, Decimal("5.00"))[0], "waiting")
+        self.sign_in("dev@example.org")
+        self.assertContains(self.client.get("/promote/"), "The advertising policy has a new version")
+        url = f"/promote/campaigns/{self.made.pk}/edit/"
+        self.assertContains(self.client.get(url), "I accept the")
+        fields = {"places": ["store-search", "store-category"], "daily_budget": "5.00"}
+        self.assertContains(self.client.post(url, fields), "Accept the advertising policy to go on.")
+        self.client.post(url, {**fields, "accept_policy": "on"})
+        self.assertEqual(PolicyAcceptance.objects.get().version, 1)
+        self.assertTrue(self.shown_for("photo"))
+        self.assertNotContains(self.client.get(url), "I accept the")
+        self.assertContains(self.client.get("/promote/policy/"), "Advertise what the listing is.")
+        PolicyVersion.objects.create(version=2, text="And nothing political.", changes="Political advertising is refused.")
+        self.assertFalse(self.shown_for("photo"))                      # a new version: it waits again
+        self.assertContains(self.client.get("/promote/policy/"), "Political advertising is refused.")
+        PolicyVersion.objects.create(version=3, text="Later.", in_force_from=timezone.localdate() + dt.timedelta(days=30))
+        self.assertEqual(PolicyVersion.current().version, 2)           # one that is not in force yet is not asked for
+
+    def test_who_of_a_publisher_may_do_what(self):
+        from ultrastore_portal.store.models import PublisherMember
+        people = {}
+        for role in ("marketing", "billing", "analyst", "developer"):
+            people[role] = User.objects.create_user(f"{role}@example.org", PASSWORD, name=role.title(), email_verified=True)
+            PublisherMember.objects.create(publisher=self.acme, user=people[role], role=role)
+        promote = "/console/apps/org.acme.editor/promote/"
+        fields = {"places": ["store-search"], "daily_budget": "5.00"}
+        expected = {  # role: (reads advertising, starts a campaign, pays in, opens the apps)
+            "marketing": (200, 302, 403, 403), "billing": (200, 403, 302, 403), "analyst": (200, 403, 403, 403), "developer": (200, 403, 403, 200)}
+        for role, (reads, starts, pays, apps) in expected.items():
+            self.sign_in(f"{role}@example.org")
+            self.assertEqual(self.client.get(f"/promote/campaigns/{self.made.pk}/").status_code, reads, role)
+            self.assertEqual(self.client.post(promote, fields).status_code, starts, role)
+            self.assertEqual(self.client.post("/promote/balance/", {"amount": "25.00"}).status_code, pays, role)
+            self.assertEqual(self.client.get("/console/apps/org.acme.editor/").status_code, apps, role)
+            self.assertEqual(self.client.post(f"/promote/campaigns/{self.made.pk}/pause/").status_code, 302 if starts == 302 else 403, role)
+            self.assertEqual(self.client.post(f"/promote/campaigns/{self.made.pk}/words/", {"text": "x"}).status_code, 302 if starts == 302 else 403, role)
+        # Someone who is not there for the apps lands on advertising, and is not shown the apps' pages.
+        self.sign_in("marketing@example.org")
+        self.assertRedirects(self.client.get("/console/"), "/promote/", fetch_redirect_response=False)
+        self.assertNotContains(self.client.get("/promote/"), "Create an app")
+        self.sign_in("analyst@example.org")
+        self.assertContains(self.client.get("/promote/"), "is for the publisher's owner and its Marketing members")
+        self.assertEqual(self.client.get(f"/promote/campaigns/{self.made.pk}/report.csv").status_code, 200)   # reading includes the file
+
+    def test_the_campaign_page_and_its_file(self):
+        self.sign_in("dev@example.org")
+        url = f"/promote/campaigns/{self.made.pk}/"
+        self.assertContains(self.client.get(url), "It is shown for every search its listing answers")
+        self.client.post(url + "words/", {"text": "raw photo", "match": "phrase"})
+        self.client.post(url + "words/", {"text": "free", "negative": "1"})
+        page = self.client.get(url)
+        self.assertEqual(([w.text for w in page.context["words"]], [w.text for w in page.context["excluded"]]), (["raw photo"], ["free"]))
+        self.assertContains(page, "never for")
+        self.client.post(url + "words/", {"remove": page.context["words"][0].pk})
+        self.assertEqual(self.made.keywords.count(), 1)
+        self.client.post(url + "bids/", {"bid-store-search": "0.40", "bid-store-home": ""})
+        self.assertEqual([(b.placement.key, b.max_click) for b in self.made.bids.all()], [("store-search", Decimal("0.40"))])
+        self.assertContains(self.client.post(url + "bids/", {"bid-store-search": "cheap"}, follow=True), "is not an amount")
+        self.assertContains(self.client.post(url + "bids/", {"bid-store-search": "0.01"}, follow=True), "is under the least a click costs")
+        services.clicked(self.ads("store-home")[0].token, address="10.0.0.1")
+        answer = self.client.get(url + "report.csv?what=places")
+        self.assertEqual(answer["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("attachment", answer["Content-Disposition"])
+        lines = answer.content.decode("utf-8-sig").splitlines()
+        self.assertEqual(lines[0], "Place,Shown,Clicks,Clicks not counted,Spent,Installs,Orders,Order value")
+        self.assertIn("The Sponsored row on the front page,0,1,0,0.05,0,0,0.00", lines)
+        self.assertEqual(self.client.get(url + "report.csv?what=everything").status_code, 404)
+        theirs = self.campaign(self.rival)
+        self.assertEqual(self.client.get(f"/promote/campaigns/{theirs.pk}/report.csv").status_code, 404)
+        self.assertEqual(self.client.post(f"/promote/campaigns/{theirs.pk}/words/", {"text": "x"}).status_code, 404)
+
+    def test_what_the_numbers_suggest(self):
+        self.assertEqual(services.suggestions(self.made, Decimal("20.00")), [])
+        place = Placement.objects.get(key="store-search")
+        today = timezone.localdate()
+        for back in (1, 2, 4):
+            DayCount.objects.create(campaign=self.made, placement=place, day=today - dt.timedelta(days=back), spent=Decimal("4.90"), shown=300, clicks=1)
+        found = services.suggestions(self.made, Decimal("6.00"))
+        self.assertTrue(any("ran out on 3 of the last 7 days" in line for line in found))
+        self.assertTrue(any("seen and seldom clicked" in line for line in found))
+        self.assertTrue(any("less than three days" in line for line in found))
+        DayCount.objects.filter(campaign=self.made).update(clicks=20)
+        self.assertTrue(any("click and do not install" in line for line in services.suggestions(self.made, Decimal("60.00"))))
+
+    def test_anyone_can_see_who_advertises_what(self):
+        visitor = Browser()
+        self.assertContains(visitor.get("/promote/library/"), "No advertisement has been shown yet")
+        self.word("raw photo", "phrase")
+        self.word("free", negative=True)
+        services.shown(self.ads("store-home")[0].token)
+        self.campaign(self.rival)                                      # never shown: not in the library
+        page = visitor.get("/promote/library/")
+        rows = page.context["page"].object_list
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual((row["campaign"], row["publisher"].name, row["running"]), (self.made, "Acme", True))
+        self.assertEqual(row["shown_for"], "raw photo")                # what it is shown for is named; what it excludes is its own business
+        self.assertEqual([place.key for place in row["places"]], ["store-search", "store-category", "store-home", "store-detail"])
+        self.assertContains(page, "runs now")
+        self.assertContains(page, "Acme")
+        self.assertEqual(len(visitor.get("/promote/library/?q=nobody").context["page"].object_list), 0)
+        self.assertEqual(len(visitor.get("/promote/library/?q=acme").context["page"].object_list), 1)
+        listed = self.client.get("/v1/promote/library").json()["ads"]
+        self.assertEqual([(ad["id"], ad["payer"]["id"], ad["running"], ad["shown_for"]) for ad in listed], [("org.acme.editor", "acme", True, "raw photo")])
+        # Ended, it stays in the library with the day it was last shown.
+        services.set_state(self.made, Campaign.ENDED, None)
+        self.assertIsNotNone(Campaign.objects.get(pk=self.made.pk).ended_at)
+        row = visitor.get("/promote/library/").context["page"].object_list[0]
+        self.assertEqual((row["running"], row["last"]), (False, timezone.localdate()))
+        with self.settings(PROMOTE=False):
+            self.assertEqual(visitor.get("/promote/library/").status_code, 404)
+            self.assertEqual(self.client.get("/v1/promote/library").json(), {"ads": []})
+
+    def test_not_this_one_again_is_the_browsers_own(self):
+        page = Browser().get("/")
+        self.assertContains(page, f'data-ad="{self.ads("store-home")[0].campaign.pk}"')
+        self.assertContains(page, "data-ad-hide")
+        script = (Path(__file__).resolve().parent.parent / "ultrastore_portal" / "static" / "portal" / "portal.js").read_text()
+        self.assertIn("localStorage", script)
+        self.assertNotIn("fetch(", script.split("function setUpAds")[1].split("setUpFields(document);")[0])   # hiding tells the store nothing

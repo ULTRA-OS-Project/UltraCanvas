@@ -10,9 +10,12 @@ For a placement, each time:
 1. **Who may.** A campaign that runs, ticked this placement, promotes a
    listing that is public, has budget left today and a balance.
 2. **Is it relevant.** In a search, the listing must answer the search by
-   the store's own rule (every word found in it); in a category, be of the
-   category; beside a listing, be of its category and not be it. Below that
-   an advertisement is not shown at any price.
+   the store's own rule (every word found in it) - or, when the campaign
+   chose its own search words, one of them must match the search and the
+   listing must still hold a fair share of what was searched (the relevance
+   floor); a search the campaign excludes is never its. In a category, be of
+   the category; beside a listing, be of its category and not be it. Below
+   that an advertisement is not shown at any price.
 3. **Rank.** The offer times a quality figure: how often this listing was
    clicked in this placement, against a modest prior, so that a new
    campaign is neither favoured nor buried.
@@ -25,6 +28,8 @@ For a placement, each time:
 The shop's own results and their order are made first, elsewhere
 (store/queries.py), and are not touched: money moves no listing in them.
 
+Version: 0.6.0 - a campaign's own search words and exclusions, the
+                 relevance floor, an offer per place, the policy
 Version: 0.5.0
 """
 
@@ -39,7 +44,7 @@ from django.utils import timezone
 
 from ..store.models import App, Release
 from . import services
-from .models import Balance, Campaign, DayCount, Placement
+from .models import Balance, Campaign, DayCount, Placement, PolicyAcceptance, PolicyVersion
 
 PRIOR_CLICKS, PRIOR_SHOWN = Decimal(1), Decimal(50)   # two clicks in a hundred, until the campaign has numbers of its own
 QUALITY_DAYS = 30
@@ -75,6 +80,26 @@ def _matches(app: App, words: list[str]) -> bool:
     name, the summary, the tags, the id or the publisher's name."""
     haystack = " ".join([app.name, app.summary, app.tags, app.app_id, app.publisher.name]).lower()
     return all(word in haystack for word in words)
+
+
+def _holds_enough(app: App, words: list[str], floor: Decimal) -> bool:
+    """The relevance floor for a search word of the campaign's choosing:
+    the listing - its name, summary, tags, description, category - holds
+    at least this share of the words searched, and at least one. A photo
+    editor that bids on "spreadsheet" is not shown for it at any price."""
+    haystack = " ".join([app.name, app.summary, app.tags, app.description, app.category_name, app.publisher.name]).lower()
+    held = sum(1 for word in words if word in haystack)
+    return held >= 1 and held * 100 >= floor * len(words)
+
+
+def _in_search(campaign: Campaign, app: App, words: list[str], floor: Decimal) -> bool:
+    keywords = list(campaign.keywords.all())
+    if any(k.negative and k.matches(words) for k in keywords):
+        return False
+    chosen = [k for k in keywords if not k.negative]
+    if chosen:
+        return any(k.matches(words) for k in chosen) and _holds_enough(app, words, floor)
+    return _matches(app, words)
 
 
 def _why(placement: Placement, q: str, category_name: str, beside: App | None) -> tuple[dict, list[str]]:
@@ -115,7 +140,8 @@ def decide(placement_key: str, *, q: str = "", category: str = "", listing: str 
         return []
     now = now or timezone.now()
     today = timezone.localdate(now)
-    words = [word.lower() for word in q.split()[:6]]
+    q = services.normalise(q)
+    words = q.split()
     if placement.page == Placement.SEARCH and not words:
         return []
     from ..store import constants
@@ -131,11 +157,16 @@ def decide(placement_key: str, *, q: str = "", category: str = "", listing: str 
     campaigns = (Campaign.objects.filter(state=Campaign.ACTIVE, stopped=False, placements=placement, starts__lte=today, app__in=App.objects.listed())
                  .filter(Q(ends__isnull=True) | Q(ends__gte=today))
                  .exclude(pk__in=[pk for pk in seen if isinstance(pk, int)][:200])
-                 .select_related("app__publisher", "publisher").prefetch_related("app__releases__packages"))
+                 .select_related("app__publisher", "publisher").prefetch_related("app__releases__packages", "keywords", "bids"))
+    policy = PolicyVersion.current()
+    on_policy = set(PolicyAcceptance.objects.filter(version=policy.version).values_list("publisher_id", flat=True)) if policy else None
+    floor_share = services.number("relevance_floor")
     eligible = []
     for campaign in campaigns[:500]:
         app = campaign.app
-        if placement.page == Placement.SEARCH and not _matches(app, words):
+        if on_policy is not None and campaign.publisher_id not in on_policy:
+            continue   # the advertising policy in force is not accepted
+        if placement.page == Placement.SEARCH and not _in_search(campaign, app, words, floor_share):
             continue
         if placement.page == Placement.CATEGORY and app.category != category:
             continue
@@ -164,7 +195,8 @@ def decide(placement_key: str, *, q: str = "", category: str = "", listing: str 
     ranked = []
     for campaign in eligible:
         balance = balances.get(campaign.publisher_id, Decimal(0))
-        offer = campaign.max_click if campaign.max_click is not None else auto
+        own = next((bid.max_click for bid in campaign.bids.all() if bid.placement_id == placement.pk), None)
+        offer = own if own is not None else campaign.max_click if campaign.max_click is not None else auto
         if offer < placement.floor or balance < placement.floor:
             continue
         so_far = spent_today.get(campaign.pk) or Decimal(0)

@@ -1,5 +1,14 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.9.0 - deleting a sheet removes the names scoped to it and makes those covering it #REF!
+//                  (IsNamedRangeVisible); undo brings them back
+// Version: 1.8.0 - named ranges: one per scope and name, a scoped one visible only from its sheet and
+//                  covering it, following renames (ResolveNamedRange)
+// Version: 1.7.0 - inserting / deleting rows and columns is undone and redone (it was a placeholder step
+//                  whose undo cleared the sheet)
+// Version: 1.6.0 - inserting / deleting rows and columns moves the references in every sheet's formulas
+// Version: 1.5.0 - data validation enforced on a typed entry (onValidationFailed, Retry / Cancel / Accept),
+//                  a list rule's dropdown (ShowValidationListAt, Alt+Down); a typed value is an undo step
 // Version: 1.4.0 - LoadFromFile / LoadODS open a password-protected .ods with its password
 // Version: 1.3.0
 // Last Modified: 2026-11-18
@@ -18,6 +27,8 @@
 #include <memory>
 #include <functional>
 #include <stack>
+#include <map>
+#include <cstdint>
 
 namespace UltraCanvas {
 class UltraCanvasTextInput;
@@ -60,6 +71,14 @@ struct SpreadsheetUndoAction {
     int sheetIndex = -1;
     int toIndex = -1;
     std::vector<FormulaText> rewrittenFormulas;
+    // SheetDelete (and SheetInsert undone): workbookNames holds the names
+    // removing the sheet took away or turned to #REF!, as they were.
+    // RowInsert / RowDelete / ColumnInsert / ColumnDelete: the sheet as it
+    // was on the other side of the step (removedSheet, same id), the other
+    // sheets' formulas it rewrote (rewrittenFormulas) and the workbook's
+    // names. Undo and redo each swap them with what is there now, so the
+    // step always holds the state it leads back to.
+    std::map<std::string, NamedRange> workbookNames;
 };
 
 // A text measurer backed by a live render context: it selects each cell's own
@@ -121,7 +140,7 @@ private:
     int activeSheetIndex_ = 0;
     int firstVisibleTab_ = 0;   // first sheet tab shown in the tab strip
     std::unique_ptr<SpreadsheetFormulaEngine> formulaEngine_;
-    std::map<std::string, NamedRange> namedRanges_;
+    std::map<std::string, NamedRange> namedRanges_;   // by NamedRangeKey(scope, name)
     
     SpreadsheetEditMode editMode_ = SpreadsheetEditMode::Normal;
     // The live text, mirrored from the editor child so the formula preview and
@@ -207,6 +226,16 @@ private:
     // The formula bar's function menu and its "fx" button.
     std::shared_ptr<UltraCanvasMenu> functionMenu_;
     bool functionMenuEnabled_ = true;
+    // The items of the active cell's list rule (ShowValidationListAt).
+    std::shared_ptr<UltraCanvasMenu> validationListMenu_;
+    // StopEditing runs the commit and then takes the editor down: an answer to
+    // a refused entry that arrives while it runs is held until it is done, so
+    // Retry's new editor is not the one taken down (see RunAfterEditEnds).
+    int stopEditingDepth_ = 0;
+    std::vector<std::function<void()>> afterEditEnds_;
+    // Counts PushUndo calls, so a refused entry takes back its own undo step
+    // and no other.
+    uint64_t undoPushSerial_ = 0;
     // The caret the function hint was last drawn for: the editor moves its
     // caret (arrow keys) without telling us, and repaints only itself.
     size_t functionHintCaret_ = static_cast<size_t>(-1);
@@ -350,6 +379,40 @@ public:
     void SetEditBuffer(const std::string& text);
     void InsertTextAtCursor(const std::string& text);
     
+    // ===== DATA VALIDATION =====
+    // A rule is set on the sheet (GetActiveSheet()->SetValidation(range,
+    // rule)) or on one cell (GetCell(row, col)->SetValidation(rule)). A value
+    // typed into a cell is checked when the edit is committed: an entry that
+    // breaks the rule is answered as the rule's alertStyle says -
+    //   Stop         Retry (edit the entry again) or Cancel (the old value back)
+    //   Warning      Yes (keep it), No (edit it again) or Cancel
+    //   Information  OK (keep it) or Cancel
+    // A rule with showErrorAlert false keeps whatever is typed. Values set
+    // from code, pasted or filled are not checked; SpreadsheetSheet::ValidateCell
+    // checks any cell.
+    enum class ValidationAnswer { Accept, Retry, Cancel };
+    struct ValidationFailure {
+        int row = 0;
+        int col = 0;
+        std::string enteredText;   // what was typed
+        DataValidation rule;
+        std::string message;       // the rule's errorMessage, or a default one
+    };
+    // Asked instead of the grid's own dialog when it is set; call `answer`
+    // once, now or later. Accept on a Stop rule counts as Cancel.
+    std::function<void(const ValidationFailure&, std::function<void(ValidationAnswer)> answer)> onValidationFailed;
+
+    // A List rule with showDropdown puts an arrow beside the active cell; a
+    // click on it or Alt+Down opens the rule's items, and the one picked is
+    // entered as if typed (one undo step). Window coordinates.
+    void ShowValidationListAt(int row, int col, int windowX, int windowY);
+    // The items the arrow offers for a cell; empty when it has no List rule
+    // with a dropdown.
+    std::vector<std::string> GetValidationListItems(int row, int col) const;
+    // Enters `item` into the cell as typed, as picking it from the list does.
+    // False (nothing changes) when it is not one of the cell's items.
+    bool ChooseValidationListItem(int row, int col, const std::string& item);
+
     // ===== FORMATTING =====
     // The range the SetSelection* / AdjustSelection* calls actually write to.
     // Identical to GetSelection() for an ordinary range; a whole-column or
@@ -553,11 +616,32 @@ public:
     void ClearAllFilters();
     
     // ===== NAMED RANGES =====
-    void AddNamedRange(const std::string& name, const CellRange& range, 
+    // A workbook name is visible from every sheet (sheetScope "") or only
+    // from the sheet it is scoped to; the same name may stand once for the
+    // workbook and once per sheet ("Total" on each month's sheet). Names are
+    // matched without regard to case. The range says which sheet it covers
+    // (range.start.sheetName); a scoped name that says none covers its own
+    // sheet, an unscoped one the sheet of the formula using it.
+    void AddNamedRange(const std::string& name, const CellRange& range,
                        const std::string& sheetScope = "");
+    // Without a scope: the name under any scope. With one: only there
+    // ("" is the workbook's).
     void RemoveNamedRange(const std::string& name);
+    void RemoveNamedRange(const std::string& name, const std::string& sheetScope);
     bool HasNamedRange(const std::string& name) const;
-    CellRange GetNamedRange(const std::string& name) const;
+    bool HasNamedRange(const std::string& name, const std::string& sheetScope) const;
+    // The range of the name under exactly that scope, its sheet filled in as
+    // above; an invalid range when there is none.
+    CellRange GetNamedRange(const std::string& name, const std::string& sheetScope = "") const;
+    // What `name` means in a formula on sheet `fromSheet`: the name scoped to
+    // that sheet, else the workbook's - never another sheet's. An invalid
+    // range when neither exists (the formula shows #NAME?).
+    CellRange ResolveNamedRange(const std::string& name, const std::string& fromSheet) const;
+    // Whether a formula on `fromSheet` sees a name `name` at all. A name it
+    // sees whose range is invalid covered a sheet since deleted: #REF!, not
+    // #NAME?. Deleting a sheet removes the names scoped to it and breaks
+    // those covering it; undoing the delete brings both back.
+    bool IsNamedRangeVisible(const std::string& name, const std::string& fromSheet) const;
     std::vector<std::string> GetNamedRangeNames() const;
     
     // ===== FORMULA ENGINE =====
@@ -687,7 +771,7 @@ private:
     enum class HitArea { Nowhere, FormulaBar, ColumnHeader, RowHeader, CornerHeader, 
                          Cell, ColumnResizer, RowResizer, SheetTab, 
                          HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
-                         ColumnSortButton };
+                         ColumnSortButton, ValidationListButton };
     struct HitTestResult { HitArea area = HitArea::Nowhere; int row = -1; int col = -1; int tabIndex = -1;
                            bool addSheetButton = false; int tabScroll = 0;
                            bool functionMenuButton = false; };
@@ -710,7 +794,6 @@ private:
     void BeginUndoGroup(UndoActionType type, const std::string& description);
     void RecordCellChange(int row, int col);
     void RecordRangeChange(const CellRange& range);
-    void RecordStructureChange();
     void CommitUndoGroup();
     void CancelUndoGroup();
     void PushUndo(const SpreadsheetUndoAction& action);
@@ -748,6 +831,32 @@ private:
     std::string GenerateUniqueSheetName() const;
     void UpdateFormulaBar();
     void CommitEdit();
+    // After rows or columns were inserted (count > 0) or deleted (count < 0)
+    // on `changed`: the other sheets' formulas that name it, and the
+    // workbook's names on it, move with its cells.
+    // `step` (optional) records the other sheets' formulas it rewrote.
+    void MoveReferencesToSheet(const SpreadsheetSheet& changed, bool columns, int at, int count,
+                               SpreadsheetUndoAction* step = nullptr);
+    // Inserts (count > 0) or deletes (count < 0) rows or columns of the
+    // active sheet at `at`, as one undo step (InsertRowsAt and the others).
+    void ChangeRowsOrColumns(bool columns, int at, int count);
+    static bool IsStructureStep(UndoActionType type);
+    void ApplyStructureStep(SpreadsheetUndoAction& action);
+    // A typed plain value into a cell of the active sheet: an undo step,
+    // onCellChange, and the formulas that read it recalculated.
+    void SetCellFromEntry(int row, int col, const std::string& text);
+    // After a commit: checks the entry against the cell's rule and, when it
+    // breaks it, asks (onValidationFailed or the dialog) and acts on the answer.
+    void CheckEnteredValue(int row, int col, const std::string& entered, SpreadsheetEditMode mode,
+                           const SpreadsheetUndoAction& before, uint64_t serialBefore);
+    void AskValidationFailure(const ValidationFailure& failure, std::function<void(ValidationAnswer)> answer);
+    void ResolveValidationFailure(ValidationAnswer answer, const ValidationFailure& failure,
+                                  SpreadsheetEditMode mode, const SpreadsheetUndoAction& before,
+                                  bool tookUndoStep, uint64_t serialAfter);
+    void RunAfterEditEnds(std::function<void()> action);
+    // The list arrow beside the active cell; an empty rect when there is none.
+    Rect2Di ValidationListButtonRect() const;
+    void RenderValidationListButton(IRenderContext* ctx);
     Point2Di CellToScreen(int row, int col) const;
     Rect2Df CellAreaRect() const;   // the scrolling cell area, below/right of the headers
     CellAddress ScreenToCell(int x, int y) const;

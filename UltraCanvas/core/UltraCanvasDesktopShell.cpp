@@ -6,6 +6,7 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.14.0 - GetPointerPosition
 // Version: 1.13.0 - CanCaptureScreen; macOS takes its screen capture from
 //                  OS/MacOS/UltraCanvasMacOSScreenCapture.mm (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.12.0 - OpenDisplaySettings, CanOpenDisplaySettings
@@ -342,6 +343,10 @@ std::vector<DesktopScreenInfo> UltraCanvasDesktopShell::ListScreens() {
     return screens;
 }
 
+bool UltraCanvasDesktopShell::GetPointerPosition(int& x, int& y) {
+    return DesktopShellBackend::GetPointerPosition(x, y);
+}
+
 bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom) {
     if (windowId == 0 || left < 0 || right < 0 || top < 0 || bottom < 0) return false;
     return DesktopShellBackend::ReserveScreenEdges(windowId, left, right, top, bottom);
@@ -443,6 +448,10 @@ uint64_t UltraCanvasDesktopShell::ShowWindowThumbnail(uint64_t destinationId, ui
 
 void UltraCanvasDesktopShell::HideWindowThumbnail(uint64_t thumbnail) {
     if (thumbnail != 0) DesktopShellBackend::HideWindowThumbnail(thumbnail);
+}
+
+bool UltraCanvasDesktopShell::KeepMinimizedWindowsHidden() {
+    return DesktopShellBackend::KeepMinimizedWindowsHidden();
 }
 
 bool UltraCanvasDesktopShell::CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
@@ -1198,6 +1207,10 @@ namespace DesktopShellBackend {
         if (EmbeddedHost* host = GetEmbeddedHost()) return host->ListScreens();
         return {};
     }
+    bool GetPointerPosition(int& x, int& y) {
+        x = y = 0;
+        return false;
+    }
     bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
         if (EmbeddedHost* host = GetEmbeddedHost()) return host->ReserveScreenEdges(id, left, right, top, bottom);
         return false;
@@ -1225,6 +1238,7 @@ namespace DesktopShellBackend {
     }
     uint64_t ShowWindowThumbnail(uint64_t, uint64_t, int, int, int, int) { return 0; }
     void HideWindowThumbnail(uint64_t) {}
+    bool KeepMinimizedWindowsHidden() { return false; }
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
     bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out) {

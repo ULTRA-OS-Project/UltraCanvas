@@ -20,7 +20,9 @@
 // factory from the core file, and every NetworkMonitor_ListConnections()
 // reports NotSupported. Keep this list and the source list in
 // UltraCanvas/CMakeLists.txt in step.
-#if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__ANDROID__))
+// Not iOS, which has no libproc (UltraCanvas/CMakeLists.txt leaves the macOS
+// file out there too).
+#if defined(_WIN32) || (defined(__APPLE__) && !defined(ULTRACANVAS_IOS)) || (defined(__linux__) && !defined(__ANDROID__))
     #define ULTRACANVAS_NETWORKMONITOR_NATIVE 1
 #endif
 

@@ -3294,7 +3294,7 @@ framework's `Tr` keys and the curated application vocabulary) and
 `media/locale/en/base/<Base>.json` (the sixteen base sets);
 `scripts/extract_ui_strings.py` rewrites them from the sources,
 `scripts/check_locale_catalogues.py` is the CI gate over every
-translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+translation (`source-checks.yml`, `scripts/locale_catalogues_baseline.txt`),
 and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
 `Tr` for review. `ultralocalisation-draft` (`Apps/UltraLocalisationDraft`,
 on UltraAI's translator) drafts a language's catalogue, driven per set by

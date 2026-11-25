@@ -56,6 +56,7 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.11.0 - GetPointerPosition (GetCursorPos)
 // Version: 1.10.0 - ShowWindowThumbnail / HideWindowThumbnail: DWM live thumbnails (DwmRegisterThumbnail)
 // Version: 1.9.0 - the exclusive global shortcut: a low-level hook that swallows the key (StartExclusive)
 // Version: 1.8.0 - OpenDisplaySettings: Settings > Display (ms-settings:display)
@@ -76,7 +77,7 @@
 // Version: 1.2.0 - DesktopReplacement::Instead, EndSession, LaunchShortcut;
 //                  our own Shell_TrayWnd is not Explorer's taskbar
 // Version: 1.1.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 // IVirtualDesktopManager, DWMWA_CLOAKED and the cloaking events are declared
@@ -1606,6 +1607,20 @@ namespace {
     }
 } // namespace
 
+// Virtual-screen pixels, those of EnumDisplayMonitors (the process is
+// per-monitor DPI aware). Fails on a desktop without the input (a locked
+// session's secure desktop).
+bool GetPointerPosition(int& x, int& y) {
+    POINT at{};
+    if (!GetCursorPos(&at)) {
+        x = y = 0;
+        return false;
+    }
+    x = at.x;
+    y = at.y;
+    return true;
+}
+
 std::vector<DesktopScreenInfo> ListScreens() {
     std::vector<DesktopScreenInfo> screens;
     EnumDisplayMonitors(nullptr, nullptr, CollectMonitor, reinterpret_cast<LPARAM>(&screens));
@@ -1614,6 +1629,48 @@ std::vector<DesktopScreenInfo> ListScreens() {
 
 // Call it from the thread the window belongs to (the UI thread): the appbar
 // windows are made there.
+// ===== MINIMIZED WINDOWS WITHOUT EXPLORER =====
+
+namespace {
+    // A minimized window shown as a title bar on the screen (Windows parks
+    // them along the bottom edge when ARW_HIDE is off): moved off the
+    // screen, where Explorer keeps minimized windows, still minimized.
+    BOOL CALLBACK UnparkMinimizedWindow(HWND hwnd, LPARAM) {
+        if (!IsWindowVisible(hwnd) || !IsIconic(hwnd)) return TRUE;
+        RECT rect = {};
+        if (!GetWindowRect(hwnd, &rect) || (rect.left <= -30000 && rect.top <= -30000)) return TRUE;
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return TRUE;
+        placement.flags |= WPF_SETMINPOSITION;
+        placement.ptMinPosition.x = -32000;
+        placement.ptMinPosition.y = -32000;
+        placement.showCmd = SW_SHOWMINNOACTIVE;
+        SetWindowPlacement(hwnd, &placement);
+        // The placement only says where the next minimize goes; a window
+        // minimized already is moved there now.
+        SetWindowPos(hwnd, nullptr, -32000, -32000, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        return TRUE;
+    }
+}
+
+bool KeepMinimizedWindowsHidden() {
+    // Explorer's taskbar looks after them while it runs.
+    if (ExplorerTaskbarRunning()) return false;
+    MINIMIZEDMETRICS metrics = {};
+    metrics.cbSize = sizeof(metrics);
+    // The shell guard sets it at sign-in; an Explorer started and ended
+    // later in the session puts it back as it ends.
+    if (SystemParametersInfoW(SPI_GETMINIMIZEDMETRICS, sizeof(metrics), &metrics, 0) &&
+        (metrics.iArrange & ARW_HIDE) == 0) {
+        metrics.iArrange |= ARW_HIDE;
+        SystemParametersInfoW(SPI_SETMINIMIZEDMETRICS, sizeof(metrics), &metrics, 0);
+    }
+    EnumWindows(UnparkMinimizedWindow, 0);
+    return true;
+}
+
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     const HWND owner = ToHwnd(id);
     if (id == 0 || !IsWindow(owner)) return false;

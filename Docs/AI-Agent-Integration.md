@@ -10,7 +10,7 @@ Status: Phase 0 is implemented (`AGENTS.md`, `CLAUDE.md`, generated
 `llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py`, `context7.json`).
 CI regenerates the two files on `main` after every docs change lands
 (`.github/workflows/llms-regenerate.yml`); pull requests never carry them, and
-`llms-txt.yml` refuses one that does. Phases 1 and 2 remain proposals.
+`source-checks.yml` refuses one that does. Phases 1 and 2 remain proposals.
 
 ---
 

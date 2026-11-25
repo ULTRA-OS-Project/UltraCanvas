@@ -11,8 +11,8 @@ APK asset extraction.
 dependency sysroot builds in CI for `arm64-v8a` and `x86_64`, the core library
 compiles against it, DemoApp links against that into `libUltraCanvasDemo.so`,
 and `scripts/android-package-apk.sh` packages that into a debug-signed APK,
-uploaded by every run of `.github/workflows/android-build.yml`, whose emulator
-job installs the x86_64 one and requires a first frame with something drawn
+uploaded by `.github/workflows/android-build.yml` (a pull request builds
+arm64-v8a only; main both), whose emulator job installs the x86_64 one and requires a first frame with something drawn
 in it (`scripts/android-emulator-smoke.sh`). That is the whole of what is
 observed so far on an emulator: the first frame (at 160 and 420 dpi), a tap
 on the demo's tree filter field landing on it, a word typed into that field

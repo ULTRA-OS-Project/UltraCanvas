@@ -2,9 +2,10 @@
 
 **Date:** 2026-11-24
 **Status:** Proposal, with its first two pieces built on the same date in
-`Server/UltraStorePortal`: the one sign-in of §4.6 (0.4.0) and **phase 1,
-sponsored listings in the app store** (0.5.0, the portal's README,
-*Advertising*; §10 says what of the phase is built and what is left).
+`Server/UltraStorePortal`: the one sign-in of §4.6 (0.4.0), **phase 1,
+sponsored listings in the app store** (0.5.0) and **the first half of phase
+2, the console** (0.6.0) - the portal's README, *Advertising*; §10 says
+what of each phase is built and what is left.
 **Scope:** a new service, **UltraAds**, with which a merchant advertises in
 the shops and services of ULTRA OS - the app store, the games shop, the
 marketplace, B2B trade, the video portal, music and podcasts, e-books and
@@ -712,7 +713,15 @@ one.
 **Phase 2 - the console.** Search words and ad groups, offers per placement,
 brand and display banners with the review queue, fixed slots, members and
 roles, exports, invoices, suggestions, the policy with its versions, the
-public library.
+public library. *Built in the portal (0.6.0):* search words with their
+match rules and exclusions and the relevance floor; what was searched,
+named above the threshold; an offer per placement; the roles Marketing,
+Billing and Analyst; the report as CSV; suggestions; the policy with
+versions and acceptances (none seeded: the operator writes it); the public
+library; *Not this one again* kept in the browser. *Left of the phase:* ad
+groups (a campaign is still one listing), brand and display banners with
+the review queue, fixed slots, invoices (they wait for the portal's tax
+invoices), the monthly summary by mail.
 
 **Phase 3 - each shop as it is built.** The games shop first: the catalog
 already has the category `games`, so its goods are apps and only the

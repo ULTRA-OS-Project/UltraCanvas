@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheetFormatMenu.cpp
 // Cell-formatting menu for UltraCanvasSpreadsheet.
+// Version: 1.1.0 - the refused-entry dialog (AskValidationFailure) and a list rule's popup (ShowValidationListAt)
 // Version: 1.0.0
 // Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
@@ -7,6 +8,7 @@
 #include "UltraCanvasSpreadsheetFormatMenu.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <map>
 #include <cmath>
@@ -546,6 +548,67 @@ void UltraCanvasSpreadsheet::ShowSheetTabMenuAt(int sheetIndex, int windowX, int
     settings.closeByEscapeKey = true;
     settings.closeByClickOutside = true;
     sheetTabMenu_->OpenMenu(Point2Di(windowX, windowY), *window, settings);
+}
+
+void UltraCanvasSpreadsheet::AskValidationFailure(const ValidationFailure& failure,
+                                                  std::function<void(ValidationAnswer)> answer) {
+    const DataValidation& rule = failure.rule;
+    const std::string title = rule.errorTitle.empty() ? Tr("Invalid entry") : rule.errorTitle;
+    switch (rule.alertStyle) {
+        case ValidationAlertStyle::Stop:
+            UltraCanvasDialogManager::ShowMessage(failure.message, title, DialogType::Error,
+                DialogButtons::RetryCancel,
+                [answer](DialogResult result) {
+                    answer(result == DialogResult::Retry ? ValidationAnswer::Retry : ValidationAnswer::Cancel);
+                },
+                GetWindow());
+            break;
+        case ValidationAlertStyle::Warning:
+            UltraCanvasDialogManager::ShowMessage(failure.message + "\n\n" + Tr("Keep this value?"), title,
+                DialogType::Warning, DialogButtons::YesNoCancel,
+                [answer](DialogResult result) {
+                    answer(result == DialogResult::Yes ? ValidationAnswer::Accept
+                         : result == DialogResult::No  ? ValidationAnswer::Retry
+                                                       : ValidationAnswer::Cancel);
+                },
+                GetWindow());
+            break;
+        case ValidationAlertStyle::Information:
+            UltraCanvasDialogManager::ShowMessage(failure.message, title, DialogType::Information,
+                DialogButtons::OKCancel,
+                [answer](DialogResult result) {
+                    answer(result == DialogResult::OK ? ValidationAnswer::Accept : ValidationAnswer::Cancel);
+                },
+                GetWindow());
+            break;
+    }
+}
+
+void UltraCanvasSpreadsheet::ShowValidationListAt(int row, int col, int windowX, int windowY) {
+    UltraCanvasWindowBase* window = GetWindow();
+    if (!window) return;
+    const auto items = GetValidationListItems(row, col);
+    if (items.empty()) return;
+    if (IsEditing()) StopEditing(true);
+    if (!validationListMenu_) {
+        validationListMenu_ = std::make_shared<UltraCanvasMenu>(GetIdentifier() + "_ValidationList", 0, 0,
+                                                                std::max(80, GetColumnWidth(col)), 0);
+        validationListMenu_->SetMenuType(MenuType::PopupMenu);
+    }
+    // Rebuilt each time: the cell, its rule and its value all change. The
+    // current value is the ticked one. `this` raw: the menu belongs to the grid.
+    validationListMenu_->Clear();
+    const std::string current = GetCellDisplayValue(row, col);
+    for (const auto& item : items) {
+        validationListMenu_->AddItem(MenuItemData::Radio(item, 1, item == current, [this, row, col, item]() {
+            ChooseValidationListItem(row, col, item);
+        }));
+    }
+
+    PopupElementSettings settings;
+    settings.closeByEscapeKey = true;
+    settings.closeByClickOutside = true;
+    validationListMenu_->OpenMenu(Point2Di(windowX, windowY), *window, settings);
 }
 
 void UltraCanvasSpreadsheet::PromptRenameSheet(int index) {

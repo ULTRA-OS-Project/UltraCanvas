@@ -45,6 +45,7 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.17.0 - GetPointerPosition: where the mouse pointer is on the screen
 // Version: 1.16.0 - CanCaptureScreen; macOS captures the screen (ScreenCaptureKit, the main
 //                   display, in its pixels with 0,0 at its top-left corner)
 // Version: 1.15.0 - UltraCanvasGlobalShortcut::StartExclusive: the key reaches nothing else
@@ -318,6 +319,11 @@ namespace UltraCanvas {
         // A desktop covers the ones its own window does not with windows of
         // WindowType::Desktop and WindowConfig::desktopArea.
         static std::vector<DesktopScreenInfo> ListScreens();
+        // Where the mouse pointer is, in the pixels of ListScreens - to open
+        // a window on the monitor the person is working on. X11 and Windows
+        // say; false (with 0,0) on Wayland, which tells a client the pointer
+        // only over its own windows, and on macOS.
+        static bool GetPointerPosition(int& x, int& y);
         // Reserve strips along the screen's edges for `windowId` - a desktop's
         // bars, a dock - so that maximised and tiled windows stop short of
         // them (EWMH _NET_WM_STRUT_PARTIAL on X11, an appbar per edge on
@@ -326,6 +332,15 @@ namespace UltraCanvas {
         // whole length of its edge. Call it again to change or, with four
         // zeros, to release. `windowId` is the window's native handle.
         static bool ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom);
+        // For a desktop that is the session's shell, on Windows without
+        // Explorer's taskbar: minimized windows kept out of sight, as
+        // Explorer has them, not parked as small title bars along the
+        // screen's bottom edge - Windows' own behaviour when no shell says
+        // otherwise. Switches that on for the session (ARW_HIDE) whenever
+        // something turned it off, and moves a window parked meanwhile off
+        // the screen, still minimized. Cheap enough to call every few
+        // seconds. False where Explorer's taskbar runs and on other systems.
+        static bool KeepMinimizedWindowsHidden();
         // Whether this build can capture the screen at all: Linux (X11, and
         // Wayland through the desktop portal), the BSDs, Windows and macOS
         // 14 and later (the main display; the first capture asks for the

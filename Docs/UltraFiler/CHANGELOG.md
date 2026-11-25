@@ -1,3 +1,26 @@
+#### 2026-11-24 *1.107.27*
+- **Deleting a file no longer flashes the folder.** After a delete the whole
+  folder was drawn again with plain type icons, and the thumbnails came back
+  a moment later. Now the deleted file simply leaves, and every other tile
+  keeps its thumbnail. The same holds for a rename, a copy into the folder,
+  and a change noticed by the folder watch. A file whose content changed is
+  made again in the background, and its tile shows the old thumbnail until
+  the new one is ready.
+- **The preview stays put while you drag a selection rectangle.** Drawing a
+  rectangle over the files changed the selection with every file it crossed,
+  and the preview pane followed each change - opening on one file, folding
+  away on the second, opening again - so the files jumped under the pointer
+  mid-drag. The pane now stays as it was until the rectangle is let go, and
+  then shows what it ended on.
+- **Settings > Cache cut the thumbnail switches in seven languages.** Their
+  labels were one line in a fixed 440 px; German "Miniaturansichten zwischen
+  Programmläufen auf dem Datenträger behalten" needs about 620 px, and French,
+  Italian, Spanish, Polish, Hungarian and Greek ran over as well. A longer
+  label now wraps onto a second line.
+- **Find text cut its prompt in nineteen languages.** "Find files in this
+  folder and its sub folders that contain:" was one 428 px line (German needs
+  606 px); it now wraps onto a second line.
+
 #### 2026-11-23 *1.107.26*
 - **The path bar's old colours are back, and they are settings.** The folders
   on the way to the one shown are light grey again (#E4E6E9) and the folder

@@ -17,6 +17,9 @@ The rules:
   address, and goes after a month. An order names its click only through
   the token its buyer's store kept and sent with the checkout.
 
+Version: 0.6.0 - search words and what was searched, an offer per place,
+                 the policy, who of a publisher may do what, suggestions,
+                 the public library, a report as CSV
 Version: 0.5.0
 """
 
@@ -32,12 +35,13 @@ from django.core import signing
 from django.core.cache import cache
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
-from django.db.models import F, Sum
+from django.db.models import F, Max, Min, Sum
 from django.utils import timezone
 
 from ..store.models import Publisher, PublisherMember, Setting
 from ..store.services import audit
-from .models import Attribution, Balance, Campaign, Click, DayCount, LedgerEntry, Placement, TopUp
+from .models import (Attribution, Balance, Campaign, Click, DayCount, Keyword, LedgerEntry, Placement, PlacementBid, PolicyAcceptance,
+                     PolicyVersion, TermCount, TopUp)
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +62,12 @@ DEFAULTS = {
     "new_days": "30",
     "pacing": "1",              # 1: a day's budget is spread over the day
     "small_numbers": "10",      # a report line that rests on fewer showings is folded into "other"
+    "relevance_floor": "50",    # of a search's words, the share (in a hundred) a listing must hold to be shown for a chosen search word
+    "max_keywords": "200",
 }
+
+CAMPAIGNS, MONEY = "campaigns", "money"
+RIGHTS = {CAMPAIGNS: {PublisherMember.OWNER, PublisherMember.MARKETING}, MONEY: {PublisherMember.OWNER, PublisherMember.BILLING}}
 
 
 class Refused(Exception):
@@ -95,6 +104,18 @@ def set_setting(name: str, value: str, actor) -> None:
 
 def money(value) -> str:
     return f"{Decimal(value):.2f}"
+
+
+def may(role: str, what: str) -> bool:
+    """Who of a publisher's people may do what: an owner everything,
+    Marketing the campaigns, Billing the balance; everyone reads."""
+    return role in RIGHTS[what]
+
+
+def normalise(text: str) -> str:
+    """A search as it is compared and counted: lower case, single spaces,
+    six words and eighty characters at the most."""
+    return " ".join((text or "").lower().split()[:6])[:80].strip()
 
 
 def cents_up(value: Decimal) -> Decimal:
@@ -183,7 +204,8 @@ def set_state(campaign: Campaign, state: str, actor) -> Campaign:
     if state not in (Campaign.ACTIVE, Campaign.PAUSED, Campaign.ENDED):
         raise Refused("A campaign runs, is paused or has ended.")
     campaign.state = state
-    campaign.save(update_fields=["state", "updated"])
+    campaign.ended_at = timezone.now() if state == Campaign.ENDED else None
+    campaign.save(update_fields=["state", "ended_at", "updated"])
     audit(actor, "promote.campaign." + state, "campaign", str(campaign.pk))
     return campaign
 
@@ -197,6 +219,77 @@ def stop(campaign: Campaign, actor, stopped: bool, reason: str = "") -> Campaign
     campaign.save(update_fields=["stopped", "stop_reason", "updated"])
     audit(actor, "promote.campaign.stop" if stopped else "promote.campaign.release", "campaign", str(campaign.pk), reason=campaign.stop_reason)
     return campaign
+
+
+# ------------------------------------------------- search words, offers by place
+
+def add_keyword(campaign: Campaign, text: str, match: str, negative: bool, actor) -> Keyword:
+    text = normalise(text)
+    if not text:
+        raise Refused("A search word is a word, or a few.")
+    if match not in dict(Keyword.MATCHES):
+        raise Refused("A search word matches broadly, as a phrase or exactly.")
+    if campaign.keywords.count() >= int(number("max_keywords")):
+        raise Refused(f"A campaign has at most {setting('max_keywords')} search words.")
+    row, made = Keyword.objects.get_or_create(campaign=campaign, text=text, match=match, negative=negative)
+    if made:
+        audit(actor, "promote.keyword.add", "campaign", str(campaign.pk), text=text, match=match, negative=negative)
+    return row
+
+
+def remove_keyword(campaign: Campaign, pk, actor) -> None:
+    row = campaign.keywords.filter(pk=pk).first()
+    if row is not None:
+        audit(actor, "promote.keyword.remove", "campaign", str(campaign.pk), text=row.text, match=row.match, negative=row.negative)
+        row.delete()
+
+
+@transaction.atomic
+def set_bids(campaign: Campaign, offers: dict, actor) -> None:
+    """The most to pay for a click, place by place: {placement key: an
+    amount, or None for the campaign's own}. Only for places it is ticked for."""
+    places = {p.key: p for p in campaign.placements.all()}
+    for key, amount in offers.items():
+        place = places.get(key)
+        if place is None:
+            continue
+        if amount is None:
+            PlacementBid.objects.filter(campaign=campaign, placement=place).delete()
+        elif amount < place.floor:
+            raise Refused(f"{money(amount)} is under the least a click costs in \"{place.name}\" ({money(place.floor)}).")
+        else:
+            PlacementBid.objects.update_or_create(campaign=campaign, placement=place, defaults={"max_click": amount})
+    audit(actor, "promote.bids", "campaign", str(campaign.pk), offers={key: money(a) if a is not None else "" for key, a in offers.items() if key in places})
+
+
+# ------------------------------------------------------------------- policy
+
+def policy_due(publisher: Publisher) -> PolicyVersion | None:
+    """The advertising policy in force that this publisher has not
+    accepted yet; None when there is none, or it is on it."""
+    current = PolicyVersion.current()
+    if current is None or PolicyAcceptance.objects.filter(publisher=publisher, version=current.version).exists():
+        return None
+    return current
+
+
+def accept_policy(publisher: Publisher, user) -> None:
+    current = PolicyVersion.current()
+    if current is None:
+        return
+    _, made = PolicyAcceptance.objects.get_or_create(publisher=publisher, version=current.version,
+                                                     defaults={"accepted_by": user if getattr(user, "pk", None) else None})
+    if made:
+        audit(user, "promote.policy.accept", "publisher", publisher.slug, version=current.version)
+
+
+def standing(campaign: Campaign, balance: Decimal | None = None) -> tuple[str, str]:
+    """A campaign's standing as its publisher reads it: the campaign's own,
+    and before that whether the publisher is on the advertising policy."""
+    word, sentence = campaign.standing(balance)
+    if word in ("running", "waiting") and policy_due(campaign.publisher) is not None:
+        return "waiting", "The advertising policy has a new version: it runs again once it is accepted."
+    return word, sentence
 
 
 # ------------------------------------------------------------------- tokens
@@ -248,7 +341,22 @@ def shown(token: str) -> bool:
     if not cache.add("promote-shown:" + data["j"], 1, 24 * 3600):
         return False
     _count(campaign.pk, placement.pk, data.get("k", ""), shown=1)
+    _count_term(campaign.pk, data, shown=1)
     return True
+
+
+def _count_term(campaign_id: int, data: dict, **steps) -> None:
+    """What was searched, counted for the campaign's report of search words."""
+    term = normalise((data.get("w") or {}).get("q", ""))
+    if not term:
+        return
+    key = {"campaign_id": campaign_id, "day": timezone.localdate(), "term": term}
+    try:
+        with transaction.atomic():
+            TermCount.objects.get_or_create(**key)
+    except IntegrityError:
+        pass
+    TermCount.objects.filter(**key).update(**{name: F(name) + step for name, step in steps.items()})
 
 
 def is_own(user, publisher: Publisher) -> bool:
@@ -294,6 +402,7 @@ def clicked(token: str, *, address: str = "", own: bool = False) -> Click | None
         return Click.objects.filter(jti=data["j"]).first()   # the same click, told twice
     if click.valid:
         _count(campaign.pk, placement.pk, click.country, clicks=1, spent=price)
+        _count_term(campaign.pk, data, clicks=1)
         _low_balance_notice(campaign.publisher, balance)
     else:
         _count(campaign.pk, placement.pk, click.country, invalid=1)
@@ -394,6 +503,84 @@ def report(campaigns, days: int = 30) -> dict:
     return {"days": days, "total": _line("Total", _sums(rows)), "by_day": by_day, "by_place": by_place, "by_country": by_country}
 
 
+def terms_report(campaign: Campaign, days: int = 30) -> list[dict]:
+    """What people searched when this campaign was shown, most shown first.
+    A search that rests on fewer showings than the threshold is not named:
+    a rare search can be one person's, and is nobody's business. They are
+    counted together as "other searches"."""
+    since = timezone.localdate() - dt.timedelta(days=days - 1)
+    small = int(number("small_numbers"))
+    rows, other = [], {"shown": 0, "clicks": 0}
+    for row in TermCount.objects.filter(campaign=campaign, day__gte=since).values("term").annotate(shown=Sum("shown"), clicks=Sum("clicks")).order_by("-shown", "term"):
+        if (row["shown"] or 0) < small:
+            other["shown"] += row["shown"] or 0
+            other["clicks"] += row["clicks"] or 0
+        else:
+            rows.append({"term": row["term"], "shown": row["shown"], "clicks": row["clicks"], "named": True})
+    if other["shown"]:
+        rows.append({"term": "other searches", **other, "named": False})
+    for row in rows:
+        row["rate"] = (Decimal(row["clicks"]) * 100 / row["shown"]).quantize(Decimal("0.1")) if row["shown"] else None
+    return rows
+
+
+def suggestions(campaign: Campaign, balance: Decimal) -> list[str]:
+    """What the numbers of a campaign suggest, in a sentence each. Nothing
+    here changes anything: the publisher decides."""
+    today, found = timezone.localdate(), []
+    week = dict(DayCount.objects.filter(campaign=campaign, day__gte=today - dt.timedelta(days=6), day__lt=today)
+                .values("day").annotate(s=Sum("spent")).values_list("day", "s"))
+    spent_out = sum(1 for spent in week.values() if spent and spent >= campaign.daily_budget * Decimal("0.95"))
+    if spent_out >= 3:
+        found.append(f"The budget ran out on {spent_out} of the last 7 days. A higher budget per day would have shown it longer on those days.")
+    total = report([campaign])["total"]
+    if total["shown"] >= 500 and total["rate"] is not None and total["rate"] < Decimal("0.5"):
+        found.append("It is seen and seldom clicked. What people see is the icon, the name and the one-line summary: those are worth a second look.")
+    if total["clicks"] >= 30 and total["installs"] + total["orders"] == 0:
+        found.append("People click and do not install. The listing's page - its screenshots, its description, its price - is where they turn back.")
+    if campaign.state == Campaign.ACTIVE and Decimal(0) < balance < campaign.daily_budget * 3:
+        found.append("The balance covers less than three days of this campaign's budget.")
+    if campaign.keywords.filter(negative=False).exists() and total["shown"] == 0 and campaign.created < timezone.now() - dt.timedelta(days=3):
+        found.append("It has its own search words and was not shown in three days: nobody searched for them, or the listing does not hold the words searched.")
+    return found
+
+
+def library(days: int = 365) -> list[dict]:
+    """Every advertisement that ran in the last year or runs now: what was
+    promoted, who paid, from when to when, where, and for which searches.
+    Public: anyone can see who advertises what in the store."""
+    since = timezone.localdate() - dt.timedelta(days=days)
+    shown = dict(DayCount.objects.filter(day__gte=since, shown__gt=0).values("campaign").annotate(first=Min("day"), last=Max("day")).values_list("campaign", "first"))
+    last = dict(DayCount.objects.filter(day__gte=since, shown__gt=0).values("campaign").annotate(last=Max("day")).values_list("campaign", "last"))
+    rows = []
+    for campaign in Campaign.objects.filter(pk__in=shown).select_related("app", "publisher").prefetch_related("placements", "keywords"):
+        words = [k.text for k in campaign.keywords.all() if not k.negative]
+        rows.append({
+            "campaign": campaign, "app": campaign.app, "publisher": campaign.publisher, "first": shown[campaign.pk], "last": last[campaign.pk],
+            "running": campaign.standing()[0] == "running", "places": list(campaign.placements.all()),
+            "shown_for": ", ".join(words) if words else "Searches, categories and apps its listing fits"})
+    rows.sort(key=lambda row: (not row["running"], -row["last"].toordinal(), row["app"].name))
+    return rows
+
+
+def csv_cell(value) -> str:
+    """A cell of an exported report. Text that a spreadsheet would take for
+    a formula - a search can be anything a person typed - is made plain."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") and not isinstance(value, (int, Decimal, dt.date)) else text
+
+
+def report_csv(campaign: Campaign, what: str, days: int = 30) -> list[list[str]]:
+    data = report([campaign], days)
+    if what == "terms":
+        return [["Search", "Shown", "Clicks", "Click rate %"]] + [[csv_cell(r["term"]), str(r["shown"]), str(r["clicks"]), "" if r["rate"] is None else str(r["rate"])]
+                                                                 for r in terms_report(campaign, days)]
+    head = ["Day" if what == "days" else "Place", "Shown", "Clicks", "Clicks not counted", "Spent", "Installs", "Orders", "Order value"]
+    rows = data["by_day"] if what == "days" else data["by_place"]
+    return [head] + [[csv_cell(r["label"]), str(r["shown"]), str(r["clicks"]), str(r["invalid"]), money(r["spent"]), str(r["installs"]), str(r["orders"]),
+                      money(r["revenue"])] for r in rows]
+
+
 def spent_by_day(publisher: Publisher, days: int = 30) -> list[dict]:
     since = timezone.localdate() - dt.timedelta(days=days - 1)
     rows = DayCount.objects.filter(campaign__publisher=publisher, day__gte=since, spent__gt=0)
@@ -406,7 +593,9 @@ def revenue(days: int = 30) -> dict:
     rows = DayCount.objects.filter(day__gte=since)
     by_place = [_line(row["placement__name"], row)
                 for row in rows.values("placement__name", "placement__position").annotate(**{n: Sum(n) for n in FIELDS}).order_by("placement__position")]
-    return {"days": days, "total": _line("Total", _sums(rows)), "today": _line("Today", _sums(rows.filter(day=timezone.localdate()))), "by_place": by_place}
+    by_day = [_line(row["day"], row) for row in rows.values("day").annotate(**{n: Sum(n) for n in FIELDS}).order_by("-day")]
+    return {"days": days, "total": _line("Total", _sums(rows)), "today": _line("Today", _sums(rows.filter(day=timezone.localdate()))),
+            "by_place": by_place, "by_day": by_day}
 
 
 # ------------------------------------------------------------------ top-ups
@@ -480,6 +669,9 @@ def test_topup_report(made: TopUp, status: str) -> dict[str, str]:
 # ------------------------------------------------------------------ cleanup
 
 def cleanup() -> int:
-    """Click rows older than they are kept, removed. The totals stay."""
-    removed, _ = Click.objects.filter(at__lt=timezone.now() - dt.timedelta(days=int(number("click_days")))).delete()
+    """Click rows, and what was searched, older than they are kept:
+    removed. The totals by day stay."""
+    days = int(number("click_days"))
+    removed, _ = Click.objects.filter(at__lt=timezone.now() - dt.timedelta(days=days)).delete()
+    TermCount.objects.filter(day__lt=timezone.localdate() - dt.timedelta(days=days)).delete()
     return removed

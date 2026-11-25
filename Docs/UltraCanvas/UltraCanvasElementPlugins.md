@@ -132,7 +132,7 @@ Changing the header is changing that contract: append a member to
 `UltraCanvasPluginHost` and bump `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION`, or
 change a type that crosses to the plug-ins (`UCElementDescriptor` and friends)
 and bump the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG`, then run
-`python3 scripts/check_plugin_abi.py --update`. CI (`plugin-abi.yml`) fails
+`python3 scripts/check_plugin_abi.py --update`. CI (`source-checks.yml`) fails
 a change to the header that moves neither; a change that is not part of the
 contract is recorded with `--update --no-abi-change "why"`.
 

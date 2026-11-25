@@ -1,3 +1,23 @@
+#### 2026-11-25 *0.1.13*
+- **Starting UltraSnip while it runs in the background no longer says
+  "UltraSnip is already running".** When the copy UltraDesktop keeps resident
+  could not be reached (a build without the UltraMessage bus), a start from
+  the applications showed that message and no window at all. It now opens
+  the bar itself, as a start without a running copy does; a `--background`
+  start still leaves the resident copy alone and shows nothing.
+- **The bar opens on the screen the mouse pointer is on.** At the top
+  centre of that monitor, over the dimmed screen, rather than always on the
+  primary one - also when a resident UltraSnip's closed window comes back.
+  On Wayland and macOS, which do not say where the pointer is, it stays the
+  primary screen.
+
+#### 2026-11-24 *0.1.12*
+- **The recording bar cut its time in every language.** At 280 px, an hour's
+  paused recording read "1:02:05 …" in English and "1:02:…" in German, and
+  the red dot shrank to "..". The bar is now as wide as its content at its
+  widest - the time with "paused", the longer of Pause and Resume - and is
+  placed with that width.
+
 #### 2026-11-23 *0.1.11*
 - **The selection over the screen is the framework's now.** UltraSnip's
   overlay - the frozen, dimmed screen with the rectangle or the lit window -

@@ -6,6 +6,7 @@
 // UltraCanvasZoomPanImage, a recording in the media viewer). Until there is
 // a snip the window is the bar alone. The window hides itself while a snip
 // is taken, so it is never in the picture, and comes back with the result.
+// Version: 0.5.2 - the bar on the screen the mouse pointer is on
 // Version: 0.5.1 - the overlay is the framework's UltraCanvasScreenAreaPicker
 // Version: 0.5.0 - the picture zooms (the wheel, about the cursor) and moves
 //                  while zoomed (drag); a double-click fits it again
@@ -60,8 +61,8 @@ public:
     void SetResident(bool resident) { resident_ = resident; }
     // Begins a snip: the window hides, the delay passes, the screen is taken
     void StartCapture(const SnipRequest& request);
-    // The bar at the top centre of the screen over the screen already
-    // dimmed: the shape chosen on the bar can be dragged out (or a window
+    // The bar at the top centre of the screen the mouse pointer is on, over
+    // the screen already dimmed: the shape chosen on the bar can be dragged out (or a window
     // clicked) at once, without Start. Escape or a right click leaves the
     // bar alone; Start (with its delay) and Settings put the dim away first.
     void Arm();

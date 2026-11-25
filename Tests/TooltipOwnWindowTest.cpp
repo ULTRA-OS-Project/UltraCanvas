@@ -15,6 +15,7 @@
 //
 // X11 only (it reads the X server's stacking order and the screen's pixels);
 // runs headless under Xvfb. Skips - rather than fails - without a display.
+// Version: 1.2.0 - a tooltip asked of a window after it closed: none, and no crash
 // Version: 1.1.0 - the pointer leaving the window, or the window losing the focus, takes
 //                  its tooltip away (and a tooltip waiting for its delay is not shown)
 // Version: 1.0.0
@@ -304,6 +305,14 @@ int main() {
     TEST("no window is left open to keep Run() going", !liveLeft);
 
     std::cerr << "========================================" << std::endl;
+    // A pointer event of a window that is closing - queued before it closed,
+    // as the taskbar's preview strip closes when the pointer leaves it - asks
+    // for a tooltip after the window's render context went. That crashed in
+    // the layout (UltraDesktop, Windows); now it shows nothing.
+    UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(target.get(), "After the close", pointer, style);
+    TEST("a closed window is given no tooltip, and nothing crashes",
+         !UltraCanvasTooltipManager::IsVisible() && UltraCanvasTooltipManager::GetTooltipWindow() == nullptr);
+
     std::cerr << "Results: " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;
 #endif

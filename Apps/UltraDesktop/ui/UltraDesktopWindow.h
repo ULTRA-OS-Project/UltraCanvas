@@ -511,6 +511,7 @@ private:
         std::string itemId;
         std::string name;        // the application, for the tooltip
         std::string letter;      // the button's text when there is no icon
+        std::string iconFile;    // the picture the button shows, "" for the letter
         std::vector<RunningWindow> windows;
         int badge = 0;           // the count the button shows, 0 for none
         bool active = false;     // one of them has the focus
@@ -556,6 +557,8 @@ private:
     std::map<std::string, std::vector<UltraCanvas::DesktopTrayMenuItem>> trayMenus_;
     UltraCanvas::TimerId uiTimer_ = 0;
     int ticksSinceNotices_ = 0;
+    int ticksSinceMinimized_ = 0;   // KeepMinimizedWindowsHidden, every kMinimizedTicks
+    static constexpr int kMinimizedTicks = 8;   // two seconds of the 250 ms timer
     int screenshotBadgeTicks_ = 0;
 
     // The device poll: a worker fills `pending_`, the UI timer takes it.

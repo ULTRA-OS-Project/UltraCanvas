@@ -6,7 +6,7 @@
   <div><h1>{{ campaign.name }}</h1><span class="text-secondary">{{ sentence }}</span></div>
   <span class="badge">{{ word }}</span>
   <div class="ms-auto d-flex flex-wrap gap-2">
-    {% if campaign.state != "ended" %}
+    {% if campaign.state != "ended" and may_change %}
       <a class="btn btn-primary" href="{% url 'promote:campaign_edit' campaign.pk %}">Change</a>
       {% if campaign.state == "active" %}<form method="post" action="{% url 'promote:campaign_state' campaign.pk 'pause' %}">{% csrf_token %}<button class="btn btn-outline-secondary">Pause</button></form>
       {% else %}<form method="post" action="{% url 'promote:campaign_state' campaign.pk 'resume' %}">{% csrf_token %}<button class="btn btn-outline-secondary">Resume</button></form>{% endif %}
@@ -16,6 +16,7 @@
 </div>
 <div class="panels">
 {% if campaign.stopped %}<div class="alert alert-danger"><b>The store stopped this campaign.</b> {{ campaign.stop_reason }}</div>{% endif %}
+{% if suggestions %}<div class="alert alert-info"><b>What the numbers suggest</b><ul class="mb-0">{% for line in suggestions %}<li>{{ line }}</li>{% endfor %}</ul></div>{% endif %}
 <div><div class="row row-cols-2 row-cols-lg-4 g-3">
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Budget per day</span><b>{{ campaign.daily_budget }} {{ currency }}</b><span class="small text-secondary">{% if campaign.max_click %}at most {{ campaign.max_click }} a click{% else %}the store bids for you{% endif %}</span></div></div></div>
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Spent in all</span><b>{{ campaign.spent|floatformat:2 }} {{ currency }}</b><span class="small text-secondary">{% if campaign.total_budget %}of {{ campaign.total_budget }}{% else %}no limit in all{% endif %}</span></div></div></div>
@@ -23,15 +24,54 @@
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Balance</span><b>{{ balance.amount }} {{ currency }}</b><a class="small" href="{% url 'promote:balance' %}">The balance</a></div></div></div>
 </div></div>
 <div class="card"><div class="card-body">
-  <h2>Where it appears</h2>
-  <ul class="mb-0">{% for place in places %}<li><b>{{ place.area_name }}</b>: {{ place.name }}{% if not place.is_open %} <span class="text-secondary">(not open now)</span>{% endif %}</li>{% endfor %}</ul>
+  <h2>Where it appears, and the most a click may cost there</h2>
+  <p class="text-secondary">Leave a place empty and the campaign's own offer holds there{% if not campaign.max_click %} (the store bids for you){% endif %}. You never pay more than it took to be shown.</p>
+  <form method="post" action="{% url 'promote:campaign_bids' campaign.pk %}">{% csrf_token %}
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Shop</th><th>Place</th><th>A click costs at least</th><th>The most you pay, {{ currency }}</th></tr></thead>
+    <tbody>{% for row in places %}<tr><td>{{ row.place.area_name }}</td><td><b>{{ row.place.name }}</b>{% if not row.place.is_open %} <span class="text-secondary">(not open now)</span>{% endif %}</td><td>{{ row.place.floor }}</td>
+      <td><input class="form-control form-control-sm" style="width:7rem" name="bid-{{ row.place.key }}" value="{{ row.bid|default_if_none:'' }}" inputmode="decimal" aria-label="The most for a click in {{ row.place.name }}"{% if not may_change or campaign.state == "ended" %} disabled{% endif %}></td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if may_change and campaign.state != "ended" %}<button class="btn btn-outline-secondary btn-sm">Save the offers</button>{% endif %}
+  </form>
 </div></div>
+{% if open_for_words %}
+<div class="card"><div class="card-body">
+  <h2>Search words</h2>
+  <p class="text-secondary">{% if words %}It is shown for searches that match one of these words - and only when the listing itself holds enough of what was searched.{% else %}It is shown for every search its listing answers. Add words of your own to choose the searches instead.{% endif %}</p>
+  {% if words or excluded %}
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Word</th><th>Matches</th><th></th></tr></thead>
+    <tbody>
+    {% for word in words %}<tr><td><b>{{ word.text }}</b></td><td>{{ word.get_match_display }}</td><td class="text-end">{% if may_change %}<form method="post" action="{% url 'promote:campaign_words' campaign.pk %}">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm" name="remove" value="{{ word.pk }}">Remove</button></form>{% endif %}</td></tr>{% endfor %}
+    {% for word in excluded %}<tr><td><span class="badge bg-danger-subtle text-danger-emphasis">never for</span> <b>{{ word.text }}</b></td><td>{{ word.get_match_display }}</td><td class="text-end">{% if may_change %}<form method="post" action="{% url 'promote:campaign_words' campaign.pk %}">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm" name="remove" value="{{ word.pk }}">Remove</button></form>{% endif %}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+  {% if may_change and campaign.state != "ended" %}
+  <form method="post" action="{% url 'promote:campaign_words' campaign.pk %}" class="row g-2 align-items-end">{% csrf_token %}
+    <div class="col-md-4"><label class="form-label" for="word-text">A search word, or a few</label><input class="form-control" id="word-text" name="text" maxlength="80" required></div>
+    <div class="col-md-4"><label class="form-label" for="word-match">Matches a search with</label><select class="form-select" id="word-match" name="match">{% for value, label in matches %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-4 d-flex gap-2"><button class="btn btn-primary">Show it for this</button><button class="btn btn-outline-secondary" name="negative" value="1">Never for this</button></div>
+  </form>
+  {% endif %}
+  {% if terms %}
+  <h2 class="mt-4">What people searched when it was shown</h2>
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Search</th><th class="text-end">Shown</th><th class="text-end">Clicks</th><th class="text-end">Click rate</th></tr></thead>
+    <tbody>{% for row in terms %}<tr><td>{% if row.named %}{{ row.term }}{% else %}<span class="text-secondary">{{ row.term }}</span>{% endif %}</td><td class="text-end">{{ row.shown }}</td><td class="text-end">{{ row.clicks }}</td><td class="text-end">{% if row.rate is not None %}{{ row.rate }} %{% else %}-{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="small text-secondary mb-0">A search is named once it was shown often enough to be many people's. A rare one could be one person's, and is counted under "other searches".</p>
+  {% endif %}
+</div></div>
+{% endif %}
 <div class="card"><div class="card-body">
   <h2>The last {{ report.days }} days</h2>
   {% include "promote/_report.html" with rows=report.by_place head="Place" %}
   {% if report.by_day %}<h2 class="mt-4">By day</h2>{% include "promote/_report.html" with rows=report.by_day head="Day" %}{% endif %}
   {% if report.by_country %}<h2 class="mt-4">By country</h2>{% include "promote/_report.html" with rows=report.by_country head="Country" %}{% endif %}
-  <p class="small text-secondary mt-3 mb-0">Installs and orders are the ones that followed a click on this advertisement within a week. Who clicked or bought is never shown, here or anywhere. A click that did not count - your own, a burst from one place - is not charged.</p>
+  <p class="mt-3 mb-2">As a file: <a href="{% url 'promote:campaign_csv' campaign.pk %}?what=days">by day</a>, <a href="{% url 'promote:campaign_csv' campaign.pk %}?what=places">by place</a>{% if open_for_words %}, <a href="{% url 'promote:campaign_csv' campaign.pk %}?what=terms">what was searched</a>{% endif %} (CSV).</p>
+  <p class="small text-secondary mb-0">Installs and orders are the ones that followed a click on this advertisement within a week. Who clicked or bought is never shown, here or anywhere. A click that did not count - your own, a burst from one place - is not charged.</p>
 </div></div>
 </div>
 {% endblock %}

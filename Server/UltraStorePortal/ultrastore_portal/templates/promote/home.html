@@ -4,6 +4,7 @@
 <div class="page-head"><h1>Advertising</h1><a class="btn btn-outline-secondary ms-auto" href="{% url 'promote:balance' %}">Balance: {{ balance.amount }} {{ currency }}</a></div>
 <div class="panels">
 {% if balance.amount <= 0 %}<div class="alert alert-warning"><b>Your advertising balance is empty.</b> Campaigns wait until there is one. <a href="{% url 'promote:balance' %}">The balance</a></div>{% endif %}
+{% if policy_due %}<div class="alert alert-warning"><b>The advertising policy has a new version ({{ policy_due.version }}).</b> Campaigns wait until it is accepted: open a campaign, choose <i>Change</i>, and accept it there. <a href="{% url 'promote:policy' %}">Read it</a></div>{% endif %}
 <div><div class="row row-cols-2 row-cols-lg-4 g-3">
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Shown, {{ report.days }} days</span><b>{{ report.total.shown }}</b></div></div></div>
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Clicks</span><b>{{ report.total.clicks }}</b></div></div></div>
@@ -31,7 +32,8 @@
 </div></div>
 <div class="card"><div class="card-body">
   <h2>Promote an app</h2>
-  {% if apps %}<div class="d-flex flex-wrap gap-2">{% for app in apps %}<a class="btn btn-soft-primary" href="{% url 'console:promote' app.app_id %}">Promote {{ app.name }}</a>{% endfor %}</div>
+  {% if not may_change %}<p class="text-secondary mb-0">Starting and changing campaigns is for the publisher's owner and its Marketing members.</p>
+  {% elif apps %}<div class="d-flex flex-wrap gap-2">{% for app in apps %}<a class="btn btn-soft-primary" href="{% url 'console:promote' app.app_id %}">Promote {{ app.name }}</a>{% endfor %}</div>
   {% else %}<p class="text-secondary mb-0">Create an app first.</p>{% endif %}
 </div></div>
 {% if report.by_day %}<div class="card"><div class="card-body"><h2>By day</h2>{% include "promote/_report.html" with rows=report.by_day head="Day" %}</div></div>{% endif %}

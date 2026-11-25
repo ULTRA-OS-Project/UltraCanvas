@@ -51,6 +51,21 @@ int main() {
     for (size_t i = 0; same && i < fields.size(); ++i) same = grid[0][i].text == fields[i];
     Check(same, "CSVParse reads the record back field for field");
 
+    // Which fields import as numbers: never a word the parser happens to
+    // know, and not a number too large to hold (1e400 imported as 0).
+    {
+        const CSVImportOptions opt;
+        double v = 0.0;
+        bool pct = false;
+        Check(CSVTryParseNumber("12.5", opt, v, pct) && v == 12.5 && !pct, "12.5 is a number");
+        Check(CSVTryParseNumber("45%", opt, v, pct) && v == 0.45 && pct, "45% is a percentage");
+        Check(CSVTryParseNumber("1e5", opt, v, pct) && v == 100000.0, "1e5 is a number");
+        for (const char* word : { "nan", "inf", "-infinity", "0x10", "1e400", "-1e400" }) {
+            const std::string what = std::string(word) + " stays text";
+            Check(!CSVTryParseNumber(word, opt, v, pct), what.c_str());
+        }
+    }
+
     std::printf("%s\n", g_failures == 0 ? "all passed" : "FAILED");
     return g_failures == 0 ? 0 : 1;
 }

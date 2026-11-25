@@ -85,6 +85,17 @@
   {% include "promote/_report.html" with rows=revenue.by_place head="Place" %}
 </div></div>
 
+{% if revenue.by_day %}<div class="card"><div class="card-body">
+  <h2>By day</h2>
+  {% include "promote/_report.html" with rows=revenue.by_day head="Day" %}
+</div></div>{% endif %}
+
+<div class="card"><div class="card-body">
+  <h2>The advertising policy</h2>
+  {% if policy %}<p class="mb-0">Version {{ policy.version }}, in force since {{ policy.in_force_from|date:"j M Y" }}. A publisher advertises once it has accepted it; a new version makes every campaign wait until its publisher accepts that one. <a href="{% url 'promote:policy' %}">Read it</a> - a new version is written in the <a href="{% url 'admin:promote_policyversion_changelist' %}">admin site</a>.</p>
+  {% else %}<p class="mb-0 text-secondary">None is in force: publishers advertise without accepting one. The first is written in the <a href="{% url 'admin:promote_policyversion_changelist' %}">admin site</a> (<i>Policy versions</i>).</p>{% endif %}
+</div></div>
+
 <div class="card"><div class="card-body">
   <h2>Settings</h2>
   <div class="table-responsive"><table class="table align-middle">
@@ -98,7 +109,7 @@
     {% endfor %}
     </tbody>
   </table></div>
-  <p class="small text-secondary mb-0"><b>results_per_ad</b>: at most one advertisement for this many results on a page. <b>auto_factor</b>: a campaign with no highest price offers the floor times this. <b>attribution_days</b>: an install or an order counts for a click this many days back. <b>click_days</b>: how long a click row is kept. <b>burst_clicks</b>: more clicks than this on one campaign from one address in ten minutes do not count. <b>low_balance</b>: the publisher is mailed once under it. <b>new_daily_cap</b>, <b>new_days</b>: the ceiling per day of a publisher new to advertising. <b>pacing</b>: 1 spreads a day's budget over the day. <b>small_numbers</b>: a country with fewer showings is folded into "other" in a report.</p>
+  <p class="small text-secondary mb-0"><b>results_per_ad</b>: at most one advertisement for this many results on a page. <b>auto_factor</b>: a campaign with no highest price offers the floor times this. <b>attribution_days</b>: an install or an order counts for a click this many days back. <b>click_days</b>: how long a click row is kept. <b>burst_clicks</b>: more clicks than this on one campaign from one address in ten minutes do not count. <b>low_balance</b>: the publisher is mailed once under it. <b>new_daily_cap</b>, <b>new_days</b>: the ceiling per day of a publisher new to advertising. <b>pacing</b>: 1 spreads a day's budget over the day. <b>small_numbers</b>: a country, or a search, with fewer showings is folded into "other" in a report. <b>relevance_floor</b>: of the words of a search, the share in a hundred a listing must hold to be shown for a search word its campaign chose. <b>max_keywords</b>: the most search words a campaign has.</p>
 </div></div>
 </div>
 {% endblock %}

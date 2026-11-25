@@ -1,5 +1,8 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
+// Version: 2.5.4 - no crash for a tooltip asked of a window closing: a window not created is no
+//                  target, the layout stops without a render context, and a text layout that
+//                  could not be made measures 0
 // Version: 2.5.3 - PointerLeftWindow: the pointer leaving the window a tooltip belongs to,
 //                  or the window losing the focus, takes the tooltip away - shown in its
 //                  own window above every other, it stayed over the window that covered it
@@ -321,7 +324,11 @@ namespace UltraCanvas {
         // An element not in a window yet (built but not added, drawn
         // offscreen, in a test) has nowhere to show a tooltip: one shown
         // for another window goes, and nothing else happens.
-        if (!win) {
+        // So has a window whose native side is gone or not made yet: an
+        // event of a window being closed (a pointer move queued for a strip
+        // that closed as the pointer left it) arrives after its render
+        // context went, and the layout below needs one.
+        if (!win || !win->IsCreated()) {
             if (visible || pendingShow) HideTooltipImmediately();
             return;
         }
@@ -424,7 +431,8 @@ namespace UltraCanvas {
     void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content,
                                                                     const Point2Di& position, const TooltipStyle& newStyle) {
         UpdateAndShowTooltip(win, content, position, newStyle);
-        if (!enabled || content.Empty() || !win) return;
+        // Nothing was laid out for a window that is not (or no longer) created
+        if (!enabled || content.Empty() || !win || !win->IsCreated() || targetWindow != win) return;
         CancelShowTimer();
         CancelHideTimer();
         pendingShow = false;
@@ -813,6 +821,17 @@ namespace UltraCanvas {
     }
 
 
+    namespace {
+        // A text layout's size; 0 for one that could not be made (the
+        // drawing skips those too).
+        int LayoutWidth(const std::unique_ptr<ITextLayout>& layout) {
+            return layout ? static_cast<int>(layout->GetLayoutSize().width) : 0;
+        }
+        int LayoutHeight(const std::unique_ptr<ITextLayout>& layout) {
+            return layout ? static_cast<int>(layout->GetLayoutSize().height) : 0;
+        }
+    }
+
     void UltraCanvasTooltipManager::CalculateTooltipLayout() {
         blockLayouts.clear();
         bulletGlyphLayout.reset();
@@ -828,6 +847,9 @@ namespace UltraCanvas {
         if (currentContent.Empty() || !targetWindow) return;
 
         auto ctx = targetWindow->GetRenderContext();
+        // No surface to measure text on (a window closing): no tooltip,
+        // rather than a crash in the measuring.
+        if (!ctx) return;
         const int innerMax = std::max(20, style.maxWidth - style.paddingLeft - style.paddingRight);
 
         // Rows with a color swatch shift every label so the columns stay aligned
@@ -889,7 +911,7 @@ namespace UltraCanvas {
                     for (int i = 0; i < bl.columns; ++i) {
                         bl.cells[i] = ctx->CreateTextLayout(
                             SpanMarkup(style, style.fontSize, false, EscapeMarkup(*cellText[i])), true);
-                        const int w = static_cast<int>(bl.cells[i]->GetLayoutSize().width);
+                        const int w = LayoutWidth(bl.cells[i]);
                         natural[i] = std::max(natural[i], w);
 
                         if (align[i] != TooltipColumnAlign::Decimal) continue;
@@ -902,7 +924,7 @@ namespace UltraCanvas {
                             auto head = ctx->CreateTextLayout(
                                 SpanMarkup(style, style.fontSize, false,
                                            EscapeMarkup(cellText[i]->substr(0, anchor))), true);
-                            pw = std::min(w, static_cast<int>(head->GetLayoutSize().width));
+                            pw = std::min(w, LayoutWidth(head));
                         }
                         bl.cellPrefixWidth[i] = pw;
                         prefix[i] = std::max(prefix[i], pw);
@@ -955,16 +977,16 @@ namespace UltraCanvas {
                 case TooltipBlockType::Title:
                 case TooltipBlockType::Text:
                 case TooltipBlockType::PlainText: {
-                    int w = static_cast<int>(bl.textLayout->GetLayoutSize().width);
-                    if (w > innerMax) {
+                    int w = LayoutWidth(bl.textLayout);
+                    if (bl.textLayout && w > innerMax) {
                         w = WrapToWidth(*bl.textLayout, innerMax);
                     }
                     maxBlockWidth = std::max(maxBlockWidth, w);
                     break;
                 }
                 case TooltipBlockType::Bullet: {
-                    int w = static_cast<int>(bl.textLayout->GetLayoutSize().width);
-                    if (w > innerMax - kBulletIndent) {
+                    int w = LayoutWidth(bl.textLayout);
+                    if (bl.textLayout && w > innerMax - kBulletIndent) {
                         w = WrapToWidth(*bl.textLayout, innerMax - kBulletIndent);
                     }
                     maxBlockWidth = std::max(maxBlockWidth, kBulletIndent + w);
@@ -975,8 +997,8 @@ namespace UltraCanvas {
                     const TooltipColumnAlign* align =
                         (bl.columns == 3) ? rowAlign3.data() : rowAlign2.data();
                     for (int i = 0; i < bl.columns; ++i) {
-                        int w = static_cast<int>(bl.cells[i]->GetLayoutSize().width);
-                        if (w > colWidth[i]) {
+                        int w = LayoutWidth(bl.cells[i]);
+                        if (bl.cells[i] && w > colWidth[i]) {
                             // Cell wraps inside its column: its own lines follow
                             // the column alignment too, not just the cell box,
                             // so the cell is as wide as the column it fills.
@@ -1005,13 +1027,13 @@ namespace UltraCanvas {
                 case TooltipBlockType::Text:
                 case TooltipBlockType::PlainText:
                 case TooltipBlockType::Bullet:
-                    bl.height = static_cast<int>(bl.textLayout->GetLayoutSize().height);
+                    bl.height = LayoutHeight(bl.textLayout);
                     break;
                 case TooltipBlockType::Row: {
                     bl.height = bl.swatch.a > 0 ? kSwatchSize : 0;
                     for (int i = 0; i < bl.columns; ++i) {
                         bl.height = std::max(bl.height,
-                            static_cast<int>(bl.cells[i]->GetLayoutSize().height));
+                            LayoutHeight(bl.cells[i]));
                     }
                     break;
                 }

@@ -1,5 +1,8 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.7.0 - every change a sheet reports reaches the formula engine; Paste recalculates
+// Version: 1.6.0 - data validation on a typed entry (dialog or onValidationFailed), the list rule's arrow
+//                  and Alt+Down; a typed plain value is an undo step and fires onCellChange
 // Version: 1.5.0 - a cell set to the Top vertical alignment draws at the top of its row
 // Version: 1.4.0 - every line of text (cells, headers, formula bar, tabs) is centred
 //                 on its capitals rather than its line box
@@ -84,6 +87,10 @@ void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
         }
     }
 
+    // Changes the engine was told about and nobody recalculated yet (an
+    // application writing into a sheet directly): before they are drawn.
+    if (formulaEngine_ && formulaEngine_->HasPendingChanges()) formulaEngine_->Recalculate();
+
     ctx->PushState();
 
     // Clear background
@@ -122,6 +129,7 @@ void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
     }
 
     RenderAutoFillHandle(ctx);
+    RenderValidationListButton(ctx);
 
     if (showSheetTabs_) {
         RenderSheetTabs(ctx);
@@ -1209,6 +1217,7 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
             return;
         }
         if (hit.area == HitArea::ColumnSortButton) hit.area = HitArea::ColumnHeader;
+        if (hit.area == HitArea::ValidationListButton) hit.area = HitArea::Cell;
         if (hit.area == HitArea::Cell || hit.area == HitArea::ColumnHeader ||
             hit.area == HitArea::RowHeader) {
             if (IsEditing()) StopEditing(true);
@@ -1284,6 +1293,16 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
             if (IsEditing()) StopEditing(true);
             SelectRow(hit.row);
             Invalidate();
+            break;
+        }
+
+        case HitArea::ValidationListButton: {
+            // Opens the cell's list below the cell, lined up with its left edge.
+            mouseDown_ = false;   // the popup takes the release
+            const Rect2Di cell = GetCellBounds(hit.row, hit.col);
+            const int offsetX = event.pointerWindow.x - event.pointer.x;
+            const int offsetY = event.pointerWindow.y - event.pointer.y;
+            ShowValidationListAt(hit.row, hit.col, cell.x + offsetX, cell.y + cell.height + offsetY);
             break;
         }
 
@@ -1498,6 +1517,7 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
             SetMouseCursor(hit.functionMenuButton ? UCMouseCursor::Hand : UCMouseCursor::Text);
             break;
         case HitArea::ColumnSortButton: SetMouseCursor(UCMouseCursor::Hand); break;
+        case HitArea::ValidationListButton: SetMouseCursor(UCMouseCursor::Hand); break;
         case HitArea::AutoFillHandle: SetMouseCursor(UCMouseCursor::Cross);  break;
         case HitArea::Cell:
             // A click would type this cell into the formula being edited.
@@ -1566,7 +1586,8 @@ void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
         // sheet still owns, because it commits and steps to the next cell.
         if (event.virtualKey == UCKeys::Tab) {
             StopEditing(true);
-            MoveActiveCell(0, event.shift ? -1 : 1);
+            // Not when a refused entry is being edited again (Retry).
+            if (!IsEditing()) MoveActiveCell(0, event.shift ? -1 : 1);
         }
         return;
     }
@@ -1582,6 +1603,19 @@ void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
         StartInCellEditing();
         SetEditBuffer(std::string(1, static_cast<char>(event.character)));
         return;
+    }
+
+    // Alt+Down opens the active cell's list, as a click on its arrow does.
+    if (event.alt && event.virtualKey == UCKeys::Down) {
+        const Rect2Di button = ValidationListButtonRect();
+        if (button.width > 0) {
+            const CellAddress active = GetActiveCell();
+            const Rect2Di cell = GetCellBounds(active.row, active.col);
+            const Point2Df origin = GetPositionInWindow();
+            ShowValidationListAt(active.row, active.col, static_cast<int>(origin.x) + cell.x,
+                                 static_cast<int>(origin.y) + cell.y + cell.height);
+            return;
+        }
     }
 
     switch (event.virtualKey) {
@@ -1823,6 +1857,16 @@ UltraCanvasSpreadsheet::HitTestResult UltraCanvasSpreadsheet::HitTest(int x, int
                 }
             }
         }
+        // The list arrow of a validated active cell.
+        if (result.area == HitArea::Cell) {
+            const Rect2Di button = ValidationListButtonRect();
+            if (button.width > 0 && button.Contains(x, y)) {
+                const CellAddress active = GetActiveCell();
+                result.area = HitArea::ValidationListButton;
+                result.row = active.row;
+                result.col = active.col;
+            }
+        }
     }
     
     return result;
@@ -1926,6 +1970,18 @@ CellRange UltraCanvasSpreadsheet::GetVisibleRange() const {
     int viewHeight = gridBounds_.height - (showColumnHeaders_ ? SpreadsheetLimits::HeaderRowHeight : 0);
     
     return sheet->GetVisibleRange(viewWidth, viewHeight);
+}
+
+bool UltraCanvasSpreadsheet::IsCellVisible(int row, int col) const {
+    const auto* sheet = GetActiveSheet();
+    if (!sheet || sheet->IsRowHidden(row) || sheet->IsColumnHidden(col)) return false;
+    const CellRange visible = GetVisibleRange();
+    // Frozen rows and columns stay on screen whatever the scroll.
+    const bool rowShown = row < sheet->GetFrozenRowCount() ||
+                          (row >= visible.start.row && row <= visible.end.row);
+    const bool colShown = col < sheet->GetFrozenColumnCount() ||
+                          (col >= visible.start.col && col <= visible.end.col);
+    return rowShown && colShown;
 }
 
 Rect2Di UltraCanvasSpreadsheet::GetCellBounds(int row, int col) const {
@@ -2104,7 +2160,7 @@ void UltraCanvasSpreadsheet::BuildCellEditor(const std::string& initialText,
     };
     cellEditor->onEnterPressed = [this](const std::string&) {
         StopEditing(true);
-        MoveActiveCell(1, 0);
+        if (!IsEditing()) MoveActiveCell(1, 0);   // Retry edits a refused entry again
         return true;
     };
     cellEditor->onEscapePressed = [this]() {
@@ -2273,7 +2329,8 @@ void UltraCanvasSpreadsheet::StartInCellEditing() {
 
 void UltraCanvasSpreadsheet::StopEditing(bool confirm) {
     if (!IsEditing()) return;
-    
+
+    ++stopEditingDepth_;
     if (confirm) {
         CommitEdit();
     }
@@ -2285,6 +2342,14 @@ void UltraCanvasSpreadsheet::StopEditing(bool confirm) {
 
     UpdateFormulaBar();
     Invalidate();
+    --stopEditingDepth_;
+
+    // An answer to a refused entry that came while the edit was ending.
+    if (stopEditingDepth_ == 0 && !afterEditEnds_.empty()) {
+        auto actions = std::move(afterEditEnds_);
+        afterEditEnds_.clear();
+        for (auto& action : actions) action();
+    }
 }
 
 void UltraCanvasSpreadsheet::CancelEditing() {
@@ -2292,13 +2357,192 @@ void UltraCanvasSpreadsheet::CancelEditing() {
 }
 
 void UltraCanvasSpreadsheet::CommitEdit() {
-    if (editBuffer_.empty()) {
-        ClearCell(editingCell_.row, editingCell_.col);
-    } else if (editBuffer_[0] == '=') {
-        SetCellFormula(editingCell_.row, editingCell_.col, editBuffer_);
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+    const int row = editingCell_.row;
+    const int col = editingCell_.col;
+    const std::string entered = editBuffer_;
+
+    // What the cell held, to put back if its rule refuses the entry.
+    SpreadsheetUndoAction before;
+    before.type = UndoActionType::CellValueChange;
+    before.sheetName = sheet->GetName();
+    before.sheetId = sheet->GetId();
+    before.range = CellRange(row, col, row, col);
+    before.cellData = sheet->CopyCells(before.range);
+    const uint64_t serialBefore = undoPushSerial_;
+
+    if (entered.empty()) {
+        ClearCell(row, col);
+    } else if (entered[0] == '=') {
+        SetCellFormula(row, col, entered);
     } else {
-        GetCell(editingCell_.row, editingCell_.col)->SetValueFromString(editBuffer_);
+        SetCellFromEntry(row, col, entered);
     }
+    CheckEnteredValue(row, col, entered, editMode_, before, serialBefore);
+}
+
+void UltraCanvasSpreadsheet::SetCellFromEntry(int row, int col, const std::string& text) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+    if (recordingUndo_) RecordRangeChange(CellRange(row, col, row, col));
+    sheet->SetCellValueFromString(row, col, text);   // fires onCellChange
+    if (formulaEngine_) {
+        formulaEngine_->MarkDirty(CellAddress(row, col), sheet->GetName());
+    }
+    Recalculate();
+}
+
+// ============================================================================
+// DATA VALIDATION
+// ============================================================================
+
+void UltraCanvasSpreadsheet::RunAfterEditEnds(std::function<void()> action) {
+    if (stopEditingDepth_ == 0) {
+        action();
+        return;
+    }
+    // Inside StopEditing: the caller of StopEditing (Enter, Tab, a click)
+    // still has its own step to take - move the active cell - and the answer
+    // must come after it, or Retry's editor would sit on a cell the selection
+    // has left. With an application, after the event; without one, when
+    // StopEditing returns.
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+        std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+        if (!weakSelf.expired()) {
+            app->PostToUIThread([weakSelf, action = std::move(action)]() {
+                if (weakSelf.lock()) action();
+            });
+            return;
+        }
+    }
+    afterEditEnds_.push_back(std::move(action));
+}
+
+void UltraCanvasSpreadsheet::CheckEnteredValue(int row, int col, const std::string& entered,
+                                               SpreadsheetEditMode mode,
+                                               const SpreadsheetUndoAction& before,
+                                               uint64_t serialBefore) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+    const DataValidation* rule = sheet->GetEffectiveValidation(row, col);
+    if (!rule || !rule->IsValid() || !rule->showErrorAlert) return;
+
+    ValidationFailure failure;
+    if (sheet->ValidateCell(row, col, &failure.message)) return;
+    failure.row = row;
+    failure.col = col;
+    failure.enteredText = entered;
+    failure.rule = *rule;
+
+    // The commit's own undo step, taken back with the entry when it is refused.
+    const bool tookUndoStep = undoPushSerial_ == serialBefore + 1;
+    const uint64_t serialAfter = undoPushSerial_;
+
+    // The answer may come long after this returns (a dialog), so it holds the
+    // grid weakly. Elements are owned by a shared_ptr (AGENTS.md); one that is
+    // not cannot be answered later, and its entry stands.
+    std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+    if (weakSelf.expired()) return;
+    auto answered = std::make_shared<bool>(false);
+    auto answer = [weakSelf, answered, failure, mode, before, tookUndoStep,
+                   serialAfter](ValidationAnswer reply) {
+        if (*answered) return;   // once
+        *answered = true;
+        auto self = std::static_pointer_cast<UltraCanvasSpreadsheet>(weakSelf.lock());
+        if (!self) return;
+        self->RunAfterEditEnds([weakSelf, reply, failure, mode, before, tookUndoStep, serialAfter]() {
+            auto grid = std::static_pointer_cast<UltraCanvasSpreadsheet>(weakSelf.lock());
+            if (grid) grid->ResolveValidationFailure(reply, failure, mode, before, tookUndoStep, serialAfter);
+        });
+    };
+    if (onValidationFailed) onValidationFailed(failure, answer);
+    else AskValidationFailure(failure, answer);
+}
+
+void UltraCanvasSpreadsheet::ResolveValidationFailure(ValidationAnswer answer, const ValidationFailure& failure,
+                                                      SpreadsheetEditMode mode,
+                                                      const SpreadsheetUndoAction& before,
+                                                      bool tookUndoStep, uint64_t serialAfter) {
+    if (answer == ValidationAnswer::Accept && failure.rule.alertStyle == ValidationAlertStyle::Stop) {
+        answer = ValidationAnswer::Cancel;   // a Stop rule never keeps the entry
+    }
+    if (answer == ValidationAnswer::Accept) return;
+
+    // The entry is refused: the old value goes back, and the entry's undo
+    // step with it - unless something else has been done since, when the
+    // step stays and the restore is simply applied.
+    SpreadsheetSheet* sheet = FindUndoSheet(before);
+    if (!sheet) return;
+    if (tookUndoStep && undoPushSerial_ == serialAfter && !undoStack_.empty()) {
+        undoStack_.pop();
+    }
+    {
+        UndoRecordingPause pause(*this);
+        ApplyUndo(before);
+    }
+    if (sheet->onCellChange) sheet->onCellChange(failure.row, failure.col);
+    if (onUndoStackChange) onUndoStackChange();
+    UpdateFormulaBar();
+    Invalidate();
+
+    if (answer != ValidationAnswer::Retry) return;
+    // Retry: the entry back in an editor on its cell, all of it selected, so
+    // typing replaces it.
+    if (GetActiveSheet() != sheet || IsEditing()) return;
+    SelectCell(failure.row, failure.col);
+    EnsureCellVisible(failure.row, failure.col);
+    if (mode == SpreadsheetEditMode::InCellEditing) StartInCellEditing();
+    else StartEditingAt(failure.row, failure.col);
+    SetEditBuffer(failure.enteredText);
+    if (cellEditor) cellEditor->SelectAll();
+}
+
+std::vector<std::string> UltraCanvasSpreadsheet::GetValidationListItems(int row, int col) const {
+    const auto* sheet = GetActiveSheet();
+    const DataValidation* rule = sheet ? sheet->GetEffectiveValidation(row, col) : nullptr;
+    if (!rule || rule->type != ValidationType::List || !rule->showDropdown) return {};
+    return DataValidationListItems(*rule);
+}
+
+bool UltraCanvasSpreadsheet::ChooseValidationListItem(int row, int col, const std::string& item) {
+    const auto items = GetValidationListItems(row, col);
+    if (std::find(items.begin(), items.end(), item) == items.end()) return false;
+    if (IsEditing()) StopEditing(true);
+    SetCellFromEntry(row, col, item);
+    UpdateFormulaBar();
+    Invalidate();
+    return true;
+}
+
+Rect2Di UltraCanvasSpreadsheet::ValidationListButtonRect() const {
+    const auto* sheet = GetActiveSheet();
+    if (!sheet || IsEditing()) return Rect2Di(0, 0, 0, 0);
+    const CellAddress active = GetActiveCell();
+    if (!IsCellVisible(active.row, active.col)) return Rect2Di(0, 0, 0, 0);
+    if (GetValidationListItems(active.row, active.col).empty()) return Rect2Di(0, 0, 0, 0);
+    // Just right of the cell, as tall as it (the fill handle's corner wins
+    // where the two meet).
+    const Rect2Di cell = GetCellBounds(active.row, active.col);
+    const int width = 16;
+    return Rect2Di(cell.x + cell.width + 1, cell.y, width, std::max(8, cell.height));
+}
+
+void UltraCanvasSpreadsheet::RenderValidationListButton(IRenderContext* ctx) {
+    const Rect2Di button = ValidationListButtonRect();
+    if (button.width <= 0) return;
+    ctx->PushState();
+    ctx->ClipRect(CellAreaRect());
+    ctx->SetFillPaint(Color(240, 240, 240));
+    ctx->FillRectangle(Rect2Df(button.x, button.y, button.width, button.height));
+    ctx->SetStrokePaint(Color(160, 160, 160));
+    ctx->SetStrokeWidth(1.0f);
+    ctx->DrawRectangle(Rect2Df(button.x + 0.5f, button.y + 0.5f, button.width - 1.0f, button.height - 1.0f));
+    const double cx = button.x + button.width * 0.5;
+    const double cy = button.y + button.height * 0.5;
+    ctx->SetFillPaint(Color(60, 60, 60));
+    ctx->FillLinePath({ Point2Dd(cx - 4, cy - 2), Point2Dd(cx + 4, cy - 2), Point2Dd(cx, cy + 3) });
+    ctx->PopState();
 }
 
 void UltraCanvasSpreadsheet::SetEditBuffer(const std::string& text) {
@@ -2562,7 +2806,8 @@ void UltraCanvasSpreadsheet::PasteSpecial(const PasteOptions& options) {
         }
         ClearClipboard();
     }
-    
+
+    Recalculate();   // pasted formulas, and the formulas that read the pasted cells
     Invalidate();
 }
 
@@ -2637,9 +2882,19 @@ void UltraCanvasSpreadsheet::InitializeDefaultSheet() {
 }
 
 void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
-    sheet->onCellChange = [this](int row, int col) {
+    // Whatever changes a sheet's cells tells the formula engine, so the next
+    // Recalculate reaches the formulas that read them - however the change
+    // was made (typing, paste, fill, undo, an application's own writes).
+    // The sheet is held raw: it owns these callbacks.
+    sheet->onCellChange = [this, sheet](int row, int col) {
+        if (formulaEngine_) formulaEngine_->MarkDirty(CellAddress(row, col), sheet->GetName());
         Invalidate();
         if (onCellChange) onCellChange(row, col);
+    };
+
+    sheet->onRangeChange = [this, sheet](const CellRange& range) {
+        if (formulaEngine_) formulaEngine_->MarkRangeDirty(range, sheet->GetName());
+        Invalidate();
     };
     
     sheet->onSelectionChange = [this]() {
@@ -2649,6 +2904,7 @@ void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
     };
     
     sheet->onStructureChange = [this]() {
+        if (formulaEngine_) formulaEngine_->MarkAllDirty();   // rows or columns moved
         Invalidate();
         if (onStructureChange) onStructureChange();
     };
@@ -2692,8 +2948,8 @@ size_t UltraCanvasSpreadsheet::GetMemorySize() const {
         size += sheet->GetMemorySize();
     }
     
-    for (const auto& [name, range] : namedRanges_) {
-        size += name.capacity() + sizeof(NamedRange);
+    for (const auto& [key, named] : namedRanges_) {
+        size += key.capacity() + named.name.capacity() + sizeof(NamedRange);
     }
     
     return size;

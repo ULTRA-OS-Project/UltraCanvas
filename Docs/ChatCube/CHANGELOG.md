@@ -1,3 +1,9 @@
+#### 2026-11-24 *0.1.35*
+- **A settings switch's label wraps instead of being cut off.** The switches
+  were one line in a fixed 460 px, which the Greek "On this network" switch
+  filled to within a few pixels; a longer translation, or a wider font on
+  another system, now goes onto a second line.
+
 #### 2026-11-23 *0.1.34*
 - **The message field starts one row high and grows with the text.** It
   was two rows high whatever it held. Now it is one row while the message

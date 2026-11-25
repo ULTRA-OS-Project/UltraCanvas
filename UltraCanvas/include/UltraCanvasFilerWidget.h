@@ -106,6 +106,8 @@
 // (GetListingPendingStatus, onListingPendingChanged).
 // Version: 1.60.0 - openMenuProvider: a host's entries right after "Open with" in a file's
 //                  context menu (UltraFiler's "Edit in UltraPaint")
+// Version: 1.59.1 - a rescan of the folder shown keeps the thumbnails, text pages, folder peeks and
+//                  picture proportions of the files that did not change (PruneThumbnailCache)
 // Version: 1.59.0 - IsDragInProgress; letting a selection rectangle go fires onSelectionChanged once
 //                  more, so a host that waited for the drag to end sees the final selection
 // Version: 1.58.0 - folderIconIsLineArt: a one-colour folder icon drawn in the view's text colour,
@@ -2724,6 +2726,10 @@ namespace UltraCanvas {
             // Not before this: a retry that runs immediately runs inside the
             // same moment that just failed, and spends the attempts on it.
             std::chrono::steady_clock::time_point retryAfter{};
+            // A file that changed on disk is decoded again; until the new
+            // thumbnail is in, the tile keeps showing the one it had rather
+            // than falling back to its type glyph (PruneThumbnailCache).
+            std::shared_ptr<UCPixmap> stalePixmap;
         };
         struct ThumbRequest {
             std::string path;
@@ -2805,7 +2811,19 @@ namespace UltraCanvas {
         void StartThumbnailWorkersLocked();
         void StopThumbnailWorkers();
         void ThumbnailWorkerMain();
-        void DropThumbnailCache();              // on rescan / view change
+        void DropThumbnailCache();              // on a new folder / view change
+        // A rescan of the folder already shown (a delete, a rename, a copy
+        // in, the folder watch): what was drawn for the files that are still
+        // there, unchanged, is kept - only the slots of files gone or
+        // modified (path, modification time and size) are dropped. Dropping
+        // everything redrew the whole folder with type glyphs and then the
+        // thumbnails a moment later, after deleting one file.
+        // A file in `changedPaths` (still listed, new content) is decoded
+        // again in the background, its old thumbnail drawn until the new one
+        // is in.
+        void PruneThumbnailCache(const std::unordered_set<std::string>& keepPaths,
+                                 const std::unordered_set<std::string>& changedPaths = {});
+        std::string thumbCacheFolder;           // the folder the slots were drawn for
         void PostThumbnailRedraw();
         static std::string ThumbSlotKey(const std::string& path, int w, int h,
                                         ImageFitMode fit, float scale);
