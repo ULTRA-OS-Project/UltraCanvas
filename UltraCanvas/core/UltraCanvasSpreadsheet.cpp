@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.13.0 - Ctrl+Shift+Enter enters a formula as a legacy array formula over the selection
 // Version: 1.12.0 - a table to assistive technology (AccessibleGrid); Copy / Cut a selected chart onto the
 //                   office clipboard; another program's HTML table read by ClipboardTableFromHtml
 // Version: 1.11.0 - conditional formats, comments (a red corner) and links (blue, underlined) drawn by PaintCell;
@@ -2267,6 +2268,22 @@ void UltraCanvasSpreadsheet::BuildCellEditor(const std::string& initialText,
         Invalidate();
     };
     cellEditor->onEnterPressed = [this](const std::string&) {
+        // Ctrl+Shift+Enter on a formula: a legacy array formula over the
+        // selection (or the cell alone), as in Excel.
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (app && app->IsCtrlHeld() && app->IsShiftHeld() && !editBuffer_.empty() && editBuffer_[0] == '=') {
+            const std::string formula = editBuffer_;
+            const CellAddress at = editingCell_;
+            CellRange range = GetSelection();
+            if (!range.Contains(at.row, at.col)) range = CellRange(at.row, at.col, at.row, at.col);
+            StopEditing(false);
+            if (auto* sheet = GetActiveSheet()) {
+                if (recordingUndo_) RecordRangeChange(range);
+                sheet->SetArrayFormula(range, formula);
+                Recalculate();
+            }
+            return true;
+        }
         StopEditing(true);
         if (!IsEditing()) MoveActiveCell(1, 0);   // Retry edits a refused entry again
         return true;

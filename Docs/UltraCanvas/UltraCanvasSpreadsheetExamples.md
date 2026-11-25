@@ -34,6 +34,8 @@
   - [8. Reading Cell Values Back](#8-reading-cell-values-back)
 - [Named ranges](#named-ranges)
 - [Formula language and functions](#formula-language-and-functions)
+- [Arrays and spills](#arrays-and-spills)
+- [Functions not yet supported](#functions-not-yet-supported)
 - [Column widths](#column-widths)
 - [Cell formatting menu](#cell-formatting-menu)
 - [Function menu](#function-menu)
@@ -856,7 +858,21 @@ sheet) is calculated first; a circular reference reads the value it has.
 | Date and time | `DATE`, `TIME`, `TODAY`, `NOW`, `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `WEEKDAY`, `EDATE`, `EOMONTH`, `DAYS`, `DATEDIF`, `DATEVALUE` |
 | Logical | `IF`, `IFS`, `IFERROR`, `IFNA`, `SWITCH`, `AND`, `OR`, `NOT`, `XOR`, `TRUE`, `FALSE` |
 | Information | `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISNONTEXT`, `ISLOGICAL`, `ISERROR`, `ISERR`, `ISNA`, `ISEVEN`, `ISODD`, `NA`, `N` |
-| Financial | `PMT`, `FV`, `PV`, `NPV` |
+| Dynamic arrays | `FILTER`, `SORT`, `SORTBY`, `UNIQUE`, `SEQUENCE`, `RANDARRAY`, `TRANSPOSE`, `XLOOKUP`, `XMATCH` |
+| LAMBDA | `LET`, `LAMBDA`, `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL`, `MAKEARRAY` |
+| Financial | `PMT`, `IPMT`, `PPMT`, `CUMIPMT`, `CUMPRINC`, `FV`, `PV`, `NPV`, `XNPV`, `NPER`, `RATE`, `IRR`, `XIRR`, `MIRR`, `EFFECT`, `NOMINAL`, `SLN`, `SYD`, `DB`, `DDB`, `VDB` |
+
+The financial functions follow Excel and LibreOffice: money paid out is
+negative, `type` 1 pays at the start of a period. `RATE` and `IRR` solve by
+Newton's method from their guess (10% when left out) to within 1E-7 in at
+most 20 steps, `XIRR` to within 1E-8 in at most 100 (Excel's documented
+limits), and give `#NUM!` when they do not converge, as when the cash flows
+never change sign. `XNPV` and `XIRR` count years of 365 days from the first
+date. `DB` rounds its rate to three decimals, `VDB` switches to straight-line
+depreciation when that is larger unless `no_switch` is TRUE.
+
+An argument can be left out where the function has a default:
+`=SEQUENCE(3,,10)`, `=XLOOKUP(A1,B1:B99,C1:C99,,-1)`.
 
 Text functions count characters, not bytes: `=LEN("ขาย")` is 3. The
 criteria of `SUMIF`, `COUNTIF` and their kin are Excel's: a value (`30`,
@@ -882,6 +898,104 @@ rowCount.implementation = [](const std::vector<FormulaValue>&,
 };
 engine->GetFunctionLibrary().RegisterFunction(rowCount);
 ```
+
+A function of single values that should take arrays element by element, as
+the built-in `ABS` or `IF` do, sets `FunctionDefinition::elementWise`.
+
+## Arrays and spills
+
+A range is a value of its own: `=A1:A3*10` is three values, `=SUM(A1:A5*B1:B5)`
+multiplies element by element before it adds, and `=IF(A1:A5>2,"big","small")`
+decides five times. An array constant is written `{1,2;3,4}` - commas between
+columns, semicolons between rows - and holds numbers, text, TRUE / FALSE and
+errors. Arrays of different sizes meet as in Excel: a single row or column
+stretches over the other's rows or columns, and positions only one of them
+reaches are `#N/A`. `FormulaValue::IsArray()`, `ArrayRows()`, `ArrayCols()`
+and `ArrayAt(r, c)` read an array result; a function implementation returns
+one with `FormulaValue::Array(rows, cols, values)`.
+
+**Spills.** A formula whose result is an array fills the cells to its right
+and below - it *spills*, as in Excel 365. The formula stays in its own cell
+(the anchor); every other cell holds a *spilled value*: a plain value with no
+formula, which shows and is read like any other (`IsSpilledValue()`,
+`GetSpillAnchor()`). When a cell in the way is not empty, or is merged, the
+anchor shows `#SPILL!` and spills nothing; clearing the cell lets it spill
+again. Typing into a spilled cell makes it an ordinary cell, and so blocks the
+spill. A spill follows its source: when the result grows, shrinks or changes,
+the cells it covers change with it, the ones it leaves are emptied, and every
+formula reading them is calculated again.
+
+`A1#` is the whole array spilled from A1 (`=SUM(B2#)`, `=ROWS(B2#)`,
+`='Data'.A1#`); it is `#REF!` when A1 spills nothing. `@` takes one value
+where an array would come: `=@A1:A10` is the cell of A1:A10 on the formula's
+own row (`#VALUE!` when there is none).
+
+**Fixed array formulas** - what Ctrl+Shift+Enter enters in Excel - fill a range
+chosen beforehand, whatever is in it: `SpreadsheetSheet::SetArrayFormula(range,
+formula)`. A result smaller than the range repeats a single row or column, and
+is `#N/A` beyond that; a single value fills the range. In the grid,
+Ctrl+Shift+Enter on a formula being typed enters it this way over the
+selection (an undo step).
+
+**LET and LAMBDA.** `=LET(rate,B1/12,n,B2*12,PMT(rate,n,B3))` names values
+for the calculation. `=LAMBDA(x,x*x)(4)` is 16; a LAMBDA named with LET is
+called by its name (`=LET(sq,LAMBDA(n,n*n),sq(3)+sq(4))`), and `MAP`,
+`REDUCE`, `SCAN`, `BYROW`, `BYCOL` and `MAKEARRAY` call one for each element,
+row or column.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+SpreadsheetSheet* sheet = grid->GetActiveSheet();
+sheet->SetCellFormula(0, 3, "=SORT(FILTER(A2:B50,B2:B50>100),2,-1)");   // D1 spills
+sheet->SetCellFormula(0, 6, "=ROWS(D1#)");                             // how many rows it spilled
+sheet->SetArrayFormula(CellRange(1, 8, 49, 8), "=B2:B50*1.2");         // I2:I50, fixed
+grid->Recalculate();
+
+const SpreadsheetCell* anchor = sheet->GetCellIfExists(0, 3);
+if (anchor && anchor->IsSpillBlocked()) {
+    // #SPILL!: a cell of D1 .. (anchor->GetArrayRows() x GetArrayCols()) is taken
+}
+```
+
+**What the formats keep.** In `.xlsx` an array formula is
+`<f t="array" ref="D1:E7">`; a dynamic one also carries the cell metadata
+`cm="1"` that `xl/metadata.xml` marks as a dynamic array (`XLDAPR`,
+`fDynamic="1"`), so Excel keeps it a spill, and one without it is a fixed
+array. The spilled cells are written as plain values, as Excel writes them.
+`A1#` is stored as `_xlfn.ANCHORARRAY(A1)`, `@` as `_xlfn.SINGLE(...)`, the
+newer functions with their prefixes (`_xlfn._xlws.FILTER`, `_xlfn.SEQUENCE`)
+and LET's names with `_xlpm.`. In `.ods` an array formula spans its block with
+`table:number-matrix-columns-spanned` / `-rows-spanned`. OpenDocument has no
+dynamic spill, so a spill is saved as an array over the block it covers now
+(and reopens as a fixed array), and `A1#` as that block's range; Excel's
+functions that OpenFormula does not define are written in their namespace,
+`COM.MICROSOFT.SEQUENCE`, as LibreOffice writes them. A formula read from a
+file that is not marked as an array - in `.xlsx`, `.ods` or `.xls` - is worth
+one value, as Excel and LibreOffice read it: a range where one value is
+expected gives the cell on the formula's row or column
+(`FormulaArrayMode::SingleValue`), and it never spills.
+
+## Functions not yet supported
+
+The common Excel functions the engine does not have yet - a formula using one
+shows `#NAME?` - for planning the next round:
+
+| Category | Missing |
+|---|---|
+| Lookup and reference | `ROW`, `COLUMN`, `OFFSET`, `INDIRECT`, `ADDRESS`, `AREAS`, `HYPERLINK`, `FORMULATEXT`, `GETPIVOTDATA`, `HSTACK`, `VSTACK`, `TAKE`, `DROP`, `CHOOSECOLS`, `CHOOSEROWS`, `TOCOL`, `TOROW`, `WRAPROWS`, `WRAPCOLS`, `EXPAND` |
+| Math | `AGGREGATE`, `CEILING.MATH`, `CEILING.PRECISE`, `FLOOR.MATH`, `FLOOR.PRECISE`, `ISO.CEILING`, `MMULT`, `MDETERM`, `MINVERSE`, `MUNIT`, `SUMX2MY2`, `SUMX2PY2`, `SUMXMY2`, `SERIESSUM`, `PERMUT`, `PERMUTATIONA`, `COMBINA`, `MULTINOMIAL`, `FACTDOUBLE`, `SQRTPI`, `ROMAN`, `ARABIC`, `BASE`, `DECIMAL`, `ACOSH`, `ASINH`, `ATANH`, `ACOT`, `ACOTH`, `COT`, `COTH`, `CSC`, `CSCH`, `SEC`, `SECH` |
+| Statistical | `AVERAGEA`, `MAXA`, `MINA`, `STDEVA`, `STDEVPA`, `VARA`, `VARPA`, `AVEDEV`, `DEVSQ`, `GEOMEAN`, `HARMEAN`, `TRIMMEAN`, `CORREL`, `PEARSON`, `RSQ`, `COVAR`, `COVARIANCE.P`, `COVARIANCE.S`, `SLOPE`, `INTERCEPT`, `STEYX`, `FORECAST`, `FORECAST.LINEAR`, `TREND`, `GROWTH`, `LINEST`, `LOGEST`, `FREQUENCY`, `KURT`, `SKEW`, `SKEW.P`, `PERCENTILE.INC`, `PERCENTILE.EXC`, `QUARTILE.INC`, `QUARTILE.EXC`, `PERCENTRANK` (and `.INC`, `.EXC`), `RANK.AVG`, `MODE.MULT`, `STANDARDIZE`, `PROB`, `FISHER`, `FISHERINV`, `GAMMA`, `GAMMALN`; the distributions and tests: `NORM.DIST`, `NORM.INV`, `NORM.S.DIST`, `NORM.S.INV` (and `NORMDIST`, `NORMINV`, `NORMSDIST`, `NORMSINV`), `T.DIST` (`.2T`, `.RT`), `T.INV` (`.2T`), `T.TEST`, `CHISQ.DIST`, `CHISQ.INV`, `CHISQ.TEST`, `F.DIST`, `F.INV`, `F.TEST`, `BINOM.DIST`, `BINOM.INV`, `POISSON.DIST`, `EXPON.DIST`, `GAMMA.DIST`, `GAMMA.INV`, `BETA.DIST`, `BETA.INV`, `LOGNORM.DIST`, `LOGNORM.INV`, `WEIBULL.DIST`, `CONFIDENCE.NORM`, `CONFIDENCE.T`, `Z.TEST` |
+| Text | `TEXTBEFORE`, `TEXTAFTER`, `TEXTSPLIT`, `FIXED`, `DOLLAR`, `NUMBERVALUE`, `UNICHAR`, `UNICODE`, `ARRAYTOTEXT`, `VALUETOTEXT`, `LENB`, `LEFTB` |
+| Date and time | `NETWORKDAYS`, `NETWORKDAYS.INTL`, `WORKDAY`, `WORKDAY.INTL`, `WEEKNUM`, `ISOWEEKNUM`, `YEARFRAC`, `DAYS360`, `TIMEVALUE` |
+| Information | `ISREF`, `ISFORMULA`, `ISOMITTED`, `TYPE`, `ERROR.TYPE`, `CELL`, `INFO`, `SHEET`, `SHEETS` |
+| Financial (securities) | `ACCRINT`, `ACCRINTM`, `AMORDEGRC`, `AMORLINC`, `COUPDAYBS`, `COUPDAYS`, `COUPDAYSNC`, `COUPNCD`, `COUPNUM`, `COUPPCD`, `DISC`, `DOLLARDE`, `DOLLARFR`, `DURATION`, `MDURATION`, `FVSCHEDULE`, `INTRATE`, `ISPMT`, `ODDFPRICE`, `ODDFYIELD`, `ODDLPRICE`, `ODDLYIELD`, `PDURATION`, `PRICE`, `PRICEDISC`, `PRICEMAT`, `RECEIVED`, `RRI`, `TBILLEQ`, `TBILLPRICE`, `TBILLYIELD`, `YIELD`, `YIELDDISC`, `YIELDMAT` |
+| Engineering | `BIN2DEC`, `BIN2HEX`, `BIN2OCT`, `DEC2BIN`, `DEC2HEX`, `DEC2OCT`, `HEX2BIN`, `HEX2DEC`, `HEX2OCT`, `OCT2BIN`, `OCT2DEC`, `OCT2HEX`, `CONVERT`, `DELTA`, `GESTEP`, `ERF`, `ERFC`, `BITAND`, `BITOR`, `BITXOR`, `BITLSHIFT`, `BITRSHIFT`, `BESSELJ`, the complex-number functions (`COMPLEX`, `IMABS`, `IMREAL`, `IMAGINARY`, `IMSUM`, `IMPRODUCT` ...) |
+| Database | `DSUM`, `DAVERAGE`, `DCOUNT`, `DCOUNTA`, `DGET`, `DMAX`, `DMIN`, `DPRODUCT`, `DSTDEV`, `DVAR` |
+| Newest (Microsoft 365) | `GROUPBY`, `PIVOTBY`, `PERCENTOF`, `TRIMRANGE`, `REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE`, `IMAGE`; web: `ENCODEURL`, `FILTERXML`, `WEBSERVICE` |
+
+`ROW`, `COLUMN`, `OFFSET` and `INDIRECT` are the ones most worth doing next:
+they are common in existing workbooks and need the formula's own position or
+a reference as a value, which the evaluator does not hand to functions yet.
 
 ## Column widths
 

@@ -6030,6 +6030,31 @@ else()
     message(STATUS "  SpreadsheetFormulaEngineTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== SPREADSHEET ARRAY FORMULA TEST =====
+# Arrays and spills: array constants, element-wise arithmetic, LET / LAMBDA,
+# FILTER / SORT / UNIQUE / SEQUENCE ..., dynamic spills (#SPILL!, A1#, a spill
+# following its source), Ctrl+Shift+Enter arrays, the financial functions
+# against Excel's results, and .xlsx / .ods round trips of array formulas -
+# through LibreOffice too where soffice is installed. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SpreadsheetArrayFormulaTest...")
+    add_executable(SpreadsheetArrayFormulaTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetArrayFormulaTest.cpp
+    )
+    target_include_directories(SpreadsheetArrayFormulaTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpreadsheetArrayFormulaTest PRIVATE cxx_std_20)
+    target_link_libraries(SpreadsheetArrayFormulaTest PRIVATE UltraCanvas)
+    set_target_properties(SpreadsheetArrayFormulaTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpreadsheetArrayFormulaTest COMMAND SpreadsheetArrayFormulaTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(SpreadsheetArrayFormulaTest PROPERTIES TIMEOUT 300)
+    message(STATUS "    Test registered: SpreadsheetArrayFormulaTest")
+else()
+    message(STATUS "  SpreadsheetArrayFormulaTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILER FORMAT LIST TEST =====
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
