@@ -2,6 +2,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="256" height="256" viewBox="0 0 256 256">
   <title>UltraDBAdmin</title>
   <desc>A database cylinder with a result grid in front of it: the database admin mark.</desc>
+  <!-- Scaled and centred so the mark fills the canvas like the other app icons. -->
+  <g transform="translate(128 128) scale(1.137) translate(-130.5 -134)">
   <!-- The database: a cylinder of three stacked discs. -->
   <path d="M 28,56 C 28,34 172,34 172,56 L 172,176 C 172,198 28,198 28,176 Z" fill="#2f6fd6"/>
   <ellipse cx="100" cy="56" rx="72" ry="20" fill="#5b93ec"/>
@@ -12,4 +14,5 @@
   <rect x="107" y="115" width="122" height="26" rx="9" fill="#ff8200"/>
   <path d="M 104,170 L 232,170 M 104,199 L 232,199 M 147,141 L 147,228 M 190,141 L 190,228"
         fill="none" stroke="#22324d" stroke-width="5"/>
+  </g>
 </svg>
