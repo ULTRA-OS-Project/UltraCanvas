@@ -8,7 +8,8 @@
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Balance</span><b>{{ balance.amount }} {{ currency }}</b><span class="small text-secondary">A click draws it down. At zero your campaigns wait; nothing is ever owed.</span></div></div></div>
   <div class="col"><div class="card h-100"><div class="card-body">
     <h2>Pay in</h2>
-    {% if possible %}
+    {% if not may_pay %}<p class="text-secondary mb-0">Paying in is for the publisher's owner and its Billing members.</p>
+    {% elif possible %}
     <form method="post" class="d-flex flex-wrap align-items-start gap-2">{% csrf_token %}
       <div><label class="form-label" for="{{ form.amount.id_for_label }}" hidden>Amount</label>{{ form.amount|bs }}{% for error in form.amount.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
         <div class="form-text">{{ currency }}, at least {{ min_topup }}. You pay on the payment provider's page.</div></div>

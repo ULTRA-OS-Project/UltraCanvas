@@ -61,3 +61,31 @@ class ClickAdmin(ReadOnly):
 @admin.register(Attribution)
 class AttributionAdmin(ReadOnly):
     list_display = ["created", "campaign", "order", "counted"]
+
+
+from .models import Keyword, PlacementBid, PolicyAcceptance, PolicyVersion, TermCount  # noqa: E402
+
+
+@admin.register(PolicyVersion)
+class PolicyVersionAdmin(admin.ModelAdmin):
+    list_display = ["version", "in_force_from", "created"]
+
+
+@admin.register(PolicyAcceptance)
+class PolicyAcceptanceAdmin(ReadOnly):
+    list_display = ["publisher", "version", "accepted_by", "accepted_at"]
+
+
+@admin.register(Keyword)
+class KeywordAdmin(ReadOnly):
+    list_display = ["campaign", "text", "match", "negative"]
+
+
+@admin.register(PlacementBid)
+class PlacementBidAdmin(ReadOnly):
+    list_display = ["campaign", "placement", "max_click"]
+
+
+@admin.register(TermCount)
+class TermCountAdmin(ReadOnly):
+    list_display = ["day", "campaign", "term", "shown", "clicks"]

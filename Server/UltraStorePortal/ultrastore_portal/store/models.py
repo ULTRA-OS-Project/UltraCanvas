@@ -100,7 +100,13 @@ class PublisherMember(models.Model):
     the owner; more people per publisher come later."""
 
     OWNER, DEVELOPER = "owner", "developer"
-    ROLES = [(OWNER, "Owner"), (DEVELOPER, "Developer")]
+    MARKETING, BILLING, ANALYST = "marketing", "billing", "analyst"
+    # Owner: everything. Developer: the apps, their listings and releases.
+    # The other three are advertising's (promote/): Marketing runs the
+    # campaigns, Billing pays into the balance, Analyst reads and changes
+    # nothing.
+    ROLES = [(OWNER, "Owner"), (DEVELOPER, "Developer"), (MARKETING, "Marketing"), (BILLING, "Billing"), (ANALYST, "Analyst")]
+    APPS = (OWNER, DEVELOPER)
 
     publisher = models.ForeignKey(Publisher, on_delete=models.CASCADE, related_name="members")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="memberships")

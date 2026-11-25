@@ -1,12 +1,14 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.4.0 - GetColumnDefinitions / GetRowDefinitions: the sized and hidden columns and rows,
+//                  for the .xlsx / .ods writers
 // Version: 1.3.0 - PasteCells pastes formulas (PasteType All), their references moved from where they were copied
 // Version: 1.2.0 - inserting / deleting rows and columns moves the references in formulas
 //                  (MoveFormulaReferencesForRowsColumns)
 // Version: 1.1.0 - GetEffectiveValidation; SetCellValueFromString (a typed entry, notified)
 // Version: 1.0.1 - ValidateCell falls back to the cell's own rule
 // Version: 1.0.0
-// Last Modified: 2026-01-09
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -329,6 +331,8 @@ public:
     
     const ColumnDefinition* GetColumnDefinition(int col) const;
     ColumnDefinition& GetOrCreateColumnDefinition(int col);
+    // Every column something has sized or hidden, by index.
+    const std::map<int, ColumnDefinition>& GetColumnDefinitions() const { return columns_; }
     
     void InsertColumns(int col, int count = 1);
     void DeleteColumns(int col, int count = 1);
@@ -351,6 +355,8 @@ public:
     
     const RowDefinition* GetRowDefinition(int row) const;
     RowDefinition& GetOrCreateRowDefinition(int row);
+    // Every row something has sized or hidden, by index.
+    const std::map<int, RowDefinition>& GetRowDefinitions() const { return rows_; }
     
     // Rewrites this sheet's formulas for rows or columns inserted (count > 0)
     // or deleted (count < 0) at `at` on sheet `changedSheet` - this one or

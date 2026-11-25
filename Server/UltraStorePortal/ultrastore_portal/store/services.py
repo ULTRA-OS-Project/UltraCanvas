@@ -61,10 +61,14 @@ def notify(publisher: Publisher, subject: str, text: str) -> None:
 
 # ---------------------------------------------------------------- publishers
 
-def publisher_of(user) -> Publisher | None:
+def membership_of(user) -> PublisherMember | None:
     if not getattr(user, "is_authenticated", False):
         return None
-    membership = PublisherMember.objects.filter(user=user).select_related("publisher").order_by("id").first()
+    return PublisherMember.objects.filter(user=user).select_related("publisher").order_by("id").first()
+
+
+def publisher_of(user) -> Publisher | None:
+    membership = membership_of(user)
     return membership.publisher if membership else None
 
 

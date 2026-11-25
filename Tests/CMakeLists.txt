@@ -5534,6 +5534,26 @@ add_test(NAME FileLoaderOfficeKindTest COMMAND FileLoaderOfficeKindTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLoaderOfficeKindTest")
 
+# ===== SPREADSHEET WORKBOOK ROUND-TRIP TEST =====
+# What a sheet holds besides its cells - frozen panes, hidden rows and columns,
+# named ranges of the workbook and of a sheet, the auto-filter, the print area
+# and print settings, merges - saved as .xlsx and .ods and loaded back; where
+# soffice is installed, also through LibreOffice's conversion of each. No window.
+message(STATUS "  Building SpreadsheetWorkbookRoundTripTest...")
+add_executable(SpreadsheetWorkbookRoundTripTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetWorkbookRoundTripTest.cpp
+)
+target_include_directories(SpreadsheetWorkbookRoundTripTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetWorkbookRoundTripTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetWorkbookRoundTripTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetWorkbookRoundTripTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetWorkbookRoundTripTest COMMAND SpreadsheetWorkbookRoundTripTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_tests_properties(SpreadsheetWorkbookRoundTripTest PROPERTIES TIMEOUT 300)
+message(STATUS "    Test registered: SpreadsheetWorkbookRoundTripTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own
