@@ -698,7 +698,7 @@
   "Pictures": "图片",
   "Pin": "固定",
   "PINNED": "已固定",
-  "Place your picture": "调整你的图片",
+  "Place your picture": "调整您的图片",
   "Plain FTP sends the password and the files in the clear; prefer SFTP or FTP with TLS where the server offers them.": "明文 FTP 会不加密地发送密码和文件；如果服务器支持，请优先使用 SFTP 或 FTP with TLS。",
   "plural": "复数",
   "Port": "端口",

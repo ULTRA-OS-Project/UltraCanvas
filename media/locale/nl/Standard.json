@@ -716,7 +716,7 @@
   "Pictures": "Afbeeldingen",
   "Pin": "Vastmaken",
   "PINNED": "VASTGEZET",
-  "Place your picture": "Plaats je afbeelding",
+  "Place your picture": "Plaats uw afbeelding",
   "Plain FTP sends the password and the files in the clear; prefer SFTP or FTP with TLS where the server offers them.": "Onversleutelde FTP verstuurt het wachtwoord en de bestanden leesbaar; kies SFTP of FTP met TLS waar de server die aanbiedt.",
   "plural": "meervoud",
   "Port": "Poort",
