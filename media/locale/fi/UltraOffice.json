@@ -19,6 +19,8 @@
   "Data": "Tiedot",
   "Decrease indent (Shift+Tab)": "Pienennä sisennystä (Shift+Tab)",
   "Default font": "Oletusfontti",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Poistetaanko tallentamattomien asiakirjojen kopiot? Niiden muutoksia ei voi saada takaisin.",
+  "Discard the copies": "Hylkää kopiot",
   "Document {0}": "Asiakirja {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Asiakirjat, laskentataulukot ja esitykset yhdessä ikkunassa. Kukin avautuu omaan välilehteensä oman tyyppinsä työkaluineen.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003 -tiedostoja (.xls) voi lukea mutta ei kirjoittaa. Tallenna sen sijaan .xlsx- tai .ods-muodossa.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Tulosta sarakkeiden kirjaimet ja rivien numerot",
   "Print the lines between the cells": "Tulosta solujen väliset viivat",
   "Print...": "Tulosta...",
+  "Recovered documents": "Palautetut asiakirjat",
   "Redo (Ctrl+Y)": "Tee uudelleen (Ctrl+Y)",
+  "Restore": "Palauta",
   "Restore documents": "Palauta asiakirjat",
   "Save (Ctrl+S)": "Tallenna (Ctrl+S)",
   "Save as...": "Tallenna nimellä...",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Vietävää taulukkoa ei ole.",
   "There is no sheet to print.": "Tulostettavaa taulukkoa ei ole.",
   "Turn the paper on its side": "Käännä paperi vaakasuuntaan",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice päättyi sulkematta, kun {n} asiakirjassa oli tallentamattomia muutoksia. Palautetaanko se säilytetystä kopiosta? Ei poistaa kopion.",
-    "other": "UltraOffice päättyi sulkematta, kun {n} asiakirjassa oli tallentamattomia muutoksia. Palautetaanko ne säilytetyistä kopioista? Ei poistaa kopiot."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice päättyi sulkematta, kun {n} asiakirjassa oli tallentamattomia muutoksia. Siitä säilytettiin kopio.",
+    "other": "UltraOffice päättyi sulkematta, kun {n} asiakirjassa oli tallentamattomia muutoksia. Jokaisesta säilytettiin kopio."
   },
   "Underline (Ctrl+U)": "Alleviivaus (Ctrl+U)",
   "Undo (Ctrl+Z)": "Kumoa (Ctrl+Z)",

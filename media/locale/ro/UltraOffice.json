@@ -19,6 +19,8 @@
   "Data": "Date",
   "Decrease indent (Shift+Tab)": "Micșorare indentare (Shift+Tab)",
   "Default font": "Font implicit",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Ștergeți copiile documentelor care nu au fost salvate? Modificările lor nu vor mai putea fi recuperate.",
+  "Discard the copies": "Renunță la copii",
   "Document {0}": "Document {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Documente, foi de calcul și prezentări într-o singură fereastră. Fiecare se deschide în propria filă, cu instrumentele potrivite tipului său.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Fișierele Excel 97-2003 (.xls) sunt citite, dar nu și scrise. Salvați în schimb ca .xlsx sau .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Imprimați literele coloanelor și numerele rândurilor",
   "Print the lines between the cells": "Imprimați liniile dintre celule",
   "Print...": "Imprimare...",
+  "Recovered documents": "Documente recuperate",
   "Redo (Ctrl+Y)": "Refacere (Ctrl+Y)",
+  "Restore": "Restaurează",
   "Restore documents": "Restaurează documentele",
   "Save (Ctrl+S)": "Salvare (Ctrl+S)",
   "Save as...": "Salvare ca...",
@@ -115,10 +119,10 @@
   "There is no sheet to export.": "Nu există nicio foaie de exportat.",
   "There is no sheet to print.": "Nu există nicio foaie de imprimat.",
   "Turn the paper on its side": "Rotiți hârtia în orientarea peisaj",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice s-a oprit fără să fie închis în timp ce {n} document avea modificări nesalvate. Îl restaurați din copia păstrată? Nu șterge copia.",
-    "few": "UltraOffice s-a oprit fără să fie închis în timp ce {n} documente aveau modificări nesalvate. Le restaurați din copiile păstrate? Nu șterge copiile.",
-    "other": "UltraOffice s-a oprit fără să fie închis în timp ce {n} de documente aveau modificări nesalvate. Le restaurați din copiile păstrate? Nu șterge copiile."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice s-a oprit fără să fie închis în timp ce {n} document avea modificări nesalvate. S-a păstrat o copie a lui.",
+    "few": "UltraOffice s-a oprit fără să fie închis în timp ce {n} documente aveau modificări nesalvate. S-a păstrat o copie a fiecăruia.",
+    "other": "UltraOffice s-a oprit fără să fie închis în timp ce {n} de documente aveau modificări nesalvate. S-a păstrat o copie a fiecăruia."
   },
   "Underline (Ctrl+U)": "Subliniere (Ctrl+U)",
   "Undo (Ctrl+Z)": "Anulare (Ctrl+Z)",

@@ -19,6 +19,8 @@
   "Data": "데이터",
   "Decrease indent (Shift+Tab)": "내어쓰기 (Shift+Tab)",
   "Default font": "기본 글꼴",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "저장되지 않은 문서의 사본을 삭제하시겠습니까? 변경 내용은 되돌릴 수 없습니다.",
+  "Discard the copies": "사본 삭제",
   "Document {0}": "문서 {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "문서, 스프레드시트, 프레젠테이션을 한 창에서. 각각 자체 탭에서 열리며 종류에 맞는 도구가 제공됩니다.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003(.xls) 파일은 읽을 수만 있고 쓸 수는 없습니다. 대신 .xlsx 또는 .ods로 저장하세요.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "열 문자와 행 번호 인쇄",
   "Print the lines between the cells": "셀 사이의 선 인쇄",
   "Print...": "인쇄...",
+  "Recovered documents": "복구된 문서",
   "Redo (Ctrl+Y)": "다시 실행 (Ctrl+Y)",
+  "Restore": "복원",
   "Restore documents": "문서 복원",
   "Save (Ctrl+S)": "저장 (Ctrl+S)",
   "Save as...": "다른 이름으로 저장...",
@@ -115,8 +119,8 @@
   "There is no sheet to export.": "내보낼 시트가 없습니다.",
   "There is no sheet to print.": "인쇄할 시트가 없습니다.",
   "Turn the paper on its side": "용지를 가로 방향으로 회전",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "other": "UltraOffice가 닫히지 않고 종료되었습니다. 저장되지 않은 변경 내용이 있는 문서: {n}개. 보관된 사본에서 복원하시겠습니까? '아니요'를 누르면 사본이 삭제됩니다."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "other": "UltraOffice가 닫히지 않고 종료되었습니다. 저장되지 않은 변경 내용이 있는 문서: {n}개. 각 문서의 사본이 보관되었습니다."
   },
   "Underline (Ctrl+U)": "밑줄 (Ctrl+U)",
   "Undo (Ctrl+Z)": "실행 취소 (Ctrl+Z)",

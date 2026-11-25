@@ -19,6 +19,8 @@
   "Data": "Δεδομένα",
   "Decrease indent (Shift+Tab)": "Μείωση εσοχής (Shift+Tab)",
   "Default font": "Προεπιλεγμένη γραμματοσειρά",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Διαγραφή των αντιγράφων των εγγράφων που δεν αποθηκεύτηκαν; Οι αλλαγές τους δεν θα μπορούν να ανακτηθούν.",
+  "Discard the copies": "Απόρριψη αντιγράφων",
   "Document {0}": "Έγγραφο {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Έγγραφα, υπολογιστικά φύλλα και παρουσιάσεις σε ένα παράθυρο. Καθένα ανοίγει στη δική του καρτέλα, με τα εργαλεία του είδους του.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Τα αρχεία Excel 97-2003 (.xls) διαβάζονται, αλλά δεν εγγράφονται. Αποθηκεύστε τα ως .xlsx ή .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Εκτύπωση των γραμμάτων των στηλών και των αριθμών των γραμμών",
   "Print the lines between the cells": "Εκτύπωση των γραμμών ανάμεσα στα κελιά",
   "Print...": "Εκτύπωση...",
+  "Recovered documents": "Ανακτημένα έγγραφα",
   "Redo (Ctrl+Y)": "Επανάληψη (Ctrl+Y)",
+  "Restore": "Επαναφορά",
   "Restore documents": "Επαναφορά εγγράφων",
   "Save (Ctrl+S)": "Αποθήκευση (Ctrl+S)",
   "Save as...": "Αποθήκευση ως...",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Δεν υπάρχει φύλλο για εξαγωγή.",
   "There is no sheet to print.": "Δεν υπάρχει φύλλο για εκτύπωση.",
   "Turn the paper on its side": "Περιστροφή του χαρτιού σε οριζόντιο προσανατολισμό",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "Το UltraOffice τερματίστηκε χωρίς να κλείσει ενώ {n} έγγραφο είχε μη αποθηκευμένες αλλαγές. Επαναφορά από το αντίγραφο που κρατήθηκε; Το Όχι διαγράφει το αντίγραφο.",
-    "other": "Το UltraOffice τερματίστηκε χωρίς να κλείσει ενώ {n} έγγραφα είχαν μη αποθηκευμένες αλλαγές. Επαναφορά από τα αντίγραφα που κρατήθηκαν; Το Όχι διαγράφει τα αντίγραφα."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "Το UltraOffice τερματίστηκε χωρίς να κλείσει ενώ {n} έγγραφο είχε μη αποθηκευμένες αλλαγές. Κρατήθηκε ένα αντίγραφό του.",
+    "other": "Το UltraOffice τερματίστηκε χωρίς να κλείσει ενώ {n} έγγραφα είχαν μη αποθηκευμένες αλλαγές. Κρατήθηκε αντίγραφο του καθενός."
   },
   "Underline (Ctrl+U)": "Υπογράμμιση (Ctrl+U)",
   "Undo (Ctrl+Z)": "Αναίρεση (Ctrl+Z)",

@@ -19,6 +19,8 @@
   "Data": "Dades",
   "Decrease indent (Shift+Tab)": "Redueix el sagnat (Shift+Tab)",
   "Default font": "Lletra per defecte",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Voleu suprimir les còpies dels documents que no s'han desat? Els seus canvis no es podran recuperar.",
+  "Discard the copies": "Descarta les còpies",
   "Document {0}": "Document {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Documents, fulls de càlcul i presentacions en una sola finestra. Cadascun s’obre en una pestanya pròpia, amb les eines del seu tipus.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Els fitxers d’Excel 97-2003 (.xls) es llegeixen, però no s’escriuen. Deseu-los com a .xlsx o .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Imprimeix les lletres de columna i els números de fila",
   "Print the lines between the cells": "Imprimeix les línies entre les cel·les",
   "Print...": "Imprimeix…",
+  "Recovered documents": "Documents recuperats",
   "Redo (Ctrl+Y)": "Refés (Ctrl+Y)",
+  "Restore": "Restaura",
   "Restore documents": "Restaura els documents",
   "Save (Ctrl+S)": "Desa (Ctrl+S)",
   "Save as...": "Anomena i desa…",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "No hi ha cap full per exportar.",
   "There is no sheet to print.": "No hi ha cap full per imprimir.",
   "Turn the paper on its side": "Gira el paper en horitzontal",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "L'UltraOffice s'ha aturat sense tancar-se mentre {n} document tenia canvis sense desar. Voleu restaurar-lo des de la còpia conservada? No suprimeix la còpia.",
-    "other": "L'UltraOffice s'ha aturat sense tancar-se mentre {n} documents tenien canvis sense desar. Voleu restaurar-los des de les còpies conservades? No suprimeix les còpies."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "L'UltraOffice s'ha aturat sense tancar-se mentre {n} document tenia canvis sense desar. Se n'ha conservat una còpia.",
+    "other": "L'UltraOffice s'ha aturat sense tancar-se mentre {n} documents tenien canvis sense desar. Se n'ha conservat una còpia de cadascun."
   },
   "Underline (Ctrl+U)": "Subratllat (Ctrl+U)",
   "Undo (Ctrl+Z)": "Desfés (Ctrl+Z)",

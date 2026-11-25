@@ -19,6 +19,8 @@
   "Data": "डेटा",
   "Decrease indent (Shift+Tab)": "इंडेंट घटाएँ (Shift+Tab)",
   "Default font": "डिफ़ॉल्ट फ़ॉन्ट",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "बिना सहेजे दस्तावेज़ों की प्रतियाँ हटाएँ? उनके परिवर्तन वापस नहीं लाए जा सकेंगे।",
+  "Discard the copies": "प्रतियाँ हटाएँ",
   "Document {0}": "दस्तावेज़ {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "दस्तावेज़, स्प्रेडशीट और प्रस्तुतियाँ एक ही विंडो में। हर एक अपने अलग टैब में खुलता है, अपने प्रकार के टूल के साथ।",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003 (.xls) फ़ाइलें पढ़ी जाती हैं, लिखी नहीं जातीं। इसके बजाय .xlsx या .ods के रूप में सहेजें।",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "कॉलम अक्षर और पंक्ति संख्याएँ प्रिंट करें",
   "Print the lines between the cells": "सेल के बीच की रेखाएँ प्रिंट करें",
   "Print...": "प्रिंट करें...",
+  "Recovered documents": "पुनर्प्राप्त दस्तावेज़",
   "Redo (Ctrl+Y)": "फिर से करें (Ctrl+Y)",
+  "Restore": "पुनर्स्थापित करें",
   "Restore documents": "दस्तावेज़ पुनर्स्थापित करें",
   "Save (Ctrl+S)": "सहेजें (Ctrl+S)",
   "Save as...": "इस रूप में सहेजें...",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "निर्यात करने के लिए कोई शीट नहीं है।",
   "There is no sheet to print.": "प्रिंट करने के लिए कोई शीट नहीं है।",
   "Turn the paper on its side": "कागज़ को आड़ा घुमाएँ",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice बंद किए बिना समाप्त हो गया, जबकि {n} दस्तावेज़ में बिना सहेजे परिवर्तन थे। क्या इसे रखी गई प्रति से पुनर्स्थापित करें? नहीं प्रति को हटा देता है।",
-    "other": "UltraOffice बंद किए बिना समाप्त हो गया, जबकि {n} दस्तावेज़ों में बिना सहेजे परिवर्तन थे। क्या इन्हें रखी गई प्रतियों से पुनर्स्थापित करें? नहीं प्रतियों को हटा देता है।"
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice बंद किए बिना समाप्त हो गया, जबकि {n} दस्तावेज़ में बिना सहेजे परिवर्तन थे। उसकी एक प्रति रखी गई।",
+    "other": "UltraOffice बंद किए बिना समाप्त हो गया, जबकि {n} दस्तावेज़ों में बिना सहेजे परिवर्तन थे। हर एक की प्रति रखी गई।"
   },
   "Underline (Ctrl+U)": "रेखांकित (Ctrl+U)",
   "Undo (Ctrl+Z)": "पूर्ववत करें (Ctrl+Z)",

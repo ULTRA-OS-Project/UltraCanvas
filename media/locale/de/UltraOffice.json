@@ -19,6 +19,8 @@
   "Data": "Daten",
   "Decrease indent (Shift+Tab)": "Einzug verkleinern (Shift+Tab)",
   "Default font": "Standardschrift",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Die Kopien der nicht gespeicherten Dokumente löschen? Ihre Änderungen lassen sich nicht zurückholen.",
+  "Discard the copies": "Kopien verwerfen",
   "Document {0}": "Dokument {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Dokumente, Tabellen und Präsentationen in einem Fenster. Jedes öffnet sich in einem eigenen Tab mit den passenden Werkzeugen.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel-97-2003-Dateien (.xls) werden gelesen, aber nicht geschrieben. Speichern Sie stattdessen als .xlsx oder .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Spaltenbuchstaben und Zeilennummern drucken",
   "Print the lines between the cells": "Die Linien zwischen den Zellen drucken",
   "Print...": "Drucken …",
+  "Recovered documents": "Wiederhergestellte Dokumente",
   "Redo (Ctrl+Y)": "Wiederholen (Ctrl+Y)",
+  "Restore": "Wiederherstellen",
   "Restore documents": "Dokumente wiederherstellen",
   "Save (Ctrl+S)": "Speichern (Ctrl+S)",
   "Save as...": "Speichern unter …",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Es gibt keine Tabelle zum Exportieren.",
   "There is no sheet to print.": "Es gibt keine Tabelle zum Drucken.",
   "Turn the paper on its side": "Das Papier ins Querformat drehen",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice wurde beendet, ohne geschlossen zu werden, während {n} Dokument ungespeicherte Änderungen hatte. Aus der dafür aufbewahrten Kopie wiederherstellen? Nein löscht die Kopie.",
-    "other": "UltraOffice wurde beendet, ohne geschlossen zu werden, während {n} Dokumente ungespeicherte Änderungen hatten. Aus den dafür aufbewahrten Kopien wiederherstellen? Nein löscht die Kopien."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice wurde beendet, ohne geschlossen zu werden, während {n} Dokument ungespeicherte Änderungen hatte. Eine Kopie davon wurde aufbewahrt.",
+    "other": "UltraOffice wurde beendet, ohne geschlossen zu werden, während {n} Dokumente ungespeicherte Änderungen hatten. Von jedem wurde eine Kopie aufbewahrt."
   },
   "Underline (Ctrl+U)": "Unterstrichen (Ctrl+U)",
   "Undo (Ctrl+Z)": "Rückgängig (Ctrl+Z)",

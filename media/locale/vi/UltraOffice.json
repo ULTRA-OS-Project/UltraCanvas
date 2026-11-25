@@ -19,6 +19,8 @@
   "Data": "Dữ liệu",
   "Decrease indent (Shift+Tab)": "Giảm thụt lề (Shift+Tab)",
   "Default font": "Phông chữ mặc định",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Xóa bản sao của các tài liệu chưa được lưu? Các thay đổi sẽ không thể lấy lại.",
+  "Discard the copies": "Bỏ các bản sao",
   "Document {0}": "Tài liệu {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Tài liệu, bảng tính và bản trình bày trong một cửa sổ. Mỗi tệp mở trong một tab riêng, với các công cụ dành cho loại của nó.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Tệp Excel 97-2003 (.xls) chỉ đọc được, không ghi được. Hãy lưu thành .xlsx hoặc .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "In chữ cái của cột và số của hàng",
   "Print the lines between the cells": "In các đường giữa các ô",
   "Print...": "In...",
+  "Recovered documents": "Tài liệu được khôi phục",
   "Redo (Ctrl+Y)": "Làm lại (Ctrl+Y)",
+  "Restore": "Khôi phục",
   "Restore documents": "Khôi phục tài liệu",
   "Save (Ctrl+S)": "Lưu (Ctrl+S)",
   "Save as...": "Lưu thành...",
@@ -115,8 +119,8 @@
   "There is no sheet to export.": "Không có trang tính nào để xuất.",
   "There is no sheet to print.": "Không có trang tính nào để in.",
   "Turn the paper on its side": "Xoay giấy nằm ngang",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "other": "UltraOffice đã kết thúc mà không được đóng khi {n} tài liệu có thay đổi chưa lưu. Khôi phục từ bản sao đã giữ lại? Không sẽ xóa bản sao."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "other": "UltraOffice đã kết thúc mà không được đóng khi {n} tài liệu có thay đổi chưa lưu. Bản sao của từng tài liệu đã được giữ lại."
   },
   "Underline (Ctrl+U)": "Gạch chân (Ctrl+U)",
   "Undo (Ctrl+Z)": "Hoàn tác (Ctrl+Z)",

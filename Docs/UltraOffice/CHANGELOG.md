@@ -30,8 +30,8 @@
   unsaved changes is copied to the recovery folder (protected ones with
   their password); saving, closing or quitting removes the copy. When
   UltraOffice ends without closing - a crash, a power cut - the next start
-  offers the documents back, under their own files and names, with their
-  changes still to save.
+  offers the documents back on the Start tab (the window does not wait on
+  it), under their own files and names, with their changes still to save.
 - A .docx saved again keeps its theme and font table.
 - In every language UltraOffice's texts have (machine drafts, to be
   reviewed).

@@ -19,6 +19,8 @@
   "Data": "Data",
   "Decrease indent (Shift+Tab)": "Minska indrag (Shift+Tab)",
   "Default font": "Standardteckensnitt",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Ta bort kopiorna av dokumenten som inte sparades? Ändringarna går inte att få tillbaka.",
+  "Discard the copies": "Kasta kopiorna",
   "Document {0}": "Dokument {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Dokument, kalkylblad och presentationer i ett fönster. Var och en öppnas i en egen flik, med verktygen för sin typ.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003-filer (.xls) kan läsas men inte skrivas. Spara som .xlsx eller .ods i stället.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Skriv ut kolumnbokstäverna och radnumren",
   "Print the lines between the cells": "Skriv ut linjerna mellan cellerna",
   "Print...": "Skriv ut...",
+  "Recovered documents": "Återställda dokument",
   "Redo (Ctrl+Y)": "Gör om (Ctrl+Y)",
+  "Restore": "Återställ",
   "Restore documents": "Återställ dokument",
   "Save (Ctrl+S)": "Spara (Ctrl+S)",
   "Save as...": "Spara som...",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Det finns inget blad att exportera.",
   "There is no sheet to print.": "Det finns inget blad att skriva ut.",
   "Turn the paper on its side": "Vrid papperet till liggande",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice avslutades utan att stängas medan {n} dokument hade osparade ändringar. Återställa det från den sparade kopian? Nej tar bort kopian.",
-    "other": "UltraOffice avslutades utan att stängas medan {n} dokument hade osparade ändringar. Återställa dem från de sparade kopiorna? Nej tar bort kopiorna."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice avslutades utan att stängas medan {n} dokument hade osparade ändringar. En kopia av det sparades.",
+    "other": "UltraOffice avslutades utan att stängas medan {n} dokument hade osparade ändringar. En kopia av vart och ett sparades."
   },
   "Underline (Ctrl+U)": "Understruken (Ctrl+U)",
   "Undo (Ctrl+Z)": "Ångra (Ctrl+Z)",

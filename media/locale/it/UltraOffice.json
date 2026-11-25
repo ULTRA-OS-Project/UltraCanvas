@@ -19,6 +19,8 @@
   "Data": "Dati",
   "Decrease indent (Shift+Tab)": "Riduci rientro (Shift+Tab)",
   "Default font": "Carattere predefinito",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Eliminare le copie dei documenti non salvati? Le loro modifiche non potranno essere recuperate.",
+  "Discard the copies": "Elimina le copie",
   "Document {0}": "Documento {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Documenti, fogli di calcolo e presentazioni in un'unica finestra. Ognuno si apre in una scheda propria, con gli strumenti adatti al suo tipo.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "I file Excel 97-2003 (.xls) vengono letti, non scritti. Salva invece come .xlsx o .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Stampa le lettere di colonna e i numeri di riga",
   "Print the lines between the cells": "Stampa le linee tra le celle",
   "Print...": "Stampa…",
+  "Recovered documents": "Documenti recuperati",
   "Redo (Ctrl+Y)": "Ripeti (Ctrl+Y)",
+  "Restore": "Ripristina",
   "Restore documents": "Ripristina documenti",
   "Save (Ctrl+S)": "Salva (Ctrl+S)",
   "Save as...": "Salva con nome…",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Non c'è alcun foglio da esportare.",
   "There is no sheet to print.": "Non c'è alcun foglio da stampare.",
   "Turn the paper on its side": "Ruota la carta in orizzontale",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice si è chiuso in modo imprevisto mentre {n} documento aveva modifiche non salvate. Ripristinarlo dalla copia conservata? No elimina la copia.",
-    "other": "UltraOffice si è chiuso in modo imprevisto mentre {n} documenti avevano modifiche non salvate. Ripristinarli dalle copie conservate? No elimina le copie."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice si è chiuso in modo imprevisto mentre {n} documento aveva modifiche non salvate. Ne è stata conservata una copia.",
+    "other": "UltraOffice si è chiuso in modo imprevisto mentre {n} documenti avevano modifiche non salvate. È stata conservata una copia di ciascuno."
   },
   "Underline (Ctrl+U)": "Sottolineato (Ctrl+U)",
   "Undo (Ctrl+Z)": "Annulla (Ctrl+Z)",

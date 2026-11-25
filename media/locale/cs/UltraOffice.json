@@ -19,6 +19,8 @@
   "Data": "Data",
   "Decrease indent (Shift+Tab)": "Zmenšit odsazení (Shift+Tab)",
   "Default font": "Výchozí písmo",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Smazat kopie neuložených dokumentů? Jejich změny už nepůjde vrátit.",
+  "Discard the copies": "Zahodit kopie",
   "Document {0}": "Dokument {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Dokumenty, tabulky a prezentace v jednom okně. Každý se otevře na vlastní kartě s nástroji pro svůj druh.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Soubory Excel 97-2003 (.xls) lze číst, ale ne zapisovat. Uložte je místo toho jako .xlsx nebo .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Tisknout písmena sloupců a čísla řádků",
   "Print the lines between the cells": "Tisknout čáry mezi buňkami",
   "Print...": "Tisk...",
+  "Recovered documents": "Obnovené dokumenty",
   "Redo (Ctrl+Y)": "Znovu (Ctrl+Y)",
+  "Restore": "Obnovit",
   "Restore documents": "Obnovit dokumenty",
   "Save (Ctrl+S)": "Uložit (Ctrl+S)",
   "Save as...": "Uložit jako...",
@@ -115,10 +119,10 @@
   "There is no sheet to export.": "Není žádný list k exportu.",
   "There is no sheet to print.": "Není žádný list k tisku.",
   "Turn the paper on its side": "Otočit papír na šířku",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice skončil bez zavření, zatímco {n} dokument měl neuložené změny. Obnovit ho z uchované kopie? Ne kopii smaže.",
-    "few": "UltraOffice skončil bez zavření, zatímco {n} dokumenty měly neuložené změny. Obnovit je z uchovaných kopií? Ne kopie smaže.",
-    "other": "UltraOffice skončil bez zavření, zatímco {n} dokumentů mělo neuložené změny. Obnovit je z uchovaných kopií? Ne kopie smaže."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice skončil bez zavření, zatímco {n} dokument měl neuložené změny. Jeho kopie byla uchována.",
+    "few": "UltraOffice skončil bez zavření, zatímco {n} dokumenty měly neuložené změny. Kopie každého z nich byla uchována.",
+    "other": "UltraOffice skončil bez zavření, zatímco {n} dokumentů mělo neuložené změny. Kopie každého z nich byla uchována."
   },
   "Underline (Ctrl+U)": "Podtržení (Ctrl+U)",
   "Undo (Ctrl+Z)": "Vrátit zpět (Ctrl+Z)",

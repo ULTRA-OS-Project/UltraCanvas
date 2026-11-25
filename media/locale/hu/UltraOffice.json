@@ -19,6 +19,8 @@
   "Data": "Adatok",
   "Decrease indent (Shift+Tab)": "Behúzás csökkentése (Shift+Tab)",
   "Default font": "Alapértelmezett betűtípus",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Törli a nem mentett dokumentumok másolatait? A módosításaik nem hozhatók vissza.",
+  "Discard the copies": "Másolatok elvetése",
   "Document {0}": "Dokumentum {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Dokumentumok, táblázatok és bemutatók egy ablakban. Mindegyik saját lapon nyílik meg, a típusának megfelelő eszközökkel.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Az Excel 97-2003 (.xls) fájlokat a program beolvassa, de nem írja. Mentse inkább .xlsx vagy .ods formátumban.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Az oszlopbetűk és a sorszámok nyomtatása",
   "Print the lines between the cells": "A cellák közötti vonalak nyomtatása",
   "Print...": "Nyomtatás...",
+  "Recovered documents": "Helyreállított dokumentumok",
   "Redo (Ctrl+Y)": "Mégis (Ctrl+Y)",
+  "Restore": "Visszaállítás",
   "Restore documents": "Dokumentumok visszaállítása",
   "Save (Ctrl+S)": "Mentés (Ctrl+S)",
   "Save as...": "Mentés másként...",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Nincs exportálható munkalap.",
   "There is no sheet to print.": "Nincs nyomtatható munkalap.",
   "Turn the paper on its side": "A papír elforgatása fekvő tájolásba",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "Az UltraOffice bezárás nélkül állt le, miközben {n} dokumentumban mentetlen módosítások voltak. Visszaállítja a megőrzött másolatból? A Nem törli a másolatot.",
-    "other": "Az UltraOffice bezárás nélkül állt le, miközben {n} dokumentumban mentetlen módosítások voltak. Visszaállítja őket a megőrzött másolatokból? A Nem törli a másolatokat."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "Az UltraOffice bezárás nélkül állt le, miközben {n} dokumentumban mentetlen módosítások voltak. Megőriztünk róla egy másolatot.",
+    "other": "Az UltraOffice bezárás nélkül állt le, miközben {n} dokumentumban mentetlen módosítások voltak. Mindegyikről megőriztünk egy másolatot."
   },
   "Underline (Ctrl+U)": "Aláhúzott (Ctrl+U)",
   "Undo (Ctrl+Z)": "Visszavonás (Ctrl+Z)",

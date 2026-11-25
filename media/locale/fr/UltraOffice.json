@@ -19,6 +19,8 @@
   "Data": "Données",
   "Decrease indent (Shift+Tab)": "Réduire le retrait (Shift+Tab)",
   "Default font": "Police par défaut",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Supprimer les copies des documents non enregistrés ? Leurs modifications ne pourront pas être récupérées.",
+  "Discard the copies": "Supprimer les copies",
   "Document {0}": "Document {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Documents, feuilles de calcul et présentations dans une seule fenêtre. Chacun s’ouvre dans son propre onglet, avec les outils adaptés à son type.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Les fichiers Excel 97-2003 (.xls) sont lus, mais pas écrits. Enregistrez plutôt en .xlsx ou .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Imprimer les lettres de colonne et les numéros de ligne",
   "Print the lines between the cells": "Imprimer les lignes entre les cellules",
   "Print...": "Imprimer…",
+  "Recovered documents": "Documents récupérés",
   "Redo (Ctrl+Y)": "Rétablir (Ctrl+Y)",
+  "Restore": "Restaurer",
   "Restore documents": "Restaurer les documents",
   "Save (Ctrl+S)": "Enregistrer (Ctrl+S)",
   "Save as...": "Enregistrer sous…",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Il n’y a aucune feuille à exporter.",
   "There is no sheet to print.": "Il n’y a aucune feuille à imprimer.",
   "Turn the paper on its side": "Tourner le papier à l’horizontale",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice s'est arrêté sans être fermé alors que {n} document avait des modifications non enregistrées. Le restaurer à partir de la copie conservée ? Non supprime la copie.",
-    "other": "UltraOffice s'est arrêté sans être fermé alors que {n} documents avaient des modifications non enregistrées. Les restaurer à partir des copies conservées ? Non supprime les copies."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice s'est arrêté sans être fermé alors que {n} document avait des modifications non enregistrées. Une copie en a été conservée.",
+    "other": "UltraOffice s'est arrêté sans être fermé alors que {n} documents avaient des modifications non enregistrées. Une copie de chacun a été conservée."
   },
   "Underline (Ctrl+U)": "Souligné (Ctrl+U)",
   "Undo (Ctrl+Z)": "Annuler (Ctrl+Z)",

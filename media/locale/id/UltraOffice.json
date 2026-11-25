@@ -19,6 +19,8 @@
   "Data": "Data",
   "Decrease indent (Shift+Tab)": "Kurangi inden (Shift+Tab)",
   "Default font": "Font bawaan",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Hapus salinan dokumen yang tidak disimpan? Perubahannya tidak dapat dikembalikan.",
+  "Discard the copies": "Buang salinan",
   "Document {0}": "Dokumen {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Dokumen, lembar kerja, dan presentasi dalam satu jendela. Masing-masing terbuka di tabnya sendiri, dengan alat untuk jenisnya.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "File Excel 97-2003 (.xls) dibaca, tetapi tidak ditulis. Simpan sebagai .xlsx atau .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Cetak huruf kolom dan nomor baris",
   "Print the lines between the cells": "Cetak garis di antara sel",
   "Print...": "Cetak...",
+  "Recovered documents": "Dokumen yang dipulihkan",
   "Redo (Ctrl+Y)": "Ulangi (Ctrl+Y)",
+  "Restore": "Pulihkan",
   "Restore documents": "Pulihkan dokumen",
   "Save (Ctrl+S)": "Simpan (Ctrl+S)",
   "Save as...": "Simpan sebagai...",
@@ -115,8 +119,8 @@
   "There is no sheet to export.": "Tidak ada lembar untuk diekspor.",
   "There is no sheet to print.": "Tidak ada lembar untuk dicetak.",
   "Turn the paper on its side": "Putar kertas ke posisi mendatar",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "other": "UltraOffice berhenti tanpa ditutup saat {n} dokumen memiliki perubahan yang belum disimpan. Pulihkan dari salinan yang disimpan? Tidak akan menghapus salinan."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "other": "UltraOffice berhenti tanpa ditutup saat {n} dokumen memiliki perubahan yang belum disimpan. Salinan setiap dokumen disimpan."
   },
   "Underline (Ctrl+U)": "Garis bawah (Ctrl+U)",
   "Undo (Ctrl+Z)": "Urungkan (Ctrl+Z)",

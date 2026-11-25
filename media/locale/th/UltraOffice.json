@@ -19,6 +19,8 @@
   "Data": "ข้อมูล",
   "Decrease indent (Shift+Tab)": "ลดการเยื้อง (Shift+Tab)",
   "Default font": "แบบอักษรเริ่มต้น",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "ลบสำเนาของเอกสารที่ไม่ได้บันทึกหรือไม่ การเปลี่ยนแปลงจะไม่สามารถนำกลับมาได้",
+  "Discard the copies": "ทิ้งสำเนา",
   "Document {0}": "เอกสาร {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "เอกสาร สเปรดชีต และงานนำเสนอในหน้าต่างเดียว แต่ละไฟล์จะเปิดในแท็บของตัวเอง พร้อมเครื่องมือสำหรับประเภทนั้น",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "ไฟล์ Excel 97-2003 (.xls) อ่านได้แต่เขียนไม่ได้ ให้บันทึกเป็น .xlsx หรือ .ods แทน",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "พิมพ์ตัวอักษรคอลัมน์และหมายเลขแถว",
   "Print the lines between the cells": "พิมพ์เส้นระหว่างเซลล์",
   "Print...": "พิมพ์...",
+  "Recovered documents": "เอกสารที่กู้คืน",
   "Redo (Ctrl+Y)": "ทำซ้ำ (Ctrl+Y)",
+  "Restore": "กู้คืน",
   "Restore documents": "กู้คืนเอกสาร",
   "Save (Ctrl+S)": "บันทึก (Ctrl+S)",
   "Save as...": "บันทึกเป็น...",
@@ -115,8 +119,8 @@
   "There is no sheet to export.": "ไม่มีแผ่นงานให้ส่งออก",
   "There is no sheet to print.": "ไม่มีแผ่นงานให้พิมพ์",
   "Turn the paper on its side": "หมุนกระดาษเป็นแนวนอน",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "other": "UltraOffice สิ้นสุดการทำงานโดยไม่ได้ปิด ขณะที่มีเอกสาร {n} รายการที่มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก กู้คืนจากสำเนาที่เก็บไว้หรือไม่ หากเลือก ไม่ สำเนาจะถูกลบ"
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "other": "UltraOffice สิ้นสุดการทำงานโดยไม่ได้ปิด ขณะที่มีเอกสาร {n} รายการที่มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก มีการเก็บสำเนาของแต่ละรายการไว้"
   },
   "Underline (Ctrl+U)": "ขีดเส้นใต้ (Ctrl+U)",
   "Undo (Ctrl+Z)": "เลิกทำ (Ctrl+Z)",

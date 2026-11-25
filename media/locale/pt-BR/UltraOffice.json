@@ -19,6 +19,8 @@
   "Data": "Dados",
   "Decrease indent (Shift+Tab)": "Diminuir recuo (Shift+Tab)",
   "Default font": "Fonte padrão",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Excluir as cópias dos documentos que não foram salvos? As alterações não poderão ser recuperadas.",
+  "Discard the copies": "Descartar as cópias",
   "Document {0}": "Documento {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Documentos, planilhas e apresentações em uma só janela. Cada um abre em sua própria aba, com as ferramentas do seu tipo.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Arquivos do Excel 97-2003 (.xls) são lidos, mas não gravados. Salve como .xlsx ou .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Imprimir as letras das colunas e os números das linhas",
   "Print the lines between the cells": "Imprimir as linhas entre as células",
   "Print...": "Imprimir...",
+  "Recovered documents": "Documentos recuperados",
   "Redo (Ctrl+Y)": "Refazer (Ctrl+Y)",
+  "Restore": "Restaurar",
   "Restore documents": "Restaurar documentos",
   "Save (Ctrl+S)": "Salvar (Ctrl+S)",
   "Save as...": "Salvar como...",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Não há nenhuma planilha para exportar.",
   "There is no sheet to print.": "Não há nenhuma planilha para imprimir.",
   "Turn the paper on its side": "Girar o papel para a horizontal",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "O UltraOffice foi encerrado sem ser fechado enquanto {n} documento tinha alterações não salvas. Restaurá-lo a partir da cópia mantida? Não exclui a cópia.",
-    "other": "O UltraOffice foi encerrado sem ser fechado enquanto {n} documentos tinham alterações não salvas. Restaurá-los a partir das cópias mantidas? Não exclui as cópias."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "O UltraOffice foi encerrado sem ser fechado enquanto {n} documento tinha alterações não salvas. Uma cópia foi mantida.",
+    "other": "O UltraOffice foi encerrado sem ser fechado enquanto {n} documentos tinham alterações não salvas. Uma cópia de cada um foi mantida."
   },
   "Underline (Ctrl+U)": "Sublinhado (Ctrl+U)",
   "Undo (Ctrl+Z)": "Desfazer (Ctrl+Z)",

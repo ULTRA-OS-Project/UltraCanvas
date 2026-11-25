@@ -19,6 +19,8 @@
   "Data": "Data",
   "Decrease indent (Shift+Tab)": "Reduser innrykk (Shift+Tab)",
   "Default font": "Standardskrift",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Slette kopiene av dokumentene som ikke ble lagret? Endringene kan ikke hentes tilbake.",
+  "Discard the copies": "Forkast kopiene",
   "Document {0}": "Dokument {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Dokumenter, regneark og presentasjoner i ett vindu. Hvert av dem åpnes i sin egen fane, med verktøyene for sin type.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003-filer (.xls) leses, men skrives ikke. Lagre som .xlsx eller .ods i stedet.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Skriv ut kolonnebokstavene og radnumrene",
   "Print the lines between the cells": "Skriv ut linjene mellom cellene",
   "Print...": "Skriv ut...",
+  "Recovered documents": "Gjenopprettede dokumenter",
   "Redo (Ctrl+Y)": "Gjør om (Ctrl+Y)",
+  "Restore": "Gjenopprett",
   "Restore documents": "Gjenopprett dokumenter",
   "Save (Ctrl+S)": "Lagre (Ctrl+S)",
   "Save as...": "Lagre som...",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Det finnes ikke noe ark å eksportere.",
   "There is no sheet to print.": "Det finnes ikke noe ark å skrive ut.",
   "Turn the paper on its side": "Snu papiret til liggende",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice ble avsluttet uten å lukkes mens {n} dokument hadde ulagrede endringer. Gjenopprette det fra kopien som ble tatt vare på? Nei sletter kopien.",
-    "other": "UltraOffice ble avsluttet uten å lukkes mens {n} dokumenter hadde ulagrede endringer. Gjenopprette dem fra kopiene som ble tatt vare på? Nei sletter kopiene."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice ble avsluttet uten å lukkes mens {n} dokument hadde ulagrede endringer. En kopi av det ble tatt vare på.",
+    "other": "UltraOffice ble avsluttet uten å lukkes mens {n} dokumenter hadde ulagrede endringer. En kopi av hvert ble tatt vare på."
   },
   "Underline (Ctrl+U)": "Understreking (Ctrl+U)",
   "Undo (Ctrl+Z)": "Angre (Ctrl+Z)",

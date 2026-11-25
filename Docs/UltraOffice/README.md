@@ -80,9 +80,10 @@ earlier copy whole. Saving the document, closing its tab or quitting
 UltraOffice removes its copy.
 
 When UltraOffice ends without closing, the copies stay, and the next start
-asks whether to restore them. **Yes** opens each in a tab under its own file
-and name, with its changes still to save; **No** deletes them. Presentations
-are not copied: they are not changed here.
+lists those documents on the **Start** tab, which shows their count, without
+stopping anything else: **Restore** opens each in a tab under its own file
+and name, with its changes still to save; **Discard the copies** deletes
+them, after asking. Presentations are not copied: they are not changed here.
 
 ## Starting it
 

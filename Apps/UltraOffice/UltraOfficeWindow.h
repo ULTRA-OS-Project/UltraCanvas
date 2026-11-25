@@ -8,6 +8,7 @@
 // recovery folder; a run that ends without closing leaves them there, and
 // the next start offers them back.
 //
+// Version: 0.3.0 - recovered documents offered on the Start tab, not in a dialog
 // Version: 0.2.0 - autosave and crash recovery
 // Version: 0.1.0
 // Last Modified: 2026-11-25
@@ -117,8 +118,15 @@ private:
     void WriteRecovery(OpenDocument& doc);
     void RemoveRecovery(OpenDocument& doc);
     void RemoveAllRecovery();
-    // Offers back the copies a run that ended without closing left behind.
+    // Offers back the copies a run that ended without closing left behind:
+    // a section on the Start tab, which shows their count, so nothing waits
+    // on an answer.
+    std::vector<std::filesystem::path> recoveryNotes_;
     void OfferRecovery();
+    void RebuildStartPageLater();
+    void ShowRecoveryBadge();
+    void RestoreAllRecovered();
+    void DiscardAllRecovered();
     void RestoreRecovered(const std::vector<std::filesystem::path>& notes, size_t next);
 };
 

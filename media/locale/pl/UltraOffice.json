@@ -19,6 +19,8 @@
   "Data": "Dane",
   "Decrease indent (Shift+Tab)": "Zmniejsz wcięcie (Shift+Tab)",
   "Default font": "Domyślna czcionka",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Usunąć kopie niezapisanych dokumentów? Ich zmian nie będzie można odzyskać.",
+  "Discard the copies": "Odrzuć kopie",
   "Document {0}": "Dokument {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Dokumenty, arkusze kalkulacyjne i prezentacje w jednym oknie. Każdy otwiera się we własnej karcie, z narzędziami właściwymi dla swojego rodzaju.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Pliki Excel 97-2003 (.xls) są odczytywane, ale nie zapisywane. Zapisz zamiast tego jako .xlsx lub .ods.",
@@ -50,7 +52,7 @@
   "Insert the SUM function": "Wstaw funkcję SUM",
   "Italic (Ctrl+I)": "Kursywa (Ctrl+I)",
   "Keep the rows above and the columns left of the selection in view": "Zachowaj widoczne wiersze nad zaznaczeniem i kolumny na lewo od niego",
-  "Landscape": "Poziomo",
+  "Landscape": "Pozioma",
   "Let every row and column scroll": "Pozwól przewijać wszystkie wiersze i kolumny",
   "Make the selection a link": "Zmień zaznaczenie w łącze",
   "More decimal places": "Więcej miejsc dziesiętnych",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Drukuj litery kolumn i numery wierszy",
   "Print the lines between the cells": "Drukuj linie między komórkami",
   "Print...": "Drukuj...",
+  "Recovered documents": "Odzyskane dokumenty",
   "Redo (Ctrl+Y)": "Ponów (Ctrl+Y)",
+  "Restore": "Przywróć",
   "Restore documents": "Przywróć dokumenty",
   "Save (Ctrl+S)": "Zapisz (Ctrl+S)",
   "Save as...": "Zapisz jako...",
@@ -115,10 +119,10 @@
   "There is no sheet to export.": "Brak arkusza do wyeksportowania.",
   "There is no sheet to print.": "Brak arkusza do wydrukowania.",
   "Turn the paper on its side": "Obróć papier poziomo",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice zakończył działanie bez zamknięcia, gdy {n} dokument miał niezapisane zmiany. Przywrócić go z zachowanej kopii? Nie usuwa kopię.",
-    "few": "UltraOffice zakończył działanie bez zamknięcia, gdy {n} dokumenty miały niezapisane zmiany. Przywrócić je z zachowanych kopii? Nie usuwa kopie.",
-    "many": "UltraOffice zakończył działanie bez zamknięcia, gdy {n} dokumentów miało niezapisane zmiany. Przywrócić je z zachowanych kopii? Nie usuwa kopie."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice zakończył działanie bez zamknięcia, gdy {n} dokument miał niezapisane zmiany. Zachowano jego kopię.",
+    "few": "UltraOffice zakończył działanie bez zamknięcia, gdy {n} dokumenty miały niezapisane zmiany. Zachowano kopię każdego z nich.",
+    "many": "UltraOffice zakończył działanie bez zamknięcia, gdy {n} dokumentów miało niezapisane zmiany. Zachowano kopię każdego z nich."
   },
   "Underline (Ctrl+U)": "Podkreślenie (Ctrl+U)",
   "Undo (Ctrl+Z)": "Cofnij (Ctrl+Z)",

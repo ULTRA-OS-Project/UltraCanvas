@@ -19,6 +19,8 @@
   "Data": "Data",
   "Decrease indent (Shift+Tab)": "Formindsk indrykning (Shift+Tab)",
   "Default font": "Standardskrifttype",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Slet kopierne af de dokumenter, der ikke blev gemt? Deres ændringer kan ikke hentes tilbage.",
+  "Discard the copies": "Kassér kopierne",
   "Document {0}": "Dokument {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Dokumenter, regneark og præsentationer i ét vindue. Hver åbnes i sin egen fane med værktøjerne til netop den slags.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003-filer (.xls) kan læses, men ikke skrives. Gem som .xlsx eller .ods i stedet.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Udskriv kolonnebogstaverne og rækkenumrene",
   "Print the lines between the cells": "Udskriv linjerne mellem cellerne",
   "Print...": "Udskriv...",
+  "Recovered documents": "Gendannede dokumenter",
   "Redo (Ctrl+Y)": "Gentag (Ctrl+Y)",
+  "Restore": "Gendan",
   "Restore documents": "Gendan dokumenter",
   "Save (Ctrl+S)": "Gem (Ctrl+S)",
   "Save as...": "Gem som...",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Der er intet ark at eksportere.",
   "There is no sheet to print.": "Der er intet ark at udskrive.",
   "Turn the paper on its side": "Drej papiret til liggende",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice blev afsluttet uden at lukke, mens {n} dokument havde ugemte ændringer. Gendan det fra den gemte kopi? Nej sletter kopien.",
-    "other": "UltraOffice blev afsluttet uden at lukke, mens {n} dokumenter havde ugemte ændringer. Gendan dem fra de gemte kopier? Nej sletter kopierne."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice blev afsluttet uden at lukke, mens {n} dokument havde ugemte ændringer. Der blev gemt en kopi af det.",
+    "other": "UltraOffice blev afsluttet uden at lukke, mens {n} dokumenter havde ugemte ændringer. Der blev gemt en kopi af hvert."
   },
   "Underline (Ctrl+U)": "Understreget (Ctrl+U)",
   "Undo (Ctrl+Z)": "Fortryd (Ctrl+Z)",

@@ -2,6 +2,7 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.3.0 - recovered documents offered on the Start tab, so the window never waits on the question
 // Version: 0.2.0 - autosave every minute and crash recovery
 // Version: 0.1.0
 // Last Modified: 2026-11-25
@@ -163,6 +164,24 @@ void UltraOfficeWindow::BuildStartPage() {
     for (const std::string& path : settings_.GetList(kRecentKey)) {
         std::error_code ec;
         if (std::filesystem::exists(PathFromUtf8(path), ec)) recent.push_back(path);
+    }
+    // Documents a run that ended without closing had unsaved changes in.
+    if (!recoveryNotes_.empty()) {
+        page->AddSection(Tr("Recovered documents"));
+        const int count = static_cast<int>(recoveryNotes_.size());
+        page->AddNote(TrN("UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.",
+                          "UltraOffice ended without closing while {n} documents had unsaved changes. A copy of each was kept.",
+                          count));
+        std::string names;
+        for (const auto& notePath : recoveryNotes_) {
+            UltraCanvasAppSettings note = UltraCanvasAppSettings::AtFile(PathToUtf8(notePath));
+            note.Load();
+            const std::string file = note.GetString("file");
+            names += (names.empty() ? "" : ", ") + note.GetString("name", FileNameOf(file));
+        }
+        page->AddNote(names, 30);
+        page->AddButton(Tr("Restore"), [this]() { RestoreAllRecovered(); });
+        page->AddButton(Tr("Discard the copies"), [this]() { DiscardAllRecovered(); });
     }
     page->SetRecent(Tr("Recent"), recent, [this](const std::string& path) { OpenPath(path); }, 8);
     page->AddAction(Tr("Open a file..."), [this]() { ShowOpenDialog(); },
@@ -563,32 +582,59 @@ void UltraOfficeWindow::OfferRecovery() {
     const std::filesystem::path folder = RecoveryFolder();
     if (folder.empty()) return;
     // The notes there now are an earlier run's: this run's copies are named
-    // with its own tag, so the list does not change while the question waits.
-    std::vector<std::filesystem::path> notes;
+    // with its own tag, so the list does not change while it is offered.
+    recoveryNotes_.clear();
     std::error_code ec;
     for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
-        if (entry.is_regular_file(ec) && entry.path().extension() == ".json") notes.push_back(entry.path());
+        if (entry.is_regular_file(ec) && entry.path().extension() == ".json") recoveryNotes_.push_back(entry.path());
     }
-    if (notes.empty()) return;
-    std::sort(notes.begin(), notes.end());
-    const int count = static_cast<int>(notes.size());
-    UltraCanvasDialogManager::ShowMessage(
-        TrN("UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept "
-            "for it? No deletes the copy.",
-            "UltraOffice ended without closing while {n} documents had unsaved changes. Restore them from the copies "
-            "kept for them? No deletes the copies.", count),
-        Tr("Restore documents"), DialogType::Question, DialogButtons::YesNo,
-        [this, notes](DialogResult result) {
-            if (result == DialogResult::Yes) { RestoreRecovered(notes, 0); return; }
-            if (result != DialogResult::No) return;   // closed unanswered: asked again next time
-            std::error_code removeError;
-            for (const auto& note : notes) {
+    if (recoveryNotes_.empty()) return;
+    std::sort(recoveryNotes_.begin(), recoveryNotes_.end());
+    BuildStartPage();
+    ShowRecoveryBadge();
+}
+
+// The Start tab counts the recovered documents waiting there.
+void UltraOfficeWindow::ShowRecoveryBadge() {
+    if (recoveryNotes_.empty()) tabs_->ClearTabBadge(0);
+    else tabs_->SetTabBadge(0, std::to_string(recoveryNotes_.size()));
+}
+
+void UltraOfficeWindow::RebuildStartPageLater() {
+    // Not from inside one of the page's own buttons: the page goes once the
+    // click is over.
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    app->StartTimer(1, false, [this](TimerId) {
+        BuildStartPage();
+        ShowRecoveryBadge();
+    });
+}
+
+void UltraOfficeWindow::RestoreAllRecovered() {
+    std::vector<std::filesystem::path> notes;
+    notes.swap(recoveryNotes_);
+    RebuildStartPageLater();
+    RestoreRecovered(notes, 0);
+}
+
+void UltraOfficeWindow::DiscardAllRecovered() {
+    // The copies are the only place those changes are: asked first.
+    UltraCanvasDialogManager::ShowConfirmation(
+        Tr("Delete the copies of the documents that were not saved? Their changes cannot be brought back."),
+        Tr("Recovered documents"),
+        [this](bool yes) {
+            if (!yes) return;
+            std::error_code ec;
+            for (const auto& note : recoveryNotes_) {
                 UltraCanvasAppSettings kept = UltraCanvasAppSettings::AtFile(PathToUtf8(note));
                 kept.Load();
                 const std::string copy = kept.GetString("copy");
-                if (!copy.empty()) std::filesystem::remove(note.parent_path() / PathFromUtf8(copy), removeError);
-                std::filesystem::remove(note, removeError);
+                if (!copy.empty()) std::filesystem::remove(note.parent_path() / PathFromUtf8(copy), ec);
+                std::filesystem::remove(note, ec);
             }
+            recoveryNotes_.clear();
+            RebuildStartPageLater();
         }, this);
 }
 

@@ -19,6 +19,8 @@
   "Data": "資料",
   "Decrease indent (Shift+Tab)": "減少縮排 (Shift+Tab)",
   "Default font": "預設字型",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "要刪除未儲存文件的副本嗎？其變更將無法找回。",
+  "Discard the copies": "捨棄副本",
   "Document {0}": "文件 {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "文件、試算表和簡報集中在同一個視窗。每個檔案都在各自的分頁中開啟，並提供適合其類型的工具。",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003 (.xls) 檔案只能讀取，無法寫入。請改存為 .xlsx 或 .ods。",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "列印欄名和列號",
   "Print the lines between the cells": "列印儲存格之間的線條",
   "Print...": "列印...",
+  "Recovered documents": "已復原的文件",
   "Redo (Ctrl+Y)": "重做 (Ctrl+Y)",
+  "Restore": "還原",
   "Restore documents": "還原文件",
   "Save (Ctrl+S)": "儲存 (Ctrl+S)",
   "Save as...": "另存新檔...",
@@ -115,8 +119,8 @@
   "There is no sheet to export.": "沒有可匯出的工作表。",
   "There is no sheet to print.": "沒有可列印的工作表。",
   "Turn the paper on its side": "將紙張轉為橫向",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "other": "UltraOffice 未正常關閉就已結束，當時有 {n} 份文件含有未儲存的變更。要從保留的副本還原嗎？選擇「否」將刪除副本。"
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "other": "UltraOffice 未正常關閉就已結束，當時有 {n} 份文件含有未儲存的變更。每份文件都保留了一份副本。"
   },
   "Underline (Ctrl+U)": "底線 (Ctrl+U)",
   "Undo (Ctrl+Z)": "復原 (Ctrl+Z)",

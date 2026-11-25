@@ -19,6 +19,8 @@
   "Data": "Дані",
   "Decrease indent (Shift+Tab)": "Зменшити відступ (Shift+Tab)",
   "Default font": "Шрифт за замовчуванням",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Видалити копії незбережених документів? Їхні зміни не можна буде повернути.",
+  "Discard the copies": "Видалити копії",
   "Document {0}": "Документ {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Документи, електронні таблиці та презентації в одному вікні. Кожен файл відкривається в окремій вкладці з інструментами для свого типу.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Файли Excel 97-2003 (.xls) можна читати, але не записувати. Збережіть файл у форматі .xlsx або .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Друкувати літери стовпців і номери рядків",
   "Print the lines between the cells": "Друкувати лінії між клітинками",
   "Print...": "Друк...",
+  "Recovered documents": "Відновлені документи",
   "Redo (Ctrl+Y)": "Повторити (Ctrl+Y)",
+  "Restore": "Відновити",
   "Restore documents": "Відновити документи",
   "Save (Ctrl+S)": "Зберегти (Ctrl+S)",
   "Save as...": "Зберегти як...",
@@ -115,10 +119,10 @@
   "There is no sheet to export.": "Немає аркуша для експорту.",
   "There is no sheet to print.": "Немає аркуша для друку.",
   "Turn the paper on its side": "Повернути папір горизонтально",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice завершив роботу без закриття, коли в {n} документі були незбережені зміни. Відновити його зі збереженої копії? «Ні» видалить копію.",
-    "few": "UltraOffice завершив роботу без закриття, коли в {n} документах були незбережені зміни. Відновити їх зі збережених копій? «Ні» видалить копії.",
-    "many": "UltraOffice завершив роботу без закриття, коли в {n} документах були незбережені зміни. Відновити їх зі збережених копій? «Ні» видалить копії."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice завершив роботу без закриття, коли в {n} документі були незбережені зміни. Його копію збережено.",
+    "few": "UltraOffice завершив роботу без закриття, коли в {n} документах були незбережені зміни. Копію кожного збережено.",
+    "many": "UltraOffice завершив роботу без закриття, коли в {n} документах були незбережені зміни. Копію кожного збережено."
   },
   "Underline (Ctrl+U)": "Підкреслений (Ctrl+U)",
   "Undo (Ctrl+Z)": "Скасувати (Ctrl+Z)",

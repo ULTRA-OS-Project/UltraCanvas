@@ -19,6 +19,8 @@
   "Data": "נתונים",
   "Decrease indent (Shift+Tab)": "הקטנת הזחה (Shift+Tab)",
   "Default font": "גופן ברירת מחדל",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "למחוק את העותקים של המסמכים שלא נשמרו? לא יהיה אפשר להחזיר את השינויים שלהם.",
+  "Discard the copies": "מחיקת העותקים",
   "Document {0}": "מסמך {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "מסמכים, גיליונות אלקטרוניים ומצגות בחלון אחד. כל אחד נפתח בכרטיסייה משלו, עם הכלים המתאימים לסוגו.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "קובצי Excel 97-2003 (.xls) נקראים אך לא נכתבים. יש לשמור בפורמט .xlsx או .ods במקום זאת.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "הדפסת אותיות העמודות ומספרי השורות",
   "Print the lines between the cells": "הדפסת הקווים שבין התאים",
   "Print...": "הדפסה...",
+  "Recovered documents": "מסמכים משוחזרים",
   "Redo (Ctrl+Y)": "ביצוע חוזר (Ctrl+Y)",
+  "Restore": "שחזור",
   "Restore documents": "שחזור מסמכים",
   "Save (Ctrl+S)": "שמירה (Ctrl+S)",
   "Save as...": "שמירה בשם...",
@@ -115,11 +119,11 @@
   "There is no sheet to export.": "אין גיליון לייצוא.",
   "There is no sheet to print.": "אין גיליון להדפסה.",
   "Turn the paper on its side": "סיבוב הנייר לרוחב",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice הסתיים בלי להיסגר. מסמכים עם שינויים שלא נשמרו: {n}. לשחזר אותו מהעותק שנשמר? 'לא' מוחק את העותק.",
-    "two": "UltraOffice הסתיים בלי להיסגר. מסמכים עם שינויים שלא נשמרו: {n}. לשחזר אותם מהעותקים שנשמרו? 'לא' מוחק את העותקים.",
-    "many": "UltraOffice הסתיים בלי להיסגר. מסמכים עם שינויים שלא נשמרו: {n}. לשחזר אותם מהעותקים שנשמרו? 'לא' מוחק את העותקים.",
-    "other": "UltraOffice הסתיים בלי להיסגר. מסמכים עם שינויים שלא נשמרו: {n}. לשחזר אותם מהעותקים שנשמרו? 'לא' מוחק את העותקים."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice הסתיים בלי להיסגר. מסמכים עם שינויים שלא נשמרו: {n}. נשמר ממנו עותק.",
+    "two": "UltraOffice הסתיים בלי להיסגר. מסמכים עם שינויים שלא נשמרו: {n}. נשמר עותק של כל אחד.",
+    "many": "UltraOffice הסתיים בלי להיסגר. מסמכים עם שינויים שלא נשמרו: {n}. נשמר עותק של כל אחד.",
+    "other": "UltraOffice הסתיים בלי להיסגר. מסמכים עם שינויים שלא נשמרו: {n}. נשמר עותק של כל אחד."
   },
   "Underline (Ctrl+U)": "קו תחתון (Ctrl+U)",
   "Undo (Ctrl+Z)": "ביטול פעולה (Ctrl+Z)",

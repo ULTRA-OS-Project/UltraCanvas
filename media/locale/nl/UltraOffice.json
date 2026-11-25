@@ -19,6 +19,8 @@
   "Data": "Gegevens",
   "Decrease indent (Shift+Tab)": "Inspringing verkleinen (Shift+Tab)",
   "Default font": "Standaardlettertype",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "De kopieën van de niet-opgeslagen documenten verwijderen? Hun wijzigingen kunnen niet worden teruggehaald.",
+  "Discard the copies": "Kopieën verwijderen",
   "Document {0}": "Document {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Documenten, spreadsheets en presentaties in één venster. Elk opent in een eigen tabblad, met het gereedschap voor zijn soort.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003-bestanden (.xls) worden gelezen, niet geschreven. Sla in plaats daarvan op als .xlsx of .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "De kolomletters en rijnummers afdrukken",
   "Print the lines between the cells": "De lijnen tussen de cellen afdrukken",
   "Print...": "Afdrukken…",
+  "Recovered documents": "Herstelde documenten",
   "Redo (Ctrl+Y)": "Opnieuw (Ctrl+Y)",
+  "Restore": "Herstellen",
   "Restore documents": "Documenten herstellen",
   "Save (Ctrl+S)": "Opslaan (Ctrl+S)",
   "Save as...": "Opslaan als…",
@@ -115,9 +119,9 @@
   "There is no sheet to export.": "Er is geen blad om te exporteren.",
   "There is no sheet to print.": "Er is geen blad om af te drukken.",
   "Turn the paper on its side": "Het papier een kwartslag draaien",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice is beëindigd zonder te sluiten terwijl {n} document niet-opgeslagen wijzigingen had. Herstellen vanuit de bewaarde kopie? Nee verwijdert de kopie.",
-    "other": "UltraOffice is beëindigd zonder te sluiten terwijl {n} documenten niet-opgeslagen wijzigingen hadden. Herstellen vanuit de bewaarde kopieën? Nee verwijdert de kopieën."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice is beëindigd zonder te sluiten terwijl {n} document niet-opgeslagen wijzigingen had. Er is een kopie van bewaard.",
+    "other": "UltraOffice is beëindigd zonder te sluiten terwijl {n} documenten niet-opgeslagen wijzigingen hadden. Van elk is een kopie bewaard."
   },
   "Underline (Ctrl+U)": "Onderstrepen (Ctrl+U)",
   "Undo (Ctrl+Z)": "Ongedaan maken (Ctrl+Z)",

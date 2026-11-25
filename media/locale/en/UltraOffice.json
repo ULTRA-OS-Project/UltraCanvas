@@ -43,6 +43,8 @@
   "Data": "Data",
   "Decrease indent (Shift+Tab)": "Decrease indent (Shift+Tab)",
   "Default font": "Default font",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Delete the copies of the documents that were not saved? Their changes cannot be brought back.",
+  "Discard the copies": "Discard the copies",
   "Document {0}": "Document {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.",
@@ -108,7 +110,9 @@
   "Print the column letters and row numbers": "Print the column letters and row numbers",
   "Print the lines between the cells": "Print the lines between the cells",
   "Print...": "Print...",
+  "Recovered documents": "Recovered documents",
   "Redo (Ctrl+Y)": "Redo (Ctrl+Y)",
+  "Restore": "Restore",
   "Restore documents": "Restore documents",
   "Save (Ctrl+S)": "Save (Ctrl+S)",
   "Save as...": "Save as...",
@@ -139,9 +143,9 @@
   "There is no sheet to export.": "There is no sheet to export.",
   "There is no sheet to print.": "There is no sheet to print.",
   "Turn the paper on its side": "Turn the paper on its side",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.",
-    "other": "UltraOffice ended without closing while {n} documents had unsaved changes. Restore them from the copies kept for them? No deletes the copies."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.",
+    "other": "UltraOffice ended without closing while {n} documents had unsaved changes. A copy of each was kept."
   },
   "Underline (Ctrl+U)": "Underline (Ctrl+U)",
   "Undo (Ctrl+Z)": "Undo (Ctrl+Z)",

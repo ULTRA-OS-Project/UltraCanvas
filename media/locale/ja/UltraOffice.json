@@ -19,6 +19,8 @@
   "Data": "データ",
   "Decrease indent (Shift+Tab)": "インデントを減らす (Shift+Tab)",
   "Default font": "既定のフォント",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "保存されなかったドキュメントのコピーを削除しますか？変更は元に戻せません。",
+  "Discard the copies": "コピーを破棄",
   "Document {0}": "文書 {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "文書、スプレッドシート、プレゼンテーションを 1 つのウィンドウで。それぞれが専用のタブで開き、種類に合ったツールが使えます。",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Excel 97-2003 (.xls) ファイルは読み込めますが、書き込めません。代わりに .xlsx または .ods で保存してください。",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "列の文字と行の番号を印刷",
   "Print the lines between the cells": "セル間の線を印刷",
   "Print...": "印刷…",
+  "Recovered documents": "復元されたドキュメント",
   "Redo (Ctrl+Y)": "やり直し (Ctrl+Y)",
+  "Restore": "復元",
   "Restore documents": "ドキュメントの復元",
   "Save (Ctrl+S)": "保存 (Ctrl+S)",
   "Save as...": "名前を付けて保存…",
@@ -115,8 +119,8 @@
   "There is no sheet to export.": "エクスポートするシートがありません。",
   "There is no sheet to print.": "印刷するシートがありません。",
   "Turn the paper on its side": "用紙を横向きにする",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "other": "UltraOffice は閉じられずに終了しました。未保存の変更があったドキュメント: {n} 件。保管されたコピーから復元しますか？「いいえ」を選ぶとコピーは削除されます。"
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "other": "UltraOffice は閉じられずに終了しました。未保存の変更があったドキュメント: {n} 件。それぞれのコピーが保管されています。"
   },
   "Underline (Ctrl+U)": "下線 (Ctrl+U)",
   "Undo (Ctrl+Z)": "元に戻す (Ctrl+Z)",

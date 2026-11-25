@@ -19,6 +19,8 @@
   "Data": "Данные",
   "Decrease indent (Shift+Tab)": "Уменьшить отступ (Shift+Tab)",
   "Default font": "Шрифт по умолчанию",
+  "Delete the copies of the documents that were not saved? Their changes cannot be brought back.": "Удалить копии несохранённых документов? Их изменения нельзя будет вернуть.",
+  "Discard the copies": "Удалить копии",
   "Document {0}": "Документ {0}",
   "Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, with the tools for its kind.": "Документы, электронные таблицы и презентации в одном окне. Каждый файл открывается в отдельной вкладке с инструментами для своего типа.",
   "Excel 97-2003 (.xls) files are read, not written. Save as .xlsx or .ods instead.": "Файлы Excel 97-2003 (.xls) можно читать, но не записывать. Сохраните файл в формате .xlsx или .ods.",
@@ -84,7 +86,9 @@
   "Print the column letters and row numbers": "Печатать буквы столбцов и номера строк",
   "Print the lines between the cells": "Печатать линии между ячейками",
   "Print...": "Печать...",
+  "Recovered documents": "Восстановленные документы",
   "Redo (Ctrl+Y)": "Повторить (Ctrl+Y)",
+  "Restore": "Восстановить",
   "Restore documents": "Восстановить документы",
   "Save (Ctrl+S)": "Сохранить (Ctrl+S)",
   "Save as...": "Сохранить как...",
@@ -115,10 +119,10 @@
   "There is no sheet to export.": "Нет листа для экспорта.",
   "There is no sheet to print.": "Нет листа для печати.",
   "Turn the paper on its side": "Повернуть бумагу горизонтально",
-  "UltraOffice ended without closing while {n} document had unsaved changes. Restore it from the copy kept for it? No deletes the copy.": {
-    "one": "UltraOffice завершился, не закрывшись, когда в {n} документе были несохранённые изменения. Восстановить его из сохранённой копии? «Нет» удалит копию.",
-    "few": "UltraOffice завершился, не закрывшись, когда в {n} документах были несохранённые изменения. Восстановить их из сохранённых копий? «Нет» удалит копии.",
-    "many": "UltraOffice завершился, не закрывшись, когда в {n} документах были несохранённые изменения. Восстановить их из сохранённых копий? «Нет» удалит копии."
+  "UltraOffice ended without closing while {n} document had unsaved changes. A copy of it was kept.": {
+    "one": "UltraOffice завершился, не закрывшись, когда в {n} документе были несохранённые изменения. Его копия сохранена.",
+    "few": "UltraOffice завершился, не закрывшись, когда в {n} документах были несохранённые изменения. Копия каждого сохранена.",
+    "many": "UltraOffice завершился, не закрывшись, когда в {n} документах были несохранённые изменения. Копия каждого сохранена."
   },
   "Underline (Ctrl+U)": "Подчёркнутый (Ctrl+U)",
   "Undo (Ctrl+Z)": "Отменить (Ctrl+Z)",
