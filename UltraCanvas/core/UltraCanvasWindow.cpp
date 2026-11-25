@@ -1,9 +1,10 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
 // Version: 1.11.0 - a window that moved with a menu open closes it (ClosePopupsIfWindowMoved: X11, where
-//                  the window manager keeps the title-bar press, and macOS); popups in their own windows close when the focus goes to another window of the
-//                  application too (not only to another program), unless to a dialog of their window;
-//                  and when their window is hidden or minimised
+//                  the window manager keeps the title-bar press, and macOS); popups in their own windows
+//                  close when the focus goes to another window of the application too (not only to
+//                  another program), unless to a dialog of their window; and when their window is
+//                  hidden or minimised
 // Version: 1.10.0 - ClosePopupsOnFramePress (a press on the frame is a click outside the popups);
 //                  MovePopupHostsWithWindow puts the popups' windows beside a moved window at once
 // Version: 1.9.0 - a popup in its own window: its outline keeps pixels from a quarter opaque, and they are
@@ -1516,10 +1517,12 @@ namespace UltraCanvas {
 
     bool UltraCanvasWindowBase::IsSelfOrDialogOfSelf(UltraCanvasWindowBase* other) {
         // Up the chain of transient parents (a dialog of a dialog of this
-        // window), bounded in case a chain loops
+        // window), bounded in case a chain loops. A popup's own window counts
+        // as the window it belongs to: where the focus follows the pointer
+        // (X11 with no window manager) the menu's window takes it.
         for (int depth = 0; other && depth < 32; ++depth) {
             if (other == this) return true;
-            other = other->GetParentWindow();
+            other = other->IsPopupHost() ? other->GetPopupHostOwner() : other->GetParentWindow();
         }
         return false;
     }

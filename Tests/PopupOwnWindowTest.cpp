@@ -372,7 +372,24 @@ int main() {
     TEST("another window of the application brought to the front closes it",
          !menu->IsVisible() && target->GetPopupWindow(*menu) == nullptr);
 
-    // ...but not a dialog of its own window (one the popup opened, say)
+    // ...but not its own window taking the focus (focus follows the pointer
+    // onto it with no window manager)
+    {
+        menu->OpenMenu(Point2Di(60, 40), *target, settings);
+        Frames(app);
+        auto ownWindow = Shared(app, target->GetPopupWindow(*menu));
+        if (ownWindow) {
+            focusWindow(target, UCEventType::WindowBlur);
+            focusWindow(ownWindow, UCEventType::WindowFocus);
+            Frames(app);
+            TEST("its own window taking the focus leaves it open", menu->IsVisible());
+        }
+        menu->CloseMenu();
+        Frames(app);
+        focusWindow(target, UCEventType::WindowFocus);
+    }
+
+    // ...nor a dialog of its own window (one the popup opened, say)
     {
         auto dialog = OpenWindow("Dialog", 200, 200, 120, 80, kCoverColor);
         if (dialog) {
