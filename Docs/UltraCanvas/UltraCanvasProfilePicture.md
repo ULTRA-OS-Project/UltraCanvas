@@ -45,7 +45,7 @@ editor->onPictureError = [](const std::string& error) {
 card->AddChild(editor);
 ```
 
-The row is as tall as its picture (96 pixels; `SetPictureSize`). `SetCaption("")` hides the caption, `SetHint("")` the hint.
+The row is at least as tall as its picture (96 pixels; `SetPictureSize`), taller when the caption, the buttons and a wrapped hint need it. `SetCaption("")` hides the caption, `SetHint("")` the hint.
 
 ## The picture
 

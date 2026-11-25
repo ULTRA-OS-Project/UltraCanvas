@@ -834,6 +834,10 @@ UltraCanvasProfilePictureEditor::UltraCanvasProfilePictureEditor(const std::stri
     : UltraCanvasContainer(identifier, x, y, w, h) {
     layout.SetFlexRow().SetFlexGap(18).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     pictureSize_ = h > 0 ? h : 96.0f;
+    // As tall as the caption, the buttons and a wrapped hint need, and never
+    // shorter than the picture.
+    size.height = CSSLayout::Dimension::Auto();
+    SetMinHeight(pictureSize_);
 
     picture_ = std::make_shared<UltraCanvasProfilePicture>(identifier + "-picture", pictureSize_);
     picture_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -901,6 +905,7 @@ void UltraCanvasProfilePictureEditor::SetPictureSize(float diameter) {
     pictureSize_ = std::max(24.0f, diameter);
     picture_->size.width = CSSLayout::Dimension::Px(pictureSize_);
     picture_->size.height = CSSLayout::Dimension::Px(pictureSize_);
+    SetMinHeight(pictureSize_);
     InvalidateLayout();
 }
 
@@ -912,6 +917,12 @@ void UltraCanvasProfilePictureEditor::SetCaption(const std::string& caption) {
 void UltraCanvasProfilePictureEditor::SetHint(const std::string& hint) {
     hint_->SetText(hint);
     hint_->SetVisible(!hint.empty());
+}
+
+void UltraCanvasProfilePictureEditor::SetMinHeight(float height) {
+    CSSLayout::BoxConstraints limits = boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    limits.minHeight = CSSLayout::Dimension::Px(height);
+    boxConstraints = limits;
 }
 
 void UltraCanvasProfilePictureEditor::UpdateButtons() {

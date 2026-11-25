@@ -301,7 +301,8 @@ public:
     const std::string& GetPicturePath() const;
     void SetName(const std::string& name);
 
-    // The diameter of the picture (the row's height follows; 96 by default).
+    // The diameter of the picture (96 by default); the row is at least as tall,
+    // taller when its caption, buttons and hint need it.
     void SetPictureSize(float diameter);
     float GetPictureSize() const { return pictureSize_; }
     // The caption over the buttons ("Profile picture"), and the line under them
@@ -317,6 +318,7 @@ public:
 
 private:
     void UpdateButtons();
+    void SetMinHeight(float height);
 
     float pictureSize_ = 96.0f;
     std::shared_ptr<UltraCanvasProfilePicture> picture_;
