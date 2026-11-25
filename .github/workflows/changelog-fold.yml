@@ -34,39 +34,102 @@ name: Changelog fold
 # merge is built twice under one number.
 #
 # If the push below is refused (branch protection, or a race with another
-# merge), nothing is lost: the entries stay pending and the next push to main
-# folds them. A red run here is the signal to look, not a reason to hand-edit
+# merge), nothing is lost: the entries stay pending and the next merge that
+# adds an entry, or the next scheduled run, folds them. A red run here is the signal to look, not a reason to hand-edit
 # line 1.
 #
-# Merges that land within minutes of each other are folded together: the
-# scheduled run folds only once main has been quiet (see "Is it time to
-# fold" for the numbers), so a burst of merges makes one fold commit and one
-# release build, not one each.
-
+# Merges that land within minutes of each other are folded together: a
+# merge that adds an entry starts a run that waits QUIET_MINUTES (the `quiet`
+# job), and the next such merge cancels that wait and starts its own - so a
+# burst of merges makes one fold commit and one release build, not one each,
+# and a lone merge is folded ten minutes after it lands. A burst that goes on
+# is folded twenty minutes after its first entry (MAX_MINUTES), what has
+# landed by then.
+#
+# Until 2026-11-25 only the schedule below started a fold, and GitHub ran
+# that ten-minute schedule every six to ten hours, not every ten minutes
+# (scheduled workflows are delayed and dropped when GitHub is busy: 02:23,
+# 11:35 and 02:23 the next day were the runs around 2026-11-25). Main went
+# hours without a release build, and with it without a fresh ccache: every
+# pull request in between recompiled what the merges since had touched - 298
+# of the Linux row's 3,378 objects on 2026-11-25, after five merges since the
+# 02:23 fold. The schedule stays, as the fallback for an entry no push run
+# folded (a refused push, a failed run).
 on:
+  # A merge that adds or changes a pending entry. The fold's own push (it
+  # deletes the entries) is made with GITHUB_TOKEN and starts no workflow, so
+  # this cannot start itself.
+  push:
+    branches: [main]
+    paths:
+      - 'Docs/**/changelog.d/**'
   # Every ten minutes, off the hour (the top of the hour is when GitHub's
-  # schedules queue). A run with nothing pending, or with main still moving,
-  # takes a runner for the checkout and the look and is done; see "Is it time
-  # to fold" for when it folds. It used to run on every push that added an
-  # entry (Docs/**/changelog.d/**) and fold at once, which made one release
-  # build per merge however close together the merges landed.
+  # schedules queue) - as often as GitHub honours it, see above. A run with
+  # nothing pending, or with main still moving, takes a runner for the
+  # checkout and the look and is done; see "Is it time to fold" for when it
+  # folds.
   schedule:
     - cron: '3-59/10 * * * *'
   workflow_dispatch:
-
-# Never cancel a fold: it commits and pushes, and a half-run that is killed
-# between the two would leave the entries pending with the changelog rewritten.
-concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
 
 permissions:
   contents: write
   actions: write   # dispatch build.yml for the release (see the last step)
 
 jobs:
-  fold:
+  # The debounce of a push run: it waits, and the next merge that adds an
+  # entry cancels the wait (cancel-in-progress) and waits in its place. Only
+  # the wait is cancellable - the fold below never is (see its concurrency).
+  # Nothing to wait for on a scheduled run (it checks how quiet main is
+  # itself) or a dispatch (folds at once).
+  quiet:
+    if: github.event_name == 'push'
     runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    timeout-minutes: 15
+    concurrency:
+      group: ${{ github.workflow }}-quiet
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+      # Ten minutes, but never past MAX_MINUTES from the oldest pending
+      # entry: merges that keep landing less than ten minutes apart would
+      # otherwise cancel every wait, and nothing would be folded until they
+      # stopped. The fold step's numbers, for the same reason.
+      - name: Wait for main to be quiet for ten minutes
+        env:
+          QUIET_MINUTES: 10
+          MAX_MINUTES: 20
+        run: |
+          now=$(date +%s)
+          oldest=$now
+          for f in $(find Docs -path '*/changelog.d/*.md' ! -name 'README.md' 2>/dev/null); do
+            t=$(git log --diff-filter=A --format=%ct -- "$f" | tail -1)
+            [ -n "$t" ] && [ "$t" -lt "$oldest" ] && oldest=$t
+          done
+          left=$(( oldest + MAX_MINUTES * 60 - now ))
+          wait=$(( QUIET_MINUTES * 60 ))
+          [ "$left" -lt "$wait" ] && wait=$left
+          [ "$wait" -lt 0 ] && wait=0
+          echo "the oldest pending entry landed $(( (now - oldest) / 60 )) minutes ago: waiting $wait seconds"
+          sleep "$wait"
+
+  fold:
+    needs: quiet
+    # After the wait on a push run (a cancelled wait - a newer merge - folds
+    # nothing here: that merge's run will); at once on a schedule or a
+    # dispatch, where `quiet` is skipped.
+    if: always() && (needs.quiet.result == 'success' || needs.quiet.result == 'skipped')
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    # Never cancel a fold: it commits and pushes, and a half-run that is
+    # killed between the two would leave the entries pending with the
+    # changelog rewritten. One fold at a time; a fold that starts while
+    # another runs waits for it (and finds nothing left to fold).
+    concurrency:
+      group: ${{ github.workflow }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
         with:
@@ -82,7 +145,9 @@ jobs:
       # run folds only once main has been quiet for QUIET_MINUTES, unless the
       # oldest pending entry has waited MAX_MINUTES already - so a burst makes
       # one fold commit and one release build, and a lone merge is folded by
-      # the second run after it. The merges themselves are gated off
+      # the second run after it. A push run has waited QUIET_MINUTES in the
+      # `quiet` job, with no newer entry-adding merge (that would have
+      # cancelled it), and folds at once. The merges themselves are gated off
       # build.yml either way, so this delays only the release artifacts, by
       # minutes against the half hour to two hours their build takes. A
       # dispatch by hand folds at once.
@@ -92,6 +157,7 @@ jobs:
           QUIET_MINUTES: 10
           MAX_MINUTES: 20
           BY_HAND: ${{ github.event_name == 'workflow_dispatch' }}
+          AFTER_WAIT: ${{ github.event_name == 'push' }}
         run: |
           pending=$(find Docs -path '*/changelog.d/*.md' ! -name 'README.md' 2>/dev/null)
           if [ -z "$pending" ]; then
@@ -102,6 +168,11 @@ jobs:
           if [ "$BY_HAND" = "true" ]; then
             echo "fold=true" >> "$GITHUB_OUTPUT"
             echo "dispatched by hand: folding now"
+            exit 0
+          fi
+          if [ "$AFTER_WAIT" = "true" ]; then
+            echo "fold=true" >> "$GITHUB_OUTPUT"
+            echo "no entry merged for $QUIET_MINUTES minutes after this one: folding now"
             exit 0
           fi
           now=$(date +%s)
@@ -157,7 +228,7 @@ jobs:
                      -m "Folded from the changelog.d directories by changelog-fold.yml."
           # Another merge may have landed while this ran. Rebase once and try
           # again; if it still fails, the entries stay pending and the next
-          # push to main folds them.
+          # entry-adding merge or scheduled run folds them.
           git pull --rebase --no-tags origin main
           git push origin HEAD:main
           # The commit that carries the new number - built by the step below.
