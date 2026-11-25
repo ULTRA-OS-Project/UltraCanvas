@@ -6,6 +6,7 @@
 // command tabs - Home, Data, View - and a status line with the sum, average
 // and count of the selection.
 //
+// Version: 0.2.0 - Export as PDF and Print, through the sheet's print pages
 // Version: 0.1.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,7 +14,9 @@
 #include "UltraOfficeToolbar.h"
 
 #include "UltraCanvasDropdown.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"   // PrintDocumentWithDialog
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasSpreadsheetPrint.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraLocalisation/UltraLocalisation.h"
@@ -68,6 +71,7 @@ public:
         sheet_->onSelectionChange = [this]() { Sync(); if (onChanged) onChanged(); };
         BuildHome();
         BuildData();
+        BuildPage();
         BuildView();
     }
 
@@ -105,6 +109,27 @@ public:
 
     void AddSaveTypes(FileDialogOptions& opts) const override {
         UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::Spreadsheet);
+    }
+
+    // The sheet on show, cut into pages by its print settings (print area,
+    // paper, scale or fit, breaks, gridlines, header and footer).
+    bool CanExportPdf() const override { return true; }
+    bool ExportPdf(const std::string& path, std::string& error) override {
+        auto pages = CreateSpreadsheetPrintPages(*sheet_);
+        if (!pages) { error = Tr("There is no sheet to export."); return false; }
+        return pages->ExportPdf(path, error);
+    }
+    bool Print(const std::string& name, UltraCanvasWindowBase* parent, std::string& error) override {
+        auto pages = CreateSpreadsheetPrintPages(*sheet_);
+        if (!pages) { error = Tr("There is no sheet to print."); return false; }
+        std::vector<uint8_t> pdf;
+        if (!pages->ExportPdf(pdf, error)) return false;
+        const IODeviceResult printed = PrintDocumentWithDialog(name, pdf, "application/pdf", parent, pages);
+        if (!printed.success && printed.code != IODeviceResultCode::Cancelled) {
+            error = printed.message;
+            return false;
+        }
+        return true;
     }
     std::string DefaultExtension(SaveFormat format) const override {
         return format == SaveFormat::OpenDocument ? "ods" : "xlsx";
@@ -146,6 +171,10 @@ private:
     UltraCanvasButton* italic_ = nullptr;
     UltraCanvasButton* wrap_ = nullptr;
     UltraCanvasButton* filter_ = nullptr;
+    UltraCanvasButton* landscape_ = nullptr;
+    UltraCanvasButton* fitWidth_ = nullptr;
+    UltraCanvasButton* gridlines_ = nullptr;
+    UltraCanvasButton* headings_ = nullptr;
     UltraCanvasDropdown* format_ = nullptr;
 
     std::function<void()> Act(std::function<void(UltraCanvasSpreadsheet&)> action) {
@@ -221,6 +250,31 @@ private:
         tabs_.push_back({Tr("Data"), bar});
     }
 
+    // How the sheet prints: the print area, paper turned or not, fitted to
+    // the page's width, gridlines and row and column headings.
+    void BuildPage() {
+        auto bar = MakeToolbar("office-sheet-page");
+        AddTool(*bar, "sheet-print-area", Tr("Set print area"), "", Tr("Print only the selected cells"),
+                Act([this](auto& s) { s.SetPrintArea(s.GetSelection()); modified_ = true; }));
+        AddTool(*bar, "sheet-print-area-clear", Tr("Clear print area"), "", Tr("Print every cell in use"),
+                Act([this](auto& s) { s.ClearPrintArea(); modified_ = true; }));
+        bar->AddSeparator();
+        auto toggle = [this](UltraCanvasSpreadsheet& s, auto change) {
+            change(s.GetPrintSettings());
+            modified_ = true;
+        };
+        landscape_ = AddToggleTool(*bar, "sheet-landscape", Tr("Landscape"), "", Tr("Turn the paper on its side"),
+            Act([toggle](auto& s) { toggle(s, [](PrintSettings& p) {
+                p.orientation = p.orientation == PageOrientation::Landscape ? PageOrientation::Portrait : PageOrientation::Landscape; }); })).get();
+        fitWidth_ = AddToggleTool(*bar, "sheet-fit-width", Tr("Fit to width"), "", Tr("Shrink the sheet so every column fits across one page"),
+            Act([toggle](auto& s) { toggle(s, [](PrintSettings& p) { p.fitToWidth = p.fitToWidth == 1 ? 0 : 1; p.fitToHeight = 0; }); })).get();
+        gridlines_ = AddToggleTool(*bar, "sheet-print-gridlines", Tr("Gridlines"), "", Tr("Print the lines between the cells"),
+            Act([toggle](auto& s) { toggle(s, [](PrintSettings& p) { p.printGridlines = !p.printGridlines; }); })).get();
+        headings_ = AddToggleTool(*bar, "sheet-print-headings", Tr("Headings"), "", Tr("Print the column letters and row numbers"),
+            Act([toggle](auto& s) { toggle(s, [](PrintSettings& p) { p.printRowColHeaders = !p.printRowColHeaders; }); })).get();
+        tabs_.push_back({Tr("Page"), bar});
+    }
+
     void BuildView() {
         auto bar = MakeToolbar("office-sheet-view");
         AddTool(*bar, "sheet-freeze", Tr("Freeze panes"), "", Tr("Keep the rows above and the columns left of the selection in view"),
@@ -236,6 +290,11 @@ private:
         if (italic_) italic_->SetPressed(font.italic);
         if (wrap_) wrap_->SetPressed(sheet_->GetActiveCellWrapText());
         if (filter_) filter_->SetPressed(filtered_);
+        const PrintSettings& print = sheet_->GetPrintSettings();
+        if (landscape_) landscape_->SetPressed(print.orientation == PageOrientation::Landscape);
+        if (fitWidth_) fitWidth_->SetPressed(print.fitToWidth == 1);
+        if (gridlines_) gridlines_->SetPressed(print.printGridlines);
+        if (headings_) headings_->SetPressed(print.printRowColHeaders);
         if (format_) {
             const NumberFormatCategory category = sheet_->GetActiveCellNumberFormat().category;
             int index = 0;

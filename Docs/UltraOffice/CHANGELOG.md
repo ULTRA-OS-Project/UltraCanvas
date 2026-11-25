@@ -10,13 +10,16 @@
     page break, footnote, contents), View (pages, page width, whole page,
     zoom);
   - spreadsheets: Home (clipboard, bold, italic, alignment, wrap, number
-    format, decimals), Data (sort, filter, fill, SUM), View (freeze panes);
+    format, decimals), Data (sort, filter, fill, SUM), Page (print area,
+    landscape, fit to width, gridlines, headings), View (freeze panes);
   - presentations: Home (present from the start or this slide, outline).
 - **Documents** are edited in the WYSIWYG element, in page view: .odt and
   .docx read and written, .doc, Markdown and LaTeX read. Export as PDF and
   Print.
 - **Spreadsheets**: .ods and .xlsx read and written, .xls read, .csv and
-  .tsv; the status line adds up the selection.
+  .tsv; the status line adds up the selection. Export as PDF and Print, by
+  the sheet's print settings. Copy and paste reach other programs: cells go
+  out as text and a table, and another program's table or text comes in.
 - **Presentations** (.pptx, .odp and their kin) are shown - slides,
   thumbnails, notes - and presented full screen; Save as writes them again
   as PowerPoint or OpenDocument. Editing slides comes with the slide editor.

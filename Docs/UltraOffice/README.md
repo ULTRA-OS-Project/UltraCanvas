@@ -38,7 +38,8 @@ The command tabs:
   *View*: pages on or off, page width, whole page, zoom.
 - **Spreadsheets** - *Home*: cut, copy, paste, bold, italic, alignment,
   wrap, number format, decimals. *Data*: sort, filter, fill down and right,
-  SUM. *View*: freeze and unfreeze panes.
+  SUM. *Page*: set and clear the print area, landscape, fit to width,
+  gridlines, headings. *View*: freeze and unfreeze panes.
 - **Presentations** - *Home*: present from the first slide or this one
   (F5, Shift+F5), the outline.
 
@@ -55,8 +56,8 @@ document or spreadsheet.
 | Open recent | |
 | Save | Ctrl+S |
 | Save as... | Ctrl+Shift+S |
-| Export as PDF... | documents |
-| Print... | Ctrl+P, documents |
+| Export as PDF... | documents and spreadsheets |
+| Print... | Ctrl+P, documents and spreadsheets |
 | Close | Ctrl+W |
 | New files are saved as | Office Open XML (.docx, .xlsx), the default, or OpenDocument (.odt, .ods) |
 | Quit | Ctrl+Q |
