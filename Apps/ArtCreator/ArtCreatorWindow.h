@@ -11,6 +11,8 @@
 // start's files all add a tab rather than a window. The class also holds the
 // registry of open windows - File > New Window opens another - and the
 // application exits with the last of them.
+// Version: 1.17.0 - ObjectCountOf: how many objects the drawing open from a file has
+//                   (MobilePC's emulator test asks it after opening an SVG)
 // Version: 1.16.0 - several drawings per window, in tabs: DrawingTab holds a drawing's
 //                   document, canvas, selection, history and file; document / canvas /
 //                   selection / history are the active tab's (SwitchToTab); New, Open, a
@@ -51,7 +53,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -118,6 +120,13 @@ public:
     // plugin).
     static std::vector<std::string> OpenableExtensions();
     static std::vector<std::string> SaveableExtensions();
+
+    // How many objects (shapes, texts, images - the contents of groups
+    // counted too, layers and groups themselves not) the drawing opened from
+    // `path` has in one of this window's tabs; -1 when no tab holds it. What a
+    // host that started ArtCreator with a file asks to know it was read
+    // (MobilePC logs it, and its emulator test waits for that line).
+    int ObjectCountOf(const std::string& path) const;
 
 private:
     // ----- window registry -----

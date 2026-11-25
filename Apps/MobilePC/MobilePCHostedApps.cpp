@@ -7,6 +7,7 @@
 // (HostedAppInfo::programs), so UltraDesktop's taskbar button that starts
 // "UltraFiler", and UltraFiler's double-click that starts "UltraViewer" with a
 // picture, start the hosted one.
+// Version: 0.3.0 - ArtCreator logs each file it was handed, read or not (ObjectCountOf)
 // Version: 0.2.0 - UltraFiler; every application answers its program's name
 // Version: 0.1.0
 // Last Modified: 2026-11-24
@@ -32,6 +33,8 @@
 #endif
 #ifdef MOBILEPC_WITH_ARTCREATOR
 #include "ArtCreatorWindow.h"
+
+#include <android/log.h>
 #endif
 #ifdef MOBILEPC_WITH_ULTRAFILER
 #include "UltraCanvasAlert.h"
@@ -81,6 +84,23 @@ namespace MobilePC {
         std::vector<std::unique_ptr<UltraViewerWindow>>& Viewers() {
             static std::vector<std::unique_ptr<UltraViewerWindow>> viewers;
             return viewers;
+        }
+#endif
+
+#ifdef MOBILEPC_WITH_ARTCREATOR
+        // Each file ArtCreator was handed, as it read it - its objects, or
+        // that it is not open (the reader refused it and said so in a
+        // dialog) - straight to logcat: the emulator test
+        // (scripts/android-mobilepc-smoke.sh) waits for the line.
+        void LogArtCreatorFiles(const std::shared_ptr<ArtCreatorWindow>& window,
+                                const std::vector<std::string>& files) {
+            for (const std::string& file : files) {
+                const int objects = window ? window->ObjectCountOf(file) : -1;
+                const std::string line = objects >= 0
+                        ? "MobilePC: artcreator opened " + file + " (" + std::to_string(objects) + " objects)"
+                        : "MobilePC: artcreator did not open " + file;
+                __android_log_write(objects >= 0 ? ANDROID_LOG_INFO : ANDROID_LOG_WARN, "UltraCanvas", line.c_str());
+            }
         }
 #endif
 
@@ -217,8 +237,12 @@ namespace MobilePC {
             "artcreator", "ArtCreator", Tr("Vector drawings and illustrations"),
             AppIcon("ArtCreator.png"), {"Graphics", "VectorGraphics"},
             [](const std::vector<std::string>& files) {
-                if (!files.empty() && ArtCreatorWindow::OpenInRunningWindow(files)) return true;
-                return ArtCreatorWindow::OpenWindow(files) != nullptr;
+                std::shared_ptr<ArtCreatorWindow> window;
+                if (!files.empty()) window = ArtCreatorWindow::OpenInRunningWindow(files);
+                if (!window) window = ArtCreatorWindow::OpenWindow(files);
+                if (!window) return false;
+                LogArtCreatorFiles(window, files);
+                return true;
             },
             {"ArtCreator"}});
 #endif

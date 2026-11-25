@@ -728,7 +728,8 @@ jobs:
           retention-days: 14
 
   # MobilePC on the emulator with a second display: the desktop must be drawn
-  # there, UltraPaint and UltraFiler must start on it, and the desktop must come back to the
+  # there, UltraPaint and UltraFiler must start on it, ArtCreator must open an SVG the APK
+  # carries and read its shapes (the Vector plug-in on Android), and the desktop must come back to the
   # phone's screen when the display goes (scripts/android-mobilepc-smoke.sh).
   # It needs only the x86_64 APK: an arm64 leg that failed (a vcpkg mirror
   # timing out on a source download) must not keep it from running, and the

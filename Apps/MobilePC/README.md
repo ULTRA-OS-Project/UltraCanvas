@@ -44,5 +44,6 @@ one copy per user does on a desktop.
 - CI (`.github/workflows/android-build.yml`) links `libMobilePC.so` against the
   sysroot, checks its entry points, packages `MobilePC-<abi>.apk`, and runs
   `scripts/android-mobilepc-smoke.sh` on an emulator with a simulated second
-  display: the desktop must appear there, UltraPaint and UltraFiler must start on it, and the
+  display: the desktop must appear there, UltraPaint and UltraFiler must start on it, ArtCreator must open
+  an SVG the APK carries and read its shapes (the Vector plug-in on Android), and the
   desktop must come back to the phone when the display goes.
