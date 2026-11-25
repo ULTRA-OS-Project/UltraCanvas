@@ -4,6 +4,9 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.21.0 - LoadPresentation: a deck of any kind read into the deck model - .pptx and kin,
+//                  .odp and kin, and PowerPoint 97-2003 .ppt / .pps / .pot (UltraCanvasPresentationPpt.h);
+//                  LoadTextDocument and DetectOfficeDocumentKind take a .ppt; IsOfficeTemplate a .pot
 // Version: 1.20.0 - office templates: IsOfficeTemplate, IsOfficeTemplateExtension, AddOfficeTemplateSaveTypes
 //                  ("Save as template"), AddSpreadsheetSaveTypes; a template's kind is detected; the
 //                  Save types of documents and decks no longer list the templates
@@ -289,9 +292,11 @@ namespace UltraCanvas {
         // the reader cannot make sense of fails with a loadError that
         // asks for it to be saved as .docx or .odt. .tex is imported by the LaTeX document
         // reader (article subset, formulas kept for the math engine);
-        // a PowerPoint deck (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm) and an
-        // OpenDocument presentation (.odp, .otp, .fodp) read as an outline of
-        // their slides (UltraCanvasPresentationPptx.h, UltraCanvasPresentationOdp.h);
+        // a PowerPoint deck (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm, and
+        // the 97-2003 .ppt, .pps, .pot) and an OpenDocument presentation
+        // (.odp, .otp, .fodp) read as an outline of their slides
+        // (UltraCanvasPresentationPptx.h, UltraCanvasPresentationPpt.h,
+        // UltraCanvasPresentationOdp.h);
         // .md/.markdown parse as Markdown; anything
         // else readable as text becomes plain paragraphs. A password-protected .docx asks for
         // its password first (RequestDocumentPassword); cancelling that
@@ -345,6 +350,15 @@ namespace UltraCanvas {
         static bool SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
                                      std::string& outError,
                                      const std::string& password = std::string());
+        // Reads a deck into UltraCanvasPresentationPptx.h's model, the reader
+        // chosen by the file's content: a PowerPoint 97-2003 compound file
+        // (.ppt, .pps, .pot: UltraCanvasPresentationPpt.h), an OpenDocument
+        // presentation (.odp, .otp, .fodp: UltraCanvasPresentationOdp.h), else
+        // a PowerPoint package (.pptx and kin). `password` opens a protected
+        // .pptx or .odp; `withPictures` keeps the pictures' bytes, for drawing
+        // and saving the slides. False with a reason in outError.
+        static bool LoadPresentation(const std::string& filePath, PptxPresentation& deck, std::string& outError,
+                                     const std::string& password = std::string(), bool withPictures = false);
         // Writes a deck (UltraCanvasPresentationPptx.h's model: one read,
         // changed, or built) as the kind its path names - PowerPoint .pptx,
         // .potx, .ppsx (and .pptm / .potm / .ppsm, without macros), or
@@ -363,12 +377,15 @@ namespace UltraCanvas {
         // Which kind of office file a path is - what an office suite opens it
         // as: a word-processing document (.odt, .docx, .doc, .md, .tex ...), a
         // spreadsheet (.ods, .xlsx, .xls, .csv, .tsv), or a presentation
-        // (.pptx and kin, .odp and kin) - each with its templates (.ott,
-        // .dotx, .dotm; .ots, .xltx, .xltm; .potx, .potm, .otp). The extension decides; a file
-        // without a known one is looked into: an OpenDocument package by its
-        // mimetype entry, an Office Open XML package by its main part
-        // (word/, xl/, ppt/). Unknown for anything else. Reads nothing beyond a
-        // ZIP's directory and its mimetype entry.
+        // (.pptx and kin, .odp and kin, .ppt and kin) - each with its
+        // templates (.ott, .dotx, .dotm; .ots, .xltx, .xltm; .potx, .potm,
+        // .otp, .pot). The extension decides; a file without a known one is
+        // looked into: an OpenDocument package by its mimetype entry, an
+        // Office Open XML package by its main part (word/, xl/, ppt/), a
+        // compound file holding a "PowerPoint Document" stream as a
+        // presentation. Unknown for anything else. Reads nothing beyond a
+        // ZIP's directory and its mimetype entry, or a compound file's
+        // directory.
         enum class OfficeDocumentKind { Unknown, Document, Spreadsheet, Presentation };
         static OfficeDocumentKind DetectOfficeDocumentKind(const std::string& filePath);
         // The Open dialog's types for an office suite: one filter with every
@@ -390,7 +407,7 @@ namespace UltraCanvas {
         // A template is the same package as its kind's document under the
         // template's media type: OpenDocument .ott / .ots / .otp, Office Open
         // XML .dotx / .xltx / .potx (and the macro-enabled .dotm / .xltm /
-        // .potm, read). The readers take them as documents, the writers
+        // .potm, read), and PowerPoint 97-2003's .pot (read). The readers take them as documents, the writers
         // write them as templates by the extension (SaveTextDocument,
         // UltraCanvasSpreadsheet::SaveToFile, SavePresentation). An
         // application opening one starts a new, untitled document from it;

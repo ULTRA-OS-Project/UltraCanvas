@@ -19,8 +19,12 @@ merged cells, cropped pictures, charts and SmartArt.
 back (*Writing a deck*, below).
 
 An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
-model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
-outline, the preview and the text extraction below serve both kinds of deck.
+model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), and a
+PowerPoint 97-2003 deck (`.ppt`, `.pps`, `.pot`) by
+[UltraCanvasPresentationPpt](UltraCanvasPresentationPpt.md), so the outline,
+the preview and the text extraction below serve every kind of deck;
+`UltraCanvasFileLoader::LoadPresentation` picks the reader by the file's
+content.
 
 ## Opening one as a document
 

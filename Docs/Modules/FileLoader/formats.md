@@ -132,6 +132,8 @@ the Vector plugin's drawing reader.
 | PowerPoint template (OOXML) | `.potx`, `.potm` | ✅ ¶ | ✅ ¶ | built-in, as PowerPoint (a `.potm` is written without macros) |
 | OpenDocument Presentation | `.odp`, `.fodp` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model or a document laid out as a deck (no password) |
 | OpenDocument Presentation template | `.otp` | ✅ ¶ | ✅ | built-in, as OpenDocument Presentation |
+| PowerPoint 97-2003 | `.ppt`, `.pps` | ✅ | — | built-in OLE2/CFB parser ([UltraCanvasPresentationPpt](../../UltraCanvas/UltraCanvasPresentationPpt.md)): slides read and drawn (text, bullets, shapes, pictures, tables, notes, transitions), or opened as an outline (`LoadPresentation`, `LoadTextDocument`); saved as `.pptx` or `.odp`; a password-protected one is refused |
+| PowerPoint 97-2003 template | `.pot` | ✅ | — | built-in, as PowerPoint 97-2003: read as a template, opened as a new untitled deck |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |

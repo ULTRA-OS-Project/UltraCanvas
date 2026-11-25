@@ -13,11 +13,14 @@ It is built from the framework's elements, one per kind of document:
 |---|---|---|---|
 | Document | [`UltraCanvasRichTextEdit`](../UltraCanvas/UltraCanvasRichTextEdit.md), in page view | .odt, .docx, .doc, LaTeX, Markdown, text; templates .ott, .dotx, .dotm | .docx, .odt; templates .dotx, .ott |
 | Spreadsheet | [`UltraCanvasSpreadsheet`](../UltraCanvas/UltraCanvasSpreadsheetExamples.md) | .ods, .xlsx, .xls, .csv, .tsv; templates .ots, .xltx, .xltm | .xlsx, .ods, .csv, .tsv; templates .xltx, .ots |
-| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their show variants; templates .potx, .potm, .otp | .pptx, .odp; templates .potx, .otp |
+| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their show variants; PowerPoint 97-2003 .ppt, .pps; templates .potx, .potm, .otp, .pot | .pptx, .odp; templates .potx, .otp |
 
 What a file is comes from `UltraCanvasFileLoader::DetectOfficeDocumentKind`:
 the extension, else the package inside (`mimetype`, `word/document.xml`,
-`xl/workbook.xml`, `ppt/presentation.xml`). The design it was built to, in
+`xl/workbook.xml`, `ppt/presentation.xml`; a compound file with a "PowerPoint
+Document" stream is a presentation,
+[UltraCanvasPresentationPpt](../UltraCanvas/UltraCanvasPresentationPpt.md)).
+The design it was built to, in
 six phases, is
 [`Docs/Research/UltraOfficeDesignProposal.md`](../Research/UltraOfficeDesignProposal.md).
 
@@ -176,7 +179,8 @@ loads, and still holds what the test makes of it.
 | Quit | Ctrl+Q |
 
 Save writes a file where it came from in its own format; a file only read
-(.doc, .xls, Markdown, LaTeX, text) asks for a name. A file
+(.doc, .xls, .ppt / .pps / .pot, Markdown, LaTeX, text) asks for a name,
+and is saved as the default type of its kind. A file
 opened with a password is saved protected with it again. A .docx saved again
 keeps the theme and font table it came with (`UCRichDocument::keptParts`). Closing a tab or
 the window with unsaved changes asks first.

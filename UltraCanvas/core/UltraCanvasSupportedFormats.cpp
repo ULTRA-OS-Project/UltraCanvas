@@ -27,6 +27,7 @@
 //                  it (CanImagePipelineLoad stays false for every font).
 //   LayeredImage — UCRasterDocument's own files: the UCD 2.1 layered image
 //                  (no libvips needed) and the UltraPaint project (libvips).
+// Version: 1.7.0 - PowerPoint 97-2003 presentations (.ppt, .pps) and templates (.pot), read only
 // Version: 1.6.0 - templates as types of their own: .ott, .dotx and .dotm (read), .ots, .xltx and .xltm
 //                  (read); .potx / .potm and .otp leave the PowerPoint and OpenDocument presentation
 //                  rows for template rows of their own
@@ -260,6 +261,14 @@ namespace {
         out.push_back({ "otp", {}, "OpenDocument Presentation template",
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "ppt", { "pps" }, "PowerPoint 97-2003 presentation",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in OLE2/CFB parser",
+                        "slides read and drawn (text, bullets, shapes, pictures, tables, notes, transitions), or "
+                        "opened as an outline; saved as .pptx or .odp; password-protected files are refused" });
+        out.push_back({ "pot", {}, "PowerPoint 97-2003 template",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in OLE2/CFB parser", "read as a template: opens as a new, untitled deck" });
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });

@@ -18,6 +18,8 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.9.1 - the OfficeArt records (properties, BStore, BLIPs, freeforms) read through
+//                 UltraCanvasOfficeArt.h, shared with the .ppt reader
 // Version: 2.9.0 - footnotes and endnotes: their references (PlcffndRef / PlcfendRef) and words
 // Version: 2.8.0 - UCRichDocument::breakAfterSlash is false for Word's documents
 // Version: 2.7.0 - the sections after the first: their header, footer and margins; shapes' shadows
@@ -30,11 +32,12 @@
 // Version: 2.1.0 - Drawn shapes and groups: lines, rectangles, ellipses, Word 97's other
 //                 shape types, freeforms, groups with pictures and words
 // Version: 2.0.1
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasWordFormatInternal.h"
+#include "UltraCanvasOfficeArt.h"
 #include "UltraCanvasCompoundFile.h"
 #include "miniz.h"
 
@@ -1063,107 +1066,10 @@ bool IsMonospaceFont(const std::string& family) {
 // the Data stream at a PICF header followed by OfficeArt records; the image
 // itself is a BLIP record among them.
 
-// A PNG, JPEG, EMF or WMF BLIP record at data[at] (its 8-byte header first),
-// ending by `end`: the picture's bytes (a metafile inflated). Anything else,
-// or a damaged record, is not.
-bool ReadBlipRecord(const std::vector<uint8_t>& data, size_t at, size_t end,
-                    std::vector<uint8_t>& image, std::string& mimeType) {
-    if (at + 8 > end || end > data.size()) return false;
-    const uint16_t verInstance = ReadU16(data, at);
-    const uint16_t type = ReadU16(data, at + 2);
-    const uint32_t length = ReadU32(data, at + 4);
-    if ((verInstance & 0x0F) != 0 || at + 8 + length > end) return false;
-    const uint16_t instance = verInstance >> 4;
-    size_t header = 0;
-    if (type == 0xF01E) {                                  // PNG
-        header = (instance == 0x6E1) ? 33 : 17;
-        mimeType = "image/png";
-    } else if (type == 0xF01D || type == 0xF02A) {         // JPEG
-        header = (instance == 0x46B || instance == 0x6E3) ? 33 : 17;
-        mimeType = "image/jpeg";
-    } else if (type == 0xF01A || type == 0xF01B) {         // EMF, WMF
-        // One or two UIDs, then a metafile header (its uncompressed size,
-        // bounds, size, saved size, compression), then the metafile -
-        // DEFLATE-compressed (0x00) or as it is (0xFE).
-        const bool emf = type == 0xF01A;
-        const size_t uids = (instance == (emf ? 0x3D5 : 0x217)) ? 32 : 16;
-        const size_t meta = at + 8 + uids;
-        if (meta + 34 > at + 8 + length) return false;
-        const size_t rawSize = ReadU32(data, meta);
-        const size_t savedSize = ReadU32(data, meta + 28);
-        const uint8_t compression = data[meta + 32];
-        const size_t start = meta + 34;
-        if (savedSize == 0 || start + savedSize > at + 8 + length || rawSize == 0 || rawSize > 64u * 1024u * 1024u) {
-            return false;
-        }
-        if (compression == 0x00) {
-            image.resize(rawSize);
-            mz_ulong out = static_cast<mz_ulong>(rawSize);
-            if (mz_uncompress(image.data(), &out, data.data() + start, static_cast<mz_ulong>(savedSize)) != MZ_OK) {
-                image.clear();
-                return false;
-            }
-            image.resize(out);
-        } else if (compression == 0xFE) {
-            image.assign(data.begin() + static_cast<std::ptrdiff_t>(start),
-                         data.begin() + static_cast<std::ptrdiff_t>(start + savedSize));
-        } else {
-            return false;
-        }
-        mimeType = emf ? "image/x-emf" : "image/x-wmf";
-        // An EMF says " EMF" at byte 40; a WMF starts with its header (type
-        // 1 or 2, nine words long).
-        const bool looksRight = emf ? (image.size() > 44 && image[40] == ' ' && image[41] == 'E')
-                                    : (image.size() > 18 && image[2] == 9 && image[3] == 0);
-        if (looksRight) return true;
-        image.clear();
-        return false;
-    } else {
-        return false;
-    }
-    if (header >= length) return false;
-    image.assign(data.begin() + static_cast<std::ptrdiff_t>(at + 8 + header),
-                 data.begin() + static_cast<std::ptrdiff_t>(at + 8 + length));
-    const bool png = image.size() > 4 && image[0] == 0x89 && image[1] == 'P';
-    const bool jpeg = image.size() > 3 && image[0] == 0xFF && image[1] == 0xD8;
-    if ((mimeType == "image/png" && png) || (mimeType == "image/jpeg" && jpeg)) return true;
-    image.clear();
-    return false;
-}
-
-// A pattern fill's bitmap (a DIB BLIP holding an 8 x 8, 1-bit picture) as
-// RichShape's "bits:" tile: the darker of its two colours is the pattern.
-bool ReadPatternBlip(const std::vector<uint8_t>& data, size_t at, size_t end, std::string& tile) {
-    if (at + 8 > end || end > data.size()) return false;
-    const uint16_t verInstance = ReadU16(data, at);
-    const uint16_t type = ReadU16(data, at + 2);
-    const uint32_t length = ReadU32(data, at + 4);
-    if (type != 0xF01F || at + 8 + length > end) return false;
-    const size_t header = (verInstance >> 4) == 0x7A9 ? 33 : 17;
-    const size_t dib = at + 8 + header;
-    if (dib + 40 + 8 > at + 8 + length) return false;
-    const size_t infoSize = ReadU32(data, dib);
-    const int32_t width = static_cast<int32_t>(ReadU32(data, dib + 4));
-    const int32_t height = static_cast<int32_t>(ReadU32(data, dib + 8));
-    const uint16_t bits = ReadU16(data, dib + 14);
-    if (bits != 1 || width < 8 || height == 0 || std::abs(height) < 8 || infoSize < 40) return false;
-    const size_t palette = dib + infoSize;
-    auto brightness = [&](size_t entry) { return data[entry] + data[entry + 1] + data[entry + 2]; };   // B, G, R
-    const bool oneIsDark = brightness(palette + 4) < brightness(palette);
-    const size_t stride = ((static_cast<size_t>(width) + 31) / 32) * 4;
-    const size_t pixels = palette + 8;
-    if (pixels + stride * static_cast<size_t>(std::abs(height)) > at + 8 + length) return false;
-    tile = "bits:";
-    for (int y = 0; y < 8; ++y) {
-        // Rows are stored bottom-up unless the height is negative.
-        const int row = height > 0 ? height - 1 - y : y;
-        const uint8_t value = data[pixels + static_cast<size_t>(row) * stride];
-        char hex[3];
-        std::snprintf(hex, sizeof hex, "%02X", static_cast<unsigned>(oneIsDark ? value : static_cast<uint8_t>(~value)));
-        tile += hex;
-    }
-    return true;
-}
+// The BLIP readers are OfficeArt's (UltraCanvasOfficeArt.h), shared with the
+// .ppt reader.
+using OfficeArt::ReadBlipRecord;
+using OfficeArt::ReadPatternBlip;
 
 bool ExtractPicture(const std::vector<uint8_t>& data, int32_t location, std::vector<uint8_t>& image,
                     std::string& mimeType, float& widthPt, float& heightPt) {
@@ -1580,38 +1486,11 @@ private:
     // anchor (a 0x08 character), rectangle and wrap in PlcSpaMom's FSPA, its
     // picture, text-box id, placement and look in the shape's OfficeArt
     // properties (DggInfo), its text in the text-box story (PlcftxbxTxt).
-    struct OfficeArtShape {
+    // Its property tables are read by OfficeArt::ReadProperties
+    // (UltraCanvasOfficeArt.h), shared with the .ppt reader.
+    struct OfficeArtShape : OfficeArt::ShapeProperties {
         int type = 0;                           // MSOSPT: 1 rectangle, 3 ellipse, 20 line, 75 picture, 202 text box
         uint32_t flags = 0;                     // FSP: 0x1 group, 0x40 flipped across, 0x80 flipped down
-        int32_t textId = 0;                     // lTxid: text box (index << 16) | sequence
-        uint32_t pib = 0;                       // BStore index, 1-based
-        int posH = -1, posRelH = -1, posV = -1, posRelV = -1;
-        uint32_t fillColor = 0xFFFFFF;
-        bool filled = true;
-        int fillType = 0;
-        uint32_t fillBlip = 0;                  // a pattern's or texture's picture (BStore, 1-based)                       // 0 solid; 4, 7 linear shades; 5, 6 round ones
-        uint32_t fillBackColor = 0xFFFFFF;      // a shade's other colour
-        double fillAngle = 0.0;                 // anticlockwise from top-to-bottom
-        double fillTo[4] = {0.0, 0.0, 0.0, 0.0};   // a round shade's centre: left, top, right, bottom (the corner by default)
-        int fillFocus = 0;                      // percent: where the back colour sits along the shade
-        uint32_t lineColor = 0;
-        bool lined = true;
-        int32_t lineWidth = 9525;               // EMU
-        int32_t textLeft = 91440;               // EMU
-        int anchorText = 0;                     // 0 top, 1 middle, 2 bottom (and their centred kinds)
-        double rotation = 0.0;                  // degrees, clockwise
-        // Its shadow: on or off, colour, how much of it shows (16.16), and
-        // its offsets (EMU; Word's default is 2 pt down and right).
-        bool shadow = false;
-        uint32_t shadowColor = 0x00808080;
-        int32_t shadowOpacity = 0x00010000;
-        int32_t shadowOffsetX = 25400, shadowOffsetY = 25400;
-        int lineDashing = 0;                    // 0 solid, 2 dotted, other dashes
-        bool arrowStart = false, arrowEnd = false;
-        int32_t adjust = -1;                    // adjustValue: a rounded rectangle's corner, of 21600
-        int32_t geoLeft = 0, geoTop = 0, geoRight = 21600, geoBottom = 21600;
-        std::vector<std::pair<int32_t, int32_t>> vertices;   // a freeform's points (pVertices)
-        std::vector<uint16_t> segments;         // and how they join (pSegmentInfo)
         bool hasChildAnchor = false;            // a group member: its rectangle in the group's space
         int32_t child[4] = {0, 0, 0, 0};
         bool hasGroupSpace = false;             // a group: its members' coordinate space (FSPGR)
@@ -1619,7 +1498,7 @@ private:
         std::vector<uint32_t> members;          // a group's members, by spid
     };
     std::map<uint32_t, OfficeArtShape> shapes_;  // by spid
-    struct BlipRef { const std::vector<uint8_t>* stream = nullptr; size_t at = 0; size_t end = 0; };
+    using BlipRef = OfficeArt::BlipRef;
     std::vector<BlipRef> blips_;                 // the BStore, in order
     struct Anchor {
         uint32_t spid = 0;
@@ -1705,30 +1584,7 @@ private:
 
     // FBSE records: the picture is embedded after the record's header, or
     // lies in the WordDocument stream at foDelay.
-    void ReadBStore(size_t from, size_t to) {
-        for (size_t pos = from; pos + 8 <= to;) {
-            const uint16_t type = ReadU16(table_, pos + 2);
-            const size_t length = ReadU32(table_, pos + 4);
-            const size_t body = pos + 8;
-            if (body + length > to) break;
-            BlipRef blip;
-            if (type == 0xF007 && length >= 36) {
-                const size_t cbName = table_[body + 33];
-                const size_t embedded = body + 36 + cbName;
-                if (embedded + 8 <= body + length) {
-                    blip = BlipRef{&table_, embedded, body + length};
-                } else {
-                    const size_t foDelay = ReadU32(table_, body + 28);
-                    const size_t size = ReadU32(table_, body + 20);
-                    if (foDelay + 8 <= word_.size()) {
-                        blip = BlipRef{&word_, foDelay, std::min(word_.size(), foDelay + std::max<size_t>(size, 8))};
-                    }
-                }
-            }
-            blips_.push_back(blip);
-            pos = body + length;
-        }
-    }
+    void ReadBStore(size_t from, size_t to) { OfficeArt::ReadBStore(table_, from, to, &word_, blips_); }
 
     // A shape container's FSP (its spid, type and flips), its rectangle in
     // its group (FChildAnchor) or its members' space (FSPGR), and its
@@ -1753,107 +1609,13 @@ private:
                 for (size_t i = 0; i < 4; ++i) rect[i] = static_cast<int32_t>(ReadU32(table_, body + i * 4));
                 (type == 0xF00F ? shape.hasChildAnchor : shape.hasGroupSpace) = true;
             } else if (type == 0xF00B || type == 0xF122) {
-                const size_t count = verInstance >> 4;
-                size_t complexAt = body + count * 6;   // complex values follow the table, in order
-                for (size_t i = 0; i < count && body + i * 6 + 6 <= body + length; ++i) {
-                    const uint16_t rawId = ReadU16(table_, body + i * 6);
-                    const uint16_t id = rawId & 0x3FFF;
-                    const uint32_t value = ReadU32(table_, body + i * 6 + 2);
-                    if (rawId & 0x8000) {
-                        const size_t at = complexAt;
-                        size_t size = value;
-                        // A geometry array (IMsoArray) whose stated size leaves
-                        // out its 6-byte header - as some writers store it.
-                        if (id >= 0x0140 && id < 0x0180 && at + 6 <= body + length) {
-                            const size_t count = ReadU16(table_, at);
-                            const uint16_t cb = ReadU16(table_, at + 4);
-                            const size_t element = cb == 0xFFF0 ? 4 : cb;
-                            if (count * element == value) size = value + 6;
-                        }
-                        complexAt += size;
-                        if (complexAt > body + length) break;
-                        if (id == 0x0145) ReadVertices(at, at + size, shape);
-                        else if (id == 0x0146) ReadSegments(at, at + size, shape);
-                        continue;
-                    }
-                    switch (id) {
-                        case 0x0004: shape.rotation = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
-                        case 0x0201: shape.shadowColor = value; break;                                // shadowColor
-                        case 0x0204: shape.shadowOpacity = static_cast<int32_t>(value); break;        // shadowOpacity
-                        case 0x0205: shape.shadowOffsetX = static_cast<int32_t>(value); break;        // shadowOffsetX
-                        case 0x0206: shape.shadowOffsetY = static_cast<int32_t>(value); break;        // shadowOffsetY
-                        case 0x023F:                                                                  // fShadow (with fUsefShadow)
-                            if (value & 0x00020000u) shape.shadow = (value & 0x2u) != 0;
-                            break;
-                        case 0x0087: shape.anchorText = static_cast<int>(value); break;               // anchorText
-                        case 0x0140: shape.geoLeft = static_cast<int32_t>(value); break;
-                        case 0x0141: shape.geoTop = static_cast<int32_t>(value); break;
-                        case 0x0142: shape.geoRight = static_cast<int32_t>(value); break;
-                        case 0x0143: shape.geoBottom = static_cast<int32_t>(value); break;
-                        case 0x0147: shape.adjust = static_cast<int32_t>(value); break;               // adjustValue
-                        case 0x01CE: shape.lineDashing = static_cast<int>(value); break;              // lineDashing
-                        case 0x01D0: shape.arrowStart = value != 0; break;                            // lineStartArrowhead
-                        case 0x01D1: shape.arrowEnd = value != 0; break;                              // lineEndArrowhead
-                        case 0x0080: shape.textId = static_cast<int32_t>(value); break;     // lTxid
-                        case 0x0081: shape.textLeft = static_cast<int32_t>(value); break;   // dxTextLeft
-                        case 0x0104: shape.pib = value; break;                               // pib
-                        case 0x0181: shape.fillColor = value; break;                         // fillColor
-                        case 0x0180: shape.fillType = static_cast<int>(value); break;        // fillType
-                        case 0x0186: shape.fillBlip = value; break;                          // fillBlip
-                        case 0x0183: shape.fillBackColor = value; break;                     // fillBackColor
-                        case 0x018B: shape.fillAngle = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
-                        case 0x018C: shape.fillFocus = static_cast<int32_t>(value); break;   // fillFocus
-                        case 0x018D: case 0x018E: case 0x018F: case 0x0190:                  // fillToLeft .. fillToBottom
-                            shape.fillTo[id - 0x018D] = static_cast<double>(static_cast<int32_t>(value)) / 65536.0;
-                            break;
-                        case 0x01BF:                                                         // fFilled (with fUsefFilled)
-                            if (value & 0x100000u) shape.filled = (value & 0x10u) != 0;
-                            break;
-                        case 0x01C0: shape.lineColor = value; break;                         // lineColor
-                        case 0x01CB: shape.lineWidth = static_cast<int32_t>(value); break;  // lineWidth
-                        case 0x01FF:                                                         // fLine (with fUsefLine)
-                            if (value & 0x80000u) shape.lined = (value & 0x08u) != 0;
-                            break;
-                        case 0x038F: shape.posH = static_cast<int>(value); break;           // posh
-                        case 0x0390: shape.posRelH = static_cast<int>(value); break;        // posrelh
-                        case 0x0391: shape.posV = static_cast<int>(value); break;           // posv
-                        case 0x0392: shape.posRelV = static_cast<int>(value); break;        // posrelv
-                        default: break;
-                    }
-                }
+                OfficeArt::ReadProperties(table_, body, body + length, verInstance >> 4, shape);
             }
             pos = body + length;
         }
         if (!haveSpid || (shape.flags & 0x8)) return 0;   // fDeleted
         shapes_[spid] = std::move(shape);
         return spid;
-    }
-
-    // An IMsoArray: element count, allocated count, element size, elements.
-    // Vertices are two 16-bit numbers (size 0xFFF0 or 4) or two 32-bit ones.
-    void ReadVertices(size_t from, size_t to, OfficeArtShape& shape) const {
-        if (from + 6 > to) return;
-        const size_t count = ReadU16(table_, from);
-        const uint16_t size = ReadU16(table_, from + 4);
-        const size_t step = (size == 0xFFF0 || size == 4) ? 4 : 8;
-        for (size_t i = 0; i < count && from + 6 + (i + 1) * step <= to; ++i) {
-            const size_t at = from + 6 + i * step;
-            if (step == 4) {
-                shape.vertices.emplace_back(static_cast<int16_t>(ReadU16(table_, at)),
-                                            static_cast<int16_t>(ReadU16(table_, at + 2)));
-            } else {
-                shape.vertices.emplace_back(static_cast<int32_t>(ReadU32(table_, at)),
-                                            static_cast<int32_t>(ReadU32(table_, at + 4)));
-            }
-        }
-    }
-
-    void ReadSegments(size_t from, size_t to, OfficeArtShape& shape) const {
-        if (from + 6 > to) return;
-        const size_t count = ReadU16(table_, from);
-        for (size_t i = 0; i < count && from + 6 + (i + 1) * 2 <= to; ++i) {
-            shape.segments.push_back(ReadU16(table_, from + 6 + i * 2));
-        }
     }
 
     // PlcSpaMom / PlcSpaHdr: shapes by the CP of their anchor.
@@ -2134,62 +1896,12 @@ private:
     // A freeform's outline: its vertices in its geometry's space (geoLeft
     // .. geoRight), joined as pSegmentInfo says (or by straight lines).
     static void ReadFreeform(const OfficeArtShape& source, RichShape& shape) {
-        using Op = RichShape::PathPoint::Op;
         shape.kind = RichShape::Kind::Path;
-        const double spanX = std::max<int32_t>(1, source.geoRight - source.geoLeft);
-        const double spanY = std::max<int32_t>(1, source.geoBottom - source.geoTop);
-        auto at = [&](size_t i, float& x, float& y) {
-            x = static_cast<float>((source.vertices[i].first - source.geoLeft) / spanX);
-            y = static_cast<float>((source.vertices[i].second - source.geoTop) / spanY);
-        };
-        auto add = [&](Op op, size_t i) {
-            RichShape::PathPoint point;
-            point.op = op;
-            at(i, point.x, point.y);
-            shape.path.push_back(point);
-        };
-        const size_t count = source.vertices.size();
-        if (source.segments.empty()) {
-            for (size_t i = 0; i < count; ++i) add(i == 0 ? Op::Move : Op::Line, i);
-            return;
-        }
-        size_t v = 0;
-        for (uint16_t segment : source.segments) {
-            const int type = segment >> 13;
-            const size_t n = std::max<size_t>(1, segment & 0x1FFF);
-            if (type == 0) {                                   // lines
-                for (size_t i = 0; i < n && v < count; ++i) add(Op::Line, v++);
-            } else if (type == 1) {                            // curves, three vertices each
-                for (size_t i = 0; i < n && v + 2 < count; ++i) {
-                    RichShape::PathPoint point;
-                    point.op = Op::Curve;
-                    at(v, point.c1x, point.c1y);
-                    at(v + 1, point.c2x, point.c2y);
-                    at(v + 2, point.x, point.y);
-                    shape.path.push_back(point);
-                    v += 3;
-                }
-            } else if (type == 2) {                            // move
-                if (v < count) add(Op::Move, v++);
-            } else if (type == 3) {                            // close
-                RichShape::PathPoint point;
-                point.op = Op::Close;
-                shape.path.push_back(point);
-            } else if (type == 4) {                            // end
-                break;
-            } else {                                           // an escape: skips its vertices
-                v += segment & 0xFF;
-            }
-        }
-        if (!shape.path.empty() && shape.path.front().op != Op::Move) shape.path.front().op = Op::Move;
+        shape.path = OfficeArt::FreeformPath(source);
     }
 
     // An OfficeArt COLORREF (0x00BBGGRR) as "#RRGGBB".
-    static std::string ColorRefHex(uint32_t color) {
-        char hex[8];
-        std::snprintf(hex, sizeof hex, "#%02X%02X%02X", color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
-        return hex;
-    }
+    static std::string ColorRefHex(uint32_t color) { return OfficeArt::ColorRefHex(color); }
 
     // The text boxes' text (PlcftxbxTxt: CPs into the text-box story), read
     // with the body's machinery into each text frame.

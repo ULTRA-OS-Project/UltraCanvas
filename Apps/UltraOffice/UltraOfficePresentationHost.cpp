@@ -8,6 +8,8 @@
 // zoom (the rich in-place editor comes with Phase 4). The show runs full
 // screen in a window of its own; PDF and print draw the same slides.
 //
+// Version: 0.6.0 - a deck is read through UltraCanvasFileLoader::LoadPresentation: PowerPoint 97-2003
+//                  (.ppt, .pps, .pot) opens too
 // Version: 0.5.0 - Cut, Copy and Paste on the Home bar: cells, charts and text from the other kinds
 // Version: 0.4.0 - the show is UltraCanvasSlideShowPlayer (transitions, the presenter view); a
 //                  transition picker
@@ -145,10 +147,9 @@ public:
 
     bool Load(const std::string& path, const std::string& password, std::string& error) override {
         auto deck = std::make_shared<PptxPresentation>();
-        // With the pictures: they are drawn, and written back on save.
-        const bool read = IsOdpExtension(path) ? ReadOdpPresentation(path, *deck, error, password, true)
-                                               : ReadPptxPresentation(path, *deck, error, password, true);
-        if (!read) return false;
+        // With the pictures: they are drawn, and written back on save. The
+        // reader is the one the file's content asks for (.pptx, .odp, .ppt).
+        if (!UltraCanvasFileLoader::LoadPresentation(path, *deck, error, password, true)) return false;
         edit_->SetDeck(deck);
         Sync();
         return true;
