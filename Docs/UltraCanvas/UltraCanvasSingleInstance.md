@@ -107,7 +107,7 @@ being built when `Listen` is called.
 | `RequestPaths(request)` | The paths of such a request, for an application that uses `Listen` with a handler of its own. |
 | `Close()` | Stops listening. The lock stays until the object goes, so no second copy slips in while this one shuts down. |
 | `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. A window on another virtual desktop (workspace) is brought to the one in view, where the start that asked for it was made - with its window, when a dialog is what comes forward (`UltraCanvasWindowBase::MoveToCurrentDesktop`, which `RaiseAndFocus` calls; X11 - elsewhere the system decides whether the window comes over or the desktop changes). |
-| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. |
+| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. When this process's `Claim()` answered `AlreadyRunning`, the alert also says why the running copy's window did not come by itself: the bus's own reason when the bus could not be joined ("It could not be asked to come forward: ..." - a bus folder that is not this user's alone, a path too long for a socket; the reason is UltraMessage's, in English), or "It did not answer when asked to come forward." when the copy is on the bus and silent. The alert's own texts are in the application's language (`Tr`, the standard set). |
 
 ## Why it is compiled into the application
 

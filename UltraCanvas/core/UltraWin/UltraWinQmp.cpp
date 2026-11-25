@@ -3,6 +3,8 @@
 // UNIX socket: a greeting ({"QMP": ...}) on connect, then request/response
 // with interleaved async events. Only the tiny subset UltraWin needs is
 // implemented: qmp_capabilities, no-argument commands, query-status.
+// Version: 0.1.2 - Connect closes the socket of a connection that failed, and of an
+//                  earlier session, instead of leaving it open until the destructor
 // Version: 0.1.1 - a control socket whose path is longer than a socket's address is
 //                  reached through its folder
 // Version: 0.1.0 (Stage 2a)
@@ -33,11 +35,25 @@ int64_t NowMs() {
 
 }  // namespace
 
-QmpClient::~QmpClient() {
+QmpClient::~QmpClient() { Disconnect(); }
+
+// The socket of a connection that did not come about is closed here, not
+// left for the destructor: a client asked to connect again would otherwise
+// open a second one over it and lose the first.
+void QmpClient::Disconnect() {
     if (fd >= 0) close(fd);
+    fd = -1;
+    buffered.clear();
 }
 
 bool QmpClient::Connect(const std::string& socketPath, int timeoutMs) {
+    Disconnect();   // of an earlier session, or an earlier try
+    const bool connected = ConnectOnce(socketPath, timeoutMs);
+    if (!connected) Disconnect();
+    return connected;
+}
+
+bool QmpClient::ConnectOnce(const std::string& socketPath, int timeoutMs) {
     lastError.clear();
     fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) {
@@ -95,6 +111,10 @@ std::string QmpClient::QueryStatus(int timeoutMs) {
 }
 
 bool QmpClient::SendLine(const std::string& line) {
+    if (fd < 0) {
+        lastError = "QMP not connected";
+        return false;
+    }
     std::string framed = line + "\n";
     size_t off = 0;
     while (off < framed.size()) {

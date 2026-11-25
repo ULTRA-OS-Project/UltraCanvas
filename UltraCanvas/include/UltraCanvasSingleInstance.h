@@ -35,6 +35,7 @@
 // the build has it. Without UltraMessage the lock still stops a second copy;
 // it just cannot bring the first one forward, and Claim() answers
 // AlreadyRunning.
+// Version: 1.6.0 - RunAlreadyRunningAlert says why the running copy did not come forward
 // Version: 1.5.0 - BringToFront brings the window to the virtual desktop in view
 // Version: 1.4.0 - the listening copy rejoins the bus when it loses it (the
 //                  broker's host ended): a later start is handed over again
@@ -134,6 +135,10 @@ namespace UltraCanvas {
         static void BringToFront();
         // Says "<displayName> is already running" and runs the event loop
         // until the alert is dismissed. Returns EXIT_SUCCESS, for main().
+        // When this process's Claim() answered AlreadyRunning, the alert
+        // also says why the running copy's window did not come: the bus's
+        // own reason when the bus could not be joined, or that the copy did
+        // not answer. In the language of the application (Tr).
         static int RunAlreadyRunningAlert(UltraCanvasApplication& app, const std::string& displayName);
 
         const std::string& GetAppId() const { return appId_; }
