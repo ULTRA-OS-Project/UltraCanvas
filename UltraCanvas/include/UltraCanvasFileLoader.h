@@ -4,6 +4,7 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.19.0 - DetectOfficeDocumentKind, AddOfficeDocumentLoadTypes, AddPresentationSaveTypes
 // Version: 1.18.0 - SaveTextDocument and SavePresentation write .odp / .otp / .fodp too
 // Version: 1.17.0 - SaveTextDocument writes a .pptx (the document laid out as a deck); SavePresentation
 // Version: 1.16.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
@@ -353,6 +354,27 @@ namespace UltraCanvas {
         // The Save dialog's file types for SaveTextDocument, each under its
         // name, ODT first.
         static void AddTextDocumentSaveTypes(FileDialogOptions& opts);
+
+        // ===== OFFICE DOCUMENTS =====
+        // Which kind of office file a path is - what an office suite opens it
+        // as: a word-processing document (.odt, .docx, .doc, .md, .tex ...), a
+        // spreadsheet (.ods, .xlsx, .xls, .csv, .tsv), or a presentation
+        // (.pptx and kin, .odp and kin). The extension decides; a file
+        // without a known one is looked into: an OpenDocument package by its
+        // mimetype entry, an Office Open XML package by its main part
+        // (word/, xl/, ppt/). Unknown for anything else. Reads nothing beyond a
+        // ZIP's directory and its mimetype entry.
+        enum class OfficeDocumentKind { Unknown, Document, Spreadsheet, Presentation };
+        static OfficeDocumentKind DetectOfficeDocumentKind(const std::string& filePath);
+        // The Open dialog's types for an office suite: one filter with every
+        // type of the three kinds, then one filter per kind (Documents,
+        // Spreadsheets, Presentations) - decks are not offered among the
+        // documents here, as AddTextDocumentLoadTypes offers them (an
+        // outline), but as presentations.
+        static void AddOfficeDocumentLoadTypes(FileDialogOptions& opts);
+        // The Save dialog's types for a deck: every type SavePresentation
+        // writes, each under its name, PowerPoint first.
+        static void AddPresentationSaveTypes(FileDialogOptions& opts);
 
         // ===== VECTOR DOCUMENTS =====
         // Editable drawings: SVG, XAR, EMF, WMF, DXF, DWG, AI ... read into

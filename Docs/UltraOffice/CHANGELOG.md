@@ -1,0 +1,26 @@
+#### 2026-11-25 *0.1.0*
+- **UltraOffice: documents, spreadsheets and presentations in one window.**
+  Every open file is a tab, marked with its kind's icon; the Start tab
+  opens files, the recent ones and new documents and spreadsheets.
+- **The toolbar follows the tab.** Each tab has a command row - File, Undo,
+  Redo, Save and its kind's command tabs - and the toolbar of the command
+  tab chosen:
+  - documents: Home (styles, font, size, bold, italic, underline,
+    strikethrough, lists, indent, alignment), Insert (table, picture, link,
+    page break, footnote, contents), View (pages, page width, whole page,
+    zoom);
+  - spreadsheets: Home (clipboard, bold, italic, alignment, wrap, number
+    format, decimals), Data (sort, filter, fill, SUM), View (freeze panes);
+  - presentations: Home (present from the start or this slide, outline).
+- **Documents** are edited in the WYSIWYG element, in page view: .odt and
+  .docx read and written, .doc, Markdown and LaTeX read. Export as PDF and
+  Print.
+- **Spreadsheets**: .ods and .xlsx read and written, .xls read, .csv and
+  .tsv; the status line adds up the selection.
+- **Presentations** (.pptx, .odp and their kin) are shown - slides,
+  thumbnails, notes - and presented full screen; Save as writes them again
+  as PowerPoint or OpenDocument. Editing slides comes with the slide editor.
+- New files are saved as Office Open XML (.docx, .xlsx) by default, or
+  OpenDocument (*File > New files are saved as*). Protected files ask for
+  their password and are saved protected again.
+- One copy per user: opening a file again brings it to the window.

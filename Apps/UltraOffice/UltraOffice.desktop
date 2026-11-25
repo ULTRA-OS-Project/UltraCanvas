@@ -1,0 +1,19 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraOffice: documents, spreadsheets and
+# presentations in one window. The install rules put
+# media/appicon/UltraOffice.{png,svg} into the hicolor theme, which is where
+# `Icon=UltraOffice` is looked up.
+Type=Application
+Version=1.5
+Name=UltraOffice
+GenericName=Office Suite
+Comment=Write documents, work with spreadsheets and show presentations in one window
+Exec=UltraOffice %F
+TryExec=UltraOffice
+Icon=UltraOffice
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraOffice
+Categories=Office;WordProcessor;Spreadsheet;Presentation;
+Keywords=office;document;word processor;spreadsheet;presentation;docx;xlsx;pptx;odt;ods;odp;ULTRA OS;
+MimeType=application/vnd.oasis.opendocument.text;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/msword;application/vnd.oasis.opendocument.spreadsheet;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.ms-excel;text/csv;text/tab-separated-values;application/vnd.oasis.opendocument.presentation;application/vnd.openxmlformats-officedocument.presentationml.presentation;

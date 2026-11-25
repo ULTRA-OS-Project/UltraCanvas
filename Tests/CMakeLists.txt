@@ -5463,6 +5463,26 @@ add_test(NAME SpreadsheetNamedRangeTest COMMAND SpreadsheetNamedRangeTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetNamedRangeTest")
 
+# ===== FILELOADER OFFICE KIND TEST =====
+# What an office suite opens a file as (DetectOfficeDocumentKind), by
+# extension and by package content, and the Open / Save dialog types for the
+# three kinds. No window.
+message(STATUS "  Building FileLoaderOfficeKindTest...")
+add_executable(FileLoaderOfficeKindTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileLoaderOfficeKindTest.cpp
+)
+target_include_directories(FileLoaderOfficeKindTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FileLoaderOfficeKindTest PRIVATE cxx_std_20)
+target_link_libraries(FileLoaderOfficeKindTest PRIVATE UltraCanvas)
+target_compile_definitions(FileLoaderOfficeKindTest PRIVATE
+    OFFICETEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+set_target_properties(FileLoaderOfficeKindTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FileLoaderOfficeKindTest COMMAND FileLoaderOfficeKindTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FileLoaderOfficeKindTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own
