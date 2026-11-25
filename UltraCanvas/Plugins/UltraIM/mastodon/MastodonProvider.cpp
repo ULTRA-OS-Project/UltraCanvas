@@ -1,7 +1,9 @@
 // Plugins/UltraIM/mastodon/MastodonProvider.cpp
 // Mastodon - the direct messages of a Mastodon server as UltraIM conversations
+// Version: 0.1.1 - the accounts' pictures: avatar_static fetched into the media folder, on the chats,
+//                  contacts and messages (avatarPath, senderAvatarPath)
 // Version: 0.1.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "MastodonProvider.h"
@@ -611,6 +613,7 @@ bool MastodonProvider::MessageFrom(const JSONValue& status, const std::string& k
     out.senderId = sender.id;
     out.senderName = sender.name;
     out.isOwn = sender.id == me_.id;
+    if (!out.isOwn) out.senderAvatarPath = AvatarOf(sender.id);
     out.text = TextOf(status);
     out.timestampMs = ParseTime(status["created_at"].GetString());
     out.isEdited = !status["edited_at"].GetString().empty();
@@ -651,7 +654,10 @@ UltraIMConversation MastodonProvider::ConversationOf(const Chat& chat) const {
         c.memberIds.insert(c.memberIds.begin(), me_.id);
         c.memberNames[me_.id] = me_.name;
     }
-    if (!c.isGroup && !chat.accounts.empty()) c.directContactId = chat.accounts.front().id;
+    if (!c.isGroup && !chat.accounts.empty()) {
+        c.directContactId = chat.accounts.front().id;
+        c.avatarPath = AvatarOf(c.directContactId);
+    }
     if (chat.hasLast) {
         c.lastMessageSnippet = SnippetOf(chat.last);
         c.lastMessageTimeMs = chat.last.timestampMs;
@@ -688,6 +694,7 @@ void MastodonProvider::Poll(bool first) {
             }
             if (others.empty()) continue;           // a note to oneself
             const std::string key = KeyOf(others);
+            for (const Account& account : others) QueueAvatar(account);
             Chat& chat = chats_[key];
             const bool known = !chat.key.empty();
             chat.key = key;
@@ -922,6 +929,43 @@ void MastodonProvider::QueueMedia(const UltraIMMessage& message) {
     });
 }
 
+std::string MastodonProvider::AvatarOf(const std::string& accountId) const {
+    auto it = avatars_.find(accountId);
+    return it == avatars_.end() ? std::string() : it->second;
+}
+
+void MastodonProvider::QueueAvatar(const Account& account) {
+    const std::string url = account.avatarUrl;
+    // No picture, or the server's grey stand-in for none: the initials say more.
+    if (account.id.empty() || url.empty() || url.find("/missing.png") != std::string::npos) return;
+    if (!avatarAsked_.insert(account.id + " " + url).second) return;     // fetched, or on its way
+    const std::string id = account.id;
+    Enqueue([this, id, url]() {
+        const std::string path = MediaPath(url, FileNameOf(url));
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(path), ec) && !Download(url, path)) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            avatarAsked_.erase(id + " " + url);                         // the next poll tries again
+            return;
+        }
+        std::vector<UltraIMEvent> events;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            avatars_[id] = path;
+            for (const auto& [key, chat] : chats_) {
+                if (chat.accounts.size() != 1 || chat.accounts.front().id != id) continue;
+                UltraIMEvent e;
+                e.type = UltraIMEventType::ConversationUpdate;
+                e.providerId = providerId_;
+                e.conversationId = key;
+                e.conversation = ConversationOf(chat);
+                events.push_back(e);
+            }
+        }
+        for (const UltraIMEvent& e : events) Emit(e);
+    });
+}
+
 void MastodonProvider::FetchConversations(UltraIMConversationsCallback onResult) {
     Enqueue([this, onResult]() {
         if (state_.load() != UltraIMConnectionState::Connected) {
@@ -988,6 +1032,7 @@ void MastodonProvider::FetchContacts(UltraIMContactsCallback onResult) {
                 c.contactId = a.id;
                 c.providerId = providerId_;
                 c.displayName = a.name;
+                c.avatarPath = AvatarOf(a.id);
                 out.push_back(c);
             }
         }
@@ -1055,6 +1100,7 @@ void MastodonProvider::CreateGroup(const std::string& title, const std::vector<s
         {
             std::lock_guard<std::mutex> lock(mutex_);
             const std::string key = KeyOf(others);
+            for (const Account& account : others) QueueAvatar(account);
             Chat& chat = chats_[key];
             chat.key = key;
             if (chat.accounts.empty()) chat.accounts = others;
