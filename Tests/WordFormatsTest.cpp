@@ -2,7 +2,8 @@
 // Standalone round-trip test for the UltraCanvas Word document module.
 // Exercises: Markdown -> UCRichDocument -> ODT/DOCX -> UCRichDocument -> Markdown,
 // signature-based format detection, cross-format conversion, HTML output,
-// and the ODF package invariants (mimetype first entry, stored).
+// and the ODF package invariants (mimetype first entry, stored); templates
+// (.ott, .dotx written with their media types, .dotm read).
 // Builds without the UI stack: only the Word module sources, miniz and
 // tinyxml2 (see Tests/CMakeLists.txt).
 // Usage: WordFormatsTest [output-dir]
@@ -888,6 +889,59 @@ int main(int argc, char** argv) {
         workbook.AddEntry("xl/workbook.xml", "<workbook/>");
         CHECK(workbook.Finalize());
         CHECK(DetectWordDocumentFormat(TmpPath("workbook.docx")) == WordDocumentFormat::Unknown);
+    }
+
+    // ===== 5a2. Templates: .ott and .dotx are their documents' packages =====
+    // under the template's media type; written as templates by the
+    // extension, read back as documents, detected as their format. A .dotm
+    // is read, not written.
+    {
+        auto entry = [](const std::string& path, const char* name) {
+            UCZipPackageReader zip;
+            std::string data;
+            if (zip.Open(path)) zip.ReadEntry(name, data);
+            return data;
+        };
+        CHECK(WordDocumentFormatFromExtension("ott") == WordDocumentFormat::Odt);
+        CHECK(WordDocumentFormatFromExtension(".DOTX") == WordDocumentFormat::Docx);
+        CHECK(WordDocumentFormatFromExtension("dotm") == WordDocumentFormat::Docx);
+        CHECK(IsWordTemplateExtension("letter.ott") && IsWordTemplateExtension("DOTX") &&
+              IsWordTemplateExtension("/a/b/c.dotm"));
+        CHECK(!IsWordTemplateExtension("letter.odt") && !IsWordTemplateExtension("docx") &&
+              !IsWordTemplateExtension("/a.ott/b.docx"));
+
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Save(TmpPath("template.ott"), doc, err), err);
+        CHECK(entry(TmpPath("template.ott"), "mimetype") == "application/vnd.oasis.opendocument.text-template");
+        CHECK(entry(TmpPath("template.ott"), "META-INF/manifest.xml")
+                  .find("manifest:media-type=\"application/vnd.oasis.opendocument.text-template\"") != std::string::npos);
+        CHECK(DetectWordDocumentFormat(TmpPath("template.ott")) == WordDocumentFormat::Odt);
+        UCRichDocument fromOtt;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("template.ott"), fromOtt, err), err);
+        CheckModelShape(fromOtt, "ott-roundtrip");
+
+        CHECK_MSG(UCWordDocumentIO::Save(TmpPath("template.dotx"), doc, err), err);
+        const std::string types = entry(TmpPath("template.dotx"), "[Content_Types].xml");
+        CHECK(types.find("wordprocessingml.template.main+xml") != std::string::npos);
+        CHECK(types.find("wordprocessingml.document.main+xml") == std::string::npos);
+        CHECK(DetectWordDocumentFormat(TmpPath("template.dotx")) == WordDocumentFormat::Docx);
+        UCRichDocument fromDotx;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("template.dotx"), fromDotx, err), err);
+        CheckModelShape(fromDotx, "dotx-roundtrip");
+
+        // A document saved as .odt / .docx keeps its own media type.
+        CHECK(entry(TmpPath("sample.odt"), "mimetype") == "application/vnd.oasis.opendocument.text");
+        CHECK(entry(TmpPath("sample.docx"), "[Content_Types].xml").find("template.main+xml") == std::string::npos);
+
+        // A .dotm (a .dotx under the macro-enabled name) reads; it is not written.
+        std::filesystem::copy_file(UltraCanvas::PathFromUtf8(TmpPath("template.dotx")),
+                                   UltraCanvas::PathFromUtf8(TmpPath("macros.dotm")),
+                                   std::filesystem::copy_options::overwrite_existing);
+        UCRichDocument fromDotm;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("macros.dotm"), fromDotm, err), err);
+        CHECK(fromDotm.ToPlainText() == fromDotx.ToPlainText());
+        CHECK(!UCWordDocumentIO::Save(TmpPath("written.dotm"), doc, err) && err.find(".dotx") != std::string::npos);
+        CHECK(!std::filesystem::exists(UltraCanvas::PathFromUtf8(TmpPath("written.dotm"))));
     }
 
     // ===== 5b. Legacy .doc import (real Word 97 fixture) =====

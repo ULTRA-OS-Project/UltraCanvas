@@ -3,6 +3,8 @@
 # the framework's elements: UltraCanvasRichTextEdit, UltraCanvasSpreadsheet
 # and UltraCanvasMediaViewer (Docs/UltraOffice/README.md).
 #
+# Version: 0.2.0 - UltraOfficeTemplates.cpp (new from template); the shipped templates are media/templates/office,
+#                  which every package copies with the rest of media/
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -15,6 +17,7 @@ add_executable(UltraOffice
     main.cpp
     UltraOfficeWindow.cpp
     UltraOfficeHost.cpp
+    UltraOfficeTemplates.cpp
     UltraOfficeDocumentHost.cpp
     UltraOfficeSpreadsheetHost.cpp
     UltraOfficePresentationHost.cpp

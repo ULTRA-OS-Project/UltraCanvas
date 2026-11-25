@@ -339,10 +339,15 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 ```cpp
 // Format chosen automatically from the file extension. `password` opens a
 // password-protected .xlsx (see UltraCanvasOfficeEncryption.md) or .ods
-// (UltraCanvasOdfEncryption.md); other formats ignore it.
+// (UltraCanvasOdfEncryption.md); other formats ignore it. The templates read
+// as their workbooks: .ots as an .ods, .xltx and .xltm as an .xlsx.
 bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-// With a password: a password-protected .xlsx; any other format with one is refused.
+// With a password: a password-protected .xlsx or .xltx; any other format with
+// one is refused. An .ots or .xltx is written as a template - the same
+// package under the template's media type; an .xltm is refused.
 bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
+// True for "ots", "xltx", "xltm" (an extension or a path), a free function.
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath);
 
 // `password` opens a password-protected .ods (LibreOffice's "Save with
 // password", ODF 1.2 and 1.4 - see UltraCanvasOdfEncryption.md).

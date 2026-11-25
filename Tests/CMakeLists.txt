@@ -5573,6 +5573,56 @@ add_test(NAME FileLoaderOfficeKindTest COMMAND FileLoaderOfficeKindTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLoaderOfficeKindTest")
 
+# ===== OFFICE TEMPLATES TEST =====
+# The templates UltraOffice ships (media/templates/office/) are made by this
+# test's --write mode with the framework's writers; the test checks that each
+# is there, is a template of its kind, loads, and holds what the test makes.
+# No window.
+message(STATUS "  Building OfficeTemplatesTest...")
+add_executable(OfficeTemplatesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/OfficeTemplatesTest.cpp
+)
+target_include_directories(OfficeTemplatesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(OfficeTemplatesTest PRIVATE cxx_std_20)
+target_link_libraries(OfficeTemplatesTest PRIVATE UltraCanvas)
+target_compile_definitions(OfficeTemplatesTest PRIVATE
+    OFFICETEMPLATES_DIR="${CMAKE_SOURCE_DIR}/media/templates/office")
+set_target_properties(OfficeTemplatesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME OfficeTemplatesTest COMMAND OfficeTemplatesTest ${CMAKE_BINARY_DIR}/office-templates-test
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: OfficeTemplatesTest")
+
+# ===== ULTRAOFFICE TEMPLATE WINDOW TEST =====
+# UltraOffice's window, built from the application's own sources (all but
+# main.cpp, so a file the app gains is compiled here too): the shipped
+# templates are offered, and each opens as a new, untitled document of its
+# kind, the template left unchanged. Opens a window (build.yml's framework
+# window tests run it under Xvfb).
+if(BUILD_ULTRAOFFICE AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    message(STATUS "  Building UltraOfficeTemplateWindowTest...")
+    file(GLOB _ultraOfficeSources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Apps/UltraOffice/*.cpp)
+    list(FILTER _ultraOfficeSources EXCLUDE REGEX "/main\\.cpp$")
+    add_executable(UltraOfficeTemplateWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraOfficeTemplateWindowTest.cpp
+        ${_ultraOfficeSources}
+    )
+    target_include_directories(UltraOfficeTemplateWindowTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/Apps/UltraOffice ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(UltraOfficeTemplateWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraOfficeTemplateWindowTest PRIVATE UltraCanvas)
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraOfficeTemplateWindowTest PRIVATE fmt::fmt)
+    endif()
+    set_target_properties(UltraOfficeTemplateWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOfficeTemplateWindowTest COMMAND UltraOfficeTemplateWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraOfficeTemplateWindowTest")
+endif()
+
 # ===== SPREADSHEET WORKBOOK ROUND-TRIP TEST =====
 # What a sheet holds besides its cells - frozen panes, hidden rows and columns,
 # named ranges of the workbook and of a sheet, the auto-filter, the print area

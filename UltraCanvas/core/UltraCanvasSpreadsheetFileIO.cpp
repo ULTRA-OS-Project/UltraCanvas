@@ -1,6 +1,8 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.6.0 - templates: .ots read and written as an .ods (its template media type), .xltx as an
+//                  .xlsx, .xltm read
 // Version: 1.5.0 - .ods keeps conditional formats (calcext:conditional-formats, their cell styles in
 //                  styles.xml), validations (table:content-validations), comments (office:annotation)
 //                  and links (text:a); a cell with only a note or a validation is written
@@ -62,6 +64,7 @@ namespace UltraCanvas {
 
 namespace ODS {
     constexpr const char* MIMETYPE = "application/vnd.oasis.opendocument.spreadsheet";
+    constexpr const char* TEMPLATE_MIMETYPE = "application/vnd.oasis.opendocument.spreadsheet-template";
     constexpr const char* CONTENT_XML = "content.xml";
     constexpr const char* STYLES_XML = "styles.xml";
     constexpr const char* META_XML = "meta.xml";
@@ -2110,14 +2113,21 @@ private:
 public:
     ODSSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
+private:
+    const char* mimeType_ = ODS::MIMETYPE;   // the template's for an .ots
+
+public:
+
     bool Save(const std::string& filePath) {
         spreadsheet_->RefreshCharts();   // the charts' tables as the cells are now
         if (!zip_.Open(filePath)) {
             return false;
         }
+        // A template (.ots) is the same package under its own media type.
+        mimeType_ = IsSpreadsheetTemplateExtension(filePath) ? ODS::TEMPLATE_MIMETYPE : ODS::MIMETYPE;
 
         // Write mimetype (must be first, uncompressed), then the XML parts.
-        if (!zip_.AddEntry("mimetype", std::string(ODS::MIMETYPE), false)
+        if (!zip_.AddEntry("mimetype", std::string(mimeType_), false)
             || !zip_.AddEntry(ODS::STYLES_XML, GenerateStylesXml())
             || !zip_.AddEntry(ODS::CONTENT_XML, GenerateContentXml())
             || !zip_.AddEntry(ODS::META_XML, GenerateMetaXml())
@@ -3196,7 +3206,7 @@ private:
         ss << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
         ss << "<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" "
            << "manifest:version=\"1.3\">\n";
-        ss << "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"" << ODS::MIMETYPE << "\"/>\n";
+        ss << "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"" << mimeType_ << "\"/>\n";
         ss << "<manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>\n";
         ss << "<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>\n";
         ss << "<manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>\n";
@@ -3629,6 +3639,16 @@ public:
 // ULTRACANVASSPREADSHEET FILE I/O METHODS
 // ============================================================================
 
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath) {
+    std::string ext = extensionOrPath;
+    const size_t dot = ext.find_last_of('.');
+    const size_t slash = ext.find_last_of("/\\");
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ext = ext.substr(dot + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext == "ots" || ext == "xltx" || ext == "xltm";
+}
+
 bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std::string& password) {
     lastError_.clear();
 
@@ -3648,9 +3668,9 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std
     std::string ext = filePath.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-    if (ext == ".ods") {
+    if (ext == ".ods" || ext == ".ots") {
         return LoadODS(filePath, password);
-    } else if (ext == ".xlsx") {
+    } else if (ext == ".xlsx" || ext == ".xltx" || ext == ".xltm") {
         return LoadXLSX(filePath, password);
     } else if (ext == ".xls") {
         return LoadXLS(filePath, password);
@@ -3661,7 +3681,8 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std
     }
 
     lastError_ = "Unsupported file type '" + ext +
-                 "'. Supported formats are .ods, .xlsx, .xls, .csv and .tsv: " + filePath;
+                 "'. Supported formats are .ods, .xlsx, .xls, .csv and .tsv (and the templates .ots, .xltx): " +
+                 filePath;
     return false;
 }
 
@@ -3678,14 +3699,20 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath, const std::
 
     // Only an .xlsx can carry a password; saving another format without it
     // would drop the protection without a word.
-    if (!password.empty() && ext != ".xlsx") {
-        lastError_ = "Only an Excel workbook (.xlsx) can be saved with a password: " + filePath;
+    if (!password.empty() && ext != ".xlsx" && ext != ".xltx") {
+        lastError_ = "Only an Excel workbook (.xlsx, .xltx) can be saved with a password: " + filePath;
         return false;
     }
-    if (ext == ".ods") {
+    // A template is written as its workbook is, under the template's media
+    // type (SaveODS / SaveXLSX read the extension).
+    if (ext == ".ods" || ext == ".ots") {
         return SaveODS(filePath);
-    } else if (ext == ".xlsx") {
+    } else if (ext == ".xlsx" || ext == ".xltx") {
         return SaveXLSX(filePath, password);
+    } else if (ext == ".xltm") {
+        lastError_ = "Excel macro-enabled templates (.xltm) are read, not written; save as .xltx instead: " +
+                     filePath;
+        return false;
     } else if (ext == ".csv") {
         return SaveCSV(filePath);
     } else if (ext == ".tsv") {
@@ -3699,7 +3726,8 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath, const std::
     }
 
     lastError_ = "Unsupported save format '" + ext +
-                 "'. Supported formats are .ods, .xlsx, .csv and .tsv: " + filePath;
+                 "'. Supported formats are .ods, .xlsx, .csv and .tsv (and the templates .ots, .xltx): " +
+                 filePath;
     return false;
 }
 

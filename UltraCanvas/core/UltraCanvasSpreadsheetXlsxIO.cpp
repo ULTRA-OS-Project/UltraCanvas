@@ -1500,7 +1500,10 @@ public:
         // The sheets' charts: their parts, each sheet's <drawing>, their types.
         // A worksheet's relationships to its drawing join those to its links
         // and comments in one part (MergeSheetRelationships).
-        std::string contentTypes = BuildContentTypesXml(sheetXmls.size(), ExtraContentTypes());
+        // A template (.xltx) is the same package with its main part's
+        // content type saying so.
+        std::string contentTypes = BuildContentTypesXml(sheetXmls.size(), ExtraContentTypes(),
+                                                        IsSpreadsheetTemplateExtension(filePath));
         auto chartParts = WriteXlsxCharts(*spreadsheet_, sheetXmls, contentTypes);
         MergeSheetRelationships(chartParts);
         bool ok = zip_.AddEntry("[Content_Types].xml", contentTypes)
@@ -2157,7 +2160,7 @@ private:
         return xml.str();
     }
 
-    static std::string BuildContentTypesXml(size_t sheetCount, const std::string& extraTypes) {
+    static std::string BuildContentTypesXml(size_t sheetCount, const std::string& extraTypes, bool isTemplate) {
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
@@ -2166,7 +2169,7 @@ private:
             << "<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
             << "<Override PartName=\"/xl/workbook.xml\" "
                "ContentType=\"application/vnd.openxmlformats-officedocument."
-               "spreadsheetml.sheet.main+xml\"/>\n";
+            << (isTemplate ? "spreadsheetml.template.main+xml" : "spreadsheetml.sheet.main+xml") << "\"/>\n";
         for (size_t i = 0; i < sheetCount; ++i) {
             xml << "<Override PartName=\"/xl/worksheets/sheet" << (i + 1)
                 << ".xml\" ContentType=\"application/vnd.openxmlformats-officedocument."

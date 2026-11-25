@@ -405,7 +405,29 @@ UltraCanvasFileLoader::SaveFileDialog(saveLetter, [document = letter](DialogResu
 ```
 
 `AddTextDocumentLoadTypes(opts)` is the Open side: one "Documents" filter,
-then each type under its name. A codec an application brings itself joins
+then each type under its name.
+
+An office suite has its own pair: `AddOfficeDocumentLoadTypes(opts)` (every
+document, spreadsheet and presentation type, then one filter per kind) and,
+per kind, `AddTextDocumentSaveTypes`, `AddSpreadsheetSaveTypes` and
+`AddPresentationSaveTypes`. Those leave out the templates - .ott / .dotx,
+.ots / .xltx, .otp / .potx, each its document's package under the template's
+media type - which "Save as template" offers with
+`AddOfficeTemplateSaveTypes(opts, kind)`; the writers write a template by its
+extension. A file `IsOfficeTemplate` says is one opens as a new, untitled
+document, so the template is never saved over:
+
+<!-- doc-check: std::string path; void NewUntitledFrom(const std::string& path); void Open(const std::string& path); UltraCanvasFileLoader::OfficeDocumentKind kind; -->
+```cpp
+if (UltraCanvasFileLoader::IsOfficeTemplate(path)) NewUntitledFrom(path);   // Save asks for a name
+else Open(path);
+
+FileDialogOptions saveTemplate;
+saveTemplate.SetDefaultFileName("Letter.dotx");
+UltraCanvasFileLoader::AddOfficeTemplateSaveTypes(saveTemplate, kind);   // .dotx and .ott for a document
+```
+
+A codec an application brings itself joins
 the lists once it is registered: UltraVideo registers what its FFmpeg engine
 reads and writes (`VideoFX_GetFileFormats`) with `RegisterMediaCodec`, and
 FileLoader's Video and Audio lists then hold MKV, WebM and AVI on a macOS
