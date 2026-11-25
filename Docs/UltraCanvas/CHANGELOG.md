@@ -1,3 +1,319 @@
+#### 2026-11-25 *0.9.595*
+- **A .docx saved again lost its theme and font table.** The DOCX writer
+  builds its package from the document model, which held neither, so the
+  colour scheme and heading and body fonts Word offers (`theme1.xml`) and
+  the font table's families and alternatives (`fontTable.xml`) were gone
+  after a save. The reader now keeps both in `UCRichDocument::keptParts`
+  and the writer writes them back unchanged, named in `[Content_Types].xml`
+  and the main part's relationships.
+  - A kept part is never one that refers to other parts: a font table's
+    embedded fonts (`w:embedRegular` and its kin) are taken out, and a
+    theme with a picture is not kept. Neither is a part in the Strict
+    namespaces.
+  - Saved as OpenDocument, the parts are not written.
+
+  Covered in `WordFormatsTest`.
+- **`UltraCanvasFileLoader` tells which kind of office file a file is.**
+  `DetectOfficeDocumentKind(path)` answers `Document`, `Spreadsheet`,
+  `Presentation` or `Unknown`, from the extension, else from the package
+  inside (an OpenDocument `mimetype`, or `word/document.xml`,
+  `xl/workbook.xml`, `ppt/presentation.xml`), so a file without its usual
+  extension still opens in the right place. Two dialog helpers go with it:
+  - `AddOfficeDocumentLoadTypes(opts)`: one *Office documents* filter with
+    every kind, then *Documents*, *Spreadsheets* and *Presentations*;
+  - `AddPresentationSaveTypes(opts)`: the decks the file loader writes,
+    PowerPoint before OpenDocument, the default save type first.
+
+  UltraOffice, the new office application, opens its files through them.
+  Covered by `FileLoaderOfficeKindTest`.
+- **A slide could only be drawn as a whole pixmap, and a deck could not be
+  printed or saved as PDF.** The slide painter was private to
+  `RenderPptxSlide` and cleared its whole context. `DrawPptxSlide`
+  (`UltraCanvasPptxSlideRender.h`) now draws a slide on any render context
+  into a rectangle, filling only that with the slide's background; for an
+  editor it can draw grey prompt text in empty placeholders and leave one
+  shape's text out (`PptxSlideDrawOptions`).
+- **`PresentationPrintPages`** (`UltraCanvasPresentationPrint.h`): a page per
+  slide at the slide's size, hidden slides left out unless asked for, drawn
+  by `DrawPptxSlide`; `ExportPdf` to a file or memory, and an
+  `IPrintPageSource` for `PrintDocumentWithDialog`.
+- **The deck model** gains masters and layouts (`PptxMaster`, `PptxLayout`,
+  `PptxSlide::layoutIndex`), transitions (`PptxTransition`), the
+  format-neutral names `UCPresentation` / `UCSlide` / `UCSlideShape`, and
+  `PptxSlideFromLayout`, a new slide made from a layout (Title and Content
+  when the deck has none).
+
+  Covered by `PresentationPrintTest`.
+- **Presentations: slide masters, slide layouts and transitions are read
+  and written, in .pptx and .odp.** The readers had flattened a deck's
+  masters and layouts into each slide's shapes (which drawing needs, and
+  still gets) and kept no transitions. The writers always wrote one fixed
+  master and layout. As a result, a slide editor had no layouts to offer
+  for a new slide, and a saved deck lost its design and its transitions.
+  - **PowerPoint reader:** reads every master and layout, in the file's
+    order, into `PptxPresentation::masters` / `layouts`: name, layout type,
+    master, background, and the placeholders resolved the way a slide's
+    are, keeping their prompt text ("Click to edit Master title style").
+    Sets each slide's `layoutIndex`. Reads `p:transition` (also PowerPoint
+    2010's inside `mc:AlternateContent`) into `PptxSlide::transition`:
+    - the kind, with a kind the model does not know read as Fade
+    - the length, from `p14:dur`, else the speed
+    - `advClick` and `advTm`
+  - **PowerPoint writer:** a deck that has layouts is written with its own
+    masters and layouts:
+    - their names, types and backgrounds
+    - their placeholders, with their look as a list style and their prompt
+      text
+    - the date and the slide number as fields
+    - a blank layout for a master that has none
+    - unique ids from 2^31, and a theme for each master
+
+    Each slide links to its layout, and its placeholders name that
+    layout's. A deck with no layouts still gets the standard master. A
+    transition is written as `p:transition`. A length that no speed
+    names goes in `p14:dur`, inside `mc:AlternateContent` with a fallback,
+    as PowerPoint writes it.
+  - **OpenDocument reader:**
+    - **masters:** from the master pages: name, background, and the
+      placeholder frames. Impress leaves these empty on its masters, so an
+      empty one gets Impress's prompt text.
+    - **layouts:** one for each presentation page layout, on the master
+      that its slides use. Each layout is named and typed from its
+      placeholders unless the file names it. A deck with no page layouts
+      gets one layout per master page.
+    - **transitions:** from the drawing-page style (`smil:type`, the speed,
+      automatic advance with `presentation:duration`) and the page's
+      `anim:transitionFilter`, which holds the exact length.
+  - **OpenDocument writer:**
+    - **masters:** written as master pages, with `<master>-title` /
+      `-subtitle` / `-outline1..9` presentation styles. These styles are
+      also the parents of the slides' frames.
+    - **layouts:** written as presentation page layouts that carry the
+      layout's name.
+    - **slides:** each slide goes on its layout's master.
+    - **transitions:** the style properties, plus the
+      `anim:transitionFilter` that LibreOffice reads the length from.
+  - **Empty placeholders:** both readers now keep a slide's empty
+    placeholder. Before, they dropped it, so an editor had nothing to type
+    into. The placeholder keeps its kind, its place, and one empty
+    paragraph:
+    - .pptx: the run's size comes from `a:endParaRPr`, else from the
+      layout. A `<p:ph idx="N"/>` that names no type reads as `"body"`.
+    - .odp: an empty title, subtitle or outline frame, and a
+      `presentation:placeholder` frame, whose text is the prompt. The
+      prompt text is not kept.
+  - `PptxSlideFromLayout` gives a layout placeholder that has no place of
+    its own the place of the master's placeholder of the same kind.
+  - Tested by `PresentationLayoutsRoundTripTest`, on a deck with one master,
+    two layouts and two transitions (Fade over 2 s that moves on after 5 s,
+    and Push), saved as .pptx, .odp and .fodp and read back. The test also
+    covers:
+    - the package's parts, content types and ids
+    - a second save of the deck that was read back
+    - the standard set for a deck with no layouts
+    - `PptxSlideFromLayout` on a deck that was read back
+    - the LibreOffice-made `pptx-features` fixtures
+    - a slide with an empty content placeholder, which is read back in its
+      box from both formats
+    - LibreOffice converting our .pptx to .odp and our .odp to .pptx, with
+      layouts and transitions kept. This part is skipped when `soffice` is
+      not installed.
+- **A presentation could be shown, not edited.** New:
+  - `UCSlideDeckEditor` (`UltraCanvasSlideDeckEditor.h`), the slide
+    editor's core without a window: the slide being edited, the selection,
+    and every change as a command with undo and redo - slides inserted from
+    a layout, duplicated, moved, hidden and deleted; shapes moved, nudged (a
+    run is one step), resized, turned, reordered, duplicated, deleted,
+    copied and pasted, inserted (text box, drawn shape, picture), their text
+    and the notes set - with hit testing of turned shapes, the handles and
+    snapping to the slide and to other shapes.
+  - `UltraCanvasSlideEdit` (`UltraCanvasSlideEdit.h`), its element: the
+    slide strip (drag to reorder) and the slide, prompt text and outlines on
+    empty placeholders, selection by click and band, dragging with guides,
+    resize (Shift keeps the proportions, Alt from the centre, a turned shape
+    in its own frame), turning, the keys, and a simple full-screen show.
+    Documented in `Docs/UltraCanvas/UltraCanvasSlideEdit.md`.
+- **The slide painter decodes a picture once**, not on every paint.
+
+  Covered by `SlideDeckEditorTest`, `SlideEditElementTest` (the element
+  driven by pointer and key events) and `PresentationPrintTest` (the
+  drawing).
+- **A presentation is played as a slide show, with its transitions and
+  timings.** New, in `UltraCanvasSlideShowPlayer.h`:
+  - `UltraCanvasSlideShowPlayer` (`CreateSlideShowPlayer`): a deck's slides
+    letterboxed on black, hidden ones left out, a black end screen after
+    the last. Going on plays the slide's transition over its duration -
+    Fade, Push, Wipe, Split, Cover, Zoom - from pixmaps drawn once at the
+    size shown, at about 60 frames a second; going back shows the slide at
+    once, and a key or click finishes a transition. A slide's
+    `advanceAfterSec` moves on by itself, and one with `advanceOnClick` false
+    ignores a click. PowerPoint's keys: on, back, Home, End, a number and
+    Enter, B / W for a black or white screen, Escape. `SetClock` and `Tick`
+    let a test run it without real time. It replaces the simple show mode
+    of `UltraCanvasSlideEdit`.
+  - `UltraCanvasPresenterView` (`CreatePresenterView`): the presenter's
+    screen - the slide shown and the next one, the speaker notes, the time
+    with Pause / Resume and Reset, Previous / Next slide, "Slide N of M" -
+    following a player and driving it.
+  - `StartSlideShow(deck, fromSlide)`: the show full screen on the second
+    monitor and the presenter view on the first when
+    `UltraCanvasDesktopShell::ListScreens` lists two, else the show alone.
+  Documented in `Docs/UltraCanvas/UltraCanvasSlideShowPlayer.md`.
+- **The photo slideshow's transitions are shared.** `UltraCanvasSlideTransition.h`
+  holds the frames' geometry (`SlideTransitionFrame`: cross-fade, fade out
+  and in, push left or up, wipe, split, cover, zoom, zoom-fade);
+  `UltraCanvasSlideshow` draws from it, looking as before, and so does the
+  player.
+- The presentation words the player and presenter view show ("Next slide",
+  "Previous slide", "Speaker notes", "Presenter view", "End of slideshow",
+  "Slide show", "Slide {0} of {1}") moved into the standard set, with their
+  translations, from the Presentation base set and UltraOffice's catalogue.
+
+  Covered by `SlideShowPlayerTest`.
+- `UltraCanvasSlideEdit`'s own show mode (`StartShow`, `StopShow`,
+  `onShowEnd`) is gone: the player plays the deck. UltraOffice presents
+  through `StartSlideShow`, and picks each slide's transition in its Slide
+  show tab.
+- **A slide's text could be edited only as plain lines, and tables not at
+  all.**
+  - `PptxParagraphsToRichDocument` / `PptxParagraphsFromRichDocument`
+    (`UltraCanvasPresentationPptx.h`): a shape's text as a word-processing
+    document and back, for `UltraCanvasRichTextEdit` laid over the shape -
+    runs with their looks, line breaks, alignment, bullets and numbering
+    (PowerPoint's schemes as the document's number formats, start numbers on
+    a list's first item); what the document does not hold comes back from
+    the text before the edit. `PptxBulletText` gives a bullet as drawn (a
+    Wingdings square as a square).
+  - `UCSlideDeckEditor::FormatSelectedText` / `AllSelectedText`: the text of
+    the selected shapes formatted as one step.
+  - Tables: `InsertTable` (PowerPoint's banded look), `TableCellBox`,
+    `TableCellAt`, rows and columns inserted and deleted, each one step;
+    `UltraCanvasSlideEdit::onEditTableCell`, `SetEditingShape`,
+    `SetEditingCell` and `PptxSlideDrawOptions::hideTextOfCell...` for a
+    host's in-place editor.
+
+  Covered in `SlideDeckEditorTest`.
+- **A saved spreadsheet lost digits.** The .xlsx and .ods writers wrote each
+  cell's number with the stream's six significant digits, so 3.14159265 came
+  back as 3.14159 and 123456789.123 as 1.23457e+08 after every save. A
+  number is now written with the fewest digits (15 to 17) that read back as
+  exactly the same value, through the new `FormatFloatRoundTrip`
+  (`UltraCanvasTextUtils.h`): 0.1 stays "0.1". Covered in
+  `SpreadsheetWorkbookRoundTripTest`, also through LibreOffice's conversions.
+- **Moving with the keyboard in a spreadsheet left the old cell selected.**
+  The arrows, Enter, Tab, Home, End, Page Up / Down and Ctrl+arrow moved
+  only the active cell, so the highlight stayed behind and the next Bold,
+  number format or Delete went to the cell just left. Each of them now
+  selects the cell it lands on (`MoveActiveCell` and the `MoveTo...`
+  functions), and `onSelectionChange` reports it.
+- **Shift+arrow did not extend the selection.** It now grows or shrinks the
+  range at the corner away from the active cell, which stays where it is
+  (`UltraCanvasSpreadsheet::ExtendSelectionBy`).
+
+  Covered by `SpreadsheetKeyboardMoveTest`.
+- **A spreadsheet could not be printed or saved as PDF.** `PrintSettings`
+  and `SetPrintArea` existed, but nothing drew pages. The new
+  `SpreadsheetPrintPages` (`UltraCanvasSpreadsheetPrint.h`) does:
+  - it cuts the print area (or the cells in use) into pages by the sheet's
+    `PrintSettings`: paper and orientation, margins, scale or fit to pages,
+    manual row and column breaks;
+  - it can print gridlines and column and row headings, centre the cells,
+    repeat title rows and columns, and print header and footer lines with
+    the page (`&P`), the page count (`&N`), the sheet (`&A`) and the date
+    (`&D`); the title rows and columns are the sheet's own print titles
+    (`PrintSettings::repeatRowsFirst` ...), which .xlsx and .ods now keep;
+  - each cell is drawn by `UltraCanvasSpreadsheet::PaintCell`, the grid's own
+    painter (lifted out of `RenderCell`), so paper shows what the screen
+    shows.
+
+  It writes a PDF (`ExportPdf`, to a file or to memory) and is an
+  `IPrintPageSource` for `PrintDocumentWithDialog`: drawn on the printer's
+  own context, or as an image where the printer has none, like
+  `RichDocumentPrintPages`. `CreateSpreadsheetPrintPages(grid)` gives the
+  sheet on show. Covered by `SpreadsheetPrintTest`, which checks the pages
+  for default paper, landscape, a print area, a break, fit to width and title
+  rows, and writes the PDF.
+- **A spreadsheet saved as .xlsx or .ods lost everything but its cells,
+  sizes, styles and merges.** A workbook opened and saved again in
+  UltraOffice came back with:
+  - no frozen rows or columns;
+  - its hidden rows and columns shown;
+  - no named ranges - neither the workbook's nor those scoped to a sheet;
+  - no auto-filter, and the rows it had filtered out simply hidden;
+  - no print area and the default print settings: orientation, paper size,
+    margins, scale or fit to pages, gridlines and headings, centring, header
+    and footer, the rows and columns repeated on every page, and the manual
+    page breaks.
+
+  Both formats now read and write all of it. In .xlsx: the frozen pane
+  (`sheetViews`), `hidden` on rows and columns, `definedNames` (a sheet's
+  names with its `localSheetId`), `autoFilter` with its value filters and the
+  `_xlnm._FilterDatabase` name Excel writes, `_xlnm.Print_Area`,
+  `_xlnm.Print_Titles`, `printOptions`, `pageMargins`, `pageSetup` (with
+  `fitToPage`), `headerFooter` and `rowBreaks` / `colBreaks`, each in the
+  order the schema gives. In .ods: the split in `settings.xml`,
+  `table:visibility`, `table:named-expressions` of the document and of each
+  table, a `table:database-range` with filter buttons and its "="
+  conditions, `table:print-ranges`, header rows and columns, page breaks
+  (`fo:break-before`), and a page layout and master page per sheet in
+  `styles.xml` with the header and footer.
+- **`PrintSettings` holds the rows and columns printed on every page**
+  (`repeatRowsFirst` / `repeatRowsLast`, `repeatColumnsFirst` /
+  `repeatColumnsLast`, -1 for none; `HasRepeatRows`, `HasRepeatColumns`),
+  which both formats carry and the model had no place for, and says whether a
+  print area is set (`HasPrintArea`). Header and footer texts are kept in
+  Excel's codes (`&P`, `&N`, `&A` ...), which .ods writes as text fields.
+- **An .ods merge whose first cell was empty was dropped on load, and a
+  covered cell (`table:covered-table-cell`, which LibreOffice writes inside
+  every merge) was not counted,** so every cell after it in the row landed
+  one column too far left. The writer now writes the covered cells too, and
+  rows and columns inside `table:table-header-rows`, `-columns` and row or
+  column groups are read where they were skipped.
+- **LibreOffice opened every formula of a saved .ods as an error.** The
+  writer put the `of:` prefix on each `table:formula` but never declared its
+  namespace, so LibreOffice could not tell the formula's syntax. It is
+  declared now; `SpreadsheetWorkbookRoundTripTest` checks the formulas'
+  values after LibreOffice's conversion.
+- The .xlsx and .ods writers wrote cell numbers through the stream's locale
+  (`1.234,5` under a host that set a comma-decimal global locale); the
+  worksheet and content streams are dot-decimal now.
+- `UltraCanvasSpreadsheet::GetNamedRangeList` lists every name with its
+  scope; `SpreadsheetSheet::GetColumnDefinitions` / `GetRowDefinitions` list
+  the sized and hidden columns and rows.
+- New test: `SpreadsheetWorkbookRoundTripTest` - a two-sheet workbook with
+  all of the above saved as .xlsx and .ods, loaded back, saved in the other
+  format and loaded again; where LibreOffice is installed, also converted by
+  `soffice` (.xlsx to .ods and to .xlsx, .ods to .xlsx) and checked for the
+  frozen panes, hidden rows and columns, names, filter and print areas. An
+  .ods that `soffice --convert-to` writes holds no view settings from any
+  source, so the frozen panes are not checked in that one; LibreOffice
+  opened with a window reads them from ours.
+- **The spreadsheet's Copy and Paste never reached the system clipboard.**
+  Copy filled the grid's own buffer and nothing else, so cells could not be
+  pasted into another program, nor another program's cells into the grid.
+  Now:
+  - Copy and Cut also put the cells on the system clipboard, as
+    tab-separated text of the shown values and as an HTML table (bold,
+    italic and right-aligned numbers kept): `RangeAsText`, `RangeAsHtml`.
+  - Paste takes the grid's own copy while the clipboard still holds it, and
+    otherwise another program's HTML table, read with `HTML::Parser`
+    (spanned cells keep the cells they cover free), or its tab-, comma- or
+    semicolon-separated text: `PasteHtml`, `PasteText`. Each value is read
+    as if typed: numbers, percentages, `=` formulas. The pasted cells are
+    selected.
+- **A pasted formula lost its formula.** Paste (and Paste Special *All*)
+  wrote a formula cell's last result under the Formula type, which showed
+  `#NAME?`. A copied formula is now pasted as a formula with its relative
+  references moved (`=B2*2` from B3 to B8 is `=B7*2`); a cut one keeps
+  them. *Values* pastes the result as the number or text it is
+  (`SpreadsheetSheet::PasteCells` takes where the cells came from).
+- **A paste could not be undone.** Every paste, the grid's own or another
+  program's, is now one undo step.
+
+  Covered by `SpreadsheetClipboardTest` (a stand-in clipboard backend), and
+  by hand on X11: `xclip` reads both flavours, and an HTML table put there
+  by another program pastes with its formula working.
+
 #### 2026-11-25 *0.9.594*
 - **`ci:emulator`: the Android emulator on a pull request, when asked for.**
   A pull request builds Android for arm64 alone and runs no emulator; one

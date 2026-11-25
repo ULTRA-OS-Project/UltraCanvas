@@ -6442,6 +6442,7 @@ first lines as of 2026-10-18.
 | [UltraVideo](#ultravideo) | Video editor with timeline and one-button export | 0.7.0 | VideoFX |
 | [UltraViewer](#ultraviewer) | Universal media viewer | 1.0.7 | MediaViewer |
 | **Documents and files** | | | |
+| [UltraOffice](#ultraoffice) | Documents, spreadsheets and presentations in one window | 0.1.0 | RichTextEdit, Spreadsheet, SlideEdit, FileLoader |
 | [Texter](#texter) | Text, code and word-processing editor | 1.67 | TextArea, RichTextEdit, FileLoader |
 | [UltraFiler](#ultrafiler) | Windows Explorer-style file manager | 1.75.0 | FilerWidget, VirtualFS, UltraCloud |
 | [AnchorPoint](#anchorpoint) | Peer-to-peer file transfer | 0.2.4 | UltraCrypt |
@@ -6596,6 +6597,27 @@ edits word-processing documents.
 **Built on:** TextArea, RichTextEdit, TabbedContainer, PDFView, FileLoader.
 **Version:** 1.67 (2026-10-14).
 **Docs:** [Apps/Texter/README.md](../Apps/Texter/README.md).
+
+### UltraOffice
+
+**Purpose:** one window for the office documents: text documents,
+spreadsheets and presentations, each in a tab marked with its kind.
+
+**Capabilities:**
+- Documents in page view (RichTextEdit): styles, fonts, lists, alignment,
+  tables, pictures, links, footnotes, contents; .odt and .docx read and
+  written, .doc, Markdown and LaTeX read; Export as PDF and Print.
+- Spreadsheets (Spreadsheet): number formats, sort, filter, fill, SUM,
+  freeze panes; .ods, .xlsx, .csv and .tsv read and written, .xls read.
+- Presentations (.pptx, .odp) edited in the slide editor (slides from
+  layouts, shapes moved, resized and turned, text in place, pictures),
+  presented full screen, exported as PDF and printed.
+- The toolbar follows the tab; a Start tab with the recent files; new
+  files saved as Office Open XML or OpenDocument.
+
+**Built on:** RichTextEdit, Spreadsheet, SlideEdit and FileLoader.
+**Version:** 0.1.0 (2026-11-25).
+**Docs:** [UltraOffice/README.md](UltraOffice/README.md).
 
 ### UltraFiler
 
@@ -63905,20 +63927,43 @@ level's.
   space, none at a paragraph's start or end; `text:s`, `text:tab` and
   `text:line-break` stay. A field (page number, date, ...) gives the text it
   holds, a link its text.
+- An empty title, subtitle or outline frame, and one still showing its
+  prompt (`presentation:placeholder="true"`, whose text is the prompt, not
+  content), is kept as an empty placeholder - an editor types into it - in
+  its place, with one empty paragraph whose run has the look its styles give.
 - Left out: the header, footer, date and page-number frames, a notes page's
-  slide picture, a placeholder still showing its prompt
-  (`presentation:placeholder="true"`), embedded objects other than charts
+  slide picture, embedded objects other than charts
   (and the picture that stands in for them), comments on a page
   (`officeooo:annotation`), and a table's preview picture.
 - Charts: a chart object (`draw:object`) read through
   [UltraCanvasOdfChart](UltraCanvasOdfChart.md) - the package's
   `Object N/content.xml`, or a flat file's chart document inline - into the
   shape's `chart`.
-- Not read: master pages' own shapes (a logo on every slide), shadows and
+- The design: each master page into `PptxPresentation::masters` (its
+  display name, background and placeholder frames - title, subtitle,
+  outline, date, footer, number; an empty one, as Impress leaves its own,
+  gets Impress's prompt text); each `style:presentation-page-layout` into
+  `layouts`, on the master page its slides use it with (one layout per
+  master when slides use it on several; the first master when none does),
+  its placeholders where the page layout puts them with the look of the
+  master's frame of their class, named and typed from what they hold
+  ("Title and Content", `obj`) unless the file gives a display name; a deck
+  with no page layouts gets a layout per master page from its frames, and a
+  slide on no page layout a blank one. Each slide's `layoutIndex` follows its
+  `presentation:presentation-page-layout-name` and master page.
+- Transitions: the drawing-page style's `smil:type` (`fade`, `pushWipe` ->
+  Push, `barWipe` -> Wipe, `barnDoorWipe` -> Split, `slideWipe` -> Cover,
+  `zoom`; any other as Fade; ODF 1.0's `presentation:transition-style` as
+  Fade), `presentation:transition-speed`, the length from the page's
+  `anim:transitionFilter` `smil:dur` where Impress keeps it, and
+  `presentation:transition-type="automatic"` with `presentation:duration`
+  (`PT5S`) as `advanceAfterSec`. ODF has no "only after the time": a slide
+  always moves on with a click as well.
+- Not read: master pages' shapes other than placeholders (a logo on every slide), shadows and
   other effects, bitmap and hatch fills (a hatch on a solid ground keeps the
   ground), outlines built from formulas (an Office preset still draws by its
   name; an ODF type the list above does not name draws as a box), picture
-  crops, animations and transitions. Pictures are kept as bytes
+  crops, animations, a transition's direction. Pictures are kept as bytes
   (`withPictures`), not decoded.
 - A password-protected deck (`manifest:encryption-data` in the manifest) is
   decrypted with the password `ReadOdpPresentation` and
@@ -63949,7 +63994,20 @@ if (ReadPptxPresentation(pptxPath, deck, error, "", true)) {     // a PowerPoint
 
 `WriteOdpPresentation(deck, path, error)` writes:
 
-- one master page of the deck's slide size; each slide a `draw:page` with
+- the deck's masters as master pages of the deck's slide size (one plain
+  `Default` for a deck without masters): name and display name, background,
+  placeholder frames in the master's styles (the date, footer and number as
+  Impress's fields), and `<master>-title` / `-subtitle` / `-outline1..9`
+  presentation styles carrying their look, which the slides' frames take as
+  parents;
+- the deck's layouts as presentation page layouts (`UCL1` ..., with the
+  layout's name as display name), each slide on its layout (-1: the first)
+  and that layout's master page;
+- each slide's transition in its drawing-page style (smil type and subtype,
+  speed, `presentation:transition-type="automatic"` with
+  `presentation:duration`) and its exact length as the page's
+  `anim:transitionFilter`, as Impress writes it;
+- each slide a `draw:page` with
   its background and hidden flag (a drawing-page style);
 - titles, subtitles and content as presentation frames (`title`,
   `subtitle`, `outline`) at their places; text boxes as frames; any other
@@ -63987,7 +64045,7 @@ inline). `WriteOdpPresentationToMemory` gives the bytes. There is no
 password: ODF encryption is read ([UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)),
 not written, so `UltraCanvasFileLoader::SavePresentation` refuses one for
 an `.odp` rather than save it unprotected. Not written: effects, animations,
-transitions, comments.
+a transition's direction, comments.
 
 ## Test
 
@@ -64004,7 +64062,8 @@ transitions, comments.
 - `Tests/fixtures/presentation-features.fodp` - a flat deck written by hand,
   which LibreOffice opens: white space, units, inherited text styles, nested,
   header and unnumbered lists, a line break, a link and a tab, a group, a
-  hyperlinked frame, the footer and a prompting placeholder left out, a hidden
+  hyperlinked frame, the footer left out and a prompting placeholder kept
+  empty, a hidden
   slide, a table with header rows and a covered cell, an embedded chart left
   out, an inline picture, a field, and a page comment left out.
 - a flat deck written in the test for the look as drawn: a style through its
@@ -64219,8 +64278,11 @@ UCRichDocument outline = PptxPresentationToRichDocument(deck);
 
 | Type | Holds |
 |---|---|
-| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `majorFont` / `minorFont` (the theme's heading and body typefaces), `pictures` (bytes by part, read `withPictures`) |
-| `PptxSlide` | `number` (1-based), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black) |
+| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `majorFont` / `minorFont` (the theme's heading and body typefaces), `masters` and `layouts` (the design, in the file's order), `pictures` (bytes by part, read `withPictures`) |
+| `PptxSlide` | `number` (1-based), `layoutIndex` (into `layouts`; -1: none known), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black), `transition` |
+| `PptxMaster` | `name`, `placeholders` (title, body, date, footer, number), `background` |
+| `PptxLayout` | `name` ("Title and Content"), `type` (`p:sldLayout/@type`: `title`, `obj`, `twoObj`, `titleOnly` ...), `masterIndex`, `placeholders` (each with its `placeholder` type and prompt text), `background` (empty: the master's) |
+| `PptxTransition` | `kind` (`PptxTransitionKind`: `NoTransition`, `Fade`, `Push`, `Wipe`, `Split`, `Cover`, `Zoom`), `durationSec`, `advanceOnClick`, `advanceAfterSec` (-1: never by itself) |
 | `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`, `Connector`, `Chart`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `rotationDeg`, `flipH` / `flipV`, `placeholder` (its type), `anchor`, `fontScale` (autofit), the text's `insetLeft` ... `insetBottom` (EMU, -1: PowerPoint's own), `wrap`, `textRotation` (90 / 270 for vertical text), `fill` (and a gradient's `gradientStops`, `gradientAngleDeg`, `gradientRadial`), `line`, `lineWidthPt`, `dash`, `arrowStart` / `arrowEnd`, `geometry` (the preset) or `customPath` (a freeform's outline, 0..1 across the box), `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `cellStyles` (`PptxCellStyle` each), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`), `altText` and crop (`cropLeft` ... `cropBottom`, a share of the picture); a chart's `chart` (`RichChart`) |
 | `PptxCellStyle` | a table cell's `fill`, `textColor` and `bold` (from the table style), its four borders (`color`, `widthPt`), `gridSpan` / `rowSpan`, `mergedAway` (covered by a merged cell), insets and `anchor` |
 | `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`, `spaceBefore` / `spaceAfter` / `lineSpacing` (`PptxSpacing`: a share of a line or points), `marginLeft` and `indent` (EMU), `bulletChar`, `bulletFont`, `bulletColor`, `bulletSizePercent`, `numberScheme` (`a:buAutoNum`'s type) and `numberStartAt`; `Text()` joins the runs |
@@ -64244,7 +64306,11 @@ reads a package already in memory.
   subtitle, any other (`body`, `obj`, or none) content, bulleted unless a
   paragraph says `buNone`. A text box is not bulleted unless it says `buChar`
   or `buAutoNum`. The date, footer and slide-number placeholders are slide
-  furniture and left out.
+  furniture and left out. A placeholder's `placeholder` is its `p:ph` type;
+  one that names none (`<p:ph idx="1"/>`, ECMA's `obj`) reads as `"body"`.
+  An empty placeholder is kept - an editor shows its prompt and types into
+  it - in its place, with one empty paragraph whose run keeps the size
+  `a:endParaRPr` (else its layout and master) gives.
 - Groups are read through, their shapes in order and placed on the slide (the
   group's offset and scaling applied). Connectors (`p:cxnSp`) are read as
   lines: their outline (`line`, a bent or curved connector's preset), dash
@@ -64296,9 +64362,45 @@ reads a package already in memory.
   An equation (`a14:m`) reads as the text of its `m:t` runs ("p=r−c"), a
   chart the reader cannot read as the picture its Fallback holds.
 - Not read: picture and pattern fills, effects (shadows, glow, 3D), comments,
-  animations and transitions, embedded objects beyond the picture they show,
-  video and audio beyond the poster frame. Pictures are named; their bytes
+  animations, a transition's direction and sound, embedded objects beyond
+  the picture they show, video and audio beyond the poster frame. Pictures are named; their bytes
   are kept with `withPictures`, not decoded.
+
+## Masters, layouts and transitions
+
+The reader reads the deck's design as well as its slides:
+
+- every slide master (`p:sldMasterIdLst`) into `masters` and every layout
+  it lists into `layouts`, in the file's order: the name (`p:cSld/@name`),
+  the layout's `type`, its master, the background, and the placeholders
+  resolved as a slide's are - place, kind, text look - keeping their prompt
+  text ("Click to edit Master title style") and the date, footer and slide
+  number;
+- each slide's `layoutIndex`, from its relationship to its layout;
+- `p:transition`, also inside `mc:AlternateContent` (PowerPoint 2010's
+  `p14` kinds and lengths): the kind (one the model has none for, such as
+  `p14:vortex`, reads as `Fade`; `p:cut` as `NoTransition`), the length
+  (`p14:dur` in milliseconds, else `spd`: slow 1 s, med 0.75 s, fast 0.5 s),
+  `advClick` and `advTm`.
+
+`PptxSlideFromLayout(deck, layoutIndex)` makes a new slide from a layout:
+its placeholders without the date, footer and number, emptied but keeping
+their look and place (a placeholder with no place of its own takes its
+master's), and the layout's background:
+
+```cpp
+#include "UltraCanvasPresentationPptx.h"
+using namespace UltraCanvas;
+
+void AddSlide(PptxPresentation& deck, int layoutIndex) {
+    PptxSlide slide = PptxSlideFromLayout(deck, layoutIndex);
+    slide.number = static_cast<int>(deck.slides.size()) + 1;
+    slide.transition.kind = PptxTransitionKind::Fade;
+    slide.transition.durationSec = 2.0;
+    slide.transition.advanceAfterSec = 5.0;   // moves on by itself after 5 s
+    deck.slides.push_back(slide);
+}
+```
 
 ## Drawing a slide
 
@@ -64374,9 +64476,18 @@ PptxPresentation laidOut = PptxPresentationFromRichDocument(document);
 `WritePptxPresentation(deck, path, error, password)` writes the model as a
 package PowerPoint, LibreOffice and the reader open:
 
-- the slides in order, their size, background and hidden flag; a theme with
-  the deck's colours and heading and body fonts; one slide master and a
-  "Title and Content" layout;
+- the slides in order, their size, background and hidden flag, and their
+  transitions (`p:transition` with `advClick` / `advTm`; a length no speed
+  names in `p14:dur`, inside `mc:AlternateContent` with the speed alone as
+  its Fallback, as PowerPoint writes it); a theme with the deck's colours
+  and heading and body fonts;
+- a deck with `layouts`: its own masters and layouts - names, types,
+  backgrounds, placeholders with their look as a list style and their prompt
+  text, the date and slide number as fields, a blank layout for a master
+  that has none - each slide linked to its `layoutIndex` (-1: the first)
+  with its placeholders naming the layout's (`p:ph` type and `idx`); a deck
+  without (one made in memory, `PptxPresentationFromRichDocument`): one
+  slide master and a "Title and Content" layout;
 - every shape kind at its place, turned and mirrored, in its preset or custom
   outline, solid or gradient fill and line (width, dash, arrowheads);
   titles, subtitles and content as placeholders (with their place written
@@ -64414,10 +64525,19 @@ the other below it. A deck's own outline reads back as its slides: "1. Title
 (hidden)" as the title of a hidden slide, a "Notes:" quote as its speaker
 notes.
 
-Not written: effects, animations, transitions, comments, embedded objects
-and media (they are not in the model).
+Not written: effects, animations, a transition's direction, comments,
+embedded objects and media (they are not in the model).
 
 ## Test
+
+`Tests/PresentationLayoutsRoundTripTest.cpp` saves a deck with one master,
+two layouts and transitions (Fade over 2 s moving on after 5 s, Push) as
+`.pptx` and `.odp` and reads it back - names, types, placeholder kinds, each
+slide's layout, the transitions, the package's parts and ids - checks the
+standard set for a deck without layouts, `PptxSlideFromLayout` on a read
+deck, the LibreOffice-made `pptx-features` fixtures, and (with `soffice`
+installed) LibreOffice converting our `.pptx` to `.odp` and our `.odp` to
+`.pptx`.
 
 `Tests/OfficeEncryptionTest.cpp` reads `Tests/fixtures/office-pptx-sample.pptx`,
 which python-pptx - an independent writer - builds from its default template
@@ -74307,6 +74427,373 @@ process an application starts itself (UltraFiler's elevated helper) must
 never claim.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSlideEdit.md
+==============================================================================
+
+# UltraCanvas Slide Editing: SlideEdit, SlideDeckEditor
+
+<!-- doc-check: std::shared_ptr<PptxPresentation> deck; UltraCanvasWindow* window; -->
+
+## Contents
+
+## Overview
+
+The **slide editor** edits a presentation: the deck model that the
+PowerPoint and OpenDocument readers and writers share
+([`UltraCanvasPresentationPptx.h`](../../UltraCanvas/include/UltraCanvasPresentationPptx.h)),
+drawn by the same slide painter as the thumbnails, the show and PDF export.
+It follows the rich-text editor's split: a core without a window holds the
+deck, the selection and the history, and an element draws it and turns the
+pointer and the keys into the core's commands. The design is
+[`Docs/Research/UltraOfficeDesignProposal.md`](../Research/UltraOfficeDesignProposal.md),
+§5.3; UltraOffice's presentation tab is its first host.
+
+| Class | What it is | Files |
+|---|---|---|
+| `PptxPresentation` (`UCPresentation`) | The deck: slides of shapes in EMU, masters and layouts, transitions, the pictures' bytes | `include/UltraCanvasPresentationPptx.h` |
+| `UCSlideDeckEditor` | The editing core: the current slide, the selection, every change as a command with undo and redo, hit testing, handles, snapping | `include/UltraCanvasSlideDeckEditor.h`, `core/UltraCanvasSlideDeckEditor.cpp` |
+| `UltraCanvasSlideEdit` | The element: the slide strip, the slide, the selection's handles, dragging, the keys | `include/UltraCanvasSlideEdit.h`, `core/UltraCanvasSlideEdit.cpp` |
+| `DrawPptxSlide` | A slide on any render context, into a rectangle; prompt text for empty placeholders | `include/UltraCanvasPptxSlideRender.h` |
+| `PresentationPrintPages` | A page per slide for PDF and printers | `include/UltraCanvasPresentationPrint.h` |
+
+## The core
+
+```cpp
+#include "UltraCanvasSlideDeckEditor.h"
+
+auto deck = std::make_shared<PptxPresentation>();
+UCSlideDeckEditor editor(deck);
+editor.NewSlide(-1);                       // Title and Content (or the current slide's layout)
+editor.SetShapeText(0, "Quarterly report");
+const int box = editor.InsertTextBox(SlideBox{914400, 914400, 4 * 914400, 914400}, "Revenue grew");
+editor.Select({box});
+editor.MoveSelection(914400 / 2, 0);       // half an inch to the right
+editor.Undo();
+```
+
+Every change is one undo step. A change to the slide being edited keeps that
+slide before and after (its shapes, not the pictures' bytes, which stay in
+the deck), with the selection; the slide list's changes - insert, duplicate,
+move, delete - keep the slide they move. A run of arrow-key nudges is one
+step. `ChangeSlide(description, change, selectAfter)` makes any other change
+a step: `change` edits a copy of the slide.
+
+| Group | Calls |
+|---|---|
+| Slides | `NewSlide(layout)`, `InsertSlide`, `DuplicateSlide`, `DeleteSlide`, `MoveSlide`, `SetSlideHidden`, `SetSlideNotes`, `SetCurrentSlide` |
+| Selection | `Select`, `SelectAll`, `ClearSelection`, `ToggleSelected`, `SelectionBox` |
+| Shapes | `MoveSelection`, `NudgeSelection`, `SetShapeBox`, `SetSelectionBox`, `SetShapeRotation`, `DeleteSelection`, `DuplicateSelection`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `SetShapeText` |
+| Inserting | `InsertTextBox`, `InsertGeometry` (a preset outline), `InsertPicture` (bytes, kept in `deck.pictures`), `InsertShape`, `InsertTable` |
+| Text | `SetShapeText` (plain lines), `FormatSelectedText` (every run and paragraph of the selected shapes, table cells too), `AllSelectedText` (a toggle's state) |
+| Tables | `TableCellBox`, `TableCellAt`, `InsertTableRow`, `DeleteTableRow`, `InsertTableColumn`, `DeleteTableColumn` |
+| Clipboard | `CopySelection`, `CutSelection`, `Paste` (in place, or offset on the slide the shapes came from) |
+| Finding | `ShapeAt` (a turned shape in its own frame), `ShapesInside`, `HandleAt`, `Snap` |
+| History | `Undo`, `Redo`, `UndoDescription`, `IsModified`, `onChange`, `onSelectionChange` |
+
+`Snap(box, tolerance, ignore, moving, handle)` lines a moved box's edges and
+centre (or a resized box's dragged edges) up with the slide's edges and
+centre and with the other shapes' edges and centres, and says which guide
+lines it used.
+
+`PptxSlideFromLayout(deck, layout)` makes a new slide from one of the deck's
+layouts: its placeholders, emptied, keeping their look; Title and Content
+when the deck has no layouts.
+
+## The element
+
+```cpp
+#include "UltraCanvasSlideEdit.h"
+
+auto edit = CreateSlideEdit("deck", 0, 0, 1200, 700);
+edit->SetDeck(deck);
+edit->onEditText = [edit](int shape) {
+    edit->Editor().SetShapeText(shape, "New text");   // a host opens its own editor here
+};
+edit->onChange = []() { /* mark the document modified */ };
+```
+
+| Where | What |
+|---|---|
+| The strip | Click a slide to show it; drag it to move it; Delete deletes it, Ctrl+D duplicates it; hidden slides are dimmed |
+| The slide | Click selects a shape (Shift or Ctrl adds or takes away), a band selects what it covers; dragging moves the selection, snapping (Alt: not; Shift: across or down only); the handles resize (Shift keeps the proportions, Alt from the centre) and the one above turns (Shift: by 15°) |
+| Keys | Arrows nudge (Ctrl: by a point), Delete, Ctrl+A, Escape, Ctrl+D, Ctrl+C / X / V, Ctrl+Z / Y, Tab the next shape, Enter or F2 its text, Page Up / Down, Ctrl+M a new slide, Ctrl+wheel zoom |
+
+A drag draws a preview copy of the slide and becomes one command when the
+button is let go. Empty placeholders show their prompt ("Click to add title")
+and a dashed outline. `onContextMenu` reports a right-click in the strip or on
+the slide, for a host's menu. `SlideRect()` and `EmuPerPixel()` say where the
+slide is drawn, for a host that lays its own editor over a shape - UltraOffice
+edits a shape's text in a rich text editor placed there (below).
+
+The show is `UltraCanvasSlideShowPlayer`
+([UltraCanvasSlideShowPlayer.md](UltraCanvasSlideShowPlayer.md)): the slides'
+transitions, auto-advance, the presenter view on a second monitor
+(`StartSlideShow(deck, fromSlide)`).
+
+## Drawing and print
+
+```cpp
+#include "UltraCanvasPresentationPrint.h"
+
+PresentationPrintPages pages(*deck);          // hidden slides left out
+std::string error;
+pages.ExportPdf("Talk.pdf", error);
+```
+
+`DrawPptxSlide(ctx, deck, slide, rect, options)` draws a slide into any
+rectangle of any render context, filling only that rectangle with the slide's
+background; `PptxSlideDrawOptions` adds prompt text for empty placeholders
+and leaves one shape's text out while a host edits it. A picture is decoded
+once and drawn from then on.
+
+## Text and tables in place
+
+A shape's text - or a table cell's - is edited in an `UltraCanvasRichTextEdit`
+the host lays over it, at the slide's zoom (`SlideRect()`, `EmuPerPixel()`),
+transparent, with the shape's text left out meanwhile (`SetEditingShape`,
+`SetEditingCell`). A double-click asks for it: `onEditText(shape)`, or
+`onEditTableCell(shape, row, col)` on a table. The text goes there and back
+through
+
+```cpp
+UCRichDocument rich = PptxParagraphsToRichDocument(shape.paragraphs);
+// ... edited ...
+shape.paragraphs = PptxParagraphsFromRichDocument(rich, shape.paragraphs);
+```
+
+The document keeps each run's look (bold, italic, underline, strike, super-
+and subscript, typeface, size, colour, highlight, link), line breaks,
+alignment, bullets at their levels (a Wingdings square as the square it is:
+`PptxBulletText`) and numbering (PowerPoint's `alphaLcParenR` as lower
+letters with a parenthesis, the start number on a list's first item). What it
+does not hold - the bullet's typeface, indents, spacing, capitals - comes back
+from the paragraphs before the edit. UltraOffice commits the edit as one step
+on a click elsewhere or Ctrl+Enter, and drops it on Escape.
+
+`InsertTable(box, rows, columns)` makes a table in PowerPoint's banded look; a
+row inserted under the header takes the body rows' look.
+
+## Not yet
+
+- Grouping, alignment and distribution commands, guides of one's own.
+- Merging and splitting table cells, resizing a table's columns by dragging.
+- Animations of single shapes in the show (the slides' transitions play).
+
+## Tests
+
+- `Tests/SlideDeckEditorTest.cpp` - every command with undo and redo, the
+  selection put back, nudges joined, hit testing of turned shapes, handles,
+  snapping; the text's round trip through the rich document (looks, line
+  breaks, bullets, numbering, an empty paragraph's look); formatting the
+  selected shapes; tables (cells, rows, columns, undo).
+- `Tests/SlideEditElementTest.cpp` - the element driven by pointer and key
+  events: a click selects, a drag moves (one step, snapping to the slide's
+  centre), a corner with Shift keeps the proportions, the turning handle
+  turns by 15° with Shift, a band selects, the strip chooses and moves
+  slides, the keys nudge, delete, undo and add a slide, a double-click asks
+  for the text.
+- `Tests/PresentationPrintTest.cpp` - a slide drawn into a rectangle and
+  nothing around it, prompt text, pages and the PDF.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSlideShowPlayer.md
+==============================================================================
+
+# UltraCanvas Slide Show: SlideShowPlayer, PresenterView, StartSlideShow
+
+<!-- doc-check: std::shared_ptr<PptxPresentation> deck; UltraCanvasWindow* window; -->
+
+## Contents
+
+## Overview
+
+The **slide show player** plays a presentation - the deck model the
+PowerPoint and OpenDocument readers share
+([`UltraCanvasPresentationPptx.h`](../../UltraCanvas/include/UltraCanvasPresentationPptx.h)) -
+the way PowerPoint's *Slide Show* does: each slide as large as the element on
+black, letterboxed, the hidden ones left out, each slide coming on with its
+transition and moving on by its timing, and a black end screen after the
+last. The **presenter view** is the presenter's screen beside it.
+`StartSlideShow` opens both, each full screen on a monitor of its own when
+there are two. The design is
+[`Docs/Research/UltraOfficeDesignProposal.md`](../Research/UltraOfficeDesignProposal.md),
+§5.3.4.
+
+The player replaces the simple show mode of `UltraCanvasSlideEdit`
+(`StartShow`), which plays neither transitions nor timings: a host that
+shows a deck puts a player in a window of its own (or calls
+`StartSlideShow`) and gives it the deck it edits.
+
+| Class / function | What it is | Files |
+|---|---|---|
+| `UltraCanvasSlideShowPlayer` | The show: the slides, the transitions, the timings, the keys and clicks | `include/UltraCanvasSlideShowPlayer.h`, `core/UltraCanvasSlideShowPlayer.cpp` |
+| `UltraCanvasPresenterView` | The presenter's screen: the slide shown and the next, the notes, the time, "Slide N of M" | same |
+| `StartSlideShow` | Opens the show and the presenter view, on two monitors when there are two | same |
+| `SlideTransitionFrame` | The geometry of a transition's frame, shared with the photo slideshow | `include/UltraCanvasSlideTransition.h` |
+
+## The player
+
+```cpp
+#include "UltraCanvasSlideShowPlayer.h"
+
+auto player = CreateSlideShowPlayer("show", 0, 0, 1280, 720);
+player->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Pct(100));
+player->SetDeck(deck);                     // read only: the player never changes it
+player->onSlideChanged = [](int slide) { /* -1: the end screen */ };
+player->onShowEnd = []() { /* close the show's window */ };
+window->AddChild(player);
+player->Start(0);                          // the first slide shown at or after slide 0
+```
+
+| Call | What it does |
+|---|---|
+| `Start(fromSlide)` | Starts at the first slide shown at or after `fromSlide` (0-based), without a transition, and takes the keyboard |
+| `Stop()` | Ends the show: `onShowEnd` |
+| `Next()` | The next slide shown, with its transition; after the last, the end screen; from the end screen, the show ends |
+| `Previous()` | The slide shown before, without a transition; from the end screen, the last slide |
+| `GoToSlide(index)` | That slide (a hidden one too), at once |
+| `IsPlaying()`, `GetCurrentSlide()` | Whether it plays; the slide shown (during a transition the one coming on), -1 on the end screen |
+| `IsTransitioning()`, `GetTransitionProgress()`, `GetTransitionFromSlide()` | A transition in progress, how far (0..1), the slide going off |
+| `SetBlank(SlideShowBlank)`, `GetBlank()` | A black or white screen over the slides |
+| `SetClock(fn)`, `Tick()` | The time source (seconds; the default reads `steady_clock`) and bringing the show to it |
+| `onSlideChanged(int)`, `onShowEnd`, `AddObserver(fn)` / `RemoveObserver(id)` | The slide shown changed; the show ended; any change, for a view that follows the player |
+
+The keys and clicks are PowerPoint's:
+
+| Input | What |
+|---|---|
+| Click, Space, Enter, Right, Down, Page Down, N, wheel down | On |
+| Right-click, Backspace, Left, Up, Page Up, P, wheel up | Back |
+| Home, End | The first, the last slide shown |
+| A number, then Enter | That slide (Backspace takes a digit back); the digits show small in the corner as they are typed |
+| B or `.`, W or `,` | A black, a white screen; the same key again, or any other, brings the slide back |
+| Escape | Ends the show (`onShowEnd`) |
+
+### Transitions
+
+Going **on** to a slide plays its `PptxSlide::transition` over its
+`durationSec`; going back, Home, End and a slide by number show it at once.
+Each slide is drawn once at the size shown (`RenderPptxSlide`), kept for the
+transitions, and drawn again when the size changes; a frame draws the two
+cached pictures, so a transition costs no slide painting while it runs. The
+application's timer drives it at about 60 frames a second and stops when
+nothing is due.
+
+| `PptxTransitionKind` | What it looks like |
+|---|---|
+| `Fade` | The old slide fades out as the new one fades in |
+| `Push` | The new slide comes in from the right and pushes the old one out to the left |
+| `Wipe` | The new slide is uncovered from left to right over the old one |
+| `Split` | The new slide opens from a line down the centre, outwards to the left and right |
+| `Cover` | The new slide slides in from the right over the old one, which stays |
+| `Zoom` | The new slide grows from the centre over the old one |
+| `NoTransition` | The new slide at once |
+
+The movement eases in and out (`SlideTransitionEase`, a smoothstep). A key or
+a click during a transition finishes it at once, and does nothing else.
+
+### Timings
+
+A slide whose `advanceAfterSec` is 0 or more moves on by itself that long
+after it is fully shown (after its transition). One whose `advanceOnClick`
+is false ignores a click - the keys still move on. A black or white screen
+holds the timing; it starts again when the slide is shown again.
+
+### Testing without time
+
+`SetClock` replaces the time source, and `Tick()` brings the show to the
+clock: it ends a transition that is over and moves on from a slide whose time
+is up. Without an application (a test) no timer runs, and a test drives the
+player by `OnEvent` and its clock:
+
+```cpp
+double now = 0;
+auto player = CreateSlideShowPlayer("show", 0, 0, 320, 180);
+player->SetClock([&now]() { return now; });
+player->SetDeck(deck);
+player->Start(0);
+player->Next();                // the next slide's transition starts
+now += 0.5;
+player->Tick();                // half a second later
+```
+
+## The presenter view
+
+```cpp
+#include "UltraCanvasSlideShowPlayer.h"
+
+auto presenter = CreatePresenterView("presenter", 0, 0, 1280, 720);
+presenter->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Pct(100));
+window->AddChild(presenter);
+presenter->SetPlayer(player);              // follows it, and drives it
+```
+
+It shows the slide shown, large; the next slide shown, small (or *End of
+slideshow*); the slide's speaker notes as plain text in a read-only,
+scrolling `UltraCanvasTextArea`; the time since the show began, with *Pause*
+/ *Resume* and *Reset*; *Previous slide* and *Next slide* buttons; and
+"Slide N of M". It follows the player through `AddObserver`, and the keys
+typed into it go to the player, so the show can be worked from either
+screen. The time stops when the show ends.
+
+| Call | What it does |
+|---|---|
+| `SetPlayer(player)` | The player followed and driven (kept alive while set); null: none |
+| `GetShownSlide()`, `GetPositionText()`, `GetNotesText()`, `GetElapsedText()` | What it shows |
+| `GetElapsedSeconds()`, `SetTimerPaused(bool)`, `IsTimerPaused()`, `ResetTimer()` | The time |
+| `SetClock(fn)`, `RefreshElapsed()` | The time source; the time shown brought up to date (a timer does it every second) |
+
+## Two screens: StartSlideShow
+
+```cpp
+std::shared_ptr<SlideShowWindows> show = StartSlideShow(deck, 0);
+show->onEnd = []() { /* the windows are closed: drop `show`, focus the editor */ };
+```
+
+`StartSlideShow(deck, fromSlide, presenterView)` lists the monitors with
+`UltraCanvasDesktopShell::ListScreens()` (the primary first). With two or
+more it opens the show full screen on the second and, with `presenterView`,
+the presenter view full screen on the first; with one, the show alone, full
+screen. Each window is moved onto its monitor (`SetWindowPosition`, in the
+screen pixels `ListScreens` gives) before it goes full screen, so full screen
+fills that monitor. The windows close when the show ends - Escape, on from
+the end screen, or one of them closed - and then `onEnd` runs. Keep the
+returned `SlideShowWindows` until then.
+
+What the platforms give:
+
+| Platform | Monitors | Placement |
+|---|---|---|
+| Windows | `EnumDisplayMonitors` | Each window on its monitor |
+| Linux, X11 | RandR's monitors (no primary chosen: the one at the origin) | Each window on its monitor |
+| Linux, Wayland | The compositor's outputs | The compositor places windows itself: both open where it puts them |
+| macOS | None listed yet (`ListScreens` is empty there) | The show alone, full screen |
+
+A host that wants its own arrangement builds the same from the parts: a
+window with a player for the show, a window with a presenter view given that
+player, `ListScreens` to choose the monitors, `SetWindowPosition` and
+`SetFullscreen(true)`.
+
+## Not yet
+
+- Animations inside a slide (entrances, emphasis, exits) are not played; the
+  reader does not keep them.
+- Transitions' directions and variants (Push from the top, Split
+  horizontally) are not read: each kind plays its one look.
+- A pen or a laser pointer over the slide.
+
+## Tests
+
+- `Tests/SlideShowPlayerTest.cpp` - by events and a test clock: hidden
+  slides skipped, the end screen and on from it, going back without a
+  transition, a transition half way (the slide coming on is the current
+  one; a key or click finishes it), a mid-fade frame drawn on an off-screen
+  page mixing both slides' colours, a slide's timing, a click ignored where
+  only the timing moves on, a slide by number, Home and End, black and white
+  screens, Escape; the presenter view following the player, its notes, keys
+  and time; the transition frames' geometry.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
 ==============================================================================
 
@@ -77408,6 +77895,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
 - [Data validation](#data-validation)
 - [Best Practices](#best-practices)
+- [Printing and PDF](#printing-and-pdf)
 - [See Also](#see-also)
 
 ## Overview
@@ -77538,7 +78026,8 @@ void  SelectColumn(int col);
 void  SelectAll();
 bool  IsCellSelected(int row, int col) const;
 
-void  MoveActiveCell(int rowDelta, int colDelta);
+void  MoveActiveCell(int rowDelta, int colDelta);     // selects the cell it lands on (the arrows, Enter, Tab)
+void  ExtendSelectionBy(int rowDelta, int colDelta);  // Shift+arrow: the far corner moves, the active cell stays
 void  ScrollToCell(int row, int col);
 void  EnsureCellVisible(int row, int col);
 ```
@@ -77625,11 +78114,24 @@ string of your own, the same rewrite is
 
 ### Clipboard, Undo/Redo, Formula Engine
 
+Copy and Cut keep the cells whole for a paste in the same program and put
+them on the system clipboard as other programs read them: the shown values
+as tab-separated text, beside an HTML table. Paste takes the grid's own copy
+while the system clipboard still holds it - a copied formula's references
+move with it (`=B2*2` copied from B3 to B8 is `=B7*2`), a cut one's stay -
+and otherwise another program's HTML table (spanned cells kept apart) or
+tab-, comma- or semicolon-separated text, each value read as if typed.
+Every paste is one undo step.
+
 ```cpp
 void Cut();
 void Copy();
 void Paste();
 void PasteSpecial(const PasteOptions& options);
+std::string RangeAsText(const CellRange& range) const;   // what Copy puts on the clipboard
+std::string RangeAsHtml(const CellRange& range) const;
+bool PasteHtml(const std::string& html);                 // another program's cells, at the active cell
+bool PasteText(const std::string& text);
 
 void Undo();
 void Redo();
@@ -77722,6 +78224,46 @@ quotes exactly as the spreadsheet does:
 // separator, the quote or a line break; a quote inside doubled), then the
 // options' line ending. UTF-8; CSVEncodeFromUtf8 turns it into the charset.
 std::string CSVFormatRecord(const std::vector<std::string>& fields, const CSVExportOptions& opt);
+```
+
+#### What a workbook file keeps
+
+Besides the cells, their styles, column widths, row heights and merges,
+`.xlsx` and `.ods` both read and write what a sheet holds around them, so a
+workbook opened and saved again comes back as it was:
+
+| | `.xlsx` | `.ods` |
+|---|---|---|
+| Frozen rows and columns | the frozen `pane` of `sheetViews` | the split (mode 2) in `settings.xml` |
+| Hidden rows and columns | `hidden="1"` | `table:visibility="collapse"` |
+| Named ranges, the workbook's and a sheet's | `definedNames` (a sheet's with `localSheetId`) | `table:named-expressions` of the document and of the table |
+| Auto-filter, and columns filtered to values | `autoFilter`, `_xlnm._FilterDatabase` | `table:database-range` with filter buttons |
+| Print area | `_xlnm.Print_Area` | `table:print-ranges` |
+| Rows / columns repeated on every page | `_xlnm.Print_Titles` | header rows / columns |
+| Page setup, header and footer, page breaks | `printOptions`, `pageMargins`, `pageSetup`, `headerFooter`, `rowBreaks` / `colBreaks` | the page layout and master page in `styles.xml`, `fo:break-before` |
+
+Header and footer texts are kept in Excel's codes (`&P` page, `&N` pages,
+`&A` sheet, `&F` file, `&D` date, `&T` time, `&&` an ampersand), which an
+`.ods` holds as text fields. A workbook name whose range names no sheet
+(it covers the sheet of the formula using it) has no such form in Excel: an
+`.xlsx` gives it the first sheet.
+
+```cpp
+auto grid = std::make_shared<UltraCanvasSpreadsheet>("Report", 0, 0, 900, 600);
+SpreadsheetSheet* report = grid->GetActiveSheet();
+report->FreezeRows(1);
+report->SetColumnHidden(4, true);                        // column E
+report->SetAutoFilter(CellRange(0, 0, 99, 5));           // A1:F100
+grid->AddNamedRange("Amounts", CellRange(1, 2, 99, 2), report->GetName());   // scoped to the sheet
+
+PrintSettings& print = report->GetPrintSettings();
+print.orientation = PageOrientation::Landscape;
+print.paperSize = PaperSize::A4;
+print.repeatRowsFirst = 0;                               // row 1 on every page
+print.repeatRowsLast = 0;
+print.footerCenter = "Page &P of &N";
+report->SetPrintArea(CellRange(0, 0, 99, 5));
+grid->SaveToFile("report.xlsx");                         // or "report.ods": the same survives
 ```
 
 ### View Settings
@@ -78583,6 +79125,49 @@ so they are set from code.
 - **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
 
+## Printing and PDF
+
+`SpreadsheetPrintPages` (`UltraCanvasSpreadsheetPrint.h`) cuts a sheet into
+pages and draws them, for a PDF file and for printers. It prints the print
+area, or every cell in use, and follows the sheet's `PrintSettings`:
+
+| Setting | What it does on paper |
+|---|---|
+| `paperSize`, `orientation` | the page; Custom prints on Letter for now |
+| `marginTop` / `Bottom` / `Left` / `Right` (inches) | the room for cells |
+| `scale` (%), or `fitToWidth` / `fitToHeight` (pages) | the size; fitting never enlarges |
+| `rowBreaks`, `colBreaks` | a page starts at each of these rows (columns) |
+| `printGridlines`, `printRowColHeaders` | lines between the cells; column letters and row numbers |
+| `centerHorizontally`, `centerVertically` | the block of cells centred in the room |
+| `headerLeft` ... `footerRight`, `headerMargin`, `footerMargin` | lines in the margins; `&P` the page, `&N` the pages, `&A` the sheet, `&D` the date, `&&` an ampersand |
+
+Pages run down, then across. Hidden rows and columns are left out, a merged
+block is drawn once per page it reaches, and every cell is drawn by
+`UltraCanvasSpreadsheet::PaintCell`, the grid's own painter, so paper shows
+what the screen does: 100 % on paper is the size on screen at 100 %.
+`SetTitleRows` / `SetTitleColumns` repeat lines on every page after the ones
+they are on.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; UltraCanvasWindow* window; -->
+```cpp
+#include "UltraCanvasSpreadsheetPrint.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
+
+grid->GetPrintSettings().orientation = PageOrientation::Landscape;
+grid->GetPrintSettings().fitToWidth = 1;          // every column across one page
+grid->SetPrintArea(CellRange(0, 0, 49, 7));      // A1:H50
+
+auto pages = CreateSpreadsheetPrintPages(*grid);  // the sheet on show, copied
+pages->SetTitleRows(0, 0);                        // row 1 on every page
+std::string error;
+pages->ExportPdf("Budget.pdf", error);
+
+// Printing: the PDF for printers that take one, the pages for those that draw.
+std::vector<uint8_t> pdf;
+if (pages->ExportPdf(pdf, error))
+    PrintDocumentWithDialog("Budget", pdf, "application/pdf", window, pages);
+```
+
 ## See Also
 
 - [`Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp`](../../Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp) - Full working demo (sample data, Open/Import/Save flows)
@@ -78593,6 +79178,7 @@ so they are set from code.
 - [`include/UltraCanvasSpreadsheetFormatMenu.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormatMenu.h) - Cell formatting menu and number-format presets
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
+- [`include/UltraCanvasSpreadsheetPrint.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetPrint.h) - A sheet's pages for PDF and printers
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md
@@ -89678,6 +90264,9 @@ from an external "Show password" checkbox. See
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
 | Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG (also `.dwt` / `.dws` / `.sv$`), EMF, WMF, AI via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
 | **Edit** a vector drawing: page, rulers, guides, grid, snapping, selection handles, tool hooks in document coordinates (the model is `VectorStorage::VectorDocument`, the editing layer `DataFormats/UltraCanvasVectorEdit.h`, the node model `UltraCanvasBezierPath.h`) | `UltraCanvasVectorCanvas` | `UltraCanvasVectorCanvas.h` |
+| **Edit** a presentation: the slide strip, shapes to select, move, resize, turn and order with snapping, new slides from layouts, text and tables in place, undo (the show is `UltraCanvasSlideShowPlayer`; the model is `PptxPresentation`, the core `UCSlideDeckEditor`) | `UltraCanvasSlideEdit` | `UltraCanvasSlideEdit.h` |
+| **Play** a presentation as a slide show: letterboxed on black, hidden slides left out, each slide's transition (fade, push, wipe, split, cover, zoom) and timing, a slide by number, black / white screen, an end screen ([doc](UltraCanvasSlideShowPlayer.md)) | `UltraCanvasSlideShowPlayer` | `UltraCanvasSlideShowPlayer.h` |
+| The **presenter's screen** beside a show: the slide shown and the next, the speaker notes, the time with pause and reset, "Slide N of M", buttons that drive the player; `StartSlideShow` opens both on two monitors | `UltraCanvasPresenterView` | `UltraCanvasSlideShowPlayer.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
