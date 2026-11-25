@@ -270,6 +270,19 @@ that is plainly not one - the phone with `+` and the country code). A new
 account's are `credentials.email` and `credentials.phoneNumber` with
 `createAccount`.
 
+Where the service takes one (`pictureSupported`, filled by
+`UltraIM_FetchAccountProfile` - ChatCube Direct does), the profile carries
+the owner's picture too: `picturePath`, a square JPEG, PNG or WebP file, ""
+for none. An update applies it only with `pictureChanged` set, so a host
+that never shows the picture cannot remove it by leaving the field empty;
+with the flag, "" removes it. The provider keeps its own copy. ChatCube
+Direct takes at most 32 KiB (one sealed message;
+`UltraCanvasProfilePictureEditor::SetMaxOutputBytes` makes one that fits)
+and sends it to every contact end to end, as it sends a message - again
+when it changes, and to a contact added later; the contacts' pictures come
+back as `avatarPath` on their conversations and contacts and
+`senderAvatarPath` on their messages.
+
 How signing in on the device is protected is `UltraIMSignInProtection`
 (the `SignInProtection` capability): `DeviceKey` (nothing to type),
 `Password`, `AuthenticatorCode` (a TOTP code from an authenticator app -

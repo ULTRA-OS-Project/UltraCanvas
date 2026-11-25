@@ -890,7 +890,7 @@ endif()
 # encrypted chat with no account, groups through a relay (Server/ChatCubeRelay).
 option(BUILD_CHATCUBE "Build the ChatCube messenger" ON)
 # ChatCube shows files in UltraCanvasMediaViewer, by its classes.
-ultracanvas_require_widgets(BUILD_CHATCUBE ChatCube MediaViewer)
+ultracanvas_require_widgets(BUILD_CHATCUBE ChatCube MediaViewer ProfilePicture)
 if(BUILD_CHATCUBE)
     message(STATUS "")
     message(STATUS "── Building ChatCube ──")
