@@ -23,7 +23,11 @@ from ultrastore_portal.store.models import AuditEntry, Report, Setting
 
 from .test_portal import PASSWORD, PortalCase, User
 
-NOON = timezone.make_aware(dt.datetime(2026, 11, 24, 12, 0))   # half the day gone: the pacing allows 60 % of a day's budget
+def noon() -> dt.datetime:
+    """Today at twelve - half the day gone: the pacing allows 60 % of a
+    day's budget. Today's, whenever the tests run: a campaign starts on the
+    day it is made, and a noon of another day would be before its start."""
+    return timezone.make_aware(dt.datetime.combine(timezone.localdate(), dt.time(12, 0)))
 
 
 class PromoteCase(PortalCase):
@@ -157,6 +161,7 @@ class DecisionTests(PromoteCase):
         campaign = self.campaign(self.editor, daily="2.00")
         self.assertEqual(self.ads(q="photo")[0].price, Decimal("0.10"))
         place = Placement.objects.get(key="store-search")
+        NOON = noon()
         today = timezone.localdate(NOON)
         Setting.objects.filter(key="promote.pacing").update(value="1")
         DayCount.objects.create(campaign=campaign, placement=place, day=today, spent=Decimal("1.00"))
