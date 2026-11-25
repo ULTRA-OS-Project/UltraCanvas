@@ -360,6 +360,46 @@ quotes exactly as the spreadsheet does:
 std::string CSVFormatRecord(const std::vector<std::string>& fields, const CSVExportOptions& opt);
 ```
 
+#### What a workbook file keeps
+
+Besides the cells, their styles, column widths, row heights and merges,
+`.xlsx` and `.ods` both read and write what a sheet holds around them, so a
+workbook opened and saved again comes back as it was:
+
+| | `.xlsx` | `.ods` |
+|---|---|---|
+| Frozen rows and columns | the frozen `pane` of `sheetViews` | the split (mode 2) in `settings.xml` |
+| Hidden rows and columns | `hidden="1"` | `table:visibility="collapse"` |
+| Named ranges, the workbook's and a sheet's | `definedNames` (a sheet's with `localSheetId`) | `table:named-expressions` of the document and of the table |
+| Auto-filter, and columns filtered to values | `autoFilter`, `_xlnm._FilterDatabase` | `table:database-range` with filter buttons |
+| Print area | `_xlnm.Print_Area` | `table:print-ranges` |
+| Rows / columns repeated on every page | `_xlnm.Print_Titles` | header rows / columns |
+| Page setup, header and footer, page breaks | `printOptions`, `pageMargins`, `pageSetup`, `headerFooter`, `rowBreaks` / `colBreaks` | the page layout and master page in `styles.xml`, `fo:break-before` |
+
+Header and footer texts are kept in Excel's codes (`&P` page, `&N` pages,
+`&A` sheet, `&F` file, `&D` date, `&T` time, `&&` an ampersand), which an
+`.ods` holds as text fields. A workbook name whose range names no sheet
+(it covers the sheet of the formula using it) has no such form in Excel: an
+`.xlsx` gives it the first sheet.
+
+```cpp
+auto grid = std::make_shared<UltraCanvasSpreadsheet>("Report", 0, 0, 900, 600);
+SpreadsheetSheet* report = grid->GetActiveSheet();
+report->FreezeRows(1);
+report->SetColumnHidden(4, true);                        // column E
+report->SetAutoFilter(CellRange(0, 0, 99, 5));           // A1:F100
+grid->AddNamedRange("Amounts", CellRange(1, 2, 99, 2), report->GetName());   // scoped to the sheet
+
+PrintSettings& print = report->GetPrintSettings();
+print.orientation = PageOrientation::Landscape;
+print.paperSize = PaperSize::A4;
+print.repeatRowsFirst = 0;                               // row 1 on every page
+print.repeatRowsLast = 0;
+print.footerCenter = "Page &P of &N";
+report->SetPrintArea(CellRange(0, 0, 99, 5));
+grid->SaveToFile("report.xlsx");                         // or "report.ods": the same survives
+```
+
 ### View Settings
 
 ```cpp

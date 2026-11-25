@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.10.0 - GetNamedRangeList: every name with its scope, for the .xlsx / .ods writers
 // Version: 1.9.0 - deleting a sheet removes the names scoped to it and makes those covering it #REF!
 //                  (IsNamedRangeVisible); undo brings them back
 // Version: 1.8.0 - named ranges: one per scope and name, a scoped one visible only from its sheet and
@@ -11,7 +12,7 @@
 //                  a list rule's dropdown (ShowValidationListAt, Alt+Down); a typed value is an undo step
 // Version: 1.4.0 - LoadFromFile / LoadODS open a password-protected .ods with its password
 // Version: 1.3.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -643,6 +644,14 @@ public:
     // those covering it; undoing the delete brings both back.
     bool IsNamedRangeVisible(const std::string& name, const std::string& fromSheet) const;
     std::vector<std::string> GetNamedRangeNames() const;
+    // Every name with its scope (NamedRange::sheetScope, "" for the
+    // workbook's) and its range as it was given.
+    std::vector<NamedRange> GetNamedRangeList() const {
+        std::vector<NamedRange> list;
+        list.reserve(namedRanges_.size());
+        for (const auto& entry : namedRanges_) list.push_back(entry.second);
+        return list;
+    }
     
     // ===== FORMULA ENGINE =====
     SpreadsheetFormulaEngine* GetFormulaEngine() { return formulaEngine_.get(); }
