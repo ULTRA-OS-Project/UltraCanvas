@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheetCell.h
 // Spreadsheet cell data structure with value, formatting, and formula support
+// Version: 1.5.0 - ReadDataValidationBound (the .xlsx / .ods writers); Custom rules are evaluated by
+//                  SpreadsheetSheet::ValidateCell
 // Version: 1.4.0 - a typed "nan", "inf" or "0x10" is text, not a number
 // Version: 1.3.0 - a typed "45%" is the percentage 0.45 (it was text); a percentage under General shows as one
 // Version: 1.2.0 - DataValidationListItems
@@ -315,7 +317,9 @@ private:
 // - TextLength compares the number of characters (not bytes) of the shown text;
 // - List needs the shown text to be one of formula1's comma- or
 //   semicolon-separated items (surrounding spaces and quotes ignored);
-// - Custom (a formula) is not evaluated and passes, as does Any.
+// - Custom (a formula) passes here, as does Any: it is evaluated on the sheet
+//   (SpreadsheetSheet::ValidateCell), as are a list taken from cells and a
+//   bound that is a formula ("=$B$1").
 // A bound that cannot be read fails the check rather than passing it.
 // On false, `errorMessage` gets the rule's errorMessage, or a default one.
 bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell* cell,
@@ -324,6 +328,12 @@ bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell
 // The items of a List rule's formula1, in order, as CheckDataValidation reads
 // them (empty items dropped); empty for any other rule.
 std::vector<std::string> DataValidationListItems(const DataValidation& validation);
+
+// A Whole number / Decimal / Date / Time / Text length bound as the number
+// CheckDataValidation compares with: a dot-decimal number, and for Date and
+// Time also "YYYY-MM-DD" / "HH:MM[:SS]" as their serial number. Nothing for
+// text that is none of these (a formula).
+std::optional<double> ReadDataValidationBound(const std::string& text, ValidationType type);
 
 // ============================================================================
 // IMPLEMENTATION

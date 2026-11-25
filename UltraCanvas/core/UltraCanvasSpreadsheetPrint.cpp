@@ -6,6 +6,7 @@
 // 0.75 (points per pixel) times the print scale, so a printed sheet at 100 %
 // is the size it is on screen at 100 %.
 //
+// Version: 1.2.0 - the sheet's charts print where they stand, and the cells under them are printed
 // Version: 1.1.0 - the sheet's own print titles (PrintSettings repeatRows / repeatColumns) repeat
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -15,6 +16,7 @@
 #include "UltraCanvasPdfSurface.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"
 #include "UltraCanvasSpreadsheetSheet.h"
 
 #include <algorithm>
@@ -86,7 +88,16 @@ void SpreadsheetPrintPages::PaperSizePoints(const PrintSettings& settings, doubl
 
 CellRange SpreadsheetPrintPages::PrintedRange() const {
     if (settings_.HasPrintArea()) return settings_.printArea;
-    return sheet_->GetUsedRange();
+    CellRange range = sheet_->GetUsedRange();
+    // The cells under the charts too: a chart beside the data prints.
+    for (const SpreadsheetChart& chart : sheet_->GetCharts()) {
+        if (range.end.row < 0 || range.end.col < 0) range = CellRange(chart.anchor.from, chart.anchor.from);
+        range.start.row = std::min(range.start.row, chart.anchor.from.row);
+        range.start.col = std::min(range.start.col, chart.anchor.from.col);
+        range.end.row = std::max(range.end.row, chart.anchor.to.row);
+        range.end.col = std::max(range.end.col, chart.anchor.to.col);
+    }
+    return range;
 }
 
 int SpreadsheetPrintPages::Paginate() {
@@ -285,6 +296,26 @@ void SpreadsheetPrintPages::RenderPage(IRenderContext* ctx, int index) {
                 ctx->DrawRectangle(Rect2Dd(bounds.x, bounds.y, bounds.width, bounds.height));
             }
         }
+    }
+
+    // The charts, where they stand among this page's own cells (the title
+    // rows and columns are not under them).
+    if (!sheet.GetCharts().empty()) {
+        int ownLeft = static_cast<int>(headingWidth), ownTop = static_cast<int>(headingHeight);
+        for (size_t ci = 0; ci < cols.size(); ++ci) if (cols[ci] < page.firstCol) ownLeft = colLeft[ci] + sheet.GetColumnWidth(cols[ci]);
+        for (size_t ri = 0; ri < rows.size(); ++ri) if (rows[ri] < page.firstRow) ownTop = rowTop[ri] + sheet.GetRowHeight(rows[ri]);
+        SpreadsheetChartAnchor origin;
+        origin.from = CellAddress(page.firstRow, page.firstCol);
+        origin.to = origin.from;
+        const Rect2Di pageOrigin = SpreadsheetChartBox(sheet, origin);
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(ownLeft, ownTop, std::max(0, width - ownLeft), std::max(0, height - ownTop)));
+        for (const SpreadsheetChart& chart : sheet.GetCharts()) {
+            const Rect2Di box = SpreadsheetChartBox(sheet, chart.anchor);
+            DrawSpreadsheetChart(ctx, chart, Rect2Dd(ownLeft + box.x - pageOrigin.x, ownTop + box.y - pageOrigin.y,
+                                                     box.width, box.height));
+        }
+        ctx->PopState();
     }
 
     if (headings) {

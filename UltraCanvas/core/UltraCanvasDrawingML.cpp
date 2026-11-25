@@ -1,8 +1,9 @@
 // core/UltraCanvasDrawingML.cpp
 // DrawingML charts and colours - see UltraCanvasDrawingML.h.
+// Version: 1.2.0 - series as cell references with cached values (a workbook's chart), and read back
 // Version: 1.1.0 - WriteDrawingMLChart (moved from the .docx writer), with the axis ranges a chart states
 // Version: 1.0.0 - ReadDrawingMLChart and DrawingMLColor, moved out of the .docx reader
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDrawingML.h"
@@ -409,6 +410,40 @@ bool ReadDrawingMLChart(const std::string& chartXml, const std::map<std::string,
 // A chart's part: its kind, categories and series, the values as literals
 // (there is no workbook behind them).
 std::string WriteDrawingMLChart(const RichChart& chart) {
+    return WriteDrawingMLChart(chart, {});
+}
+
+std::vector<DrawingMLSeriesSource> ReadDrawingMLChartSources(const std::string& chartXml) {
+    std::vector<DrawingMLSeriesSource> sources;
+    tinyxml2::XMLDocument chart;
+    if (chart.Parse(chartXml.c_str(), chartXml.size()) != tinyxml2::XML_SUCCESS || !chart.RootElement()) return sources;
+    auto* plot = Find(chart.RootElement(), "plotArea");
+    // The formula of a reference under `holder` (c:tx, c:cat, c:val ...).
+    auto formula = [](const tinyxml2::XMLElement* holder) {
+        for (auto* ref = holder ? holder->FirstChildElement() : nullptr; ref; ref = ref->NextSiblingElement()) {
+            if (!Is(ref, "strRef") && !Is(ref, "numRef") && !Is(ref, "multiLvlStrRef")) continue;
+            auto* f = Child(ref, "f");
+            if (f && f->GetText()) return std::string(f->GetText());
+        }
+        return std::string();
+    };
+    for (auto* kind = plot ? plot->FirstChildElement() : nullptr; kind; kind = kind->NextSiblingElement()) {
+        const std::string tag = LocalName(kind);
+        if (tag.size() < 6 || tag.compare(tag.size() - 5, 5, "Chart") != 0) continue;
+        for (auto* ser = Child(kind, "ser"); ser; ser = Next(ser, "ser")) {
+            DrawingMLSeriesSource source;
+            source.name = formula(Child(ser, "tx"));
+            source.categories = formula(Child(ser, "cat"));
+            source.values = formula(Child(ser, "val"));
+            if (source.values.empty()) source.values = formula(Child(ser, "yVal"));
+            source.xValues = formula(Child(ser, "xVal"));
+            sources.push_back(std::move(source));
+        }
+    }
+    return sources;
+}
+
+std::string WriteDrawingMLChart(const RichChart& chart, const std::vector<DrawingMLSeriesSource>& sources) {
     using Kind = RichChart::Kind;
     std::ostringstream xml;
     xml.imbue(std::locale::classic());
@@ -417,20 +452,26 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
         return hex.size() == 7 && hex[0] == '#'
             ? "<a:solidFill><a:srgbClr val=\"" + hex.substr(1) + "\"/></a:solidFill>" : std::string();
     };
-    auto numbers = [&](const char* tag, const std::vector<double>& values) {
-        xml << "<" << tag << "><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val=\"" << values.size() << "\"/>";
+    // (With a formula: a reference to the cells, the values its cache.)
+    auto numbers = [&](const char* tag, const std::vector<double>& values, const std::string& formula = std::string()) {
+        xml << "<" << tag << ">";
+        if (!formula.empty()) xml << "<c:numRef><c:f>" << Escape(formula) << "</c:f><c:numCache>";
+        else xml << "<c:numLit>";
+        xml << "<c:formatCode>General</c:formatCode><c:ptCount val=\"" << values.size() << "\"/>";
         for (size_t i = 0; i < values.size(); i++) {
             if (std::isfinite(values[i])) xml << "<c:pt idx=\"" << i << "\"><c:v>" << values[i] << "</c:v></c:pt>";
         }
-        xml << "</c:numLit></" << tag << ">";
+        xml << (formula.empty() ? "</c:numLit>" : "</c:numCache></c:numRef>") << "</" << tag << ">";
     };
-    auto names = [&]() {
-        if (chart.categories.empty()) return;
-        xml << "<c:cat><c:strLit><c:ptCount val=\"" << chart.categories.size() << "\"/>";
+    auto names = [&](const std::string& formula = std::string()) {
+        if (chart.categories.empty() && formula.empty()) return;
+        if (!formula.empty()) xml << "<c:cat><c:strRef><c:f>" << Escape(formula) << "</c:f><c:strCache>";
+        else xml << "<c:cat><c:strLit>";
+        xml << "<c:ptCount val=\"" << chart.categories.size() << "\"/>";
         for (size_t i = 0; i < chart.categories.size(); i++) {
             xml << "<c:pt idx=\"" << i << "\"><c:v>" << Escape(chart.categories[i]) << "</c:v></c:pt>";
         }
-        xml << "</c:strLit></c:cat>";
+        xml << (formula.empty() ? "</c:strLit></c:cat>" : "</c:strCache></c:strRef></c:cat>");
     };
     const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
     const bool scatter = chart.kind == Kind::Scatter;
@@ -465,9 +506,15 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
     bool anyMarked = false;
     for (size_t s = 0; s < chart.series.size(); s++) {
         const RichChartSeries& one = chart.series[s];
+        const DrawingMLSeriesSource source = s < sources.size() ? sources[s] : DrawingMLSeriesSource();
         anyMarked = anyMarked || one.marked;
         xml << "<c:ser><c:idx val=\"" << s << "\"/><c:order val=\"" << s << "\"/>";
-        if (!one.name.empty()) xml << "<c:tx><c:v>" << Escape(one.name) << "</c:v></c:tx>";
+        if (!source.name.empty()) {
+            xml << "<c:tx><c:strRef><c:f>" << Escape(source.name) << "</c:f><c:strCache><c:ptCount val=\"1\"/>"
+                   "<c:pt idx=\"0\"><c:v>" << Escape(one.name) << "</c:v></c:pt></c:strCache></c:strRef></c:tx>";
+        } else if (!one.name.empty()) {
+            xml << "<c:tx><c:v>" << Escape(one.name) << "</c:v></c:tx>";
+        }
         std::string fill = color(one.color);
         // (Writer draws a line or a bubble only in a colour the file
         // states: one without takes the office palette's, as it shows.)
@@ -492,8 +539,8 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
             }
         }
         if (scatter || bubble) {
-            if (one.xValues.size() == one.values.size()) numbers("c:xVal", one.xValues);
-            numbers("c:yVal", one.values);
+            if (one.xValues.size() == one.values.size()) numbers("c:xVal", one.xValues, source.xValues);
+            numbers("c:yVal", one.values, source.values);
             if (bubble) {
                 std::vector<double> sizes = one.sizes;
                 sizes.resize(one.values.size(), 1.0);
@@ -503,8 +550,8 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
                 xml << "<c:smooth val=\"" << (one.smooth ? 1 : 0) << "\"/>";
             }
         } else {
-            names();
-            numbers("c:val", one.values);
+            names(source.categories);
+            numbers("c:val", one.values, source.values);
             if (line || stock) xml << "<c:smooth val=\"" << (one.smooth && line ? 1 : 0) << "\"/>";
         }
         xml << "</c:ser>";

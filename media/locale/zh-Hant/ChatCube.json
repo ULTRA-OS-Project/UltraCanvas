@@ -240,7 +240,6 @@
   "Members": "成員",
   "Members ({0})": "成員（{0}）",
   "Members' ChatCube IDs, separated by commas": "成員的 ChatCube ID，以逗號分隔",
-  "Message": "傳訊息",
   "Messages": "訊息",
   "Messages - the key that sends, and whether typing is shown, to the other side and to you.": "訊息 - 傳送用的按鍵，以及是否向對方和您顯示正在輸入。",
   "Message…  (Ctrl+Enter sends, Enter for a new line)": "訊息…  （Ctrl+Enter 傳送，Enter 換行）",

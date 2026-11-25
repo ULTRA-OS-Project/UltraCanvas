@@ -17,6 +17,8 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.8.1 - a left/right axis reserves the overhang of its end labels above and below
+//                  the plot: with no title the top label ("60.0") was cut off
 // Version: 1.8.0 - axis distributions (AddAxisDistribution, slot 550): histogram, density,
 //                  box, strip and violin along an axis, in a band outside the plot or inside it
 // Version: 1.7.0 - SetExtraGridAxes: further value axes ruled like the grid axis (stacked panes);
@@ -33,7 +35,7 @@
 //   a partial extent, span annotations
 // Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 

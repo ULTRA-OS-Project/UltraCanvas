@@ -240,7 +240,6 @@
   "Members": "구성원",
   "Members ({0})": "구성원({0})",
   "Members' ChatCube IDs, separated by commas": "구성원의 ChatCube ID(쉼표로 구분)",
-  "Message": "메시지",
   "Messages": "메시지",
   "Messages - the key that sends, and whether typing is shown, to the other side and to you.": "메시지 - 보내는 키, 그리고 입력 중임을 상대방과 나에게 표시할지 여부.",
   "Message…  (Ctrl+Enter sends, Enter for a new line)": "메시지…  (Ctrl+Enter로 보내기, Enter로 줄 바꿈)",

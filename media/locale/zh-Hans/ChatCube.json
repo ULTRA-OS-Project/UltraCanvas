@@ -240,7 +240,6 @@
   "Members": "成员",
   "Members ({0})": "成员（{0}）",
   "Members' ChatCube IDs, separated by commas": "成员的 ChatCube ID，以逗号分隔",
-  "Message": "发消息",
   "Messages": "消息",
   "Messages - the key that sends, and whether typing is shown, to the other side and to you.": "消息 - 发送用的按键，以及是否向对方和您显示正在输入。",
   "Message…  (Ctrl+Enter sends, Enter for a new line)": "消息…  （Ctrl+Enter 发送，Enter 换行）",

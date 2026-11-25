@@ -246,7 +246,6 @@
   "Members": "Участники",
   "Members ({0})": "Участники ({0})",
   "Members' ChatCube IDs, separated by commas": "ChatCube ID участников через запятую",
-  "Message": "Сообщение",
   "Messages": "Сообщения",
   "Messages - the key that sends, and whether typing is shown, to the other side and to you.": "Сообщения - клавиша отправки и показ набора текста собеседнику и вам.",
   "Message…  (Ctrl+Enter sends, Enter for a new line)": "Сообщение…  (Ctrl+Enter - отправить, Enter - новая строка)",
