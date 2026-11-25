@@ -274,6 +274,11 @@ forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
   `vmAllowWithoutKvm`, for tests), virtio disk/net, the guest's RDP port
   forwarded to loopback (`vmRdpHostPort`, default 13389), and a QMP
   control socket in the machine directory; it returns once QMP answers.
+  The machine directory may be of any length: where its sockets' paths
+  would pass the 107 bytes a Unix socket's address holds, QEMU and
+  virtiofsd are started in that directory and given the sockets by name,
+  and the control socket is reached through its folder
+  (`UltraCanvasUnixSocketAddress.h`).
   While install media is configured and setup has not completed, the
   machine boots from the ISO with the answer file attached as a virtual
   FAT volume.

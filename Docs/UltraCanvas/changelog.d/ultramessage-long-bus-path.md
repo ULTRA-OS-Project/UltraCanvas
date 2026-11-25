@@ -9,7 +9,7 @@
   else on the bus were silently off too. Such a socket is now bound and
   connected through its folder - the folder is opened, which takes a path of
   any length, and the socket named as `/proc/self/fd/<n>/bus.sock`
-  (`UltraMessageTransport.cpp`). The bus stays exactly where its path says;
+  (`UltraCanvasUnixSocketAddress.h`). The bus stays exactly where its path says;
   nothing is moved to a shorter place. A client that finds the folder not
   there yet reads it as "no broker", as on a short path.
   - macOS and the BSDs have no such way in, and still refuse a path past

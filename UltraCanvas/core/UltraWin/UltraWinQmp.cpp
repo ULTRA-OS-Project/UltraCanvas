@@ -3,11 +3,14 @@
 // UNIX socket: a greeting ({"QMP": ...}) on connect, then request/response
 // with interleaved async events. Only the tiny subset UltraWin needs is
 // implemented: qmp_capabilities, no-argument commands, query-status.
+// Version: 0.1.1 - a control socket whose path is longer than a socket's address is
+//                  reached through its folder
 // Version: 0.1.0 (Stage 2a)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWinQmp.h"
 
+#include "UltraCanvasUnixSocketAddress.h"
 #include "yyjson.h"
 
 #include <chrono>
@@ -41,20 +44,16 @@ bool QmpClient::Connect(const std::string& socketPath, int timeoutMs) {
         lastError = "socket() failed";
         return false;
     }
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    if (socketPath.size() >= sizeof(addr.sun_path)) {
-        lastError = "socket path too long";
-        return false;
-    }
-    std::strncpy(addr.sun_path, socketPath.c_str(),
-                 sizeof(addr.sun_path) - 1);
+    // The machine's folder can be longer than a socket's address holds (107
+    // bytes): the socket is then reached through its folder, which exists
+    // before QEMU is started (UltraCanvasUnixSocketAddress.h).
+    UltraCanvas::UnixSocketAddress address;
+    if (!address.Resolve(socketPath, lastError)) return false;
 
     // QEMU creates the socket asynchronously after spawn — retry within
     // the deadline instead of failing on the first ECONNREFUSED/ENOENT.
     const int64_t deadline = NowMs() + timeoutMs;
-    while (connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) !=
-           0) {
+    while (connect(fd, address.Get(), address.Size()) != 0) {
         if (NowMs() >= deadline) {
             lastError = "QMP socket not accepting connections";
             return false;

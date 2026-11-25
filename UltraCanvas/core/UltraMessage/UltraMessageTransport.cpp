@@ -2,9 +2,12 @@
 // Local stream transport: Unix domain sockets (Linux, macOS, BSD) and Windows
 // named pipes behind one Connection / Listener pair. Every blocking wait also
 // watches a private wake-up object so Close() from another thread returns it.
+// Version: 0.1.4 - the bus is hosted and joined only in a folder that is this user's alone
+//                  (BusFolderIsPrivate): in /tmp, without XDG_RUNTIME_DIR, another account
+//                  could make the folder first and have its broker met
 // Version: 0.1.3 - a bus path longer than a Unix socket's address holds is reached through
-//                  its folder on Linux (/proc/self/fd/<n>/bus.sock): a long XDG_RUNTIME_DIR
-//                  left every application without a bus
+//                  its folder on Linux (UltraCanvasUnixSocketAddress.h): a long
+//                  XDG_RUNTIME_DIR left every application without a bus
 // Version: 0.1.2 - Windows listener: a cancelled ConnectNamedPipe is waited for
 //                  before its stack OVERLAPPED goes out of scope
 // Version: 0.1.1 - ProcessIsTerminating
@@ -12,6 +15,9 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMessageTransport.h"
+#ifndef _WIN32
+#  include "UltraCanvasUnixSocketAddress.h"
+#endif
 
 #include <algorithm>
 #include <cerrno>
@@ -106,71 +112,81 @@ int WaitReadable(int fd, int wakeFd, int timeoutMs) {
     }
 }
 
-// The address of the Unix socket at a path. A socket's address holds a path
-// of 107 bytes on Linux (103 on macOS and the BSDs), and the bus lies under
-// the user's runtime folder, which can be longer than that - a session with
-// a runtime folder of its own, a sandbox, a test's private one. No
-// application then reached the bus: a second start of a single-instance
-// application could not ask the running copy forward, and said "already
-// running" instead. On Linux such a socket is reached through its folder:
-// the folder is opened, which takes a path of any length, and the socket
-// named as /proc/self/fd/<n>/<file>, which the kernel resolves to the same
-// file. The bus stays where it is; only the way to name it is shorter. The
-// address keeps the folder open, so it lives until bind() or connect() has
-// returned.
-class SocketAddress {
-public:
-    SocketAddress() = default;
-    ~SocketAddress() { CloseFd(folder_); }
-    SocketAddress(const SocketAddress&) = delete;
-    SocketAddress& operator=(const SocketAddress&) = delete;
+// The address of the bus socket. A socket's address holds a path of 107
+// bytes on Linux (103 on macOS and the BSDs), and the bus lies under the
+// user's runtime folder, which can be longer than that - a session with a
+// runtime folder of its own, a sandbox, a test's private one. No application
+// then reached the bus: a second start of a single-instance application
+// could not ask the running copy forward, and said "already running"
+// instead. UnixSocketAddress reaches such a socket through its folder on
+// Linux; the bus stays where its path says.
+bool ResolveBusAddress(const std::string& busPath, UltraCanvas::UnixSocketAddress& address, std::string& error,
+                       bool* folderMissing = nullptr) {
+    if (address.Resolve(busPath, error, folderMissing)) return true;
+    if (error.rfind("path too long", 0) == 0) error = "bus " + error;
+    return false;
+}
 
-    // False with `error`. `folderMissing` is set when the path was too long
-    // and its folder is not there, which to a client means "no broker yet".
-    bool Resolve(const std::string& path, std::string& error, bool* folderMissing = nullptr) {
-        if (folderMissing) *folderMissing = false;
-        CloseFd(folder_);
-        std::memset(&addr_, 0, sizeof(addr_));
-        addr_.sun_family = AF_UNIX;
-        if (Fits(path)) {
-            std::memcpy(addr_.sun_path, path.c_str(), path.size() + 1);
-            return true;
+// The bus is one user's: whoever holds its folder decides which broker an
+// application meets there, and so reads what it posts and answers what it
+// asks. The socket is owner-only, but that is no help when the folder is
+// not: without XDG_RUNTIME_DIR the bus lies in /tmp/ultramessage-<uid>, a
+// name anyone can work out, in a folder everyone may write to. Another
+// account that made that folder first - or the one inside it - had its own
+// broker met by this user's applications, or took the folder away under
+// them. So before the bus is hosted or joined, its folder must be a real
+// folder (no link) of this user's that nobody else can write to, and the
+// folder above it this user's or the system's - a folder everyone may write
+// to counts as the system's only with the sticky bit, where an entry is
+// its owner's to rename. Such a folder cannot be swapped between this check
+// and the bind() or connect() after it.
+//
+// A bus folder not there yet is judged by the folder above it alone: the
+// broker checks again once it has made it, and a client finds no socket.
+// Root is let through: it
+// joins a user's bus on purpose (a tool started with sudo), and no check
+// here protects root from the user it serves.
+//
+// `modeToo` off leaves out who may write to the bus folder itself: the broker
+// asks that way before it makes the folder owner-only, so that a folder of
+// this user's with a looser mode is tightened rather than refused - and a
+// link or another user's folder is refused before anything in it is touched.
+bool BusFolderIsPrivate(const std::string& busPath, std::string& error, bool modeToo = true) {
+    const uid_t me = ::geteuid();
+    if (me == 0) return true;
+    const std::string folder = ParentDirectory(busPath);
+    if (folder.empty()) return true;
+    const std::string refused = "the bus folder " + folder + " is not this user's alone (";
+    struct stat own{};
+    if (::lstat(folder.c_str(), &own) == 0) {
+        if (!S_ISDIR(own.st_mode)) {
+            error = refused + "it is not a folder of its own, but a link or a file)";
+            return false;
         }
-#if defined(__linux__)
-        const size_t slash = path.rfind('/');
-        if (slash != std::string::npos && slash > 0 && slash + 1 < path.size()) {
-            folder_ = ::open(path.substr(0, slash).c_str(), O_PATH | O_DIRECTORY | O_CLOEXEC);
-            if (folder_ < 0) {
-                if (folderMissing) *folderMissing = errno == ENOENT || errno == ENOTDIR;
-                error = Errno("open the bus folder") + " (" + path + ")";
-                return false;
-            }
-            // "/bus.sock" comes along with its slash.
-            const std::string through = "/proc/self/fd/" + std::to_string(folder_) + path.substr(slash);
-            if (Fits(through)) {
-                if (::access("/proc/self/fd", X_OK) != 0) {
-                    error = "bus path too long for a Unix socket, and no /proc to reach it through its folder: " +
-                            path;
-                    return false;
-                }
-                std::memcpy(addr_.sun_path, through.c_str(), through.size() + 1);
-                return true;
-            }
+        if (own.st_uid != me) {
+            error = refused + "it belongs to another user)";
+            return false;
         }
-#endif
-        error = "bus path too long for a Unix socket: " + path;
+        if (modeToo && (own.st_mode & (S_IWGRP | S_IWOTH))) {
+            error = refused + "others may write to it)";
+            return false;
+        }
+    }
+    // The folder above, also while the bus folder is still to be made: the
+    // broker does not make it inside a folder that fails here.
+    const std::string above = ParentDirectory(folder);
+    struct stat up{};
+    if (above.empty() || above == folder || ::lstat(above.c_str(), &up) != 0) return true;
+    if (up.st_uid != me && up.st_uid != 0) {
+        error = refused + "the folder above it, " + above + ", belongs to another user)";
         return false;
     }
-
-    const sockaddr* Get() const { return reinterpret_cast<const sockaddr*>(&addr_); }
-    socklen_t Size() const { return static_cast<socklen_t>(sizeof(addr_)); }
-
-private:
-    bool Fits(const std::string& path) const { return path.size() < sizeof(addr_.sun_path); }
-
-    sockaddr_un addr_{};
-    int folder_ = -1;   // the socket's folder, while its path is too long to name
-};
+    if (S_ISDIR(up.st_mode) && (up.st_mode & S_IWOTH) && !(up.st_mode & S_ISVTX)) {
+        error = refused + "everyone may write to the folder above it, " + above + ")";
+        return false;
+    }
+    return true;
+}
 
 } // namespace
 
@@ -282,10 +298,14 @@ void Listener::Close() {
 std::unique_ptr<Listener> Listener::Create(const std::string& busPath, std::string& error,
                                            bool& alreadyInUse) {
     alreadyInUse = false;
+    // Twice: a folder already there is looked at before its mode is set, and
+    // the one made or tightened here before the lock file is written into it.
+    if (!BusFolderIsPrivate(busPath, error, /*modeToo=*/false)) return nullptr;
     if (!EnsureParentDirectory(busPath)) {
         error = "cannot create the bus directory for " + busPath;
         return nullptr;
     }
+    if (!BusFolderIsPrivate(busPath, error)) return nullptr;
     std::unique_ptr<Listener> listener(new Listener());
     listener->path_ = busPath;
 
@@ -307,8 +327,8 @@ std::unique_ptr<Listener> Listener::Create(const std::string& busPath, std::stri
         return nullptr;
     }
 
-    SocketAddress address;
-    if (!address.Resolve(busPath, error)) {
+    UltraCanvas::UnixSocketAddress address;
+    if (!ResolveBusAddress(busPath, address, error)) {
         listener->path_.clear();
         return nullptr;
     }
@@ -369,9 +389,10 @@ ConnectionPtr Listener::Accept() {
 }
 
 ConnectionPtr ConnectToBus(const std::string& busPath, int timeoutMs, std::string& error) {
-    SocketAddress address;
+    if (!BusFolderIsPrivate(busPath, error)) return nullptr;
+    UltraCanvas::UnixSocketAddress address;
     bool folderMissing = false;
-    if (!address.Resolve(busPath, error, &folderMissing)) {
+    if (!ResolveBusAddress(busPath, address, error, &folderMissing)) {
         // As ENOENT from connect() below: nothing has made the bus yet.
         if (folderMissing) error = "no broker listens on " + busPath;
         return nullptr;

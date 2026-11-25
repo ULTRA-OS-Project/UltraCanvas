@@ -4,11 +4,14 @@
 // QEMU (KVM when usable), and control over the machine's QMP socket.
 // The guest desktop is never displayed; application windows arrive via
 // FreeRDP RemoteApp (Stage 2b) through the forwarded RDP port.
+// Version: 0.1.1 - a machine folder longer than a socket's address holds: QEMU and
+//                  virtiofsd are started in that folder and given their sockets by name
 // Version: 0.1.0 (Stage 2a)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWinInternal.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasUnixSocketAddress.h"
 #include "UltraWinQmp.h"
 
 #include <cstdlib>
@@ -527,6 +530,26 @@ UltraWinResult UltraWin_VmStart() {
     // home drive.
     const char* homeEnv = std::getenv("HOME");
     const std::string vfsSock = PathToUtf8(PathFromUtf8(vmDir) / "vfs.sock");
+    // QEMU and virtiofsd make these two sockets themselves, and a socket's
+    // address holds a path of 107 bytes. With a machine folder longer than
+    // that QEMU refused its control socket and never started, and virtiofsd
+    // its own, so the machine came up without the home share and said
+    // nothing. Both are then started IN the machine's folder and given the
+    // sockets by name alone, which they resolve against it; every other path
+    // they get is absolute. With a folder that fits, nothing changes.
+    const bool socketsByName =
+        !UltraCanvas::UnixSocketAddress::Fits(qmpSock) ||
+        !UltraCanvas::UnixSocketAddress::Fits(vfsSock);
+    const std::string qmpSockArg = socketsByName ? "qmp.sock" : qmpSock;
+    const std::string vfsSockArg = socketsByName ? "vfs.sock" : vfsSock;
+    // Started somewhere else, QEMU must not be left to resolve a path
+    // against the folder this program runs in.
+    const auto forQemu = [socketsByName](const std::string& path) {
+        if (!socketsByName || path.empty()) return path;
+        std::error_code absoluteEc;
+        const fs::path absolute = fs::absolute(PathFromUtf8(path), absoluteEc);
+        return absoluteEc ? path : PathToUtf8(absolute);
+    };
     std::string virtiofsd;
     if (cfg.vmShareHome && homeEnv && *homeEnv == '/')
         virtiofsd = FindVirtiofsdBinary();
@@ -545,7 +568,8 @@ UltraWinResult UltraWin_VmStart() {
                 dup2(log, STDOUT_FILENO);
                 dup2(log, STDERR_FILENO);
             }
-            std::string sockArg = "--socket-path=" + vfsSock;
+            if (socketsByName && chdir(vmDir.c_str()) != 0) _exit(126);
+            std::string sockArg = "--socket-path=" + vfsSockArg;
             execl(virtiofsd.c_str(), virtiofsd.c_str(), sockArg.c_str(),
                   "--shared-dir", homeEnv, "--sandbox", "none",
                   static_cast<char*>(nullptr));
@@ -574,12 +598,12 @@ UltraWinResult UltraWin_VmStart() {
         "-cpu", kvm ? "host" : "qemu64",
         "-smp", manifest.count("cpus") ? manifest["cpus"] : "4",
         "-m", memoryMb,
-        "-drive", "file=" + disk + ",if=virtio,format=qcow2",
+        "-drive", "file=" + forQemu(disk) + ",if=virtio,format=qcow2",
         "-netdev",
         "user,id=un0,hostfwd=tcp:127.0.0.1:" + std::to_string(rdpPort) +
             "-:3389",
         "-device", "virtio-net-pci,netdev=un0",
-        "-qmp", "unix:" + qmpSock + ",server,nowait",
+        "-qmp", "unix:" + qmpSockArg + ",server,nowait",
         "-display", "none",
     };
     if (shareActive) {
@@ -589,7 +613,7 @@ UltraWinResult UltraWin_VmStart() {
                      "memory-backend-memfd,id=uwmem,size=" + memoryMb +
                          "M,share=on",
                      "-numa", "node,memdev=uwmem",
-                     "-chardev", "socket,id=uwvfs,path=" + vfsSock,
+                     "-chardev", "socket,id=uwvfs,path=" + vfsSockArg,
                      "-device",
                      "vhost-user-fs-pci,queue-size=1024,chardev=uwvfs,"
                      "tag=ultrawin_home"});
@@ -599,17 +623,18 @@ UltraWinResult UltraWin_VmStart() {
     if (manifest["installed"] != "1" && !manifest["windows_iso"].empty()) {
         args.insert(args.end(),
                     {"-drive",
-                     "file=" + manifest["windows_iso"] +
+                     "file=" + forQemu(manifest["windows_iso"]) +
                          ",media=cdrom,readonly=on"});
         if (!manifest["drivers_iso"].empty())
             args.insert(args.end(),
                         {"-drive",
-                         "file=" + manifest["drivers_iso"] +
+                         "file=" + forQemu(manifest["drivers_iso"]) +
                              ",media=cdrom,readonly=on"});
         args.insert(
             args.end(),
             {"-drive",
-             "file=fat:rw:" + PathToUtf8(PathFromUtf8(vmDir) / "unattend") +
+             "file=fat:rw:" +
+                 forQemu(PathToUtf8(PathFromUtf8(vmDir) / "unattend")) +
                  ",format=raw,if=none,id=unattend",
              "-device", "usb-storage,drive=unattend", "-usb", "-boot",
              "once=d"});
@@ -629,6 +654,7 @@ UltraWinResult UltraWin_VmStart() {
             dup2(log, STDOUT_FILENO);
             dup2(log, STDERR_FILENO);
         }
+        if (socketsByName && chdir(vmDir.c_str()) != 0) _exit(126);
         std::vector<char*> argv;
         argv.push_back(const_cast<char*>(qemu.c_str()));
         for (const auto& a : args)

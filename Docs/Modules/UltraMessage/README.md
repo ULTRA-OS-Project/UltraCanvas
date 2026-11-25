@@ -207,10 +207,29 @@ that is set, on every platform: the framework's machine-local data root
 on Linux is moved into `UltraMessage` on the first broker start. Socket, lock
 file and directories are owner-only.
 
+**The bus folder must be this user's alone.** Whoever holds the folder the
+socket lies in decides which broker an application meets there. Without
+`$XDG_RUNTIME_DIR` the bus lies at `/tmp/ultramessage-<uid>/ultramessage/`, a
+name any account can work out and make first. So on Linux, macOS and the BSDs
+a broker hosts, and an endpoint joins, only where
+
+- the bus folder is a real folder (not a link), owned by this user, and
+  nobody else may write to it - the broker makes every folder it creates on
+  the way owner-only, and tightens one of this user's that is looser; and
+- the folder above it is this user's or the system's (root's), and not one
+  everyone may write to - unless it has the sticky bit, as `/tmp` does, where
+  an entry is its owner's alone to rename.
+
+Otherwise the connect fails with `the bus folder ... is not this user's alone
+(...)`, naming which of these it was, and nothing is written there. A program
+running as root is let through: it joins a user's bus on purpose (a tool
+started with `sudo`). A custom `busPath` follows the same rule.
+
 A Unix socket's address holds a path of 107 bytes on Linux and 103 on macOS
 and the BSDs. A bus path longer than that - a long `$XDG_RUNTIME_DIR`, a
 sandbox's, a test's private folder - is reached through its folder on Linux
-(the folder is opened and the socket named as `/proc/self/fd/<n>/bus.sock`),
+(the folder is opened and the socket named as `/proc/self/fd/<n>/bus.sock` -
+`UltraCanvasUnixSocketAddress.h`),
 so the bus stays where the path says and broker and endpoints need nothing
 set. On macOS and the BSDs such a path is refused, and the error says so
 (`bus path too long for a Unix socket: ...`): give a shorter `busPath` or
