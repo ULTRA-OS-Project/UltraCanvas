@@ -3495,7 +3495,7 @@ framework's `Tr` keys and the curated application vocabulary) and
 `media/locale/en/base/<Base>.json` (the sixteen base sets);
 `scripts/extract_ui_strings.py` rewrites them from the sources,
 `scripts/check_locale_catalogues.py` is the CI gate over every
-translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+translation (`source-checks.yml`, `scripts/locale_catalogues_baseline.txt`),
 and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
 `Tr` for review. `ultralocalisation-draft` (`Apps/UltraLocalisationDraft`,
 on UltraAI's translator) drafts a language's catalogue, driven per set by
@@ -3573,7 +3573,7 @@ Status: Phase 0 is implemented (`AGENTS.md`, `CLAUDE.md`, generated
 `llms.txt`/`llms-full.txt` + `scripts/generate_llms_txt.py`, `context7.json`).
 CI regenerates the two files on `main` after every docs change lands
 (`.github/workflows/llms-regenerate.yml`); pull requests never carry them, and
-`llms-txt.yml` refuses one that does. Phases 1 and 2 remain proposals.
+`source-checks.yml` refuses one that does. Phases 1 and 2 remain proposals.
 
 ---
 
@@ -4928,7 +4928,7 @@ GitHub alone**: Claude Code on the web, in the Claude app or in a cloud
 session, with the repository on GitHub, and no C++ toolchain on the machine in
 front of them. Every rule of the main guide still applies. What changes is
 *where things happen*: the assistant's container edits and commits, GitHub
-Actions compiles and tests on six platforms, and the built application comes
+Actions compiles and tests on up to six platforms, and the built application comes
 back as a download.
 
 The short version: **the pull request is your compiler.** Nothing is built,
@@ -4959,7 +4959,7 @@ reports.
 
 **Other assistants and hosts.** Any agent that reads `AGENTS.md` and can push
 to a branch fits the same workflow. GitLab, Bitbucket and the other hosts do
-not: the checks, the six-platform build and the version folding are GitHub
+not: the checks, the multi-platform build and the version folding are GitHub
 Actions workflows under `.github/workflows/`, so on another host there is no
 compiler until someone ports them.
 
@@ -4970,15 +4970,16 @@ is the only place the whole framework is compiled for everyone:
 
 | Leg | Platform | What it also does |
 |---|---|---|
-| ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64, shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
-| macos-15, macos-15-intel | Apple Silicon and Intel | builds the bundled libraries for macOS 14 (vcpkg, cached) and packages the app suite for macOS 14 and later; signs and notarises on `main` |
-| windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 | packages the standalone zip |
+| ubuntu-22.04, ubuntu-22.04-arm | Linux, x86_64 and arm64 (arm64 on main and with `ci:distro`), shared core | runs the unit tests, the multi-user database tests, installs the CMake package and builds `Tests/PackageConsumer` against it |
+| macos-15, macos-15-intel | Apple Silicon and Intel (Intel only with the `ci:intel` label, or a dispatch with `intel` set) | builds the bundled libraries for macOS 14 (vcpkg, cached) and packages the app suite for macOS 14 and later; signs and notarises on `main` |
+| windows-latest, windows-11-arm | MSYS2 CLANG64 and CLANGARM64 (ARM on release dispatches and with `ci:distro`) | packages the standalone zip and the installer (on ARM in release builds only) |
 | Android backend check | syntax check against the NDK | — |
 
-Seven check workflows run beside it on every PR: the changelog guard, the
-llms-txt sync, UI reuse, callback cycles, UTF-8 path strings, locale-decimal
-numbers and Win32 names. Each is the CI form of a `scripts/check_*.py` script
-the assistant can run in its container before pushing.
+The source checks run beside it on every PR, as the steps of one job
+(`source-checks.yml`): the changelog guard, the llms-txt sync, UI and HTML
+reuse, callback cycles, UTF-8 path strings, locale-decimal numbers, platform
+names and the rest. Each is the CI form of a `scripts/check_*.py` script the
+assistant can run in its container before pushing.
 
 Three facts about CI decide how a cloud-only developer works:
 
@@ -5038,7 +5039,8 @@ looking.
    prompt recipes in `GettingStarted.md` do.
 2. **The assistant edits, runs the check scripts, commits and pushes** to the
    PR branch. The `Stop` hook stops it from ending a turn with unpushed work.
-3. **CI builds and tests.** Six platforms, the checks, the package consumer.
+3. **CI builds and tests.** Three platforms (five or six with the `ci:distro` /
+   `ci:intel` labels), the checks, the package consumer.
    Ten to twenty-five minutes.
 4. **The assistant reads the result.** A red leg is its job: it reads the
    job log, reproduces what it can in the container, fixes and pushes. A
@@ -6187,7 +6189,12 @@ running a forty-minute build.
 
 CI produces it on every pull request and every push to `main`, one per
 platform leg, as a workflow artifact, and every release build of `main`
-attaches the same six archives to a GitHub release:
+attaches the same archives to a GitHub release. Linux x86_64 and arm64,
+Windows x86_64 and macOS arm64 are in every release; Windows arm64 in a
+release dispatched by the changelog fold (nearly all of them - not one made
+by a plain push to `main`); macOS x86_64 (Intel) only when a release is
+dispatched with the Build workflow's `intel` input, so most releases do not
+carry it:
 
 | Artifact | Contents |
 |---|---|
@@ -6202,7 +6209,7 @@ version in the name is the framework's, from the first line of
 `Docs/UltraCanvas/CHANGELOG.md`.
 
 **Where to get one.** Every release is on the UltraOS server, with a
-`SHA256SUMS` beside the six archives:
+`SHA256SUMS` beside the release's archives:
 
 ```
 https://start.ultraos.eu/pub/<version>/<archive>
@@ -31863,7 +31870,7 @@ Changing the header is changing that contract: append a member to
 `UltraCanvasPluginHost` and bump `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION`, or
 change a type that crosses to the plug-ins (`UCElementDescriptor` and friends)
 and bump the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG`, then run
-`python3 scripts/check_plugin_abi.py --update`. CI (`plugin-abi.yml`) fails
+`python3 scripts/check_plugin_abi.py --update`. CI (`source-checks.yml`) fails
 a change to the header that moves neither; a change that is not part of the
 contract is recorded with `--update --no-abi-change "why"`.
 
@@ -47857,7 +47864,7 @@ explicit UltraCanvasLabel(const std::string& identifier = "");
   Tr("About"))`, or `("", Tr("Select a repository"))` for a label that needs
   no name. Until 2.18.0 the one string was the text. A label built from
   text alone still compiles - and shows nothing:
-  `scripts/check_label_identifiers.py` (CI's `label-identifiers.yml`)
+  `scripts/check_label_identifiers.py` (CI's `source-checks.yml`)
   refuses a one-string label whose string is a `Tr` call or reads as words,
   and `debugOutput` names the ones it cannot read.
 - A width or height greater than 0 is a **set size**: the label keeps it, and
@@ -58289,7 +58296,7 @@ them after the program has quit, are still to be tried.
 Every application under `Apps/` that posts a notification registers its
 activator, or says why not (`// notification-activator-exempt: <why>`):
 `scripts/check_notification_activators.py`, run by CI
-(`notification-activators.yml`).
+(`source-checks.yml`).
 
 Tested in `Tests/UltraMessage/test_adapters.cpp` (the arguments, the CLSID, the
 toast XML carrying them) and UltraMail's `test_newmail.cpp` (its launch string).
@@ -106896,7 +106903,7 @@ vtable that no longer matches. Changing the interface or a type in
 `UltraIMTypes.h` therefore bumps the version (with a word on what changed
 in the comment above it), and `python3 scripts/check_plugin_abi.py
 --update` records the new fingerprint in `scripts/plugin_abi.txt`; CI
-(`plugin-abi.yml`) fails a change to those headers that leaves the version
+(`source-checks.yml`) fails a change to those headers that leaves the version
 as it was. A change that is not part of the contract - a free inline
 function, a constant, the text of a default body's message - is recorded
 with `--update --no-abi-change "why"`. Version 1 was the first modules;
@@ -107970,8 +107977,8 @@ with the values in its language.
 | Script | Does |
 |---|---|
 | `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
-| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; every language translates every entry of the English standard set (a regional variant counts its parent's); and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
-| `scripts/tests/test_extract_ui_strings.py` | the extractor's reading rules, held without a checkout: a literal's escapes (`\xHH` a byte of the UTF-8 text, `\uXXXX` a code point), comments stripped without a `"/*"` in a string swallowing the code after it, a call's literal arguments (continued literals joined, a variable stopping the list), the sites a file yields - `python3 -m unittest discover -s scripts/tests`, run by `locale-catalogues.yml` |
+| `scripts/check_locale_catalogues.py` | the CI gate (`source-checks.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; every language translates every entry of the English standard set (a regional variant counts its parent's); and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/tests/test_extract_ui_strings.py` | the extractor's reading rules, held without a checkout: a literal's escapes (`\xHH` a byte of the UTF-8 text, `\uXXXX` a code point), comments stripped without a `"/*"` in a string swallowing the code after it, a call's literal arguments (continued literals joined, a variable stopping the list), the sites a file yields - `python3 -m unittest discover -s scripts/tests`, run by `source-checks.yml` |
 | `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
 
 ## Drafting a language
