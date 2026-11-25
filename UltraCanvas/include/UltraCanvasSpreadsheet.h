@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.19.0 - every chart of the framework: ShowInsertChartDialog / ShowChartTypeDialog (the chart
+//                  gallery), InsertChartOfTypeFromSelection; the charts drawn by any chart element
 // Version: 1.18.0 - templates: LoadFromFile reads .ots, .xltx and .xltm, SaveToFile writes .ots and .xltx
 //                  with their template media types; IsSpreadsheetTemplateExtension
 // Version: 1.17.0 - a table to assistive technology (rows and cells as parts, the active cell focused and
@@ -54,6 +56,7 @@ namespace UltraCanvas {
 class UltraCanvasTextInput;
 class UltraCanvasMenu;
 class UltraCanvasChartEngineElement;
+class UltraCanvasUIElement;
 
 // Forward declarations
 class IRenderContext;
@@ -334,7 +337,7 @@ private:
     Rect2Di chartDragBox_;               // the chart's box in sheet pixels when the drag began
     std::vector<SpreadsheetChart> chartsBeforeDrag_;
     bool chartsDirty_ = true;
-    std::map<uint64_t, std::shared_ptr<UltraCanvasChartEngineElement>> chartCache_;
+    std::map<uint64_t, std::shared_ptr<UltraCanvasUIElement>> chartCache_;
     bool HandleChartEvent(const UCEvent& event);
     void RenderCharts(IRenderContext* ctx);
     Rect2Di ChartScreenRect(const SpreadsheetChart& chart) const;
@@ -730,6 +733,17 @@ public:
     // made from a block of cells - whether its series run along the rows.
     // OK is one undo step.
     void ShowChartPropertiesDialog(int index);
+    // A chart of type `type` (SpreadsheetChartTypes) over the selection: -1,
+    // and why in `problem` (in the reader's language), when the selection
+    // does not fit the type - "A bubble chart needs three columns of
+    // numbers ...".
+    int InsertChartOfTypeFromSelection(size_t type, std::string* problem = nullptr);
+    // The chart gallery (ShowSpreadsheetChartGallery) over the selection;
+    // the type picked is inserted, or a message says why it cannot be.
+    void ShowInsertChartDialog();
+    // The chart gallery for chart `index`, its own type chosen; the type
+    // picked becomes its type (one undo step).
+    void ShowChartTypeDialog(int index);
 
     // ===== UNDO/REDO =====
     void Undo();

@@ -37,10 +37,14 @@ The command tabs:
   alignment. *Insert*: table, picture, link, page break, footnote, contents.
   *View*: pages on or off, page width, whole page, zoom.
 - **Spreadsheets** - *Home*: cut, copy, paste, bold, italic, alignment,
-  wrap, number format, decimals. *Insert*: a chart of the selected cells
-  (columns, columns stacked, bars, bars stacked, line, area, area stacked,
-  pie, doughnut, scatter, radar), the selected chart's properties (type,
-  title, legend, series in rows) and deleting it. *Data*: sort, filter, fill
+  wrap, number format, decimals. *Insert*: *Chart* opens the chart gallery
+  over the selected cells - every chart of the framework, 52 types in nine
+  categories (column and bar, line and area, pie and circular, scatter and
+  bubble, statistical, financial, flow and hierarchy, matrix and maps,
+  other), each drawn from the selection, with what it shows and the
+  columns it reads; *Chart type* changes the selected chart's type in the
+  same gallery; the selected chart's properties (type, title, legend,
+  series in rows) and deleting it. *Data*: sort, filter, fill
   down and right, SUM, conditional formatting (value and formula rules,
   text, blanks, errors, top values, averages, duplicates, colour scales,
   data bars) and data validation (numbers, dates, times, text length, a list
@@ -54,7 +58,14 @@ The command tabs:
   drag moves it, its handles resize it, Delete removes it and a
   double-click opens its properties. It reads its cells again whenever they
   change, is saved in .xlsx and .ods, and prints where it stands
-  ([Charts](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts)).
+  ([Charts](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts)). The
+  gallery picks with a click or the arrow keys and Enter; a type the
+  selection does not fit shows a sample and says why ("A bubble chart needs
+  three columns of numbers: x, y and size."). A type Excel and LibreOffice
+  have no form for - a Sankey diagram, a Gantt chart, a funnel, a heatmap -
+  is saved as a column chart of its numbers, which they show, with the
+  real type beside it for UltraOffice to read back
+  ([Every chart type](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#every-chart-type)).
 
   A comment is marked by a red corner and shown while the pointer rests on
   the cell; a link is blue and underlined, and Ctrl+click opens it.

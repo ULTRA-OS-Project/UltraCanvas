@@ -1,7 +1,6 @@
 {
   "@language": "ro",
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
-  "A chart of the selected cells": "O diagramă a celulelor selectate",
   "A column left of this cell": "O coloană la stânga acestei celule",
   "A column right of this cell": "O coloană la dreapta acestei celule",
   "A copy of the selected shapes (Ctrl+D)": "O copie a formelor selectate (Ctrl+D)",
@@ -174,7 +173,6 @@
   "Save as template...": "Salvează ca șablon...",
   "Save as...": "Salvare ca...",
   "Save the changes to {0} before closing it?": "Salvați modificările din {0} înainte de închidere?",
-  "Select cells holding numbers to make a chart of them.": "Selectați celule cu numere pentru a face o diagramă din ele.",
   "Select the words the link should cover first.": "Selectați mai întâi cuvintele pe care trebuie să le cuprindă linkul.",
   "Send backward": "Trimitere înapoi",
   "Send to back": "Trimitere în spate",
@@ -244,5 +242,7 @@
     "one": "{n} formă selectată",
     "few": "{n} forme selectate",
     "other": "{n} de forme selectate"
-  }
+  },
+  "A chart of the selected cells: every chart type, by category, drawn from them": "O diagramă a celulelor selectate: fiecare tip de diagramă, pe categorii, desenat din ele",
+  "Change the selected chart's type in the chart gallery": "Schimbați tipul diagramei selectate în galeria de diagrame"
 }

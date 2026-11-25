@@ -1,7 +1,6 @@
 {
   "@language": "ja",
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
-  "A chart of the selected cells": "選択したセルのグラフ",
   "A column left of this cell": "このセルの左に列",
   "A column right of this cell": "このセルの右に列",
   "A copy of the selected shapes (Ctrl+D)": "選択した図形のコピー (Ctrl+D)",
@@ -174,7 +173,6 @@
   "Save as template...": "テンプレートとして保存…",
   "Save as...": "名前を付けて保存…",
   "Save the changes to {0} before closing it?": "閉じる前に {0} への変更を保存しますか?",
-  "Select cells holding numbers to make a chart of them.": "グラフにする数値の入ったセルを選択してください。",
   "Select the words the link should cover first.": "先にリンクにする語句を選択してください。",
   "Send backward": "背面へ移動",
   "Send to back": "最背面へ移動",
@@ -238,5 +236,7 @@
   },
   "{n} shape selected": {
     "other": "{n} 個の図形を選択中"
-  }
+  },
+  "A chart of the selected cells: every chart type, by category, drawn from them": "選択したセルのグラフ: そこから描いた分類別のすべてのグラフの種類",
+  "Change the selected chart's type in the chart gallery": "選択したグラフの種類をグラフギャラリーで変更"
 }

@@ -69,6 +69,7 @@ from an external "Show password" checkbox. See
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
 | Pick one of a list (a row can be drawn in a font of its own: a font list, `DropdownItem::fontFamily`) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
+| Pick one of many choices shown as live pictures in titled sections - a chart gallery, styles, templates: a click or the arrow keys pick a tile, Enter takes it; tall content scrolls in its container | `UltraCanvasGalleryPicker` | `UltraCanvasGalleryPicker.h` |
 | Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
 | Which point of a box stays put - a 3 x 3 grid of corners, edge midpoints and centre, for a transform bar's scale / rotate / move ([doc](UltraCanvasReferencePointPicker.md)) | `UltraCanvasReferencePointPicker` | `UltraCanvasReferencePointPicker.h` |

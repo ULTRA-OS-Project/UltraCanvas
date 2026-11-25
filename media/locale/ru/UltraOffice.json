@@ -1,7 +1,6 @@
 {
   "@language": "ru",
   "@translated-by": "machine draft 2026-11-25, reviewed by -",
-  "A chart of the selected cells": "Диаграмма по выделенным ячейкам",
   "A column left of this cell": "Столбец слева от этой ячейки",
   "A column right of this cell": "Столбец справа от этой ячейки",
   "A copy of the selected shapes (Ctrl+D)": "Копия выделенных фигур (Ctrl+D)",
@@ -174,7 +173,6 @@
   "Save as template...": "Сохранить как шаблон...",
   "Save as...": "Сохранить как...",
   "Save the changes to {0} before closing it?": "Сохранить изменения в {0} перед закрытием?",
-  "Select cells holding numbers to make a chart of them.": "Выделите ячейки с числами, чтобы построить по ним диаграмму.",
   "Select the words the link should cover first.": "Сначала выделите слова, которые должна охватывать ссылка.",
   "Send backward": "Переместить назад",
   "Send to back": "На задний план",
@@ -244,5 +242,7 @@
     "one": "{n} фигура выделена",
     "few": "{n} фигуры выделены",
     "many": "{n} фигур выделено"
-  }
+  },
+  "A chart of the selected cells: every chart type, by category, drawn from them": "Диаграмма выделенных ячеек: все типы диаграмм по категориям, построенные по ним",
+  "Change the selected chart's type in the chart gallery": "Изменить тип выделенной диаграммы в галерее диаграмм"
 }
