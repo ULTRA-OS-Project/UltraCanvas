@@ -915,6 +915,11 @@ private:
     // or tile. Not on the Favorites view's own pages, where every entry is
     // one. RepaintFavoriteMarks() redraws the displays after a pin changes.
     void WireFavoriteMarkProvider(UltraCanvasFilerWidget* target);
+    // Settings > Display > Favorite folders on one display (the highlight,
+    // its colour for the theme shown, the heart), and on every display that
+    // marks favorites - after a settings change and a theme change.
+    void ApplyFavoriteHighlight(UltraCanvasFilerWidget* target);
+    void ApplyFavoriteHighlightEverywhere();
     void RepaintFavoriteMarks();
     // Extras > Set folder icon: opens the image file dialog and gives the
     // chosen picture — converted to QOI — to the selected folders (or, with

@@ -1,7 +1,7 @@
 # Tests/FilerTests.cmake
 # FilerFolderPreviewTest, FilerTextPreviewTest, FilerNameEncodingTest,
 # FilerRetireTest,
-# FilerHostIconsTest, FilerShortcutEntryTest, FilerHistoryTest,
+# FilerHostIconsTest, FilerShortcutEntryTest, FilerHistoryTest, FilerFavoriteHighlightTest,
 # FilerPaneDragTest, FilerRescanKeepsThumbnailsTest, FileRemovalTest, ElevatedFileOperationsTest and
 # FilerVanishedFolderTest. Included by
 # Tests/CMakeLists.txt under BUILD_TESTS, and by the top-level CMakeLists.txt
@@ -194,6 +194,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerFileNameLinesTest")
 else()
     message(STATUS "  FilerFileNameLinesTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILER FAVORITE HIGHLIGHT TEST =====
+# Display > Favorite folders: the file display's SetFavoriteHighlight /
+# SetFavoriteHeartShown, and UltraFiler's saved look, colour and heart read
+# back from a temporary config folder, with the colour the highlight is drawn
+# in (Apps/UltraFiler/UltraFilerSettings.h, header-only). Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFavoriteHighlightTest...")
+    add_executable(FilerFavoriteHighlightTest
+        ${_FT_DIR}/FilerFavoriteHighlightTest.cpp
+    )
+    target_include_directories(FilerFavoriteHighlightTest PRIVATE ${_FT_INCLUDE_DIR}
+        ${_FT_DIR}/../Apps/UltraFiler)
+    target_compile_features(FilerFavoriteHighlightTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFavoriteHighlightTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFavoriteHighlightTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerFavoriteHighlightTest COMMAND FilerFavoriteHighlightTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerFavoriteHighlightTest")
+else()
+    message(STATUS "  FilerFavoriteHighlightTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== FILER SHORTCUT ENTRY TEST =====
