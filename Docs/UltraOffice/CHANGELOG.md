@@ -1,3 +1,31 @@
+#### 2026-11-25 *0.2.0*
+- **Spreadsheet charts.** Charts of the selection stand over the cells and
+  follow them as they change. They are moved and resized with handles and
+  deleted with Delete; a double-click changes their type, title and legend;
+  every change can be undone. They are kept in .xlsx and .ods, and printed.
+  A new *Insert* command tab holds Chart, Chart type, Chart properties and
+  Delete chart.
+- **Every chart of the framework, in a chart gallery.** *Chart* opens a
+  gallery of 52 types in nine categories - columns and bars, lines and
+  areas, pies, radar and polar charts, scatter and bubbles, waterfall,
+  histogram, box and whisker, stock, funnel, Sankey, chord, treemap,
+  sunburst, Gantt, timeline, heatmaps, contour and surface, word cloud,
+  parliament and more - each tile drawn from the selection, with what the
+  type shows and the columns it reads; a type the selection does not fit
+  shows a sample and says why. A click or the arrow keys pick one, Enter
+  takes it; *Chart type* and the properties dialog change a chart's type
+  through the same gallery. A type Excel and LibreOffice have no form for
+  is saved as a column chart of its numbers, which they show, with the
+  real type beside it for UltraOffice to read back.
+- **Conditional formatting and data validation** (*Data*): rules over the
+  selection in the grid's own dialogs, colour scales and data bars, drawn
+  on screen, on paper and in the PDF; every rule change can be undone.
+- **Comments and links** (*Review*, a new command tab): a comment is marked
+  by a red corner and shown on hover; Ctrl+click opens a link.
+- Conditional formats, validation, comments and links are kept in .xlsx and
+  .ods.
+- Opening a spreadsheet from the command line no longer crashes.
+
 #### 2026-11-25 *0.1.0*
 - **UltraOffice: documents, spreadsheets and presentations in one window.**
   Every open file is a tab, marked with its kind's icon; the Start tab
@@ -10,11 +38,8 @@
     page break, footnote, contents), View (pages, page width, whole page,
     zoom);
   - spreadsheets: Home (clipboard, bold, italic, alignment, wrap, number
-    format, decimals), Insert (chart gallery, chart type, chart properties,
-    delete chart), Data
-    (sort, filter, fill, SUM, conditional formatting, data validation),
-    Review (comments, links), Page (print area, landscape, fit to width,
-    gridlines, headings), View (freeze panes);
+    format, decimals), Data (sort, filter, fill, SUM), Page (print area,
+    landscape, fit to width, gridlines, headings), View (freeze panes);
   - presentations: Home (new slide, layouts, duplicate, delete, hide,
     present), Insert (text box, shape, picture), Text (formatting), Table,
     Arrange (order, duplicate, delete), Slide show;
@@ -22,26 +47,9 @@
   .docx read and written, .doc, Markdown and LaTeX read. Export as PDF and
   Print.
 - **Spreadsheets**: .ods and .xlsx read and written, .xls read, .csv and
-  .tsv; the status line adds up the selection. Charts of the selection,
-  picked in the chart gallery - every chart of the framework, 52 types in
-  nine categories, each tile drawn from the selection (columns and bars,
-  lines and areas, pies, radar and polar charts, scatter and bubbles,
-  waterfall, histogram, box and whisker, stock, funnel, Sankey, chord,
-  treemap, sunburst, Gantt, timeline, heatmaps, contour and surface, word
-  cloud, parliament and more), a type the selection does not fit saying
-  why - stand over the cells, follow them as they change, are moved and
-  resized with handles, deleted with Delete, their type (through the same
-  gallery), title and legend changed by a double-click, every change
-  undone; they are kept in .xlsx and .ods - a type those have no form for
-  as a column chart other programs show, with the real type beside it for
-  UltraOffice - and printed. Export as PDF and Print, by
+  .tsv; the status line adds up the selection. Export as PDF and Print, by
   the sheet's print settings. Copy and paste reach other programs: cells go
   out as text and a table, and another program's table or text comes in.
-  Conditional formatting and data validation (*Data*), comments and links
-  (*Review*, a new command tab) in the grid's own dialogs: rules over the
-  selection, colour scales and data bars drawn on screen, on paper and in
-  the PDF; a comment marked by a red corner and shown on hover; Ctrl+click
-  opens a link. All of it kept in .xlsx and .ods.
 - **Presentations** (.pptx, .odp and their kin) are edited in the slide
   editor: the slide strip, new slides from the deck's layouts, duplicate,
   move, hide and delete; text boxes, drawn shapes and pictures; shapes
