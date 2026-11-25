@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.7.0 - SetArrayFormula: a legacy (Ctrl+Shift+Enter) array formula over a range
 // Version: 1.6.0 - conditional formats drawn: GetConditionalFormatting (styles, colour scales, data
 //                  bars, formula rules), SetConditionalFormats; validation: Custom (formula) rules and
 //                  lists taken from cells (GetValidationListItems), GetValidations
@@ -320,7 +321,11 @@ public:
     void SetCellValue(int row, int col, double number);
     void SetCellValue(int row, int col, bool boolean);
     void SetCellFormula(int row, int col, const std::string& formula);
-    
+    // A legacy array formula (what Ctrl+Shift+Enter enters in Excel) over
+    // `range`: its top-left cell holds the formula, the other cells - their
+    // content replaced - its values (FormulaArrayMode::FixedRange).
+    void SetArrayFormula(const CellRange& range, const std::string& formula);
+
     std::string GetCellText(int row, int col) const;
     double GetCellNumber(int row, int col) const;
     std::string GetCellDisplayValue(int row, int col) const;
@@ -801,6 +806,23 @@ inline void SpreadsheetSheet::SetCellValue(int row, int col, bool boolean) {
 inline void SpreadsheetSheet::SetCellFormula(int row, int col, const std::string& formula) {
     GetOrCreateCell(row, col).SetFormula(formula);
     NotifyCellChange(row, col);
+}
+
+inline void SpreadsheetSheet::SetArrayFormula(const CellRange& range, const std::string& formula) {
+    if (!range.IsValid()) return;
+    for (int row = range.start.row; row <= range.end.row; ++row) {
+        for (int col = range.start.col; col <= range.end.col; ++col) {
+            if (row == range.start.row && col == range.start.col) continue;
+            if (SpreadsheetCell* cell = GetCellIfExists(row, col)) {
+                cell->ClearContents();
+                cell->MarkSpilledFrom(row - range.start.row, col - range.start.col);
+            }
+        }
+    }
+    SpreadsheetCell& anchor = GetOrCreateCell(range.start.row, range.start.col);
+    anchor.SetFormula(formula);
+    anchor.SetFormulaArrayMode(FormulaArrayMode::FixedRange, range.RowCount(), range.ColCount());
+    NotifyRangeChange(range);
 }
 
 inline std::string SpreadsheetSheet::GetCellText(int row, int col) const {

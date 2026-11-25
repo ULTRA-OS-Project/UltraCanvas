@@ -1,6 +1,10 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.6.0 - .ods array formulas: table:number-matrix-*-spanned read (a fixed array) and written
+//                  (a fixed array or a spill as it stands), A1# written as its block, inline arrays,
+//                  COM.MICROSOFT. function names; a plain formula is read as one value; numbers in
+//                  formulas are written to read back exactly
 // Version: 1.5.0 - .ods keeps conditional formats (calcext:conditional-formats, their cell styles in
 //                  styles.xml), validations (table:content-validations), comments (office:annotation)
 //                  and links (text:a); a cell with only a note or a validation is written
@@ -1611,8 +1615,26 @@ private:
         int colIndex = 0;
         ParseColumns(tableElem, sheet, colIndex, false);
         int rowIndex = 0;
+        matrixAnchors_.clear();
         ParseRows(tableElem, sheet, rowIndex, false);
+        // The values an array formula covers arrive as plain cells: they are
+        // its values, not cells of their own.
+        for (const CellAddress& at : matrixAnchors_) {
+            const SpreadsheetCell* anchor = sheet->GetCellIfExists(at.row, at.col);
+            if (!anchor) continue;
+            for (int r = 0; r < anchor->GetArrayRows(); ++r) {
+                for (int c = 0; c < anchor->GetArrayCols(); ++c) {
+                    if (r == 0 && c == 0) continue;
+                    if (SpreadsheetCell* cell = sheet->GetCellIfExists(at.row + r, at.col + c)) {
+                        if (!cell->HasFormula()) cell->MarkSpilledFrom(r, c);
+                    }
+                }
+            }
+        }
     }
+
+    // The array formulas (table:number-matrix-*-spanned) of the sheet being read.
+    std::vector<CellAddress> matrixAnchors_;
 
     void ParseColumns(tinyxml2::XMLElement* parent, SpreadsheetSheet* sheet, int& colIndex,
                       bool headerColumns) {
@@ -1813,6 +1835,18 @@ private:
             // A1 / A1:B2 / 'Sheet'.A1 form.
             formula = OdsFormulaToNative(formula);
             cell->SetFormula(formula);
+            // An array formula fills the block it spans (ODF has no dynamic
+            // spill); any other formula is worth one value, a range in it
+            // giving the cell on its row or column, as LibreOffice reads it.
+            const int matrixCols = GetAttrInt(cellElem, "table:number-matrix-columns-spanned", 0);
+            const int matrixRows = GetAttrInt(cellElem, "table:number-matrix-rows-spanned", 0);
+            if (matrixCols > 0 || matrixRows > 0) {
+                cell->SetFormulaArrayMode(FormulaArrayMode::FixedRange, std::max(1, matrixRows),
+                                          std::max(1, matrixCols));
+                matrixAnchors_.push_back(CellAddress(row, col));
+            } else {
+                cell->SetFormulaArrayMode(FormulaArrayMode::SingleValue);
+            }
         }
 
         // Parse value based on type. Formula cells store the cached value via
@@ -2661,8 +2695,14 @@ private:
         // prefix). When the parsed AST is available we emit precise reference
         // brackets; otherwise fall back to the stored text.
         if (cell->HasFormula()) {
-            std::string odf = FormulaToODS(cell);
+            std::string odf = FormulaToODS(cell, sheet);
             ss << " table:formula=\"of:" << EscapeXml(odf) << "\"";
+            // An array formula - a fixed one, or a dynamic one as it spills
+            // now (ODF has no dynamic spill) - spans its block.
+            if (cell->CoversArray()) {
+                ss << " table:number-matrix-columns-spanned=\"" << cell->GetArrayCols() << "\""
+                   << " table:number-matrix-rows-spanned=\"" << cell->GetArrayRows() << "\"";
+            }
         }
         
         // Value type and value
@@ -3084,59 +3124,95 @@ private:
                endSheet + "." + BareCell(range.end) + "]";
     }
 
-    static std::string EmitODS(const FormulaNode* node) {
+    // `sheet` is the formula's own: an A1# on it is written as the block A1
+    // spills now, since ODF has no spill reference.
+    static std::string EmitODS(const FormulaNode* node, const SpreadsheetSheet* sheet = nullptr) {
         if (!node) return "";
         switch (node->nodeType) {
             case FormulaNodeType::Literal: {
                 const FormulaValue& v = node->literalValue;
+                if (v.IsEmpty()) return "";   // an argument left out
                 if (v.IsText()) return "\"" + v.GetText() + "\"";
                 if (v.IsBoolean()) return v.GetBoolean() ? "TRUE()" : "FALSE()";
                 if (v.IsError()) return CellErrorToString(v.GetError());
                 // An ODS formula uses the comma (or semicolon) as its
                 // argument separator, so a comma decimal point would split one
                 // literal into two arguments. The document's numbers are
-                // dot-decimal whatever the writer's locale is.
-                std::ostringstream os;
-                os.imbue(std::locale::classic());
-                os << v.GetNumber();
-                return os.str();
+                // dot-decimal whatever the writer's locale is, and keep
+                // every digit.
+                return FormatFloatRoundTrip(v.GetNumber());
             }
             case FormulaNodeType::CellRef:
                 return ODSCellRef(node->cellRef);
             case FormulaNodeType::RangeRef:
                 return ODSRangeRef(node->rangeRef);
+            case FormulaNodeType::SpillRef: {
+                const SpreadsheetSheet* on = sheet;
+                if (!node->cellRef.sheetName.empty() && sheet && sheet->GetParent()) {
+                    on = sheet->GetParent()->GetSheetByName(node->cellRef.sheetName);
+                }
+                const SpreadsheetCell* anchor = on ? on->GetCellIfExists(node->cellRef.row, node->cellRef.col) : nullptr;
+                if (!anchor || !anchor->CoversArray()) return ODSCellRef(node->cellRef);
+                CellRange range(node->cellRef.row, node->cellRef.col,
+                                node->cellRef.row + anchor->GetArrayRows() - 1,
+                                node->cellRef.col + anchor->GetArrayCols() - 1);
+                range.start.sheetName = range.end.sheetName = node->cellRef.sheetName;
+                range.start.rowRef = node->cellRef.rowRef;
+                range.start.colRef = node->cellRef.colRef;
+                return ODSRangeRef(range);
+            }
+            case FormulaNodeType::Array: {
+                // ODF's inline array: ';' between columns, '|' between rows.
+                std::string out = "{";
+                for (size_t i = 0; i < node->children.size(); ++i) {
+                    if (i) out += node->arrayCols > 0 && i % static_cast<size_t>(node->arrayCols) == 0 ? "|" : ";";
+                    out += EmitODS(node->children[i].get(), sheet);
+                }
+                return out + "}";
+            }
             case FormulaNodeType::NamedRef:
                 return node->namedRef;
             case FormulaNodeType::BinaryOp:
                 if (node->children.size() == 2) {
-                    return "(" + EmitODS(node->children[0].get()) + node->op +
-                           EmitODS(node->children[1].get()) + ")";
+                    return "(" + EmitODS(node->children[0].get(), sheet) + node->op +
+                           EmitODS(node->children[1].get(), sheet) + ")";
                 }
                 return "";
             case FormulaNodeType::UnaryOp:
                 if (node->children.size() == 1) {
-                    if (node->op == "%") return "(" + EmitODS(node->children[0].get()) + "%)";
-                    return "(" + node->op + EmitODS(node->children[0].get()) + ")";
+                    if (node->op == "%") return "(" + EmitODS(node->children[0].get(), sheet) + "%)";
+                    // LibreOffice intersects where one value is expected anyway.
+                    if (node->op == "@") return EmitODS(node->children[0].get(), sheet);
+                    return "(" + node->op + EmitODS(node->children[0].get(), sheet) + ")";
                 }
                 return "";
             case FormulaNodeType::FunctionCall: {
-                std::string out = node->functionName + "(";
+                std::string out = NativeFunctionToOds(node->functionName) + "(";
                 for (size_t i = 0; i < node->children.size(); ++i) {
                     if (i) out += ";";  // ODF uses ';' as the argument separator
-                    out += EmitODS(node->children[i].get());
+                    out += EmitODS(node->children[i].get(), sheet);
                 }
                 out += ")";
                 return out;
+            }
+            case FormulaNodeType::Invoke: {
+                if (node->children.empty()) return "";
+                std::string out = EmitODS(node->children[0].get(), sheet) + "(";
+                for (size_t i = 1; i < node->children.size(); ++i) {
+                    if (i > 1) out += ";";
+                    out += EmitODS(node->children[i].get(), sheet);
+                }
+                return out + ")";
             }
             default:
                 return "";
         }
     }
 
-    static std::string FormulaToODS(const SpreadsheetCell* cell) {
+    static std::string FormulaToODS(const SpreadsheetCell* cell, const SpreadsheetSheet* sheet = nullptr) {
         auto formula = cell->GetFormula();
         if (formula && formula->GetAST()) {
-            return "=" + EmitODS(formula->GetAST());
+            return "=" + EmitODS(formula->GetAST(), sheet);
         }
         // Fall back to the stored text when no parsed AST is available.
         return cell->GetFormulaText();

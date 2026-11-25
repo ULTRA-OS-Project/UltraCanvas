@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.12.0 - Ctrl+Shift+Enter enters a formula as a legacy array formula over the selection
 // Version: 1.11.0 - conditional formats, comments (a red corner) and links (blue, underlined) drawn by PaintCell;
 //                   a comment or link shown while the pointer rests on its cell; Ctrl+click opens a link
 // Version: 1.10.0 - charts drawn over the cells and taking the pointer first (UltraCanvasSpreadsheetChart.cpp)
@@ -2264,6 +2265,22 @@ void UltraCanvasSpreadsheet::BuildCellEditor(const std::string& initialText,
         Invalidate();
     };
     cellEditor->onEnterPressed = [this](const std::string&) {
+        // Ctrl+Shift+Enter on a formula: a legacy array formula over the
+        // selection (or the cell alone), as in Excel.
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (app && app->IsCtrlHeld() && app->IsShiftHeld() && !editBuffer_.empty() && editBuffer_[0] == '=') {
+            const std::string formula = editBuffer_;
+            const CellAddress at = editingCell_;
+            CellRange range = GetSelection();
+            if (!range.Contains(at.row, at.col)) range = CellRange(at.row, at.col, at.row, at.col);
+            StopEditing(false);
+            if (auto* sheet = GetActiveSheet()) {
+                if (recordingUndo_) RecordRangeChange(range);
+                sheet->SetArrayFormula(range, formula);
+                Recalculate();
+            }
+            return true;
+        }
         StopEditing(true);
         if (!IsEditing()) MoveActiveCell(1, 0);   // Retry edits a refused entry again
         return true;
