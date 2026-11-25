@@ -32,6 +32,7 @@
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasHardwareInfo.h"
+#include "UltraCanvasHostedApps.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
@@ -755,6 +756,10 @@ std::string UltraCanvasDesktopShell::FindProgram(const std::string& program) {
 bool UltraCanvasDesktopShell::LaunchProgram(const std::string& program,
                                             const std::vector<std::string>& arguments,
                                             std::string* error) {
+    // An application this program carries (MobilePC's UltraFiler) is started
+    // here, with the program's arguments: there is no executable to find.
+    const std::string hosted = UltraCanvasHostedApps::IdForProgram(program);
+    if (!hosted.empty()) return UltraCanvasHostedApps::Launch(hosted, arguments, error);
     const std::string path = FindProgram(program);
     if (path.empty()) {
         if (error) *error = "\"" + program + "\" is not installed next to this application or on the PATH.";

@@ -51,6 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.61.0 - openMenuProvider: the host's entries after "Open with"
 // Version: 1.60.0 - a favorite can stand out by a solid fill, a border or a shade in a colour of the
 //                  host's (SetFavoriteHighlight), and the heart can be switched off
 // Version: 1.59.1 - a rescan of the folder shown keeps the previews of unchanged files: deleting one
@@ -196,7 +197,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -17406,6 +17407,11 @@ namespace UltraCanvas {
                 openWith.onClick = [this]() { OpenSelectionWithDefaultApp(); };
             }
             menu.AddItem(openWith);
+        }
+        // The host's own ways to open these (openMenuProvider), beside the
+        // system's.
+        if (hasSel && openMenuProvider) {
+            for (const MenuItemData& item : openMenuProvider(targets)) menu.AddItem(item);
         }
         // A program inside an archive: the one way to start it. Only shown
         // where it applies - greyed out on every other entry, it would be

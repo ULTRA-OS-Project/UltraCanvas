@@ -6,8 +6,10 @@ title bar (§5.1, Cairo compositor), the Android desktop mode with the
 presentation-display output, the phone's-screen output and the captured
 pointer (§5.2), the hosted-application registry and the desktop shell's
 embedded host (§5.3 in part, §5.4), and `Apps/MobilePC` with UltraDesktop,
-Texter, UltraViewer, UltraPaint and ArtCreator, with a CI job that builds the APK
-and runs it on an emulator with a simulated second display. Not yet: UltraFiler, per-app
+UltraFiler, Texter, UltraViewer, UltraPaint and ArtCreator, with a CI job that builds the APK
+and runs it on an emulator with a simulated second display. UltraFiler browses the
+shared storage with *All files access* (§7.4 in part). Not yet: UltraFiler's
+volumes, trash and *Open with* of §7.4, per-app
 identity beyond the catalogues, the GLES compositor, popup layers, the
 foreground service, wireless streaming (§4 mode 2). See
 [`Docs/MobilePC/README.md`](../MobilePC/README.md).
@@ -379,6 +381,12 @@ manager. SAF stays available as *Import from another app…* in the file
 dialog, for cloud-provider documents.
 
 ### 7.4 UltraFiler specifics
+
+*Done in part:* UltraFiler runs unchanged, opening the shared storage
+(`/storage/emulated/0`), with *All files access* asked for at its first start
+(`AndroidPermissions::RequestAllFilesAccess`); programs it starts by name
+(UltraViewer) and the desktop's buttons that start it reach the hosted
+applications (`HostedAppInfo::programs`). The rest below is still to do.
 
 The largest port (13 files with platform code): volumes from `StorageManager`;
 a trash folder of its own (Android has no system trash for arbitrary files);

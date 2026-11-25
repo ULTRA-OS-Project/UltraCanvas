@@ -2,13 +2,18 @@
   "@language": "en",
   "Apps": "Apps",
   "Connect a TV or monitor": "Connect a TV or monitor",
+  "Files and folders": "Files and folders",
   "Keyboard": "Keyboard",
   "Left click": "Left click",
   "Move one finger to move the pointer. Tap to click, tap with two fingers for the right button, move two fingers to scroll.": "Move one finger to move the pointer. Tap to click, tap with two fingers for the right button, move two fingers to scroll.",
   "Paint and edit pictures": "Paint and edit pictures",
   "Pictures, videos, music and documents": "Pictures, videos, music and documents",
   "Right click": "Right click",
+  "Switch on the access for MobilePC on the phone's screen and come back. UltraFiler then shows the files: open the folder again or use Refresh.": "Switch on the access for MobilePC on the phone's screen and come back. UltraFiler then shows the files: open the folder again or use Refresh.",
   "The desktop is on the TV or monitor": "The desktop is on the TV or monitor",
+  "The phone's files": "The phone's files",
+  "This phone offers no way to allow it.": "This phone offers no way to allow it.",
+  "UltraFiler can show all of the phone's files - pictures, downloads, documents - once MobilePC may read and change them. Allow it on the phone's screen now?": "UltraFiler can show all of the phone's files - pictures, downloads, documents - once MobilePC may read and change them. Allow it on the phone's screen now?",
   "Vector drawings and illustrations": "Vector drawings and illustrations",
   "Write and edit texts and code": "Write and edit texts and code"
 }

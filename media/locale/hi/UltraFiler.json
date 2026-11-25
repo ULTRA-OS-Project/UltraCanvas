@@ -392,6 +392,8 @@
   "UltraFiler - Settings": "UltraFiler - सेटिंग्स",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler सरल - बनाए गए फ़ोल्डर और शीट आइकन",
   "UltraViewer could not be started: {0}": "UltraViewer शुरू नहीं किया जा सका: {0}",
+  "Edit in {0}": "{0} में संपादित करें",
+  "{0} could not be started: {1}": "{0} शुरू नहीं किया जा सका: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer चित्र, ऑडियो फ़ाइल या वीडियो को पूरे आकार में दिखाता है, और उसके फ़ोल्डर की बाकी फ़ाइलें बस एक कुंजी दबाने की दूरी पर होती हैं। जब UltraViewer इंस्टॉल न हो, या यह बंद हो, तो ऐसी फ़ाइल को किसी अन्य फ़ाइल की तरह, उसके नीचे के विकल्प के अनुसार संभाला जाता है।",
   "Upload: the name is already taken": "अपलोड करें: नाम पहले से लिया हुआ है",
   "Uploaded: {0}": "अपलोड की जा रही: {0}",

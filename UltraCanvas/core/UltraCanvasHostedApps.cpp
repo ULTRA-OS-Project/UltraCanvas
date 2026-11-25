@@ -1,5 +1,6 @@
 // core/UltraCanvasHostedApps.cpp
 // The registry of applications that run inside their host program.
+// Version: 1.1.0 - IdForProgram
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
@@ -7,6 +8,7 @@
 #include "UltraCanvasHostedApps.h"
 
 #include <algorithm>
+#include <cctype>
 #include <mutex>
 
 namespace UltraCanvas {
@@ -26,6 +28,14 @@ namespace UltraCanvasHostedApps {
         std::string& Current() {
             static std::string id;
             return id;
+        }
+        // "/x/UltraFiler.exe", "UltraFiler" -> "ultrafiler".
+        std::string ProgramKey(const std::string& program) {
+            const size_t slash = program.find_last_of("/\\");
+            std::string name = slash == std::string::npos ? program : program.substr(slash + 1);
+            for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (name.size() > 4 && name.compare(name.size() - 4, 4, ".exe") == 0) name.resize(name.size() - 4);
+            return name;
         }
     }
 
@@ -87,6 +97,18 @@ namespace UltraCanvasHostedApps {
 
     std::string PathFor(const std::string& id) {
         return std::string(kPrefix) + id;
+    }
+
+    std::string IdForProgram(const std::string& program) {
+        const std::string key = ProgramKey(program);
+        if (key.empty()) return std::string();
+        std::lock_guard<std::mutex> lock(Mutex());
+        for (const auto& a : Apps()) {
+            for (const std::string& p : a.programs) {
+                if (ProgramKey(p) == key) return a.id;
+            }
+        }
+        return std::string();
     }
 
     std::string IdFromPath(const std::string& path) {

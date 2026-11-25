@@ -392,6 +392,8 @@
   "UltraFiler - Settings": "UltraFiler - Configuració",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler senzill - les icones dibuixades de carpeta i full",
   "UltraViewer could not be started: {0}": "No s'ha pogut iniciar UltraViewer: {0}",
+  "Edit in {0}": "Edita amb {0}",
+  "{0} could not be started: {1}": "No s'ha pogut iniciar {0}: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer mostra la imatge, el fitxer d'àudio o el vídeo a mida completa, amb la resta de la seva carpeta a una tecla de distància. Quan UltraViewer no està instal·lat, o aquesta opció està desactivada, aquest fitxer es tracta com qualsevol altre, segons l'opció de sota.",
   "Upload: the name is already taken": "Pujada: el nom ja està en ús",
   "Uploaded: {0}": "Pujat: {0}",

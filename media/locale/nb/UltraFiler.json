@@ -392,6 +392,8 @@
   "UltraFiler - Settings": "UltraFiler – Innstillinger",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler enkel – de tegnede mappe- og arkikonene",
   "UltraViewer could not be started: {0}": "Kunne ikke starte UltraViewer: {0}",
+  "Edit in {0}": "Rediger i {0}",
+  "{0} could not be started: {1}": "Kunne ikke starte {0}: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer viser bildet, lydfilen eller videoen i full størrelse, med resten av mappen et tastetrykk unna. Når UltraViewer ikke er installert, eller dette er slått av, håndteres en slik fil som alle andre, etter valget under.",
   "Upload: the name is already taken": "Last opp: navnet er allerede i bruk",
   "Uploaded: {0}": "Lastet opp: {0}",

@@ -1274,6 +1274,29 @@ else()
     message(STATUS "  EmbeddedWindowManagerTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== HOSTED APPS TEST =====
+# Applications hosted inside their program (UltraCanvasHostedApps): the
+# registry, the shortcut paths, and LaunchProgram starting the application that
+# stands in for a program's name (MobilePC's UltraFiler) with its arguments.
+# Needs no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building HostedAppsTest...")
+    add_executable(HostedAppsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/HostedAppsTest.cpp
+    )
+    target_include_directories(HostedAppsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(HostedAppsTest PRIVATE cxx_std_20)
+    target_link_libraries(HostedAppsTest PRIVATE UltraCanvas)
+    set_target_properties(HostedAppsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HostedAppsTest COMMAND HostedAppsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: HostedAppsTest")
+else()
+    message(STATUS "  HostedAppsTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== ULTRADESKTOP APP CATEGORIES TEST =====
 # Where UltraDesktop's Apps window puts an application: freedesktop
 # Categories=, Windows shortcuts by name and folder (English and German), the

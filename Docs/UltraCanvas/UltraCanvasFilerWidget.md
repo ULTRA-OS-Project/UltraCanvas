@@ -472,6 +472,9 @@ Open with      >  clicking the entry opens the selection with the OS default
                   registers for the selected files (default app first), then
                   entries added via AddOpenWithApp(), then "Other
                   application…" (file dialog)
+(host entries)    what openMenuProvider returns for the selection — in the
+                  UltraFiler: "Edit in UltraPaint" on pictures, "Edit in
+                  ArtCreator" on drawings
 Extract and Run   (only on a program inside an archive — see below)
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
@@ -3424,6 +3427,7 @@ reports what the system hides, not what the host asked for.
 | `SetFavoriteMarkProvider(fn(entry) -> bool)` | Per entry while it is drawn — `true` draws the red favorite heart at the entry's left (see [Favorite mark](#favorite-mark)) |
 | `SetFavoriteHighlight(look, colour)` / `SetFavoriteHeartShown(bool)` | How a favorite stands out besides the heart - background, border or shade - and whether the heart is drawn (see [Favorite highlight](#favorite-highlight)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
+| `openMenuProvider(targets) -> vector<MenuItemData>` | Called on every context-menu open of a file or selection, with the entries the menu acts on; the items go right after *Open with* - offer one only where it applies (UltraFiler's *Edit in UltraPaint* for pictures, *Edit in ArtCreator* for drawings). Not asked for the folder background's menu |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
 | `onOpenPath(entry)` | Open Path item (default: `SetPath(parent)`) |

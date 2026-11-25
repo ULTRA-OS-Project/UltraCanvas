@@ -392,6 +392,8 @@
   "UltraFiler - Settings": "UltraFiler - Ayarlar",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler basit - çizilmiş klasör ve sayfa simgeleri",
   "UltraViewer could not be started: {0}": "UltraViewer başlatılamadı: {0}",
+  "Edit in {0}": "{0} ile düzenle",
+  "{0} could not be started: {1}": "{0} başlatılamadı: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer resmi, ses dosyasını veya videoyu tam boyutta gösterir; klasörün geri kalanı bir tuş uzaklıktadır. UltraViewer yüklü değilse veya bu seçenek kapalıysa, böyle bir dosya altındaki seçime göre diğer dosyalar gibi işlenir.",
   "Upload: the name is already taken": "Karşıya yükleme: ad zaten kullanılıyor",
   "Uploaded: {0}": "Yüklenen: {0}",

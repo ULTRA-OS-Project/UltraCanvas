@@ -26,10 +26,23 @@ How to use your phone as a computer on a TV or monitor. Companion documents:
 2. Open **MobilePC**. The desktop appears on the TV; the phone shows the
    control pad and the line *The desktop is on the TV or monitor*.
 3. Open **Apps** (on the pad, or the desktop's Apps button) and start an
-   application: UltraTexter, UltraViewer, UltraPaint or ArtCreator.
+   application: UltraFiler, UltraTexter, UltraViewer, UltraPaint or ArtCreator.
+   UltraFiler also has its own button on the taskbar.
 
 Disconnecting the TV brings the desktop to the phone's own screen; nothing is
 closed. Connecting again moves it back.
+
+### The phone's files
+
+UltraFiler opens the phone's storage - the folders you see when the phone is
+connected to a computer: Download, Pictures, DCIM, Documents. The first time
+it starts it asks whether it may show all of the phone's files. Answer
+**Yes**, and the phone's screen shows Android's switch for it (*Allow access
+to manage all files*, or on Android 9 and 10 a permission question): switch
+it on and come back to the control pad. Then open the folder again, or use
+Refresh, and every file is there. Without it UltraFiler shows the folders but
+few of the files in them. You can switch it on later in the phone's Settings,
+under Apps > MobilePC.
 
 ## 3. The control pad
 

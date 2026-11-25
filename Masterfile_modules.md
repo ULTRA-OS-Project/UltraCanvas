@@ -1279,7 +1279,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   run inside their host program (MobilePC's): registered with an entry
   point, listed by `UltraCanvasDesktopShell::ListApplications` where the
   platform has none of its own, started in the process by
-  `LaunchApplication`. Core in `core/UltraCanvasHostedApps.cpp`. See
+  `LaunchApplication` - and by `LaunchProgram` with the name of a program an
+  application stands in for (`programs`: MobilePC's UltraFiler answers
+  "UltraFiler"). Core in `core/UltraCanvasHostedApps.cpp`. See
   `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
 
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth

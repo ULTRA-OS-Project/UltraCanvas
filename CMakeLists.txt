@@ -283,7 +283,10 @@ if(ANDROID)
     set(ULTRACANVAS_PLUGIN_CDR OFF CACHE BOOL "Build CDR plugin (requires libcdr)")
     set(ULTRACANVAS_PLUGIN_XAR OFF CACHE BOOL "Build XARA plugin")
     set(ULTRACANVAS_PLUGIN_EPS OFF CACHE BOOL "Build EPS (PostScript) plugin")
-    set(ULTRACANVAS_PLUGIN_VECTOR OFF CACHE BOOL "Build Vector plugin")
+    # The Vector plugin (SVG, AI, DXF, DWG, EMF, WMF, ODG) is NOT in this
+    # list: it is a static library on libvips, zlib and tinyxml2, all in the
+    # sysroot, so it builds as everywhere - MobilePC's ArtCreator opens and
+    # saves drawings with it, and UltraFiler offers Edit in ArtCreator.
     set(ULTRACANVAS_PLUGIN_PDF OFF CACHE BOOL "Build PDF plugin (requires MuPDF / libmupdf-dev)")
     set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)")
     set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)")
