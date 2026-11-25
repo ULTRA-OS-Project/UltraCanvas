@@ -14,7 +14,7 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
-// Version: 0.15.0 - PlainLinkSpans: where the links of a line of plain text are, so the
+// Version: 0.15.0 - LinkHost (the host a link goes to); PlainLinkSpans: where the links of a line of plain text are, so the
 //                   plain-text view can draw them as links
 // Version: 0.14.1 - SenderLists::StableAddress / Bare: "no-reply-<code>@..." and
 //                   "name+tag@..." are one sender
@@ -222,6 +222,10 @@ std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml);
 // covers byte `offset` of `text`, or "" when that byte is not part of one -
 // what the plain-text view reports for the pointer.
 std::string PlainLinkAt(const std::string& text, std::size_t offset);
+
+// The host a web link goes to, in lowercase ("www.example.com" for a bare
+// "www.example.com/x" too), or "" for anything else - as the scan reads it.
+std::string LinkHost(const std::string& url);
 
 // Every link of `text` that PlainLinkAt would report, as [first, second) byte
 // ranges in order - what the plain-text view draws as links.
