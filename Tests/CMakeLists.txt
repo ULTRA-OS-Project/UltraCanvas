@@ -7568,6 +7568,29 @@ else()
     message(STATUS "  RichTextPrintTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== RICH TEXT DIALOGS TEST =====
+# What the document dialogs of UltraCanvasRichTextEdit apply (page setup,
+# paragraph, styles, table, picture, contents, caption, cross-reference,
+# footnote, comments) and that one undo takes each back. The element is made
+# but never shown: no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building RichTextDialogsTest...")
+    add_executable(RichTextDialogsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/RichTextDialogsTest.cpp
+    )
+    target_include_directories(RichTextDialogsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(RichTextDialogsTest PRIVATE cxx_std_20)
+    target_link_libraries(RichTextDialogsTest PRIVATE UltraCanvas)
+    set_target_properties(RichTextDialogsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME RichTextDialogsTest COMMAND RichTextDialogsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: RichTextDialogsTest")
+else()
+    message(STATUS "  RichTextDialogsTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== PROCESS RUNNER TEST =====
 # RunProcessCaptured: the pipe behaviour that only misbehaves at scale - a
 # child that stops reading (SIGPIPE would kill us), a filter reading and
