@@ -3,6 +3,7 @@
 // One copy per user: a second start hands its files to the running copy,
 // which opens them as File > Open does, and quits
 // (UltraCanvasSingleInstance.h).
+// Version: 2.4.1 - no "Build Date" line: __DATE__ / __TIME__ made main.cpp.o miss ccache on every build
 // Version: 2.4.0 - the window manager is TexterWindowManager.h, which MobilePC starts Texter with
 // Version: 2.3.0 - the look is the theme's: --dark is ThemePolicy::Dark for the run; no theme sync across windows
 // Version: 2.2.0 - the start-up messages go through Tr; the application's name
@@ -71,7 +72,6 @@ void SignalHandler(int) {
 bool InitializeSystem(UltraCanvasApplication& app) {
     debugOutput << "=== UltraTexter - Text Editor ===" << std::endl;
     debugOutput << "Version: 2.0.0" << std::endl;
-    debugOutput << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
     debugOutput << "Platform: ";
 
 #ifdef _WIN32

@@ -425,8 +425,12 @@ run of every branch (restore on every run, save on `main` alone), and a
 workflow that saves run-numbered caches must be on `cache-prune.yml`'s list.
 A release build saves its ccache only when it compiled something, and merges
 that land within minutes of each other are folded and released together:
-`changelog-fold.yml` runs every ten minutes and folds once `main` has been
-quiet for ten, or when the oldest pending entry has waited twenty.
+a merge that adds a `changelog.d/` entry starts `changelog-fold.yml`, which
+folds ten minutes later unless another such merge cancels the wait and starts
+its own, and twenty minutes after the oldest pending entry at the latest. Its
+ten-minute schedule is only the fallback: GitHub ran it every six to ten
+hours, and until a fold builds, every pull request recompiles what was merged
+since the last one (main's ccache is saved by release builds alone).
 A pull request builds three rows - Linux x86_64, Windows x86_64 and macOS
 on Apple silicon - and main builds Linux arm64 as well, where the release
 is made. Windows ARM is built on a release dispatch (changelog-fold.yml's,
