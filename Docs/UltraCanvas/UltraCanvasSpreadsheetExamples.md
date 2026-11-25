@@ -1369,6 +1369,32 @@ changes or deletes the one picked; `AddSelectionConditionalFormat` and
 `ClearSelectionConditionalFormats` do the same from code. `.xlsx` and `.ods`
 read and write them; an icon set or a date rule is not drawn and not kept.
 
+A change made through the grid - its calls or its dialogs - is one undo step,
+as a typed value is; the sheet's own calls above are not. On the grid, a
+format is added with `AddConditionalFormat`, and a rule of the active sheet's
+format (in `GetConditionalFormats()` order) changed or deleted by its
+position, the format going with its last rule:
+
+```cpp
+ConditionalFormatRule over;
+over.type = ConditionalFormatType::CellValue;
+over.op = ValidationOperator::GreaterThan;
+over.formula1 = "1000";
+over.style.font.bold = true;
+
+ConditionalFormat flagged;
+flagged.range = CellRange(1, 4, 99, 4);                          // E2:E100
+flagged.rules.push_back(over);
+grid->AddConditionalFormat(flagged);                             // one undo step
+over.formula1 = "5000";
+grid->SetConditionalFormatRule(0, 0, over);                      // false when there is no such rule
+grid->RemoveConditionalFormatRule(0, 0);
+grid->Undo();                                                    // the rule is back
+```
+
+`SetSelectionValidation` is an undo step in the same way, and its undo gives
+back the cells' own rules the range's replaced.
+
 ## Comments and links
 
 A cell's comment (`CellComment`: text, author) is marked by a red corner

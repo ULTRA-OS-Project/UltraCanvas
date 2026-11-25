@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetTypes.h
 // Core type definitions for UltraCanvas Spreadsheet component
+// Version: 1.3.1 - UndoActionType::RulesChange: conditional formats and validation rules changed
 // Version: 1.3.0 - conditional formats: ConditionalThreshold (colour scale and data bar points),
 //                  Top10 / AboveAverage settings, ApplyConditionalStyle (what a rule's style sets);
 //                  IsRangeListSource (a list rule taken from cells)
@@ -1064,6 +1065,7 @@ enum class UndoActionType {
     SheetReorder,
     FreezePane,
     ChartChange,    // a sheet's charts (UltraCanvasSpreadsheetChart.h) as they were
+    RulesChange,    // a sheet's conditional formats and validation rules as they were
     Composite       // Multiple actions grouped
 };
 

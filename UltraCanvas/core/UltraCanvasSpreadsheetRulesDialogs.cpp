@@ -4,6 +4,9 @@
 // SetSelectionValidation, SetCellComment, SetCellHyperlink, OpenHyperlink)
 // and the dialogs that edit them, each a form (UltraCanvasFormLayout) of the
 // framework's own elements in a modal dialog.
+// Version: 1.1.0 - conditional formats and validation rules are undo steps (RecordRulesStep), the
+//                  dialogs' changes too; a dialog is as tall as the rows shown (FitRulesForm), holds
+//                  its caption column, and its lists and fields fill its width
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -19,6 +22,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -29,14 +33,87 @@ namespace UltraCanvas {
 // THE CALLS
 // ============================================================================
 
-void UltraCanvasSpreadsheet::AddSelectionConditionalFormat(const ConditionalFormatRule& rule) {
-    SpreadsheetSheet* sheet = GetActiveSheet();
+void UltraCanvasSpreadsheet::RecordRulesStep(SpreadsheetSheet& sheet, const std::string& description,
+                                             std::vector<SpreadsheetUndoAction::CellRule> cellRules) {
+    if (!recordingUndo_) return;
+    SpreadsheetUndoAction action;
+    action.type = UndoActionType::RulesChange;
+    action.description = description;
+    action.sheetName = sheet.GetName();
+    action.sheetId = sheet.GetId();
+    action.conditionalFormatData = sheet.GetConditionalFormats();
+    action.validationData = sheet.GetValidations();
+    action.cellRuleData = std::move(cellRules);
+    PushUndo(action);
+}
+
+void UltraCanvasSpreadsheet::ApplyRulesStep(SpreadsheetUndoAction& action) {
+    SpreadsheetSheet* sheet = FindUndoSheet(action);
     if (!sheet) return;
+    std::vector<ConditionalFormat> formats = sheet->GetConditionalFormats();
+    sheet->SetConditionalFormats(action.conditionalFormatData);
+    action.conditionalFormatData = std::move(formats);
+    std::vector<std::pair<CellRange, DataValidation>> validations = sheet->GetValidations();
+    sheet->ClearAllValidations();
+    for (const auto& [range, rule] : action.validationData) sheet->SetValidation(range, rule);
+    action.validationData = std::move(validations);
+    for (SpreadsheetUndoAction::CellRule& one : action.cellRuleData) {
+        SpreadsheetCell* cell = one.rule ? sheet->GetCell(one.row, one.col) : sheet->GetCellIfExists(one.row, one.col);
+        std::optional<DataValidation> now;
+        if (cell && cell->GetValidation()) now = *cell->GetValidation();
+        if (one.rule) cell->SetValidation(*one.rule);
+        else if (cell) cell->RemoveValidation();
+        one.rule = std::move(now);
+    }
+    if (onCellFormatChange) onCellFormatChange(GetActiveCell().row, GetActiveCell().col);
+    Invalidate();
+}
+
+void UltraCanvasSpreadsheet::AddSelectionConditionalFormat(const ConditionalFormatRule& rule) {
     ConditionalFormat format;
     format.range = GetFormattingRange();
     format.rules.push_back(rule);
+    AddConditionalFormat(format);
+}
+
+void UltraCanvasSpreadsheet::AddConditionalFormat(const ConditionalFormat& format) {
+    SpreadsheetSheet* sheet = GetActiveSheet();
+    if (!sheet || format.rules.empty()) return;
+    RecordRulesStep(*sheet, "Add conditional format");
     sheet->AddConditionalFormat(format);
     Invalidate();
+}
+
+bool UltraCanvasSpreadsheet::SetConditionalFormatRule(int format, int rule, const ConditionalFormatRule& value) {
+    SpreadsheetSheet* sheet = GetActiveSheet();
+    if (!sheet) return false;
+    std::vector<ConditionalFormat> all = sheet->GetConditionalFormats();
+    if (format < 0 || format >= static_cast<int>(all.size()) || rule < 0 ||
+        rule >= static_cast<int>(all[static_cast<size_t>(format)].rules.size())) {
+        return false;
+    }
+    RecordRulesStep(*sheet, "Change conditional format");
+    all[static_cast<size_t>(format)].rules[static_cast<size_t>(rule)] = value;
+    sheet->SetConditionalFormats(all);
+    Invalidate();
+    return true;
+}
+
+bool UltraCanvasSpreadsheet::RemoveConditionalFormatRule(int format, int rule) {
+    SpreadsheetSheet* sheet = GetActiveSheet();
+    if (!sheet) return false;
+    std::vector<ConditionalFormat> all = sheet->GetConditionalFormats();
+    if (format < 0 || format >= static_cast<int>(all.size()) || rule < 0 ||
+        rule >= static_cast<int>(all[static_cast<size_t>(format)].rules.size())) {
+        return false;
+    }
+    RecordRulesStep(*sheet, "Delete conditional format");
+    auto& rules = all[static_cast<size_t>(format)].rules;
+    rules.erase(rules.begin() + rule);
+    if (rules.empty()) all.erase(all.begin() + format);
+    sheet->SetConditionalFormats(all);
+    Invalidate();
+    return true;
 }
 
 void UltraCanvasSpreadsheet::ClearSelectionConditionalFormats() {
@@ -47,6 +124,8 @@ void UltraCanvasSpreadsheet::ClearSelectionConditionalFormats() {
     for (const ConditionalFormat& format : sheet->GetConditionalFormats()) {
         if (!format.range.Intersects(range)) kept.push_back(format);
     }
+    if (kept.size() == sheet->GetConditionalFormats().size()) return;   // nothing to clear, no step
+    RecordRulesStep(*sheet, "Clear conditional formats");
     sheet->SetConditionalFormats(kept);
     Invalidate();
 }
@@ -55,6 +134,20 @@ void UltraCanvasSpreadsheet::SetSelectionValidation(const DataValidation& rule) 
     SpreadsheetSheet* sheet = GetActiveSheet();
     if (!sheet) return;
     const CellRange range = GetFormattingRange();
+    // The cells' own rules the range's replaces, so the step brings them back.
+    std::vector<SpreadsheetUndoAction::CellRule> cellRules;
+    for (int r = range.start.row; r <= range.end.row; ++r) {
+        for (int c = range.start.col; c <= range.end.col; ++c) {
+            const SpreadsheetCell* cell = sheet->GetCellIfExists(r, c);
+            if (cell && cell->GetValidation()) cellRules.push_back({r, c, *cell->GetValidation()});
+        }
+    }
+    if (!rule.IsValid() && cellRules.empty() &&
+        std::none_of(sheet->GetValidations().begin(), sheet->GetValidations().end(),
+                     [&range](const auto& one) { return one.first.Intersects(range); })) {
+        return;   // no rule to remove, no step
+    }
+    RecordRulesStep(*sheet, rule.IsValid() ? "Set validation" : "Remove validation", std::move(cellRules));
     sheet->RemoveValidation(range);
     for (int r = range.start.row; r <= range.end.row; ++r) {
         for (int c = range.start.col; c <= range.end.col; ++c) {
@@ -161,37 +254,65 @@ namespace {
 constexpr int kRowHeight = 28;
 constexpr float kRowGap = 8.0f;
 constexpr float kColumnGap = 12.0f;
-constexpr int kFieldWidth = 300;
 
-// A dialog holding a form of `rows` rows, OK and Cancel, no message.
+// A dialog holding a form, OK and Cancel, no message. Its height follows the
+// rows shown (FitRulesForm); its width is the form's.
 struct RulesForm {
     std::shared_ptr<UltraCanvasModalDialog> dialog;
     std::shared_ptr<UltraCanvasContainer> form;
 };
 
-RulesForm MakeRulesForm(const std::string& id, const std::string& title, int rows) {
+float FormHeight(int rows) {
+    return static_cast<float>(rows * kRowHeight) + kRowGap * static_cast<float>(std::max(0, rows - 1));
+}
+
+RulesForm MakeRulesForm(const std::string& id, const std::string& title, int rows, int width = 560) {
     DialogConfig config;
     config.title = title;
     config.dialogType = DialogType::Information;
     config.buttons = DialogButtons::OKCancel;
     config.defaultButton = DialogButton::OK;
     config.showIcon = false;
-    config.width = 560;
-    config.height = static_cast<int>(rows * kRowHeight + (rows - 1) * kRowGap) + 110;
+    config.width = width;
+    config.height = static_cast<int>(FormHeight(rows)) + 110;
     RulesForm out;
     out.dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!out.dialog) return out;
     out.dialog->SetMessageVisible(false);
     out.form = CreateFormGrid(id, kRowGap, kColumnGap);
-    out.form->size.height = CSSLayout::Dimension::Px(static_cast<float>(rows * kRowHeight) + kRowGap * (rows - 1));
+    out.form->size.height = CSSLayout::Dimension::Px(FormHeight(rows));
     return out;
 }
 
+// A list opens inside its dialog's window: a dialog shorter than five rows
+// showed the first lists four entries at a time.
+constexpr int kListRoomRows = 5;
+
+// The form as tall as the rows it shows (but kListRoomRows at least), so a
+// dialog whose rows follow a choice has no empty band under them. Before the
+// dialog is shown its AutoSizeToContent fits the window to the form; once it
+// is on screen the window grows or shrinks by as much as the form did.
+void FitRulesForm(UltraCanvasModalDialog* dialog, UltraCanvasContainer* form) {
+    if (!dialog || !form) return;
+    int rows = 0;
+    for (const auto& child : form->GetChildren()) {
+        if (child && child->IsVisible() && dynamic_cast<UltraCanvasLabel*>(child.get())) ++rows;
+    }
+    const float height = FormHeight(std::max(kListRoomRows, rows));
+    const float before = form->GetHeight();
+    form->size.height = CSSLayout::Dimension::Px(height);
+    form->InvalidateLayout();
+    if (dialog->IsWindowVisible() && before > 0.0f && std::abs(height - before) >= 1.0f) {
+        dialog->SetWindowSize(static_cast<int>(dialog->GetWidth()),
+                              static_cast<int>(std::lround(dialog->GetHeight() + height - before)));
+    }
+}
+
+// A list or a field fills the control column: the dialog's width, not a
+// number of pixels, decides how much of a long entry or hint shows.
 std::shared_ptr<UltraCanvasDropdown> MakeChoice(const std::string& id, const std::vector<std::string>& items,
                                                 int selected) {
-    auto list = std::make_shared<UltraCanvasDropdown>(id, 0, 0, kFieldWidth, kRowHeight);
-    list->size.width = CSSLayout::Dimension::Px(kFieldWidth);
-    list->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
+    auto list = std::make_shared<UltraCanvasDropdown>(id, 0, 0, 0, kRowHeight);
     for (const std::string& item : items) list->AddItem(item);
     list->SetSelectedIndex(std::clamp(selected, 0, static_cast<int>(items.size()) - 1), false);
     return list;
@@ -199,9 +320,7 @@ std::shared_ptr<UltraCanvasDropdown> MakeChoice(const std::string& id, const std
 
 std::shared_ptr<UltraCanvasTextInput> MakeField(const std::string& id, const std::string& text,
                                                 std::string* target) {
-    auto field = std::make_shared<UltraCanvasTextInput>(id, 0, 0, kFieldWidth, kRowHeight);
-    field->size.width = CSSLayout::Dimension::Px(kFieldWidth);
-    field->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
+    auto field = std::make_shared<UltraCanvasTextInput>(id, 0, 0, 0, kRowHeight);
     field->SetText(text);
     field->onTextChanged = [target](const std::string& now) { *target = now; };
     return field;
@@ -320,7 +439,8 @@ int PresetOfStyle(const CellStyle& style) {
     return 0;
 }
 
-// The colours of a scale or a bar.
+// The colours of a scale or a bar: three scales, then single colours for a bar.
+constexpr int kFirstSingleColourPreset = 3;
 struct ColourPreset { std::vector<Color> colours; };
 const std::vector<ColourPreset>& ColourPresets() {
     static const std::vector<ColourPreset> presets = {
@@ -347,7 +467,7 @@ int PresetOfColours(const ConditionalFormatRule& rule) {
     for (size_t i = 0; i < presets.size(); ++i) {
         if (presets[i].colours.front() == first) return static_cast<int>(i);
     }
-    return rule.type == ConditionalFormatType::DataBar ? 3 : 0;
+    return rule.type == ConditionalFormatType::DataBar ? kFirstSingleColourPreset : 0;
 }
 
 // One line naming a rule, for the list of those over the selection.
@@ -356,7 +476,7 @@ std::string DescribeRule(const ConditionalFormat& format, const ConditionalForma
     std::string text = format.range.ToString() + ": " + kinds[static_cast<size_t>(KindOfRule(rule))];
     if (rule.type == ConditionalFormatType::CellValue) {
         text += " " + OperatorNames()[static_cast<size_t>(OperatorIndex(rule.op))] + " " + rule.formula1;
-        if (NeedsSecondValue(rule.op)) text += " / " + rule.formula2;
+        if (NeedsSecondValue(rule.op)) text += " " + Tr("and") + " " + rule.formula2;
     } else if (!rule.formula1.empty() && rule.type != ConditionalFormatType::AboveAverage) {
         text += " " + rule.formula1;
     }
@@ -465,6 +585,7 @@ void UltraCanvasSpreadsheet::ShowConditionalFormatDialog() {
     auto rowStyle = AddRow(form, "ConditionalStyle", Tr("Style") + ":", styles);
     auto rowColours = AddRow(form, "ConditionalColours", Tr("Colours") + ":", colours);
     built.dialog->AddDialogElement(form);
+    HoldFormCaptionColumn(form);
 
     // Which rows the kind of rule needs. Raw pointers: the dialog owns them all.
     UltraCanvasTextInput* value1Raw = value1.get();
@@ -473,7 +594,9 @@ void UltraCanvasSpreadsheet::ShowConditionalFormatDialog() {
     UltraCanvasDropdown* opsRaw = ops.get();
     UltraCanvasDropdown* stylesRaw = styles.get();
     UltraCanvasDropdown* coloursRaw = colours.get();
-    auto refresh = [state, rowOp, rowValue1, rowValue2, rowStyle, rowColours]() {
+    UltraCanvasModalDialog* dialogRaw = built.dialog.get();
+    UltraCanvasContainer* formRaw = form.get();
+    auto refresh = [state, rowOp, rowValue1, rowValue2, rowStyle, rowColours, dialogRaw, formRaw]() {
         const RuleKind kind = static_cast<RuleKind>(state->kind);
         const bool cellValue = kind == RuleKind::CellValue;
         const bool scale = kind == RuleKind::ColourScale2 || kind == RuleKind::ColourScale3 || kind == RuleKind::DataBar;
@@ -485,9 +608,21 @@ void UltraCanvasSpreadsheet::ShowConditionalFormatDialog() {
         rowValue2.Show(cellValue && NeedsSecondValue(kOperators[static_cast<size_t>(std::max(0, state->op))]));
         rowStyle.Show(!scale);
         rowColours.Show(scale);
+        FitRulesForm(dialogRaw, formRaw);
     };
-    kinds->onSelectionChanged = [state, refresh](int index, const DropdownItem&) {
+    kinds->onSelectionChanged = [state, refresh, coloursRaw](int index, const DropdownItem&) {
         state->kind = index;
+        // A bar takes one colour, a scale several: switching between them
+        // offers the colours that fit (a bar from "Red, yellow, green" came
+        // out red).
+        const bool bar = static_cast<RuleKind>(index) == RuleKind::DataBar;
+        const bool scale = static_cast<RuleKind>(index) == RuleKind::ColourScale2 ||
+                           static_cast<RuleKind>(index) == RuleKind::ColourScale3;
+        const bool oneColour = state->colours >= kFirstSingleColourPreset;
+        if ((bar && !oneColour) || (scale && oneColour)) {
+            state->colours = bar ? kFirstSingleColourPreset : 0;
+            coloursRaw->SetSelectedIndex(state->colours, false);
+        }
         refresh();
     };
     ops->onSelectionChanged = [state, refresh](int index, const DropdownItem&) {
@@ -522,7 +657,9 @@ void UltraCanvasSpreadsheet::ShowConditionalFormatDialog() {
     };
     refresh();
 
-    built.dialog->AddCustomButton(Tr("Delete rule"), DialogResult::No, DialogButtonRole::Destructive);
+    if (!state->existing.empty()) {
+        built.dialog->AddCustomButton(Tr("Delete rule"), DialogResult::No, DialogButtonRole::Destructive);
+    }
 
     std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
     UltraCanvasDialogManager::ShowDialog(built.dialog, [weakSelf, state, selection](DialogResult result) {
@@ -531,28 +668,25 @@ void UltraCanvasSpreadsheet::ShowConditionalFormatDialog() {
         SpreadsheetSheet* target = self->GetActiveSheet();
         if (!target) return;
         const bool existing = state->picked > 0 && state->picked <= static_cast<int>(state->existing.size());
-        std::vector<ConditionalFormat> all = target->GetConditionalFormats();
+        // Each change goes through the grid's calls, so it is one undo step.
         if (result == DialogResult::No) {
             if (!existing) return;
             const auto [f, r] = state->existing[static_cast<size_t>(state->picked - 1)];
-            if (f >= all.size() || r >= all[f].rules.size()) return;
-            all[f].rules.erase(all[f].rules.begin() + static_cast<long>(r));
-            if (all[f].rules.empty()) all.erase(all.begin() + static_cast<long>(f));
-            target->SetConditionalFormats(all);
+            if (!self->RemoveConditionalFormatRule(static_cast<int>(f), static_cast<int>(r))) return;
         } else if (result == DialogResult::OK) {
             ConditionalFormatRule rule = RuleFromState(*state);
             if (existing) {
                 const auto [f, r] = state->existing[static_cast<size_t>(state->picked - 1)];
+                const auto& all = target->GetConditionalFormats();
                 if (f >= all.size() || r >= all[f].rules.size()) return;
                 rule.priority = all[f].rules[r].priority;
                 rule.stopIfTrue = all[f].rules[r].stopIfTrue;
-                all[f].rules[r] = rule;
-                target->SetConditionalFormats(all);
+                if (!self->SetConditionalFormatRule(static_cast<int>(f), static_cast<int>(r), rule)) return;
             } else {
                 ConditionalFormat format;
                 format.range = selection;
                 format.rules.push_back(rule);
-                target->AddConditionalFormat(format);
+                self->AddConditionalFormat(format);
             }
         } else {
             return;
@@ -601,7 +735,8 @@ void UltraCanvasSpreadsheet::ShowDataValidationDialog() {
         state->message = rule->errorMessage;
     }
 
-    RulesForm built = MakeRulesForm("ValidationForm", Tr("Data validation"), 8);
+    // Wide enough for the value's hint ("A number, a list such as a,b,c, ...").
+    RulesForm built = MakeRulesForm("ValidationForm", Tr("Data validation"), 8, 660);
     if (!built.dialog) return;
     auto& form = built.form;
     auto types = MakeChoice("ValidationType", {Tr("Any value"), Tr("Whole number"), Tr("Decimal"), Tr("List"),
@@ -631,8 +766,12 @@ void UltraCanvasSpreadsheet::ShowDataValidationDialog() {
     auto rowAlert = AddRow(form, "ValidationAlert", Tr("On a wrong entry") + ":", alert);
     auto rowMessage = AddRow(form, "ValidationMessage", Tr("Message") + ":", message);
     built.dialog->AddDialogElement(form);
+    HoldFormCaptionColumn(form);
 
-    auto refresh = [state, rowOp, rowValue1, rowValue2, rowBlank, rowArrow, rowAlert, rowMessage]() {
+    UltraCanvasModalDialog* dialogRaw = built.dialog.get();
+    UltraCanvasContainer* formRaw = form.get();
+    auto refresh = [state, rowOp, rowValue1, rowValue2, rowBlank, rowArrow, rowAlert, rowMessage, dialogRaw,
+                    formRaw]() {
         const ValidationType type = kValidationTypes[static_cast<size_t>(std::max(0, state->type))];
         const bool any = type == ValidationType::Any;
         const bool compared = !any && type != ValidationType::List && type != ValidationType::Custom;
@@ -643,6 +782,7 @@ void UltraCanvasSpreadsheet::ShowDataValidationDialog() {
         rowArrow.Show(type == ValidationType::List);
         rowAlert.Show(!any);
         rowMessage.Show(!any);
+        FitRulesForm(dialogRaw, formRaw);
     };
     types->onSelectionChanged = [state, refresh](int index, const DropdownItem&) {
         state->type = index;
@@ -689,11 +829,11 @@ void UltraCanvasSpreadsheet::ShowCommentDialog() {
     auto text = std::make_shared<std::string>(cell && cell->HasComment() ? cell->GetComment()->text : "");
     const std::string author = cell && cell->HasComment() ? cell->GetComment()->author : std::string();
 
-    RulesForm built = MakeRulesForm("CommentForm", Tr("Comment"), 4);
+    // The title names the cell: there is nothing else in the dialog that does.
+    RulesForm built = MakeRulesForm("CommentForm", Tr("Comment") + " - " + at.ToString(), 4);
     if (!built.dialog) return;
-    auto area = std::make_shared<UltraCanvasTextArea>("CommentText", 0, 0, kFieldWidth + 120,
-                                                      4 * kRowHeight + 3 * static_cast<int>(kRowGap));
-    area->size.width = CSSLayout::Dimension::Px(static_cast<float>(kFieldWidth + 120));
+    // The note fills the dialog's width.
+    auto area = std::make_shared<UltraCanvasTextArea>("CommentText", 0, 0, 0, static_cast<int>(FormHeight(4)));
     area->SetText(*text, false);
     area->SetOnTextChanged([text](const std::string& now) { *text = now; });
     AddFormWideRow(built.form, area);
@@ -723,7 +863,7 @@ void UltraCanvasSpreadsheet::ShowHyperlinkDialog() {
     auto address = std::make_shared<std::string>(current ? current->target : std::string("https://"));
     auto shown = std::make_shared<std::string>(cell && !cell->IsEmpty() ? cell->GetDisplayValue() : std::string());
 
-    RulesForm built = MakeRulesForm("LinkForm", Tr("Insert link"), 2);
+    RulesForm built = MakeRulesForm("LinkForm", Tr("Insert link") + " - " + at.ToString(), 2);
     if (!built.dialog) return;
     auto field = MakeField("LinkAddress", *address, address.get());
     field->SetPlaceholder(Tr("A web or mail address, or a cell such as Sheet2.A1"));

@@ -5,18 +5,21 @@
 //  - a click selects it, a drag moves it, the corner handle resizes it, Delete
 //    removes it, each an undo step that Undo and Redo take back and forth;
 //  - inserting rows above it moves it down with its cells;
-//  - printed, it is on the page (and the pages reach the cells under it).
+//  - printed, it is on the page (and the pages reach the cells under it);
+//  - an untitled chart's top value label stays inside its rectangle.
 // The grid is drawn on an off-screen raster (RasterPageTarget): no window,
 // no display.
 //
 // Usage: SpreadsheetChartDrawTest
 // Exit code is the number of failed checks.
+// Version: 1.1.0 - an untitled chart's top value label is not cut off
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterRasterTarget.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasRichDocumentChart.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetChart.h"
 #include "UltraCanvasSpreadsheetPrint.h"
@@ -202,6 +205,37 @@ int main() {
         std::vector<uint8_t> pdf;
         std::string error;
         Check(pages.ExportPdf(pdf, error) && pdf.size() > 1000, "the pages as a PDF [" + error + "]");
+    }
+
+    // 9. An untitled chart's top value label fits inside the chart: the
+    //    labels of a left axis are centred on their ticks, and the top one
+    //    stood half its height above the chart's rectangle, cut off there.
+    {
+        RichChart untitled;
+        untitled.kind = RichChart::Kind::Column;
+        untitled.categories = {"M1", "M2", "M3", "M4", "M5", "M6"};
+        RichChartSeries sales;
+        sales.name = "Sales";
+        sales.values = {10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
+        untitled.series.push_back(sales);
+        RasterPageTarget page(500, 400, 96, 96);
+        page.BeginPage();
+        const Rect2Dd at(50.0, 50.0, 400.0, 300.0);
+        Check(DrawRichDocumentChart(page.GetRenderContext(), untitled, at, Size2Di(400, 300)), "an untitled chart drawn");
+        int above = 0, inBand = 0, y = 0;
+        page.ForEachRow([&](const uint8_t* rgba, int width) {
+            for (int x = 0; x < width; ++x) {
+                const uint8_t* p = rgba + 4 * x;
+                const bool ink = p[0] < 160 && p[1] < 160 && p[2] < 160;
+                if (!ink) continue;
+                if (y < 50) ++above;
+                else if (y < 70 && x < 120) ++inBand;
+            }
+            ++y;
+            return true;
+        });
+        Check(inBand > 5, "its top value label is drawn (" + std::to_string(inBand) + " pixels of it)");
+        Check(above == 0, "and nothing above the chart's rectangle (" + std::to_string(above) + " pixels)");
     }
 
     std::printf("\n%d failure(s)\n", failures);

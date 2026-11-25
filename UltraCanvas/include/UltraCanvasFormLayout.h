@@ -20,10 +20,12 @@
 //
 // Rows hidden with SetVisible(false) leave the grid entirely (display:none),
 // so a form can show a different set of rows without leaving gaps.
+// Version: 1.3.0 - HoldFormCaptionColumn: the caption column as wide as every caption, hidden
+//                 rows' too, so controls stay put as rows come and go
 // Version: 1.2.0 - the grid asks for its horizontal stretch (the engine no
 //                 longer stretches by default)
 // Version: 1.1.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,8 +33,11 @@
 #include "UltraCanvasLabel.h"
 #include "CSSLayout/CSSLayout.h"
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
+#include <variant>
 
 namespace UltraCanvas {
 
@@ -120,6 +125,41 @@ namespace UltraCanvas {
         spanTwo.index = 2;
         element->layoutItem.SetGridColumn(autoStart, spanTwo);
         grid->AddChild(element);
+    }
+
+    // Holds the caption column at the width of its widest caption - a hidden
+    // row's too - where `auto` counts only the rows shown. A form whose rows
+    // follow a choice (a dialog showing the fields one kind of rule needs)
+    // then keeps its controls where they are as rows come and go, instead of
+    // moving them sideways when the widest caption is hidden. Call it once
+    // the grid is in a window and its rows are added: it measures the
+    // captions' text, and a caption measures nothing before. A label across
+    // both columns (AddFormWideRow) is not a caption and is left out. Returns
+    // the width held; 0 when nothing could be measured, and the column stays
+    // `auto`.
+    inline float HoldFormCaptionColumn(const std::shared_ptr<UltraCanvasContainer>& grid) {
+        if (!grid) return 0.0f;
+        float widest = 0.0f;
+        for (const auto& child : grid->GetChildren()) {
+            auto* caption = dynamic_cast<UltraCanvasLabel*>(child.get());
+            if (!caption) continue;
+            const auto* cell = std::get_if<CSSLayout::GridItem>(&caption->layoutItem.data);
+            if (cell && cell->columnEnd.type == CSSLayout::GridLineKind::Span && cell->columnEnd.index > 1) continue;
+            const float text = caption->GetNaturalTextWidth();
+            if (text <= 0.0f) continue;
+            widest = std::max(widest, text + caption->GetTotalPaddingHorizontal() + caption->GetTotalBorderHorizontal());
+        }
+        if (widest <= 0.0f) return 0.0f;
+        widest = std::ceil(widest) + 1.0f;   // the text's fraction, and a pixel for rounding
+        CSSLayout::GridTrackSize captionColumn;
+        captionColumn.kind = CSSLayout::GridTrackSizeKind::Fixed;
+        captionColumn.value = CSSLayout::Dimension::Px(widest);
+        CSSLayout::GridTrackSize controlColumn;
+        controlColumn.kind = CSSLayout::GridTrackSizeKind::Fr;
+        controlColumn.value = CSSLayout::Dimension::Fr(1);
+        grid->layout.SetGridColumns({captionColumn, controlColumn});
+        grid->InvalidateLayout();
+        return widest;
     }
 
     // A row of controls that share one cell: "700 x 500 [x] Lock", a slider

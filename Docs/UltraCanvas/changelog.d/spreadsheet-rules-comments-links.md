@@ -31,6 +31,25 @@
   form of the framework's elements in a modal dialog;
   `AddSelectionConditionalFormat`, `ClearSelectionConditionalFormats` and
   `SetSelectionValidation` do it from code.
+- **Conditional formats and validation rules are undo steps**, as comments
+  and links are: each change made through the grid - `AddConditionalFormat`,
+  `SetConditionalFormatRule` and `RemoveConditionalFormatRule` (new),
+  `AddSelectionConditionalFormat`, `ClearSelectionConditionalFormats`,
+  `SetSelectionValidation`, and the two dialogs - is one step
+  (`UndoActionType::RulesChange`), and undoing a validation rule gives the
+  cells back their own rules it replaced.
+- **The dialogs, tried in a window.** The chart properties dialog was an
+  empty window with no OK or Cancel (a `Custom` dialog builds no sections or
+  buttons); it is drawn now. The conditional-format and validation dialogs
+  are as tall as the rows the chosen rule needs (they kept room for every
+  row, a wide empty band under one or two), keep their controls in place as
+  rows come and go (`HoldFormCaptionColumn`, new in `UltraCanvasFormLayout.h`:
+  the caption column as wide as every caption, hidden ones too), and their
+  lists and fields fill the dialog's width, so the validation value's hint is
+  no longer cut off; a comment fills its dialog. A data bar starts from a
+  single colour (a bar from "Red, yellow, green" came out red), "Delete
+  rule" shows only when there is a rule to delete, and a rule between two
+  values reads "between 30 and 50", not "30 / 50".
 - Covered by `SpreadsheetRulesTest`: the rules evaluated, drawn on an
   off-screen page, set through the grid's calls, and saved as `.xlsx` and
   `.ods` and loaded back - and, where LibreOffice is installed, converted by

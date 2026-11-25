@@ -5,6 +5,8 @@
 // drawn over the cells, selected, moved and resized with handles, deleted,
 // each change an undo step, and a properties dialog.
 //
+// Version: 1.0.1 - the properties dialog is drawn: it was a Custom dialog, which builds no
+//                  sections or buttons, and showed an empty window with no OK or Cancel
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -1040,9 +1042,13 @@ void UltraCanvasSpreadsheet::ShowChartPropertiesDialog(int index) {
 
     DialogConfig config;
     config.title = Tr("Chart properties");
-    config.dialogType = DialogType::Custom;
+    // An Information dialog without its icon: a Custom one builds no
+    // sections and no buttons, and showed an empty window.
+    config.dialogType = DialogType::Information;
+    config.showIcon = false;
     config.buttons = DialogButtons::OKCancel;
-    config.width = 400;
+    config.defaultButton = DialogButton::OK;
+    config.width = 440;
     config.height = 240;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!dialog) return;
@@ -1050,13 +1056,14 @@ void UltraCanvasSpreadsheet::ShowChartPropertiesDialog(int index) {
     dialog->SetMessageVisible(false);
 
     auto form = CreateFormGrid("ChartPropertiesForm", 8.0f, 8.0f);
-    auto type = std::make_shared<UltraCanvasDropdown>("ChartType", 0, 0, 220, 28);
+    // The list and the field fill the control column.
+    auto type = std::make_shared<UltraCanvasDropdown>("ChartType", 0, 0, 0, 28);
     for (size_t i = 0; i < SpreadsheetChartChoices().size(); ++i) type->AddItem(SpreadsheetChartChoiceName(i));
     type->SetSelectedIndex(answers->choice, false);
     type->onSelectionChanged = [answers](int chosen, const DropdownItem&) { answers->choice = chosen; };
     AddFormRow(form, "ChartType", Tr("Type:"), type);
 
-    auto title = CreateTextInput("ChartTitle", 0, 0, 220, 28);
+    auto title = CreateTextInput("ChartTitle", 0, 0, 0, 28);
     title->SetText(answers->title);
     title->onTextChanged = [answers](const std::string& text) { answers->title = text; };
     AddFormRow(form, "ChartTitle", Tr("Title:"), title);

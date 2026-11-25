@@ -12,12 +12,15 @@
 //    cell by its rule, draws a data bar and marks a comment with a red corner;
 //  - the grid's calls: comments and links as undo steps, Ctrl+click's
 //    OpenHyperlink, the selection's validation and conditional format;
+//  - conditional formats and validation rules added, changed and deleted as
+//    undo steps, one per call;
 //  - all of it saved as .xlsx and .ods and loaded back, each written again
 //    in the other format, and - where LibreOffice is installed (soffice) -
 //    converted by it and loaded back.
 //
 // Usage: SpreadsheetRulesTest
 // Exit code is the number of failed checks.
+// Version: 1.1.0 - conditional formats and validation rules as undo steps (CheckRuleUndo)
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -431,6 +434,136 @@ void CheckGridCalls() {
     Check(sheet->GetConditionalFormats().size() == before, "ClearSelectionConditionalFormats");
 }
 
+// Conditional formats and validation rules changed through the grid are undo
+// steps, one per call, as comments and links are.
+void CheckRuleUndo() {
+    std::printf("\n--- conditional formats and validation as undo steps ---\n");
+    auto book = BuildWorkbook();
+    SpreadsheetSheet* sheet = book->GetActiveSheet();
+    const std::vector<ConditionalFormat> original = sheet->GetConditionalFormats();
+    const size_t before = original.size();
+    book->ClearUndoHistory();
+
+    // Add.
+    book->Select(CellRange(40, 0, 42, 1));
+    ConditionalFormatRule blank;
+    blank.type = ConditionalFormatType::ContainsBlanks;
+    blank.style = FillStyle(kRedFill);
+    book->AddSelectionConditionalFormat(blank);
+    Check(sheet->GetConditionalFormats().size() == before + 1 && sheet->GetConditionalFormatting(41, 0).style,
+          "AddSelectionConditionalFormat fills the blank A42");
+    Check(book->CanUndo() && !book->GetUndoDescription().empty(), "adding a format is an undo step");
+    book->Undo();
+    Check(sheet->GetConditionalFormats().size() == before && !sheet->GetConditionalFormatting(41, 0).style,
+          "undo takes the format away");
+    Check(!book->CanUndo(), "adding a format was one step");
+    book->Redo();
+    Check(sheet->GetConditionalFormats().size() == before + 1 && sheet->GetConditionalFormatting(41, 0).style,
+          "redo puts it back");
+
+    // Change.
+    const int added = static_cast<int>(before);
+    ConditionalFormatRule errors;
+    errors.type = ConditionalFormatType::ContainsErrors;
+    errors.style = FillStyle(kRedFill);
+    Check(book->SetConditionalFormatRule(added, 0, errors) &&
+              sheet->GetConditionalFormats()[before].rules[0].type == ConditionalFormatType::ContainsErrors &&
+              !sheet->GetConditionalFormatting(41, 0).style,
+          "SetConditionalFormatRule changes the rule (A42 is no error)");
+    Check(!book->SetConditionalFormatRule(added, 5, errors), "SetConditionalFormatRule refuses a rule not there");
+    book->Undo();
+    Check(sheet->GetConditionalFormats().size() == before + 1 &&
+              sheet->GetConditionalFormats()[before].rules[0].type == ConditionalFormatType::ContainsBlanks &&
+              sheet->GetConditionalFormatting(41, 0).style,
+          "undo brings the blank-cell rule back");
+    book->Redo();
+    Check(sheet->GetConditionalFormats()[before].rules[0].type == ConditionalFormatType::ContainsErrors,
+          "redo changes it again");
+    book->Undo();
+
+    // Delete: a rule, and the format with its last one.
+    ConditionalFormat two;
+    two.range = CellRange(40, 2, 42, 2);
+    two.rules = {blank, errors};
+    book->AddConditionalFormat(two);
+    Check(sheet->GetConditionalFormats().size() == before + 2, "AddConditionalFormat adds a format of two rules");
+    Check(book->RemoveConditionalFormatRule(added + 1, 1) && sheet->GetConditionalFormats().size() == before + 2 &&
+              sheet->GetConditionalFormats()[before + 1].rules.size() == 1,
+          "RemoveConditionalFormatRule deletes one rule of two");
+    Check(book->RemoveConditionalFormatRule(added, 0) && sheet->GetConditionalFormats().size() == before + 1,
+          "deleting a format's last rule deletes the format");
+    Check(!book->RemoveConditionalFormatRule(added + 7, 0), "RemoveConditionalFormatRule refuses a format not there");
+    book->Undo();
+    Check(sheet->GetConditionalFormats().size() == before + 2 &&
+              sheet->GetConditionalFormats()[before].range == CellRange(40, 0, 42, 1),
+          "undo brings the deleted format back in its place");
+    book->Undo();
+    Check(sheet->GetConditionalFormats()[before + 1].rules.size() == 2, "undo brings the deleted rule back");
+
+    // Clear the selection's formats.
+    book->ClearSelectionConditionalFormats();
+    Check(sheet->GetConditionalFormats().size() == before + 1, "ClearSelectionConditionalFormats clears A41:B43's");
+    book->Undo();
+    Check(sheet->GetConditionalFormats().size() == before + 2, "undo brings them back");
+    // Back to the start, step by step.
+    book->Undo();
+    book->Undo();
+    Check(sheet->GetConditionalFormats().size() == before, "undoing every step leaves the sheet's formats as they were");
+
+    // Validation: set, replace, remove - a cell's own rule too.
+    book->ClearUndoHistory();
+    DataValidation own;
+    own.type = ValidationType::WholeNumber;
+    own.op = ValidationOperator::LessThan;
+    own.formula1 = "5";
+    sheet->GetCell(51, 0)->SetValidation(own);
+    book->Select(CellRange(50, 0, 52, 0));
+    DataValidation positive;
+    positive.type = ValidationType::Decimal;
+    positive.op = ValidationOperator::GreaterThan;
+    positive.formula1 = "0";
+    book->SetSelectionValidation(positive);
+    Check(sheet->GetEffectiveValidation(50, 0) && sheet->GetEffectiveValidation(50, 0)->type == ValidationType::Decimal &&
+              !sheet->GetCellIfExists(51, 0)->HasValidation(),
+          "SetSelectionValidation sets A51:A53's rule, replacing A52's own");
+    Check(book->CanUndo(), "setting a validation rule is an undo step");
+    book->Undo();
+    Check(!sheet->GetValidation(50, 0) && sheet->GetCellIfExists(51, 0)->HasValidation() &&
+              sheet->GetEffectiveValidation(51, 0)->type == ValidationType::WholeNumber,
+          "undo takes the range's rule away and gives A52 its own back");
+    Check(!book->CanUndo(), "setting a validation rule was one step");
+    book->Redo();
+    Check(sheet->GetValidation(50, 0) && !sheet->GetCellIfExists(51, 0)->HasValidation(), "redo sets it again");
+
+    DataValidation list;
+    list.type = ValidationType::List;
+    list.formula1 = "a,b,c";
+    book->SetSelectionValidation(list);
+    Check(sheet->GetEffectiveValidation(52, 0)->type == ValidationType::List, "a second rule replaces the first");
+    book->Undo();
+    Check(sheet->GetEffectiveValidation(52, 0) && sheet->GetEffectiveValidation(52, 0)->type == ValidationType::Decimal,
+          "undo brings the first back");
+    book->SetSelectionValidation(DataValidation());
+    Check(!sheet->GetEffectiveValidation(50, 0), "a rule of type Any removes it");
+    book->Undo();
+    Check(sheet->GetEffectiveValidation(50, 0) && sheet->GetEffectiveValidation(50, 0)->type == ValidationType::Decimal,
+          "undo of the removal brings it back");
+    book->ClearUndoHistory();
+    book->Select(CellRange(60, 0, 60, 0));
+    book->SetSelectionValidation(DataValidation());
+    Check(!book->CanUndo(), "removing a rule from cells that have none is no step");
+
+    // A cell's value typed after a rule step is undone on its own.
+    book->Select(CellRange(50, 0, 50, 0));
+    book->SetSelectionValidation(list);
+    book->SetCellValue(70, 0, std::string("x"));
+    book->Undo();
+    Check(sheet->GetEffectiveValidation(50, 0) && sheet->GetEffectiveValidation(50, 0)->type == ValidationType::List,
+          "undoing a later cell edit leaves the rule");
+    book->Undo();
+    Check(sheet->GetEffectiveValidation(50, 0)->type == ValidationType::Decimal, "and the next undo the rule");
+}
+
 std::shared_ptr<UltraCanvasSpreadsheet> Load(const std::string& path) {
     auto book = std::make_shared<UltraCanvasSpreadsheet>("loaded", 0, 0, 900, 600);
     if (!book->LoadFromFile(path)) {
@@ -544,6 +677,7 @@ int main() {
     CheckEvaluation();
     CheckDrawing();
     CheckGridCalls();
+    CheckRuleUndo();
     CheckFiles();
     std::printf("\n%d failure(s)\n", failures);
     return failures;

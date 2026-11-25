@@ -4,6 +4,7 @@
 // workbook-scoped features (sheet management, named ranges, undo/redo).
 // Rendering, event handling, editing, navigation and clipboard live in
 // core/UltraCanvasSpreadsheet.cpp - this file MUST NOT redefine those.
+// Version: 1.2.0 - a conditional-format or validation step (RulesChange) is undone and redone
 // Version: 1.1.0 - charts: a chart step is undone and redone; a renamed sheet's charts follow it; a
 //                  chart stays selected only on its sheet
 // Version: 1.0.0
@@ -1719,6 +1720,13 @@ void UltraCanvasSpreadsheet::Undo() {
         if (onUndoStackChange) onUndoStackChange();
         return;
     }
+    if (action.type == UndoActionType::RulesChange) {   // a swap too
+        undoStack_.pop();
+        ApplyRulesStep(action);
+        redoStack_.push(std::move(action));
+        if (onUndoStackChange) onUndoStackChange();
+        return;
+    }
     if (IsSheetStep(action.type)) {
         undoStack_.pop();
         ApplySheetStep(action, true);
@@ -1761,6 +1769,13 @@ void UltraCanvasSpreadsheet::Redo() {
     if (action.type == UndoActionType::ChartChange) {
         redoStack_.pop();
         ApplyChartStep(action);
+        undoStack_.push(std::move(action));
+        if (onUndoStackChange) onUndoStackChange();
+        return;
+    }
+    if (action.type == UndoActionType::RulesChange) {
+        redoStack_.pop();
+        ApplyRulesStep(action);
         undoStack_.push(std::move(action));
         if (onUndoStackChange) onUndoStackChange();
         return;

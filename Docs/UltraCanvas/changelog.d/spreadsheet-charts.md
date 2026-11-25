@@ -22,3 +22,10 @@
   sources, plotArea)`, `ReadOdfChartSources`), and LibreOffice's cell-anchored
   frames read too. LibreOffice opens both, and its conversions read back.
   Covered in `SpreadsheetChartRoundTripTest` and `SpreadsheetChartDrawTest`.
+- **An untitled chart's top value label is no longer cut off.** The chart
+  engine centres a left or right axis's labels on their ticks but reserved
+  no room above the plot for the top one, so a chart without a title showed
+  half of its "60.0" at the top edge - in spreadsheets, documents and slides
+  alike. `UltraCanvasChartEngineElement` now reserves half a label's height
+  above and below the plot for such an axis (under a title, what the title
+  band does not already leave).

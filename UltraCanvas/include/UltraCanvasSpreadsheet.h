@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.16.0 - conditional formats and validation rules as undo steps (RulesChange): AddConditionalFormat,
+//                  SetConditionalFormatRule, RemoveConditionalFormatRule, the selection calls and the dialogs
 // Version: 1.15.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
 //                  shown on hover) and links (Ctrl+click opens them: OpenHyperlink, onOpenHyperlink),
 //                  SetCellComment / SetCellHyperlink as undo steps; the rules dialogs
@@ -41,6 +43,8 @@
 #include <stack>
 #include <map>
 #include <cstdint>
+#include <optional>
+#include <utility>
 
 namespace UltraCanvas {
 class UltraCanvasTextInput;
@@ -95,6 +99,14 @@ struct SpreadsheetUndoAction {
     // ChartChange: the sheet's charts on the other side of the step; undo
     // and redo each swap them with what is there now.
     std::vector<SpreadsheetChart> chartData;
+    // RulesChange: the sheet's conditional formats and range validation
+    // rules on the other side of the step, and the cells' own validation
+    // rules it changed (no rule: none); undo and redo each swap them with
+    // what is there now.
+    struct CellRule { int row = 0; int col = 0; std::optional<DataValidation> rule; };
+    std::vector<ConditionalFormat> conditionalFormatData;
+    std::vector<std::pair<CellRange, DataValidation>> validationData;
+    std::vector<CellRule> cellRuleData;
 };
 
 // A text measurer backed by a live render context: it selects each cell's own
@@ -314,6 +326,12 @@ private:
     int ChartAt(int x, int y) const;
     void RecordChartStep(SpreadsheetSheet& sheet, std::vector<SpreadsheetChart> before, const std::string& description);
     void ApplyChartStep(SpreadsheetUndoAction& action);
+    // A conditional-format or validation change about to be made to `sheet`,
+    // as one undo step (RulesChange): its rules as they are now, and the
+    // cells' own rules in `cellRules`.
+    void RecordRulesStep(SpreadsheetSheet& sheet, const std::string& description,
+                         std::vector<SpreadsheetUndoAction::CellRule> cellRules = {});
+    void ApplyRulesStep(SpreadsheetUndoAction& action);
 
     Rect2Df formulaBarBounds_;
     Rect2Df gridBounds_;
@@ -468,8 +486,16 @@ public:
     // The formats over a range are the sheet's (SpreadsheetSheet::
     // AddConditionalFormat, GetConditionalFormatting); the grid draws them,
     // as the printed page does. These act on the selection, as the dialogs do.
+    // Each call is one undo step, as the dialogs' changes are.
     // A rule over the selection (GetFormattingRange), added after the others.
     void AddSelectionConditionalFormat(const ConditionalFormatRule& rule);
+    // A format over its own range on the active sheet, added after the others.
+    void AddConditionalFormat(const ConditionalFormat& format);
+    // Replaces rule `rule` of the active sheet's format `format`
+    // (GetConditionalFormats() order); false when there is no such rule.
+    bool SetConditionalFormatRule(int format, int rule, const ConditionalFormatRule& value);
+    // Deletes that rule, and the format with it when it was the last.
+    bool RemoveConditionalFormatRule(int format, int rule);
     // Removes every format that covers a cell of the selection.
     void ClearSelectionConditionalFormats();
     // The selection's validation rule; a rule of type Any removes it.
