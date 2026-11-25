@@ -268,7 +268,12 @@ jobs:
     # half an hour on the hosted ARM runner, and on 2026-11-24 a run whose
     # every step passed was cut off twice at 120 minutes, seconds before its
     # last step (main's own run that day took 103).
-    timeout-minutes: ${{ startsWith(matrix.os, 'macos') && 300 || (matrix.os == 'windows-11-arm' && 180 || 120) }}
+    # Linux gets 180 too: it builds, runs every test and the layout audits,
+    # then packages the AppImage, the SDK and the store packages, and on
+    # 2026-11-24 one pull request's run took 118 minutes while another's was
+    # cut off at 120 in its last packaging step, its build and tests green
+    # (#1381, #1382).
+    timeout-minutes: ${{ startsWith(matrix.os, 'macos') && 300 || ((matrix.os == 'windows-11-arm' || startsWith(matrix.os, 'ubuntu')) && 180 || 120) }}
 
     defaults:
       run:
