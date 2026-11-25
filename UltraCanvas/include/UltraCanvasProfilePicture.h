@@ -33,6 +33,8 @@
 // ultracanvas-widget-profile-picture runtime module when ULTRACANVAS_WIDGETS
 // leaves ProfilePicture out.
 //
+// Version: 1.1.0 - CropProfilePictureWithin, SetMaxOutputBytes: a picture kept under a size in bytes;
+//                  the editor row's GetChooseButton / GetRemoveButton
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -133,6 +135,16 @@ std::string ProfilePictureInitials(const std::string& name);
 // `error`, when the source cannot be read or the file not written.
 bool CropProfilePicture(const std::string& sourcePath, const ProfilePictureFrame& frame, int outputSize,
                         const std::string& outputPath, std::string* error = nullptr);
+// CropProfilePicture kept to at most `maxBytes` - for a service that takes
+// pictures up to a size: one written larger is written again as JPEG at a
+// lower quality (88, 75, 60), then smaller (three quarters, then half the
+// size, never under 64 pixels), until it fits. `writtenPath` gets the file
+// written: `outputPath`, or the same with ".jpg" when a PNG or WebP had to
+// become a JPEG (the larger one is removed). False when not even the
+// smallest fits.
+bool CropProfilePictureWithin(const std::string& sourcePath, const ProfilePictureFrame& frame, int outputSize,
+                              const std::string& outputPath, size_t maxBytes, std::string* writtenPath,
+                              std::string* error = nullptr);
 // Whether the picture at `path` lets what is behind it show through (a PNG
 // logo), so it is written as PNG rather than JPEG.
 bool ProfilePictureHasTransparency(const std::string& path);
@@ -175,6 +187,10 @@ public:
     // The side of a picture written, in pixels (64 to 1024; 256 by default).
     void SetOutputSize(int pixels);
     int GetOutputSize() const { return outputSize_; }
+    // The largest file a chosen picture may be, in bytes (0, the default:
+    // any): it is written smaller until it fits (CropProfilePictureWithin).
+    void SetMaxOutputBytes(size_t bytes) { maxOutputBytes_ = bytes; }
+    size_t GetMaxOutputBytes() const { return maxOutputBytes_; }
     // The file dialog, then the crop dialog; the picture chosen replaces
     // this one and onPictureChanged reports it. Cancel at either step
     // changes nothing.
@@ -219,6 +235,7 @@ private:
     bool styleByHand_ = false;
     std::string outputDirectory_;
     int outputSize_ = 256;
+    size_t maxOutputBytes_ = 0;
     ProfilePictureStyle style_;
 };
 
@@ -297,6 +314,9 @@ public:
     // The picture in the row: name, colour key, output folder and size are
     // set on it.
     UltraCanvasProfilePicture* GetPicture() const { return picture_.get(); }
+    // The two buttons, for an application that styles its buttons itself.
+    const std::shared_ptr<UltraCanvasButton>& GetChooseButton() const { return choose_; }
+    const std::shared_ptr<UltraCanvasButton>& GetRemoveButton() const { return remove_; }
     void SetPicturePath(const std::string& path);
     const std::string& GetPicturePath() const;
     void SetName(const std::string& name);

@@ -11,6 +11,8 @@
 //    two-colour picture cropped to each half comes out all one colour, as
 //    JPEG (over white) and as PNG (transparency kept); a file that is no
 //    picture is refused with a reason.
+//  - CropProfilePictureWithin: a noisy picture brought under a size as JPEG;
+//    one that fits kept as asked; one that never fits refused.
 //  - The cropper: a drag moves the picture with the pointer (the frame the
 //    other way), the wheel zooms within 1 .. the maximum, a key without the
 //    focus does nothing; every change is reported.
@@ -200,6 +202,40 @@ int main() {
         Check(!CropProfilePicture(notPicture, ProfilePictureFrame{}, 64, PathToUtf8(dir / "x.jpg"), &error) &&
                   !error.empty(),
               "a file that is no picture is refused, with a reason");
+    }
+
+    std::printf("Kept under a size\n");
+    {
+        // Noise: a picture that compresses badly.
+        const int side = 300;
+        std::vector<uint8_t> px(static_cast<size_t>(side) * side * 4);
+        uint32_t seed = 12345;
+        for (size_t i = 0; i < px.size(); ++i) {
+            seed = seed * 1103515245u + 12345u;
+            px[i] = (i % 4 == 3) ? 255 : static_cast<uint8_t>(seed >> 16);
+        }
+        auto noise = UCImage::FromBgra(px.data(), side, side, side * 4, true);
+        const std::string noisy = PathToUtf8(dir / "noise.png");
+        UCImageSave::ImageExportOptions png;
+        png.format = UCImageSaveFormat::PNG;
+        Check(noise && noise->Save(noisy, png).empty(), "a noisy picture to start from");
+        const std::string wanted = PathToUtf8(dir / "small.png");
+        std::string written, error;
+        const bool ok = CropProfilePictureWithin(noisy, ProfilePictureFrame{}, 256, wanted, 12000, &written, &error);
+        std::error_code sizeError;
+        const auto bytes = fs::file_size(PathFromUtf8(written), sizeError);
+        Check(ok && !sizeError && bytes <= 12000, "written within 12000 bytes (" + std::to_string(bytes) + ")");
+        Check(written == PathToUtf8(dir / "small.jpg") && !fs::exists(PathFromUtf8(wanted)),
+              "as a JPEG, the larger PNG gone");
+        std::string first;
+        Check(CropProfilePictureWithin(source, ProfilePictureFrame{}, 64, PathToUtf8(dir / "fits.png"), 1 << 20,
+                                       &first) &&
+                  first == PathToUtf8(dir / "fits.png"),
+              "one that fits is kept as asked");
+        Check(!CropProfilePictureWithin(noisy, ProfilePictureFrame{}, 256, PathToUtf8(dir / "never.jpg"), 50,
+                                        &written, &error) &&
+                  !error.empty() && !fs::exists(dir / "never.jpg"),
+              "one that never fits is refused, nothing left behind");
     }
 
     std::printf("The cropper\n");

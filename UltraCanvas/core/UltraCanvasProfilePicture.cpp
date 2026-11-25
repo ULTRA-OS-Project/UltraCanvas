@@ -1,6 +1,7 @@
 // core/UltraCanvasProfilePicture.cpp
 // The round profile picture, its editor row, the cropper and the crop
 // dialog - see the header.
+// Version: 1.1.0 - CropProfilePictureWithin: lower quality, then fewer pixels, until the file fits
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -264,8 +265,55 @@ bool ProfilePictureHasTransparency(const std::string& path) {
     return image && image->HasTransparency();
 }
 
+namespace {
+bool CropAt(const std::string& sourcePath, const ProfilePictureFrame& frame, int outputSize,
+            const std::string& outputPath, int quality, std::string* error);
+} // namespace
+
 bool CropProfilePicture(const std::string& sourcePath, const ProfilePictureFrame& frame, int outputSize,
                         const std::string& outputPath, std::string* error) {
+    return CropAt(sourcePath, frame, outputSize, outputPath, 88, error);
+}
+
+bool CropProfilePictureWithin(const std::string& sourcePath, const ProfilePictureFrame& frame, int outputSize,
+                              const std::string& outputPath, size_t maxBytes, std::string* writtenPath,
+                              std::string* error) {
+    if (!CropAt(sourcePath, frame, outputSize, outputPath, 88, error)) return false;
+    auto sizeOf = [](const std::string& path) {
+        std::error_code ec;
+        const auto n = fs::file_size(PathFromUtf8(path), ec);
+        return ec ? static_cast<uintmax_t>(-1) : n;
+    };
+    if (maxBytes == 0 || sizeOf(outputPath) <= maxBytes) {
+        if (writtenPath) *writtenPath = outputPath;
+        return true;
+    }
+    // Smaller, as JPEG: lower quality first, then fewer pixels.
+    fs::path jpeg = PathFromUtf8(outputPath);
+    const std::string ext = LowerExtension(outputPath);
+    if (ext != ".jpg" && ext != ".jpeg") jpeg.replace_extension(".jpg");
+    const std::string target = PathToUtf8(jpeg);
+    for (const int side : {outputSize, std::max(64, outputSize * 3 / 4), std::max(64, outputSize / 2)}) {
+        for (const int quality : {88, 75, 60}) {
+            if (!CropAt(sourcePath, frame, side, target, quality, error)) return false;
+            if (sizeOf(target) <= maxBytes) {
+                std::error_code ec;
+                if (target != outputPath) fs::remove(PathFromUtf8(outputPath), ec);
+                if (writtenPath) *writtenPath = target;
+                return true;
+            }
+        }
+    }
+    std::error_code ec;
+    fs::remove(PathFromUtf8(target), ec);
+    if (target != outputPath) fs::remove(PathFromUtf8(outputPath), ec);
+    if (error) *error = "The picture does not get small enough";
+    return false;
+}
+
+namespace {
+bool CropAt(const std::string& sourcePath, const ProfilePictureFrame& frame, int outputSize,
+            const std::string& outputPath, int quality, std::string* error) {
     if (outputSize < 1 || outputPath.empty()) {
         if (error) *error = "No size or no file to write";
         return false;
@@ -333,10 +381,10 @@ bool CropProfilePicture(const std::string& sourcePath, const ProfilePictureFrame
     options.preserveTransparency = !opaque;
     if (opaque) {
         options.format = UCImageSaveFormat::JPEG;
-        options.jpeg.quality = 88;
+        options.jpeg.quality = quality;
     } else if (ext == ".webp") {
         options.format = UCImageSaveFormat::WEBP;
-        options.webp.quality = 88;
+        options.webp.quality = quality;
     } else {
         options.format = UCImageSaveFormat::PNG;
     }
@@ -347,6 +395,7 @@ bool CropProfilePicture(const std::string& sourcePath, const ProfilePictureFrame
     }
     return true;
 }
+} // namespace
 
 // ===== THE PICTURE =====
 UltraCanvasProfilePicture::UltraCanvasProfilePicture(const std::string& identifier, float x, float y, float w,
@@ -549,13 +598,13 @@ std::string UltraCanvasProfilePicture::NextOutputPath(bool transparent) const {
     const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
     const std::string name = "picture-" + std::to_string(ms) + "-" + std::to_string(counter++) +
                              (transparent ? ".png" : ".jpg");
-    return PathToUtf8(PathFromUtf8(outputDirectory_) / name);
+    return PathToUtf8(PathFromUtf8(outputDirectory_) / PathFromUtf8(name));
 }
 
 void UltraCanvasProfilePicture::Commit(const std::string& sourcePath, const ProfilePictureFrame& frame) {
-    const std::string target = NextOutputPath(ProfilePictureHasTransparency(sourcePath));
-    std::string error;
-    if (!CropProfilePicture(sourcePath, frame, outputSize_, target, &error)) {
+    const std::string wanted = NextOutputPath(ProfilePictureHasTransparency(sourcePath));
+    std::string target, error;
+    if (!CropProfilePictureWithin(sourcePath, frame, outputSize_, wanted, maxOutputBytes_, &target, &error)) {
         if (onPictureError) onPictureError(error);
         return;
     }

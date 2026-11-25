@@ -45,7 +45,7 @@ editor->onPictureError = [](const std::string& error) {
 card->AddChild(editor);
 ```
 
-The row is at least as tall as its picture (96 pixels; `SetPictureSize`), taller when the caption, the buttons and a wrapped hint need it. `SetCaption("")` hides the caption, `SetHint("")` the hint.
+An application that styles its own buttons reaches the row's two with `GetChooseButton()` and `GetRemoveButton()`. The row is at least as tall as its picture (96 pixels; `SetPictureSize`), taller when the caption, the buttons and a wrapped hint need it. `SetCaption("")` hides the caption, `SetHint("")` the hint.
 
 ## The picture
 
@@ -67,6 +67,7 @@ mine->onPictureChanged = [](const std::string& path) { SavePicturePath(path); };
 - `ProfilePictureInitials(name)` gives the initials it draws: the first letters of the first and last word, upper-cased (`"Erin Mayer"` → `EM`, `"erin"` → `E`); a letter outside ASCII is taken whole.
 - `PictureRect()` is the circle: the element's largest centred square.
 - `SetPictureFrame(source, frame)` shows a square of a picture without writing a file - the crop dialog's previews use it; `SetPicturePath` clears it.
+- `SetOutputSize(pixels)` (256 by default, 64 to 1024) and `SetMaxOutputBytes(bytes)` (0, the default, for any size) say what a chosen picture is written as: a service that takes pictures up to a size - ChatCube Direct's 32 KiB in one sealed message - gets one that fits (see `CropProfilePictureWithin` below).
 - `ChoosePicture()` opens the chooser from code (the editor row's button does); `PlacePicture(path)` starts at the crop dialog with a picture the application already has (a file dropped on it, a photo taken); `RemovePicture()` goes back to the initials.
 
 ## Choosing and placing a picture
@@ -113,6 +114,15 @@ const bool keepAsPng = ProfilePictureHasTransparency("/home/erin/Pictures/logo.p
 ```
 
 The format follows the extension of the file written: `.jpg` / `.jpeg` (quality 88, transparency put over white), `.webp`, otherwise PNG with its transparency. Every output pixel averages the source pixels it covers, so a large photo shrinks sharp and a small picture is enlarged smoothly to the size asked for. The source is read at no more than 2048 pixels on its long side.
+
+To keep the file under a size, `CropProfilePictureWithin` writes it as `CropProfilePicture` does and, when it comes out larger, again as JPEG at quality 75 and 60, then at three quarters and half the size (never under 64 pixels), until it fits. The path written comes back - the one asked for, or the same with `.jpg` when a PNG had to become a JPEG; nothing is left behind when not even the smallest fits.
+
+```cpp
+std::string written, why;
+if (CropProfilePictureWithin("/home/erin/Pictures/beach.png", ProfilePictureFrame{}, 256, "/tmp/me.png",
+                             32 * 1024, &written, &why))
+    SavePicturePath(written);   // "/tmp/me.jpg" when the PNG was too large
+```
 
 ## Style and the theme
 
