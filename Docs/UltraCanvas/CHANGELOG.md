@@ -1,3 +1,150 @@
+#### 2026-11-25 *0.9.588*
+- **The demo app speaks every language of its catalogue.** Each of the 29
+  languages had 841 of the demo's 7475 texts, so most of every page showed
+  in English. All 6571 missing texts - the slider page's new ones among
+  them - are drafted in all 29 (machine drafts, marked for review like the
+  rest of the catalogue), with the plural forms each language needs. The
+  layout audit passes with the demo in German, Russian, Japanese and Arabic.
+- **`UltraCanvasDesktopShell::KeepMinimizedWindowsHidden`: a shell without
+  Explorer keeps minimized windows out of sight.** Without Explorer's
+  taskbar, Windows parks each minimized window as a small title bar along
+  the bottom of the screen unless the session's `ARW_HIDE` is on. The shell
+  guard set it once at sign-in, but an Explorer started and ended later in
+  the session puts it back as it ends, and windows parked meanwhile stayed
+  where they were. The new call switches it on again whenever it is off and
+  moves a parked minimized window off the screen, still minimized; false
+  beside Explorer's taskbar and on other systems. `DesktopShellTest` checks
+  both sides on Windows.
+- **iOS phase 2: a UIKit backend, and DemoApp as an app for the simulator.**
+  Nothing in it has run yet: `.github/workflows/ios-build.yml` is its first
+  build. `UltraCanvas/OS/iOS/` holds:
+  - the application and the window. The window is a Cairo image surface
+    presented as the root view layer's contents, at
+    `traitCollection.displayScale`, and it follows rotation;
+  - `main()`. It calls `UIApplicationMain`, and the application's renamed
+    `ultracanvas_app_main()` runs once the app has launched;
+  - the run loop. The framework's `Run()` pumps the main run loop one turn at
+    a time, with a `CFRunLoopSource` wakeup;
+  - touches, as touch events and first-finger mouse events with double tap;
+  - the clipboard (`UIPasteboard`);
+  - message and text-input dialogs (`UIAlertController`, answered
+    synchronously);
+  - the system languages.
+
+  `UltraCanvas/CMakeLists.txt` selects it for `CMAKE_SYSTEM_NAME=iOS`, with a
+  static core and GL, audio, video and UltraNet off. tvOS, visionOS and
+  watchOS still stop. It defines `ULTRACANVAS_IOS`, which the core now tests
+  where `__APPLE__` alone meant macOS:
+  - fontconfig is used on iOS;
+  - iOS takes the no-op file-association, host-icon and alias fallbacks;
+  - there is no hardware-info or network-monitor backend;
+  - `OpenURL` goes through `UIApplication`, since `system()` is unavailable.
+
+  The root `CMakeLists.txt` builds DemoApp alone, as `UltraCanvasDemo.app`
+  (Info.plist from `UltraCanvas/OS/iOS/packaging/Info.plist.in`), with its
+  resources in the bundle's `share/`. The CI job builds the core and the app
+  against the simulator sysroot and launches the app on a simulator.
+- **iOS: composing text.** CJK input methods and dead keys now compose on
+  iOS. Not yet driven on a simulator.
+  - **The editor.** The keyboard's editor view adopts `UITextInput` instead
+    of `UIKeyInput`. Its document is only the text being composed (the
+    marked text), counted in UTF-16 positions. The widget gets it as
+    `TextComposition` events when it draws compositions, with the caret as
+    a byte offset, and nothing until the commit when it does not (the
+    Android rule).
+  - **Committing.** `unmarkText` and lowering the keyboard keep the
+    composition as typed. `insertText:` replaces it. Backspace inside a
+    composition deletes in the composition.
+  - **The candidate window** goes at the focused element's caret, found
+    through its `IAccessibleText` as on macOS.
+  - **A hardware keyboard.** While a widget edits text, the keys that type,
+    plus Return and backspace, go through the text system, so an input
+    method composes from a hardware keyboard too. Arrows, Escape, Tab,
+    function keys and shortcuts stay key events.
+  - **Autocorrection** stays off: the text it rewrites is the widget's.
+- **iOS: the keyboards, host appearance and opening files.** Like the rest of
+  the iOS backend, it has not yet been compiled or run.
+  - **Software keyboard.** The root view is the editor (`UIKeyInput`), and
+    it becomes first responder only while a text widget holds the caret
+    (`UltraCanvasCaret::onTextEditingChanged`). A hide waits one loop turn,
+    as on Android. Typed text arrives as committed text, and Return and
+    backspace as key presses. Autocorrection is off, since there is no
+    composition yet.
+  - **Hardware keyboard.** Presses become key events: `UIKey` HID usages
+    map to `UCKeys`, and the key's own text is used, so nothing types twice.
+  - **Host appearance** comes from the trait collection: dark mode, contrast,
+    Reduce Motion, the tint as the accent, and Dynamic Type as the text scale.
+    A trait change refreshes it.
+  - **Opening files.** `OpenFile` and `OpenMultipleFiles` show the document
+    picker, which copies the documents into the sandbox so callers get plain
+    paths.
+- **iOS: a clear stop instead of a missing file, and the port investigated.**
+  An iOS compile reached `#include "../OS/iOS/..."` in `UltraCanvasWindow.h`
+  and `UltraCanvasApplication.h`, a directory that does not exist; both
+  branches are now `#error "iOS backend not implemented yet"`. An iOS
+  configure (`-DCMAKE_SYSTEM_NAME=iOS`, likewise tvOS, visionOS and watchOS)
+  satisfied `APPLE` and quietly picked the AppKit backend;
+  `UltraCanvas/CMakeLists.txt` now tests those four first and stops with a
+  message. The headers' last-resort `#error` no longer lists iOS as
+  supported. The two stops name the new
+  `Docs/UltraCanvas/iOSPortInvestigation.md`: the backend's parts list, the
+  run loop under `UIApplicationMain`, building the dependencies with vcpkg's
+  iOS triplets, the GL / Metal decision (GL off first, ANGLE on Metal later)
+  and the CMake branch a port needs.
+- **iOS: saving, and choosing a folder, through the document picker.** Neither
+  has been compiled or run yet.
+  - **`SaveContent`** writes the bytes into a temporary file of the suggested
+    name (with the default extension where it has none). The picker's export
+    mode then copies it to where the user chooses, and the function returns
+    true once it is there.
+  - **The shared desktop `SaveContent`** (`core/UltraCanvasFileLoader.cpp`) is
+    compiled out for iOS, as it is for Android and WebAssembly. The
+    path-returning `SaveFile` stays a stub: nothing outside the sandbox has a
+    path the app could write to afterwards.
+  - **`SelectFolder`** returns the picked folder's path with its
+    security-scoped access started and kept for the run.
+  - **The iOS CI job** now fails when the app's screenshot is one colour,
+    using `scripts/ios-check-screenshot.py`. It also prints the app's system
+    log into the job's own log.
+- **iOS: the scene lifecycle.** DemoApp's first run on the simulator drew its
+  window: the screenshot check found 288 colours. Its log also carried UIKit's
+  warning "`UIScene` lifecycle will soon be required. Failure to adopt will
+  result in an assert in the future."
+  - A scene delegate now creates the window and the root view, and takes the
+    foreground and background events.
+  - The application delegate only sets up the sandbox's folders and names
+    the scene delegate, in code.
+  - `Info.plist.in` opts into scenes with a single scene. The application's
+    main body still starts once, after the first scene connects.
+  - Not yet run: the next simulator run of `ios-build.yml` is its first.
+- **iOS phase 1: the dependency stack builds for iOS, in CI.**
+  `scripts/ios-bootstrap-sysroot.sh [--with-net] [simulator|device]` builds
+  cairo, pango, glib, harfbuzz, fontconfig, freetype, tinyxml2, fmt and
+  libvips as static libraries. It uses vcpkg at the commit macOS and Android
+  pin, the manifest and triplets in `UltraCanvas/OS/iOS/packaging/`
+  (`arm64-ios-simulator-ultracanvas`, `arm64-ios-ultracanvas`, iOS 16.0) and
+  the macOS libvips overlay. `scripts/ios-check-sysroot.sh` checks that every
+  archive's objects name the right platform (simulator 7, device 2), that no
+  `.dylib` is present, that the `.pc` files the core asks for are there, and
+  that cairo was built without its Quartz backend.
+  `.github/workflows/ios-build.yml` runs both triplets on `macos-15` with a
+  vcpkg binary cache. `cmake/UltraCanvasMacOSDeps.cmake` no longer asks
+  Homebrew for an iOS, tvOS, visionOS or watchOS configure. There is still no
+  backend: the core and DemoApp are phase 2 of
+  `Docs/UltraCanvas/iOSPortInvestigation.md`.
+- **A tooltip asked of a window that is closing no longer crashes the
+  program.** A pointer event of a window being closed - queued before it
+  closed, as UltraDesktop's window-preview strip closes when the pointer
+  leaves it - asked the tooltip manager for a tooltip after the window's
+  render context was gone, and `CalculateTooltipLayout` called
+  `CreateTextLayout` on a null context (UltraDesktop on Windows: an access
+  violation writing address 0x8). A window that is not created is no
+  tooltip target now, `UpdateAndShowTooltipImmediately` no longer marks such
+  a tooltip shown, the layout stops without a render context, and a text
+  layout that could not be made measures 0 (the drawing skipped those
+  already). `TooltipOwnWindowTest` asks for a tooltip on a closed window:
+  it crashed before, it shows nothing now.
+
 #### 2026-11-24 *0.9.587*
 - **The Android sysroot survives GNU's download hosts being down.** vcpkg
   fetches gperf, libiconv and gettext only from ftpmirror.gnu.org and
