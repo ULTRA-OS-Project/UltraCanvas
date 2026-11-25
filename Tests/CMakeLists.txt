@@ -5989,6 +5989,23 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: PresentationPrintTest")
 endif()
 
+# ===== SLIDE DECK EDITOR TEST =====
+# The slide editor's core without a window: its commands with undo and redo,
+# hit testing, handles and snapping.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SlideDeckEditorTest...")
+    add_executable(SlideDeckEditorTest ${CMAKE_CURRENT_SOURCE_DIR}/SlideDeckEditorTest.cpp)
+    target_include_directories(SlideDeckEditorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SlideDeckEditorTest PRIVATE cxx_std_20)
+    target_link_libraries(SlideDeckEditorTest PRIVATE UltraCanvas)
+    set_target_properties(SlideDeckEditorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SlideDeckEditorTest COMMAND SlideDeckEditorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SlideDeckEditorTest")
+endif()
+
 # ===== OFFICE ENCRYPTION TEST =====
 # Password-protected .xlsx / .docx (ECMA-376 agile encryption): the decryptor
 # against fixtures msoffcrypto-tool encrypted - right, wrong and missing
