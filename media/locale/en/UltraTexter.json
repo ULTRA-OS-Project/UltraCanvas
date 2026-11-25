@@ -39,7 +39,8 @@
     "White",
     "Whole word",
     "Words",
-    "{0} bytes"
+    "{0} bytes",
+    "{n} file"
   ],
   "(no dictionaries installed)": "(no dictionaries installed)",
   "(None)": "(None)",
@@ -218,6 +219,7 @@
   "Save Failed": "Save Failed",
   "Save File": "Save File",
   "Save File As": "Save File As",
+  "Saved": "Saved",
   "Saving to the legacy Word 97-2003 (.doc) format is not supported. Save as .docx instead.": "Saving to the legacy Word 97-2003 (.doc) format is not supported. Save as .docx instead.",
   "Search History": "Search History",
   "Search Options": "Search Options",
@@ -250,6 +252,7 @@
   "This tab shows the outline of the presentation's slides. Saving it under the presentation's own name would replace the slides with the outline; save it under a new name.": "This tab shows the outline of the presentation's slides. Saving it under the presentation's own name would replace the slides with the outline; save it under a new name.",
   "Three Columns": "Three Columns",
   "Toggle Theme": "Toggle Theme",
+  "Total: {0}": "Total: {0}",
   "Track Changes": "Track Changes",
   "Translate into (a language code such as en, de, fr or pt-BR):": "Translate into (a language code such as en, de, fr or pt-BR):",
   "Translate Selection": "Translate Selection",
@@ -262,6 +265,7 @@
   "Two Columns": "Two Columns",
   "Undo (Ctrl+Z)": "Undo (Ctrl+Z)",
   "Unordered List (- item)": "Unordered List (- item)",
+  "Unsaved": "Unsaved",
   "Unsaved Changes": "Unsaved Changes",
   "Unsupported Format": "Unsupported Format",
   "Update Style to Match Paragraph": "Update Style to Match Paragraph",
@@ -273,8 +277,16 @@
   "Windows-1252 (Western)": "Windows-1252 (Western)",
   "Word Wrap": "Word Wrap",
   "Zoom Level": "Zoom Level",
+  "{n} character": {
+    "one": "{n} character",
+    "other": "{n} characters"
+  },
   "{n} file has unsaved changes. Save it before closing?": {
     "one": "{n} file has unsaved changes. Save it before closing?",
     "other": "{n} files have unsaved changes. Save them before closing?"
+  },
+  "{n} word": {
+    "one": "{n} word",
+    "other": "{n} words"
   }
 }
