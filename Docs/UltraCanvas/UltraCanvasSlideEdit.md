@@ -98,6 +98,43 @@ The show is `UltraCanvasSlideShowPlayer`
 transitions, auto-advance, the presenter view on a second monitor
 (`StartSlideShow(deck, fromSlide)`).
 
+## Copy and paste
+
+`Copy()` / `Cut()` (Ctrl+C / X) keep the selected shapes for a paste here
+and put them on the system clipboard for other programs and the other office
+elements: their text (a table's rows a line each, a tab between cells) and
+HTML (a table as a table, the rest as paragraphs with their look).
+`Paste()` (Ctrl+V) takes those shapes back while the clipboard still holds
+what their copy put there - a little down and to the right on the slide they
+came from. Anything copied since pastes through
+`UltraCanvasOfficeClipboard.h`:
+
+| On the clipboard | Pasted as |
+|---|---|
+| a chart copied from a spreadsheet (the office clipboard) | a chart shape holding its data, as large as it was (`InsertChart`) |
+| cells: an HTML table that is the whole fragment, or tab-separated text | a table in the banded look holding the cells' text, a bold, italic or right-aligned cell kept (`InsertTable(box, cells)`) |
+| a document's selection (HTML) | a text box keeping bold, italic, underline, colour, size, alignment and list items (`InsertFormattedTextBox`) |
+| a picture (an image flavour and no text) | a picture, its proportions kept (`InsertPicture`) |
+| plain text | a text box, a paragraph a line, in the deck's body font |
+
+Each is one undo step and lands in the middle of the slide.
+
+```cpp
+#include "UltraCanvasOfficeClipboard.h"
+// Cells a test (or a host) hands the slide directly:
+std::vector<std::vector<std::string>> rows;
+if (ClipboardTableFromTabbedText("Item\tPrice\nTea\t2.50", rows))
+    edit->Editor().InsertTable(SlideBox{914400, 914400, 4 * 914400, 2 * 370840}, PptxTableCellsFromRows(rows));
+```
+
+## Accessibility
+
+A canvas (`AccessibleRole::Canvas`) named by the slide shown ("Slide 2 of 5:
+Results"); its parts are the strip - a list of the slides - and the slide's
+shapes, named by their text's first words or else their kind, the selected
+shape focused, and a change of slide or selection announced. See
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#parts-an-element-draws-itself).
+
 ## Drawing and print
 
 ```cpp

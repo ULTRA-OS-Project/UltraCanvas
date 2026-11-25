@@ -1,6 +1,7 @@
 // core/UltraCanvasSlideDeckEditor.cpp
 // The editing core of a presentation (include/UltraCanvasSlideDeckEditor.h).
 //
+// Version: 1.3.0 - InsertTable with the cells' text, InsertFormattedTextBox, InsertChart
 // Version: 1.2.0 - tables: InsertTable, TableCellBox, TableCellAt, rows and columns inserted and deleted
 // Version: 1.1.0 - FormatSelectedText, AllSelectedText
 // Version: 1.0.0
@@ -514,6 +515,39 @@ int UCSlideDeckEditor::InsertTextBox(const SlideBox& box, const std::string& tex
     return InsertShape(shape);
 }
 
+int UCSlideDeckEditor::InsertFormattedTextBox(const SlideBox& box, const std::vector<PptxParagraph>& paragraphs) {
+    PptxShape shape;
+    shape.kind = PptxShapeKind::Text;
+    shape.name = "TextBox";
+    PlaceShape(shape, box);
+    shape.paragraphs = paragraphs;
+    for (PptxParagraph& paragraph : shape.paragraphs) {
+        if (paragraph.runs.empty()) paragraph.runs.emplace_back();
+        for (PptxRun& run : paragraph.runs) {
+            if (run.sizePt <= 0) run.sizePt = 18;
+            if (run.font.empty()) run.font = deck_->minorFont;
+        }
+    }
+    if (shape.paragraphs.empty()) {
+        PptxRun run;
+        run.sizePt = 18;
+        run.font = deck_->minorFont;
+        shape.paragraphs.emplace_back();
+        shape.paragraphs.back().runs.push_back(run);
+    }
+    return InsertShape(shape);
+}
+
+int UCSlideDeckEditor::InsertChart(const SlideBox& box, const RichChart& chart) {
+    if (!chart.IsChart() || !CurrentSlide()) return -1;
+    PptxShape shape;
+    shape.kind = PptxShapeKind::Chart;
+    shape.name = chart.title.empty() ? "Chart" : chart.title;
+    PlaceShape(shape, box);
+    shape.chart = chart;
+    return InsertShape(shape);
+}
+
 int UCSlideDeckEditor::InsertGeometry(const SlideBox& box, const std::string& geometry, const std::string& fill) {
     PptxShape shape;
     shape.kind = PptxShapeKind::Text;
@@ -661,7 +695,41 @@ std::vector<double> Scaled(const std::vector<int64_t>& sizes, int64_t total, siz
 
 } // namespace
 
+static PptxShape BandedTable(const SlideBox& box, int rows, int columns, float sizePt);
+
 int UCSlideDeckEditor::InsertTable(const SlideBox& box, int rows, int columns) {
+    return InsertShape(BandedTable(box, rows, columns, 18));
+}
+
+int UCSlideDeckEditor::InsertTable(const SlideBox& box, const std::vector<std::vector<std::vector<PptxParagraph>>>& cells) {
+    size_t columns = 0;
+    for (const auto& row : cells) columns = std::max(columns, row.size());
+    if (cells.empty() || columns == 0) return -1;
+    // A wide table in smaller type, as it has to fit the slide.
+    const float sizePt = columns <= 4 ? 18.0f : columns <= 8 ? 14.0f : 11.0f;
+    PptxShape table = BandedTable(box, static_cast<int>(cells.size()), static_cast<int>(columns), sizePt);
+    for (size_t r = 0; r < table.rows.size(); ++r) {
+        for (size_t c = 0; c < table.rows[r].size(); ++c) {
+            if (c >= cells[r].size() || cells[r][c].empty()) continue;
+            const PptxCellStyle& style = table.cellStyles[r][c];
+            std::vector<PptxParagraph> text = cells[r][c];
+            for (PptxParagraph& paragraph : text) {
+                if (paragraph.runs.empty()) paragraph.runs.emplace_back();
+                for (PptxRun& run : paragraph.runs) {
+                    if (run.sizePt <= 0) run.sizePt = sizePt;
+                    if (run.color.empty()) run.color = style.textColor;
+                    run.bold = run.bold || style.bold;
+                }
+            }
+            table.rows[r][c] = std::move(text);
+        }
+    }
+    return InsertShape(table);
+}
+
+// A rows x columns table at `box`, in the banded look, its cells empty in
+// `sizePt` type.
+static PptxShape BandedTable(const SlideBox& box, int rows, int columns, float sizePt) {
     rows = std::clamp(rows, 1, 75);
     columns = std::clamp(columns, 1, 75);
     PptxShape table;
@@ -673,7 +741,7 @@ int UCSlideDeckEditor::InsertTable(const SlideBox& box, int rows, int columns) {
         std::vector<PptxCellStyle> styles;
         for (int c = 0; c < columns; ++c) {
             const PptxCellStyle style = BandStyle(r);
-            row.push_back(CellText(18, style.textColor, style.bold));
+            row.push_back(CellText(sizePt, style.textColor, style.bold));
             styles.push_back(style);
         }
         table.rows.push_back(row);
@@ -681,7 +749,7 @@ int UCSlideDeckEditor::InsertTable(const SlideBox& box, int rows, int columns) {
         table.rowHeights.push_back(box.height / rows);
     }
     for (int c = 0; c < columns; ++c) table.columnWidths.push_back(box.width / columns);
-    return InsertShape(table);
+    return table;
 }
 
 SlideBox UCSlideDeckEditor::TableCellBox(const PptxShape& table, int row, int col) {

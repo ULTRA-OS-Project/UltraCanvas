@@ -48,6 +48,8 @@
 - [Best Practices](#best-practices)
 - [Printing and PDF](#printing-and-pdf)
 - [Charts](#charts)
+- [Copy and paste with documents and slides](#copy-and-paste-with-documents-and-slides)
+- [Accessibility](#accessibility)
 - [See Also](#see-also)
 
 ## Overview
@@ -1564,6 +1566,40 @@ grid->InsertChart(pie);
 SpreadsheetChartRange range;
 SpreadsheetChartRange::FromExcel("'Sales Data'!$B$2:$B$7", range);
 std::string odf = range.ToOdf();   // 'Sales Data'.$B$2:.$B$7
+```
+
+## Copy and paste with documents and slides
+
+`Copy()` puts the selected cells on the system clipboard as an HTML table and
+tab-separated text: a document (`UltraCanvasRichTextEdit`) pastes them as a
+table, a slide (`UltraCanvasSlideEdit`) as a table shape. With a chart
+selected (`SelectChart`), `Copy()` and `Cut()` take the chart instead: it is
+kept on the office clipboard (`CopyChartToClipboard`,
+`UltraCanvasOfficeClipboard.h`) and pastes into a document or onto a slide as
+a chart holding a static copy of its data, while other programs get a picture
+of it (HTML) and its data as text.
+
+```cpp
+grid->SelectChart(0);
+grid->Copy();                                   // the chart, not the cells
+RichChart chart;
+int width = 0, height = 0;
+bool held = GetClipboardChart(chart, width, height);   // true until something else is copied
+```
+
+## Accessibility
+
+The grid is a table to a screen reader, named by its sheet. Its rows and
+cells are parts, and it answers as a table (`GetAccessibleTableInterface()`):
+a cell is named by its address and the value it shows ("B3 42"), the active
+cell is the focused cell and the grid's value text, and a move of it or of the
+selection is announced (`SelectionChanged`, with the cell as the event's
+`part`). See
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#parts-an-element-draws-itself).
+
+```cpp
+IAccessibleTable* table = grid->GetAccessibleTableInterface();
+std::string cell = table->GetCell(2, 1).name;   // "B3 42"
 ```
 
 ## See Also

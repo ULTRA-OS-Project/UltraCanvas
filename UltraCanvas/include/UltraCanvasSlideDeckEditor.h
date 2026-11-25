@@ -22,6 +22,8 @@
 //   editor.MoveSelection(914400, 0);                             // an inch to the right
 //   editor.Undo();
 //
+// Version: 1.3.0 - pasting from other kinds: InsertTable with the cells' text, InsertFormattedTextBox,
+//                  InsertChart; CopiedShapes
 // Version: 1.2.0 - tables: InsertTable, TableCellBox, TableCellAt, rows and columns inserted and deleted
 // Version: 1.1.0 - FormatSelectedText, AllSelectedText
 // Version: 1.0.0
@@ -127,8 +129,15 @@ public:
     int InsertShape(const PptxShape& shape);
     // A text box at `box` with `text` in the deck's body font.
     int InsertTextBox(const SlideBox& box, const std::string& text = std::string());
+    // A text box at `box` holding `paragraphs` as they are (text pasted
+    // with its look); a run without a size or typeface takes the deck's
+    // body font at 18 points.
+    int InsertFormattedTextBox(const SlideBox& box, const std::vector<PptxParagraph>& paragraphs);
     // A drawn shape (a preset outline: "rect", "ellipse", "roundRect", "triangle", "rightArrow" ...).
     int InsertGeometry(const SlideBox& box, const std::string& geometry, const std::string& fill = "4472C4");
+    // A chart at `box` showing `chart` (a static copy of its data: a chart
+    // copied from a spreadsheet), selected; -1 when it has nothing to show.
+    int InsertChart(const SlideBox& box, const RichChart& chart);
     // A picture from its bytes, `mimeType` "image/png" ...; its box keeps
     // `widthPx` x `heightPx`'s proportions, centred, at most half the slide.
     int InsertPicture(const std::vector<uint8_t>& bytes, const std::string& extension, int widthPx, int heightPx,
@@ -155,6 +164,11 @@ public:
     // A table of `rows` x `columns` at `box`, in PowerPoint's banded look (a
     // coloured header row, alternating rows), selected; its index.
     int InsertTable(const SlideBox& box, int rows, int columns);
+    // The same table holding `cells` (rows of cells, each cell's paragraphs,
+    // as PptxShape::rows): as many rows and columns as the longest, a run
+    // without a size, colour or weight taking the banded look's (a pasted
+    // block of cells). -1 when there are none.
+    int InsertTable(const SlideBox& box, const std::vector<std::vector<std::vector<PptxParagraph>>>& cells);
     // Cell (`row`, `col`)'s box on the slide: the table's grid scaled to its
     // box, a merged cell spanning its columns and rows.
     static SlideBox TableCellBox(const PptxShape& table, int row, int col);
@@ -172,6 +186,7 @@ public:
     void CopySelection();
     void CutSelection();
     bool CanPaste() const { return !clipboard_.empty(); }
+    const std::vector<PptxShape>& CopiedShapes() const { return clipboard_; }
     void Paste();
 
     // ===== CHANGES TO THE SLIDE LIST =====

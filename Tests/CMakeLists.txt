@@ -6115,6 +6115,43 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: SlideEditElementTest")
 endif()
 
+# ===== OFFICE CLIPBOARD TEST =====
+# Copy and paste between cells, documents and slides (UltraCanvasOfficeClipboard.h)
+# through a stand-in clipboard backend: the converters, cells into a document
+# and onto a slide, the slide editor's own copy, text, pictures, and a chart
+# from the grid on the office clipboard. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OfficeClipboardTest...")
+    add_executable(OfficeClipboardTest ${CMAKE_CURRENT_SOURCE_DIR}/OfficeClipboardTest.cpp)
+    target_include_directories(OfficeClipboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OfficeClipboardTest PRIVATE cxx_std_20)
+    target_link_libraries(OfficeClipboardTest PRIVATE UltraCanvas)
+    set_target_properties(OfficeClipboardTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OfficeClipboardTest COMMAND OfficeClipboardTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OfficeClipboardTest")
+endif()
+
+# ===== OFFICE ACCESSIBILITY TEST =====
+# What the spreadsheet grid (a table: rows and cells as parts, the active cell
+# focused and announced) and the slide editor (a canvas: the strip and the
+# shapes as parts) tell assistive technology. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OfficeAccessibilityTest...")
+    add_executable(OfficeAccessibilityTest ${CMAKE_CURRENT_SOURCE_DIR}/OfficeAccessibilityTest.cpp)
+    target_include_directories(OfficeAccessibilityTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OfficeAccessibilityTest PRIVATE cxx_std_20)
+    target_link_libraries(OfficeAccessibilityTest PRIVATE UltraCanvas)
+    set_target_properties(OfficeAccessibilityTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OfficeAccessibilityTest COMMAND OfficeAccessibilityTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OfficeAccessibilityTest")
+endif()
+
 # ===== SLIDE SHOW PLAYER TEST =====
 # The slide show player and the presenter view by events and a test clock:
 # hidden slides, the end screen, transitions (mid-way, finished by a key, a

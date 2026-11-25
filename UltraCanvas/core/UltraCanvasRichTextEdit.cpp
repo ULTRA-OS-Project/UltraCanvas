@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.18.0 - InsertChart; Paste takes a chart copied from a spreadsheet (the office clipboard)
 // Version: 1.17.0 - a document's stated colours follow a dark page (DocumentColor, AdaptDocumentColorToPage)
 // Version: 1.16.0 - a frame's chart (RichTextFrame::chart) is drawn by the chart engine (UltraCanvasRichDocumentChart.h)
 // Version: 1.15.1 - a document's own bullet is drawn in the text's colour, half as large again
@@ -60,6 +61,7 @@
 #include "UltraCanvasUI.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasOfficeClipboard.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPdfSurface.h"
 #include "UltraCanvasUtils.h"           // OpenURL
@@ -5866,6 +5868,14 @@ void UltraCanvasRichTextEdit::Cut() {
 
 void UltraCanvasRichTextEdit::Paste() {
     if (readOnly) return;
+    // A chart copied from a spreadsheet, while the clipboard still holds it:
+    // a chart, as large as it was there (a pixel at 96 to the inch).
+    RichChart chart;
+    int chartWidth = 0, chartHeight = 0;
+    if (GetClipboardChart(chart, chartWidth, chartHeight) &&
+        InsertChart(chart, static_cast<float>(chartWidth) * 0.75f, static_cast<float>(chartHeight) * 0.75f)) {
+        return;
+    }
     std::string text;
     if (!GetClipboardText(text)) return;
 
@@ -6222,6 +6232,20 @@ void UltraCanvasRichTextEdit::InsertInlineImageFromMemory(const std::string& nam
     if (readOnly) return;
     editor.InsertInlineImage(name, mimeType, data, altText);
     AfterEdit();
+}
+
+bool UltraCanvasRichTextEdit::InsertChart(const RichChart& chart, float widthPt, float heightPt) {
+    if (readOnly) return false;
+    // No wider than the text: a chart copied from a wide sheet is scaled down.
+    const RichPageSetup& page = editor.GetDocument()->page;
+    const float column = page.HasPage() ? page.widthPt - page.marginLeftPt - page.marginRightPt : 0.0f;
+    if (column > 40.0f && widthPt > column) {
+        heightPt *= column / widthPt;
+        widthPt = column;
+    }
+    if (editor.InsertChart(chart, widthPt, heightPt) < 0) return false;
+    AfterEdit();
+    return true;
 }
 
 void UltraCanvasRichTextEdit::InsertImageFromMemory(const std::string& name,

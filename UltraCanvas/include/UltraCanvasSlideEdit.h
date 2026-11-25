@@ -16,12 +16,26 @@
 //   double-click      a shape's text: onEditText
 //   arrows            nudge (Ctrl: by a point); a run of them is one step
 //   Delete            the selection        Ctrl+A select all, Escape none
-//   Ctrl+D            duplicate            Ctrl+C / X / V the shapes
+//   Ctrl+D            duplicate            Ctrl+C / X / V the shapes (Copy, Cut, Paste)
 //   Ctrl+Z / Y        undo / redo          Page Up / Down the slide before / after
 //   Tab               the next shape       Enter, F2 its text (onEditText)
 //   Ctrl+wheel        zoom                 Ctrl+M a new slide
 // In the strip: click a slide, drag it to move it, Delete deletes it;
 // right-click (strip or slide) calls onContextMenu.
+//
+// Paste takes the shapes copied here while the system clipboard still holds
+// what Copy put there (their text and HTML, for other programs); else what
+// the system clipboard holds, through UltraCanvasOfficeClipboard.h: a chart
+// copied from a spreadsheet as a chart, cells (an HTML table or tab-separated
+// text) as a table, a picture as a picture, a document's selection (HTML)
+// or plain text as a text box.
+//
+// To assistive technology it is a canvas (AccessibleRole::Canvas) named by
+// the slide shown, whose parts are the slide strip ({0}: a list, a part per
+// slide) and the slide's shapes ({1}: a part per shape, named by its text's
+// first words, else by its kind - "Title", "Image" ...); the selected shape
+// (or, after a click in the strip, the slide) is the focused part, and a
+// change of slide or selection is announced (SelectionChanged).
 //
 // doc-check: std::shared_ptr<PptxPresentation> deck;
 // doc-check: example
@@ -29,6 +43,8 @@
 //   edit->SetDeck(deck);
 //   edit->onEditText = [edit](int shape) { /* ask for the text */ edit->Editor().SetShapeText(shape, "Hello"); };
 //
+// Version: 1.4.0 - Copy / Cut / Paste through the system clipboard (cells, text, pictures, charts);
+//                  a canvas with the slides and shapes as parts to assistive technology
 // Version: 1.3.0 - the show mode is gone: UltraCanvasSlideShowPlayer plays the deck
 // Version: 1.1.0 - SetEditingShape: a shape's text left to a host's in-place editor
 // Version: 1.0.0
@@ -68,6 +84,13 @@ public:
     // Shows slide `index` and scrolls the strip to it.
     void GoToSlide(int index);
 
+    // ===== CLIPBOARD =====
+    // The selected shapes (Ctrl+C / X), kept for a paste here and put on the
+    // system clipboard as text and HTML; Paste (Ctrl+V) as described above.
+    void Copy();
+    void Cut();
+    void Paste();
+
     // ===== CALLBACKS =====
     std::function<void()> onChange;              // the deck changed (and undo / redo)
     std::function<void()> onSelectionChange;     // the slide or the selection changed
@@ -85,6 +108,11 @@ public:
     bool OnEvent(const UCEvent& event) override;
     bool AcceptsFocus() const override { return true; }
 
+    // ===== ACCESSIBILITY =====
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Canvas; }
+    std::string GetAccessibleName() const override;
+    IAccessibleParts* GetAccessiblePartsInterface() override;
+
     // The shape whose text a host edits in place over the slide: drawn
     // without its text meanwhile, its frame shown; -1: none.
     void SetEditingShape(int shape);
@@ -101,6 +129,12 @@ private:
     enum class Drag { NoDrag, Band, Move, Resize, Rotate, StripSlide };
 
     int editingShape_ = -1;
+    std::string copiedText_;         // what Copy put on the system clipboard as text
+    class AccessibleSlides;
+    std::shared_ptr<AccessibleSlides> accessibleSlides_;
+    int announcedSlide_ = -1;
+    void AnnounceAccessibleSelection();
+    bool PasteFromSystemClipboard();
     int editingCellShape_ = -1, editingCellRow_ = -1, editingCellCol_ = -1;
 
     UCSlideDeckEditor editor_;
