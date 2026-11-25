@@ -1,7 +1,9 @@
 // include/UltraCanvasSpreadsheetTypes.h
 // Core type definitions for UltraCanvas Spreadsheet component
+// Version: 1.1.0 - PrintSettings: the rows and columns repeated on every printed page
+//                  (repeatRowsFirst / Last, repeatColumnsFirst / Last), kept by .xlsx and .ods
 // Version: 1.0.0
-// Last Modified: 2026-01-09
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -825,11 +827,28 @@ struct PrintSettings {
     int fitToWidth = 0;         // 0 = auto
     int fitToHeight = 0;
     int scale = 100;            // Percentage
+    // The default (A1 alone, no sheet: CellRange()) means no print area is set.
     CellRange printArea;
+    // Header and footer texts in Excel's codes: &P page, &N pages, &A sheet,
+    // &F file, &D date, &T time, && a literal '&'.
     std::string headerLeft, headerCenter, headerRight;
     std::string footerLeft, footerCenter, footerRight;
+    // Manual page breaks: each is the 0-based row (column) that starts a new page.
     std::vector<int> rowBreaks;
     std::vector<int> colBreaks;
+    // Rows and columns printed again at the top / left of every page (Excel's
+    // "Rows to repeat at top", an .ods sheet's header rows); 0-based and
+    // inclusive, -1 for none.
+    int repeatRowsFirst = -1;
+    int repeatRowsLast = -1;
+    int repeatColumnsFirst = -1;
+    int repeatColumnsLast = -1;
+
+    bool HasPrintArea() const { return !(printArea == CellRange()); }
+    bool HasRepeatRows() const { return repeatRowsFirst >= 0 && repeatRowsLast >= repeatRowsFirst; }
+    bool HasRepeatColumns() const {
+        return repeatColumnsFirst >= 0 && repeatColumnsLast >= repeatColumnsFirst;
+    }
 };
 
 // ============================================================================

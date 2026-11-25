@@ -18,6 +18,8 @@
 //   if (ReadPptxPresentation(path, deck, error, "", true))
 //       auto first = RenderPptxSlide(deck, 0, 1280);   // 1280 x 720 for 16:9
 //
+// Version: 1.2.0 - DrawPptxSlide: a slide on any render context, into a rectangle, with prompt text for
+//                  empty placeholders and a shape's text left to an editor
 // Version: 1.1.0 - outlines, turn, gradients, dashes, arrowheads, connectors, crops, styled and merged
 //                  tables, charts, and the text's fonts, spacing, indents, bullets and effects
 // Version: 1.0.0
@@ -29,9 +31,29 @@
 #include "UltraCanvasPresentationPptx.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
+#include <string>
 
 namespace UltraCanvas {
+
+class IRenderContext;
+
+// How DrawPptxSlide draws a slide for an editor.
+struct PptxSlideDrawOptions {
+    // The grey text an empty placeholder shows ("Click to add title");
+    // empty: none. Called with the shape and its index on the slide.
+    std::function<std::string(const PptxShape&, size_t)> promptText;
+    // A shape whose text is not drawn (an editor shows it in place); -1: none.
+    int hideTextOfShape = -1;
+};
+
+// Slide `slide` of `deck` drawn on `ctx` into `rect` (the context's units),
+// scaled to its width: the slide's background fills the rectangle, nothing
+// outside it is touched. The editor, the thumbnails, the show and PDF
+// export draw with it.
+void DrawPptxSlide(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, const Rect2Dd& rect,
+                   const PptxSlideDrawOptions& options = PptxSlideDrawOptions());
 
 // Slide `index` (0-based, in presentation order) `widthPx` pixels wide, as
 // high as the deck's slide shape makes it (16:9 when the deck gives none).

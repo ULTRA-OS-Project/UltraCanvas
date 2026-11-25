@@ -2,8 +2,11 @@
 // PowerPoint (.pptx) writer - see UltraCanvasPresentationPptx.h: a
 // PptxPresentation written as a package PowerPoint, LibreOffice and the
 // reader open, and a word-processing document laid out as a deck.
+// Version: 1.1.0 - the deck's own masters and layouts (names, types, backgrounds, placeholders
+//                  with their look and prompt text), each slide on its layout; transitions
+//                  (p:transition, p14:dur in mc:AlternateContent for a length no speed names)
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #include "UltraCanvasDrawingML.h"
 #include "UltraCanvasOfficeEncryption.h"
@@ -187,23 +190,54 @@ std::string Namespaces() {
     return std::string("xmlns:a=\"") + kNsA + "\" xmlns:r=\"" + kNsR + "\" xmlns:p=\"" + kNsP + "\"";
 }
 
-std::string MasterXml(int64_t w, int64_t h) {
+// The standard master's title and body placeholders.
+std::string StandardMasterShapes(int64_t w, int64_t h) {
     const int64_t mx = w / 13, titleH = h / 6;
-    std::string xml = std::string(kXmlHead) + "<p:sldMaster " + Namespaces() + "><p:cSld><p:bg><p:bgRef idx=\"1001\">"
-        "<a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree>" + kGroupHeader +
-        PlaceholderSp(2, "Title Placeholder 1", "<p:ph type=\"title\"/>", mx, h / 19, w - 2 * mx, titleH, "ctr") +
-        PlaceholderSp(3, "Text Placeholder 2", "<p:ph type=\"body\" idx=\"1\"/>", mx, h / 19 + titleH + h / 40, w - 2 * mx,
-                      h - (h / 19 + titleH + h / 40) - h / 12, "t") +
+    return PlaceholderSp(2, "Title Placeholder 1", "<p:ph type=\"title\"/>", mx, h / 19, w - 2 * mx, titleH, "ctr") +
+           PlaceholderSp(3, "Text Placeholder 2", "<p:ph type=\"body\" idx=\"1\"/>", mx, h / 19 + titleH + h / 40,
+                         w - 2 * mx, h - (h / 19 + titleH + h / 40) - h / 12, "t");
+}
+
+// A slide master: its name, background ("RRGGBB"; empty: the theme's light
+// colour), shapes, layouts (p:sldLayoutId elements) and PowerPoint's text styles.
+std::string MasterXmlWith(const std::string& name, const std::string& background, const std::string& shapes,
+                          const std::string& layoutIds) {
+    const std::string fill = SolidFill(background);
+    std::string xml = std::string(kXmlHead) + "<p:sldMaster " + Namespaces() + "><p:cSld" +
+        (name.empty() ? std::string() : " name=\"" + Escape(name) + "\"") + ">" +
+        (fill.empty() ? std::string("<p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg>")
+                      : "<p:bg><p:bgPr>" + fill + "<a:effectLst/></p:bgPr></p:bg>") +
+        "<p:spTree>" + kGroupHeader + shapes +
         "</p:spTree></p:cSld><p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\" "
         "accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" "
-        "hlink=\"hlink\" folHlink=\"folHlink\"/><p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/>"
-        "</p:sldLayoutIdLst><p:txStyles><p:titleStyle><a:lvl1pPr algn=\"l\" defTabSz=\"914400\" rtl=\"0\" eaLnBrk=\"1\" "
+        "hlink=\"hlink\" folHlink=\"folHlink\"/><p:sldLayoutIdLst>" + layoutIds + "</p:sldLayoutIdLst><p:txStyles><p:titleStyle><a:lvl1pPr algn=\"l\" defTabSz=\"914400\" rtl=\"0\" eaLnBrk=\"1\" "
         "latinLnBrk=\"0\" hangingPunct=\"1\"><a:lnSpc><a:spcPct val=\"90000\"/></a:lnSpc><a:spcBef><a:spcPct val=\"0\"/>"
         "</a:spcBef><a:buNone/><a:defRPr sz=\"4400\" kern=\"1200\"><a:solidFill><a:schemeClr val=\"tx1\"/></a:solidFill>"
         "<a:latin typeface=\"+mj-lt\"/></a:defRPr></a:lvl1pPr></p:titleStyle><p:bodyStyle>" +
         BodyLevels(true, "+mn-lt") + "</p:bodyStyle><p:otherStyle>" + BodyLevels(false, "+mn-lt") +
         "</p:otherStyle></p:txStyles></p:sldMaster>";
     return xml;
+}
+
+std::string MasterXml(int64_t w, int64_t h) {
+    return MasterXmlWith("", "", StandardMasterShapes(w, h), "<p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/>");
+}
+
+// A deck's own layout: its type (when PowerPoint knows it), name, background
+// and placeholders (`shapes`).
+std::string DeckLayoutXml(const PptxLayout& layout, const std::string& shapes) {
+    static const std::set<std::string> kTypes = {
+        "title", "tx", "twoColTx", "tbl", "txAndChart", "chartAndTx", "dgm", "chart", "txAndClipArt", "clipArtAndTx",
+        "titleOnly", "blank", "txAndObj", "objAndTx", "objOnly", "obj", "txAndMedia", "mediaAndTx", "objOverTx",
+        "txOverObj", "txAndTwoObj", "twoObjAndTx", "twoObjOverTx", "fourObj", "vertTx", "clipArtAndVertTx",
+        "vertTitleAndTx", "vertTitleAndTxOverChart", "twoObj", "objAndTwoObj", "twoObjAndObj", "cust", "secHead",
+        "twoTxTwoObj", "objTx", "picTx"};
+    const std::string fill = SolidFill(layout.background);
+    return std::string(kXmlHead) + "<p:sldLayout " + Namespaces() +
+           (kTypes.count(layout.type) ? " type=\"" + layout.type + "\"" : std::string()) + " preserve=\"1\"><p:cSld" +
+           (layout.name.empty() ? std::string() : " name=\"" + Escape(layout.name) + "\"") + ">" +
+           (fill.empty() ? std::string() : "<p:bg><p:bgPr>" + fill + "<a:effectLst/></p:bgPr></p:bg>") + "<p:spTree>" +
+           kGroupHeader + shapes + "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>";
 }
 
 std::string LayoutXml(int64_t w, int64_t h) {
@@ -242,6 +276,97 @@ std::string Rel(const std::string& type, const std::string& target, bool externa
            (external ? " TargetMode=\"External\"" : "");
 }
 
+// ----- Masters' and layouts' placeholders -----
+
+// A placeholder a layout offers a slide: its kind, and the p:ph a slide's
+// shape of that kind names to take its place and look.
+struct PlaceholderSlot {
+    PptxShapeKind kind;
+    std::string ph;
+};
+
+// What a master's or layout's placeholder is called in p:ph: its type
+// ("title", "body", "dt" ...), from the model's type, else its kind; empty
+// for a shape that is no placeholder.
+std::string DesignPlaceholderType(const PptxShape& shape) {
+    static const std::set<std::string> kTypes = {"title", "body", "ctrTitle", "subTitle", "dt", "sldNum", "ftr",
+                                                 "obj", "chart", "tbl", "clipArt", "dgm", "media", "pic"};
+    if (!shape.placeholder.empty()) return kTypes.count(shape.placeholder) ? shape.placeholder : "body";
+    switch (shape.kind) {
+        case PptxShapeKind::Title: return "title";
+        case PptxShapeKind::Subtitle: return "subTitle";
+        case PptxShapeKind::Body: return "body";
+        default: return "";
+    }
+}
+
+// The p:ph of a master's (`onMaster`) or layout's placeholder: the title
+// without an index, the date, footer and number at PowerPoint's 10-12, a
+// layout's content as an untyped (obj) placeholder numbered from 1.
+std::string DesignPh(const std::string& type, bool onMaster, int& nextIdx) {
+    if (type == "title" || type == "ctrTitle") return "<p:ph type=\"" + type + "\"/>";
+    if (type == "dt") return "<p:ph type=\"dt\" sz=\"half\" idx=\"10\"/>";
+    if (type == "ftr") return "<p:ph type=\"ftr\" sz=\"quarter\" idx=\"11\"/>";
+    if (type == "sldNum") return "<p:ph type=\"sldNum\" sz=\"quarter\" idx=\"12\"/>";
+    const std::string idx = std::to_string(nextIdx++);
+    if (type == "body" || type == "obj")
+        return onMaster ? "<p:ph type=\"body\" idx=\"" + idx + "\"/>" : "<p:ph idx=\"" + idx + "\"/>";
+    return "<p:ph type=\"" + type + "\" idx=\"" + idx + "\"/>";
+}
+
+// The slots a layout's placeholders give its slides, in its order (not the
+// date, footer and number, which a slide does not carry).
+std::vector<PlaceholderSlot> LayoutSlots(const PptxLayout& layout) {
+    std::vector<PlaceholderSlot> slots;
+    int nextIdx = 1;
+    for (const PptxShape& shape : layout.placeholders) {
+        const std::string type = DesignPlaceholderType(shape);
+        if (type.empty()) continue;
+        const std::string ph = DesignPh(type, false, nextIdx);
+        if (type == "dt" || type == "ftr" || type == "sldNum") continue;
+        const PptxShapeKind kind = type == "title" || type == "ctrTitle" ? PptxShapeKind::Title
+                                 : type == "subTitle"                    ? PptxShapeKind::Subtitle
+                                                                         : PptxShapeKind::Body;
+        slots.push_back({kind, ph});
+    }
+    return slots;
+}
+
+// ----- Transitions -----
+
+// The slide's p:transition: the effect's element, its speed, and when the
+// show moves on; a length no speed names goes in p14:dur, inside
+// mc:AlternateContent with the speed alone as the Fallback, as PowerPoint
+// 2010 and later write it. Empty for a slide that comes on plainly and
+// waits for a click.
+std::string TransitionXml(const PptxTransition& transition) {
+    const bool timed = transition.advanceAfterSec >= 0;
+    if (transition.kind == PptxTransitionKind::NoTransition && transition.advanceOnClick && !timed) return "";
+    std::string effect;
+    switch (transition.kind) {
+        case PptxTransitionKind::Fade: effect = "<p:fade/>"; break;
+        case PptxTransitionKind::Push: effect = "<p:push/>"; break;
+        case PptxTransitionKind::Wipe: effect = "<p:wipe/>"; break;
+        case PptxTransitionKind::Split: effect = "<p:split orient=\"vert\" dir=\"out\"/>"; break;
+        case PptxTransitionKind::Cover: effect = "<p:cover/>"; break;
+        case PptxTransitionKind::Zoom: effect = "<p:zoom/>"; break;
+        case PptxTransitionKind::NoTransition: break;
+    }
+    const double seconds = transition.durationSec > 0 ? transition.durationSec : 0.5;
+    const char* speed = seconds <= 0.5 ? "fast" : seconds <= 0.75 ? "med" : "slow";
+    std::string timing;
+    if (!transition.advanceOnClick) timing += " advClick=\"0\"";
+    if (timed) timing += " advTm=\"" + Num(std::llround(transition.advanceAfterSec * 1000.0)) + "\"";
+    const std::string plain =
+        std::string("<p:transition spd=\"") + speed + "\"" + timing + (effect.empty() ? "/>" : ">" + effect + "</p:transition>");
+    const int64_t ms = std::llround(seconds * 1000.0);
+    if (effect.empty() || ms == 500 || ms == 750 || ms == 1000) return plain;
+    return "<mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\">"
+           "<mc:Choice xmlns:p14=\"http://schemas.microsoft.com/office/powerpoint/2010/main\" Requires=\"p14\">"
+           "<p:transition spd=\"" + std::string(speed) + "\" p14:dur=\"" + Num(ms) + "\"" + timing + ">" + effect +
+           "</p:transition></mc:Choice><mc:Fallback>" + plain + "</mc:Fallback></mc:AlternateContent>";
+}
+
 // ----- A slide's parts -----
 
 class SlideWriter {
@@ -251,8 +376,15 @@ public:
         : deck_(deck), number_(number), media_(media), mediaCount_(mediaCount), chartCount_(chartCount),
           extraParts_(extraParts) {}
 
+    // The layout the slide is on (its part, from the slide's folder) and the
+    // placeholders it offers; the standard Title and Content when not set.
+    void SetLayout(const std::string& target, const std::vector<PlaceholderSlot>& slots) {
+        layoutTarget_ = target;
+        slots_ = slots;
+    }
+
     std::string Write(const PptxSlide& slide) {
-        rels_.push_back({"rId1", Rel("slideLayout", "../slideLayouts/slideLayout1.xml")});
+        rels_.push_back({"rId1", Rel("slideLayout", layoutTarget_)});
         std::string xml = std::string(kXmlHead) + "<p:sld " + Namespaces() + (slide.hidden ? " show=\"0\"" : "") +
                           "><p:cSld>";
         if (const std::string fill = SolidFill(slide.background); !fill.empty())
@@ -261,7 +393,28 @@ public:
         xml += kGroupHeader;
         bodyIndex_ = 0;
         for (const PptxShape& shape : slide.shapes) xml += WriteShape(shape);
-        xml += "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>";
+        xml += "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>" + TransitionXml(slide.transition) +
+               "</p:sld>";
+        return xml;
+    }
+
+    // A master's or layout's shape tree: its placeholders, each with the
+    // p:ph PowerPoint matches a slide's by, a list style holding the look of
+    // its paragraphs, and its prompt text.
+    std::string WriteDesign(const std::vector<PptxShape>& placeholders, bool onMaster) {
+        std::string xml;
+        int nextIdx = 1;
+        for (const PptxShape& shape : placeholders) {
+            const std::string type = DesignPlaceholderType(shape);
+            if (type.empty() || shape.kind == PptxShapeKind::Picture || shape.kind == PptxShapeKind::Table ||
+                shape.kind == PptxShapeKind::Chart || shape.kind == PptxShapeKind::Connector) {
+                xml += WriteShape(shape);
+                continue;
+            }
+            fieldType_ = type == "sldNum" ? "slidenum" : type == "dt" ? "datetime1" : "";
+            xml += WriteSp(shape, DesignPh(type, onMaster, nextIdx), ListStyleOf(shape.paragraphs));
+            fieldType_.clear();
+        }
         return xml;
     }
 
@@ -279,6 +432,67 @@ private:
     std::map<std::string, std::string> linkIds_;
     int nextShapeId_ = 2;
     int bodyIndex_ = 0;
+    std::string layoutTarget_ = "../slideLayouts/slideLayout1.xml";
+    std::vector<PlaceholderSlot> slots_ = {{PptxShapeKind::Title, "<p:ph type=\"title\"/>"},
+                                           {PptxShapeKind::Body, "<p:ph idx=\"1\"/>"}};
+    std::string fieldType_;   // a master's or layout's number or date: its text is this field
+
+    // The `n`th (0-based) slot of `kind` the slide's layout offers; null when it has none.
+    const PlaceholderSlot* Slot(PptxShapeKind kind, int n) const {
+        for (const PlaceholderSlot& slot : slots_)
+            if (slot.kind == kind && n-- == 0) return &slot;
+        return nullptr;
+    }
+
+    // The look of a placeholder's paragraphs as its list style, a level per
+    // level used (the first paragraph at it), so that what is typed into it
+    // later looks the same.
+    std::string ListStyleOf(const std::vector<PptxParagraph>& paragraphs) {
+        std::string levels[9];
+        for (const PptxParagraph& p : paragraphs) {
+            const int level = std::clamp(p.level, 0, 8);
+            if (!levels[level].empty()) continue;
+            const std::string tag = "a:lvl" + std::to_string(level + 1) + "pPr";
+            std::string xml = "<" + tag;
+            if (p.marginLeft >= 0) xml += " marL=\"" + Num(p.marginLeft) + "\"";
+            if (p.indent != 0 || p.marginLeft >= 0) xml += " indent=\"" + Num(p.indent) + "\"";
+            static const char* const kAlign[] = {"l", "ctr", "r", "just"};
+            xml += " algn=\"" + std::string(kAlign[static_cast<int>(p.align)]) + "\">";
+            xml += Spacing("lnSpc", p.lineSpacing) + Spacing("spcBef", p.spaceBefore) + Spacing("spcAft", p.spaceAfter);
+            xml += BulletXml(p);
+            if (!p.runs.empty()) {
+                PptxRun look = p.runs.front();
+                look.hyperlink.clear();
+                std::string rPr = RunProperties(look, "a:defRPr");
+                // A list style's run properties carry no language or dirty flag.
+                for (const char* drop : {" lang=\"en-US\"", " dirty=\"0\""}) {
+                    const size_t at = rPr.find(drop);
+                    if (at != std::string::npos) rPr.erase(at, std::string(drop).size());
+                }
+                xml += rPr;
+            }
+            levels[level] = xml + "</" + tag + ">";
+        }
+        std::string out;
+        for (const std::string& level : levels) out += level;
+        return out.empty() ? std::string("<a:lstStyle/>") : "<a:lstStyle>" + out + "</a:lstStyle>";
+    }
+
+    // A paragraph's bullet or number, or that it has none.
+    static std::string BulletXml(const PptxParagraph& p) {
+        if (!p.bullet) return "<a:buNone/>";
+        std::string xml;
+        if (const std::string hex = Hex(p.bulletColor); !hex.empty())
+            xml += "<a:buClr><a:srgbClr val=\"" + hex + "\"/></a:buClr>";
+        if (p.bulletSizePercent > 0) xml += "<a:buSzPct val=\"" + Num(std::llround(p.bulletSizePercent * 1000.0)) + "\"/>";
+        if (p.numbered) {
+            xml += "<a:buAutoNum type=\"" + Escape(p.numberScheme.empty() ? "arabicPeriod" : p.numberScheme) + "\"";
+            if (p.numberStartAt > 1) xml += " startAt=\"" + Num(p.numberStartAt) + "\"";
+            return xml + "/>";
+        }
+        xml += "<a:buFont typeface=\"" + Escape(p.bulletFont.empty() ? "Arial" : p.bulletFont) + "\"/>";
+        return xml + "<a:buChar char=\"" + Escape(p.bulletChar.empty() ? "\xE2\x80\xA2" : p.bulletChar) + "\"/>";
+    }
 
     std::string NewRelId() { return "rId" + std::to_string(rels_.size() + 1); }
 
@@ -428,24 +642,9 @@ private:
             static const char* const kAlign[] = {"l", "ctr", "r", "just"};
             xml += " algn=\"" + std::string(kAlign[static_cast<int>(p.align)]) + "\">";
             xml += Spacing("lnSpc", p.lineSpacing) + Spacing("spcBef", p.spaceBefore) + Spacing("spcAft", p.spaceAfter);
-            if (p.bullet) {
-                if (const std::string hex = Hex(p.bulletColor); !hex.empty())
-                    xml += "<a:buClr><a:srgbClr val=\"" + hex + "\"/></a:buClr>";
-                if (p.bulletSizePercent > 0)
-                    xml += "<a:buSzPct val=\"" + Num(std::llround(p.bulletSizePercent * 1000.0)) + "\"/>";
-                if (p.numbered) {
-                    xml += "<a:buAutoNum type=\"" + Escape(p.numberScheme.empty() ? "arabicPeriod" : p.numberScheme) + "\"";
-                    if (p.numberStartAt > 1) xml += " startAt=\"" + Num(p.numberStartAt) + "\"";
-                    xml += "/>";
-                } else {
-                    xml += "<a:buFont typeface=\"" + Escape(p.bulletFont.empty() ? "Arial" : p.bulletFont) + "\"/>";
-                    xml += "<a:buChar char=\"" + Escape(p.bulletChar.empty() ? "\xE2\x80\xA2" : p.bulletChar) + "\"/>";
-                }
-            } else {
-                xml += "<a:buNone/>";
-            }
-            xml += "</a:pPr>";
+            xml += BulletXml(p) + "</a:pPr>";
             const PptxRun* last = nullptr;
+            bool field = false;
             for (const PptxRun& run : p.runs) {
                 last = &run;
                 if (run.text == "\n") {
@@ -453,6 +652,16 @@ private:
                     continue;
                 }
                 if (run.text.empty()) continue;
+                if (!fieldType_.empty()) {
+                    // A master's slide number or date: the field, once, showing its text.
+                    if (field) continue;
+                    field = true;
+                    xml += "<a:fld id=\"{" + std::string(fieldType_ == "slidenum" ? "B6F15528-21DE-4FAA-801E-634DDDAF4B2B"
+                                                                              : "1D8BD707-D9CF-40AE-B4C6-C98DA3205C09") +
+                           "}\" type=\"" + fieldType_ + "\">" + RunProperties(run) + "<a:t>" + Escape(run.text) +
+                           "</a:t></a:fld>";
+                    continue;
+                }
                 xml += "<a:r>" + RunProperties(run) + "<a:t>" + Escape(run.text) + "</a:t></a:r>";
             }
             PptxRun end = last ? *last : PptxRun{};
@@ -463,7 +672,7 @@ private:
         return xml;
     }
 
-    std::string TextBody(const PptxShape& shape, const char* tag) {
+    std::string TextBody(const PptxShape& shape, const char* tag, const std::string& listStyle = "<a:lstStyle/>") {
         std::string xml = std::string("<") + tag + "><a:bodyPr";
         auto inset = [&](const char* name, int64_t value) {
             if (value >= 0) xml += std::string(" ") + name + "=\"" + Num(value) + "\"";
@@ -481,7 +690,7 @@ private:
         // scale lets a viewer shrink the text as far as it likes.
         if (shape.fontScale > 0 && shape.fontScale < 0.999f)
             xml += "<a:normAutofit fontScale=\"" + Num(std::llround(shape.fontScale * 100000.0)) + "\"/>";
-        xml += "</a:bodyPr><a:lstStyle/>" + Paragraphs(shape.paragraphs) + "</" + tag + ">";
+        xml += "</a:bodyPr>" + listStyle + Paragraphs(shape.paragraphs) + "</" + tag + ">";
         return xml;
     }
 
@@ -497,20 +706,38 @@ private:
         }
     }
 
-    std::string WriteSp(const PptxShape& shape) {
-        std::string ph;
+    // A shape of its own (sp); `designPh` and `listStyle` for a master's or
+    // layout's placeholder.
+    std::string WriteSp(const PptxShape& shape, const std::string& designPh = std::string(),
+                        const std::string& listStyle = "<a:lstStyle/>") {
+        std::string ph = designPh;
         const char* kind = "TextBox";
         bool textBox = false;
-        switch (shape.kind) {
-            case PptxShapeKind::Title: ph = "<p:ph type=\"title\"/>"; kind = "Title"; break;
-            case PptxShapeKind::Subtitle: ph = "<p:ph type=\"subTitle\" idx=\"13\"/>"; kind = "Subtitle"; break;
+        const PlaceholderSlot* slot = nullptr;
+        switch (designPh.empty() ? shape.kind : PptxShapeKind::Text) {
+            case PptxShapeKind::Title:
+                slot = Slot(PptxShapeKind::Title, 0);
+                ph = slot ? slot->ph : "<p:ph type=\"title\"/>";
+                kind = "Title";
+                break;
+            case PptxShapeKind::Subtitle:
+                slot = Slot(PptxShapeKind::Subtitle, 0);
+                ph = slot ? slot->ph : "<p:ph type=\"subTitle\" idx=\"13\"/>";
+                kind = "Subtitle";
+                break;
             case PptxShapeKind::Body:
-                // The first body takes the layout's content placeholder; any
-                // other is a placeholder of its own.
-                ph = bodyIndex_++ == 0 ? "<p:ph idx=\"1\"/>" : "<p:ph idx=\"" + std::to_string(9 + bodyIndex_) + "\"/>";
+                // Each body takes the layout's next content placeholder; one
+                // past them is a placeholder of its own.
+                slot = Slot(PptxShapeKind::Body, bodyIndex_);
+                ++bodyIndex_;
+                ph = slot ? slot->ph : "<p:ph idx=\"" + std::to_string(99 + bodyIndex_) + "\"/>";
                 kind = "Content Placeholder";
                 break;
             default:
+                if (!designPh.empty()) {
+                    kind = "Placeholder";
+                    break;
+                }
                 bool hasText = false;
                 for (const PptxParagraph& p : shape.paragraphs) hasText = hasText || !p.Text().empty();
                 textBox = hasText && shape.fill.empty() && shape.line.empty() && shape.customPath.empty() &&
@@ -525,7 +752,7 @@ private:
         // it was read with); a placeholder that never had one keeps its layout's.
         if (ph.empty() || shape.width > 0 || shape.height > 0) xml += Xfrm(shape);
         xml += Geometry(shape, "rect") + Fill(shape) + Line(shape) + "</p:spPr>";
-        xml += TextBody(shape, "p:txBody") + "</p:sp>";
+        xml += TextBody(shape, "p:txBody", listStyle) + "</p:sp>";
         return xml;
     }
 
@@ -1053,33 +1280,120 @@ bool WritePptxPresentationToPackage(const PptxPresentation& deck, std::vector<ui
     bool anyNotes = false;
     for (const PptxSlide& slide : deck.slides) anyNotes = anyNotes || HasNotes(slide);
 
+    // The design: the deck's own masters and layouts, or (a deck made in
+    // memory) the standard master with its Title and Content layout. Every
+    // master gets a layout (a blank one when the deck gives it none) and a
+    // theme of its own, and its layouts are numbered master by master.
+    const bool ownDesign = !deck.layouts.empty();
+    std::vector<PptxLayout> layouts = deck.layouts;
+    const size_t masterCount = ownDesign ? std::max<size_t>(1, deck.masters.size()) : 1;
+    for (PptxLayout& layout : layouts)
+        layout.masterIndex = std::clamp(layout.masterIndex, 0, static_cast<int>(masterCount) - 1);
+    for (size_t m = 0; ownDesign && m < masterCount; ++m) {
+        const bool used = std::any_of(layouts.begin(), layouts.end(),
+                                      [&](const PptxLayout& l) { return l.masterIndex == static_cast<int>(m); });
+        if (used) continue;
+        PptxLayout blank;
+        blank.name = "Blank";
+        blank.type = "blank";
+        blank.masterIndex = static_cast<int>(m);
+        layouts.push_back(blank);
+    }
+    std::vector<std::vector<size_t>> masterLayouts(masterCount);   // each master's layouts, by index into `layouts`
+    std::vector<int> layoutNumber(std::max<size_t>(1, layouts.size()), 1);   // each layout's part number
+    int numbered = 0;
+    for (size_t i = 0; i < layouts.size(); ++i) masterLayouts[static_cast<size_t>(layouts[i].masterIndex)].push_back(i);
+    for (std::vector<size_t>& list : masterLayouts)
+        for (size_t i : list) layoutNumber[i] = ++numbered;
+    const size_t layoutCount = ownDesign ? layouts.size() : 1;
+    auto layoutPart = [&](size_t i) { return "slideLayout" + std::to_string(layoutNumber[i]) + ".xml"; };
+
+    std::vector<std::pair<std::string, std::string>> designParts;
+    uint32_t nextDesignId = 2147483648u;   // sldMasterId and sldLayoutId share one series from 2^31
+    std::vector<uint32_t> masterIds(masterCount);
+    for (size_t m = 0; m < masterCount; ++m) {
+        const std::string n = std::to_string(m + 1);
+        masterIds[m] = nextDesignId++;
+        if (!ownDesign) {
+            nextDesignId++;
+            designParts.push_back({"ppt/slideMasters/slideMaster1.xml", MasterXml(w, h)});
+            designParts.push_back({"ppt/slideMasters/_rels/slideMaster1.xml.rels",
+                                   Relationships({{"rId1", Rel("slideLayout", "../slideLayouts/slideLayout1.xml")},
+                                                  {"rId2", Rel("theme", "../theme/theme1.xml")}})});
+            designParts.push_back({"ppt/slideLayouts/slideLayout1.xml", LayoutXml(w, h)});
+            designParts.push_back({"ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+                                   Relationships({{"rId1", Rel("slideMaster", "../slideMasters/slideMaster1.xml")}})});
+            break;
+        }
+        SlideWriter writer(sized, 0, media, mediaCount, chartCount, charts);
+        std::string layoutIds;
+        for (size_t k = 0; k < masterLayouts[m].size(); ++k) {
+            const std::string rid = "rId" + std::to_string(k + 1);
+            writer.AddRel(rid, Rel("slideLayout", "../slideLayouts/" + layoutPart(masterLayouts[m][k])));
+            layoutIds += "<p:sldLayoutId id=\"" + std::to_string(nextDesignId++) + "\" r:id=\"" + rid + "\"/>";
+        }
+        writer.AddRel("rId" + std::to_string(masterLayouts[m].size() + 1), Rel("theme", "../theme/theme" + n + ".xml"));
+        const PptxMaster* master = m < deck.masters.size() ? &deck.masters[m] : nullptr;
+        const std::string shapes = master ? writer.WriteDesign(master->placeholders, true) : StandardMasterShapes(w, h);
+        designParts.push_back({"ppt/slideMasters/slideMaster" + n + ".xml",
+                               MasterXmlWith(master ? master->name : std::string(), master ? master->background : std::string(),
+                                             shapes, layoutIds)});
+        designParts.push_back({"ppt/slideMasters/_rels/slideMaster" + n + ".xml.rels", writer.RelsXml()});
+        for (size_t i : masterLayouts[m]) {
+            SlideWriter layoutWriter(sized, 0, media, mediaCount, chartCount, charts);
+            layoutWriter.AddRel("rId1", Rel("slideMaster", "../slideMasters/slideMaster" + n + ".xml"));
+            const std::string layoutShapes = layoutWriter.WriteDesign(layouts[i].placeholders, false);
+            designParts.push_back({"ppt/slideLayouts/" + layoutPart(i), DeckLayoutXml(layouts[i], layoutShapes)});
+            designParts.push_back({"ppt/slideLayouts/_rels/" + layoutPart(i) + ".rels", layoutWriter.RelsXml()});
+        }
+    }
+
     // The presentation and its relationships.
-    std::vector<std::pair<std::string, std::string>> presRels = {
-        {"rId1", Rel("slideMaster", "slideMasters/slideMaster1.xml")},
-        {"rId2", Rel("theme", "theme/theme1.xml")},
-        {"rId3", Rel("presProps", "presProps.xml")},
-        {"rId4", Rel("viewProps", "viewProps.xml")},
-        {"rId5", Rel("tableStyles", "tableStyles.xml")}};
-    if (anyNotes) presRels.push_back({"rId6", Rel("notesMaster", "notesMasters/notesMaster1.xml")});
+    std::vector<std::pair<std::string, std::string>> presRels;
+    std::string masterIdList;
+    for (size_t m = 0; m < masterCount; ++m) {
+        const std::string id = "rId" + std::to_string(presRels.size() + 1);
+        presRels.push_back({id, Rel("slideMaster", "slideMasters/slideMaster" + std::to_string(m + 1) + ".xml")});
+        masterIdList += "<p:sldMasterId id=\"" + std::to_string(masterIds[m]) + "\" r:id=\"" + id + "\"/>";
+    }
+    auto nextRel = [&]() { return "rId" + std::to_string(presRels.size() + 1); };
+    presRels.push_back({nextRel(), Rel("theme", "theme/theme1.xml")});
+    presRels.push_back({nextRel(), Rel("presProps", "presProps.xml")});
+    presRels.push_back({nextRel(), Rel("viewProps", "viewProps.xml")});
+    presRels.push_back({nextRel(), Rel("tableStyles", "tableStyles.xml")});
+    std::string notesMasterRel;
+    if (anyNotes) {
+        notesMasterRel = nextRel();
+        presRels.push_back({notesMasterRel, Rel("notesMaster", "notesMasters/notesMaster1.xml")});
+    }
     std::string sldIds;
     for (size_t i = 0; i < deck.slides.size(); ++i) {
-        const std::string id = "rId" + std::to_string(presRels.size() + 1);
+        const std::string id = nextRel();
         presRels.push_back({id, Rel("slide", "slides/slide" + std::to_string(i + 1) + ".xml")});
         sldIds += "<p:sldId id=\"" + std::to_string(256 + i) + "\" r:id=\"" + id + "\"/>";
     }
     std::string presentation = std::string(kXmlHead) + "<p:presentation " + Namespaces() + " saveSubsetFonts=\"1\">"
-        "<p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst>";
-    if (anyNotes) presentation += "<p:notesMasterIdLst><p:notesMasterId r:id=\"rId6\"/></p:notesMasterIdLst>";
+        "<p:sldMasterIdLst>" + masterIdList + "</p:sldMasterIdLst>";
+    if (anyNotes) presentation += "<p:notesMasterIdLst><p:notesMasterId r:id=\"" + notesMasterRel + "\"/></p:notesMasterIdLst>";
     if (!sldIds.empty()) presentation += "<p:sldIdLst>" + sldIds + "</p:sldIdLst>";
     presentation += "<p:sldSz cx=\"" + Num(w) + "\" cy=\"" + Num(h) + "\"/><p:notesSz cx=\"6858000\" cy=\"9144000\"/>"
         "<p:defaultTextStyle>" + BodyLevels(false, "+mn-lt") + "</p:defaultTextStyle></p:presentation>";
 
-    // The slides, their notes, pictures and charts.
+    // The slides, each on its layout (the first when it names none), their
+    // notes, pictures and charts.
+    std::vector<std::vector<PlaceholderSlot>> slots;
+    for (size_t i = 0; ownDesign && i < layouts.size(); ++i) slots.push_back(LayoutSlots(layouts[i]));
     std::vector<std::pair<std::string, std::string>> slideParts;
     for (size_t i = 0; i < deck.slides.size(); ++i) {
         const PptxSlide& slide = deck.slides[i];
         const std::string n = std::to_string(i + 1);
         SlideWriter writer(sized, static_cast<int>(i + 1), media, mediaCount, chartCount, charts);
+        if (ownDesign) {
+            const size_t layout = slide.layoutIndex >= 0 && slide.layoutIndex < static_cast<int>(deck.layouts.size())
+                                      ? static_cast<size_t>(slide.layoutIndex)
+                                      : 0;
+            writer.SetLayout("../slideLayouts/" + layoutPart(layout), slots[layout]);
+        }
         const std::string xml = writer.Write(slide);
         if (HasNotes(slide)) {
             writer.AddRel("rId" + std::to_string(1000), Rel("notesSlide", "../notesSlides/notesSlide" + n + ".xml"));
@@ -1102,19 +1416,24 @@ bool WritePptxPresentationToPackage(const PptxPresentation& deck, std::vector<ui
     for (const std::string& ext : pictureTypes)
         types += "<Default Extension=\"" + ext + "\" ContentType=\"" + PictureContentType(ext) + "\"/>";
     const std::string ppt = "application/vnd.openxmlformats-officedocument.presentationml.";
+    const std::string themeType = "application/vnd.openxmlformats-officedocument.theme+xml";
     auto override = [&](const std::string& part, const std::string& type) {
         types += "<Override PartName=\"/" + part + "\" ContentType=\"" + type + "\"/>";
     };
     override("ppt/presentation.xml", MainContentType(extension));
-    override("ppt/slideMasters/slideMaster1.xml", ppt + "slideMaster+xml");
-    override("ppt/slideLayouts/slideLayout1.xml", ppt + "slideLayout+xml");
-    override("ppt/theme/theme1.xml", "application/vnd.openxmlformats-officedocument.theme+xml");
+    for (size_t m = 0; m < masterCount; ++m) {
+        override("ppt/slideMasters/slideMaster" + std::to_string(m + 1) + ".xml", ppt + "slideMaster+xml");
+        override("ppt/theme/theme" + std::to_string(m + 1) + ".xml", themeType);
+    }
+    for (size_t i = 0; i < layoutCount; ++i)
+        override("ppt/slideLayouts/slideLayout" + std::to_string(i + 1) + ".xml", ppt + "slideLayout+xml");
     override("ppt/presProps.xml", ppt + "presProps+xml");
     override("ppt/viewProps.xml", ppt + "viewProps+xml");
     override("ppt/tableStyles.xml", ppt + "tableStyles+xml");
+    const std::string notesTheme = "theme" + std::to_string(masterCount + 1) + ".xml";
     if (anyNotes) {
         override("ppt/notesMasters/notesMaster1.xml", ppt + "notesMaster+xml");
-        override("ppt/theme/theme2.xml", "application/vnd.openxmlformats-officedocument.theme+xml");
+        override("ppt/theme/" + notesTheme, themeType);
     }
     for (size_t i = 0; i < deck.slides.size(); ++i) {
         override("ppt/slides/slide" + std::to_string(i + 1) + ".xml", ppt + "slide+xml");
@@ -1153,19 +1472,14 @@ bool WritePptxPresentationToPackage(const PptxPresentation& deck, std::vector<ui
     parts.push_back({"ppt/viewProps.xml", std::string(kXmlHead) + "<p:viewPr " + Namespaces() + "/>"});
     parts.push_back({"ppt/tableStyles.xml", std::string(kXmlHead) + "<a:tblStyleLst xmlns:a=\"" + kNsA + "\" def=\"" +
                                                 kDefaultTableStyle + "\"/>"});
-    parts.push_back({"ppt/theme/theme1.xml", ThemeXml(sized, "Office Theme")});
-    parts.push_back({"ppt/slideMasters/slideMaster1.xml", MasterXml(w, h)});
-    parts.push_back({"ppt/slideMasters/_rels/slideMaster1.xml.rels",
-                     Relationships({{"rId1", Rel("slideLayout", "../slideLayouts/slideLayout1.xml")},
-                                    {"rId2", Rel("theme", "../theme/theme1.xml")}})});
-    parts.push_back({"ppt/slideLayouts/slideLayout1.xml", LayoutXml(w, h)});
-    parts.push_back({"ppt/slideLayouts/_rels/slideLayout1.xml.rels",
-                     Relationships({{"rId1", Rel("slideMaster", "../slideMasters/slideMaster1.xml")}})});
+    for (size_t m = 0; m < masterCount; ++m)
+        parts.push_back({"ppt/theme/theme" + std::to_string(m + 1) + ".xml", ThemeXml(sized, "Office Theme")});
+    parts.insert(parts.end(), designParts.begin(), designParts.end());
     if (anyNotes) {
         parts.push_back({"ppt/notesMasters/notesMaster1.xml", NotesMasterXml()});
         parts.push_back({"ppt/notesMasters/_rels/notesMaster1.xml.rels",
-                         Relationships({{"rId1", Rel("theme", "../theme/theme2.xml")}})});
-        parts.push_back({"ppt/theme/theme2.xml", ThemeXml(sized, "Notes Theme")});
+                         Relationships({{"rId1", Rel("theme", "../theme/" + notesTheme)}})});
+        parts.push_back({"ppt/theme/" + notesTheme, ThemeXml(sized, "Notes Theme")});
     }
     parts.insert(parts.end(), slideParts.begin(), slideParts.end());
     parts.insert(parts.end(), charts.begin(), charts.end());

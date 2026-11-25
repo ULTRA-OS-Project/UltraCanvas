@@ -378,6 +378,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_UOS_LOCALISATION OFF CACHE BOOL "Build the UOS-Localisation application")
+    set(BUILD_ULTRAOFFICE OFF CACHE BOOL "Build the UltraOffice application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
     set(BUILD_ULTRADBADMIN OFF CACHE BOOL "Build the UltraDBAdmin application")
@@ -857,6 +858,17 @@ if(BUILD_UOS_LOCALISATION)
     message(STATUS "")
     message(STATUS "── Building UOS-Localisation ──")
     add_subdirectory(Apps/UOSLocalisation)
+endif()
+
+# ===== ULTRAOFFICE =====
+# Documents, spreadsheets and presentations in one window: a tab per file,
+# marked with its kind, and the toolbar of the tab that is open
+# (UltraCanvasRichTextEdit, UltraCanvasSpreadsheet, UltraCanvasMediaViewer).
+option(BUILD_ULTRAOFFICE "Build the UltraOffice application" ON)
+if(BUILD_ULTRAOFFICE)
+    message(STATUS "")
+    message(STATUS "── Building UltraOffice ──")
+    add_subdirectory(Apps/UltraOffice)
 endif()
 
 # ===== ULTRACLAUDE =====

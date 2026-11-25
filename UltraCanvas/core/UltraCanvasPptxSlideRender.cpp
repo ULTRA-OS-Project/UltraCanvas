@@ -1,5 +1,7 @@
 // core/UltraCanvasPptxSlideRender.cpp
 // A PowerPoint slide drawn as a picture - see UltraCanvasPptxSlideRender.h.
+// Version: 1.3.0 - a picture is decoded once, not on every paint
+// Version: 1.2.0 - DrawPptxSlide: on any context, into a rectangle; prompt text, a shape's text left out
 // Version: 1.1.0 - preset and custom outlines turned and mirrored, gradients, dashes, arrowheads,
 //                  connectors, cropped pictures, charts (the chart engine), styled and merged table
 //                  cells; text in its fonts with its spacing, indents, insets, bullet characters,
@@ -206,18 +208,63 @@ void Arrowhead(IRenderContext* ctx, double fromX, double fromY, double tipX, dou
     ctx->Fill();
 }
 
+// A picture decoded once and drawn many times: an editor paints its slide on
+// every move of the pointer. Kept by where its bytes are and what they hold
+// (their size and a sample), the most recent few.
+std::shared_ptr<UCImage> DecodedPicture(const std::vector<uint8_t>& bytes) {
+    struct Entry {
+        const uint8_t* data;
+        size_t size;
+        uint64_t sample;
+        std::shared_ptr<UCImage> image;
+    };
+    static std::mutex guard;
+    static std::vector<Entry> recent;   // most recent last
+    constexpr size_t kKept = 48;
+    uint64_t sample = 1469598103934665603ull;   // FNV-1a over the first, middle and last bytes
+    auto mix = [&sample, &bytes](size_t from, size_t count) {
+        for (size_t i = from; i < std::min(bytes.size(), from + count); ++i) sample = (sample ^ bytes[i]) * 1099511628211ull;
+    };
+    mix(0, 256);
+    mix(bytes.size() / 2, 256);
+    mix(bytes.size() > 256 ? bytes.size() - 256 : 0, 256);
+    std::lock_guard<std::mutex> lock(guard);
+    for (size_t i = 0; i < recent.size(); ++i) {
+        if (recent[i].data == bytes.data() && recent[i].size == bytes.size() && recent[i].sample == sample) {
+            Entry hit = recent[i];
+            recent.erase(recent.begin() + static_cast<std::ptrdiff_t>(i));
+            recent.push_back(hit);
+            return hit.image;
+        }
+    }
+    auto image = UCImage::LoadFromMemory(bytes);
+    if (!image) return nullptr;
+    if (recent.size() >= kKept) recent.erase(recent.begin());
+    recent.push_back(Entry{bytes.data(), bytes.size(), sample, image});
+    return image;
+}
+
 class SlidePainter {
 public:
-    SlidePainter(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, double scale)
-        : ctx_(ctx), deck_(deck), slide_(slide), scale_(scale),
+    SlidePainter(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, double scale,
+                 const PptxSlideDrawOptions* options = nullptr)
+        : ctx_(ctx), deck_(deck), slide_(slide), scale_(scale), options_(options),
           ink_(FromHex(slide.textColor, Colors::Black)),
           link_(FromHex(ValueOr(deck.themeColors, "hlink", "0563C1"), Color(5, 99, 193))) {}
 
-    void Paint(double width, double height) {
+    // `clear`: the whole context takes the background (a pixmap of the
+    // slide); else only the slide's rectangle is filled.
+    void Paint(double width, double height, bool clear = true) {
         width_ = width;
         height_ = height;
-        ctx_->Clear(FromHex(slide_.background, Colors::White));
-        for (const PptxShape& shape : slide_.shapes) {
+        if (clear) {
+            ctx_->Clear(FromHex(slide_.background, Colors::White));
+        } else {
+            ctx_->SetFillPaint(FromHex(slide_.background, Colors::White));
+            ctx_->FillRectangle(Rect2Dd(0, 0, width, height));
+        }
+        for (size_t index = 0; index < slide_.shapes.size(); ++index) {
+            const PptxShape& shape = ShapeToPaint(index);
             const Rect2Dd box = BoxOf(shape);
             if (shape.kind == PptxShapeKind::Connector) {
                 PaintGeometry(shape, box);
@@ -241,6 +288,41 @@ private:
     const PptxPresentation& deck_;
     const PptxSlide& slide_;
     double scale_;   // pixels per EMU
+    const PptxSlideDrawOptions* options_;
+    PptxShape substitute_;   // a shape drawn with its prompt text, or without its text
+
+    static bool HasText(const PptxShape& shape) {
+        for (const PptxParagraph& paragraph : shape.paragraphs)
+            for (const PptxRun& run : paragraph.runs)
+                if (!run.text.empty()) return true;
+        return false;
+    }
+
+    // Shape `index` as it is drawn: its text left out where an editor shows
+    // it, an empty placeholder's prompt in grey.
+    const PptxShape& ShapeToPaint(size_t index) {
+        const PptxShape& shape = slide_.shapes[index];
+        if (!options_) return shape;
+        if (options_->hideTextOfShape == static_cast<int>(index)) {
+            substitute_ = shape;
+            substitute_.paragraphs.clear();
+            return substitute_;
+        }
+        // The prompt decides which shapes are placeholders (an empty string: not one).
+        if (!options_->promptText || HasText(shape)) return shape;
+        const std::string prompt = options_->promptText(shape, index);
+        if (prompt.empty()) return shape;
+        substitute_ = shape;
+        PptxParagraph paragraph = shape.paragraphs.empty() ? PptxParagraph() : shape.paragraphs.front();
+        PptxRun run = paragraph.runs.empty() ? PptxRun() : paragraph.runs.front();
+        run.text = prompt;
+        run.color = "8C8C8C";
+        paragraph.runs = {run};
+        paragraph.bullet = false;
+        paragraph.numbered = false;
+        substitute_.paragraphs = {paragraph};
+        return substitute_;
+    }
     Color ink_;
     Color link_;
     double width_ = 0, height_ = 0;
@@ -352,7 +434,7 @@ private:
         const auto bytes = deck_.pictures.find(shape.pictureTarget);
         bool drawn = false;
         if (bytes != deck_.pictures.end() && !bytes->second.empty()) {
-            if (auto image = UCImage::LoadFromMemory(bytes->second)) {
+            if (auto image = DecodedPicture(bytes->second)) {
                 // Cropped: the whole picture laid out so its kept part fills
                 // the box, clipped to the shape's outline.
                 const double keepW = std::max(0.01, 1.0 - shape.cropLeft - shape.cropRight);
@@ -697,6 +779,18 @@ private:
 };
 
 } // namespace
+
+void DrawPptxSlide(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, const Rect2Dd& rect,
+                   const PptxSlideDrawOptions& options) {
+    if (!ctx || rect.width <= 0 || rect.height <= 0) return;
+    const int64_t slideW = deck.slideWidth > 0 ? deck.slideWidth : kDefaultSlideWidth;
+    const double scale = rect.width / static_cast<double>(slideW);
+    ctx->PushState();
+    ctx->Translate(rect.x, rect.y);
+    ctx->ClipRect(Rect2Dd(0, 0, rect.width, rect.height));
+    SlidePainter(ctx, deck, slide, scale, &options).Paint(rect.width, rect.height, false);
+    ctx->PopState();
+}
 
 std::shared_ptr<UCPixmap> RenderPptxSlide(const PptxPresentation& deck, size_t index, int widthPx) {
     if (index >= deck.slides.size() || widthPx <= 0) return nullptr;

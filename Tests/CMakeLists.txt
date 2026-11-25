@@ -5410,6 +5410,57 @@ add_test(NAME SpreadsheetValidationGridTest COMMAND SpreadsheetValidationGridTes
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetValidationGridTest")
 
+# ===== SPREADSHEET CLIPBOARD TEST =====
+# Copy and Paste through the system clipboard (a stand-in backend): text and
+# an HTML table out, another program's table or text in, undo. No window.
+message(STATUS "  Building SpreadsheetClipboardTest...")
+add_executable(SpreadsheetClipboardTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetClipboardTest.cpp
+)
+target_include_directories(SpreadsheetClipboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetClipboardTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetClipboardTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetClipboardTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetClipboardTest COMMAND SpreadsheetClipboardTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetClipboardTest")
+
+# ===== SPREADSHEET PRINT TEST =====
+# A sheet cut into pages (paper, orientation, print area, breaks, fit, title
+# rows) and written as a PDF. No window.
+message(STATUS "  Building SpreadsheetPrintTest...")
+add_executable(SpreadsheetPrintTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetPrintTest.cpp
+)
+target_include_directories(SpreadsheetPrintTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetPrintTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetPrintTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetPrintTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetPrintTest COMMAND SpreadsheetPrintTest ${CMAKE_BINARY_DIR}/spreadsheet-print-test.pdf
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetPrintTest")
+
+# ===== SPREADSHEET KEYBOARD MOVE TEST =====
+# A keyboard move (arrows, Enter, Tab, Home, End, Ctrl+arrow) selects the
+# cell it lands on; Shift+arrow still extends. No window.
+message(STATUS "  Building SpreadsheetKeyboardMoveTest...")
+add_executable(SpreadsheetKeyboardMoveTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetKeyboardMoveTest.cpp
+)
+target_include_directories(SpreadsheetKeyboardMoveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetKeyboardMoveTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetKeyboardMoveTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetKeyboardMoveTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetKeyboardMoveTest COMMAND SpreadsheetKeyboardMoveTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetKeyboardMoveTest")
+
 # ===== SPREADSHEET RECALC TEST =====
 # Formulas follow their inputs - through chains, ranges, other sheets and
 # names - however a cell changes: typing, clearing, paste, undo, inserting a
@@ -5462,6 +5513,46 @@ set_target_properties(SpreadsheetNamedRangeTest PROPERTIES
 add_test(NAME SpreadsheetNamedRangeTest COMMAND SpreadsheetNamedRangeTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetNamedRangeTest")
+
+# ===== FILELOADER OFFICE KIND TEST =====
+# What an office suite opens a file as (DetectOfficeDocumentKind), by
+# extension and by package content, and the Open / Save dialog types for the
+# three kinds. No window.
+message(STATUS "  Building FileLoaderOfficeKindTest...")
+add_executable(FileLoaderOfficeKindTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileLoaderOfficeKindTest.cpp
+)
+target_include_directories(FileLoaderOfficeKindTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FileLoaderOfficeKindTest PRIVATE cxx_std_20)
+target_link_libraries(FileLoaderOfficeKindTest PRIVATE UltraCanvas)
+target_compile_definitions(FileLoaderOfficeKindTest PRIVATE
+    OFFICETEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+set_target_properties(FileLoaderOfficeKindTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FileLoaderOfficeKindTest COMMAND FileLoaderOfficeKindTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FileLoaderOfficeKindTest")
+
+# ===== SPREADSHEET WORKBOOK ROUND-TRIP TEST =====
+# What a sheet holds besides its cells - frozen panes, hidden rows and columns,
+# named ranges of the workbook and of a sheet, the auto-filter, the print area
+# and print settings, merges - saved as .xlsx and .ods and loaded back; where
+# soffice is installed, also through LibreOffice's conversion of each. No window.
+message(STATUS "  Building SpreadsheetWorkbookRoundTripTest...")
+add_executable(SpreadsheetWorkbookRoundTripTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetWorkbookRoundTripTest.cpp
+)
+target_include_directories(SpreadsheetWorkbookRoundTripTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetWorkbookRoundTripTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetWorkbookRoundTripTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetWorkbookRoundTripTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetWorkbookRoundTripTest COMMAND SpreadsheetWorkbookRoundTripTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set_tests_properties(SpreadsheetWorkbookRoundTripTest PROPERTIES TIMEOUT 300)
+message(STATUS "    Test registered: SpreadsheetWorkbookRoundTripTest")
 
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
@@ -5881,6 +5972,57 @@ else()
     message(STATUS "  PresentationPptxTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== PRESENTATION PRINT TEST =====
+# DrawPptxSlide into a rectangle (prompt text, nothing around it) and a
+# deck's slides as pages and a PDF. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PresentationPrintTest...")
+    add_executable(PresentationPrintTest ${CMAKE_CURRENT_SOURCE_DIR}/PresentationPrintTest.cpp)
+    target_include_directories(PresentationPrintTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PresentationPrintTest PRIVATE cxx_std_20)
+    target_link_libraries(PresentationPrintTest PRIVATE UltraCanvas)
+    set_target_properties(PresentationPrintTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PresentationPrintTest COMMAND PresentationPrintTest ${CMAKE_BINARY_DIR}/presentation-print-test.pdf
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PresentationPrintTest")
+endif()
+
+# ===== SLIDE DECK EDITOR TEST =====
+# The slide editor's core without a window: its commands with undo and redo,
+# hit testing, handles and snapping.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SlideDeckEditorTest...")
+    add_executable(SlideDeckEditorTest ${CMAKE_CURRENT_SOURCE_DIR}/SlideDeckEditorTest.cpp)
+    target_include_directories(SlideDeckEditorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SlideDeckEditorTest PRIVATE cxx_std_20)
+    target_link_libraries(SlideDeckEditorTest PRIVATE UltraCanvas)
+    set_target_properties(SlideDeckEditorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SlideDeckEditorTest COMMAND SlideDeckEditorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SlideDeckEditorTest")
+endif()
+
+# ===== SLIDE EDIT ELEMENT TEST =====
+# The slide editor element driven by pointer and key events: select, drag
+# with snapping, handles, band, strip, keys, the text request. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SlideEditElementTest...")
+    add_executable(SlideEditElementTest ${CMAKE_CURRENT_SOURCE_DIR}/SlideEditElementTest.cpp)
+    target_include_directories(SlideEditElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SlideEditElementTest PRIVATE cxx_std_20)
+    target_link_libraries(SlideEditElementTest PRIVATE UltraCanvas)
+    set_target_properties(SlideEditElementTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SlideEditElementTest COMMAND SlideEditElementTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SlideEditElementTest")
+endif()
+
 # ===== OFFICE ENCRYPTION TEST =====
 # Password-protected .xlsx / .docx (ECMA-376 agile encryption): the decryptor
 # against fixtures msoffcrypto-tool encrypted - right, wrong and missing
@@ -5955,6 +6097,32 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: PresentationOdpTest")
 else()
     message(STATUS "  PresentationOdpTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== PRESENTATION LAYOUTS ROUND TRIP TEST =====
+# Masters, layouts (PptxPresentation::masters / layouts, PptxSlide::layoutIndex)
+# and slide transitions through the .pptx and .odp readers and writers: a deck
+# with two layouts and transitions saved and read back in both formats, the
+# standard set for a deck without layouts, PptxSlideFromLayout on a read deck,
+# the LibreOffice-made fixtures, and (when soffice is installed) LibreOffice
+# converting our .pptx to .odp and our .odp to .pptx. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PresentationLayoutsRoundTripTest...")
+    add_executable(PresentationLayoutsRoundTripTest ${CMAKE_CURRENT_SOURCE_DIR}/PresentationLayoutsRoundTripTest.cpp)
+    target_include_directories(PresentationLayoutsRoundTripTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PresentationLayoutsRoundTripTest PRIVATE cxx_std_20)
+    target_link_libraries(PresentationLayoutsRoundTripTest PRIVATE UltraCanvas)
+    target_compile_definitions(PresentationLayoutsRoundTripTest PRIVATE
+        LAYOUTTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(PresentationLayoutsRoundTripTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PresentationLayoutsRoundTripTest COMMAND PresentationLayoutsRoundTripTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PresentationLayoutsRoundTripTest")
+else()
+    message(STATUS "  PresentationLayoutsRoundTripTest skipped (UltraCanvas target not present)")
 endif()
 
 # open but cannot list is one whose thumbnail nobody can switch on.

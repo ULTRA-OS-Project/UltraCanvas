@@ -1187,6 +1187,7 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasFinancialCharts.cpp
         # Spreadsheet component (Cell + Types are header-only)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetComponent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
@@ -1260,6 +1261,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptx.cpp
         # ... and written (a PptxPresentation, or a document laid out as a deck)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptxWriter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPrint.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideDeckEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideEdit.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdpWriter.cpp
         # ... and a slide drawn as a picture from what it reads (previews)

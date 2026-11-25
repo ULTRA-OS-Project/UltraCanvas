@@ -1,5 +1,9 @@
 // core/UltraCanvasPresentationPptx.cpp
 // PowerPoint (.pptx) reader - see UltraCanvasPresentationPptx.h.
+// Version: 1.4.0 - the masters and layouts (names, types, backgrounds, placeholders with their
+//                  prompt text) into PptxPresentation::masters / layouts, each slide's layoutIndex;
+//                  p:transition (also p14 in mc:AlternateContent) into PptxSlide::transition;
+//                  an empty placeholder kept (one empty paragraph, its run sized from a:endParaRPr)
 // Version: 1.3.0 - fonts (the theme's too), spacing, indents, bullet characters and numbering schemes,
 //                  insets, wrap and vertical text, strike / baseline / caps / highlight, hyperlinks;
 //                  rotation, mirroring, custom outlines, gradients, dashes, arrowheads, connectors;
@@ -10,7 +14,7 @@
 // Version: 1.1.0 - the layout's and master's places, text styles and backgrounds, the theme's
 //                  colours, fills and outlines, a group's shapes placed on the slide, the pictures
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #include "UltraCanvasPresentationPptx.h"
 #include "UltraCanvasDrawingML.h"
@@ -272,6 +276,12 @@ public:
         // Text outside placeholders (a text box): the deck's default text style.
         ReadListStyle(Child(root, "defaultTextStyle"), defaultTextStyle_);
         const std::map<std::string, std::string> rels = Relationships("ppt/presentation.xml");
+        // The design: every master and its layouts, in the file's order.
+        for (auto* id = Child(Child(root, "sldMasterIdLst"), "sldMasterId"); id; id = id->NextSiblingElement()) {
+            if (!Is(id, "sldMasterId")) continue;
+            const auto target = rels.find(RelAttr(id, "id"));
+            if (target != rels.end()) ReadDesign(target->second, out);
+        }
         int counted = 0;
         for (auto* id = Child(Child(root, "sldIdLst"), "sldId"); id; id = id->NextSiblingElement()) {
             if (!Is(id, "sldId")) continue;
@@ -312,6 +322,7 @@ private:
     bool tableStylesRead_ = false;
     std::map<std::string, Master> masters_;
     std::map<std::string, Template> layouts_;
+    std::map<std::string, int> layoutIndexes_;           // layout part -> its index in PptxPresentation::layouts
     const Master* master_ = nullptr;                     // the slide's being read
     const Template* layout_ = nullptr;
 
@@ -555,6 +566,125 @@ private:
         return &master;
     }
 
+    // ----- The design: masters and layouts -----
+
+    // A layout part's placeholders, places and background, read once.
+    const Template* LoadLayout(const std::string& part) {
+        if (const auto found = layouts_.find(part); found != layouts_.end()) return &found->second;
+        Template& t = layouts_[part];
+        tinyxml2::XMLDocument doc;
+        if (LoadXml(part, doc)) ReadTemplate(doc.RootElement(), t);
+        return &t;
+    }
+
+    // The placeholders of a master or layout part (`master_` and `layout_`
+    // set to it): each resolved as a slide's placeholder is, prompt text kept.
+    void ReadPlaceholders(const tinyxml2::XMLElement* root, std::vector<PptxShape>& out) {
+        externalLinks_.clear();
+        slideLinks_.clear();
+        for (auto* sp = Child(Child(Child(root, "cSld"), "spTree"), "sp"); sp; sp = sp->NextSiblingElement()) {
+            if (!Is(sp, "sp") || !Child(Child(Child(sp, "nvSpPr"), "nvPr"), "ph")) continue;
+            PptxShape shape;
+            if (ReadShape(sp, shape, true)) out.push_back(std::move(shape));
+        }
+    }
+
+    // A slide master (a p:sldMasterId's part) and the layouts it lists, into
+    // `out.masters` and `out.layouts`.
+    void ReadDesign(const std::string& masterPart, PptxPresentation& out) {
+        const Master* master = LoadMaster(masterPart);
+        tinyxml2::XMLDocument doc;
+        if (!master || !LoadXml(masterPart, doc)) return;
+        const tinyxml2::XMLElement* root = doc.RootElement();
+        const int masterIndex = static_cast<int>(out.masters.size());
+        PptxMaster design;
+        design.name = Attr(Child(root, "cSld"), "name");
+        design.background = master->places.background;
+        master_ = master;
+        layout_ = nullptr;
+        ReadPlaceholders(root, design.placeholders);
+        out.masters.push_back(std::move(design));
+        const std::map<std::string, std::string> rels = Relationships(masterPart);
+        for (auto* id = Child(Child(root, "sldLayoutIdLst"), "sldLayoutId"); id; id = id->NextSiblingElement()) {
+            if (!Is(id, "sldLayoutId")) continue;
+            const auto part = rels.find(RelAttr(id, "id"));
+            if (part == rels.end() || layoutIndexes_.count(part->second)) continue;
+            tinyxml2::XMLDocument layoutDoc;
+            if (!LoadXml(part->second, layoutDoc)) continue;
+            const tinyxml2::XMLElement* layoutRoot = layoutDoc.RootElement();
+            master_ = master;
+            layout_ = LoadLayout(part->second);
+            PptxLayout layout;
+            layout.name = Attr(Child(layoutRoot, "cSld"), "name");
+            layout.type = Attr(layoutRoot, "type");
+            layout.masterIndex = masterIndex;
+            layout.background = layout_->background;
+            ReadPlaceholders(layoutRoot, layout.placeholders);
+            layoutIndexes_[part->second] = static_cast<int>(out.layouts.size());
+            out.layouts.push_back(std::move(layout));
+        }
+        master_ = nullptr;
+        layout_ = nullptr;
+    }
+
+    // ----- Transitions -----
+
+    // A transition element's kind (p:fade, p:push ... p14:vortex); -1 for one
+    // the model has no kind of its own for.
+    static int TransitionKind(const tinyxml2::XMLElement* transition) {
+        for (auto* e = transition ? transition->FirstChildElement() : nullptr; e; e = e->NextSiblingElement()) {
+            if (Is(e, "sndAc") || Is(e, "extLst")) continue;
+            if (Is(e, "fade")) return static_cast<int>(PptxTransitionKind::Fade);
+            if (Is(e, "push")) return static_cast<int>(PptxTransitionKind::Push);
+            if (Is(e, "wipe")) return static_cast<int>(PptxTransitionKind::Wipe);
+            if (Is(e, "split")) return static_cast<int>(PptxTransitionKind::Split);
+            if (Is(e, "cover") || Is(e, "pull")) return static_cast<int>(PptxTransitionKind::Cover);
+            if (Is(e, "zoom")) return static_cast<int>(PptxTransitionKind::Zoom);
+            if (Is(e, "cut")) return static_cast<int>(PptxTransitionKind::NoTransition);
+            return -1;
+        }
+        return static_cast<int>(PptxTransitionKind::NoTransition);   // only timing: no effect
+    }
+
+    // p:transition, also inside mc:AlternateContent (PowerPoint 2010's p14
+    // kinds and exact length in a Choice, the older form as its Fallback).
+    static void ReadTransition(const tinyxml2::XMLElement* slideRoot, PptxTransition& out) {
+        std::vector<const tinyxml2::XMLElement*> candidates;   // the Choices' first, then the Fallback's
+        for (auto* e = slideRoot ? slideRoot->FirstChildElement() : nullptr; e && candidates.empty();
+             e = e->NextSiblingElement()) {
+            if (Is(e, "transition")) {
+                candidates.push_back(e);
+            } else if (Is(e, "AlternateContent")) {
+                for (auto* branch = e->FirstChildElement(); branch; branch = branch->NextSiblingElement())
+                    if (Is(branch, "Choice") || Is(branch, "Fallback"))
+                        if (const tinyxml2::XMLElement* t = Child(branch, "transition")) candidates.push_back(t);
+            }
+        }
+        if (candidates.empty()) return;
+        const tinyxml2::XMLElement* first = candidates.front();
+        // The kind: the first one the model knows, else Fade - still soft.
+        int kind = -1;
+        for (const tinyxml2::XMLElement* t : candidates)
+            if ((kind = TransitionKind(t)) >= 0) break;
+        out.kind = kind < 0 ? PptxTransitionKind::Fade : static_cast<PptxTransitionKind>(kind);
+        // The length: p14:dur in milliseconds, else the speed (fast unless said).
+        double seconds = -1;
+        for (const tinyxml2::XMLElement* t : candidates)
+            if (const int64_t ms = AttrInt(t, "dur"); ms > 0) {
+                seconds = static_cast<double>(ms) / 1000.0;
+                break;
+            }
+        if (seconds < 0) {
+            const std::string speed = Attr(first, "spd");
+            seconds = speed == "slow" ? 1.0 : speed == "med" ? 0.75 : 0.5;
+        }
+        out.durationSec = seconds;
+        const std::string click = Attr(first, "advClick");
+        out.advanceOnClick = !(click == "0" || click == "false");
+        if (!Attr(first, "advTm").empty())
+            out.advanceAfterSec = static_cast<double>(std::max<int64_t>(0, AttrInt(first, "advTm"))) / 1000.0;
+    }
+
     // ----- Slides -----
 
     bool ReadSlide(const std::string& part, PptxSlide& slide, PptxPresentation& out) {
@@ -579,15 +709,11 @@ private:
             Relationships(layout->second, &layoutRels);
             const auto master = layoutRels.find("slideMaster");
             master_ = LoadMaster(master == layoutRels.end() ? "" : master->second);
-            if (const auto found = layouts_.find(layout->second); found != layouts_.end()) {
-                layout_ = &found->second;
-            } else {
-                Template& t = layouts_[layout->second];
-                tinyxml2::XMLDocument layoutDoc;
-                if (LoadXml(layout->second, layoutDoc)) ReadTemplate(layoutDoc.RootElement(), t);
-                layout_ = &t;
-            }
+            layout_ = LoadLayout(layout->second);
+            if (const auto index = layoutIndexes_.find(layout->second); index != layoutIndexes_.end())
+                slide.layoutIndex = index->second;
         }
+        ReadTransition(root, slide.transition);
         slide.background = Background(Child(Child(root, "cSld"), "bg"));
         if (slide.background.empty() && layout_) slide.background = layout_->background;
         if (slide.background.empty() && master_) slide.background = master_->places.background;
@@ -1200,20 +1326,25 @@ private:
         }
     }
 
-    // A shape with text, or one with a fill or outline of its own; false for
-    // slide furniture (date, footer, slide number) and for a shape with
-    // neither.
-    bool ReadShape(const tinyxml2::XMLElement* sp, PptxShape& shape) const {
+    // A shape with text, or one with a fill or outline of its own, or a
+    // placeholder (an empty one too: an editor types into it); false for
+    // slide furniture (date, footer, slide number) and for any other shape
+    // with none of these. On a master or layout (`design`) the furniture is
+    // kept too, as Text with its type. A placeholder's type is its p:ph
+    // type, "body" for a content placeholder that names none (ECMA's obj).
+    bool ReadShape(const tinyxml2::XMLElement* sp, PptxShape& shape, bool design = false) const {
         const tinyxml2::XMLElement* nv = Child(sp, "nvSpPr");
         shape.name = Attr(Child(nv, "cNvPr"), "name");
         const tinyxml2::XMLElement* ph = Child(Child(nv, "nvPr"), "ph");
         std::string idx;
+        bool furniture = false;
         if (ph) {
             const std::string type = Attr(ph, "type");
-            if (type == "dt" || type == "ftr" || type == "sldNum" || type == "hdr" || type == "sldImg")
-                return false;
+            furniture = type == "dt" || type == "ftr" || type == "sldNum";
+            if (type == "hdr" || type == "sldImg" || (furniture && !design)) return false;
             shape.kind = type == "title" || type == "ctrTitle" ? PptxShapeKind::Title
                        : type == "subTitle"                    ? PptxShapeKind::Subtitle
+                       : furniture                             ? PptxShapeKind::Text
                        : PptxShapeKind::Body;   // body, obj or no type: content
             shape.placeholder = PlaceholderType(ph);
             idx = Attr(ph, "idx");
@@ -1258,11 +1389,29 @@ private:
         if (fromMaster) chain.push_back(&fromMaster->list);
         if (master_) {
             if (shape.kind == PptxShapeKind::Title) chain.push_back(&master_->titleStyle);
+            else if (furniture) chain.push_back(&master_->otherStyle);
             else if (ph) chain.push_back(&master_->bodyStyle);
         }
         if (!ph) chain.push_back(&defaultTextStyle_);
         const tinyxml2::XMLElement* fontRef = Child(style, "fontRef");
-        ReadText(body, shape.kind == PptxShapeKind::Body, shape.paragraphs, &chain, fontRef ? Colour(fontRef) : "");
+        ReadText(body, shape.kind == PptxShapeKind::Body, shape.paragraphs, &chain, fontRef ? Colour(fontRef) : "",
+                 ph != nullptr);
+        if (ph) {
+            // An empty placeholder: one empty paragraph, its run keeping the
+            // size and look the text typed into it will have.
+            bool text = false;
+            for (const PptxParagraph& p : shape.paragraphs) text = text || !p.Text().empty();
+            if (!text) {
+                if (shape.paragraphs.size() > 1) shape.paragraphs.resize(1);
+                if (shape.paragraphs.empty()) {
+                    PptxParagraph p;
+                    p.bullet = shape.kind == PptxShapeKind::Body;
+                    p.runs.push_back(PptxRun());
+                    shape.paragraphs.push_back(std::move(p));
+                }
+            }
+            return true;
+        }
         if (!shape.fill.empty() || !shape.line.empty()) return true;
         for (const PptxParagraph& p : shape.paragraphs)
             if (!p.Text().empty()) return true;
@@ -1271,9 +1420,12 @@ private:
 
     // The paragraphs of a txBody; `chain` (nearest first) resolves what the
     // runs and paragraphs leave unsaid, `shapeColour` comes before the
-    // master's text styles (a style's fontRef).
+    // master's text styles (a style's fontRef). With `emptyRuns` (a
+    // placeholder's) a paragraph with no runs gets an empty one in its look,
+    // the size from a:endParaRPr where it says one.
     void ReadText(const tinyxml2::XMLElement* body, bool bulletedByDefault, std::vector<PptxParagraph>& out,
-                  const std::vector<const ListStyle*>* chain, const std::string& shapeColour) const {
+                  const std::vector<const ListStyle*>* chain, const std::string& shapeColour,
+                  bool emptyRuns = false) const {
         for (auto* p = Child(body, "p"); p; p = p->NextSiblingElement()) {
             if (!Is(p, "p")) continue;
             PptxParagraph para;
@@ -1316,6 +1468,19 @@ private:
             para.indent = inherited.hasIndent ? inherited.indent : 0;
 
             ReadRuns(p, inherited, para.runs);
+            if (emptyRuns && para.runs.empty()) {
+                PptxRun run;
+                const tinyxml2::XMLElement* end = Child(p, "endParaRPr");
+                const int64_t sz = AttrInt(end, "sz");
+                run.sizePt = sz > 0 ? sz / 100.0f : inherited.sizePt;
+                const std::string colour = Colour(Child(end, "solidFill"));
+                run.color = colour.empty() ? inherited.color : colour;
+                const std::string face = Attr(Child(end, "latin"), "typeface");
+                run.font = face.empty() ? inherited.font : Typeface(face);
+                run.bold = inherited.bold == 1;
+                run.italic = inherited.italic == 1;
+                para.runs.push_back(std::move(run));
+            }
             out.push_back(std::move(para));
         }
     }
