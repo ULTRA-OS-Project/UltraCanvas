@@ -9,7 +9,7 @@ file yields. Run with
 
     python3 -m unittest discover -s scripts/tests -v
 
-which .github/workflows/locale-catalogues.yml does on every change to the
+which .github/workflows/source-checks.yml does on every change to the
 extractor.
 """
 import importlib.util

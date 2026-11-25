@@ -1,0 +1,223 @@
+name: Source checks
+
+# The repository's static source checks, in one job. Each was a workflow of its
+# own - sixteen of them, every one a checkout and a Python script of a few
+# seconds to a minute - and a pull request touching UltraCanvas/ or Apps/
+# started most of them at once. A job waits for a runner like any build leg:
+# with the build rows, Android, WebAssembly and iOS queued too, a run of
+# GitHub's ~20 concurrent jobs went to one-minute checks, and on 2026-11-24
+# those spent up to 38 minutes waiting for a runner to start one minute of
+# work. One job holds one runner for about four minutes instead.
+#
+# Every check is still its own step, under its own name, and every step runs
+# even after an earlier one failed (`if: *ran` - only a cancelled run or a
+# failed checkout stops them), so a red run lists each check that failed, not
+# only the first. The job runs every check whenever the workflow starts: the
+# paths below are the union of the sixteen workflows' filters. A pull request
+# therefore also runs checks its change cannot affect. All of them passed on
+# main when they were merged into this job, so one that goes red on a pull
+# request whose change cannot touch it is red on main too - fix it there.
+#
+# What each check enforces is in its script's docstring, and in AGENTS.md
+# where it is a house rule. The steps name the script; the workflow file each
+# used to be is in the step's comment, for anyone following an older link.
+#
+# Trigger policy matches build.yml: `pull_request` covers feature branches, so
+# listing them under `push` too would run every check twice per commit.
+
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'Apps/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'UltraWeb/**'
+      - 'UltraNet/**'
+      - 'VirtualFS/**'
+      - 'VideoFX/**'
+      - 'Tests/**'
+      - '**/tests/**'
+      - '**/CMakeLists.txt'
+      - '**/*.cmake'
+      - 'Docs/**'
+      - 'README.md'
+      - 'Masterfile_modules.md'
+      - 'llms.txt'
+      - 'llms-full.txt'
+      - 'media/locale/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+  pull_request:
+    # Stacked pull requests. `branches` filters the BASE branch here - the
+    # branch the pull request TARGETS - so `main` alone meant a pull request
+    # based on another pull request's branch matched no trigger at all and
+    # got zero checks. #455 reached 1059 changed lines that way without one
+    # job ever running. Deliberately NOT added to `push` above: that would
+    # run on every commit of every claude/** branch whether or not a pull
+    # request exists.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    timeout-minutes: 30
+    steps:
+      - id: checkout
+        uses: actions/checkout@v5
+        with:
+          # check_changelog.py compares with the base branch's changelogs,
+          # and the llms.txt step diffs against the merge base.
+          fetch-depth: 0
+
+      - name: PyYAML
+        id: pyyaml
+        if: &ran ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: python3 -c "import yaml" 2>/dev/null || pip3 install --user pyyaml
+
+      # --- was changelog.yml ------------------------------------------------
+      # Line 1 of each changelog is the product's version: refuses a number
+      # lower than one main has released, two entries sharing a number, a
+      # `####` header in a changelog.d/ entry, and stale Windows resources.
+      - name: Changelog versions (check_changelog.py)
+        if: *ran
+        run: |
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            python3 scripts/check_changelog.py --base FETCH_HEAD
+          else
+            python3 scripts/check_changelog.py
+          fi
+
+      # --- was llms-txt.yml -------------------------------------------------
+      # llms.txt / llms-full.txt are the whole corpus and are written on main
+      # after the merge (llms-regenerate.yml); a pull request that carries
+      # them conflicts with every other docs pull request.
+      - name: llms.txt - the pull request leaves llms.txt / llms-full.txt to main
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && github.event_name == 'pull_request' }}
+        run: |
+          base="origin/${{ github.base_ref }}"
+          git fetch --quiet --no-tags origin "${{ github.base_ref }}"
+          changed=$(git diff --name-only "$base"...HEAD -- llms.txt llms-full.txt)
+          if [ -n "$changed" ]; then
+            echo "::error::This pull request changes $changed. Those are written on main after the merge (llms-regenerate.yml); a pull request that carries them conflicts with every other docs pull request."
+            echo "Drop them from the branch:  git checkout $base -- llms.txt llms-full.txt  && git commit"
+            exit 1
+          fi
+      - name: llms.txt - demo-app documents exist and have a current inventory (generate_doc_toc.py)
+        if: *ran
+        run: python3 scripts/generate_doc_toc.py --check
+      - name: llms.txt - the generator runs, and the README mirrors are current (generate_llms_txt.py)
+        if: *ran
+        run: |
+          python3 scripts/generate_llms_txt.py
+          mirrors=$(python3 -c "import sys; sys.path.insert(0, 'scripts'); from generate_llms_txt import MIRRORED_READMES as m; print(' '.join(m.values()))")
+          if ! git diff --exit-code -- $mirrors; then
+            echo '::error::A Docs/ mirror of a module README is out of date.'
+            echo 'Edit the module copy, run: python3 scripts/generate_llms_txt.py, and commit the mirror (not llms.txt / llms-full.txt).'
+            exit 1
+          fi
+
+      # --- was locale-catalogues.yml ----------------------------------------
+      # The extractor's own reading rules first, then the catalogues under
+      # media/locale/: the English ones in sync with the Tr() sites, every
+      # translation parsing, with no stale key and the source's placeholders.
+      # `discover` runs every test under scripts/tests, the other checks' own
+      # tests among them.
+      - name: Locale catalogues - the scripts' own tests (scripts/tests)
+        if: *ran
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Locale catalogues (check_locale_catalogues.py)
+        if: *ran
+        run: python3 scripts/check_locale_catalogues.py --strict
+
+      # --- was locale-numbers.yml -------------------------------------------
+      - name: Locale-independent numbers in file formats (check_locale_numbers.py)
+        if: *ran
+        run: python3 scripts/check_locale_numbers.py --strict
+
+      # --- was path-strings.yml ---------------------------------------------
+      # path.string() / fs::path(std::string) go through the Windows code
+      # page; convert with PathToUtf8 / PathFromUtf8 (UltraCanvasPathUtf8.h).
+      - name: UTF-8 file paths - self-test (check_path_string.py)
+        if: *ran
+        run: python3 scripts/check_path_string.py --self-test
+      - name: UTF-8 file paths (check_path_string.py)
+        if: *ran
+        run: python3 scripts/check_path_string.py --strict
+
+      # --- was platform-names.yml -------------------------------------------
+      - name: Platform macro names - self-test (check_platform_names.py)
+        if: *ran
+        run: python3 scripts/check_platform_names.py --self-test
+      - name: Platform macro names (check_platform_names.py)
+        if: *ran
+        run: python3 scripts/check_platform_names.py --strict
+
+      # --- was plugin-abi.yml -----------------------------------------------
+      - name: Plug-in ABIs - self-test (check_plugin_abi.py)
+        if: *ran
+        run: python3 scripts/check_plugin_abi.py --self-test
+      - name: Plug-in ABIs - each contract's version moved with it (check_plugin_abi.py)
+        if: *ran
+        run: python3 scripts/check_plugin_abi.py
+
+      # --- was callback-cycles.yml ------------------------------------------
+      # A widget owns its callbacks, so a callback capturing a shared_ptr to
+      # the widget (or a container above it) is a cycle nothing frees.
+      - name: Callback ownership cycles (check_callback_cycles.py)
+        if: *ran
+        run: python3 scripts/check_callback_cycles.py --strict
+
+      # --- was label-identifiers.yml ----------------------------------------
+      - name: Label identifiers (check_label_identifiers.py)
+        if: *ran
+        run: python3 scripts/check_label_identifiers.py --strict
+
+      # --- was html-reuse.yml -----------------------------------------------
+      - name: HTML reuse - HTML, CSS and entities only in the HTMLReader module (check_html_reuse.py)
+        if: *ran
+        run: python3 scripts/check_html_reuse.py --strict
+
+      # --- was ui-reuse.yml -------------------------------------------------
+      - name: UI element reuse - no hand-rolled UI controls (check_ui_reuse.py)
+        if: *ran
+        run: python3 scripts/check_ui_reuse.py --strict
+
+      # --- was element-catalogue.yml ----------------------------------------
+      - name: Element catalogue - every element is in it (check_element_catalogue.py)
+        if: *ran
+        run: python3 scripts/check_element_catalogue.py --strict
+
+      # --- was notification-activators.yml ----------------------------------
+      - name: Notification activators (check_notification_activators.py)
+        if: *ran
+        run: python3 scripts/check_notification_activators.py --strict
+
+      # --- was ultravideo-tokens.yml ----------------------------------------
+      - name: UltraVideo tokens - the generated files are current (generate_ultravideo_tokens.py)
+        if: *ran
+        run: python3 scripts/generate_ultravideo_tokens.py --check
+
+      # --- was window-tests.yml ---------------------------------------------
+      # A window test skips itself without a display, and a skip passes: this
+      # fails a window test no "Run ... on a virtual display" step runs.
+      - name: Window tests run on a display (check_window_tests.py)
+        if: *ran
+        run: python3 scripts/check_window_tests.py
+
+      # --- was cache-keys.yml -----------------------------------------------
+      # Every Actions cache key against what cache-prune.yml can manage.
+      - name: Cache keys against the prune's rules (check_cache_keys.py)
+        if: *ran
+        run: python3 scripts/check_cache_keys.py --strict

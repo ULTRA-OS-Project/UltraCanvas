@@ -46,7 +46,7 @@ before adding cross-module code.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
   index / full concatenation of the docs corpus for LLM consumption.
   **Written on `main`, never by a branch**: `.github/workflows/llms-regenerate.yml`
-  regenerates them after every docs change lands, and `llms-txt.yml` refuses
+  regenerates them after every docs change lands, and `source-checks.yml` refuses
   a pull request that changes them. They are the whole corpus, so two docs
   pull requests that each carried them always conflicted there - the
   changelog's line 1 all over again, with the same cure. Running
@@ -97,7 +97,7 @@ before adding cross-module code.
   constructor always did. The constructors cannot refuse the old use, since
   both are one string: a label built from `Tr("...")` alone still compiles
   and shows nothing. `scripts/check_label_identifiers.py` refuses that in CI
-  (`label-identifiers.yml`; no baseline), and refuses a new element whose
+  (`source-checks.yml`; no baseline), and refuses a new element whose
   one-string constructor takes a text; for what it cannot read - a
   variable - the framework says so on `debugOutput`
   (`WarnIfIdentifierReadsAsText`). An identifier that really reads as text
@@ -121,7 +121,7 @@ before adding cross-module code.
   handful of entities. A tree of your own (SVG, XML) matches CSS selectors by
   supplying a ten-line Traits type, not a matcher. What the module lacks is
   added to it, so the next caller finds it. `scripts/check_html_reuse.py`
-  enforces this in CI (`html-reuse.yml`); `scripts/html_reuse_baseline.txt`
+  enforces this in CI (`source-checks.yml`); `scripts/html_reuse_baseline.txt`
   listed the sites that predated the rule; it has been empty since
   2026-10-08 and stays so. A site that must
   stay says why with `// html-reuse-exempt: <why>`. Doc:
@@ -193,7 +193,7 @@ before adding cross-module code.
   Windows before 10 version 1903 ignores it. For the same reason, hand a
   path to a Win32 call through the `W` API (`LoadLibraryW(p.c_str())`), not
   the `A` one. `scripts/check_path_string.py` enforces this in CI
-  (`path-strings.yml`), and `scripts/path_string_baseline.txt` is empty and
+  (`source-checks.yml`), and `scripts/path_string_baseline.txt` is empty and
   must stay that way. A path built from a wide string or a `std::u8string`
   is already correct; say so at the site with `// path-string-ok: <why>`.
   The implicit forms are just as wrong and are checked too: a UTF-8 string
@@ -243,7 +243,7 @@ before adding cross-module code.
   must keep is made safe by an `#undef` in the Windows platform headers next
   to the existing `#undef DrawText` (`UltraCanvasWindowsApplication.h`,
   `UltraCanvasWindowsWindow.h`). `scripts/check_platform_names.py` enforces
-  this in CI (`platform-names.yml`) from the name list in
+  this in CI (`source-checks.yml`) from the name list in
   `scripts/win32_aw_macros.txt`; `scripts/platform_names_baseline.txt` holds
   the sites that predate the check and only shrinks. A site that is correct as it
   stands says so with `// win32-name-ok: <why>`.
@@ -256,7 +256,7 @@ before adding cross-module code.
   Say what the value means instead - `ErrorCode::Ok`, `BorderStyle::NoBorder`,
   `ArcEdgeType::AboveBaseline` - and never add an `#undef None` guard: it
   only moves the failure to the next file. `scripts/check_platform_names.py`
-  enforces this in CI (`platform-names.yml`, the same check as the Win32 one)
+  enforces this in CI (`source-checks.yml`, the same check as the Win32 one)
   from the name list in `scripts/x11_macro_names.txt` (generated from the X11
   headers); its X11 entries in `scripts/platform_names_baseline.txt` are none
   and stay so. A site that is
@@ -276,7 +276,7 @@ before adding cross-module code.
   `normal`, `bold`, `italic`, ..., at global scope, and `kInvalidID` as a
   macro: the same file-scope rule covers them, from the list
   `scripts/mactypes_global_names.txt` generated from that header.
-  `scripts/check_platform_names.py` enforces this in CI (`platform-names.yml`,
+  `scripts/check_platform_names.py` enforces this in CI (`source-checks.yml`,
   the same check again); its Objective-C entries in
   `scripts/platform_names_baseline.txt` are none and stay so. A site that is
   correct as it stands says so with `// objc-name-ok: <why>`.
@@ -418,7 +418,7 @@ recognises it; and no leg's `restore-keys` prefix may be the start of another
 leg's key. `vcpkg-macos-15-` once matched `vcpkg-macos-15-intel-...`, and the
 arm64 leg restored x86_64 libraries and rebuilt them all; name a leg by its
 runner and its architecture (`vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-`).
-`scripts/check_cache_keys.py` enforces the first rule in CI (`cache-keys.yml`):
+`scripts/check_cache_keys.py` enforces the first rule in CI (`source-checks.yml`):
 a key ending in a commit hash or carrying `github.run_number` is never
 pruned, the combined `actions/cache` with a run-numbered key saves on every
 run of every branch (restore on every run, save on `main` alone), and a
@@ -531,7 +531,7 @@ fails rather than skips when `ULTRACANVAS_TEST_DISPLAY_REQUIRED` is set,
 which those steps do: its skip asks `DisplayTest::DisplayRequired()`
 (`Tests/DisplayRequired.h`, which includes nothing of the framework's and
 which `DisplayTestSupport.h` brings along) first.
-`scripts/check_window_tests.py` enforces both in CI (`window-tests.yml`) for
+`scripts/check_window_tests.py` enforces both in CI (`source-checks.yml`) for
 every test source that reads `DISPLAY` or calls `XOpenDisplay`. A source
 that is no window test says so with `// window-test-exempt: <why>`, and one
 ctest entry of several built from a source - a mode of the binary that opens
@@ -868,7 +868,7 @@ and never introduce a new literal copy of one:
   and commits them with the new line 1, so a branch with a `changelog.d/`
   entry leaves them alone. Run it yourself only after a hand-written top entry
   for either app (the hotfix case); a CMake configure on any platform warns
-  when they are stale, and `scripts/check_changelog.py` (CI's `changelog.yml`)
+  when they are stale, and `scripts/check_changelog.py` (CI's `source-checks.yml`)
   fails the pull request - the warning alone let UltraFiler 1.72.4 ship with
   a 1.72.3 version resource. Nothing else may hold a literal — UltraFiler's compile
   definition did, and titled its window `UltraFiler 0.8.0` for thirteen
