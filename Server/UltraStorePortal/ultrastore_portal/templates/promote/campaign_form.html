@@ -37,7 +37,13 @@
   <h2 class="mt-4">How long</h2>
   <div class="row"><div class="col-md-6">{% include "_field.html" with field=form.ends %}</div><div class="col-md-6">{% include "_field.html" with field=form.total_budget %}</div></div>
 
-  <button class="btn btn-primary btn-lg" type="submit">{% if campaign %}Save{% else %}Start promoting{% endif %}</button>
+  {% if policy_due %}
+  <div class="form-check mb-3">
+    <input class="form-check-input" type="checkbox" name="accept_policy" id="accept-policy">
+    <label class="form-check-label" for="accept-policy">I accept the <a href="{% url 'promote:policy' %}" target="_blank" rel="noopener">advertising policy</a> (version {{ policy_due.version }}).</label>
+  </div>
+  {% endif %}
+  <button class="btn btn-primary btn-lg" type="submit"{% if not may_change %} disabled{% endif %}>{% if campaign %}Save{% else %}Start promoting{% endif %}</button>
   <a class="btn btn-outline-secondary btn-lg ms-2" href="{% if campaign %}{% url 'promote:campaign' campaign.pk %}{% else %}{% url 'console:app' app.app_id %}{% endif %}">Cancel</a>
   <p class="small text-secondary mt-3 mb-0">An advertisement is chosen from what is on the page - the search, the category, the app beside it - and never from who is looking. It is always marked, and anyone can see that you paid for it.</p>
 </div></form>

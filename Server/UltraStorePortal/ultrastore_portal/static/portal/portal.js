@@ -304,6 +304,32 @@
     });
   }
 
+  // "Not this one again" on an advertisement: remembered in this browser
+  // and nowhere else. The store is not told, so it cannot know who hid what;
+  // it is this page that leaves the card out.
+  function setUpAds() {
+    var KEY = "promote.hidden", hidden;
+    try { hidden = JSON.parse(window.localStorage.getItem(KEY) || "[]"); } catch (error) { return; }
+    if (!Array.isArray(hidden)) hidden = [];
+    function leaveOut(card) {
+      var row = card.closest(".col") || card, section = row.closest(".ad-row");
+      row.remove();
+      if (section && !section.querySelector("[data-ad]")) section.remove();   // a row of advertisements with none left
+    }
+    document.querySelectorAll("[data-ad]").forEach(function (card) {
+      if (hidden.indexOf(card.getAttribute("data-ad")) !== -1) { leaveOut(card); return; }
+      var button = card.querySelector("[data-ad-hide]");
+      if (!button) return;
+      button.hidden = false;
+      button.addEventListener("click", function () {
+        hidden.push(card.getAttribute("data-ad"));
+        try { window.localStorage.setItem(KEY, JSON.stringify(hidden.slice(-200))); } catch (error) { /* a browser that keeps nothing */ }
+        leaveOut(card);
+      });
+    });
+  }
+
   setUpFields(document);
   setUpUploads();
+  setUpAds();
 })();

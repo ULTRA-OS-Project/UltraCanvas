@@ -152,6 +152,7 @@ api_patterns = ([
     path("promote/decide", ads.decide, name="promote_decide"),
     path("promote/events", ads.events, name="promote_events"),
     path("promote/why/<str:token>", ads.why, name="promote_why"),
+    path("promote/library", ads.library, name="promote_library"),
     path("promote/skrill/status", ads.skrill_status, name="promote_skrill_status"),
 ], "api")
 
@@ -163,6 +164,9 @@ promote_patterns = ([
     path("", promote.home, name="home"),
     path("campaigns/<int:pk>/", promote.campaign, name="campaign"),
     path("campaigns/<int:pk>/edit/", promote.campaign_edit, name="campaign_edit"),
+    path("campaigns/<int:pk>/words/", promote.campaign_words, name="campaign_words"),
+    path("campaigns/<int:pk>/bids/", promote.campaign_bids, name="campaign_bids"),
+    path("campaigns/<int:pk>/report.csv", promote.campaign_csv, name="campaign_csv"),
     path("campaigns/<int:pk>/<slug:state>/", promote.campaign_state, name="campaign_state"),
     path("balance/", promote.balance, name="balance"),
     path("topup/<str:public_id>/", promote.topup, name="topup"),
@@ -172,6 +176,8 @@ promote_patterns = ([
     path("go/<str:token>/", promote.go, name="go"),
     path("why/<str:token>/", promote.why, name="why"),
     path("report/<str:token>/", promote.report_ad, name="report"),
+    path("library/", promote.library, name="library"),
+    path("policy/", promote.policy, name="policy"),
 ], "promote")
 
 urlpatterns = [

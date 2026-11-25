@@ -13,6 +13,7 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect
 
 from ..store import services
+from ..store.models import PublisherMember
 
 
 def client_address(request) -> str:
@@ -37,19 +38,25 @@ def too_many(request, what: str, limit: int, seconds: int, key: str = "") -> boo
         return False
 
 
-def publisher_required(view=None, *, approved: bool = True):
+def publisher_required(view=None, *, approved: bool = True, roles: tuple | None = PublisherMember.APPS):
     """The console's pages: a signed-in person with a publisher, approved
-    unless the page says otherwise; request.publisher is theirs."""
+    unless the page says otherwise; request.publisher is theirs and
+    request.publisher_role what they are there. The apps, their listings
+    and releases are an owner's and a developer's; a page for other roles
+    names them (`roles`; None: every member)."""
     def decorate(inner):
         @wraps(inner)
         @login_required
         def wrapper(request, *args, **kwargs):
-            publisher = services.publisher_of(request.user)
-            if publisher is None:
+            membership = services.membership_of(request.user)
+            if membership is None:
                 return redirect("console:apply")
+            publisher = membership.publisher
             if approved and not publisher.approved:
                 return redirect("console:home")
-            request.publisher = publisher
+            if roles is not None and membership.role not in roles:
+                raise PermissionDenied
+            request.publisher, request.publisher_role = publisher, membership.role
             return inner(request, *args, **kwargs)
         return wrapper
     return decorate(view) if view else decorate

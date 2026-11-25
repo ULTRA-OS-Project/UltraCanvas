@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Advertising policy - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Advertising policy</h1>
+  {% if policy %}
+  <p class="text-secondary">Version {{ policy.version }}, in force since {{ policy.in_force_from|date:"j F Y" }}.</p>
+  {% if policy.changes %}<div class="alert alert-secondary"><b>What changed:</b> {{ policy.changes|linebreaksbr }}</div>{% endif %}
+  <div class="prose">{{ policy.text|linebreaks }}</div>
+  {% else %}<p class="text-secondary">No advertising policy is in force yet.</p>{% endif %}
+</div>
+{% endblock %}

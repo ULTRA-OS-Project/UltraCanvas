@@ -20,4 +20,5 @@ def portal(request):
         "store_root": hosts.store_root(),
         "promote_on": settings.PROMOTE,
         "my_publisher": SimpleLazyObject(lambda: services.publisher_of(request.user)),
+        "my_role": SimpleLazyObject(lambda: getattr(services.membership_of(request.user), "role", "")),
     }

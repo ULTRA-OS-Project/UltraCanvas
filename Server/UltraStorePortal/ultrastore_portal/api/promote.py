@@ -5,6 +5,7 @@ web store) that draws its own pages:
                                      -> {ads: [{token, kind, id, name, label, payer: {id, name}, why: [...], why_url}]}
     POST /v1/promote/events          {events: [{token, type: shown | clicked | installed}]} -> {accepted}
     GET  /v1/promote/why/<token>     who paid, and what it matched
+    GET  /v1/promote/library         every advertisement that runs or ran in the last year
     POST /v1/promote/skrill/status   the payment provider's signed report on a top-up (form fields) -> OK
 
 **The question "what goes here?" is asked without saying who asks.** A
@@ -101,6 +102,17 @@ def why(request, token: str):
                    "placement": {"key": placement.key, "name": placement.name, "area": placement.area},
                    "why": chooser.explain(placement, data.get("w") or {}),
                    "used": "What was on the page. Nothing about you."})
+
+
+@require_GET
+def library(request):
+    if not services.enabled():
+        return answer({"ads": []})
+    return answer({"ads": [{
+        "id": row["app"].app_id, "name": row["app"].name, "payer": {"id": row["publisher"].slug, "name": row["publisher"].name},
+        "first_shown": row["first"].isoformat(), "last_shown": row["last"].isoformat(), "running": row["running"],
+        "places": [place.key for place in row["places"]], "shown_for": row["shown_for"],
+    } for row in services.library()]})
 
 
 @csrf_exempt
