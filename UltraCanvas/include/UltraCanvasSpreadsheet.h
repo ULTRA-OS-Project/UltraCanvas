@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.18.0 - templates: LoadFromFile reads .ots, .xltx and .xltm, SaveToFile writes .ots and .xltx
+//                  with their template media types; IsSpreadsheetTemplateExtension
 // Version: 1.17.0 - a table to assistive technology (rows and cells as parts, the active cell focused and
 //                  announced); Copy / Cut a selected chart onto the office clipboard (CopyChartToClipboard)
 // Version: 1.16.0 - conditional formats and validation rules as undo steps (RulesChange): AddConditionalFormat,
@@ -129,6 +131,13 @@ enum class SpreadsheetEditMode {
     Resizing,
     AutoFilling
 };
+
+// True for the extensions of a spreadsheet template - "ots" (OpenDocument),
+// "xltx" and "xltm" (Excel) - given as an extension (with or without its dot)
+// or a whole path, any case. A template is its workbook's package under the
+// template's media type: LoadFromFile reads all three, SaveToFile writes
+// .ots and .xltx as templates; a .xltm is read, not written.
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath);
 
 // ============================================================================
 // SPREADSHEET COMPONENT
@@ -852,10 +861,13 @@ public:
     // "Save with password", decrypted by UltraCanvasOdfEncryption.h. Other
     // formats ignore it.
     bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-    // `password` saves a password-protected .xlsx (agile encryption,
+    // The type is the extension's: .ods, .xlsx (and the templates .ots,
+    // .xltx), .csv, .tsv.
+    // `password` saves a password-protected .xlsx or .xltx (agile encryption,
     // AES-256 / SHA-512, what Excel 2013 and later write). Any other format
     // with a password is refused rather than saved unprotected.
     bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
+    // .ods and .xlsx; an .ots or .xltx path is written as that template.
     bool LoadODS(const std::string& filePath, const std::string& password = std::string());
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());

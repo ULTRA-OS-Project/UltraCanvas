@@ -5,6 +5,7 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.16.0 - an OpenDocument text template (.ott) is written as one: its template media type
 // Version: 1.15.1 - chart objects written and read by UltraCanvasOdfChart (core, shared with the .odp writer)
 // Version: 1.15.0 - a password-protected .odt opened with its password (UltraCanvasOdfEncryption.h)
 // Version: 1.14.0 - chart objects: radar, bubble and stock charts; smoothed lines (chart:interpolation)
@@ -3150,8 +3151,11 @@ public:
             error = "Cannot create file: " + filePath;
             return false;
         }
-        // ODF requires the mimetype entry first and uncompressed.
-        static const char* kMimeType = "application/vnd.oasis.opendocument.text";
+        // ODF requires the mimetype entry first and uncompressed. A template
+        // (.ott) is the same package under its own media type.
+        mimeType_ = IsWordTemplateExtension(filePath) ? "application/vnd.oasis.opendocument.text-template"
+                                                      : "application/vnd.oasis.opendocument.text";
+        const std::string kMimeType = mimeType_;
         // Body and page furniture first: writing them collects the automatic
         // styles that content.xml and styles.xml each declare.
         std::string body = WriteBlocks(doc.blocks);
@@ -3197,6 +3201,7 @@ public:
 private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
+    std::string mimeType_ = "application/vnd.oasis.opendocument.text";   // "...text-template" for an .ott
     int noteCounter_ = 0;                 // text:note ids, ftn1 / edn2 ...
     int tocCount_ = 0;
     const std::vector<RichDocBlock>* blocks_ = nullptr;   // the blocks being written (body or furniture)
@@ -5004,7 +5009,7 @@ private:
             << "xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" "
             << "manifest:version=\"1.3\">\n"
             << "<manifest:file-entry manifest:full-path=\"/\" "
-               "manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>\n"
+               "manifest:media-type=\"" << mimeType_ << "\"/>\n"
             << "<manifest:file-entry manifest:full-path=\"content.xml\" "
                "manifest:media-type=\"text/xml\"/>\n"
             << "<manifest:file-entry manifest:full-path=\"styles.xml\" "

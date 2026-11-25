@@ -117,7 +117,7 @@ public:
     }
 
     void AddSaveTypes(FileDialogOptions& opts) const override {
-        UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::Spreadsheet);
+        UltraCanvasFileLoader::AddSpreadsheetSaveTypes(opts);   // the templates are "Save as template"'s
     }
 
     // The sheet on show, cut into pages by its print settings (print area,

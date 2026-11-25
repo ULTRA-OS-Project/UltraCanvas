@@ -11,9 +11,9 @@ It is built from the framework's elements, one per kind of document:
 
 | Kind | Element | Opens | Saves |
 |---|---|---|---|
-| Document | [`UltraCanvasRichTextEdit`](../UltraCanvas/UltraCanvasRichTextEdit.md), in page view | .odt, .docx, .doc, LaTeX, Markdown, text | .docx, .odt |
-| Spreadsheet | [`UltraCanvasSpreadsheet`](../UltraCanvas/UltraCanvasSpreadsheetExamples.md) | .ods, .xlsx, .xls, .csv, .tsv | .xlsx, .ods, .csv, .tsv |
-| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their template and show variants | .pptx, .odp |
+| Document | [`UltraCanvasRichTextEdit`](../UltraCanvas/UltraCanvasRichTextEdit.md), in page view | .odt, .docx, .doc, LaTeX, Markdown, text; templates .ott, .dotx, .dotm | .docx, .odt; templates .dotx, .ott |
+| Spreadsheet | [`UltraCanvasSpreadsheet`](../UltraCanvas/UltraCanvasSpreadsheetExamples.md) | .ods, .xlsx, .xls, .csv, .tsv; templates .ots, .xltx, .xltm | .xlsx, .ods, .csv, .tsv; templates .xltx, .ots |
+| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their show variants; templates .potx, .potm, .otp | .pptx, .odp; templates .potx, .otp |
 
 What a file is comes from `UltraCanvasFileLoader::DetectOfficeDocumentKind`:
 the extension, else the package inside (`mimetype`, `word/document.xml`,
@@ -83,8 +83,47 @@ The command tabs:
   the arrows move on, a number and Enter jump, B or W blank the screen,
   Escape ends it.
 
-The **Start** tab opens a file, lists the recent ones and starts a new
-document or spreadsheet.
+The **Start** tab opens a file, lists the recent ones, starts a new
+document, spreadsheet or presentation, and shows the templates (below).
+
+## New from template
+
+A template is an ordinary .ott / .dotx (documents), .ots / .xltx
+(spreadsheets) or .otp / .potx (presentations) file: the same package as the
+document, under the template's media type
+(`UltraCanvasFileLoader::IsOfficeTemplate`). Opening one - from the gallery,
+the File menu, the Open dialog, the recent list or the command line - starts
+a **new, untitled document** with its content ("Document 3"), so Save asks
+for a name and the template itself is never written over.
+
+The **Start** tab's *New from template* gallery shows a card per template,
+with a picture of its first page, its sheet or its first slide (drawn by the
+framework's file previews a moment after the tab shows), and *Open a template
+file* takes one from anywhere. The File menu has the same list under **New
+from template...**, with **Other template...** at its end.
+
+The templates come from two folders:
+
+| Folder | What |
+|---|---|
+| `media/templates/office/` (in the resources, installed with the rest of `media/`) | the shipped set: a letter, a report with headings and a memo; a budget, an invoice and a simple list; a plain and a dark presentation |
+| `UltraOffice/templates/` in the UltraCanvas settings folder | the user's own: **Save as template...** proposes this folder |
+
+**Save as template...** writes the open document as a template of its kind,
+in the format new files are saved as (.dotx / .xltx / .potx, or .ott / .ots
+/ .otp; the dialog offers both). The document keeps its own file, name and
+unsaved changes; the gallery shows the new template at once.
+
+The shipped set is made by the framework's own writers:
+`Tests/OfficeTemplatesTest.cpp` holds each template, and
+
+```bash
+build/bin/OfficeTemplatesTest --write media/templates/office
+```
+
+writes them again after one is changed there. Without `--write` the test
+(a ctest entry) checks that each shipped file is a template of its kind,
+loads, and still holds what the test makes of it.
 
 ## The File menu
 
@@ -93,10 +132,12 @@ document or spreadsheet.
 | New document | Ctrl+N |
 | New spreadsheet | Ctrl+Shift+N |
 | New presentation | |
+| New from template... | the templates, then *Other template...* |
 | Open... | Ctrl+O |
 | Open recent | |
 | Save | Ctrl+S |
 | Save as... | Ctrl+Shift+S |
+| Save as template... | into `UltraOffice/templates/` |
 | Export as PDF... | every kind |
 | Print... | Ctrl+P, every kind |
 | Close | Ctrl+W |
@@ -145,7 +186,8 @@ twice.
 `UltraOffice/settings.json` in the UltraCanvas settings folder
 (`UltraCanvasAppSettings`) keeps the recent files
 (`recent`, twelve) and the format new files are saved as (`saveFormat`:
-`ooxml` or `odf`).
+`ooxml` or `odf`), which also picks the type *Save as template* proposes. The
+user's templates are in `UltraOffice/templates/` beside it.
 
 ## Files
 
@@ -153,6 +195,7 @@ twice.
 |---|---|
 | `Apps/UltraOffice/main.cpp` | the command line, one copy per user |
 | `Apps/UltraOffice/UltraOfficeWindow.h`, `.cpp` | the window: tabs, command row, File menu, Start tab, open, save, close, autosave and recovery |
+| `Apps/UltraOffice/UltraOfficeTemplates.h`, `.cpp` | the templates offered (shipped and the user's) and the Start tab's gallery |
 | `Apps/UltraOffice/UltraOfficeHost.h`, `.cpp` | what every kind of tab provides (`OfficeHost`) and the shared toolbar helpers |
 | `Apps/UltraOffice/UltraOfficeDocumentHost.cpp` | documents |
 | `Apps/UltraOffice/UltraOfficeSpreadsheetHost.cpp` | spreadsheets |
@@ -160,6 +203,7 @@ twice.
 | `Apps/UltraOffice/UltraOffice.desktop` | the freedesktop entry |
 | `media/appicon/UltraOffice.svg`, `.png` | the icon |
 | `media/icons/office/` | the kind icons and the tools the shared sets lack |
+| `media/templates/office/` | the shipped templates, made by `Tests/OfficeTemplatesTest.cpp --write` |
 
 ## Languages
 

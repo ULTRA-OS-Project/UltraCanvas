@@ -2,6 +2,8 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.5.0 - new from template: the Start tab's gallery, File > New from template, a template
+//                  opened as a new untitled document; Save as template
 // Version: 0.4.0 - new presentations (the slide editor)
 // Version: 0.3.0 - recovered documents offered on the Start tab, so the window never waits on the question
 // Version: 0.2.0 - autosave every minute and crash recovery
@@ -9,6 +11,7 @@
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeWindow.h"
+#include "UltraOfficeTemplates.h"
 #include "UltraOfficeToolbar.h"
 
 #include "UltraCanvasApplication.h"
@@ -192,11 +195,24 @@ void UltraOfficeWindow::BuildStartPage() {
     page->AddButton(Tr("New spreadsheet"), [this]() { NewDocument(OfficeKind::Spreadsheet); });
     page->AddButton(Tr("New presentation"), [this]() { NewDocument(OfficeKind::Presentation); });
 
-    // The page is a fixed-width column: centred in the tab.
-    auto pane = CreateContainer("office-start-pane");
+    // New from template: the shipped templates and the user's own, each a
+    // card with a picture of it.
+    const std::vector<OfficeTemplate> templates = ListTemplates(OwnTemplatesFolder());
+    const int galleryWidth = page->ContentWidth();
+    page->AddSection(Tr("New from template"), TemplateGalleryHeight(templates.size(), galleryWidth))
+        ->AddChild(BuildTemplateGallery(templates, galleryWidth,
+                                        [this](const std::string& path) { NewFromTemplate(path); }));
+    page->AddSection(Tr("Your templates"));
+    page->AddNote(Tr("A document kept with File, Save as template is offered here with the others."), 30);
+    page->AddButton(Tr("Open a template file"), [this]() { ShowTemplateOpenDialog(); });
+
+    // The page is a fixed-width column: centred in the tab, scrolled when the
+    // tab is shorter than it.
+    auto pane = CreateScrollableContainer("office-start-pane", 0, 0, 0, 0, true, false);
     pane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Center);
     pane->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     page->SetMargin(32, 0, 0, 0);
+    page->layoutItem.SetFlexShrink(0);   // its own height, which the pane scrolls
     pane->AddChild(page);
 
     if (!startPane_) {
@@ -308,6 +324,34 @@ void UltraOfficeWindow::NewDocument(OfficeKind kind) {
     AddDocument(std::move(host), "", name, "");
 }
 
+void UltraOfficeWindow::NewFromTemplate(const std::string& path) {
+    const OfficeKind kind = UltraCanvasFileLoader::DetectOfficeDocumentKind(path);
+    if (kind == OfficeKind::Unknown) {
+        ShowError(Tr("New from template"), TrF("{0} is not a document, spreadsheet or presentation UltraOffice can open.",
+                                                FileNameOf(path)));
+        return;
+    }
+    UltraCanvasFileLoader::RequestDocumentPassword(path, this, [this, path, kind](bool proceed, const std::string& password) {
+        if (!proceed) return;
+        std::unique_ptr<OfficeHost> host = kind == OfficeKind::Spreadsheet  ? CreateSpreadsheetHost(this)
+                                         : kind == OfficeKind::Presentation ? CreatePresentationHost(this)
+                                                                            : CreateDocumentHost(this);
+        std::string error;
+        if (!host->Load(path, password, error)) {
+            ShowError(Tr("New from template"), TrF("{0} could not be opened: {1}", FileNameOf(path), error));
+            return;
+        }
+        // Untitled and without the template's password: Save asks for a name,
+        // so the template stays as it is.
+        host->SetModified(false);
+        const int n = ++untitled_[KindSlot(kind)];
+        const std::string name = kind == OfficeKind::Spreadsheet  ? TrF("Spreadsheet {0}", n)
+                               : kind == OfficeKind::Presentation ? TrF("Presentation {0}", n)
+                                                                  : TrF("Document {0}", n);
+        AddDocument(std::move(host), "", name, "");
+    });
+}
+
 void UltraOfficeWindow::OpenPaths(const std::vector<std::string>& paths) {
     for (const std::string& path : paths) OpenPath(path);
 }
@@ -324,6 +368,12 @@ void UltraOfficeWindow::OpenPath(const std::string& given) {
         ShowError(Tr("Open"), TrF("The file {0} does not exist.", path));
         settings_.Forget(kRecentKey, path);
         settings_.Save();
+        return;
+    }
+    // A template starts a new document, whichever way it was opened.
+    if (UltraCanvasFileLoader::IsOfficeTemplate(path)) {
+        Remember(path);
+        NewFromTemplate(path);
         return;
     }
     const OfficeKind kind = UltraCanvasFileLoader::DetectOfficeDocumentKind(path);
@@ -377,6 +427,14 @@ void UltraOfficeWindow::ShowFileMenu(UltraCanvasUIElement* anchor) {
     menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("New document"), "Ctrl+N", [this]() { NewDocument(OfficeKind::Document); }));
     menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("New spreadsheet"), "Ctrl+Shift+N", [this]() { NewDocument(OfficeKind::Spreadsheet); }));
     menu_->AddItem(MenuItemData::Action(Tr("New presentation"), [this]() { NewDocument(OfficeKind::Presentation); }));
+    std::vector<MenuItemData> fromTemplate;
+    for (const OfficeTemplate& t : ListTemplates(OwnTemplatesFolder())) {
+        const std::string path = t.path;
+        fromTemplate.push_back(MenuItemData::Action(t.name, [this, path]() { NewFromTemplate(path); }));
+    }
+    if (!fromTemplate.empty()) fromTemplate.push_back(MenuItemData::Separator());
+    fromTemplate.push_back(MenuItemData::Action(Tr("Other template..."), [this]() { ShowTemplateOpenDialog(); }));
+    menu_->AddItem(MenuItemData::Submenu(Tr("New from template..."), fromTemplate));
     menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Open..."), "Ctrl+O", [this]() { ShowOpenDialog(); }));
     std::vector<MenuItemData> recent;
     for (const std::string& path : settings_.GetList(kRecentKey))
@@ -386,6 +444,7 @@ void UltraOfficeWindow::ShowFileMenu(UltraCanvasUIElement* anchor) {
         menu_->AddItem(MenuItemData::Separator());
         menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Save"), "Ctrl+S", withDoc([this](OpenDocument& d) { Save(d, false); })));
         menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Save as..."), "Ctrl+Shift+S", withDoc([this](OpenDocument& d) { Save(d, true); })));
+        menu_->AddItem(MenuItemData::Action(Tr("Save as template..."), withDoc([this](OpenDocument& d) { SaveAsTemplate(d); })));
         if (doc->host->CanExportPdf()) {
             menu_->AddItem(MenuItemData::Action(Tr("Export as PDF..."), withDoc([this](OpenDocument& d) { ExportPdf(d); })));
             menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Print..."), "Ctrl+P", withDoc([this](OpenDocument& d) { Print(d); })));
@@ -482,6 +541,70 @@ void UltraOfficeWindow::ExportPdf(OpenDocument& doc) {
 void UltraOfficeWindow::Print(OpenDocument& doc) {
     std::string error;
     if (!doc.host->Print(doc.name, this, error)) ShowError(Tr("Print"), error);
+}
+
+// ===== TEMPLATES =====
+
+std::vector<UltraOfficeWindow::DocumentSummary> UltraOfficeWindow::GetDocuments() const {
+    std::vector<DocumentSummary> out;
+    for (int i = 0; tabs_ && i < tabs_->GetTabCount(); ++i) {
+        for (const auto& doc : documents_) {
+            if (tabs_->GetTabContent(i) != doc->pane) continue;
+            out.push_back({doc->path, doc->name, doc->host->GetKind(), doc->host->IsModified()});
+        }
+    }
+    return out;
+}
+
+std::filesystem::path UltraOfficeWindow::OwnTemplatesFolder() const {
+    const std::string file = settings_.File();
+    if (file.empty()) return {};
+    return PathFromUtf8(file).parent_path() / "templates";
+}
+
+void UltraOfficeWindow::ShowTemplateOpenDialog() {
+    FileDialogOptions opts;
+    opts.title = Tr("New from template");
+    UltraCanvasFileLoader::AddOfficeDocumentLoadTypes(opts);
+    opts.AddFilter(Tr("All files"), "*");
+    opts.parentWindow = this;
+    std::error_code ec;
+    const std::filesystem::path own = OwnTemplatesFolder();
+    if (!own.empty() && std::filesystem::is_directory(own, ec)) opts.initialDirectory = PathToUtf8(own);
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
+        if (result == DialogResult::OK && !path.empty()) NewFromTemplate(path);
+    });
+}
+
+void UltraOfficeWindow::SaveAsTemplate(OpenDocument& doc) {
+    const OfficeKind kind = doc.host->GetKind();
+    FileDialogOptions opts;
+    opts.title = Tr("Save as template");
+    opts.defaultFileName = StemOf(doc.name) + "." + TemplateExtension(kind, GetSaveFormat());
+    UltraCanvasFileLoader::AddOfficeTemplateSaveTypes(opts, kind);
+    opts.parentWindow = this;
+    // The user's templates folder, so the gallery offers it from then on.
+    const std::filesystem::path own = OwnTemplatesFolder();
+    if (!own.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(own, ec);
+        if (std::filesystem::is_directory(own, ec)) opts.initialDirectory = PathToUtf8(own);
+    }
+    const int docId = doc.id;
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, docId, kind](DialogResult result, const std::string& chosen) {
+        OpenDocument* d = FindById(docId);
+        if (!d || result != DialogResult::OK || chosen.empty()) return;
+        std::string path = chosen;
+        if (!UltraCanvasFileLoader::IsOfficeTemplateExtension(path)) path += "." + TemplateExtension(kind, GetSaveFormat());
+        // Written as a copy: the document keeps its own file, name and
+        // unsaved changes.
+        std::string error;
+        if (!d->host->Write(path, "", error)) {
+            ShowError(Tr("Save as template"), TrF("{0} could not be saved: {1}", FileNameOf(path), error));
+            return;
+        }
+        RebuildStartPageLater();   // the gallery shows it
+    });
 }
 
 // ===== CLOSING =====

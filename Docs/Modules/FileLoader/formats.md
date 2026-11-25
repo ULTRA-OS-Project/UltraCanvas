@@ -124,9 +124,14 @@ the Vector plugin's drawing reader.
 |--------|--------------|:----:|:----:|----------|
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
 | Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
+| Word template (OOXML) | `.dotx` | ✅ ¶ | ✅ ¶ | built-in: a `.docx` package whose main part is a template |
+| Word macro-enabled template | `.dotm` | ✅ | — | built-in: read as a template; macros neither run nor kept |
 | OpenDocument Text | `.odt` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2) |
-| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model (`SavePresentation`) or from a document laid out as a deck (`SaveTextDocument`) |
-| OpenDocument Presentation | `.odp`, `.otp`, `.fodp` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model or a document laid out as a deck (no password) |
+| OpenDocument Text template | `.ott` | ✅ | ✅ | built-in: an `.odt` package with the `text-template` mimetype |
+| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.ppsm` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model (`SavePresentation`) or from a document laid out as a deck (`SaveTextDocument`) |
+| PowerPoint template (OOXML) | `.potx`, `.potm` | ✅ ¶ | ✅ ¶ | built-in, as PowerPoint (a `.potm` is written without macros) |
+| OpenDocument Presentation | `.odp`, `.fodp` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model or a document laid out as a deck (no password) |
+| OpenDocument Presentation template | `.otp` | ✅ ¶ | ✅ | built-in, as OpenDocument Presentation |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |
@@ -143,7 +148,10 @@ engines linked into the binary are reported. RTF is **not** supported.
 | Format | Extension(s) | Load | Save |
 |--------|--------------|:----:|:----:|
 | OpenDocument Spreadsheet | `.ods` | ✅ ¶ | ✅ |
+| OpenDocument Spreadsheet template | `.ots` | ✅ ¶ | ✅ |
 | Excel workbook (OOXML) | `.xlsx` | ✅ ¶ | ✅ ¶ |
+| Excel template (OOXML) | `.xltx` | ✅ ¶ | ✅ ¶ |
+| Excel macro-enabled template | `.xltm` | ✅ | — |
 | Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |
