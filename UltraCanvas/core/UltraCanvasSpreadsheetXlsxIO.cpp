@@ -9,6 +9,7 @@
 // borders, alignment, wrap). Number formats are classified by
 // ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
 // .xls reader.
+// Version: 1.5.0 - charts: a sheet's drawing with its charts read and written (UltraCanvasSpreadsheetChartIO.cpp)
 // Version: 1.4.0 - a cell's number is written to read back exactly (it kept six significant digits)
 // Version: 1.3.0 - keeps what a sheet holds beyond its cells: frozen panes (sheetViews), hidden rows and
 //                  columns, named ranges of the workbook and of each sheet (definedNames), the
@@ -20,6 +21,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"           // the sheets' charts
 #include "UltraCanvasSpreadsheetXls.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasOfficeEncryption.h"
@@ -447,6 +449,7 @@ public:
             std::string sheetXml;
             if (zip_.ReadEntry(rel->second, sheetXml)) {
                 ParseWorksheet(sheetXml, sheet);
+                ReadXlsxSheetCharts(zip_, rel->second, *sheet);
             }
         }
         if (auto* definedNames = root->FirstChildElement("definedNames")) {
@@ -1009,6 +1012,7 @@ public:
     explicit XlsxSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
     bool Save(const std::string& filePath, const std::string& password, std::string& error) {
+        spreadsheet_->RefreshCharts();   // the charts' caches as the cells are now
         // Sheets are generated first so the style/string tables are complete
         // before styles.xml and sharedStrings.xml are written.
         std::vector<std::string> sheetXmls;
@@ -1029,7 +1033,10 @@ public:
             error = "Cannot create file: " + filePath;
             return false;
         }
-        bool ok = zip_.AddEntry("[Content_Types].xml", BuildContentTypesXml(sheetXmls.size()))
+        // The sheets' charts: their parts, each sheet's <drawing>, their types.
+        std::string contentTypes = BuildContentTypesXml(sheetXmls.size());
+        const auto chartParts = WriteXlsxCharts(*spreadsheet_, sheetXmls, contentTypes);
+        bool ok = zip_.AddEntry("[Content_Types].xml", contentTypes)
                   && zip_.AddEntry("_rels/.rels", BuildRootRelsXml())
                   && zip_.AddEntry("xl/workbook.xml", BuildWorkbookXml())
                   && zip_.AddEntry("xl/_rels/workbook.xml.rels",
@@ -1039,6 +1046,9 @@ public:
         for (size_t i = 0; ok && i < sheetXmls.size(); ++i) {
             ok = zip_.AddEntry("xl/worksheets/sheet" + std::to_string(i + 1) + ".xml",
                                sheetXmls[i]);
+        }
+        for (size_t i = 0; ok && i < chartParts.size(); ++i) {
+            ok = zip_.AddEntry(chartParts[i].first, chartParts[i].second);
         }
         if (!ok || !zip_.Finalize()) {
             error = "Failed to write workbook package: " + zip_.GetLastError();

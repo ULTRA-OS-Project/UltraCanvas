@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetTypes.h
 // Core type definitions for UltraCanvas Spreadsheet component
+// Version: 1.2.0 - UndoActionType::ChartChange: a chart inserted, changed, moved or removed
 // Version: 1.1.0 - PrintSettings: the rows and columns repeated on every printed page
 //                  (repeatRowsFirst / Last, repeatColumnsFirst / Last), kept by .xlsx and .ods
 // Version: 1.0.0
@@ -990,6 +991,7 @@ enum class UndoActionType {
     SheetRename,
     SheetReorder,
     FreezePane,
+    ChartChange,    // a sheet's charts (UltraCanvasSpreadsheetChart.h) as they were
     Composite       // Multiple actions grouped
 };
 

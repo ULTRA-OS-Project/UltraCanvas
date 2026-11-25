@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheetSheet.cpp
 // Spreadsheet worksheet implementation (non-inline members)
+// Version: 1.5.0 - charts: cloned with the sheet, moved with inserted / deleted rows and columns
 // Version: 1.4.0 - PasteCells pastes formulas with their references moved from where they were copied; a values paste of a formula cell is its result
 // Version: 1.3.0 - inserting / deleting rows and columns rewrites the formulas' references
 // Version: 1.2.0 - GetEffectiveValidation, DataValidationListItems
@@ -1412,6 +1413,8 @@ void SpreadsheetSheet::MoveFormulaReferences(const std::string& changedSheet, bo
         std::string moved = MoveFormulaReferencesForRowsColumns(text, changedSheet, own, columns, at, count);
         if (moved != text) cell->SetFormula(moved);
     }
+    // The charts' ranges on the changed sheet move with its cells.
+    MoveSpreadsheetChartRanges(charts_, changedSheet, columns, at, count);
 }
 
 int SpreadsheetSheet::GetAutoFillDownEnd(const CellRange& source) const {
@@ -1717,6 +1720,7 @@ std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::Clone(const std::string& new
     clone->scrollRow_ = scrollRow_;
     clone->scrollCol_ = scrollCol_;
     clone->zoomLevel_ = zoomLevel_;
+    clone->charts_ = charts_;
 
     if (autoFilter_) {
         clone->autoFilter_ = std::make_unique<AutoFilter>(*autoFilter_);
@@ -1731,6 +1735,10 @@ std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::Clone(const std::string& new
 // ============================================================================
 
 void SpreadsheetSheet::ShiftCellReferences(int startRow, int startCol, int rowDelta, int colDelta) {
+    // The charts standing on the sheet move with the cells under them.
+    if (colDelta != 0) MoveSpreadsheetChartAnchors(charts_, true, colDelta < 0 ? startCol + colDelta : startCol, colDelta);
+    if (rowDelta != 0) MoveSpreadsheetChartAnchors(charts_, false, rowDelta < 0 ? startRow + rowDelta : startRow, rowDelta);
+
     // Adjust references stored in named ranges, merges, validations,
     // conditional formats and the print area when rows/columns shift.
 

@@ -1,6 +1,8 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.4.0 - .ods keeps a sheet's charts: draw:frame objects in table:shapes, read from cells too
+//                  (UltraCanvasSpreadsheetChartIO.cpp)
 // Version: 1.3.0 - a cell's number is written to read back exactly (it kept six significant digits)
 // Version: 1.2.0 - .ods keeps what a sheet holds beyond its cells: frozen panes (settings.xml), hidden
 //                  rows and columns (table:visibility), named ranges of the workbook and of each sheet
@@ -41,6 +43,7 @@
 // through UCZipPackageWriter for ODF-compliant archives (see ODSSaver).
 #include "miniz.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasSpreadsheetChart.h"   // the sheets' charts
 
 // For XML parsing
 #include "tinyxml2.h"
@@ -640,6 +643,8 @@ public:
         if (!settingsXml.empty()) {
             ParseSettings(settingsXml);
         }
+        // The charts, each an object of the package.
+        ReadOdsCharts(*spreadsheet_, contentXml, [this](const std::string& part) { return ReadFileFromZip(part); });
         return true;
     }
 
@@ -1604,11 +1609,15 @@ private:
     // (fo:break-before="page") -> style name.
     std::map<std::pair<int, bool>, std::string> columnWidthStyles_;
     std::map<std::pair<int, bool>, std::string> rowHeightStyles_;
+    // The charts' objects ("Object N/content.xml", XML), gathered as the
+    // sheets are written.
+    std::vector<std::pair<std::string, std::string>> chartObjects_;
 
 public:
     ODSSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
     bool Save(const std::string& filePath) {
+        spreadsheet_->RefreshCharts();   // the charts' tables as the cells are now
         if (!zip_.Open(filePath)) {
             return false;
         }
@@ -1621,6 +1630,9 @@ public:
             || !zip_.AddEntry(ODS::SETTINGS_XML, GenerateSettingsXml())
             || !zip_.AddEntry(ODS::MANIFEST_XML, GenerateManifestXml())) {
             return false;
+        }
+        for (const auto& [part, xml] : chartObjects_) {
+            if (!zip_.AddEntry(part, xml)) return false;
         }
 
         return zip_.Finalize();
@@ -1815,6 +1827,10 @@ private:
            // The "of:" of every table:formula names this namespace: without
            // it LibreOffice cannot tell the formula's syntax and shows Err.
            << "xmlns:of=\"urn:oasis:names:tc:opendocument:xmlns:of:1.2\" "
+           // A sheet's charts are drawing frames naming objects.
+           << "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
+           << "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
+           << "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
            << "office:version=\"1.3\">\n";
 
         // Automatic styles
@@ -1957,6 +1973,7 @@ private:
                << EscapeXml(OdfRangeAddress(sheet->GetName(), print.printArea)) << "\"";
         }
         ss << ">\n";
+        ss << WriteOdsSheetCharts(*sheet, chartObjects_);   // table:shapes, before the columns
         const SheetExtent extent = MeasureSheet(sheet);
 
         // Write columns; the print-title columns go inside table:table-header-columns.
@@ -2657,6 +2674,7 @@ private:
         ss << "<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>\n";
         ss << "<manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>\n";
         ss << "<manifest:file-entry manifest:full-path=\"settings.xml\" manifest:media-type=\"text/xml\"/>\n";
+        ss << OdsChartManifestEntries(chartObjects_);
         ss << "</manifest:manifest>\n";
         return ss.str();
     }

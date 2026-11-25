@@ -817,17 +817,35 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasOdfChart** (`UltraCanvasOdfChart.h`) — OpenDocument chart
   objects for every ODF format: `WriteOdfChartObject` (a `RichChart` as an
   `office:chart` document with its series, styles and table) and
-  `ReadOdfChartObject` (back, and LibreOffice's). The `.odt` reader and
-  writer, the `.odp` reader and writer. In `core/UltraCanvasOdfChart.cpp`.
+  `ReadOdfChartObject` (back, and LibreOffice's); a spreadsheet's chart with
+  its series' ranges into the sheets (`OdfChartSeriesSource`,
+  `ReadOdfChartSources`). The `.odt` reader and writer, the `.odp` reader and
+  writer, the `.ods` charts. In `core/UltraCanvasOdfChart.cpp`.
   See `Docs/UltraCanvas/UltraCanvasOdfChart.md`.
 - **UltraCanvasDrawingML** (`UltraCanvasDrawingML.h`) — DrawingML read once
   for every Office format: `ReadDrawingMLChart` (a `c:chartSpace` chart part
   into `RichChart` - kind, series, colours, categories, title, legend, axis
   ranges), `DrawingMLColor` (srgb / sys / scrgb / preset / scheme colours with
-  tint, shade and luminance), `DrawingMLDefaultThemeColors`. Local names, any
-  prefix. The `.docx` reader's and the PowerPoint reader's charts. In
+  tint, shade and luminance), `DrawingMLDefaultThemeColors`,
+  `WriteDrawingMLChart` (literals, or with `DrawingMLSeriesSource` the
+  series' `c:f` cell references and caches - `ReadDrawingMLChartSources`
+  reads them back). Local names, any prefix. The `.docx` reader's and the
+  PowerPoint reader's charts, and a workbook's. In
   `core/UltraCanvasDrawingML.cpp`.
   See `Docs/UltraCanvas/UltraCanvasDrawingML.md`.
+- **UltraCanvasSpreadsheetChart** (`UltraCanvasSpreadsheetChart.h`) — charts
+  on a spreadsheet: `SpreadsheetChart` (a `RichChart` anchored to two cells
+  with offsets, its series `SpreadsheetChartSeries` ranges of cells),
+  `MakeSpreadsheetChart` (from a block, names and categories found),
+  `RefreshSpreadsheetChart` (the data read from the cells again),
+  `SpreadsheetChartBox` / `SpreadsheetChartAnchorForBox`,
+  `DrawSpreadsheetChart`, and the .xlsx / .ods parts
+  (`ReadXlsxSheetCharts`, `WriteXlsxCharts`, `ReadOdsCharts`,
+  `WriteOdsSheetCharts`). A sheet keeps them (`SpreadsheetSheet::GetCharts`);
+  the grid inserts (`InsertChartFromSelection`), draws, selects, moves,
+  resizes, deletes and undoes them and prints them. In
+  `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
   presentations (`.odp`, `.otp` templates, flat `.fodp`) read into

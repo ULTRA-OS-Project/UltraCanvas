@@ -37,9 +37,18 @@ The command tabs:
   alignment. *Insert*: table, picture, link, page break, footnote, contents.
   *View*: pages on or off, page width, whole page, zoom.
 - **Spreadsheets** - *Home*: cut, copy, paste, bold, italic, alignment,
-  wrap, number format, decimals. *Data*: sort, filter, fill down and right,
+  wrap, number format, decimals. *Insert*: a chart of the selected cells
+  (columns, columns stacked, bars, bars stacked, line, area, area stacked,
+  pie, doughnut, scatter, radar), the selected chart's properties (type,
+  title, legend, series in rows) and deleting it. *Data*: sort, filter, fill down and right,
   SUM. *Page*: set and clear the print area, landscape, fit to width,
   gridlines, headings. *View*: freeze and unfreeze panes.
+
+  A chart stands over the cells, anchored to them: a click selects it, a
+  drag moves it, its handles resize it, Delete removes it and a
+  double-click opens its properties. It reads its cells again whenever they
+  change, is saved in .xlsx and .ods, and prints where it stands
+  ([Charts](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts)).
 - **Presentations** - *Home*: new slide (Ctrl+M) or one from the deck's
   layouts, duplicate, delete and hide a slide, present. *Insert*: text box,
   drawn shape (rectangle, rounded rectangle, ellipse, triangle, arrow, star),
