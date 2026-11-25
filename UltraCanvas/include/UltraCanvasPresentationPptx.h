@@ -199,10 +199,10 @@ struct PptxShape {
 // How a slide comes on in the show (p:transition / presentation:transition-*).
 // Only what the show can play is kept; a kind the reader does not know is
 // read as Fade, so the slide still comes on softly.
-enum class PptxTransitionKind { None, Fade, Push, Wipe, Split, Cover, Zoom };
+enum class PptxTransitionKind { NoTransition, Fade, Push, Wipe, Split, Cover, Zoom };
 
 struct PptxTransition {
-    PptxTransitionKind kind = PptxTransitionKind::None;
+    PptxTransitionKind kind = PptxTransitionKind::NoTransition;   // not "None": X11 defines that
     double durationSec = 0.5;
     bool advanceOnClick = true;  // false: only after advanceAfterSec
     double advanceAfterSec = -1; // the show moves on by itself after this long; -1: never
