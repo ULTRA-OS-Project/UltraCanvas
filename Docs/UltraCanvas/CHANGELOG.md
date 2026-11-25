@@ -1,3 +1,40 @@
+#### 2026-11-25 *0.9.594*
+- **`ci:emulator`: the Android emulator on a pull request, when asked for.**
+  A pull request builds Android for arm64 alone and runs no emulator; one
+  labelled `ci:emulator` now gets what `main` runs - x86_64 as well, the demo
+  on the emulator at two densities and MobilePC on a second display - so an
+  Android change is seen running before it merges. Adding the label starts
+  that run without a push. Adding any other label starts no Android build
+  and cancels none in progress.
+- **A host's own entries after "Open with" in the file display's context
+  menu.** `UltraCanvasFilerWidget::openMenuProvider` is asked every time the
+  menu of a file or a selection opens, with the entries it acts on, and its
+  items go right after *Open with* - so an application offers an entry only
+  where it applies. UltraFiler adds *Edit in UltraPaint* for pictures and *Edit in ArtCreator*
+  for drawings there.
+- **A hosted application answers its program's name.** `HostedAppInfo` has
+  `programs`, the executable names an application inside its host stands in
+  for, and `UltraCanvasDesktopShell::LaunchProgram` starts that application -
+  with the program's arguments - before looking for an executable
+  (`UltraCanvasHostedApps::IdForProgram`). In MobilePC, UltraDesktop's
+  taskbar button for "UltraFiler" and UltraFiler's "UltraViewer" for a
+  double-clicked picture now start the applications in the same process;
+  before, they failed with "not installed". `HostedAppsTest` covers the
+  registry and the routing.
+- **Android: access to every file on the phone's storage.**
+  `AndroidPermissions::HasAllFilesAccess`, `RequestAllFilesAccess` and
+  `SharedStoragePath` (`OS/Android/UltraCanvasAndroidPermissions.h`), with
+  their Java half in `UltraCanvasActivity`: *All files access* from Android 11
+  - Settings' switch, opened on the phone - and the storage permission before
+  it. What a file manager such as MobilePC's UltraFiler needs to browse
+  `/storage/emulated/0` by path.
+- **The Vector plug-in builds for Android.** It needs only libvips, zlib
+  and tinyxml2, which the Android sysroot has, so the Android defaults no
+  longer switch it off: an Android app that links `UltraCanvasVectorPlugin`
+  and calls `RegisterVectorFormatsPlugin()` opens and saves SVG, AI, DXF,
+  DWG, EMF, WMF and ODG drawings. MobilePC does, for ArtCreator. The CDR,
+  XAR and EPS plug-ins stay off there.
+
 #### 2026-11-25 *0.9.593*
 - **A window asked to come forward comes to the virtual desktop in view
   (X11).** `RaiseAndFocus` asked the window manager to activate the window and

@@ -1,3 +1,19 @@
+#### 2026-11-25 *1.107.30*
+- **Edit in UltraPaint and Edit in ArtCreator.** Right-clicking a picture -
+  or a selection of pictures - offers *Edit in UltraPaint*, right after
+  *Open with*; a drawing (SVG, EPS, DXF and whatever else this build's vector
+  readers take) offers *Edit in ArtCreator*. Each opens the files in that
+  editor, in the window open already if there is one. An entry is there only
+  where its editor is installed beside UltraFiler, and in MobilePC, which
+  carries the editors itself; a file inside an archive or on a remote drive
+  does not get one. Both entries and the message when an editor cannot be
+  started are translated into every language UltraFiler has.
+- **UltraFiler runs inside MobilePC.** The Android desktop carries it as one of
+  its applications. For that its window says whether it is still open, so the
+  program that carries it can hand a later start's folders to it - in new
+  tabs, as a second start does on a computer - instead of opening another
+  window. Nothing changes on a computer.
+
 #### 2026-11-25 *1.107.29*
 - **Favorite folders can be highlighted.** Settings > Display > *Favorite
   folders* chooses how a favorite stands out in the folder display - no
