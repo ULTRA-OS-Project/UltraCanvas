@@ -1,5 +1,6 @@
 // core/UltraCanvasPptxSlideRender.cpp
 // A PowerPoint slide drawn as a picture - see UltraCanvasPptxSlideRender.h.
+// Version: 1.3.0 - a picture is decoded once, not on every paint
 // Version: 1.2.0 - DrawPptxSlide: on any context, into a rectangle; prompt text, a shape's text left out
 // Version: 1.1.0 - preset and custom outlines turned and mirrored, gradients, dashes, arrowheads,
 //                  connectors, cropped pictures, charts (the chart engine), styled and merged table
@@ -207,6 +208,42 @@ void Arrowhead(IRenderContext* ctx, double fromX, double fromY, double tipX, dou
     ctx->Fill();
 }
 
+// A picture decoded once and drawn many times: an editor paints its slide on
+// every move of the pointer. Kept by where its bytes are and what they hold
+// (their size and a sample), the most recent few.
+std::shared_ptr<UCImage> DecodedPicture(const std::vector<uint8_t>& bytes) {
+    struct Entry {
+        const uint8_t* data;
+        size_t size;
+        uint64_t sample;
+        std::shared_ptr<UCImage> image;
+    };
+    static std::mutex guard;
+    static std::vector<Entry> recent;   // most recent last
+    constexpr size_t kKept = 48;
+    uint64_t sample = 1469598103934665603ull;   // FNV-1a over the first, middle and last bytes
+    auto mix = [&sample, &bytes](size_t from, size_t count) {
+        for (size_t i = from; i < std::min(bytes.size(), from + count); ++i) sample = (sample ^ bytes[i]) * 1099511628211ull;
+    };
+    mix(0, 256);
+    mix(bytes.size() / 2, 256);
+    mix(bytes.size() > 256 ? bytes.size() - 256 : 0, 256);
+    std::lock_guard<std::mutex> lock(guard);
+    for (size_t i = 0; i < recent.size(); ++i) {
+        if (recent[i].data == bytes.data() && recent[i].size == bytes.size() && recent[i].sample == sample) {
+            Entry hit = recent[i];
+            recent.erase(recent.begin() + static_cast<std::ptrdiff_t>(i));
+            recent.push_back(hit);
+            return hit.image;
+        }
+    }
+    auto image = UCImage::LoadFromMemory(bytes);
+    if (!image) return nullptr;
+    if (recent.size() >= kKept) recent.erase(recent.begin());
+    recent.push_back(Entry{bytes.data(), bytes.size(), sample, image});
+    return image;
+}
+
 class SlidePainter {
 public:
     SlidePainter(IRenderContext* ctx, const PptxPresentation& deck, const PptxSlide& slide, double scale,
@@ -271,7 +308,8 @@ private:
             substitute_.paragraphs.clear();
             return substitute_;
         }
-        if (!options_->promptText || shape.placeholder.empty() || HasText(shape)) return shape;
+        // The prompt decides which shapes are placeholders (an empty string: not one).
+        if (!options_->promptText || HasText(shape)) return shape;
         const std::string prompt = options_->promptText(shape, index);
         if (prompt.empty()) return shape;
         substitute_ = shape;
@@ -396,7 +434,7 @@ private:
         const auto bytes = deck_.pictures.find(shape.pictureTarget);
         bool drawn = false;
         if (bytes != deck_.pictures.end() && !bytes->second.empty()) {
-            if (auto image = UCImage::LoadFromMemory(bytes->second)) {
+            if (auto image = DecodedPicture(bytes->second)) {
                 // Cropped: the whole picture laid out so its kept part fills
                 // the box, clipped to the shape's outline.
                 const double keepW = std::max(0.01, 1.0 - shape.cropLeft - shape.cropRight);

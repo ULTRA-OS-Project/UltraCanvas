@@ -2,6 +2,7 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.4.0 - new presentations (the slide editor)
 // Version: 0.3.0 - recovered documents offered on the Start tab, so the window never waits on the question
 // Version: 0.2.0 - autosave every minute and crash recovery
 // Version: 0.1.0
@@ -189,7 +190,7 @@ void UltraOfficeWindow::BuildStartPage() {
     page->AddSection(Tr("Start something new"));
     page->AddButton(Tr("New document"), [this]() { NewDocument(OfficeKind::Document); });
     page->AddButton(Tr("New spreadsheet"), [this]() { NewDocument(OfficeKind::Spreadsheet); });
-    page->AddNote(Tr("Presentations open for viewing and presenting; editing slides comes with the slide editor."));
+    page->AddButton(Tr("New presentation"), [this]() { NewDocument(OfficeKind::Presentation); });
 
     // The page is a fixed-width column: centred in the tab.
     auto pane = CreateContainer("office-start-pane");
@@ -296,11 +297,14 @@ void UltraOfficeWindow::NewDocument(OfficeKind kind) {
     switch (kind) {
         case OfficeKind::Document: host = CreateDocumentHost(this); break;
         case OfficeKind::Spreadsheet: host = CreateSpreadsheetHost(this); break;
-        default: return;   // a new presentation needs the slide editor
+        case OfficeKind::Presentation: host = CreatePresentationHost(this); break;
+        default: return;
     }
     host->NewBlank();
     const int n = ++untitled_[KindSlot(kind)];
-    const std::string name = kind == OfficeKind::Spreadsheet ? TrF("Spreadsheet {0}", n) : TrF("Document {0}", n);
+    const std::string name = kind == OfficeKind::Spreadsheet  ? TrF("Spreadsheet {0}", n)
+                           : kind == OfficeKind::Presentation ? TrF("Presentation {0}", n)
+                                                              : TrF("Document {0}", n);
     AddDocument(std::move(host), "", name, "");
 }
 
@@ -372,6 +376,7 @@ void UltraOfficeWindow::ShowFileMenu(UltraCanvasUIElement* anchor) {
     };
     menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("New document"), "Ctrl+N", [this]() { NewDocument(OfficeKind::Document); }));
     menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("New spreadsheet"), "Ctrl+Shift+N", [this]() { NewDocument(OfficeKind::Spreadsheet); }));
+    menu_->AddItem(MenuItemData::Action(Tr("New presentation"), [this]() { NewDocument(OfficeKind::Presentation); }));
     menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Open..."), "Ctrl+O", [this]() { ShowOpenDialog(); }));
     std::vector<MenuItemData> recent;
     for (const std::string& path : settings_.GetList(kRecentKey))
@@ -647,7 +652,7 @@ void UltraOfficeWindow::RestoreRecovered(const std::vector<std::filesystem::path
     const std::string copyName = note.GetString("copy");
     const std::filesystem::path copy = notePath.parent_path() / PathFromUtf8(copyName);
     std::error_code ec;
-    if (kind == OfficeKind::Unknown || kind == OfficeKind::Presentation || copyName.empty()
+    if (kind == OfficeKind::Unknown || copyName.empty()
         || !std::filesystem::exists(copy, ec)) {
         std::filesystem::remove(notePath, ec);
         RestoreRecovered(notes, next + 1);
@@ -659,8 +664,9 @@ void UltraOfficeWindow::RestoreRecovered(const std::vector<std::filesystem::path
     UltraCanvasFileLoader::RequestDocumentPassword(PathToUtf8(copy), this,
         [this, notes, next, notePath, copy, kind, file, name](bool proceed, const std::string& password) {
             if (proceed) {
-                std::unique_ptr<OfficeHost> host = kind == OfficeKind::Spreadsheet ? CreateSpreadsheetHost(this)
-                                                                                   : CreateDocumentHost(this);
+                std::unique_ptr<OfficeHost> host = kind == OfficeKind::Spreadsheet  ? CreateSpreadsheetHost(this)
+                                                 : kind == OfficeKind::Presentation ? CreatePresentationHost(this)
+                                                                                    : CreateDocumentHost(this);
                 std::string error;
                 if (host->Load(PathToUtf8(copy), password, error)) {
                     // Back under its own file and name, with its changes

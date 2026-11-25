@@ -1264,6 +1264,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideDeckEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideEdit.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdpWriter.cpp
         # ... and a slide drawn as a picture from what it reads (previews)
