@@ -44,6 +44,7 @@
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
 - [Data validation](#data-validation)
 - [Best Practices](#best-practices)
+- [Printing and PDF](#printing-and-pdf)
 - [See Also](#see-also)
 
 ## Overview
@@ -174,7 +175,8 @@ void  SelectColumn(int col);
 void  SelectAll();
 bool  IsCellSelected(int row, int col) const;
 
-void  MoveActiveCell(int rowDelta, int colDelta);
+void  MoveActiveCell(int rowDelta, int colDelta);     // selects the cell it lands on (the arrows, Enter, Tab)
+void  ExtendSelectionBy(int rowDelta, int colDelta);  // Shift+arrow: the far corner moves, the active cell stays
 void  ScrollToCell(int row, int col);
 void  EnsureCellVisible(int row, int col);
 ```
@@ -261,11 +263,24 @@ string of your own, the same rewrite is
 
 ### Clipboard, Undo/Redo, Formula Engine
 
+Copy and Cut keep the cells whole for a paste in the same program and put
+them on the system clipboard as other programs read them: the shown values
+as tab-separated text, beside an HTML table. Paste takes the grid's own copy
+while the system clipboard still holds it - a copied formula's references
+move with it (`=B2*2` copied from B3 to B8 is `=B7*2`), a cut one's stay -
+and otherwise another program's HTML table (spanned cells kept apart) or
+tab-, comma- or semicolon-separated text, each value read as if typed.
+Every paste is one undo step.
+
 ```cpp
 void Cut();
 void Copy();
 void Paste();
 void PasteSpecial(const PasteOptions& options);
+std::string RangeAsText(const CellRange& range) const;   // what Copy puts on the clipboard
+std::string RangeAsHtml(const CellRange& range) const;
+bool PasteHtml(const std::string& html);                 // another program's cells, at the active cell
+bool PasteText(const std::string& text);
 
 void Undo();
 void Redo();
@@ -358,6 +373,46 @@ quotes exactly as the spreadsheet does:
 // separator, the quote or a line break; a quote inside doubled), then the
 // options' line ending. UTF-8; CSVEncodeFromUtf8 turns it into the charset.
 std::string CSVFormatRecord(const std::vector<std::string>& fields, const CSVExportOptions& opt);
+```
+
+#### What a workbook file keeps
+
+Besides the cells, their styles, column widths, row heights and merges,
+`.xlsx` and `.ods` both read and write what a sheet holds around them, so a
+workbook opened and saved again comes back as it was:
+
+| | `.xlsx` | `.ods` |
+|---|---|---|
+| Frozen rows and columns | the frozen `pane` of `sheetViews` | the split (mode 2) in `settings.xml` |
+| Hidden rows and columns | `hidden="1"` | `table:visibility="collapse"` |
+| Named ranges, the workbook's and a sheet's | `definedNames` (a sheet's with `localSheetId`) | `table:named-expressions` of the document and of the table |
+| Auto-filter, and columns filtered to values | `autoFilter`, `_xlnm._FilterDatabase` | `table:database-range` with filter buttons |
+| Print area | `_xlnm.Print_Area` | `table:print-ranges` |
+| Rows / columns repeated on every page | `_xlnm.Print_Titles` | header rows / columns |
+| Page setup, header and footer, page breaks | `printOptions`, `pageMargins`, `pageSetup`, `headerFooter`, `rowBreaks` / `colBreaks` | the page layout and master page in `styles.xml`, `fo:break-before` |
+
+Header and footer texts are kept in Excel's codes (`&P` page, `&N` pages,
+`&A` sheet, `&F` file, `&D` date, `&T` time, `&&` an ampersand), which an
+`.ods` holds as text fields. A workbook name whose range names no sheet
+(it covers the sheet of the formula using it) has no such form in Excel: an
+`.xlsx` gives it the first sheet.
+
+```cpp
+auto grid = std::make_shared<UltraCanvasSpreadsheet>("Report", 0, 0, 900, 600);
+SpreadsheetSheet* report = grid->GetActiveSheet();
+report->FreezeRows(1);
+report->SetColumnHidden(4, true);                        // column E
+report->SetAutoFilter(CellRange(0, 0, 99, 5));           // A1:F100
+grid->AddNamedRange("Amounts", CellRange(1, 2, 99, 2), report->GetName());   // scoped to the sheet
+
+PrintSettings& print = report->GetPrintSettings();
+print.orientation = PageOrientation::Landscape;
+print.paperSize = PaperSize::A4;
+print.repeatRowsFirst = 0;                               // row 1 on every page
+print.repeatRowsLast = 0;
+print.footerCenter = "Page &P of &N";
+report->SetPrintArea(CellRange(0, 0, 99, 5));
+grid->SaveToFile("report.xlsx");                         // or "report.ods": the same survives
 ```
 
 ### View Settings
@@ -1219,6 +1274,49 @@ so they are set from code.
 - **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
 
+## Printing and PDF
+
+`SpreadsheetPrintPages` (`UltraCanvasSpreadsheetPrint.h`) cuts a sheet into
+pages and draws them, for a PDF file and for printers. It prints the print
+area, or every cell in use, and follows the sheet's `PrintSettings`:
+
+| Setting | What it does on paper |
+|---|---|
+| `paperSize`, `orientation` | the page; Custom prints on Letter for now |
+| `marginTop` / `Bottom` / `Left` / `Right` (inches) | the room for cells |
+| `scale` (%), or `fitToWidth` / `fitToHeight` (pages) | the size; fitting never enlarges |
+| `rowBreaks`, `colBreaks` | a page starts at each of these rows (columns) |
+| `printGridlines`, `printRowColHeaders` | lines between the cells; column letters and row numbers |
+| `centerHorizontally`, `centerVertically` | the block of cells centred in the room |
+| `headerLeft` ... `footerRight`, `headerMargin`, `footerMargin` | lines in the margins; `&P` the page, `&N` the pages, `&A` the sheet, `&D` the date, `&&` an ampersand |
+
+Pages run down, then across. Hidden rows and columns are left out, a merged
+block is drawn once per page it reaches, and every cell is drawn by
+`UltraCanvasSpreadsheet::PaintCell`, the grid's own painter, so paper shows
+what the screen does: 100 % on paper is the size on screen at 100 %.
+`SetTitleRows` / `SetTitleColumns` repeat lines on every page after the ones
+they are on.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; UltraCanvasWindow* window; -->
+```cpp
+#include "UltraCanvasSpreadsheetPrint.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
+
+grid->GetPrintSettings().orientation = PageOrientation::Landscape;
+grid->GetPrintSettings().fitToWidth = 1;          // every column across one page
+grid->SetPrintArea(CellRange(0, 0, 49, 7));      // A1:H50
+
+auto pages = CreateSpreadsheetPrintPages(*grid);  // the sheet on show, copied
+pages->SetTitleRows(0, 0);                        // row 1 on every page
+std::string error;
+pages->ExportPdf("Budget.pdf", error);
+
+// Printing: the PDF for printers that take one, the pages for those that draw.
+std::vector<uint8_t> pdf;
+if (pages->ExportPdf(pdf, error))
+    PrintDocumentWithDialog("Budget", pdf, "application/pdf", window, pages);
+```
+
 ## See Also
 
 - [`Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp`](../../Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp) - Full working demo (sample data, Open/Import/Save flows)
@@ -1229,3 +1327,4 @@ so they are set from code.
 - [`include/UltraCanvasSpreadsheetFormatMenu.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormatMenu.h) - Cell formatting menu and number-format presets
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
+- [`include/UltraCanvasSpreadsheetPrint.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetPrint.h) - A sheet's pages for PDF and printers

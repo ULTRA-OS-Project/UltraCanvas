@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheetSheet.cpp
 // Spreadsheet worksheet implementation (non-inline members)
+// Version: 1.4.0 - PasteCells pastes formulas with their references moved from where they were copied; a values paste of a formula cell is its result
 // Version: 1.3.0 - inserting / deleting rows and columns rewrites the formulas' references
 // Version: 1.2.0 - GetEffectiveValidation, DataValidationListItems
 // Version: 1.1.0 - data validation: one checker (CheckDataValidation) for range and cell rules; text is
@@ -880,7 +881,14 @@ std::vector<std::vector<SpreadsheetCell>> SpreadsheetSheet::CopyCells(const Cell
 
 void SpreadsheetSheet::PasteCells(const CellAddress& destination,
                                   const std::vector<std::vector<SpreadsheetCell>>& cells,
-                                  const PasteOptions& options) {
+                                  const PasteOptions& options,
+                                  std::optional<CellAddress> from) {
+    const int rowDelta = from ? destination.row - from->row : 0;
+    const int colDelta = from ? destination.col - from->col : 0;
+    auto movedFormula = [&](const SpreadsheetCell& source) {
+        return (rowDelta == 0 && colDelta == 0) ? source.GetFormulaText()
+                                                : ShiftFormulaReferences(source.GetFormulaText(), rowDelta, colDelta);
+    };
     for (size_t r = 0; r < cells.size(); ++r) {
         for (size_t c = 0; c < cells[r].size(); ++c) {
             int targetRow = destination.row + static_cast<int>(r);
@@ -912,17 +920,29 @@ void SpreadsheetSheet::PasteCells(const CellAddress& destination,
             if (pasteValues) {
                 if (source.IsEmpty()) {
                     target.ClearContents();
-                } else if (pt == PasteType::Formulas ||
-                           pt == PasteType::FormulasAndNumberFormats) {
+                } else if (pt == PasteType::All || pt == PasteType::AllExceptBorders ||
+                           pt == PasteType::Formulas || pt == PasteType::FormulasAndNumberFormats) {
                     // Paste the formula text when present, otherwise the value.
                     if (source.HasFormula()) {
-                        target.SetFormula(source.GetFormulaText());
+                        target.SetFormula(movedFormula(source));
                     } else {
                         target.SetValue(source.GetRawValue(), source.GetValueType());
                     }
                 } else {
                     // Values paste: paste the computed value, not the formula.
-                    target.SetValue(source.GetRawValue(), source.GetValueType());
+                    // A formula cell holds its result under the Formula type;
+                    // the value pasted takes the type of what it is.
+                    CellValueType type = source.GetValueType();
+                    if (source.HasFormula() || type == CellValueType::Formula) {
+                        const CellValueVariant& v = source.GetRawValue();
+                        type = std::holds_alternative<std::string>(v)     ? CellValueType::Text
+                             : std::holds_alternative<double>(v)          ? CellValueType::Number
+                             : std::holds_alternative<bool>(v)            ? CellValueType::Boolean
+                             : std::holds_alternative<CellErrorType>(v)   ? CellValueType::Error
+                             : std::holds_alternative<CurrencyValue>(v)   ? CellValueType::Currency
+                                                                          : CellValueType::Empty;
+                    }
+                    target.SetValue(source.GetRawValue(), type);
                 }
             }
 

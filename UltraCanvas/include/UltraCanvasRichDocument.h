@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.19.0 - UCRichDocument::keptParts: package parts written back unchanged (a .docx theme and font table)
 // Version: 1.18.0 - RichShape::ApplyPreset: connectors, double and notched arrows, more stars and polygons,
 //                   snipped and rounded rectangles, callouts, more flowchart shapes
 // Version: 1.17.0 - RichChart: Radar, Bubble and Stock; RichChartSeries::sizes, smooth; RichChart::filled
@@ -213,6 +214,21 @@ struct RichDocMedia {
     std::string name;               // package-local name, e.g. "image1.png"
     std::string mimeType;           // e.g. "image/png"
     std::vector<uint8_t> data;
+};
+
+// A part of the package a document was read from that the model has no place
+// for, written back unchanged when the document is saved in the same format.
+// The DOCX reader keeps the theme (its colour scheme and heading and body
+// fonts, which Word's colour picker and font list offer) and the font table
+// (each font's family, pitch and alternatives); a part that refers to other
+// parts (an embedded font, a picture) is not kept, since those would be
+// missing. Only the writer of `format` writes one.
+struct RichDocKeptPart {
+    std::string format;             // the writer that writes it: "docx"
+    std::string name;               // its name in the package: "word/theme/theme1.xml"
+    std::string contentType;
+    std::string relationshipType;   // how the main part's relationships name it
+    std::string data;
 };
 
 // How an ordered list level spells its number.
@@ -918,6 +934,7 @@ public:
     RichDocumentMetadata metadata;
     std::vector<RichDocBlock> blocks;
     std::vector<RichDocMedia> media;
+    std::vector<RichDocKeptPart> keptParts;   // from the file it was read from
     // Distance between default tab stops (after a paragraph's own stops).
     // 0 = the view's default. ODF: style:tab-stop-distance; Word: defaultTabStop.
     float defaultTabStopPt = 0.0f;

@@ -1102,6 +1102,67 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        // A .docx saved again keeps its theme and font table, byte for byte,
+        // named in [Content_Types].xml and the main part's relationships;
+        // an embedded font's reference is taken out of the table, and a
+        // theme that refers to another part is not kept.
+        {
+            const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/word-frames.docx";
+            UCZipPackageReader source;
+            std::string theme, fonts;
+            CHECK(source.Open(fixture) && source.ReadEntry("word/theme/theme1.xml", theme)
+                  && source.ReadEntry("word/fontTable.xml", fonts));
+            UCRichDocument d;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, d, err), err);
+            CHECK_MSG(d.keptParts.size() == 2, std::to_string(d.keptParts.size()) + " parts kept");
+            const std::string saved = TmpPath("kept-parts.docx");
+            CHECK_MSG(UCWordDocumentIO::SaveDocx(saved, d, err), err);
+            UCZipPackageReader out;
+            std::string savedTheme, savedFonts, types, rels;
+            CHECK(out.Open(saved));
+            CHECK(out.ReadEntry("word/theme/theme1.xml", savedTheme) && savedTheme == theme);
+            CHECK(out.ReadEntry("word/fontTable.xml", savedFonts) && savedFonts == fonts);
+            CHECK(out.ReadEntry("[Content_Types].xml", types)
+                  && types.find("/word/theme/theme1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml") != std::string::npos
+                  && types.find("/word/fontTable.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml") != std::string::npos);
+            CHECK(out.ReadEntry("word/_rels/document.xml.rels", rels)
+                  && rels.find("relationships/theme\" Target=\"theme/theme1.xml\"") != std::string::npos
+                  && rels.find("relationships/fontTable\" Target=\"fontTable.xml\"") != std::string::npos);
+            // Read back, the kept parts come along again, so a second save
+            // keeps them too.
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+            CHECK(back.keptParts.size() == 2);
+            // Saved as OpenDocument, they are not written.
+            CHECK_MSG(UCWordDocumentIO::SaveOdt(TmpPath("kept-parts.odt"), d, err), err);
+            UCZipPackageReader odt;
+            CHECK(odt.Open(TmpPath("kept-parts.odt")) && !odt.HasEntry("word/fontTable.xml"));
+
+            // A package with an embedded font and a theme with a picture fill.
+            UCZipPackageWriter edited;
+            CHECK(edited.Open(TmpPath("embedded-font.docx")));
+            const std::string embed = "<w:embedRegular r:id=\"rId1\" w:fontKey=\"{00000000-0000-0000-0000-000000000000}\"/>";
+            std::string fontsWithEmbed = fonts;
+            const size_t arial = fontsWithEmbed.find("<w:font w:name=\"Arial\">");
+            CHECK(arial != std::string::npos);
+            if (arial != std::string::npos) fontsWithEmbed.insert(fontsWithEmbed.find("</w:font>", arial), embed);
+            std::string themeWithPicture = theme;
+            themeWithPicture.insert(themeWithPicture.rfind("</a:theme>"), "<a:extLst><a:blip r:embed=\"rId9\"/></a:extLst>");
+            for (const std::string& name : source.EntryNames()) {
+                std::string data;
+                source.ReadEntry(name, data);
+                if (name == "word/fontTable.xml") data = fontsWithEmbed;
+                if (name == "word/theme/theme1.xml") data = themeWithPicture;
+                edited.AddEntry(name, data);
+            }
+            CHECK(edited.Finalize());
+            UCRichDocument withEmbed;
+            CHECK_MSG(UCWordDocumentIO::Load(TmpPath("embedded-font.docx"), withEmbed, err), err);
+            CHECK_MSG(withEmbed.keptParts.size() == 1 && withEmbed.keptParts[0].name == "word/fontTable.xml",
+                      std::to_string(withEmbed.keptParts.size()) + " parts kept from the edited package");
+            CHECK(!withEmbed.keptParts.empty() && withEmbed.keptParts[0].data == fonts);
+        }
         for (const char* name : {"word-shapes.odt", "word-shapes.docx", "word-shapes.doc", "word-shapes-word.docx"}) {
             const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
             UCRichDocument imported;

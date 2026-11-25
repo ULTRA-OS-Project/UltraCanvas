@@ -43,6 +43,7 @@
 #   ARTCREATOR_VERSION         (Docs/ArtCreator/CHANGELOG.md)
 #   UOSSETTINGS_VERSION        (Docs/UOSSettings/CHANGELOG.md)
 #   UOSLOCALISATION_VERSION    (Docs/UOSLocalisation/CHANGELOG.md)
+#   ULTRAOFFICE_VERSION        (Docs/UltraOffice/CHANGELOG.md)
 #   ULTRAWIN_VERSION           (Docs/Modules/UltraWin/CHANGELOG.md)
 #
 # Each of those also gets _VERSION_DATE (the date on the same changelog line —
@@ -132,6 +133,7 @@ _ultracanvas_declare_product(ULTRASTOREADMIN     "Docs/UltraStoreAdmin/CHANGELOG
 _ultracanvas_declare_product(ULTRASTOREOPERATOR  "Docs/UltraStoreOperator/CHANGELOG.md")
 _ultracanvas_declare_product(UOSSETTINGS         "Docs/UOSSettings/CHANGELOG.md")
 _ultracanvas_declare_product(UOSLOCALISATION     "Docs/UOSLocalisation/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRAOFFICE         "Docs/UltraOffice/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLAUDE         "Docs/UltraClaude/CHANGELOG.md")
 _ultracanvas_declare_product(CHATCUBE            "Docs/ChatCube/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRANETMONITOR     "Docs/UltraNetMonitor/CHANGELOG.md")

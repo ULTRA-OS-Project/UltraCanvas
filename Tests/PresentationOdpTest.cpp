@@ -8,7 +8,8 @@
 //     .pptx reader makes of the original
 //   - presentation-features.fodp, a flat deck written by hand: white space,
 //     nested and unnumbered lists, inherited styles, groups, hyperlinked
-//     shapes, slide furniture and prompts left out, a hidden slide, a table
+//     shapes, slide furniture and prompts left out (a prompting placeholder
+//     kept empty), a hidden slide, a table
 //     with a covered cell, an embedded object left out, an inline picture, a
 //     page comment left out
 //   - a flat deck written in the test for the look as drawn: style parents and
@@ -17,11 +18,12 @@
 //   - a password-protected package and other ODF types refused with a reason
 //   - UltraCanvasFileLoader (LoadTextDocument, the Open dialog's types, text
 //     extraction) and UltraFiler's preview page take the new types
+// Version: 1.1.1 - a prompting placeholder is kept as an empty one (an editor types into it)
 // Version: 1.1.0 - the look as drawn: a flat deck written in the test
 // Version: 1.0.1 - the protected package's manifest is a whole one (it now opens with a password;
 //                  OdfEncryptionTest reads real ones)
 // Version: 1.0.0
-// Last Modified: 2026-11-22
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -249,7 +251,12 @@ void TestFlatDeck() {
               FindShape(first, PptxShapeKind::Text, "Shape")->paragraphs[0].Text() == "Grouped",
           "a shape inside a group is read");
     Check(FindShape(first, PptxShapeKind::Text, "LinkedBox") != nullptr, "a frame behind a hyperlink is read");
-    Check(first.shapes.size() == 5, "a rectangle without text is no shape of the outline");
+    Check(first.shapes.size() == 6, "a rectangle without text is no shape of the outline (the empty placeholder is)");
+    const PptxShape* prompt = nullptr;
+    for (const PptxShape& shape : first.shapes)
+        if (shape.kind == PptxShapeKind::Body && shape.width == 360000 && shape.height == 360000) prompt = &shape;
+    Check(prompt && prompt->placeholder == "body" && prompt->paragraphs.size() == 1 && prompt->paragraphs[0].Text().empty(),
+          "a prompting placeholder is kept empty, without its prompt");
     Check(first.notes.size() == 2 && first.notes[0].Text() == "Speaker note one" &&
               first.notes[1].Text() == "Speaker note two",
           "both paragraphs of the speaker notes");

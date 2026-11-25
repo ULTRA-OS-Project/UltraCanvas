@@ -1,6 +1,7 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.13.0 - DetectOfficeDocumentKind, AddOfficeDocumentLoadTypes, AddPresentationSaveTypes
 // Version: 1.12.2 - SaveContent: iOS defines its own (the document picker), as Android and WASM do
 // Version: 1.12.1 - RequestDocumentPassword's prompt shows a lock centred above the field
 // Version: 1.12.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
@@ -33,6 +34,8 @@
 #include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
 #include "UltraCanvasPresentationPptx.h"    // .pptx, read as an outline
 #include "UltraCanvasPresentationOdp.h"     // .odp / .otp / .fodp, the same
+#include "UltraLocalisation/UltraLocalisation.h"
+#include "UltraCanvasZipPackage.h"          // DetectOfficeDocumentKind: a package's mimetype and parts
 #include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
 #include "UltraCanvasVectorRaster.h"    // RasterizeVectorDocument: a drawing saved as a bitmap
 #include "UltraCanvasRasterDocument.h"  // ... written through the image writer
@@ -991,6 +994,89 @@ namespace UltraCanvas {
     void UltraCanvasFileLoader::AddTextDocumentSaveTypes(FileDialogOptions& opts) {
         for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document))
             if (TextDocumentWrites(format)) opts.AddFilter(format.description, ExtensionsOf(format));
+        PutDefaultTypeFirst(opts);
+    }
+
+    // ===== OFFICE DOCUMENTS =====
+
+    namespace {
+        // (LowerExtensionOf: above, with the video helpers.)
+        bool IsDeckExtension(const std::string& ext) { return IsPptxExtension(ext) || IsOdpExtension(ext); }
+
+        // What a word processor opens as a document: TextDocumentReads
+        // without the decks, which an office suite opens as presentations.
+        bool IsDocumentExtension(const std::string& ext) {
+            if (ext.empty() || IsDeckExtension(ext)) return false;
+            if (WordDocumentFormatFromExtension(ext) != WordDocumentFormat::Unknown) return true;
+            return ext == "md" || ext == "markdown" || ext == "txt";
+        }
+
+        bool IsSpreadsheetExtension(const std::string& ext) {
+            if (ext.empty()) return false;
+            for (const std::string& known : UltraCanvasSupportedFormats::GetLoadExtensions(MediaFormatCategory::Spreadsheet))
+                if (known == ext) return true;
+            return false;
+        }
+
+        // A package without a telling extension: its mimetype entry (ODF) or
+        // its main part (Office Open XML).
+        UltraCanvasFileLoader::OfficeDocumentKind OfficeKindOfPackage(const std::string& filePath) {
+            using Kind = UltraCanvasFileLoader::OfficeDocumentKind;
+            UCZipPackageReader zip;
+            if (!zip.Open(filePath)) return Kind::Unknown;
+            std::string mimetype;
+            if (zip.ReadEntry("mimetype", mimetype)) {
+                if (mimetype.find("opendocument.text") != std::string::npos) return Kind::Document;
+                if (mimetype.find("opendocument.spreadsheet") != std::string::npos) return Kind::Spreadsheet;
+                if (mimetype.find("opendocument.presentation") != std::string::npos) return Kind::Presentation;
+            }
+            if (zip.HasEntry("word/document.xml")) return Kind::Document;
+            if (zip.HasEntry("xl/workbook.xml")) return Kind::Spreadsheet;
+            if (zip.HasEntry("ppt/presentation.xml")) return Kind::Presentation;
+            return Kind::Unknown;
+        }
+    } // namespace
+
+    UltraCanvasFileLoader::OfficeDocumentKind UltraCanvasFileLoader::DetectOfficeDocumentKind(
+            const std::string& filePath) {
+        const std::string ext = LowerExtensionOf(filePath);
+        if (IsDeckExtension(ext)) return OfficeDocumentKind::Presentation;
+        if (IsSpreadsheetExtension(ext)) return OfficeDocumentKind::Spreadsheet;
+        if (IsDocumentExtension(ext)) return OfficeDocumentKind::Document;
+        return OfficeKindOfPackage(filePath);
+    }
+
+    void UltraCanvasFileLoader::AddOfficeDocumentLoadTypes(FileDialogOptions& opts) {
+        std::vector<std::string> documents, decks;
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document)) {
+            if (!format.canLoad) continue;
+            if (IsDeckExtension(format.extension)) {
+                for (const std::string& ext : ExtensionsOf(format)) decks.push_back(ext);
+            } else if (IsDocumentExtension(format.extension)) {
+                for (const std::string& ext : ExtensionsOf(format)) documents.push_back(ext);
+            }
+        }
+        const std::vector<std::string> sheets =
+            UltraCanvasSupportedFormats::GetLoadExtensions(MediaFormatCategory::Spreadsheet);
+        std::vector<std::string> all = documents;
+        all.insert(all.end(), sheets.begin(), sheets.end());
+        all.insert(all.end(), decks.begin(), decks.end());
+        if (all.empty()) return;
+        opts.AddFilter(Tr("Office documents"), all);
+        if (!documents.empty()) opts.AddFilter(Tr("Documents"), documents);
+        if (!sheets.empty()) opts.AddFilter(Tr("Spreadsheets"), sheets);
+        if (!decks.empty()) opts.AddFilter(Tr("Presentations"), decks);
+    }
+
+    void UltraCanvasFileLoader::AddPresentationSaveTypes(FileDialogOptions& opts) {
+        std::vector<MediaFormatInfo> pptx, odp;
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document)) {
+            if (!format.canSave) continue;
+            if (IsPptxExtension(format.extension)) pptx.push_back(format);
+            else if (IsOdpExtension(format.extension)) odp.push_back(format);
+        }
+        for (const auto& format : pptx) opts.AddFilter(format.description, ExtensionsOf(format));
+        for (const auto& format : odp) opts.AddFilter(format.description, ExtensionsOf(format));
         PutDefaultTypeFirst(opts);
     }
 
