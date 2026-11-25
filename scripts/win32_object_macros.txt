@@ -1,0 +1,55 @@
+# Object-like macros that <windows.h> (and the headers it pulls in with
+# WIN32_LEAN_AND_MEAN, as the Windows builds use it) #define with
+# ordinary-looking names. Read by scripts/check_platform_names.py
+# (win32-macro): no enumerator, function, method, member, variable or lambda
+# of ours may carry one of them, and no file may #undef one.
+#
+# Kept by hand from the MinGW-w64 headers (the toolchain behind the MSYS2
+# CLANG64 / CLANGARM64 builds); the header each name comes from is noted.
+# Names a build flag already disables are left out (min and max: NOMINMAX).
+# minwindef.h: calling conventions and pointer qualifiers, empty or a keyword
+near
+far
+NEAR
+FAR
+pascal
+PASCAL
+cdecl
+CDECL
+CALLBACK
+WINAPI
+APIENTRY
+CONST
+VOID
+# minwindef.h / ntdef.h / specstrings: SAL annotations, empty
+IN
+OUT
+OPTIONAL
+# combaseapi.h / objbase.h: COM declarations
+interface
+PURE
+THIS
+THIS_
+# rpcndr.h: IDL base types
+small
+hyper
+# wingdi.h, winuser.h, winbase.h, winnt.h, wincon.h, winerror.h: constants
+ERROR
+DELETE
+IGNORE
+INFINITE
+TRANSPARENT
+OPAQUE
+ABSOLUTE
+RELATIVE
+DIFFERENCE
+ALTERNATE
+WINDING
+MOUSE_MOVED
+DOUBLE_CLICK
+MOUSE_WHEELED
+KEY_EVENT
+MOUSE_EVENT
+FOCUS_EVENT
+MENU_EVENT
+NO_ERROR

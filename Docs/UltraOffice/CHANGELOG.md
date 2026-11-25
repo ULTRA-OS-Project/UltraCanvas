@@ -1,11 +1,22 @@
 #### 2026-11-25 *0.2.0*
-- **Spreadsheet charts.** Charts of the selection - columns and bars (side
-  by side or stacked), lines, areas, pies, doughnuts, scatter and radar
-  charts - stand over the cells and follow them as they change. They are
-  moved and resized with handles and deleted with Delete; a double-click
-  changes their type, title and legend; every change can be undone. They
-  are kept in .xlsx and .ods, and printed. A new *Insert* command tab holds
-  Chart, Chart properties and Delete chart.
+- **Spreadsheet charts.** Charts of the selection stand over the cells and
+  follow them as they change. They are moved and resized with handles and
+  deleted with Delete; a double-click changes their type, title and legend;
+  every change can be undone. They are kept in .xlsx and .ods, and printed.
+  A new *Insert* command tab holds Chart, Chart type, Chart properties and
+  Delete chart.
+- **Every chart of the framework, in a chart gallery.** *Chart* opens a
+  gallery of 52 types in nine categories - columns and bars, lines and
+  areas, pies, radar and polar charts, scatter and bubbles, waterfall,
+  histogram, box and whisker, stock, funnel, Sankey, chord, treemap,
+  sunburst, Gantt, timeline, heatmaps, contour and surface, word cloud,
+  parliament and more - each tile drawn from the selection, with what the
+  type shows and the columns it reads; a type the selection does not fit
+  shows a sample and says why. A click or the arrow keys pick one, Enter
+  takes it; *Chart type* and the properties dialog change a chart's type
+  through the same gallery. A type Excel and LibreOffice have no form for
+  is saved as a column chart of its numbers, which they show, with the
+  real type beside it for UltraOffice to read back.
 - **Conditional formatting and data validation** (*Data*): rules over the
   selection in the grid's own dialogs, colour scales and data bars, drawn
   on screen, on paper and in the PDF; every rule change can be undone.
@@ -14,12 +25,6 @@
 - Conditional formats, validation, comments and links are kept in .xlsx and
   .ods.
 - Opening a spreadsheet from the command line no longer crashes.
-- **Old PowerPoint decks open.** A PowerPoint 97-2003 presentation (.ppt,
-  and the .pps show and .pot template) opens in the slide editor with its
-  slides, text and bullets, shapes, pictures, tables, notes, hidden slides
-  and transitions; it is shown, printed and exported to PDF like any deck.
-  Saving one asks for a name and writes .pptx or .odp. A password-protected
-  .ppt is refused with a reason.
 
 #### 2026-11-25 *0.1.0*
 - **UltraOffice: documents, spreadsheets and presentations in one window.**

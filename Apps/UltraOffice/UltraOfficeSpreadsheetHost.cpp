@@ -6,6 +6,8 @@
 // tabs - Home, Insert, Data, Review, Page, View - and a status line with the
 // sum, average and count of the selection.
 //
+// Version: 0.5.0 - Insert: Chart opens the chart gallery (every chart of the framework, by category, drawn
+//                  from the selection); Chart type changes the selected chart's through it
 // Version: 0.4.0 - Data: conditional formatting and data validation dialogs; Review: comments and links
 // Version: 0.3.0 - Insert: a chart of the selection (columns, bars, lines, areas, pies, scatter ...),
 //                  its properties and Delete chart
@@ -117,7 +119,7 @@ public:
     }
 
     void AddSaveTypes(FileDialogOptions& opts) const override {
-        UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::Spreadsheet);
+        UltraCanvasFileLoader::AddSpreadsheetSaveTypes(opts);   // the templates are "Save as template"'s
     }
 
     // The sheet on show, cut into pages by its print settings (print area,
@@ -185,6 +187,7 @@ private:
     UltraCanvasButton* gridlines_ = nullptr;
     UltraCanvasButton* headings_ = nullptr;
     UltraCanvasDropdown* format_ = nullptr;
+    UltraCanvasButton* chartType_ = nullptr;
     UltraCanvasButton* chartProperties_ = nullptr;
     UltraCanvasButton* chartDelete_ = nullptr;
 
@@ -239,33 +242,16 @@ private:
         tabs_.push_back({Tr("Home"), bar});
     }
 
-    // A chart of the selected cells, of the kind picked; the selected
-    // chart's properties, and deleting it.
+    // A chart of the selected cells, of the type picked in the chart
+    // gallery; the selected chart's type and properties, and deleting it.
     void BuildInsert() {
         auto bar = MakeToolbar("office-sheet-insert");
-        auto chart = bar->AddDropdownButton("sheet-chart", "", {}, nullptr);
-        for (size_t i = 0; i < SpreadsheetChartChoices().size(); ++i)
-            chart->AddItem(SpreadsheetChartChoiceName(i), std::to_string(i), IconPath("chart.svg"));
-        chart->SetIconsAsMask(true);
-        chart->SetPlaceholderText(Tr("Chart"));
-        chart->SetTooltip(Tr("A chart of the selected cells"));
-        chart->SetSelectedIndex(-1, false);
-        UltraCanvasSpreadsheet* sheet = sheet_.get();
-        UltraCanvasDropdown* dropdown = chart.get();
-        chart->onSelectionChanged = [this, sheet, dropdown](int index, const DropdownItem&) {
-            const auto& choices = SpreadsheetChartChoices();
-            if (index < 0 || index >= static_cast<int>(choices.size())) return;
-            dropdown->SetSelectedIndex(-1, false);
-            const SpreadsheetChartChoice choice = choices[static_cast<size_t>(index)];
-            if (sheet->InsertChartFromSelection(choice.kind, choice.stacked) < 0) {
-                UltraCanvasDialogManager::ShowInformation(Tr("Select cells holding numbers to make a chart of them."),
-                                                          Tr("Chart"), nullptr, window_);
-                return;
-            }
-            sheet->SetFocus(true);
-            Sync();
-            if (onChanged) onChanged();
-        };
+        AddTool(*bar, "sheet-chart", Tr("Chart"), "chart.svg",
+                Tr("A chart of the selected cells: every chart type, by category, drawn from them"),
+                Act([](auto& s) { s.ShowInsertChartDialog(); }));
+        chartType_ = AddTool(*bar, "sheet-chart-type", Tr("Chart type"), "chart.svg",
+                             Tr("Change the selected chart's type in the chart gallery"),
+                             Act([](auto& s) { if (s.GetSelectedChart() >= 0) s.ShowChartTypeDialog(s.GetSelectedChart()); })).get();
         chartProperties_ = AddTool(*bar, "sheet-chart-properties", Tr("Chart properties"), "chart.svg",
                                    Tr("The selected chart's type, title and legend (or double-click the chart)"),
                                    Act([](auto& s) { if (s.GetSelectedChart() >= 0) s.ShowChartPropertiesDialog(s.GetSelectedChart()); })).get();
@@ -369,6 +355,7 @@ private:
         if (gridlines_) gridlines_->SetPressed(print.printGridlines);
         if (headings_) headings_->SetPressed(print.printRowColHeaders);
         const bool chartSelected = sheet_->GetSelectedChart() >= 0;
+        if (chartType_) chartType_->SetDisabled(!chartSelected);
         if (chartProperties_) chartProperties_->SetDisabled(!chartSelected);
         if (chartDelete_) chartDelete_->SetDisabled(!chartSelected);
         if (format_) {

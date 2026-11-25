@@ -5575,6 +5575,56 @@ add_test(NAME FileLoaderOfficeKindTest COMMAND FileLoaderOfficeKindTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLoaderOfficeKindTest")
 
+# ===== OFFICE TEMPLATES TEST =====
+# The templates UltraOffice ships (media/templates/office/) are made by this
+# test's --write mode with the framework's writers; the test checks that each
+# is there, is a template of its kind, loads, and holds what the test makes.
+# No window.
+message(STATUS "  Building OfficeTemplatesTest...")
+add_executable(OfficeTemplatesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/OfficeTemplatesTest.cpp
+)
+target_include_directories(OfficeTemplatesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(OfficeTemplatesTest PRIVATE cxx_std_20)
+target_link_libraries(OfficeTemplatesTest PRIVATE UltraCanvas)
+target_compile_definitions(OfficeTemplatesTest PRIVATE
+    OFFICETEMPLATES_DIR="${CMAKE_SOURCE_DIR}/media/templates/office")
+set_target_properties(OfficeTemplatesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME OfficeTemplatesTest COMMAND OfficeTemplatesTest ${CMAKE_BINARY_DIR}/office-templates-test
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: OfficeTemplatesTest")
+
+# ===== ULTRAOFFICE TEMPLATE WINDOW TEST =====
+# UltraOffice's window, built from the application's own sources (all but
+# main.cpp, so a file the app gains is compiled here too): the shipped
+# templates are offered, and each opens as a new, untitled document of its
+# kind, the template left unchanged. Opens a window (build.yml's framework
+# window tests run it under Xvfb).
+if(BUILD_ULTRAOFFICE AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    message(STATUS "  Building UltraOfficeTemplateWindowTest...")
+    file(GLOB _ultraOfficeSources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Apps/UltraOffice/*.cpp)
+    list(FILTER _ultraOfficeSources EXCLUDE REGEX "/main\\.cpp$")
+    add_executable(UltraOfficeTemplateWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraOfficeTemplateWindowTest.cpp
+        ${_ultraOfficeSources}
+    )
+    target_include_directories(UltraOfficeTemplateWindowTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/Apps/UltraOffice ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(UltraOfficeTemplateWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraOfficeTemplateWindowTest PRIVATE UltraCanvas)
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraOfficeTemplateWindowTest PRIVATE fmt::fmt)
+    endif()
+    set_target_properties(UltraOfficeTemplateWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOfficeTemplateWindowTest COMMAND UltraOfficeTemplateWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraOfficeTemplateWindowTest")
+endif()
+
 # ===== SPREADSHEET WORKBOOK ROUND-TRIP TEST =====
 # What a sheet holds besides its cells - frozen panes, hidden rows and columns,
 # named ranges of the workbook and of a sheet, the auto-filter, the print area
@@ -5982,6 +6032,31 @@ else()
     message(STATUS "  SpreadsheetFormulaEngineTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== SPREADSHEET ARRAY FORMULA TEST =====
+# Arrays and spills: array constants, element-wise arithmetic, LET / LAMBDA,
+# FILTER / SORT / UNIQUE / SEQUENCE ..., dynamic spills (#SPILL!, A1#, a spill
+# following its source), Ctrl+Shift+Enter arrays, the financial functions
+# against Excel's results, and .xlsx / .ods round trips of array formulas -
+# through LibreOffice too where soffice is installed. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SpreadsheetArrayFormulaTest...")
+    add_executable(SpreadsheetArrayFormulaTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetArrayFormulaTest.cpp
+    )
+    target_include_directories(SpreadsheetArrayFormulaTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpreadsheetArrayFormulaTest PRIVATE cxx_std_20)
+    target_link_libraries(SpreadsheetArrayFormulaTest PRIVATE UltraCanvas)
+    set_target_properties(SpreadsheetArrayFormulaTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpreadsheetArrayFormulaTest COMMAND SpreadsheetArrayFormulaTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(SpreadsheetArrayFormulaTest PROPERTIES TIMEOUT 300)
+    message(STATUS "    Test registered: SpreadsheetArrayFormulaTest")
+else()
+    message(STATUS "  SpreadsheetArrayFormulaTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILER FORMAT LIST TEST =====
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
@@ -6140,6 +6215,43 @@ if(TARGET UltraCanvas)
     add_test(NAME SlideEditElementTest COMMAND SlideEditElementTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: SlideEditElementTest")
+endif()
+
+# ===== OFFICE CLIPBOARD TEST =====
+# Copy and paste between cells, documents and slides (UltraCanvasOfficeClipboard.h)
+# through a stand-in clipboard backend: the converters, cells into a document
+# and onto a slide, the slide editor's own copy, text, pictures, and a chart
+# from the grid on the office clipboard. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OfficeClipboardTest...")
+    add_executable(OfficeClipboardTest ${CMAKE_CURRENT_SOURCE_DIR}/OfficeClipboardTest.cpp)
+    target_include_directories(OfficeClipboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OfficeClipboardTest PRIVATE cxx_std_20)
+    target_link_libraries(OfficeClipboardTest PRIVATE UltraCanvas)
+    set_target_properties(OfficeClipboardTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OfficeClipboardTest COMMAND OfficeClipboardTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OfficeClipboardTest")
+endif()
+
+# ===== OFFICE ACCESSIBILITY TEST =====
+# What the spreadsheet grid (a table: rows and cells as parts, the active cell
+# focused and announced) and the slide editor (a canvas: the strip and the
+# shapes as parts) tell assistive technology. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OfficeAccessibilityTest...")
+    add_executable(OfficeAccessibilityTest ${CMAKE_CURRENT_SOURCE_DIR}/OfficeAccessibilityTest.cpp)
+    target_include_directories(OfficeAccessibilityTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OfficeAccessibilityTest PRIVATE cxx_std_20)
+    target_link_libraries(OfficeAccessibilityTest PRIVATE UltraCanvas)
+    set_target_properties(OfficeAccessibilityTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OfficeAccessibilityTest COMMAND OfficeAccessibilityTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OfficeAccessibilityTest")
 endif()
 
 # ===== SLIDE SHOW PLAYER TEST =====
@@ -7481,6 +7593,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: RichTextPrintTest")
 else()
     message(STATUS "  RichTextPrintTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== RICH TEXT DIALOGS TEST =====
+# What the document dialogs of UltraCanvasRichTextEdit apply (page setup,
+# paragraph, styles, table, picture, contents, caption, cross-reference,
+# footnote, comments) and that one undo takes each back. The element is made
+# but never shown: no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building RichTextDialogsTest...")
+    add_executable(RichTextDialogsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/RichTextDialogsTest.cpp
+    )
+    target_include_directories(RichTextDialogsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(RichTextDialogsTest PRIVATE cxx_std_20)
+    target_link_libraries(RichTextDialogsTest PRIVATE UltraCanvas)
+    set_target_properties(RichTextDialogsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME RichTextDialogsTest COMMAND RichTextDialogsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: RichTextDialogsTest")
+else()
+    message(STATUS "  RichTextDialogsTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== PROCESS RUNNER TEST =====

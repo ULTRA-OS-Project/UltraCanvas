@@ -2,7 +2,8 @@
 // Standalone round-trip test for the UltraCanvas Word document module.
 // Exercises: Markdown -> UCRichDocument -> ODT/DOCX -> UCRichDocument -> Markdown,
 // signature-based format detection, cross-format conversion, HTML output,
-// and the ODF package invariants (mimetype first entry, stored).
+// and the ODF package invariants (mimetype first entry, stored); templates
+// (.ott, .dotx written with their media types, .dotm read).
 // Builds without the UI stack: only the Word module sources, miniz and
 // tinyxml2 (see Tests/CMakeLists.txt).
 // Usage: WordFormatsTest [output-dir]
@@ -888,6 +889,59 @@ int main(int argc, char** argv) {
         workbook.AddEntry("xl/workbook.xml", "<workbook/>");
         CHECK(workbook.Finalize());
         CHECK(DetectWordDocumentFormat(TmpPath("workbook.docx")) == WordDocumentFormat::Unknown);
+    }
+
+    // ===== 5a2. Templates: .ott and .dotx are their documents' packages =====
+    // under the template's media type; written as templates by the
+    // extension, read back as documents, detected as their format. A .dotm
+    // is read, not written.
+    {
+        auto entry = [](const std::string& path, const char* name) {
+            UCZipPackageReader zip;
+            std::string data;
+            if (zip.Open(path)) zip.ReadEntry(name, data);
+            return data;
+        };
+        CHECK(WordDocumentFormatFromExtension("ott") == WordDocumentFormat::Odt);
+        CHECK(WordDocumentFormatFromExtension(".DOTX") == WordDocumentFormat::Docx);
+        CHECK(WordDocumentFormatFromExtension("dotm") == WordDocumentFormat::Docx);
+        CHECK(IsWordTemplateExtension("letter.ott") && IsWordTemplateExtension("DOTX") &&
+              IsWordTemplateExtension("/a/b/c.dotm"));
+        CHECK(!IsWordTemplateExtension("letter.odt") && !IsWordTemplateExtension("docx") &&
+              !IsWordTemplateExtension("/a.ott/b.docx"));
+
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Save(TmpPath("template.ott"), doc, err), err);
+        CHECK(entry(TmpPath("template.ott"), "mimetype") == "application/vnd.oasis.opendocument.text-template");
+        CHECK(entry(TmpPath("template.ott"), "META-INF/manifest.xml")
+                  .find("manifest:media-type=\"application/vnd.oasis.opendocument.text-template\"") != std::string::npos);
+        CHECK(DetectWordDocumentFormat(TmpPath("template.ott")) == WordDocumentFormat::Odt);
+        UCRichDocument fromOtt;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("template.ott"), fromOtt, err), err);
+        CheckModelShape(fromOtt, "ott-roundtrip");
+
+        CHECK_MSG(UCWordDocumentIO::Save(TmpPath("template.dotx"), doc, err), err);
+        const std::string types = entry(TmpPath("template.dotx"), "[Content_Types].xml");
+        CHECK(types.find("wordprocessingml.template.main+xml") != std::string::npos);
+        CHECK(types.find("wordprocessingml.document.main+xml") == std::string::npos);
+        CHECK(DetectWordDocumentFormat(TmpPath("template.dotx")) == WordDocumentFormat::Docx);
+        UCRichDocument fromDotx;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("template.dotx"), fromDotx, err), err);
+        CheckModelShape(fromDotx, "dotx-roundtrip");
+
+        // A document saved as .odt / .docx keeps its own media type.
+        CHECK(entry(TmpPath("sample.odt"), "mimetype") == "application/vnd.oasis.opendocument.text");
+        CHECK(entry(TmpPath("sample.docx"), "[Content_Types].xml").find("template.main+xml") == std::string::npos);
+
+        // A .dotm (a .dotx under the macro-enabled name) reads; it is not written.
+        std::filesystem::copy_file(UltraCanvas::PathFromUtf8(TmpPath("template.dotx")),
+                                   UltraCanvas::PathFromUtf8(TmpPath("macros.dotm")),
+                                   std::filesystem::copy_options::overwrite_existing);
+        UCRichDocument fromDotm;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("macros.dotm"), fromDotm, err), err);
+        CHECK(fromDotm.ToPlainText() == fromDotx.ToPlainText());
+        CHECK(!UCWordDocumentIO::Save(TmpPath("written.dotm"), doc, err) && err.find(".dotx") != std::string::npos);
+        CHECK(!std::filesystem::exists(UltraCanvas::PathFromUtf8(TmpPath("written.dotm"))));
     }
 
     // ===== 5b. Legacy .doc import (real Word 97 fixture) =====
@@ -2701,21 +2755,21 @@ int main(int argc, char** argv) {
                     if (r.text == text) return r.letterSpacingPt;
             return std::optional<float>(-999.0f);   // not found
         };
-        auto near = [](std::optional<float> v, float want) { return v && std::fabs(*v - want) < 0.01f; };
+        auto closeTo = [](std::optional<float> v, float want) { return v && std::fabs(*v - want) < 0.01f; };
 
         std::string err;
         CHECK_MSG(UCWordDocumentIO::SaveOdt(TmpPath("spacing.odt"), *spaced, err), err);
         UCRichDocument odt;
         CHECK_MSG(UCWordDocumentIO::LoadOdt(TmpPath("spacing.odt"), odt, err), err);
-        CHECK_MSG(near(spacingOf(odt, "wide"), 2.5f), "ODT: fo:letter-spacing read back");
-        CHECK_MSG(near(spacingOf(odt, " tight"), -0.5f), "ODT: a negative letter spacing read back");
+        CHECK_MSG(closeTo(spacingOf(odt, "wide"), 2.5f), "ODT: fo:letter-spacing read back");
+        CHECK_MSG(closeTo(spacingOf(odt, " tight"), -0.5f), "ODT: a negative letter spacing read back");
         CHECK_MSG(!spacingOf(odt, "Plain ").has_value(), "ODT: a run without its own has none");
 
         CHECK_MSG(UCWordDocumentIO::SaveDocx(TmpPath("spacing.docx"), *spaced, err), err);
         UCRichDocument docx;
         CHECK_MSG(UCWordDocumentIO::LoadDocx(TmpPath("spacing.docx"), docx, err), err);
-        CHECK_MSG(near(spacingOf(docx, "wide"), 2.5f), "DOCX: w:spacing read back");
-        CHECK_MSG(near(spacingOf(docx, " tight"), -0.5f), "DOCX: a negative w:spacing read back");
+        CHECK_MSG(closeTo(spacingOf(docx, "wide"), 2.5f), "DOCX: w:spacing read back");
+        CHECK_MSG(closeTo(spacingOf(docx, " tight"), -0.5f), "DOCX: a negative w:spacing read back");
         CHECK_MSG(!spacingOf(docx, "Plain ").has_value(), "DOCX: a run without its own has none");
         {
             std::string documentXml;
@@ -2751,22 +2805,22 @@ int main(int argc, char** argv) {
                 CHECK_MSG(style && style->character.letterSpacingPt &&
                           std::fabs(*style->character.letterSpacingPt - 3.0f) < 0.01f,
                           std::string(name) + ": a character style keeps its letter spacing");
-                CHECK_MSG(near(spacingOf(back, "spread"), 3.0f), std::string(name) + ": its run is spread");
+                CHECK_MSG(closeTo(spacingOf(back, "spread"), 3.0f), std::string(name) + ": its run is spread");
             }
         }
 
         const std::string html = spaced->ToHTML();
         CHECK_MSG(html.find("letter-spacing:2.5pt") != std::string::npos, "HTML: letter-spacing written");
         const UCRichDocument fromHtml = UCRichDocument::FromHTML(html);
-        CHECK_MSG(near(spacingOf(fromHtml, "wide"), 2.5f), "HTML: letter-spacing read back");
-        CHECK_MSG(near(spacingOf(fromHtml, " tight"), -0.5f), "HTML: a negative one read back");
+        CHECK_MSG(closeTo(spacingOf(fromHtml, "wide"), 2.5f), "HTML: letter-spacing read back");
+        CHECK_MSG(closeTo(spacingOf(fromHtml, " tight"), -0.5f), "HTML: a negative one read back");
         CHECK_MSG(!spacingOf(fromHtml, "Plain ").has_value(), "HTML: none where none was set");
 
         UCRichDocumentEditor editor;
         editor.SetDocument(spaced);
         editor.SetSelection(RichDocPosition(0, 6), RichDocPosition(0, 10));   // "wide"
         RichCharFormatState state = editor.GetFormatState();
-        CHECK_MSG(!state.letterSpacingMixed && near(state.letterSpacingPt, 2.5f), "the format state reports a run's spacing");
+        CHECK_MSG(!state.letterSpacingMixed && closeTo(state.letterSpacingPt, 2.5f), "the format state reports a run's spacing");
         editor.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 10));   // "Plain wide"
         state = editor.GetFormatState();
         CHECK_MSG(state.letterSpacingMixed && !state.letterSpacingPt, "two spacings are mixed");
@@ -2776,9 +2830,9 @@ int main(int argc, char** argv) {
         delta.letterSpacingPt = 1.0f;
         CHECK(!delta.IsEmpty());
         editor.ApplyCharFormat(delta);
-        CHECK_MSG(near(spacingOf(*spaced, "Plain"), 1.0f), "a delta gives the selected words their own spacing");
+        CHECK_MSG(closeTo(spacingOf(*spaced, "Plain"), 1.0f), "a delta gives the selected words their own spacing");
         CHECK_MSG(!spacingOf(*spaced, " ").has_value(), "the rest of the run keeps none");
-        CHECK_MSG(near(spacingOf(*spaced, "wide"), 2.5f), "the words beside keep theirs");
+        CHECK_MSG(closeTo(spacingOf(*spaced, "wide"), 2.5f), "the words beside keep theirs");
         delta.letterSpacingPt.reset();
         editor.SetSelection(RichDocPosition(0, 6), RichDocPosition(0, 10));
         editor.ApplyCharFormat(delta);

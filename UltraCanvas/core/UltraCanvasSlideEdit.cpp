@@ -1,6 +1,8 @@
 // core/UltraCanvasSlideEdit.cpp
 // The presentation editor element (include/UltraCanvasSlideEdit.h).
 //
+// Version: 1.4.0 - Copy / Cut / Paste through the system clipboard (UltraCanvasOfficeClipboard.h); the
+//                  strip and the shapes as parts to assistive technology (AccessibleSlides)
 // Version: 1.3.0 - the show mode is gone: UltraCanvasSlideShowPlayer plays the deck
 // Version: 1.2.0 - a double-click on a table asks for its cell (onEditTableCell)
 // Version: 1.1.0 - SetEditingShape: the shape's text left out while a host edits it in place
@@ -9,6 +11,8 @@
 #include "UltraCanvasSlideEdit.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboard.h"
+#include "UltraCanvasOfficeClipboard.h"
 #include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraLocalisation/UltraLocalisation.h"
@@ -96,6 +100,7 @@ UltraCanvasSlideEdit::UltraCanvasSlideEdit(const std::string& id, int x, int y, 
     };
     editor_.onSelectionChange = [this]() {
         RequestRedraw();
+        AnnounceAccessibleSelection();
         if (onSelectionChange) onSelectionChange();
     };
 }
@@ -799,12 +804,325 @@ bool UltraCanvasSlideEdit::OnKey(const UCEvent& event) {
             return true;
         case UCKeys::A: if (ctrl) { editor_.SelectAll(); return true; } break;
         case UCKeys::D: if (ctrl) { editor_.DuplicateSelection(); return true; } break;
-        case UCKeys::C: if (ctrl) { editor_.CopySelection(); return true; } break;
-        case UCKeys::X: if (ctrl) { editor_.CutSelection(); return true; } break;
-        case UCKeys::V: if (ctrl) { editor_.Paste(); return true; } break;
+        case UCKeys::C: if (ctrl) { Copy(); return true; } break;
+        case UCKeys::X: if (ctrl) { Cut(); return true; } break;
+        case UCKeys::V: if (ctrl) { Paste(); return true; } break;
         default: break;
     }
     return false;
+}
+
+// ===== CLIPBOARD =====
+
+namespace {
+
+std::string WithoutCarriageReturns(std::string text) {
+    text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+    return text;
+}
+
+// A box of `width` x `height` EMU in the middle of the slide, no larger than
+// most of it.
+SlideBox CentredBox(const UCSlideDeckEditor& editor, double width, double height) {
+    const double slideW = static_cast<double>(editor.SlideWidth()), slideH = static_cast<double>(editor.SlideHeight());
+    const double most = 0.9;
+    if (width > slideW * most) {
+        height *= slideW * most / width;
+        width = slideW * most;
+    }
+    height = std::min(height, slideH * most);
+    SlideBox box;
+    box.width = static_cast<int64_t>(width);
+    box.height = static_cast<int64_t>(height);
+    box.x = (editor.SlideWidth() - box.width) / 2;
+    box.y = (editor.SlideHeight() - box.height) / 2;
+    return box;
+}
+
+constexpr double kEmuPerPixel = 9525.0;      // at 96 pixels to the inch
+constexpr double kEmuPerPoint = 12700.0;
+
+} // namespace
+
+void UltraCanvasSlideEdit::Copy() {
+    editor_.CopySelection();
+    if (editor_.GetSelection().empty()) return;
+    // Other programs (and the document editor) get the shapes' text, and
+    // HTML with a table kept as a table.
+    copiedText_ = PptxShapesAsClipboardText(editor_.CopiedShapes());
+    const std::string html = PptxShapesAsClipboardHtml(editor_.CopiedShapes());
+    if (html.empty()) SetClipboardText(copiedText_);
+    else SetClipboardHtml(html, copiedText_);
+}
+
+void UltraCanvasSlideEdit::Cut() {
+    if (editor_.GetSelection().empty()) return;
+    Copy();
+    editor_.DeleteSelection();
+}
+
+void UltraCanvasSlideEdit::Paste() {
+    if (!editor_.CurrentSlide()) return;
+    std::string text;
+    const bool haveText = GetClipboardText(text);
+    // The shapes copied here, while the system clipboard still holds what
+    // their copy put there; else what was copied since, here or elsewhere.
+    if (editor_.CanPaste() && haveText && WithoutCarriageReturns(text) == WithoutCarriageReturns(copiedText_)) {
+        editor_.Paste();
+        return;
+    }
+    if (PasteFromSystemClipboard()) return;
+    if (editor_.CanPaste() && !haveText) editor_.Paste();   // no system clipboard to be had
+}
+
+bool UltraCanvasSlideEdit::PasteFromSystemClipboard() {
+    // A chart copied from a spreadsheet: a chart, as large as it was there.
+    RichChart chart;
+    int chartWidth = 0, chartHeight = 0;
+    if (GetClipboardChart(chart, chartWidth, chartHeight)) {
+        const int shape = editor_.InsertChart(CentredBox(editor_, chartWidth * kEmuPerPixel, chartHeight * kEmuPerPixel), chart);
+        if (shape >= 0) return true;
+    }
+
+    PptxRun look;
+    look.sizePt = 18;
+    look.font = editor_.GetDeck() ? editor_.GetDeck()->minorFont : std::string();
+    // A text box as wide as most of the slide, as tall as its lines.
+    auto insertText = [&](const std::vector<PptxParagraph>& paragraphs) {
+        if (paragraphs.empty()) return false;
+        double height = 2 * 45720.0;   // the insets
+        for (const PptxParagraph& paragraph : paragraphs) {
+            float size = 0;
+            for (const PptxRun& run : paragraph.runs) size = std::max(size, run.sizePt);
+            height += (size > 0 ? size : 18.0f) * 1.2 * kEmuPerPoint;
+        }
+        return editor_.InsertFormattedTextBox(CentredBox(editor_, editor_.SlideWidth() * 0.7, height), paragraphs) >= 0;
+    };
+    // Cells: a table, rows of about two fifths of an inch, columns of up to two inches.
+    auto insertTable = [&](const PptxTableCells& cells) {
+        size_t columns = 0;
+        for (const auto& row : cells) columns = std::max(columns, row.size());
+        if (cells.empty() || columns == 0) return false;
+        const double width = static_cast<double>(columns) * 1828800.0;
+        const double height = static_cast<double>(cells.size()) * 370840.0;
+        return editor_.InsertTable(CentredBox(editor_, width, height), cells) >= 0;
+    };
+
+    std::string html;
+    if (GetClipboardHtml(html) && !html.empty()) {
+        PptxTableCells cells;
+        if (PptxTableCellsFromHtml(html, cells) && insertTable(cells)) return true;
+        if (insertText(PptxParagraphsFromClipboardHtml(html, look))) return true;
+    }
+    std::string text;
+    const bool haveText = GetClipboardText(text) && !text.empty();
+    // A picture (another program's image, no text beside it).
+    if (UltraCanvasClipboard* clipboard = GetClipboard(); clipboard && !haveText) {
+        std::vector<uint8_t> bytes;
+        std::string format;
+        if (clipboard->GetImage(bytes, format) && !bytes.empty()) {
+            int width = 0, height = 0;
+            UCRichDocument::SniffImagePixelSize(bytes, width, height);
+            std::string extension = format;
+            if (extension.find('/') != std::string::npos) extension = UCRichDocument::FileExtensionForMimeType(extension);
+            if (extension.empty()) extension = "png";
+            if (editor_.InsertPicture(bytes, extension, width, height) >= 0) return true;
+        }
+    }
+    if (!haveText) return false;
+    ClipboardCellRows rows;
+    if (ClipboardTableFromTabbedText(text, rows) && insertTable(PptxTableCellsFromRows(rows))) return true;
+    return insertText(PptxParagraphsFromClipboardText(text, look));
+}
+
+// ===== ACCESSIBILITY =====
+
+namespace {
+
+// A shape's kind, as a screen reader names a shape without text.
+std::string KindName(const PptxShape& shape) {
+    if (shape.placeholder == "dt") return Tr("Date");
+    if (shape.placeholder == "ftr") return Tr("Footer");
+    if (shape.placeholder == "sldNum") return Tr("Slide number");
+    switch (shape.kind) {
+        case PptxShapeKind::Title: return Tr("Title");
+        case PptxShapeKind::Subtitle: return Tr("Subtitle");
+        case PptxShapeKind::Body: return Tr("Content");
+        case PptxShapeKind::Table: return Tr("Table");
+        case PptxShapeKind::Picture: return Tr("Image");
+        case PptxShapeKind::Connector: return Tr("Line");
+        case PptxShapeKind::Chart: return Tr("Chart");
+        default: return Tr("Text");
+    }
+}
+
+AccessibleRole RoleOf(const PptxShape& shape) {
+    switch (shape.kind) {
+        case PptxShapeKind::Table: return AccessibleRole::Table;
+        case PptxShapeKind::Picture:
+        case PptxShapeKind::Chart: return AccessibleRole::Image;
+        case PptxShapeKind::Connector: return AccessibleRole::Group;
+        default: return AccessibleRole::Label;
+    }
+}
+
+// The first words of `text`, at most eight and about sixty bytes.
+std::string FirstWords(const std::string& text) {
+    std::string out;
+    int words = 0;
+    bool inWord = false;
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i] == '\n' || text[i] == '\t' ? ' ' : text[i];
+        const bool space = c == ' ';
+        if (!space && !inWord) {
+            if (words == 8 || out.size() >= 60) {
+                while (!out.empty() && out.back() == ' ') out.pop_back();
+                out += "...";
+                return out;
+            }
+            ++words;
+        }
+        inWord = !space;
+        if (space && (out.empty() || out.back() == ' ')) continue;
+        out += c;
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out;
+}
+
+std::string ShapeTextOf(const PptxShape& shape) {
+    if (shape.kind == PptxShapeKind::Table) {
+        std::string text;
+        for (const auto& row : shape.rows)
+            for (const auto& cell : row)
+                for (const PptxParagraph& paragraph : cell) text += paragraph.Text() + " ";
+        return text;
+    }
+    if (shape.kind == PptxShapeKind::Picture) return shape.altText;
+    if (shape.kind == PptxShapeKind::Chart) return shape.chart.title;
+    return UCSlideDeckEditor::ShapeText(shape);
+}
+
+} // namespace
+
+// The strip and the slide as a screen reader walks them. It holds the
+// element raw: the element owns it.
+class UltraCanvasSlideEdit::AccessibleSlides : public IAccessibleParts {
+public:
+    explicit AccessibleSlides(UltraCanvasSlideEdit& owner) : edit(owner) {}
+
+    int GetPartCount(const std::vector<int>& parent) const override {
+        if (parent.empty()) return 2;   // the strip, the slide
+        if (parent.size() != 1) return 0;
+        if (parent[0] == 0) return edit.editor_.GetSlideCount();
+        const PptxSlide* slide = edit.editor_.CurrentSlide();
+        return parent[0] == 1 && slide ? static_cast<int>(slide->shapes.size()) : 0;
+    }
+
+    AccessiblePart GetPart(const std::vector<int>& path) const override {
+        AccessiblePart part;
+        const int count = edit.editor_.GetSlideCount();
+        const int current = edit.editor_.GetCurrentSlide();
+        if (path.size() == 1 && path[0] == 0) {
+            part.role = AccessibleRole::List;
+            part.name = Tr("Slides");
+            if (edit.showStrip_) part.bounds = ToWindow(edit.StripRect());
+            return part;
+        }
+        if (path.size() == 1 && path[0] == 1) {
+            part.role = AccessibleRole::Group;
+            part.name = edit.GetAccessibleName();
+            part.bounds = ToWindow(edit.SlideRect());
+            return part;
+        }
+        if (path.size() != 2) return part;
+        if (path[0] == 0) {
+            const int index = path[1];
+            if (index < 0 || index >= count) return part;
+            const PptxSlide& slide = edit.editor_.GetDeck()->slides[static_cast<size_t>(index)];
+            part.role = AccessibleRole::ListItem;
+            part.name = TrF("Slide {0} of {1}", index + 1, count);
+            if (!slide.title.empty()) part.name += ": " + FirstWords(slide.title);
+            if (slide.hidden) part.description = Tr("Hidden");
+            part.selected = index == current;
+            part.focused = edit.stripActive_ && index == current;
+            if (edit.showStrip_) part.bounds = ToWindow(edit.ThumbRect(index));
+            return part;
+        }
+        if (path[0] != 1) return part;
+        const PptxSlide* slide = edit.editor_.CurrentSlide();
+        const int index = path[1];
+        if (!slide || index < 0 || index >= static_cast<int>(slide->shapes.size())) return part;
+        const PptxShape& shape = slide->shapes[static_cast<size_t>(index)];
+        part.role = RoleOf(shape);
+        const std::string words = FirstWords(ShapeTextOf(shape));
+        part.name = words.empty() ? KindName(shape) : words;
+        part.description = KindName(shape);
+        part.selected = edit.editor_.IsSelected(index);
+        const auto& selection = edit.editor_.GetSelection();
+        part.focused = !edit.stripActive_ && !selection.empty() && selection.front() == index;
+        const Point2Dd from = edit.ToView(static_cast<double>(shape.x), static_cast<double>(shape.y));
+        const Point2Dd to = edit.ToView(static_cast<double>(shape.x + shape.width), static_cast<double>(shape.y + shape.height));
+        part.bounds = ToWindow(Rect2Dd(from.x, from.y, to.x - from.x, to.y - from.y));
+        return part;
+    }
+
+    std::vector<int> GetFocusedPart() const override {
+        const int current = edit.editor_.GetCurrentSlide();
+        if (current < 0) return {};
+        if (edit.stripActive_) return {0, current};
+        const auto& selection = edit.editor_.GetSelection();
+        if (selection.empty()) return {};
+        return {1, selection.front()};
+    }
+
+    std::vector<std::vector<int>> GetSelectedParts() const override {
+        std::vector<std::vector<int>> out;
+        const int current = edit.editor_.GetCurrentSlide();
+        if (current < 0) return out;
+        out.push_back({0, current});
+        for (int shape : edit.editor_.GetSelection()) out.push_back({1, shape});
+        return out;
+    }
+
+private:
+    UltraCanvasSlideEdit& edit;
+
+    Rect2Df ToWindow(const Rect2Dd& local) const {
+        const Point2Df origin = edit.GetPositionInWindow();
+        return Rect2Df(origin.x + static_cast<float>(local.x), origin.y + static_cast<float>(local.y),
+                       static_cast<float>(local.width), static_cast<float>(local.height));
+    }
+};
+
+std::string UltraCanvasSlideEdit::GetAccessibleName() const {
+    if (!GetAccessibleNameOverride().empty()) return GetAccessibleNameOverride();
+    const int count = editor_.GetSlideCount();
+    const int current = editor_.GetCurrentSlide();
+    if (current < 0) return std::string();
+    std::string name = TrF("Slide {0} of {1}", current + 1, count);
+    const PptxSlide* slide = editor_.CurrentSlide();
+    if (slide && !slide->title.empty()) name += ": " + FirstWords(slide->title);
+    return name;
+}
+
+IAccessibleParts* UltraCanvasSlideEdit::GetAccessiblePartsInterface() {
+    if (!accessibleSlides_) accessibleSlides_ = std::make_shared<AccessibleSlides>(*this);
+    return accessibleSlides_.get();
+}
+
+void UltraCanvasSlideEdit::AnnounceAccessibleSelection() {
+    if (!UltraCanvasAccessibility::HasListeners()) return;
+    const int current = editor_.GetCurrentSlide();
+    if (current != announcedSlide_) {
+        announcedSlide_ = current;
+        NotifyAccessibility(AccessibilityEventType::NameChanged);   // another slide shown
+    }
+    AccessibilityEvent event;
+    event.type = AccessibilityEventType::SelectionChanged;
+    event.element = this;
+    event.part = GetAccessiblePartsInterface()->GetFocusedPart();
+    UltraCanvasAccessibility::Notify(event);
 }
 
 } // namespace UltraCanvas

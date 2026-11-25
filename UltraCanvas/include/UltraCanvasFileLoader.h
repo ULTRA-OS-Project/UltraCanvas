@@ -4,9 +4,12 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
-// Version: 1.20.0 - LoadPresentation: a deck of any kind read into the deck model - .pptx and kin,
+// Version: 1.21.0 - LoadPresentation: a deck of any kind read into the deck model - .pptx and kin,
 //                  .odp and kin, and PowerPoint 97-2003 .ppt / .pps / .pot (UltraCanvasPresentationPpt.h);
-//                  LoadTextDocument and DetectOfficeDocumentKind take a .ppt
+//                  LoadTextDocument and DetectOfficeDocumentKind take a .ppt; IsOfficeTemplate a .pot
+// Version: 1.20.0 - office templates: IsOfficeTemplate, IsOfficeTemplateExtension, AddOfficeTemplateSaveTypes
+//                  ("Save as template"), AddSpreadsheetSaveTypes; a template's kind is detected; the
+//                  Save types of documents and decks no longer list the templates
 // Version: 1.19.0 - DetectOfficeDocumentKind, AddOfficeDocumentLoadTypes, AddPresentationSaveTypes
 // Version: 1.18.0 - SaveTextDocument and SavePresentation write .odp / .otp / .fodp too
 // Version: 1.17.0 - SaveTextDocument writes a .pptx (the document laid out as a deck); SavePresentation
@@ -366,20 +369,23 @@ namespace UltraCanvas {
                                      std::string& outError,
                                      const std::string& password = std::string());
         // The Save dialog's file types for SaveTextDocument, each under its
-        // name, ODT first.
+        // name, ODT first. The templates (.ott, .dotx, .potx, .otp) are left
+        // to AddOfficeTemplateSaveTypes.
         static void AddTextDocumentSaveTypes(FileDialogOptions& opts);
 
         // ===== OFFICE DOCUMENTS =====
         // Which kind of office file a path is - what an office suite opens it
         // as: a word-processing document (.odt, .docx, .doc, .md, .tex ...), a
         // spreadsheet (.ods, .xlsx, .xls, .csv, .tsv), or a presentation
-        // (.pptx and kin, .odp and kin, .ppt and kin). The extension
-        // decides; a file without a known one is looked into: an OpenDocument
-        // package by its mimetype entry, an Office Open XML package by its
-        // main part (word/, xl/, ppt/), a compound file holding a
-        // "PowerPoint Document" stream as a presentation. Unknown for
-        // anything else. Reads nothing beyond a ZIP's directory and its
-        // mimetype entry, or a compound file's directory.
+        // (.pptx and kin, .odp and kin, .ppt and kin) - each with its
+        // templates (.ott, .dotx, .dotm; .ots, .xltx, .xltm; .potx, .potm,
+        // .otp, .pot). The extension decides; a file without a known one is
+        // looked into: an OpenDocument package by its mimetype entry, an
+        // Office Open XML package by its main part (word/, xl/, ppt/), a
+        // compound file holding a "PowerPoint Document" stream as a
+        // presentation. Unknown for anything else. Reads nothing beyond a
+        // ZIP's directory and its mimetype entry, or a compound file's
+        // directory.
         enum class OfficeDocumentKind { Unknown, Document, Spreadsheet, Presentation };
         static OfficeDocumentKind DetectOfficeDocumentKind(const std::string& filePath);
         // The Open dialog's types for an office suite: one filter with every
@@ -389,8 +395,34 @@ namespace UltraCanvas {
         // outline), but as presentations.
         static void AddOfficeDocumentLoadTypes(FileDialogOptions& opts);
         // The Save dialog's types for a deck: every type SavePresentation
-        // writes, each under its name, PowerPoint first.
+        // writes, each under its name, PowerPoint first - but the templates,
+        // which AddOfficeTemplateSaveTypes offers.
         static void AddPresentationSaveTypes(FileDialogOptions& opts);
+        // The Save dialog's types for a workbook: every type
+        // UltraCanvasSpreadsheet::SaveToFile writes (.ods, .xlsx, .csv, .tsv),
+        // each under its name - but the templates.
+        static void AddSpreadsheetSaveTypes(FileDialogOptions& opts);
+
+        // ===== OFFICE TEMPLATES =====
+        // A template is the same package as its kind's document under the
+        // template's media type: OpenDocument .ott / .ots / .otp, Office Open
+        // XML .dotx / .xltx / .potx (and the macro-enabled .dotm / .xltm /
+        // .potm, read), and PowerPoint 97-2003's .pot (read). The readers take them as documents, the writers
+        // write them as templates by the extension (SaveTextDocument,
+        // UltraCanvasSpreadsheet::SaveToFile, SavePresentation). An
+        // application opening one starts a new, untitled document from it;
+        // saving that asks for a name, so the template is never written over.
+        //
+        // True for a template: by its extension, or, for a file without a
+        // known office extension, by its package (an OpenDocument
+        // "...-template" mimetype, an Office Open XML template content type).
+        static bool IsOfficeTemplate(const std::string& filePath);
+        // True for a template's extension (or a path's), any case; reads nothing.
+        static bool IsOfficeTemplateExtension(const std::string& extensionOrPath);
+        // The Save dialog's types for "Save as template": the template types
+        // of `kind` this build writes, each under its name - .ott and .dotx,
+        // .ots and .xltx, or .potx and .otp.
+        static void AddOfficeTemplateSaveTypes(FileDialogOptions& opts, OfficeDocumentKind kind);
 
         // ===== VECTOR DOCUMENTS =====
         // Editable drawings: SVG, XAR, EMF, WMF, DXF, DWG, AI ... read into

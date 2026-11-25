@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.20.0 - a Word template (.dotx) is written as one: its main part's template content type
 // Version: 1.19.0 - the theme and font table are kept from the file read and written back (UCRichDocument::keptParts)
 // Version: 1.18.1 - a chart part is written by UltraCanvasDrawingML (WriteDrawingMLChart) too
 // Version: 1.18.0 - a chart part and a DrawingML colour are read by UltraCanvasDrawingML (core, shared
@@ -3677,6 +3678,9 @@ public:
     bool Save(const std::string& filePath, const UCRichDocument& doc, const std::string& password,
               std::string& error) {
         doc_ = &doc;
+        // A template (.dotx) is the same package with its main part's
+        // content type saying so.
+        template_ = IsWordTemplateExtension(filePath);
         // With a password the package is built in memory and encrypted into
         // the file (UltraCanvasOfficeEncryption.h); nothing unencrypted is
         // written to disk.
@@ -3740,6 +3744,7 @@ public:
 private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
+    bool template_ = false;   // a .dotx: the main part is a template
     // Drawing ids only have to be unique within the document. Inline pictures
     // count from a high base so they cannot collide with the block images,
     // which number from 1.
@@ -5135,7 +5140,8 @@ private:
         }
         xml << "<Override PartName=\"/word/document.xml\" "
                "ContentType=\"application/vnd.openxmlformats-officedocument."
-               "wordprocessingml.document.main+xml\"/>\n"
+            << (template_ ? "wordprocessingml.template.main+xml" : "wordprocessingml.document.main+xml")
+            << "\"/>\n"
             << "<Override PartName=\"/word/styles.xml\" "
                "ContentType=\"application/vnd.openxmlformats-officedocument."
                "wordprocessingml.styles+xml\"/>\n";

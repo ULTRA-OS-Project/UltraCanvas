@@ -7,6 +7,10 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.19.0 - SetPageSetup, SetParagraphFormat, Get/SetTableProperties, Get/SetSelectedImageWrap,
+//                   InsertNote with its text, GoToPreviousChange, GoToNextComment / GoToPreviousComment /
+//                   GoToComment; an undo or redo that changes the page lays the document out again
+// Version: 1.18.0 - InsertChart; Paste takes a chart copied from a spreadsheet (the office clipboard)
 // Version: 1.17.0 - a document's stated colours follow a dark page (DocumentColor, AdaptDocumentColorToPage)
 // Version: 1.16.0 - a frame's chart (RichTextFrame::chart) is drawn by the chart engine (UltraCanvasRichDocumentChart.h)
 // Version: 1.15.1 - a document's own bullet is drawn in the text's colour, half as large again
@@ -60,6 +64,7 @@
 #include "UltraCanvasUI.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasOfficeClipboard.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPdfSurface.h"
 #include "UltraCanvasUtils.h"           // OpenURL
@@ -5866,6 +5871,14 @@ void UltraCanvasRichTextEdit::Cut() {
 
 void UltraCanvasRichTextEdit::Paste() {
     if (readOnly) return;
+    // A chart copied from a spreadsheet, while the clipboard still holds it:
+    // a chart, as large as it was there (a pixel at 96 to the inch).
+    RichChart chart;
+    int chartWidth = 0, chartHeight = 0;
+    if (GetClipboardChart(chart, chartWidth, chartHeight) &&
+        InsertChart(chart, static_cast<float>(chartWidth) * 0.75f, static_cast<float>(chartHeight) * 0.75f)) {
+        return;
+    }
     std::string text;
     if (!GetClipboardText(text)) return;
 
@@ -5906,16 +5919,101 @@ void UltraCanvasRichTextEdit::DeleteSelection() {
 
 bool UltraCanvasRichTextEdit::Undo() {
     if (readOnly) return false;
+    const RichPageSetup page = editor.GetDocument()->page;
     bool done = editor.Undo();
-    if (done) AfterEdit();
+    if (done) {
+        // A page setup undone: another page, so every block is laid out again.
+        if (!(editor.GetDocument()->page == page)) {
+            visibleAreaDirty = true;
+            InvalidateDocument();
+        }
+        AfterEdit();
+    }
     return done;
 }
 
 bool UltraCanvasRichTextEdit::Redo() {
     if (readOnly) return false;
+    const RichPageSetup page = editor.GetDocument()->page;
     bool done = editor.Redo();
-    if (done) AfterEdit();
+    if (done) {
+        if (!(editor.GetDocument()->page == page)) {
+            visibleAreaDirty = true;
+            InvalidateDocument();
+        }
+        AfterEdit();
+    }
     return done;
+}
+
+// ===== WHAT THE DOCUMENT DIALOGS SET =====
+
+bool UltraCanvasRichTextEdit::SetPageSetup(const RichPageSetup& page) {
+    if (readOnly) return false;
+    // The page is the body's: a header being edited goes back first.
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!editor.SetPageSetup(page)) return false;
+    visibleAreaDirty = true;
+    InvalidateDocument();
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetParagraphFormat(const RichParagraphFormat& format) {
+    if (readOnly || !editor.SetParagraphFormat(format)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::GetTableProperties(RichTableProperties& out) const {
+    const RichDocPosition caret = editor.GetCaret();
+    return caret.InCell() && editor.GetTableProperties(caret.blockIndex, out);
+}
+
+bool UltraCanvasRichTextEdit::SetTableProperties(const RichTableProperties& properties) {
+    const RichDocPosition caret = editor.GetCaret();
+    if (readOnly || !caret.InCell() || !editor.SetTableProperties(caret.blockIndex, properties)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::GetSelectedImageWrap(RichTextRun::ImageWrap& wrap, RichTextAlign& align) const {
+    return HasSelectedImage() && editor.GetImageWrap(selectedImage, wrap, align);
+}
+
+bool UltraCanvasRichTextEdit::SetSelectedImageWrap(RichTextRun::ImageWrap wrap, RichTextAlign align) {
+    if (readOnly || !HasSelectedImage()) return false;
+    if (!editor.SetImageWrap(selectedImage, wrap, align)) return false;
+    // A float is placed with the page's, not only its own block's.
+    InvalidateDocument();
+    AfterEdit();
+    return true;
+}
+
+int UltraCanvasRichTextEdit::InsertNote(RichNote::Kind kind, const std::string& text) {
+    if (readOnly) return -1;
+    // A note's reference goes into the body, never into a header or a note.
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    const int noteIndex = editor.InsertNote(kind);
+    if (noteIndex < 0) return -1;
+    // One paragraph per line of the text; with none it opens for typing.
+    RichNote& note = editor.GetDocument()->notes[static_cast<size_t>(noteIndex)];
+    if (!text.empty()) note.blocks.clear();
+    size_t start = 0;
+    while (!text.empty() && start <= text.size()) {
+        const size_t end = std::min(text.find('\n', start), text.size());
+        RichDocBlock paragraph;
+        RichTextRun run;
+        run.text = text.substr(start, end - start);
+        if (!run.text.empty()) paragraph.runs.push_back(std::move(run));
+        note.blocks.push_back(std::move(paragraph));
+        start = end + 1;
+    }
+    furnitureCache.clear();
+    chartCache.clear();                 // the notes moved in memory
+    AfterEdit();
+    if (text.empty()) EditNote(noteIndex);
+    return noteIndex;
 }
 
 // ===== FORMATTING API =====
@@ -6222,6 +6320,20 @@ void UltraCanvasRichTextEdit::InsertInlineImageFromMemory(const std::string& nam
     if (readOnly) return;
     editor.InsertInlineImage(name, mimeType, data, altText);
     AfterEdit();
+}
+
+bool UltraCanvasRichTextEdit::InsertChart(const RichChart& chart, float widthPt, float heightPt) {
+    if (readOnly) return false;
+    // No wider than the text: a chart copied from a wide sheet is scaled down.
+    const RichPageSetup& page = editor.GetDocument()->page;
+    const float column = page.HasPage() ? page.widthPt - page.marginLeftPt - page.marginRightPt : 0.0f;
+    if (column > 40.0f && widthPt > column) {
+        heightPt *= column / widthPt;
+        widthPt = column;
+    }
+    if (editor.InsertChart(chart, widthPt, heightPt) < 0) return false;
+    AfterEdit();
+    return true;
 }
 
 void UltraCanvasRichTextEdit::InsertImageFromMemory(const std::string& name,
@@ -6995,6 +7107,42 @@ bool UltraCanvasRichTextEdit::GoToNextChange() {
     caretMoved = true;
     AfterSelectionChange();
     return true;
+}
+
+bool UltraCanvasRichTextEdit::GoToPreviousChange() {
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    // From the start of the selection: a change just gone to is selected,
+    // with the caret at its end.
+    RichDocRange change;
+    if (!editor.PreviousChange(editor.GetSelectionRange().start, change)) return false;
+    editor.SetSelection(change.start, change.end);
+    caretMoved = true;
+    AfterSelectionChange();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::GoToComment(int index) {
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    RichDocRange range;
+    if (!editor.CommentRange(index, range)) return false;
+    editor.SetSelection(range.start, range.end);
+    caretMoved = true;
+    AfterSelectionChange();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::GoToNextComment() {
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    int index = -1;
+    if (!editor.NextComment(editor.GetSelectionRange().start, true, index)) return false;
+    return GoToComment(index);
+}
+
+bool UltraCanvasRichTextEdit::GoToPreviousComment() {
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    int index = -1;
+    if (!editor.NextComment(editor.GetSelectionRange().start, false, index)) return false;
+    return GoToComment(index);
 }
 
 int UltraCanvasRichTextEdit::AddComment(const std::string& text) {

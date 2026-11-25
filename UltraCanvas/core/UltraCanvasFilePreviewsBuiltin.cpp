@@ -2,7 +2,7 @@
 // The preview providers of the formats compiled into the framework
 // (UltraCanvasFilePreviews.h): a PDF's first page, an e-book's cover, a
 // video's poster frame, a word-processing document's first page and its text,
-// a PowerPoint or OpenDocument deck's first slide and its text. Each
+// a PowerPoint or OpenDocument deck's first slide and its text, a workbook's first printed page. Each
 // was a function inside the Filer until the registry existed; it is the same
 // code, registered under the format's extensions instead of called by name.
 //
@@ -10,8 +10,10 @@
 // and a format that moves into a runtime module takes its provider with it
 // and registers it from the module's init.
 //
-// Version: 1.5.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) previews its first slide and its
+// Version: 1.6.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) previews its first slide and its
 //                  text; decks are read through UltraCanvasFileLoader::LoadPresentation
+// Version: 1.5.0 - templates preview as their documents (.ott, .dotx, .dotm); a workbook (.ods, .xlsx,
+//                  .ots, .xltx) draws its first printed page as its thumbnail
 // Version: 1.4.1 - an .odp deck's first slide is drawn with its pictures
 // Version: 1.4.0 - a deck's thumbnail is its first slide as drawn (RenderPptxSlide), not a page of
 //                  its outline
@@ -36,6 +38,10 @@
 #include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasPresentationOdp.h"
 #include "UltraCanvasFileLoader.h"   // LoadPresentation: .pptx, .odp and .ppt alike
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetPrint.h"
+#include "UltraCanvasSpreadsheetSheet.h"
+#include "UltraCanvasPathUtf8.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "Documents/eBook/EPUBEngine.h"
 #include "Documents/eBook/MOBIEngine.h"
@@ -46,6 +52,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <mutex>
 
 namespace UltraCanvas {
@@ -287,6 +294,48 @@ std::shared_ptr<UCPixmap> RenderDeckFirstSlide(const std::string& path, const Fi
     return RenderPptxSlide(deck, 0, DeviceEdge(static_cast<int>(std::lround(fitWidth)), r.scale));
 }
 
+// ===== Spreadsheets: the first printed page =====
+// The sheet on show cut into pages by its print settings, as its PDF is
+// (UltraCanvasSpreadsheetPrint.h), and the first page drawn fitted to the
+// tile: what a printout of it would look like, ink on white paper. A
+// workbook is read whole to draw it, so a large one keeps its type glyph.
+constexpr std::uintmax_t kSheetThumbnailMaxBytes = 2u * 1024u * 1024u;
+
+std::shared_ptr<UCPixmap> RenderSheetFirstPage(const std::string& path, const FileThumbnailRequest& r) {
+    if (r.width <= 0 || r.height <= 0) return nullptr;
+    std::error_code ec;
+    const std::uintmax_t bytes = std::filesystem::file_size(PathFromUtf8(path), ec);
+    if (ec || bytes > kSheetThumbnailMaxBytes) return nullptr;
+    if (!EnsureImageSubsystem()) return nullptr;
+
+    static std::mutex sheetMutex;
+    std::lock_guard<std::mutex> lock(sheetMutex);
+    auto grid = std::make_shared<UltraCanvasSpreadsheet>("SheetPagePreview", 0, 0, 1, 1);
+    if (!grid->LoadFromFile(path)) return nullptr;   // a protected one among them
+    const auto pages = CreateSpreadsheetPrintPages(*grid);
+    const SpreadsheetSheet* sheet = grid->GetActiveSheet();
+    if (!pages || !sheet || pages->Paginate() <= 0) return nullptr;
+    double pageW = 0, pageH = 0;
+    SpreadsheetPrintPages::PaperSizePoints(sheet->GetPrintSettings(), pageW, pageH);
+    if (pageW < 1.0 || pageH < 1.0) return nullptr;
+    const double fit = std::min(DeviceEdge(r.width, r.scale) / pageW, DeviceEdge(r.height, r.scale) / pageH);
+    const int w = std::max(1, static_cast<int>(std::lround(pageW * fit)));
+    const int h = std::max(1, static_cast<int>(std::lround(pageH * fit)));
+
+    auto pixmap = std::make_shared<UCPixmap>();
+    if (!pixmap->Init(w, h)) return nullptr;
+    std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(w, h), nullptr);
+    if (!ctx) return nullptr;
+    ctx->Clear(Colors::White);
+    ctx->PushState();
+    ctx->Scale(fit, fit);
+    pages->RenderPage(ctx.get(), 0);
+    ctx->PopState();
+    ctx->FlushToSurface(pixmap->GetSurface(), Point2Dd(0, 0));
+    pixmap->MarkDirty();
+    return pixmap;
+}
+
 } // namespace
 
 void RegisterBuiltinFilePreviewProviders() {
@@ -324,12 +373,12 @@ void RegisterBuiltinFilePreviewProviders() {
 
         FilePreviewProvider word;
         word.name = "word-processing";
-        word.documentExtensions = {"odt", "docx", "doc", "tex"};
+        word.documentExtensions = {"odt", "ott", "docx", "dotx", "dotm", "doc", "tex"};
         word.ReadDocument = ReadWordDocument;
         // The first page as a picture. Not a .tex: its page is what a TeX
         // engine would set, which this layout is not, so it keeps its outline
         // of title and sections.
-        word.thumbnailExtensions = {"odt", "docx", "doc"};
+        word.thumbnailExtensions = {"odt", "ott", "docx", "dotx", "dotm", "doc"};
         word.RenderThumbnail = RenderWordFirstPage;
         RegisterFilePreviewProvider(std::move(word));
 
@@ -341,6 +390,12 @@ void RegisterBuiltinFilePreviewProviders() {
         deck.thumbnailExtensions = deck.documentExtensions;
         deck.RenderThumbnail = RenderDeckFirstSlide;
         RegisterFilePreviewProvider(std::move(deck));
+
+        FilePreviewProvider sheet;
+        sheet.name = "spreadsheet";
+        sheet.thumbnailExtensions = {"ods", "ots", "xlsx", "xltx", "xltm"};
+        sheet.RenderThumbnail = RenderSheetFirstPage;
+        RegisterFilePreviewProvider(std::move(sheet));
     });
 }
 

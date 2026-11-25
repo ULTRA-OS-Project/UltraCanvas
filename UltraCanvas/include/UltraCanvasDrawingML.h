@@ -13,6 +13,8 @@
 // Elements are matched by their local name, whatever prefix a part binds the
 // namespace to (c:, a:, cdr:, ns0:...).
 //
+// Version: 1.3.0 - surface charts (c:surfaceChart, RichChart::Kind::Surface); a bubble series' size
+//                  formula (DrawingMLSeriesSource::sizes)
 // Version: 1.2.0 - a workbook's chart: its series' cell references (c:f) written with their cached values
 //                  and read back (DrawingMLSeriesSource, ReadDrawingMLChartSources)
 // Version: 1.1.0 - WriteDrawingMLChart: a RichChart as a chart part (moved from the .docx writer)
@@ -74,6 +76,7 @@ struct DrawingMLSeriesSource {
     std::string categories;
     std::string values;
     std::string xValues;
+    std::string sizes;          // a bubble series' sizes (c:bubbleSize)
 };
 
 // The chart part for `chart`, each series' data a reference to the cells

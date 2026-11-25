@@ -735,6 +735,10 @@ void TestFileLoader() {
     for (const MediaFormatInfo& format : UltraCanvasFileLoader::GetSupportedFormats(MediaFormatCategory::Document))
         if (format.extension == "ppt" && format.canLoad && !format.canSave) listed = true;
     Check(listed, "the format inventory lists .ppt, read only");
+    Check(UltraCanvasFileLoader::IsOfficeTemplate("deck.pot") && !UltraCanvasFileLoader::IsOfficeTemplate("deck.ppt") &&
+              UltraCanvasFileLoader::DetectOfficeDocumentKind("deck.pot") ==
+                  UltraCanvasFileLoader::OfficeDocumentKind::Presentation,
+          "a .pot is a presentation template, a .ppt is not");
     std::string saveError;
     Check(!UltraCanvasFileLoader::SavePresentation(deck, PathToUtf8(std::filesystem::temp_directory_path() / "x.ppt"),
                                                    saveError),

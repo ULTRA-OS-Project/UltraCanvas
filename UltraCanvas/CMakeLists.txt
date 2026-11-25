@@ -1191,6 +1191,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChartIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChartGallery.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGalleryPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetRulesDialogs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetComponent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
@@ -1269,6 +1271,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideDeckEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideEdit.cpp
+        # Copy and paste between cells, documents and slides (tables, text, the office clipboard's chart)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeClipboard.cpp
         # ... played as a show (transitions, timings) and the presenter view beside it
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideShowPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
@@ -1287,6 +1291,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        # Its document dialogs: page setup, paragraph, styles, table, picture,
+        # contents, caption, cross-reference, footnote, comments.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEditDialogs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp
         # DrawingML charts and colours, read alike from .docx, .pptx and .xlsx
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDrawingML.cpp

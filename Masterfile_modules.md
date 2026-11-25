@@ -852,8 +852,17 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ReadXlsxSheetCharts`, `WriteXlsxCharts`, `ReadOdsCharts`,
   `WriteOdsSheetCharts`). A sheet keeps them (`SpreadsheetSheet::GetCharts`);
   the grid inserts (`InsertChartFromSelection`), draws, selects, moves,
-  resizes, deletes and undoes them and prints them. In
-  `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`.
+  resizes, deletes and undoes them and prints them. Every chart of the
+  framework a block of cells can feed is a type (`SpreadsheetChartTypes`,
+  `MakeSpreadsheetChartOfType`, `SetSpreadsheetChartType`,
+  `SpreadsheetChartFitMessage`), picked in the chart gallery
+  (`ShowSpreadsheetChartGallery`, on `UltraCanvasGalleryPicker`; the grid's
+  `ShowInsertChartDialog` / `ShowChartTypeDialog`) and drawn by
+  `CreateRichChartElement` / `DrawRichChart` (`UltraCanvasRichDocumentChart.h`);
+  a kind a file format has no form for is kept as an UltraCanvas extension
+  beside a column chart. In
+  `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`,
+  `core/UltraCanvasSpreadsheetChartGallery.cpp`.
   See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument

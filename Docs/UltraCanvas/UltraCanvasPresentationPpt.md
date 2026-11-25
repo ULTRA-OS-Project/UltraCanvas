@@ -118,7 +118,9 @@ every build.
 ## Applications
 
 UltraOffice opens a `.ppt` in its slide editor; saving it asks for a new
-name, as for a `.doc` or an `.xls`, and writes `.pptx` or `.odp`.
+name, as for a `.doc` or an `.xls`, and writes `.pptx` or `.odp`. A `.pot`
+is a template (`UltraCanvasFileLoader::IsOfficeTemplate`, by its extension):
+it opens as a new, untitled deck, as a `.potx` or an `.otp` does.
 UltraViewer shows its slides (and its outline with O) and plays its show;
 UltraFiler previews its first slide. Their desktop entries list
 `application/vnd.ms-powerpoint`.

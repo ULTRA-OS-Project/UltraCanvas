@@ -4,6 +4,7 @@
 // workbook-scoped features (sheet management, named ranges, undo/redo).
 // Rendering, event handling, editing, navigation and clipboard live in
 // core/UltraCanvasSpreadsheet.cpp - this file MUST NOT redefine those.
+// Version: 1.3.0 - a change of sheet is announced to assistive technology (its name, its active cell)
 // Version: 1.2.0 - a conditional-format or validation step (RulesChange) is undone and redone
 // Version: 1.1.0 - charts: a chart step is undone and redone; a renamed sheet's charts follow it; a
 //                  chart stays selected only on its sheet
@@ -79,6 +80,9 @@ void UltraCanvasSpreadsheet::SetActiveSheet(int index) {
     EnsureSheetTabVisible(index);
     UpdateFormulaBar();
     RequestRedraw();
+    // Another table to a screen reader: its name, and its active cell.
+    NotifyAccessibility(AccessibilityEventType::NameChanged);
+    AnnounceAccessibleSelection();
 
     if (onSheetChange) onSheetChange(index);
 }

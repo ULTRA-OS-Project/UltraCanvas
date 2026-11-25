@@ -131,10 +131,10 @@ bool RoundTrip(const ModelDocument& source, const std::string& extension,
         const Vec3d sizeBefore = before.Size(), sizeAfter = after.Size();
         const Vec3d midBefore = before.Center(), midAfter = after.Center();
         const double scale = std::max({sizeBefore.x, sizeBefore.y, sizeBefore.z, 1e-9});
-        auto near = [&](double a, double b) { return std::abs(a - b) <= 1e-3 * scale; };
-        placed = near(sizeBefore.x, sizeAfter.x) && near(sizeBefore.y, sizeAfter.y) &&
-                 near(sizeBefore.z, sizeAfter.z) && near(midBefore.x, midAfter.x) &&
-                 near(midBefore.y, midAfter.y) && near(midBefore.z, midAfter.z);
+        auto closeTo = [&](double a, double b) { return std::abs(a - b) <= 1e-3 * scale; };
+        placed = closeTo(sizeBefore.x, sizeAfter.x) && closeTo(sizeBefore.y, sizeAfter.y) &&
+                 closeTo(sizeBefore.z, sizeAfter.z) && closeTo(midBefore.x, midAfter.x) &&
+                 closeTo(midBefore.y, midAfter.y) && closeTo(midBefore.z, midAfter.z);
     }
     Check(placed, label + ": the geometry keeps its size and position");
 

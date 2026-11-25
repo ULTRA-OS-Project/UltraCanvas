@@ -34,6 +34,8 @@
   - [8. Reading Cell Values Back](#8-reading-cell-values-back)
 - [Named ranges](#named-ranges)
 - [Formula language and functions](#formula-language-and-functions)
+- [Arrays and spills](#arrays-and-spills)
+- [Functions not yet supported](#functions-not-yet-supported)
 - [Column widths](#column-widths)
 - [Cell formatting menu](#cell-formatting-menu)
 - [Function menu](#function-menu)
@@ -48,6 +50,9 @@
 - [Best Practices](#best-practices)
 - [Printing and PDF](#printing-and-pdf)
 - [Charts](#charts)
+  - [Every chart type](#every-chart-type)
+- [Copy and paste with documents and slides](#copy-and-paste-with-documents-and-slides)
+- [Accessibility](#accessibility)
 - [See Also](#see-also)
 
 ## Overview
@@ -76,7 +81,7 @@
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references; Ctrl-drag copies instead, a double-click fills down beside the neighbouring data, Ctrl+D / Ctrl+R fill down / right (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
-- **Charts**: Columns, bars, lines, areas, pies, scatter and radar charts made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
+- **Charts**: every chart of the framework a block of cells can feed - columns, bars, lines, areas, pies, scatter, bubbles, waterfall, Sankey, Gantt, heatmap, ternary and forty more - picked in a chart gallery and made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
@@ -339,10 +344,15 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 ```cpp
 // Format chosen automatically from the file extension. `password` opens a
 // password-protected .xlsx (see UltraCanvasOfficeEncryption.md) or .ods
-// (UltraCanvasOdfEncryption.md); other formats ignore it.
+// (UltraCanvasOdfEncryption.md); other formats ignore it. The templates read
+// as their workbooks: .ots as an .ods, .xltx and .xltm as an .xlsx.
 bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-// With a password: a password-protected .xlsx; any other format with one is refused.
+// With a password: a password-protected .xlsx or .xltx; any other format with
+// one is refused. An .ots or .xltx is written as a template - the same
+// package under the template's media type; an .xltm is refused.
 bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
+// True for "ots", "xltx", "xltm" (an extension or a path), a free function.
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath);
 
 // `password` opens a password-protected .ods (LibreOffice's "Save with
 // password", ODF 1.2 and 1.4 - see UltraCanvasOdfEncryption.md).
@@ -848,7 +858,21 @@ sheet) is calculated first; a circular reference reads the value it has.
 | Date and time | `DATE`, `TIME`, `TODAY`, `NOW`, `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `WEEKDAY`, `EDATE`, `EOMONTH`, `DAYS`, `DATEDIF`, `DATEVALUE` |
 | Logical | `IF`, `IFS`, `IFERROR`, `IFNA`, `SWITCH`, `AND`, `OR`, `NOT`, `XOR`, `TRUE`, `FALSE` |
 | Information | `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISNONTEXT`, `ISLOGICAL`, `ISERROR`, `ISERR`, `ISNA`, `ISEVEN`, `ISODD`, `NA`, `N` |
-| Financial | `PMT`, `FV`, `PV`, `NPV` |
+| Dynamic arrays | `FILTER`, `SORT`, `SORTBY`, `UNIQUE`, `SEQUENCE`, `RANDARRAY`, `TRANSPOSE`, `XLOOKUP`, `XMATCH` |
+| LAMBDA | `LET`, `LAMBDA`, `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL`, `MAKEARRAY` |
+| Financial | `PMT`, `IPMT`, `PPMT`, `CUMIPMT`, `CUMPRINC`, `FV`, `PV`, `NPV`, `XNPV`, `NPER`, `RATE`, `IRR`, `XIRR`, `MIRR`, `EFFECT`, `NOMINAL`, `SLN`, `SYD`, `DB`, `DDB`, `VDB` |
+
+The financial functions follow Excel and LibreOffice: money paid out is
+negative, `type` 1 pays at the start of a period. `RATE` and `IRR` solve by
+Newton's method from their guess (10% when left out) to within 1E-7 in at
+most 20 steps, `XIRR` to within 1E-8 in at most 100 (Excel's documented
+limits), and give `#NUM!` when they do not converge, as when the cash flows
+never change sign. `XNPV` and `XIRR` count years of 365 days from the first
+date. `DB` rounds its rate to three decimals, `VDB` switches to straight-line
+depreciation when that is larger unless `no_switch` is TRUE.
+
+An argument can be left out where the function has a default:
+`=SEQUENCE(3,,10)`, `=XLOOKUP(A1,B1:B99,C1:C99,,-1)`.
 
 Text functions count characters, not bytes: `=LEN("ขาย")` is 3. The
 criteria of `SUMIF`, `COUNTIF` and their kin are Excel's: a value (`30`,
@@ -874,6 +898,104 @@ rowCount.implementation = [](const std::vector<FormulaValue>&,
 };
 engine->GetFunctionLibrary().RegisterFunction(rowCount);
 ```
+
+A function of single values that should take arrays element by element, as
+the built-in `ABS` or `IF` do, sets `FunctionDefinition::elementWise`.
+
+## Arrays and spills
+
+A range is a value of its own: `=A1:A3*10` is three values, `=SUM(A1:A5*B1:B5)`
+multiplies element by element before it adds, and `=IF(A1:A5>2,"big","small")`
+decides five times. An array constant is written `{1,2;3,4}` - commas between
+columns, semicolons between rows - and holds numbers, text, TRUE / FALSE and
+errors. Arrays of different sizes meet as in Excel: a single row or column
+stretches over the other's rows or columns, and positions only one of them
+reaches are `#N/A`. `FormulaValue::IsArray()`, `ArrayRows()`, `ArrayCols()`
+and `ArrayAt(r, c)` read an array result; a function implementation returns
+one with `FormulaValue::Array(rows, cols, values)`.
+
+**Spills.** A formula whose result is an array fills the cells to its right
+and below - it *spills*, as in Excel 365. The formula stays in its own cell
+(the anchor); every other cell holds a *spilled value*: a plain value with no
+formula, which shows and is read like any other (`IsSpilledValue()`,
+`GetSpillAnchor()`). When a cell in the way is not empty, or is merged, the
+anchor shows `#SPILL!` and spills nothing; clearing the cell lets it spill
+again. Typing into a spilled cell makes it an ordinary cell, and so blocks the
+spill. A spill follows its source: when the result grows, shrinks or changes,
+the cells it covers change with it, the ones it leaves are emptied, and every
+formula reading them is calculated again.
+
+`A1#` is the whole array spilled from A1 (`=SUM(B2#)`, `=ROWS(B2#)`,
+`='Data'.A1#`); it is `#REF!` when A1 spills nothing. `@` takes one value
+where an array would come: `=@A1:A10` is the cell of A1:A10 on the formula's
+own row (`#VALUE!` when there is none).
+
+**Fixed array formulas** - what Ctrl+Shift+Enter enters in Excel - fill a range
+chosen beforehand, whatever is in it: `SpreadsheetSheet::SetArrayFormula(range,
+formula)`. A result smaller than the range repeats a single row or column, and
+is `#N/A` beyond that; a single value fills the range. In the grid,
+Ctrl+Shift+Enter on a formula being typed enters it this way over the
+selection (an undo step).
+
+**LET and LAMBDA.** `=LET(rate,B1/12,n,B2*12,PMT(rate,n,B3))` names values
+for the calculation. `=LAMBDA(x,x*x)(4)` is 16; a LAMBDA named with LET is
+called by its name (`=LET(sq,LAMBDA(n,n*n),sq(3)+sq(4))`), and `MAP`,
+`REDUCE`, `SCAN`, `BYROW`, `BYCOL` and `MAKEARRAY` call one for each element,
+row or column.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+SpreadsheetSheet* sheet = grid->GetActiveSheet();
+sheet->SetCellFormula(0, 3, "=SORT(FILTER(A2:B50,B2:B50>100),2,-1)");   // D1 spills
+sheet->SetCellFormula(0, 6, "=ROWS(D1#)");                             // how many rows it spilled
+sheet->SetArrayFormula(CellRange(1, 8, 49, 8), "=B2:B50*1.2");         // I2:I50, fixed
+grid->Recalculate();
+
+const SpreadsheetCell* anchor = sheet->GetCellIfExists(0, 3);
+if (anchor && anchor->IsSpillBlocked()) {
+    // #SPILL!: a cell of D1 .. (anchor->GetArrayRows() x GetArrayCols()) is taken
+}
+```
+
+**What the formats keep.** In `.xlsx` an array formula is
+`<f t="array" ref="D1:E7">`; a dynamic one also carries the cell metadata
+`cm="1"` that `xl/metadata.xml` marks as a dynamic array (`XLDAPR`,
+`fDynamic="1"`), so Excel keeps it a spill, and one without it is a fixed
+array. The spilled cells are written as plain values, as Excel writes them.
+`A1#` is stored as `_xlfn.ANCHORARRAY(A1)`, `@` as `_xlfn.SINGLE(...)`, the
+newer functions with their prefixes (`_xlfn._xlws.FILTER`, `_xlfn.SEQUENCE`)
+and LET's names with `_xlpm.`. In `.ods` an array formula spans its block with
+`table:number-matrix-columns-spanned` / `-rows-spanned`. OpenDocument has no
+dynamic spill, so a spill is saved as an array over the block it covers now
+(and reopens as a fixed array), and `A1#` as that block's range; Excel's
+functions that OpenFormula does not define are written in their namespace,
+`COM.MICROSOFT.SEQUENCE`, as LibreOffice writes them. A formula read from a
+file that is not marked as an array - in `.xlsx`, `.ods` or `.xls` - is worth
+one value, as Excel and LibreOffice read it: a range where one value is
+expected gives the cell on the formula's row or column
+(`FormulaArrayMode::SingleValue`), and it never spills.
+
+## Functions not yet supported
+
+The common Excel functions the engine does not have yet - a formula using one
+shows `#NAME?` - for planning the next round:
+
+| Category | Missing |
+|---|---|
+| Lookup and reference | `ROW`, `COLUMN`, `OFFSET`, `INDIRECT`, `ADDRESS`, `AREAS`, `HYPERLINK`, `FORMULATEXT`, `GETPIVOTDATA`, `HSTACK`, `VSTACK`, `TAKE`, `DROP`, `CHOOSECOLS`, `CHOOSEROWS`, `TOCOL`, `TOROW`, `WRAPROWS`, `WRAPCOLS`, `EXPAND` |
+| Math | `AGGREGATE`, `CEILING.MATH`, `CEILING.PRECISE`, `FLOOR.MATH`, `FLOOR.PRECISE`, `ISO.CEILING`, `MMULT`, `MDETERM`, `MINVERSE`, `MUNIT`, `SUMX2MY2`, `SUMX2PY2`, `SUMXMY2`, `SERIESSUM`, `PERMUT`, `PERMUTATIONA`, `COMBINA`, `MULTINOMIAL`, `FACTDOUBLE`, `SQRTPI`, `ROMAN`, `ARABIC`, `BASE`, `DECIMAL`, `ACOSH`, `ASINH`, `ATANH`, `ACOT`, `ACOTH`, `COT`, `COTH`, `CSC`, `CSCH`, `SEC`, `SECH` |
+| Statistical | `AVERAGEA`, `MAXA`, `MINA`, `STDEVA`, `STDEVPA`, `VARA`, `VARPA`, `AVEDEV`, `DEVSQ`, `GEOMEAN`, `HARMEAN`, `TRIMMEAN`, `CORREL`, `PEARSON`, `RSQ`, `COVAR`, `COVARIANCE.P`, `COVARIANCE.S`, `SLOPE`, `INTERCEPT`, `STEYX`, `FORECAST`, `FORECAST.LINEAR`, `TREND`, `GROWTH`, `LINEST`, `LOGEST`, `FREQUENCY`, `KURT`, `SKEW`, `SKEW.P`, `PERCENTILE.INC`, `PERCENTILE.EXC`, `QUARTILE.INC`, `QUARTILE.EXC`, `PERCENTRANK` (and `.INC`, `.EXC`), `RANK.AVG`, `MODE.MULT`, `STANDARDIZE`, `PROB`, `FISHER`, `FISHERINV`, `GAMMA`, `GAMMALN`; the distributions and tests: `NORM.DIST`, `NORM.INV`, `NORM.S.DIST`, `NORM.S.INV` (and `NORMDIST`, `NORMINV`, `NORMSDIST`, `NORMSINV`), `T.DIST` (`.2T`, `.RT`), `T.INV` (`.2T`), `T.TEST`, `CHISQ.DIST`, `CHISQ.INV`, `CHISQ.TEST`, `F.DIST`, `F.INV`, `F.TEST`, `BINOM.DIST`, `BINOM.INV`, `POISSON.DIST`, `EXPON.DIST`, `GAMMA.DIST`, `GAMMA.INV`, `BETA.DIST`, `BETA.INV`, `LOGNORM.DIST`, `LOGNORM.INV`, `WEIBULL.DIST`, `CONFIDENCE.NORM`, `CONFIDENCE.T`, `Z.TEST` |
+| Text | `TEXTBEFORE`, `TEXTAFTER`, `TEXTSPLIT`, `FIXED`, `DOLLAR`, `NUMBERVALUE`, `UNICHAR`, `UNICODE`, `ARRAYTOTEXT`, `VALUETOTEXT`, `LENB`, `LEFTB` |
+| Date and time | `NETWORKDAYS`, `NETWORKDAYS.INTL`, `WORKDAY`, `WORKDAY.INTL`, `WEEKNUM`, `ISOWEEKNUM`, `YEARFRAC`, `DAYS360`, `TIMEVALUE` |
+| Information | `ISREF`, `ISFORMULA`, `ISOMITTED`, `TYPE`, `ERROR.TYPE`, `CELL`, `INFO`, `SHEET`, `SHEETS` |
+| Financial (securities) | `ACCRINT`, `ACCRINTM`, `AMORDEGRC`, `AMORLINC`, `COUPDAYBS`, `COUPDAYS`, `COUPDAYSNC`, `COUPNCD`, `COUPNUM`, `COUPPCD`, `DISC`, `DOLLARDE`, `DOLLARFR`, `DURATION`, `MDURATION`, `FVSCHEDULE`, `INTRATE`, `ISPMT`, `ODDFPRICE`, `ODDFYIELD`, `ODDLPRICE`, `ODDLYIELD`, `PDURATION`, `PRICE`, `PRICEDISC`, `PRICEMAT`, `RECEIVED`, `RRI`, `TBILLEQ`, `TBILLPRICE`, `TBILLYIELD`, `YIELD`, `YIELDDISC`, `YIELDMAT` |
+| Engineering | `BIN2DEC`, `BIN2HEX`, `BIN2OCT`, `DEC2BIN`, `DEC2HEX`, `DEC2OCT`, `HEX2BIN`, `HEX2DEC`, `HEX2OCT`, `OCT2BIN`, `OCT2DEC`, `OCT2HEX`, `CONVERT`, `DELTA`, `GESTEP`, `ERF`, `ERFC`, `BITAND`, `BITOR`, `BITXOR`, `BITLSHIFT`, `BITRSHIFT`, `BESSELJ`, the complex-number functions (`COMPLEX`, `IMABS`, `IMREAL`, `IMAGINARY`, `IMSUM`, `IMPRODUCT` ...) |
+| Database | `DSUM`, `DAVERAGE`, `DCOUNT`, `DCOUNTA`, `DGET`, `DMAX`, `DMIN`, `DPRODUCT`, `DSTDEV`, `DVAR` |
+| Newest (Microsoft 365) | `GROUPBY`, `PIVOTBY`, `PERCENTOF`, `TRIMRANGE`, `REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE`, `IMAGE`; web: `ENCODEURL`, `FILTERXML`, `WEBSERVICE` |
+
+`ROW`, `COLUMN`, `OFFSET` and `INDIRECT` are the ones most worth doing next:
+they are common in existing workbooks and need the formula's own position or
+a reference as a value, which the evaluator does not hand to functions yet.
 
 ## Column widths
 
@@ -1481,22 +1603,17 @@ is anchored to cells - its top-left corner some pixels into one cell, its
 bottom-right into another, as .xlsx's two-cell anchor keeps it - and holds a
 `RichChart`, the chart model documents and decks use, whose series are
 ranges of cells: each series' name, its categories (a scatter series' x
-values) and its values (`SpreadsheetChartSeries`, ranges as
-`SpreadsheetChartRange`: a sheet's name and a `CellRange`). It is drawn by
-the chart engine (`DrawRichDocumentChart`) over the cells, moves with them
+values), its values and - a bubble series - its sizes
+(`SpreadsheetChartSeries`, ranges as `SpreadsheetChartRange`: a sheet's name
+and a `CellRange`). It is drawn by its kind's chart element (`DrawRichChart`:
+the chart engine's, or a funnel, a Sankey diagram, a Gantt chart ...) over
+the cells, moves with them
 when the grid scrolls or rows and columns are inserted above or left of it,
 and prints where it stands.
 
-| Kind (`RichChart::Kind`) | Offered by *Insert chart* |
-|---|---|
-| `Column`, `Bar` (side by side or `stacked`) | Columns, Columns stacked, Bars, Bars stacked |
-| `Line`, `Area` (or stacked) | Line, Area, Area stacked |
-| `Pie`, `Doughnut` | the first series, its values as slices named by the categories |
-| `Scatter` | each series' points over the first line of numbers as x |
-| `Radar` | the categories as spokes |
-
-A file's bubble and stock charts are read and drawn too, from the values the
-file keeps with them.
+The kinds, and the columns each reads, are in [Every chart type](#every-chart-type)
+below. A file's bubble and stock charts written by another program are read
+and drawn too, from the values the file keeps with them.
 
 `InsertChartFromSelection(kind, stacked, seriesIn)` makes one from the
 selection as a spreadsheet does (`MakeSpreadsheetChart`): a first row of
@@ -1564,6 +1681,150 @@ grid->InsertChart(pie);
 SpreadsheetChartRange range;
 SpreadsheetChartRange::FromExcel("'Sales Data'!$B$2:$B$7", range);
 std::string odf = range.ToOdf();   // 'Sales Data'.$B$2:.$B$7
+```
+
+### Every chart type
+
+Every chart of the framework that a block of cells can feed is a type of
+the chart gallery (`SpreadsheetChartTypes()`, 52 of them in nine
+categories), each a `RichChart::Kind` with a look (stacked, 100 %, filled,
+joined). The grid's *Insert* opens the gallery (`ShowInsertChartDialog`),
+and a chart's type changes through it (`ShowChartTypeDialog`, and the *Type*
+button of the properties dialog). Each tile is a picture of the selection
+drawn by the chart itself - or, where the selection does not fit the type,
+of a small sample, faded, with the reason (`SpreadsheetChartFitMessage`:
+"A bubble chart needs three columns of numbers: x, y and size."). A click
+or the arrow keys pick a tile, Enter or a double click takes it; the
+category chips scroll to their section. Every kind is drawn by one factory,
+`CreateRichChartElement` (`UltraCanvasRichDocumentChart.h`), so a document
+or a slide holding the same `RichChart` draws it too.
+
+The columns each type reads, left to right, after an optional first row of
+series names (the names column is the categories; a first column of dates
+counts as names for the kinds that do not plot dates):
+
+| Category | Type (`id`) | Kind | Reads |
+|---|---|---|---|
+| Column and bar | Columns, stacked, 100 % (`column`, `column-stacked`, `column-percent`) | `Column` | names, one or more columns of numbers |
+| | Bars, stacked, 100 % (`bar`, `bar-stacked`, `bar-percent`) | `Bar` | as columns |
+| | Diverging bars (`diverging-bar`) | `DivergingBar` | names, the answers' counts from the most negative to the most positive (an odd middle column is neutral) |
+| | Population pyramid (`population-pyramid`) | `PopulationPyramid` | age groups, left, right |
+| | Dumbbell (`dumbbell`) | `Dumbbell` | names, two (or more) columns joined per row |
+| | Mekko (`mekko`) | `Mekko` | names (the columns), a column per segment |
+| Line and area | Line (`line`) | `Line` | names, one or more columns |
+| | Area, stacked, 100 % (`area`, `area-stacked`, `area-percent`) | `Area` | names, one or more columns |
+| | Cumulative flow (`cumulative-flow`) | `CumulativeFlow` | periods, a column per stage |
+| | Nested areas (`nested-area`) | `NestedArea` | names, values |
+| Pie and circular | Pie, Doughnut (`pie`, `doughnut`) | `Pie`, `Doughnut` | names, values |
+| | Radar, filled (`radar`, `radar-filled`) | `Radar` | at least three names (the spokes), one or more columns |
+| | Polar (`polar`) | `Polar` | at least three names, one or more columns |
+| | Radial bars (`radial-bar`) | `RadialBar` | names, one or more columns |
+| | Progress rings (`circular-progress`) | `CircularProgress` | names, values (out of 100, or out of a second column) |
+| | Gauge (`gauge`) | `Gauge` | the first value (a second column's first value is the maximum) |
+| Scatter and bubble | Scatter, with lines (`scatter`, `scatter-lines`) | `Scatter` | x, then one or more columns of y |
+| | Bubble (`bubble`) | `Bubble` | x, y, size (more series: y and size pairs) |
+| | Quadrant (`quadrant`) | `Quadrant` | names, x, y |
+| | Importance-performance (`importance-performance`) | `ImportancePerformance` | names, importance, performance (Slack's nine-point scales, 1 best) |
+| | Ternary (`ternary`) | `Ternary` | names, three parts (a, b, c) |
+| | Hexbin (`hexbin`) | `Hexbin` | x, y |
+| | 3D scatter (`scatter-3d`) | `Scatter3D` | names, x, y, z |
+| Statistical | Histogram (`histogram`) | `Histogram` | raw values, a column per group (`RichChart::bins`, 0 = Sturges' rule) |
+| | Box and whisker (`box-whisker`) | `BoxWhisker` | raw values, a column per group - or names and one column, grouped by name |
+| | Jitter (`jitter`) | `Jitter` | as box and whisker |
+| | Ridgeline (`ridgeline`) | `Ridgeline` | as box and whisker |
+| Financial | Stock (`stock`) | `Stock` | dates or names, (open,) high, low, close |
+| | Waterfall (`waterfall`) | `Waterfall` | names, changes (a name starting with *Total* or *Subtotal* stands on zero) |
+| Flow and hierarchy | Funnel (`funnel`) | `Funnel` | stages, values |
+| | Pyramid (`pyramid`) | `Pyramid` | levels, values |
+| | Sankey (`sankey`) | `Sankey` | sources (names), targets (a column of words), amounts |
+| | Chord (`chord`) | `Chord` | a square table: the same names down the side and across the top |
+| | Treemap, Sunburst (`treemap`, `sunburst`) | `Treemap`, `Sunburst` | names, columns of words for deeper levels, values |
+| | Gantt (`gantt`) | `Gantt` | tasks, start dates, end dates (an end before its start is a number of days) |
+| | Timeline (`timeline`) | `Timeline` | names, dates (and end dates for spans) |
+| Matrix and maps | Heatmap (`heatmap`) | `Heatmap` | names down, a column of numbers per column |
+| | Calendar heatmap (`calendar-heatmap`) | `CalendarHeatmap` | dates, values |
+| | Contour, Surface (`contour`, `surface`) | `Contour`, `Surface` | a table of numbers, at least two rows and two columns |
+| Other | Word cloud (`word-cloud`) | `WordCloud` | words, weights |
+| | Parliament (`parliament`) | `Parliament` | parties, seats |
+
+Left out, because no table of cells feeds them: the Kanban board (a board
+of cards worked on, not a chart of numbers), the circular infographic (rings
+of hand-placed cells and icons), the spectrogram (audio), the image
+histogram `UltraCanvasHistogramChart` (a picture's pixel counts - the
+histogram type bins cells instead), the GL contour surface (it needs a GL
+context; the surface type draws the cairo one), the parallel-coordinates
+chart (a runtime-loaded module, not in the core the spreadsheet links), the
+legacy chart elements the engine replaces (line, bar, scatter, area, pie,
+radar, financial, waterfall, dumbbell, diverging, Mekko, polar, radial bar,
+population) and the diagrams that hold structure rather than numbers (flow
+charts, UML, mind maps, Git graphs, fishbone, SWOT, PERT, Venn, timeline
+diagram, ticker board).
+
+<!-- doc-check: SpreadsheetSheet& sheet; std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+// Sources in A2:A9, targets in B2:B9, amounts in C2:C9, names in row 1.
+const int sankey = SpreadsheetChartTypeById("sankey");
+std::string problem;
+if (grid->InsertChartOfTypeFromSelection(static_cast<size_t>(sankey), &problem) < 0) {
+    // problem: "A Sankey diagram needs a column of sources, ..."
+}
+
+// Made by hand, checked, inserted; its type changed later.
+SpreadsheetChart gantt = MakeSpreadsheetChartOfType(sheet, CellRange(0, 4, 8, 6),
+                                                    static_cast<size_t>(SpreadsheetChartTypeById("gantt")));
+if (SpreadsheetChartFitMessage(gantt).empty()) grid->InsertChart(gantt);
+SetSpreadsheetChartType(gantt, sheet, static_cast<size_t>(SpreadsheetChartTypeById("timeline")));
+
+grid->ShowInsertChartDialog();   // the gallery over the selection
+```
+
+A type a format has no form for is kept as an UltraCanvas extension beside a
+column chart of its numbers - what Excel and LibreOffice show - and reading
+puts the real kind back:
+
+| Kinds | .xlsx | .ods |
+|---|---|---|
+| Column, Bar, Line, Area, Pie, Doughnut, Scatter, Radar, Stock | `c:barChart` ... `c:stockChart` | `chart:class` `bar` ... `stock` |
+| Bubble | `c:bubbleChart`, sizes as `c:bubbleSize` references | a `chart:bar` and the extension (ODF's bubble series cannot name our x, y and size ranges) |
+| Surface, Contour | `c:surface3DChart`, `c:surfaceChart` | a `chart:bar` and the extension |
+| every other kind | a `c:barChart` of its numbers, and in the chart part's `c:extLst` a `c:ext uri="{8E1F6B2A-4C3D-4A57-9B0E-2D6C71A5F3B8}"` holding `ucc:chart kind="sankey" stacked percent filled bins data-range series-in-rows` with a `ucc:series name categories values sizes` per series (Excel's range spelling) | a `chart:bar` of its numbers, and as the last child of `chart:chart` an `ucchart:chart` in the namespace `http://schemas.ultracanvas.org/spreadsheet/chart/2026`, the same attributes and series in ODF's range spelling |
+
+Excel's own 2016 kinds (`cx:` waterfall, histogram, funnel, box and
+whisker, treemap, sunburst) are not written as `cx:` parts: those take the
+extension route too, so Excel shows their columns.
+
+## Copy and paste with documents and slides
+
+`Copy()` puts the selected cells on the system clipboard as an HTML table and
+tab-separated text: a document (`UltraCanvasRichTextEdit`) pastes them as a
+table, a slide (`UltraCanvasSlideEdit`) as a table shape. With a chart
+selected (`SelectChart`), `Copy()` and `Cut()` take the chart instead: it is
+kept on the office clipboard (`CopyChartToClipboard`,
+`UltraCanvasOfficeClipboard.h`) and pastes into a document or onto a slide as
+a chart holding a static copy of its data, while other programs get a picture
+of it (HTML) and its data as text.
+
+```cpp
+grid->SelectChart(0);
+grid->Copy();                                   // the chart, not the cells
+RichChart chart;
+int width = 0, height = 0;
+bool held = GetClipboardChart(chart, width, height);   // true until something else is copied
+```
+
+## Accessibility
+
+The grid is a table to a screen reader, named by its sheet. Its rows and
+cells are parts, and it answers as a table (`GetAccessibleTableInterface()`):
+a cell is named by its address and the value it shows ("B3 42"), the active
+cell is the focused cell and the grid's value text, and a move of it or of the
+selection is announced (`SelectionChanged`, with the cell as the event's
+`part`). See
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#parts-an-element-draws-itself).
+
+```cpp
+IAccessibleTable* table = grid->GetAccessibleTableInterface();
+std::string cell = table->GetCell(2, 1).name;   // "B3 42"
 ```
 
 ## See Also

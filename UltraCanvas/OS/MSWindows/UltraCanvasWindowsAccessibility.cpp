@@ -12,8 +12,9 @@
 //
 // UIAutomationCore.dll is loaded at run time, so there is no import library
 // to link and nothing changes for a process no client ever asks.
+// Version: 1.2.0 - the roles TableRow, TableCell (data items) and Canvas (a pane)
 // Version: 1.1.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindowsAccessibility.h"
@@ -1054,6 +1055,9 @@ private:
             case AccessibleRole::TabList:     return UIA_TabControlTypeId;
             case AccessibleRole::Tree:        return UIA_TreeControlTypeId;
             case AccessibleRole::Group:       return UIA_GroupControlTypeId;
+            case AccessibleRole::TableRow:
+            case AccessibleRole::TableCell:   return UIA_DataItemControlTypeId;
+            case AccessibleRole::Canvas:      return UIA_PaneControlTypeId;
             case AccessibleRole::Unknown:   break;
         }
         return AB::Children(element).empty() ? UIA_CustomControlTypeId : UIA_PaneControlTypeId;
