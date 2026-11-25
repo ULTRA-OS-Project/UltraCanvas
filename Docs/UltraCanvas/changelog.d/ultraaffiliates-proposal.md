@@ -13,5 +13,7 @@
   binding is suspended while the customer's account is closed, restored on
   reactivation and ends with the account's erasure. The proposal also covers
   commissions from pending to paid, self-billed credit notes, fraud
-  defences, the questions for a lawyer, four phases and ten decisions for
-  the owner.
+  defences, the questions for a lawyer, four phases, eleven decisions for
+  the owner, and a record of what was checked against the code and against
+  outside sources (the portal has no account handle, no account closure and
+  no codes in its catalog yet).
