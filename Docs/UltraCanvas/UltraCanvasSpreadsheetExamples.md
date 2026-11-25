@@ -51,6 +51,7 @@
 - [Printing and PDF](#printing-and-pdf)
 - [Charts](#charts)
   - [Every chart type](#every-chart-type)
+- [Pivot tables](#pivot-tables)
 - [Copy and paste with documents and slides](#copy-and-paste-with-documents-and-slides)
 - [Accessibility](#accessibility)
 - [See Also](#see-also)
@@ -82,6 +83,7 @@
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
 - **Charts**: every chart of the framework a block of cells can feed - columns, bars, lines, areas, pies, scatter, bubbles, waterfall, Sankey, Gantt, heatmap, ternary and forty more - picked in a chart gallery and made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
+- **Pivot tables**: a block of cells summarised by its fields - rows, columns, filters and values with sums, counts, averages, min, max, products, standard deviations and variances, shares of the totals, subtotals and grand totals, the items' order and filters, dates grouped by year, quarter or month and numbers by a step; read-only cells refreshed when the source changes, drilled into with a double-click, built in a field list, kept in `.xlsx` and `.ods` (see [Pivot tables](#pivot-tables))
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
@@ -1792,6 +1794,119 @@ puts the real kind back:
 Excel's own 2016 kinds (`cx:` waterfall, histogram, funnel, box and
 whisker, treemap, sunburst) are not written as `cx:` parts: those take the
 extension route too, so Excel shows their columns.
+
+## Pivot tables
+
+A pivot table summarises a block of cells whose first row names its
+columns - the fields (`UltraCanvasSpreadsheetPivot.h`). A
+`SpreadsheetPivotTable` names its source (`sourceSheet`, `sourceRange`, or a
+named range in `sourceName`), the cell its table starts at (`target`) and its
+fields, each a column of the source:
+
+- `rowFields` and `columnFields` (`PivotField`) put the distinct items of
+  their columns down the side and across the top, nested in the order given;
+  `filterFields` stand above the table and leave records out;
+- `valueFields` (`PivotValueField`) summarise a column for every combination:
+  `PivotSummary::Sum`, `Count` (cells with anything in them), `Average`,
+  `Max`, `Min`, `Product`, `CountNumbers`, `StdDev` / `StdDevP`, `Var` /
+  `VarP`, shown as they are or as a share (`PivotShowAs::PercentOfTotal`,
+  `PercentOfRow`, `PercentOfColumn`). Several value fields stand side by side
+  under a *Values* level, or one under the other with `valuesInRows`.
+- Each axis field has its order (`descending`; numbers and dates by value,
+  before texts), its `subtotals` after each item's group (the innermost
+  field has none), the items it leaves out (`hiddenItems`, by
+  `PivotItem::key`) and a grouping: dates by `PivotGroupBy::Years`,
+  `Quarters` or `Months` (a month gathers every year's), numbers by
+  `NumberRange` of a `step`, from an automatic or a set `start` to an
+  `end`. `grandTotalRow` and `grandTotalColumn` turn the totals at the
+  bottom and at the right on or off.
+
+`ComputeSpreadsheetPivot` lays the summary out as cells (`PivotOutput`):
+the filters, a blank row, the caption and the column fields' names, the
+column items (each label once over its group, `"<item> Total"` columns,
+*Grand Total*), the row fields' names, then a row per item with its
+subtotal and grand total rows. `RefreshSpreadsheetPivot` writes it onto a
+sheet at `target`: the cells it filled before are cleared, names, items and
+totals take a header style (bold, a light band, a rule over the totals) and
+values the source column's number format (a share as a percentage, a count
+as a plain number). `SpreadsheetPivotDrillDownRows` gives the source rows
+behind a value or a total.
+
+On the grid a sheet keeps the pivots that stand on it
+(`SpreadsheetSheet::GetPivotTables`). `InsertPivotTable(pivot, sheetIndex)`
+writes one (onto a new sheet *Pivot* with -1), `SetPivotTable` changes its
+fields and writes it again, `RemovePivotTable` clears it, `RefreshPivotTable`
+and `RefreshPivotTables` compute it from its source again. Its cells are
+read-only: typing, pasting, cutting or clearing them is refused with a
+message on `onStatusChange`. When a cell of a pivot's source changes, the
+grid refreshes the pivot before it draws next and before it saves
+(`RefreshChangedPivotTables`). A double-click on a value or a total opens a
+new sheet of the source rows behind it (`DrillDownPivotCell`, or
+`onPivotDrillDown`); on any other cell of a pivot, its field list.
+`ShowInsertPivotTableDialog` builds a pivot from the selection in the field
+list (`ShowSpreadsheetPivotDialog`: the source, a new sheet or a cell, and
+the fields), `ShowPivotTableDialog` edits one, `ShowPivotSourceDialog` asks
+for its source. The field list is an element of its own,
+`UltraCanvasSpreadsheetPivotPanel` (`UltraCanvasSpreadsheetPivotPanel.h`),
+which an application can dock beside the grid: the fields, the four areas,
+add / remove / move buttons, the picked field's summary, show-as, order,
+grouping, subtotals and items, the totals.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetPivot.h"
+
+// Region in A, product in B, date in C, sales in D, their names in row 1.
+SpreadsheetSheet* data = grid->GetSheet(0);
+SpreadsheetPivotTable pivot = MakeSpreadsheetPivot(*data, CellRange(0, 0, 40, 3));
+pivot.rowFields.push_back(PivotField{0});                    // Region down the side
+PivotField year{2};
+year.grouping.by = PivotGroupBy::Years;                     // the dates by year
+pivot.columnFields.push_back(year);                          // across the top
+pivot.valueFields.push_back(MakePivotValueField(*data, pivot.sourceRange, 3));   // Sum of Sales
+PivotValueField share{3};
+share.showAs = PivotShowAs::PercentOfTotal;
+pivot.valueFields.push_back(share);
+std::string problem;
+int index = grid->InsertPivotTable(pivot, -1, &problem);    // onto a new sheet "Pivot"
+
+data->SetCellValue(5, 3, 120.0);       // the pivot follows the next time the grid draws
+grid->RefreshChangedPivotTables();     // ...or now
+
+SpreadsheetPivotTable changed = grid->GetActiveSheet()->GetPivotTables()[0];
+changed.rowFields[0].hiddenItems.push_back("North");         // leave North out
+changed.grandTotalColumn = false;
+grid->SetPivotTable(grid->GetActiveSheetIndex(), index, changed);
+```
+
+A pivot computed without a grid - into any sheet:
+
+<!-- doc-check: SpreadsheetSheet& data; SpreadsheetSheet& report; -->
+```cpp
+SpreadsheetPivotTable pivot = MakeSpreadsheetPivot(data, CellRange(0, 0, 40, 3));
+pivot.rowFields.push_back(PivotField{1});
+pivot.valueFields.push_back(PivotValueField{3, PivotSummary::Average});
+PivotOutput out;
+if (ComputeSpreadsheetPivot(pivot, data, out)) {
+    for (const PivotOutputCell& cell : out.cells) {
+        // cell.row, cell.col from the target; cell.kind, cell.text or cell.number
+    }
+}
+pivot.target = CellAddress(0, 0);
+RefreshSpreadsheetPivot(pivot, report, [&data](const std::string&) { return &data; });
+```
+
+| Format | How a pivot is kept |
+|---|---|
+| .xlsx | `xl/pivotCache/pivotCacheDefinitionN.xml` (the source as a `worksheetSource`, a `cacheField` per column with its distinct values and, for a grouped field, its `fieldGroup` / `rangePr`), `pivotCacheRecordsN.xml` (each source row as indexes into them) and `xl/pivotTables/pivotTableN.xml` (the `location`, a `pivotField` per column with its axis, items, hidden items, order and subtotal, `rowFields`, `colFields`, `pageFields`, `dataFields` with `subtotal` and `showDataAs`); the workbook lists the caches in `<pivotCaches>`, the worksheet relates to its tables. The cache says `refreshOnLoad`, so Excel computes the table again when it opens it; the pivot's cells are in the sheet for any program that does not |
+| .ods | a `table:data-pilot-table` in the workbook's `table:data-pilot-tables`: `table:target-range-address`, `table:grand-total`, a `table:source-cell-range` and a `table:data-pilot-field` per field (`table:orientation` row, column, page or data, `table:function`, `table:data-pilot-level` with its subtotals, hidden `table:data-pilot-member`s and sort order, `table:data-pilot-groups` for a grouping, `table:data-pilot-field-reference` for a share, `table:selected-page` for a filter of one item) |
+
+Reading takes either back into the model; a pivot made elsewhere with
+something the model cannot represent - a calculated field, a grouping that
+adds fields (Excel's *Years* beside *Months*), a source outside the workbook,
+a value shown as a difference or a running total - keeps the cells the file
+has, is not refreshed, and says why in `unsupportedReason`.
 
 ## Copy and paste with documents and slides
 

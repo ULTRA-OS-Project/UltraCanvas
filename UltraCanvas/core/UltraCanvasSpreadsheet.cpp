@@ -1,5 +1,7 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.14.0 - pivot tables: their cells read-only (typing, pasting, cutting, a double-click drills
+//                   in or opens the field list), refreshed when their source changes, before drawing
 // Version: 1.13.0 - Ctrl+Shift+Enter enters a formula as a legacy array formula over the selection
 // Version: 1.12.0 - a table to assistive technology (AccessibleGrid); Copy / Cut a selected chart onto the
 //                   office clipboard; another program's HTML table read by ClipboardTableFromHtml
@@ -92,6 +94,8 @@ CellTextMeasureFn MakeSpreadsheetTextMeasurer(IRenderContext* ctx) {
 
 void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx) return;
+    // The pivots whose sources changed write their cells before they are drawn.
+    if (!pivotSourcesChanged_.empty()) RefreshChangedPivotTables();
 
     // A file loaded before the grid was on a window left its unsized columns
     // waiting for real font metrics; this is the first moment we have them.
@@ -1649,6 +1653,8 @@ void UltraCanvasSpreadsheet::HandleMouseDoubleClick(const UCEvent& event) {
         PromptRenameSheet(hit.tabIndex);
     }
     else if (hit.area == HitArea::Cell) {
+        // A pivot's cell: its source rows, or its field list.
+        if (HandlePivotDoubleClick(hit.row, hit.col)) return;
         StartInCellEditing();
         if (onCellDoubleClick) onCellDoubleClick(hit.row, hit.col);
     }
@@ -1831,7 +1837,7 @@ void UltraCanvasSpreadsheet::HandleKeyPress(const UCEvent& event) {
         // Start editing with the typed character
         if (event.character >= 32) {
             StartEditing();
-            SetEditBuffer(std::string(1, static_cast<char>(event.character)));
+            if (IsEditing()) SetEditBuffer(std::string(1, static_cast<char>(event.character)));
         }
     }
 }
@@ -2320,6 +2326,7 @@ void UltraCanvasSpreadsheet::StartEditingAt(int row, int col) {
     if (IsEditing()) {
         StopEditing(true);
     }
+    if (RefusePivotEdit(CellRange(row, col, row, col))) return;
     
     editingCell_ = CellAddress(row, col);
     editMode_ = SpreadsheetEditMode::Editing;
@@ -2439,6 +2446,7 @@ void UltraCanvasSpreadsheet::InsertFunction(const std::string& name) {
 
 void UltraCanvasSpreadsheet::StartInCellEditing() {
     CellAddress active = GetActiveCell();
+    if (RefusePivotEdit(CellRange(active.row, active.col, active.row, active.col))) return;
     editingCell_ = active;
     editMode_ = SpreadsheetEditMode::InCellEditing;
     
@@ -2946,6 +2954,7 @@ void UltraCanvasSpreadsheet::Cut() {
         return;
     }
     Copy();
+    if (RefusePivotEdit(GetSelection())) return;   // copied, but not taken away
     clipboardOp_ = ClipboardOperation::Cut;
 }
 
@@ -3004,6 +3013,7 @@ void UltraCanvasSpreadsheet::PasteSpecial(const PasteOptions& options) {
         const CellRange target(dest.row, dest.col,
                                std::min(dest.row + static_cast<int>(clipboardData_.size()) - 1, SpreadsheetLimits::MaxRows - 1),
                                std::min(dest.col + static_cast<int>(width) - 1, SpreadsheetLimits::MaxColumns - 1));
+        if (RefusePivotEdit(target)) return;
         if (recordingUndo_) RecordRangeChange(target);   // a paste is undone
     }
     // A copied formula's references move with it; a cut one's stay on the
@@ -3116,6 +3126,7 @@ bool UltraCanvasSpreadsheet::PasteValues(const std::vector<std::vector<std::stri
     const CellRange target(dest.row, dest.col,
                            std::min(dest.row + static_cast<int>(rows.size()) - 1, SpreadsheetLimits::MaxRows - 1),
                            std::min(dest.col + static_cast<int>(width) - 1, SpreadsheetLimits::MaxColumns - 1));
+    if (RefusePivotEdit(target)) return false;
     if (recordingUndo_) RecordRangeChange(target);
     {
         UndoRecordingPause pause(*this);   // the one step above covers every cell
@@ -3219,6 +3230,7 @@ void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
     sheet->onCellChange = [this, sheet](int row, int col) {
         if (formulaEngine_) formulaEngine_->MarkDirty(CellAddress(row, col), sheet->GetName());
         chartsDirty_ = true;
+        if (!writingPivots_) NotePivotSourceChange(sheet->GetName(), CellRange(row, col, row, col));
         Invalidate();
         if (onCellChange) onCellChange(row, col);
     };
@@ -3226,6 +3238,7 @@ void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
     sheet->onRangeChange = [this, sheet](const CellRange& range) {
         if (formulaEngine_) formulaEngine_->MarkRangeDirty(range, sheet->GetName());
         chartsDirty_ = true;
+        if (!writingPivots_) NotePivotSourceChange(sheet->GetName(), range);
         Invalidate();
     };
     
