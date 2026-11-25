@@ -215,11 +215,8 @@
   "Set print area": "Задати область друку",
   "Shape": "Фігура",
   "Show comments": "Показати коментарі",
-<<<<<<< HEAD
   "Show or hide the pivot table's fields beside the sheet": "Показати або сховати поля зведеної таблиці поруч з аркушем",
-=======
   "Show in the show": "Показувати під час показу",
->>>>>>> 534ea2727
   "Show the comments and their pane": "Показати коментарі та їхню панель",
   "Show the document as pages": "Показати документ посторінково",
   "Show the headings, tables, pictures and comments beside the document (F5)": "Показувати заголовки, таблиці, рисунки й примітки поруч із документом (F5)",

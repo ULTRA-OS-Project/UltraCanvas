@@ -215,11 +215,8 @@
   "Set print area": "设置打印区域",
   "Shape": "形状",
   "Show comments": "显示批注",
-<<<<<<< HEAD
   "Show or hide the pivot table's fields beside the sheet": "在工作表旁显示或隐藏数据透视表的字段",
-=======
   "Show in the show": "放映时显示",
->>>>>>> 534ea2727
   "Show the comments and their pane": "显示批注及其窗格",
   "Show the document as pages": "以页面形式显示文档",
   "Show the headings, tables, pictures and comments beside the document (F5)": "在文档旁显示标题、表格、图片和批注 (F5)",

@@ -215,11 +215,8 @@
   "Set print area": "인쇄 영역 설정",
   "Shape": "도형",
   "Show comments": "메모 표시",
-<<<<<<< HEAD
   "Show or hide the pivot table's fields beside the sheet": "시트 옆에 피벗 테이블의 필드를 표시하거나 숨깁니다",
-=======
   "Show in the show": "슬라이드 쇼에 표시",
->>>>>>> 534ea2727
   "Show the comments and their pane": "메모와 메모 창 표시",
   "Show the document as pages": "문서를 페이지로 표시",
   "Show the headings, tables, pictures and comments beside the document (F5)": "문서 옆에 제목, 표, 그림, 메모 표시 (F5)",

@@ -215,11 +215,8 @@
   "Set print area": "印刷範囲の設定",
   "Shape": "図形",
   "Show comments": "コメントを表示",
-<<<<<<< HEAD
   "Show or hide the pivot table's fields beside the sheet": "シートの横にピボットテーブルのフィールドを表示または非表示にします",
-=======
   "Show in the show": "スライドショーで表示する",
->>>>>>> 534ea2727
   "Show the comments and their pane": "コメントとコメント ウィンドウを表示",
   "Show the document as pages": "文書をページとして表示",
   "Show the headings, tables, pictures and comments beside the document (F5)": "見出し、表、図、コメントをドキュメントの横に表示 (F5)",

@@ -215,11 +215,8 @@
   "Set print area": "Nyomtatási terület kijelölése",
   "Shape": "Alakzat",
   "Show comments": "Megjegyzések megjelenítése",
-<<<<<<< HEAD
   "Show or hide the pivot table's fields beside the sheet": "A kimutatás mezőinek megjelenítése vagy elrejtése a munkalap mellett",
-=======
   "Show in the show": "Megjelenítés a vetítésben",
->>>>>>> 534ea2727
   "Show the comments and their pane": "A megjegyzések és ablaktáblájuk megjelenítése",
   "Show the document as pages": "A dokumentum megjelenítése oldalakként",
   "Show the headings, tables, pictures and comments beside the document (F5)": "A címsorok, táblázatok, képek és megjegyzések megjelenítése a dokumentum mellett (F5)",

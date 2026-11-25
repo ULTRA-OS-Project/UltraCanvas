@@ -215,11 +215,8 @@
   "Set print area": "Määritä tulostusalue",
   "Shape": "Muoto",
   "Show comments": "Näytä kommentit",
-<<<<<<< HEAD
   "Show or hide the pivot table's fields beside the sheet": "Näytä tai piilota pivot-taulukon kentät taulukon vieressä",
-=======
   "Show in the show": "Näytä diaesityksessä",
->>>>>>> 534ea2727
   "Show the comments and their pane": "Näytä kommentit ja niiden ruutu",
   "Show the document as pages": "Näytä asiakirja sivuina",
   "Show the headings, tables, pictures and comments beside the document (F5)": "Näytä otsikot, taulukot, kuvat ja kommentit asiakirjan vieressä (F5)",

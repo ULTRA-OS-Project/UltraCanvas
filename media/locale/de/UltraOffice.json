@@ -215,11 +215,8 @@
   "Set print area": "Druckbereich festlegen",
   "Shape": "Form",
   "Show comments": "Kommentare anzeigen",
-<<<<<<< HEAD
   "Show or hide the pivot table's fields beside the sheet": "Die Felder der Pivot-Tabelle neben dem Blatt ein- oder ausblenden",
-=======
   "Show in the show": "In der Bildschirmpräsentation einblenden",
->>>>>>> 534ea2727
   "Show the comments and their pane": "Die Kommentare und ihren Bereich anzeigen",
   "Show the document as pages": "Das Dokument als Seiten anzeigen",
   "Show the headings, tables, pictures and comments beside the document (F5)": "Überschriften, Tabellen, Bilder und Kommentare neben dem Dokument anzeigen (F5)",

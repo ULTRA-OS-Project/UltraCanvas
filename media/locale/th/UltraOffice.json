@@ -215,11 +215,8 @@
   "Set print area": "ตั้งค่าพื้นที่พิมพ์",
   "Shape": "รูปร่าง",
   "Show comments": "แสดงความคิดเห็น",
-<<<<<<< HEAD
   "Show or hide the pivot table's fields beside the sheet": "แสดงหรือซ่อนเขตข้อมูลของ PivotTable ข้างแผ่นงาน",
-=======
   "Show in the show": "แสดงในการนำเสนอสไลด์",
->>>>>>> 534ea2727
   "Show the comments and their pane": "แสดงความคิดเห็นและบานหน้าต่าง",
   "Show the document as pages": "แสดงเอกสารเป็นหน้า",
   "Show the headings, tables, pictures and comments beside the document (F5)": "แสดงหัวเรื่อง ตาราง รูปภาพ และข้อคิดเห็นข้างเอกสาร (F5)",
