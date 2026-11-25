@@ -395,7 +395,7 @@ vtable that no longer matches. Changing the interface or a type in
 `UltraIMTypes.h` therefore bumps the version (with a word on what changed
 in the comment above it), and `python3 scripts/check_plugin_abi.py
 --update` records the new fingerprint in `scripts/plugin_abi.txt`; CI
-(`plugin-abi.yml`) fails a change to those headers that leaves the version
+(`source-checks.yml`) fails a change to those headers that leaves the version
 as it was. A change that is not part of the contract - a free inline
 function, a constant, the text of a default body's message - is recorded
 with `--update --no-abi-change "why"`. Version 1 was the first modules;

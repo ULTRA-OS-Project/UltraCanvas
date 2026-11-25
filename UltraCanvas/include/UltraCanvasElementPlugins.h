@@ -110,7 +110,7 @@ public:
 // larger vtable, an older plugin simply ignores the tail - and a plugin built
 // for a newer table than the host's refuses to load, since the members it
 // would call are not there. Bump it with every member appended to
-// UltraCanvasPluginHost; scripts/check_plugin_abi.py (CI: plugin-abi.yml)
+// UltraCanvasPluginHost; scripts/check_plugin_abi.py (CI: source-checks.yml)
 // fails a change to this header that moves neither it nor the "ucN" of
 // ULTRACANVAS_FRAMEWORK_ABI_TAG below.
 inline constexpr int ULTRACANVAS_PLUGIN_HOST_ABI_VERSION = 1;

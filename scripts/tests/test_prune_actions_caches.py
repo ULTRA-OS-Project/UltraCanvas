@@ -6,7 +6,7 @@ content. Run with
 
     python3 -m unittest discover -s scripts/tests -v
 
-which .github/workflows/locale-catalogues.yml does on every change under
+which .github/workflows/source-checks.yml does on every change under
 scripts/tests.
 """
 import importlib.util

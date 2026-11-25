@@ -227,8 +227,8 @@ serve the build directory with `serve.py`, and open:
   file; the photos the page shows are placeholder tiles except the three in
   `media/images/ultraos/`.
 
-The `wasm-build.yml` workflow - run on a pull request, and on a push to
-`main`, that touches the WebAssembly port, the sysroot script, the Cairo
+The `wasm-build.yml` workflow - run on a push to `main` (not on a pull
+request: start it by hand against the branch there) that touches the WebAssembly port, the sysroot script, the Cairo
 image code or the demo, and on a manual dispatch with an optional emsdk
 version - configures the repository root with `-DBUILD_WASM_DEMOS=ON`, so one library build gives all three
 pages, in four variants - `baseline`, `min-size` (`-Os`),
