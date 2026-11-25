@@ -42,6 +42,7 @@ yet".
 |---|---|
 | `UnixSocketAddress::Fits(path)` | Whether `path` can be an address as it is (shorter than `sun_path`). |
 | `Resolve(path, error, folderMissing = nullptr)` | Fills the address. False with `error` when the path is too long and cannot be reached through its folder: on macOS and the BSDs always, on Linux when the folder cannot be opened (`*folderMissing` is set when it is simply not there), when the file's own name is longer than about 80 bytes, or when `/proc` is not mounted. |
+| `LastFailure()`, `FolderError()` | Why the last `Resolve` answered false, for a caller that words the failure itself (UltraMessage does, in the person's language): `Failure::TooLong`, `FolderNotOpened` (with the `errno` in `FolderError()`), `NoProc`; `NoFailure` after a success. |
 | `Get()`, `Size()` | The `sockaddr*` and its length for `bind()` / `connect()`. |
 
 ## When another program makes the socket

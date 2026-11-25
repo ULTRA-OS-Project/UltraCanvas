@@ -7,9 +7,9 @@
   to go on. `UltraCanvasSingleInstance::RunAlreadyRunningAlert` now adds the
   reason `Claim()` found:
   - the bus could not be joined: "It could not be asked to come forward:"
-    and what UltraMessage said (`the bus folder ... is not this user's alone
-    (...)`, `bus path too long for a Unix socket: ...`). That reason is the
-    bus's own text and stays in English;
+    and what UltraMessage said (`the bus folder ... is not this user's
+    alone: ...`, `bus path too long for a Unix socket: ...`), which is in
+    the person's language too (the entry on UltraMessage's reasons);
   - the copy is on the bus and did not answer within the fifteen seconds a
     start waits: "It did not answer when asked to come forward."
   The debug log has the same line at the end of the wait. A build without

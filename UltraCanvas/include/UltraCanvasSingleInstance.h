@@ -35,6 +35,7 @@
 // the build has it. Without UltraMessage the lock still stops a second copy;
 // it just cannot bring the first one forward, and Claim() answers
 // AlreadyRunning.
+// Version: 1.7.0 - HandOffMessage: the terminal's line about the running copy, translated
 // Version: 1.6.0 - RunAlreadyRunningAlert says why the running copy did not come forward
 // Version: 1.5.0 - BringToFront brings the window to the virtual desktop in view
 // Version: 1.4.0 - the listening copy rejoins the bus when it loses it (the
@@ -140,6 +141,21 @@ namespace UltraCanvas {
         // own reason when the bus could not be joined, or that the copy did
         // not answer. In the language of the application (Tr).
         static int RunAlreadyRunningAlert(UltraCanvasApplication& app, const std::string& displayName);
+
+        // What a start says on the terminal about the copy already running,
+        // for the applications that are started from one (a resident tool
+        // with --background, a command-line request): one line, without the
+        // line end, in the person's language. A start that handed over
+        // quits before it has an application, so this loads the language
+        // itself when nothing has yet (as Initialize() would).
+        enum class HandOffNote {
+            Running,          // "<name> is already running."
+            BroughtForward,   // "<name> is already running: brought it forward."
+            RequestTaken,     // "<name> is already running: handed the request to it."
+            OpeningHere       // "<name> is already running but did not answer: opening a window here."
+        };
+        static std::string HandOffMessage(const std::string& displayName,
+                                          HandOffNote note = HandOffNote::BroughtForward);
 
         const std::string& GetAppId() const { return appId_; }
 

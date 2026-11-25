@@ -2,6 +2,8 @@
 // Local stream transport: Unix domain sockets (Linux, macOS, BSD) and Windows
 // named pipes behind one Connection / Listener pair. Every blocking wait also
 // watches a private wake-up object so Close() from another thread returns it.
+// Version: 0.1.5 - the reasons a person is shown for a bus that cannot be hosted or joined
+//                  go through Tr (UltraLocalisation)
 // Version: 0.1.4 - the bus is hosted and joined only in a folder that is this user's alone
 //                  (BusFolderIsPrivate): in /tmp, without XDG_RUNTIME_DIR, another account
 //                  could make the folder first and have its broker met
@@ -15,6 +17,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMessageTransport.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // Tr: the reasons a person is shown
 #ifndef _WIN32
 #  include "UltraCanvasUnixSocketAddress.h"
 #endif
@@ -45,6 +48,10 @@
 #    include <sys/ucred.h>
 #  endif
 #endif
+
+// Unqualified, as scripts/extract_ui_strings.py reads the sites.
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace UltraMessage {
 namespace Internal {
@@ -123,7 +130,24 @@ int WaitReadable(int fd, int wakeFd, int timeoutMs) {
 bool ResolveBusAddress(const std::string& busPath, UltraCanvas::UnixSocketAddress& address, std::string& error,
                        bool* folderMissing = nullptr) {
     if (address.Resolve(busPath, error, folderMissing)) return true;
-    if (error.rfind("path too long", 0) == 0) error = "bus " + error;
+    // In the bus's words, and the person's language: this is what the
+    // "already running" alert shows when a start cannot reach the bus.
+    using Failure = UltraCanvas::UnixSocketAddress::Failure;
+    switch (address.LastFailure()) {
+        case Failure::TooLong:
+            error = TrF("bus path too long for a Unix socket: {0}", busPath);
+            break;
+        case Failure::NoProc:
+            error = TrF(
+                "bus path too long for a Unix socket, and no /proc to reach it through its folder: {0}", busPath);
+            break;
+        case Failure::FolderNotOpened:
+            error = TrF("cannot open the bus folder {0}: {1}", ParentDirectory(busPath),
+                                     std::strerror(address.FolderError()));
+            break;
+        case Failure::NoFailure:
+            break;
+    }
     return false;
 }
 
@@ -156,19 +180,22 @@ bool BusFolderIsPrivate(const std::string& busPath, std::string& error, bool mod
     if (me == 0) return true;
     const std::string folder = ParentDirectory(busPath);
     if (folder.empty()) return true;
-    const std::string refused = "the bus folder " + folder + " is not this user's alone (";
+    // Whole sentences, each its own entry for the translators: the reason
+    // is shown to the person whose bus this is.
     struct stat own{};
     if (::lstat(folder.c_str(), &own) == 0) {
         if (!S_ISDIR(own.st_mode)) {
-            error = refused + "it is not a folder of its own, but a link or a file)";
+            error = TrF(
+                "the bus folder {0} is not this user's alone: it is a link or a file, not a folder", folder);
             return false;
         }
         if (own.st_uid != me) {
-            error = refused + "it belongs to another user)";
+            error = TrF("the bus folder {0} is not this user's alone: it belongs to another user",
+                                     folder);
             return false;
         }
         if (modeToo && (own.st_mode & (S_IWGRP | S_IWOTH))) {
-            error = refused + "others may write to it)";
+            error = TrF("the bus folder {0} is not this user's alone: others may write to it", folder);
             return false;
         }
     }
@@ -178,11 +205,15 @@ bool BusFolderIsPrivate(const std::string& busPath, std::string& error, bool mod
     struct stat up{};
     if (above.empty() || above == folder || ::lstat(above.c_str(), &up) != 0) return true;
     if (up.st_uid != me && up.st_uid != 0) {
-        error = refused + "the folder above it, " + above + ", belongs to another user)";
+        error = TrF(
+            "the bus folder {0} is not this user's alone: the folder above it, {1}, belongs to another user",
+            folder, above);
         return false;
     }
     if (S_ISDIR(up.st_mode) && (up.st_mode & S_IWOTH) && !(up.st_mode & S_ISVTX)) {
-        error = refused + "everyone may write to the folder above it, " + above + ")";
+        error = TrF(
+            "the bus folder {0} is not this user's alone: everyone may write to the folder above it, {1}",
+            folder, above);
         return false;
     }
     return true;
@@ -302,7 +333,7 @@ std::unique_ptr<Listener> Listener::Create(const std::string& busPath, std::stri
     // the one made or tightened here before the lock file is written into it.
     if (!BusFolderIsPrivate(busPath, error, /*modeToo=*/false)) return nullptr;
     if (!EnsureParentDirectory(busPath)) {
-        error = "cannot create the bus directory for " + busPath;
+        error = TrF("cannot create the bus directory for {0}", busPath);
         return nullptr;
     }
     if (!BusFolderIsPrivate(busPath, error)) return nullptr;
@@ -394,7 +425,7 @@ ConnectionPtr ConnectToBus(const std::string& busPath, int timeoutMs, std::strin
     bool folderMissing = false;
     if (!ResolveBusAddress(busPath, address, error, &folderMissing)) {
         // As ENOENT from connect() below: nothing has made the bus yet.
-        if (folderMissing) error = "no broker listens on " + busPath;
+        if (folderMissing) error = TrF("no broker listens on {0}", busPath);
         return nullptr;
     }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
@@ -421,7 +452,7 @@ ConnectionPtr ConnectToBus(const std::string& busPath, int timeoutMs, std::strin
         const int err = errno;
         ::close(fd);
         if (err == ENOENT || err == ECONNREFUSED) {
-            error = "no broker listens on " + busPath;
+            error = TrF("no broker listens on {0}", busPath);
             return nullptr;
         }
         if (err == EAGAIN && std::chrono::steady_clock::now() < deadline) {
@@ -674,7 +705,7 @@ ConnectionPtr ConnectToBus(const std::string& busPath, int timeoutMs, std::strin
         }
         const DWORD code = ::GetLastError();
         if (code == ERROR_FILE_NOT_FOUND) {
-            error = "no broker listens on " + busPath;
+            error = TrF("no broker listens on {0}", busPath);
             return nullptr;
         }
         if (code == ERROR_PIPE_BUSY && std::chrono::steady_clock::now() < deadline) {

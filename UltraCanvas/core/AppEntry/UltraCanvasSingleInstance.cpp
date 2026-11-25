@@ -7,6 +7,8 @@
 // hand-off needs UltraMessage, a separate module the core does not link, and
 // the function defines ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE where
 // the build has it.
+// Version: 1.7.0 - HandOffMessage: what a start says on the terminal about the running
+//                  copy, in the person's language
 // Version: 1.6.0 - the "already running" alert says why the running copy was not brought
 //                  forward - the bus's own reason, or that the copy did not answer - and
 //                  its texts go through Tr
@@ -37,6 +39,8 @@
 #include "UltraCanvasModalDialog.h"   // UltraCanvasDialogManager
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasSystemLanguage.h"
+#include "UltraCanvasUtils.h"          // NormalizePath
 #include "UltraCanvasWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -78,6 +82,23 @@ namespace UltraCanvas {
         HandOffFailure& LastHandOffFailure() {
             static HandOffFailure failure;
             return failure;
+        }
+
+        // The person's language for a start that has no application yet: a
+        // second start speaks before UltraCanvasApplicationBase::Initialize
+        // has run - the bus words its refusal while Claim() waits, and a
+        // start that handed over quits without ever initialising. The
+        // catalogues as Initialize loads them: the shipped tree, the
+        // person's overrides and Language.conf, the desktop's languages.
+        // The name picks the application's own set, which nothing said here
+        // needs - these texts are the standard set's - and Initialize loads
+        // again under the application's name when the start goes on.
+        void LoadLanguageIfNone(const std::string& displayName) {
+            if (!UltraLocalisation::CurrentApplication().empty()) return;
+            const std::filesystem::path settings = UltraCanvasSettingsFolder();
+            UltraLocalisation::SetFolders(NormalizePath(GetResourcesDir() + "media/locale/"),
+                                          settings.empty() ? std::string() : PathToUtf8(settings));
+            UltraLocalisation::Initialize(displayName, SystemLanguageTags());
         }
 
     } // namespace
@@ -293,6 +314,9 @@ namespace UltraCanvas {
                 break;
         }
         debugOutput << displayName_ << " is already running; asking it to come forward" << std::endl;
+        // Before the bus is asked: what it says when it refuses is shown to
+        // the person, in the alert, and is worded when it happens.
+        LoadLanguageIfNone(displayName_);
         const Start start = HandOff(request, lockPath);
         Close();
         return start;
@@ -369,6 +393,21 @@ namespace UltraCanvas {
             return;
         }
         if (main) main->RaiseAndFocus();
+    }
+
+    std::string UltraCanvasSingleInstance::HandOffMessage(const std::string& displayName, HandOffNote note) {
+        LoadLanguageIfNone(displayName);   // a start that handed over has no application yet
+        switch (note) {
+            case HandOffNote::Running:
+                return TrF("{0} is already running.", displayName);
+            case HandOffNote::RequestTaken:
+                return TrF("{0} is already running: handed the request to it.", displayName);
+            case HandOffNote::OpeningHere:
+                return TrF("{0} is already running but did not answer: opening a window here.", displayName);
+            case HandOffNote::BroughtForward:
+                break;
+        }
+        return TrF("{0} is already running: brought it forward.", displayName);
     }
 
     int UltraCanvasSingleInstance::RunAlreadyRunningAlert(UltraCanvasApplication& app,

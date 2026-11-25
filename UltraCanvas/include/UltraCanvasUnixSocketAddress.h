@@ -24,6 +24,7 @@
 // hand it a /proc/self/fd path of its own: there, start the other program in
 // the socket's folder and give it the file's name alone - Fits() says when
 // that is needed.
+// Version: 1.1.0 - LastFailure / FolderError: why Resolve failed, for a caller that words it itself
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -49,6 +50,15 @@ namespace UltraCanvas {
         UnixSocketAddress(const UnixSocketAddress&) = delete;
         UnixSocketAddress& operator=(const UnixSocketAddress&) = delete;
 
+        // Why Resolve() answered false, for a caller that words the failure
+        // itself (in the person's language, say): the path is too long and
+        // this system has no way round that; too long and its folder could
+        // not be opened (FolderError() is the errno); too long and there is
+        // no /proc to reach it through the folder.
+        enum class Failure { NoFailure, TooLong, FolderNotOpened, NoProc };
+        Failure LastFailure() const { return failure_; }
+        int FolderError() const { return folderError_; }
+
         // True when `path` can be an address as it is, on every system.
         static bool Fits(const std::string& path) {
             return path.size() < sizeof(static_cast<sockaddr_un*>(nullptr)->sun_path);
@@ -59,6 +69,8 @@ namespace UltraCanvas {
         // server, "not yet" rather than "never".
         bool Resolve(const std::string& path, std::string& error, bool* folderMissing = nullptr) {
             if (folderMissing) *folderMissing = false;
+            failure_ = Failure::NoFailure;
+            folderError_ = 0;
             CloseFolder();
             std::memset(&addr_, 0, sizeof(addr_));
             addr_.sun_family = AF_UNIX;
@@ -72,6 +84,8 @@ namespace UltraCanvas {
                 folder_ = ::open(path.substr(0, slash).c_str(), O_PATH | O_DIRECTORY | O_CLOEXEC);
                 if (folder_ < 0) {
                     const int code = errno;
+                    failure_ = Failure::FolderNotOpened;
+                    folderError_ = code;
                     if (folderMissing) *folderMissing = code == ENOENT || code == ENOTDIR;
                     error = std::string("cannot open the folder of the socket ") + path + ": " + std::strerror(code);
                     return false;
@@ -80,6 +94,7 @@ namespace UltraCanvas {
                 const std::string through = "/proc/self/fd/" + std::to_string(folder_) + path.substr(slash);
                 if (Fits(through)) {
                     if (::access("/proc/self/fd", X_OK) != 0) {
+                        failure_ = Failure::NoProc;
                         error = "path too long for a Unix socket, and no /proc to reach it through its folder: " +
                                 path;
                         return false;
@@ -89,6 +104,7 @@ namespace UltraCanvas {
                 }
             }
 #endif
+            failure_ = Failure::TooLong;
             error = "path too long for a Unix socket: " + path;
             return false;
         }
@@ -104,6 +120,8 @@ namespace UltraCanvas {
 
         sockaddr_un addr_{};
         int folder_ = -1;   // the socket's folder, while its path is too long to name
+        Failure failure_ = Failure::NoFailure;
+        int folderError_ = 0;
     };
 
 } // namespace UltraCanvas

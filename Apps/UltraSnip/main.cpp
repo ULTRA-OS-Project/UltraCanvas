@@ -108,7 +108,9 @@ int main(int argc, char* argv[]) {
     UltraCanvasSingleInstance instance("org.ultraos.ultrasnip", "UltraSnip");
     const UltraCanvasSingleInstance::Start start = instance.Claim(UltraSnip::RequestToJson(request));
     if (start == UltraCanvasSingleInstance::Start::HandedOff) {
-        std::cout << "UltraSnip is already running: handed the request to it.\n";
+        std::cout << UltraCanvasSingleInstance::HandOffMessage(
+                             "UltraSnip", UltraCanvasSingleInstance::HandOffNote::RequestTaken)
+                  << "\n";
         return EXIT_SUCCESS;
     }
     try {
@@ -125,7 +127,9 @@ int main(int argc, char* argv[]) {
         const bool sideBySide = start == UltraCanvasSingleInstance::Start::AlreadyRunning;
         if (sideBySide) {
             if (request.background) return EXIT_SUCCESS;   // one resident copy is enough
-            std::cout << "UltraSnip is already running but did not answer: opening a window here.\n";
+            std::cout << UltraCanvasSingleInstance::HandOffMessage(
+                                 "UltraSnip", UltraCanvasSingleInstance::HandOffNote::OpeningHere)
+                      << "\n";
         }
         window = std::make_unique<UltraSnip::UltraSnipWindow>(app);
         if (!window->Create()) {

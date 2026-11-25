@@ -62,7 +62,8 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
-UltraDatabase and nothing of the widget layer, so tools and tests stay
+UltraDatabase and UltraLocalisation - both UI-free - and nothing of the widget
+layer, so tools and tests stay
 headless; `Tests/UltraMessage/CMakeLists.txt` also configures on its own
 where the UI library cannot be built.
 
@@ -220,8 +221,8 @@ a broker hosts, and an endpoint joins, only where
   everyone may write to - unless it has the sticky bit, as `/tmp` does, where
   an entry is its owner's alone to rename.
 
-Otherwise the connect fails with `the bus folder ... is not this user's alone
-(...)`, naming which of these it was, and nothing is written there. A program
+Otherwise the connect fails with `the bus folder ... is not this user's
+alone: ...`, naming which of these it was, and nothing is written there. A program
 running as root is let through: it joins a user's bus on purpose (a tool
 started with `sudo`). A custom `busPath` follows the same rule.
 
@@ -234,6 +235,19 @@ so the bus stays where the path says and broker and endpoints need nothing
 set. On macOS and the BSDs such a path is refused, and the error says so
 (`bus path too long for a Unix socket: ...`): give a shorter `busPath` or
 `TMPDIR` there.
+
+**Why a bus could not be hosted or joined is said in the person's language.**
+`UltraMsg_Connect`'s `error.message` is what an application shows - the
+single-instance "already running" alert puts it on screen - so the reasons a
+person can meet go through `Tr` (UltraLocalisation, the standard set): no
+broker listening or reachable, a broker that cannot be started, the bus
+folder that is not this user's alone, a bus path too long, a folder that
+cannot be made or opened, a broker that does not confirm the connection.
+They are worded when they happen, in the language loaded at that moment: a
+program that has not loaded one (`ultramsg`, a test) gets the English, which
+is also the catalogue key. What only a programmer meets stays English -
+an invalid topic or pattern, a missing callback, a call on an endpoint that
+is not connected, the journal's and the system calls' own errors.
 
 ### 3.5 Schemas and topics
 

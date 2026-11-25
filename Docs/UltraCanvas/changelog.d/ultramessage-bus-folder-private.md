@@ -15,7 +15,7 @@
     except with the sticky bit, as `/tmp` has, where an entry is its owner's
     alone to rename (`BusFolderIsPrivate`, `UltraMessageTransport.cpp`).
     Otherwise the connect fails with `the bus folder ... is not this user's
-    alone (...)`, naming which it was, and nothing is written there.
+    alone: ...`, naming which it was, and nothing is written there.
   - The broker makes every folder it creates on the way owner-only, not only
     the last (`EnsureDirectory`): the upper of the two in `/tmp` was left as
     the umask made it. A folder of this user's with a looser mode is
