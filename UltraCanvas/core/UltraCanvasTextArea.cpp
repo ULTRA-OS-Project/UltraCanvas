@@ -1,5 +1,9 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.14.1 - GetActualLineLayout: the caret's layout only for the line it was laid
+//                 out for (a press moving the caret, then the release hit-tested
+//                 before a frame, missed the line)
+// Version: 3.14.0 - GetLineSpans: a subclass's own styled ranges on a plain line
 // Version: 3.13.1 - Render lays the lines out again when tables were sized before the visible width
 //                  was known (no word wrap: the first frame, a resize, a scrollbar)
 // Version: 3.13.0 - a right-click on a read-only or display-only area the host and the
@@ -27,7 +31,7 @@
 //                 says "Remote image:" / "Missing image:" instead of "🌐" / "⚠"
 // Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
 //                 replace the fixed 15px square scrollbar
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -286,6 +290,7 @@ namespace UltraCanvas {
         // Full text replacement: invalidate the layout cache + MD index.
         SetCursorPosition({0, 0});
         currentLine.reset();
+        currentLineIndex = -1;
         rawBlockLines.clear();
         rawBlockStart = -1;
         selectionStart = LineColumnIndex::INVALID;
@@ -1635,6 +1640,7 @@ namespace UltraCanvas {
                 // (or discard the stash if the line was modified). On focus regain, the swap
                 // re-runs via ReconcileLayoutState.
                 currentLine.reset();
+                currentLineIndex = -1;
                 rawBlockLines.clear();
                 rawBlockStart = -1;
                 RequestRedraw();
@@ -2399,6 +2405,7 @@ namespace UltraCanvas {
             lineLayouts[logicalLine].reset();
             if (logicalLine == cursorPosition.lineIndex) {
                 currentLine.reset();
+                currentLineIndex = -1;
             }
         }
     }
@@ -3857,7 +3864,9 @@ namespace UltraCanvas {
     }
 
     LineLayoutBase* UltraCanvasTextArea::GetActualLineLayout(int idx) {
-        if (currentLine && cursorPosition.lineIndex == idx) {
+        // The caret's own layout - only once it is laid out for the caret's
+        // line: straight after the caret moved, the line's ordinary layout.
+        if (currentLine && cursorPosition.lineIndex == idx && currentLineIndex == idx) {
             return currentLine.get();
         }
         if (rawBlockStart >= 0 && idx >= rawBlockStart &&
@@ -3950,9 +3959,11 @@ namespace UltraCanvas {
         if (cursorPosition.lineIndex >= 0 &&
             !(isReadOnly && editingMode == TextAreaEditingMode::MarkdownHybrid)) {
             currentLine = MakePlainLineLayout(ctx, cursorPosition.lineIndex, /*withComposition=*/true);
+            currentLineIndex = cursorPosition.lineIndex;
             currentLine->logicalLineNumber = lineLayouts[cursorPosition.lineIndex]->logicalLineNumber;
         } else {
             currentLine.reset();
+            currentLineIndex = -1;
         }
         UpdateRawMathBlockLines(ctx);
 
@@ -4077,6 +4088,29 @@ namespace UltraCanvas {
             ll->layout->SetWrap(TextWrap::WrapWordChar);
         }
 
+        auto applyTokenStyle = [&](const TokenStyle& tokenStyle, int startByte, int endByte) {
+            if (startByte >= endByte) return;
+            auto fgAttr = TextAttributeFactory::CreateForeground(tokenStyle.color);
+            fgAttr->SetRange(startByte, endByte);
+            ll->layout->InsertAttribute(std::move(fgAttr));
+
+            if (tokenStyle.bold) {
+                auto wAttr = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
+                wAttr->SetRange(startByte, endByte);
+                ll->layout->InsertAttribute(std::move(wAttr));
+            }
+            if (tokenStyle.italic) {
+                auto sAttr = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
+                sAttr->SetRange(startByte, endByte);
+                ll->layout->InsertAttribute(std::move(sAttr));
+            }
+            if (tokenStyle.underline) {
+                auto uAttr = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
+                uAttr->SetRange(startByte, endByte);
+                ll->layout->InsertAttribute(std::move(uAttr));
+            }
+        };
+
         if (style.highlightSyntax && syntaxTokenizer) {
             // In Markdown mode a plain line is the raw source of one Markdown
             // line, read with the Markdown rules: it neither takes nor hands on
@@ -4089,28 +4123,6 @@ namespace UltraCanvas {
             ll->syntaxExit = state;
 
             int currentByte = 0;
-            auto applyTokenStyle = [&](const TokenStyle& tokenStyle, int startByte, int endByte) {
-                if (startByte >= endByte) return;
-                auto fgAttr = TextAttributeFactory::CreateForeground(tokenStyle.color);
-                fgAttr->SetRange(startByte, endByte);
-                ll->layout->InsertAttribute(std::move(fgAttr));
-
-                if (tokenStyle.bold) {
-                    auto wAttr = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
-                    wAttr->SetRange(startByte, endByte);
-                    ll->layout->InsertAttribute(std::move(wAttr));
-                }
-                if (tokenStyle.italic) {
-                    auto sAttr = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
-                    sAttr->SetRange(startByte, endByte);
-                    ll->layout->InsertAttribute(std::move(sAttr));
-                }
-                if (tokenStyle.underline) {
-                    auto uAttr = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
-                    uAttr->SetRange(startByte, endByte);
-                    ll->layout->InsertAttribute(std::move(uAttr));
-                }
-            };
             for (const auto& token : tokens) {
                 int startByte = currentByte;
                 int endByte = currentByte + static_cast<int>(token.text.size());
@@ -4128,6 +4140,20 @@ namespace UltraCanvas {
                 currentByte = endByte;
             }
         }
+        // The subclass's own ranges, over the syntax colours; a composition
+        // moves the ones after it along, as it does the tokens.
+        for (const TextAreaLineSpan& span : GetLineSpans(lineIndex, txt)) {
+            const int startByte = std::clamp(span.startByte, 0, static_cast<int>(txt.size()));
+            const int endByte = std::clamp(span.endByte, startByte, static_cast<int>(txt.size()));
+            if (!composing || endByte <= compositionByte) {
+                applyTokenStyle(span.style, startByte, endByte);
+            } else if (startByte >= compositionByte) {
+                applyTokenStyle(span.style, startByte + compositionBytes, endByte + compositionBytes);
+            } else {
+                applyTokenStyle(span.style, startByte, compositionByte);
+                applyTokenStyle(span.style, compositionByte + compositionBytes, endByte + compositionBytes);
+            }
+        }
         if (composing) {
             auto uAttr = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
             uAttr->SetRange(compositionByte, compositionByte + compositionBytes);
@@ -4139,6 +4165,11 @@ namespace UltraCanvas {
         ll->bounds.width = ll->layout->GetLayoutWidth();
         ll->bounds.height = ll->layout->GetLayoutHeight();
         return ll;
+    }
+
+    void UltraCanvasTextArea::InvalidateLineSpans() {
+        isNeedRebuildLineLayouts = true;
+        RequestRedraw();
     }
 
     SyntaxLineState UltraCanvasTextArea::SyntaxStateBefore(int lineIndex) const {

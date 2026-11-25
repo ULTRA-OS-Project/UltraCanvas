@@ -1,5 +1,10 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.19.1 - a click is hit-tested against the line it lands on when the caret
+//                 moved there before the next frame (currentLineIndex)
+// Version: 3.19.0 - GetLineSpans: a subclass styles ranges of a plain line (colour,
+//                 bold, italic, underline) - a mail reader's links, say;
+//                 InvalidateLineSpans lays the lines out again when they change
 // Version: 3.18.2 - tablesLaidOutWidth: tables are sized again once the visible width is known
 // Version: 3.18.1 - a font change keeps the top line in view and the scroll offset inside the content
 // Version: 3.18.0 - the SetStyle rule and the constructor tail of an area that follows by default
@@ -23,7 +28,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -97,6 +102,14 @@ namespace UltraCanvas {
 
         TokenStyle(const Color &c, bool b = false, bool i = false, bool u = false)
                 : color(c), bold(b), italic(i), underline(u) {}
+    };
+
+    // A range of a plain line drawn in a style of its own (GetLineSpans):
+    // [startByte, endByte) of the line's text, without its line end.
+    struct TextAreaLineSpan {
+        int startByte = 0;
+        int endByte = 0;
+        TokenStyle style;
     };
 
 
@@ -1022,6 +1035,19 @@ namespace UltraCanvas {
         // Called when a click lands in the gutter. logicalLine is 1-based. Return
         // true to consume the event. Default: ignore.
         virtual bool OnGutterClicked(int /*logicalLine*/) { return false; }
+        // Ranges of a plain line (PlainText mode, and the raw line being
+        // edited in Markdown mode) drawn in a style of their own, over the
+        // syntax colours: a subclass marks what the text means to it - the
+        // links written in a plain-text mail, say. `lineText` is the line
+        // without its line end. Asked again whenever the line is laid out
+        // again; call InvalidateLineSpans when what it answers changes for
+        // text that did not. Default: none.
+        virtual std::vector<TextAreaLineSpan> GetLineSpans(int /*lineIndex*/,
+                                                           const std::string& /*lineText*/) {
+            return {};
+        }
+        // Lays every line out again, so GetLineSpans is asked again.
+        void InvalidateLineSpans();
         // On-screen content-row rect (x past the gutter, full content width) for a
         // visible 1-based logical line. Returns false if the line is not visible.
         bool GetLogicalLineContentRect(int logicalLine, Rect2Dd& out);
@@ -1242,6 +1268,11 @@ namespace UltraCanvas {
         // MarkdownHybrid current line. When the cursor enters a line, this line gets text
         // and used in rendering and measuring
         std::unique_ptr<LineLayoutBase> currentLine;
+        // The line currentLine was laid out for. The caret can move to another
+        // line before the next render lays that one out (a mouse press moves it,
+        // and its release is hit-tested before a frame is drawn): until then
+        // currentLine is the old caret line's layout and is not used for the new.
+        int currentLineIndex = -1;
         // MarkdownHybrid display-math block holding the caret: every other line of it
         // (fences and LaTeX source) is shown raw too, since in rendered form those lines
         // collapse to zero height. rawBlockLines[k] stands in for line rawBlockStart + k;

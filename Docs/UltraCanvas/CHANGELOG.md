@@ -1,3 +1,108 @@
+#### 2026-11-25 *0.9.596*
+- **Charts in spreadsheets.** A sheet holds charts
+  (`UltraCanvasSpreadsheetChart.h`): a `SpreadsheetChart` anchored to two
+  cells with offsets, as .xlsx's two-cell anchor keeps it, holding a
+  `RichChart` whose series are ranges of cells - names, categories (a scatter
+  series' x values) and values - read from the cells again whenever they
+  change. The grid draws them with the chart engine over the cells, where
+  they stand as it scrolls, and prints them; a click selects one, a drag
+  moves it, its eight handles resize it, Delete removes it, the arrow keys
+  nudge it, a double-click opens its properties (kind, title, legend, series
+  in rows), and each change is an undo step. `InsertChartFromSelection` makes
+  columns, bars (side by side or stacked), lines, areas, pies, doughnuts,
+  scatter and radar charts from the selection, the first row and column
+  taken as names and categories where they hold words. Inserted rows and
+  columns move a chart and its ranges with the cells; a renamed sheet's
+  ranges follow it.
+- **.xlsx and .ods keep them.** .xlsx: a drawing per sheet
+  (`xl/drawings/drawingN.xml`, `xdr:twoCellAnchor` and `graphicFrame`) and a
+  chart part per chart with `c:f` references and their caches
+  (`WriteDrawingMLChart(chart, sources)`, `ReadDrawingMLChartSources`); .ods:
+  a `draw:frame` in the sheet's `table:shapes` naming an `Object N/` chart
+  whose series point at the sheets (`WriteOdfChartObject(chart, w, h,
+  sources, plotArea)`, `ReadOdfChartSources`), and LibreOffice's cell-anchored
+  frames read too. LibreOffice opens both, and its conversions read back.
+  Covered in `SpreadsheetChartRoundTripTest` and `SpreadsheetChartDrawTest`.
+- **An untitled chart's top value label is no longer cut off.** The chart
+  engine centres a left or right axis's labels on their ticks but reserved
+  no room above the plot for the top one, so a chart without a title showed
+  half of its "60.0" at the top edge - in spreadsheets, documents and slides
+  alike. `UltraCanvasChartEngineElement` now reserves half a label's height
+  above and below the plot for such an axis (under a title, what the title
+  band does not already leave).
+- **Spreadsheet conditional formats were stored but never drawn, and no
+  file kept them.** `UltraCanvasSpreadsheet::PaintCell` - the grid's and the
+  printed page's painter - now draws them (`SpreadsheetSheet::
+  GetConditionalFormatting`): value comparisons (a number, text or a
+  formula), formula rules moved to each cell, text, blank and error rules,
+  top or bottom values, above or below the average, duplicate and unique
+  values, two- and three-colour scales and data bars. A rule's style lays
+  only what it sets over the cell (`ApplyConditionalStyle`); the figures a
+  scale or a bar needs are worked out once per change of the cells. `.xlsx`
+  reads and writes them as `conditionalFormatting` with `dxfs`, `.ods` as
+  `calcext:conditional-formats` with common cell styles, both as LibreOffice
+  does.
+- **Data validation in files, and the rules it skipped.** `.xlsx`
+  (`dataValidations`) and `.ods` (`table:content-validations`) read and
+  write validation rules. A Custom rule's formula is evaluated (it passed
+  everything), a list may be taken from cells (`formula1` `"=$G$1:$G$9"`,
+  `IsRangeListSource`, `SpreadsheetSheet::GetValidationListItems`), and a
+  bound may be a formula (`"=$F$1"`).
+- **Comments and links.** A comment is marked by a red corner and shown
+  while the pointer rests on its cell; a link's text is blue and underlined,
+  shows where it goes, and Ctrl+click opens it (`OpenHyperlink`: an address
+  through `OpenURL`, a place in the workbook by going there;
+  `onOpenHyperlink` takes it over). `SetCellComment` / `SetCellHyperlink`
+  and their `Remove...` are undo steps. `.xlsx` keeps comments (the comments
+  part and the VML drawing Excel shows them with) and links (`hyperlinks`),
+  `.ods` keeps them as `office:annotation` and `text:a`; a cell that holds
+  only a note or a validation is written.
+- **The rules dialogs.** `ShowConditionalFormatDialog`,
+  `ShowDataValidationDialog`, `ShowCommentDialog` and `ShowHyperlinkDialog`
+  edit the selection's rules and the active cell's comment and link, each a
+  form of the framework's elements in a modal dialog;
+  `AddSelectionConditionalFormat`, `ClearSelectionConditionalFormats` and
+  `SetSelectionValidation` do it from code.
+- **Conditional formats and validation rules are undo steps**, as comments
+  and links are: each change made through the grid - `AddConditionalFormat`,
+  `SetConditionalFormatRule` and `RemoveConditionalFormatRule` (new),
+  `AddSelectionConditionalFormat`, `ClearSelectionConditionalFormats`,
+  `SetSelectionValidation`, and the two dialogs - is one step
+  (`UndoActionType::RulesChange`), and undoing a validation rule gives the
+  cells back their own rules it replaced.
+- **The dialogs, tried in a window.** The chart properties dialog was an
+  empty window with no OK or Cancel (a `Custom` dialog builds no sections or
+  buttons); it is drawn now. The conditional-format and validation dialogs
+  are as tall as the rows the chosen rule needs (they kept room for every
+  row, a wide empty band under one or two), keep their controls in place as
+  rows come and go (`HoldFormCaptionColumn`, new in `UltraCanvasFormLayout.h`:
+  the caption column as wide as every caption, hidden ones too), and their
+  lists and fields fill the dialog's width, so the validation value's hint is
+  no longer cut off; a comment fills its dialog. A data bar starts from a
+  single colour (a bar from "Red, yellow, green" came out red), "Delete
+  rule" shows only when there is a rule to delete, and a rule between two
+  values reads "between 30 and 50", not "30 / 50".
+- Covered by `SpreadsheetRulesTest`: the rules evaluated, drawn on an
+  off-screen page, set through the grid's calls, and saved as `.xlsx` and
+  `.ods` and loaded back - and, where LibreOffice is installed, converted by
+  it and loaded back.
+- **`UltraCanvasTextArea`: a click on a line the caret was not on is hit-tested
+  against that line.** A mouse press moves the caret; until the next frame
+  lays the caret's line out again, `GetActualLineLayout` handed back the old
+  caret line's layout for the new one, so a release hit-tested before a frame
+  was drawn (a fast click, a synthetic one) landed on the wrong text and a
+  link under it did not open. The caret's own layout is now used only for the
+  line it was laid out for (`currentLineIndex`).
+- **`UltraCanvasTextArea`: a subclass can style ranges of a plain line.** The
+  protected virtual `GetLineSpans(lineIndex, lineText)` answers byte ranges of
+  a line with a `TokenStyle` (`TextAreaLineSpan`: colour, bold, italic,
+  underline), drawn over the syntax colours whenever the line is laid out -
+  in PlainText mode and on the raw line being edited in Markdown mode, an
+  input method's composition moving the ranges after it along.
+  `InvalidateLineSpans()` lays the lines out again when the answer changes for
+  unchanged text (a theme change). UltraMail draws the links of a plain-text
+  mail with it.
+
 #### 2026-11-25 *0.9.595*
 - **A .docx saved again lost its theme and font table.** The DOCX writer
   builds its package from the document model, which held neither, so the
