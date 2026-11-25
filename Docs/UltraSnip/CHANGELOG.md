@@ -1,3 +1,10 @@
+#### 2026-11-25 *0.1.14*
+- **Started again from a terminal, UltraSnip answers in your language.**
+  "UltraSnip is already running: handed the request to it." and "... is
+  already running but did not answer: opening a window here." were English
+  whatever the language. They come from the framework's standard set now
+  (`UltraCanvasSingleInstance::HandOffMessage`).
+
 #### 2026-11-25 *0.1.13*
 - **Starting UltraSnip while it runs in the background no longer says
   "UltraSnip is already running".** When the copy UltraDesktop keeps resident

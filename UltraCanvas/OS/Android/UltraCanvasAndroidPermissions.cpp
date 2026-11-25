@@ -1,8 +1,9 @@
 // OS/Android/UltraCanvasAndroidPermissions.cpp
 // Android runtime permissions over JNI. See the header.
 //
+// Version: 1.2.0 - HasAllFilesAccess, RequestAllFilesAccess, SharedStoragePath
 // Version: 1.1.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -14,9 +15,11 @@
 #include "UltraCanvasAndroidJni.h"
 #include "UltraCanvasDebug.h"
 
+#include <android/api-level.h>
 #include <jni.h>
 
 #include <atomic>
+#include <cstdlib>
 #include <map>
 #include <mutex>
 #include <utility>
@@ -145,6 +148,66 @@ namespace AndroidPermissions {
             }
             Deliver(std::move(pending), false);
         }
+    }
+
+    namespace {
+        // A no-argument method of UltraCanvasActivity returning boolean;
+        // false when the activity is a plain NativeActivity or it throws.
+        bool CallActivityBool(const char* method) {
+            JNIEnv* env = AndroidJni::GetEnv();
+            jobject activity = AndroidJni::GetActivity();
+            if (!env || !activity) return false;
+            jclass cls = env->GetObjectClass(activity);
+            jmethodID mid = env->GetMethodID(cls, method, "()Z");
+            env->DeleteLocalRef(cls);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();   // a plain NativeActivity
+                return false;
+            }
+            const jboolean result = env->CallBooleanMethod(activity, mid);
+            if (AndroidJni::ClearException(env, method)) return false;
+            return result == JNI_TRUE;
+        }
+    }
+
+    bool HasAllFilesAccess() {
+        return CallActivityBool("hasAllFilesAccess");
+    }
+
+    FilesAccessRequest RequestAllFilesAccess(std::function<void(bool)> onPromptAnswer) {
+        if (HasAllFilesAccess()) return FilesAccessRequest::Granted;
+        if (!AndroidJni::GetActivity()) return FilesAccessRequest::Unavailable;
+        // Android 11 on: the Settings switch; before it there is no such page
+        // and the runtime permission is asked for.
+        if (CallActivityBool("openAllFilesAccessSettings")) return FilesAccessRequest::SettingsOpened;
+        if (android_get_device_api_level() >= 30) return FilesAccessRequest::Unavailable;
+        Request("android.permission.WRITE_EXTERNAL_STORAGE", std::move(onPromptAnswer));
+        return FilesAccessRequest::Prompted;
+    }
+
+    std::string SharedStoragePath() {
+        JNIEnv* env = AndroidJni::GetEnv();
+        jobject activity = AndroidJni::GetActivity();
+        std::string path;
+        if (env && activity) {
+            jclass cls = env->GetObjectClass(activity);
+            jmethodID mid = env->GetMethodID(cls, "getSharedStoragePath", "()Ljava/lang/String;");
+            env->DeleteLocalRef(cls);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            } else {
+                jobject value = env->CallObjectMethod(activity, mid);
+                if (!AndroidJni::ClearException(env, "getSharedStoragePath") && value) {
+                    path = AndroidJni::ToStdString(env, static_cast<jstring>(value));
+                }
+                if (value) env->DeleteLocalRef(value);
+            }
+        }
+        // The variable Android sets for every app process, where JNI could not tell.
+        if (path.empty()) {
+            if (const char* variable = std::getenv("EXTERNAL_STORAGE")) path = variable;
+        }
+        return path;
     }
 
     int DisplayRotationDegrees() {

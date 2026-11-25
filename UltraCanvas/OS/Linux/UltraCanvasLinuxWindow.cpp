@@ -1,5 +1,8 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.11.0 - RaiseAndFocus brings a window on another virtual desktop to the one in view
+//                   first (MoveToCurrentDesktop, IsOnCurrentDesktop): asked only to activate it,
+//                   a window manager marked it "wants attention" where it lay, or changed the desktop
 // Version: 1.10.0 - the destructor releases the native half, so a window never closed
 //                   does not leave its X window and surfaces behind
 // Version: 1.9.2 - Hide() with no application left does not reach for the display
@@ -17,7 +20,7 @@
 // Version: 1.3.0 - WindowType::Notification: EWMH notification type, above,
 //                  sticky, out of taskbars, input hint off
 // Version: 1.2.0 - per-monitor HiDPI: physical surface/window, hybrid DPI detect
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -1220,12 +1223,93 @@ namespace UltraCanvas {
         XSetWMNormalHints(display, xWindow, &hints);
     }
 
+    namespace {
+        // One CARDINAL of a window's property (EWMH's desktop numbers), or
+        // `fallback` where the property is not set - no window manager, or
+        // a window the manager does not manage (not mapped, a popup).
+        long ReadCardinal(Display* display, Window window, const char* name, long fallback) {
+            Atom type = 0;
+            int format = 0;
+            unsigned long count = 0, left = 0;
+            unsigned char* data = nullptr;
+            long value = fallback;
+            if (XGetWindowProperty(display, window, XInternAtom(display, name, False), 0, 1, False, XA_CARDINAL,
+                                   &type, &format, &count, &left, &data) == 0 && data) {
+                // Format 32 arrives as longs, whatever a long's size.
+                if (type == XA_CARDINAL && format == 32 && count >= 1) value = *reinterpret_cast<long*>(data);
+                XFree(data);
+            }
+            return value;
+        }
+
+        // _NET_WM_DESKTOP's "on every desktop".
+        constexpr long kEveryDesktop = 0xFFFFFFFFL;
+
+        // The desktop a managed window lies on and the one in view, where
+        // the two differ; false when they are the same, the window is on
+        // every desktop, or the manager names neither.
+        bool OnAnotherDesktop(Display* display, Window window, long& current) {
+            const long mine = ReadCardinal(display, window, "_NET_WM_DESKTOP", -1);
+            if (mine < 0 || (mine & kEveryDesktop) == kEveryDesktop) return false;
+            current = ReadCardinal(display, DefaultRootWindow(display), "_NET_CURRENT_DESKTOP", -1);
+            return current >= 0 && current != mine;
+        }
+    }
+
+    bool UltraCanvasLinuxWindow::IsOnCurrentDesktop() const {
+        auto* application = UltraCanvasApplication::GetInstance();
+        Display* display = application ? application->GetDisplay() : nullptr;
+        if (xWindow == 0 || !display) return true;
+        long current = -1;
+        return !OnAnotherDesktop(display, xWindow, current);
+    }
+
+    bool UltraCanvasLinuxWindow::MoveToCurrentDesktop() {
+        auto* application = UltraCanvasApplication::GetInstance();
+        Display* display = application ? application->GetDisplay() : nullptr;
+        if (xWindow == 0 || !display) return false;
+
+        // The window this one belongs to first: a dialog brought over alone
+        // would leave its parent behind on managers that move a window's
+        // dialogs with it but not the other way round. A parent on every
+        // desktop (the desktop window, of its panels) stays where it is.
+        bool moved = false;
+        if (UltraCanvasWindowBase* parent = GetParentWindow()) {
+            if (parent != this) moved = parent->MoveToCurrentDesktop();
+        }
+
+        long current = -1;
+        if (!OnAnotherDesktop(display, xWindow, current)) return moved;
+
+        XEvent event;
+        std::memset(&event, 0, sizeof(event));
+        event.xclient.type = ClientMessage;
+        event.xclient.message_type = XInternAtom(display, "_NET_WM_DESKTOP", False);
+        event.xclient.display = display;
+        event.xclient.window = xWindow;
+        event.xclient.format = 32;
+        event.xclient.data.l[0] = current;
+        event.xclient.data.l[1] = 1; // source indication: application
+        XSendEvent(display, DefaultRootWindow(display), False,
+                   SubstructureRedirectMask | SubstructureNotifyMask, &event);
+        XFlush(display);
+        return true;
+    }
+
     void UltraCanvasLinuxWindow::RaiseAndFocus() {
         auto application = UltraCanvasApplication::GetInstance();
         Display* display = application->GetDisplay();
         if (xWindow == 0 || !display) {
             return;
         }
+
+        // On the desktop in view before it is activated: asked to activate
+        // a window on another virtual desktop, a manager either only marks
+        // it "wants attention" there (openbox, metacity - the click that
+        // asked for the window then does nothing the person can see) or
+        // changes the desktop (icewm). The manager handles this request
+        // before the two below, in the order they are sent.
+        MoveToCurrentDesktop();
 
         // Raised by the window itself as well: with no window manager (a
         // kiosk, a test display) the request below goes nowhere, and a

@@ -22,6 +22,8 @@
 // methods and every dialog falls back to its "cancelled" stub, so an app that
 // never opens a native dialog needs no Java at all.
 //
+// Version: 1.3.0 - shared storage: hasAllFilesAccess, openAllFilesAccessSettings,
+//                  getSharedStoragePath (a file manager's access to every file)
 // Version: 1.2.0 - immersive: the system bars no longer cover the app's top and bottom
 // Version: 1.1.0
 // Author: UltraCanvas Framework
@@ -646,6 +648,66 @@ public class UltraCanvasActivity extends NativeActivity {
             return getWindowManager().getDefaultDisplay().getRotation() * 90;
         } catch (Throwable t) {
             return 0;
+        }
+    }
+
+    // ===== SHARED STORAGE =====
+
+    /**
+     * Whether the app may read and write every file on the shared storage
+     * (/storage/emulated/0) by path, as a file manager must. From Android 11
+     * that is "All files access" (MANAGE_EXTERNAL_STORAGE), which the user
+     * switches on in Settings; before, the storage runtime permission.
+     * Implemented for UltraCanvasAndroidPermissions.cpp; any thread.
+     */
+    public boolean hasAllFilesAccess() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                return android.os.Environment.isExternalStorageManager();
+            }
+            return checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Android 11 and later: opens Settings at this app's "All files access"
+     * switch - or the list of every app's, where a device has no page per
+     * app. There is no answer to wait for: the user comes back, and
+     * hasAllFilesAccess says what they chose. False before Android 11, where
+     * the storage permission is asked for instead (requestPermissionAsync).
+     */
+    public boolean openAllFilesAccessSettings() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return false;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    startActivity(new Intent(
+                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:" + getPackageName())));
+                } catch (Throwable t) {
+                    try {
+                        startActivity(new Intent(
+                                android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                    } catch (Throwable ignored) {
+                        // No Settings page for it on this device: nothing to open.
+                    }
+                }
+            }
+        });
+        return true;
+    }
+
+    /** The shared storage's top folder (/storage/emulated/0 on most devices), "" when unknown. */
+    @SuppressWarnings("deprecation")
+    public String getSharedStoragePath() {
+        try {
+            return android.os.Environment.getExternalStorageDirectory().getAbsolutePath();
+        } catch (Throwable t) {
+            return "";
         }
     }
 

@@ -780,6 +780,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasUnixSocketAddress** (`UltraCanvasUnixSocketAddress.h`,
+  header-only, not Windows) — the address of a Unix socket at a path of any
+  length. `UnixSocketAddress::Resolve(path, error)` fills a `sockaddr_un`;
+  a path longer than the 107 bytes it holds is reached through its folder
+  on Linux (`/proc/self/fd/<n>/<file>`), and refused with the reason on
+  macOS and the BSDs. `Fits(path)` says whether a path needs that. Used by
+  UltraMessage's transport and UltraWin's QMP client. See
+  `Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md`.
+
 - **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
   `SettingsPageKit`) — the look of an application's settings window, once:
   `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
@@ -1473,7 +1482,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   run inside their host program (MobilePC's): registered with an entry
   point, listed by `UltraCanvasDesktopShell::ListApplications` where the
   platform has none of its own, started in the process by
-  `LaunchApplication`. Core in `core/UltraCanvasHostedApps.cpp`. See
+  `LaunchApplication` - and by `LaunchProgram` with the name of a program an
+  application stands in for (`programs`: MobilePC's UltraFiler answers
+  "UltraFiler"). Core in `core/UltraCanvasHostedApps.cpp`. See
   `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
 
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
@@ -27942,7 +27953,7 @@ second or two is fine.
 |---|---|
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Then the Microsoft Store (packaged) applications, which have no shortcut there: the shell's *Applications* folder (`FOLDERID_AppsFolder`, what the Start menu's list is made of), each entry with its `appUserModelId` (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), its display name and a PNG of the tile icon the shell gives it, `program` empty. On macOS the application bundles in `~/Applications`, `/Applications`, `/Applications/Utilities`, `/System/Applications` and `/System/Applications/Utilities`, and one level of subfolders below them (`/Applications/Adobe Photoshop 2025/…`); agents and background-only bundles (`LSUIElement`, `LSBackgroundOnly`) left out, a bundle identifier listed once (the user's copy first): named as Finder names it (localized), `genericName` the bundle's `CFBundleName`, `program`, `exec` and `shortcutPath` the bundle, `startupWMClass` its bundle identifier, `categories` its `LSApplicationCategoryType` (`public.app-category.productivity`) when it declares one, `iconFile` a PNG of the icon Finder shows, at twice `iconSize`. |
 | `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. An entry with an `appUserModelId` is started through `IApplicationActivationManager`, as the Start menu starts it (`shell:AppsFolder\<id>` when that is not there); it takes no files and refuses them with a reason. On macOS an application bundle is started through `NSWorkspace openApplicationAtURL` and brought to the front, as Finder starts it; a failure macOS reports later is logged. |
-| `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. On macOS, where each application is a bundle of its own, `<name>.app` beside this application's bundle and in `~/Applications` and `/Applications` comes before `PATH`. |
+| `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. On macOS, where each application is a bundle of its own, `<name>.app` beside this application's bundle and in `~/Applications` and `/Applications` comes before `PATH`. An application hosted in this program that stands in for the name ([UltraCanvasHostedApps](UltraCanvasHostedApps.md#standing-in-for-a-program), MobilePC's UltraFiler) is started instead, with the arguments; `FindProgram` does not report it. |
 | `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: on Windows first the entry whose `appUserModelId` is the window's (a Store application: Calculator's window is Calculator's entry), then the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### In place of the system's desktop
@@ -34248,6 +34259,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [What the extension cannot say](#what-the-extension-cannot-say)
 - [Folder icons](#folder-icons)
 - [Favorite mark](#favorite-mark)
+  - [Favorite highlight](#favorite-highlight)
 - [Folder previews](#folder-previews)
 - [Selection access](#selection-access)
 - [Hover icon menu](#hover-icon-menu)
@@ -34641,6 +34653,9 @@ Open with      >  clicking the entry opens the selection with the OS default
                   registers for the selected files (default app first), then
                   entries added via AddOpenWithApp(), then "Other
                   application…" (file dialog)
+(host entries)    what openMenuProvider returns for the selection — in the
+                  UltraFiler: "Edit in UltraPaint" on pictures, "Edit in
+                  ArtCreator" on drawings
 Extract and Run   (only on a program inside an archive — see below)
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
@@ -36187,6 +36202,29 @@ button's Files / Folders / Apps tabs, `UltraFilerFavorites::IsFavorite`) — not
 with folders pinned only into the folder tree's *Pinned* section — and leaves
 the Favorites view's own pages without it, where every entry would carry one.
 
+### Favorite highlight
+
+Beside (or instead of) the heart, a favorite can stand out as a whole:
+
+```cpp
+filer->SetFavoriteHighlight(FilerFavoriteHighlight::Fill, Color(253, 226, 228, 255));
+filer->SetFavoriteHeartShown(false);      // the highlight alone, no heart
+```
+
+| `FilerFavoriteHighlight` | What a favorite gets |
+|---|---|
+| `NoHighlight` (default) | Nothing beyond the heart |
+| `Fill` | The whole tile or row filled in the colour; its name and details are drawn in white or dark, whichever reads on it (contrast 4.5 : 1) |
+| `Border` | A 2 px rounded border around the tile, row or treemap cell |
+| `Shade` | The colour at the top, fading out to the bottom of the tile or row |
+
+A selected favorite keeps the selection colour - `Fill` and `Shade` give way
+to it, `Border` is drawn over it. In the treemap only `Border` is drawn, the
+cells carry their own colours. The colour is used as given; the widget does
+not adapt it to the theme, the host does (UltraFiler tints its default for a
+dark theme). `SetFavoriteHeartShown(false)` drops the heart and, in the row
+views, its gutter; the provider still decides which entries are favorites.
+
 ## Folder previews
 
 A folder drawn as the built-in shape shows the **first pictures inside it
@@ -37568,7 +37606,9 @@ reports what the system hides, not what the host asked for.
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)); a folder drawn as the shape shows the first pictures inside it (see [Folder previews](#folder-previews)) |
 | `SetFavoriteMarkProvider(fn(entry) -> bool)` | Per entry while it is drawn — `true` draws the red favorite heart at the entry's left (see [Favorite mark](#favorite-mark)) |
+| `SetFavoriteHighlight(look, colour)` / `SetFavoriteHeartShown(bool)` | How a favorite stands out besides the heart - background, border or shade - and whether the heart is drawn (see [Favorite highlight](#favorite-highlight)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
+| `openMenuProvider(targets) -> vector<MenuItemData>` | Called on every context-menu open of a file or selection, with the entries the menu acts on; the items go right after *Open with* - offer one only where it applies (UltraFiler's *Edit in UltraPaint* for pictures, *Edit in ArtCreator* for drawings). Not asked for the folder background's menu |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
 | `onOpenPath(entry)` | Open Path item (default: `SetPath(parent)`) |
@@ -45127,7 +45167,8 @@ using namespace UltraCanvas;
 UltraCanvasHostedApps::Register({
     "ultraviewer", "UltraViewer", "Pictures, videos, music and documents",
     "media/appicon/UltraViewer.png", {"Graphics", "Viewer"},
-    [](const std::vector<std::string>& files) { return OpenViewer(files); }});
+    [](const std::vector<std::string>& files) { return OpenViewer(files); },
+    {"UltraViewer"}});   // LaunchProgram("UltraViewer", ...) starts it too
 
 std::string error;
 UltraCanvasHostedApps::Launch("ultraviewer", {}, &error);
@@ -45137,6 +45178,7 @@ UltraCanvasHostedApps::Launch("ultraviewer", {}, &error);
 
 - [Registering an application](#registering-an-application)
 - [How a desktop sees them](#how-a-desktop-sees-them)
+- [Standing in for a program](#standing-in-for-a-program)
 - [API](#api)
 
 ## Registering an application
@@ -45166,6 +45208,22 @@ as a `UCDesktopEntry` whose `shortcutPath` is `hosted:<id>`, and
 desktop platforms, like UltraDesktop, therefore lists and starts them
 unchanged.
 
+## Standing in for a program
+
+Applications start each other by program name as well as from the Apps
+window: UltraDesktop's taskbar button runs `UltraFiler` (with `--ram-disc`
+for the RAM disc button), and UltraFiler runs `UltraViewer` with a picture
+that is double-clicked - both through
+[`UltraCanvasDesktopShell::LaunchProgram`](UltraCanvasDesktopShell.md). In one
+program there is no executable to find, so `programs` names the programs an
+application stands in for. `LaunchProgram` asks `IdForProgram` first and, when
+an application answers, calls its `launch` with the program's arguments in
+place of files - options included, so `launch` reads them as that program's
+`main()` would (MobilePC's UltraFiler takes folders and `--ram-disc`). A name
+is matched by its file name, in any letter case, `.exe` aside:
+`"/opt/bin/UltraFiler"` and `"ultrafiler.exe"` are UltraFiler. Any other name
+is looked for as an executable, as before.
+
 ## API
 
 | Call | Meaning |
@@ -45175,6 +45233,7 @@ unchanged.
 | `Launch(id, files, &error)` | runs its entry point on the calling (UI) thread; false with the reason |
 | `Launching()` | the id whose `Launch` is running, `""` outside one |
 | `PathFor(id)` / `IdFromPath(path)` | `"hosted:<id>"` and back |
+| `IdForProgram(program)` | the application whose `programs` name `program` (a name or a path, its file name in any letter case, `.exe` aside); `""` when none does |
 
 Header: `UltraCanvasHostedApps.h`; core in `core/UltraCanvasHostedApps.cpp`.
 
@@ -74220,8 +74279,9 @@ being built when `Listen` is called.
 | `MakeOpenRequest(paths)` | The `Claim()` request carrying this start's files, `{"paths": [...]}`. Each path is made absolute against this process's working folder — the running copy was started somewhere else — and an argument containing `://` (a URL) passes through unchanged. |
 | `RequestPaths(request)` | The paths of such a request, for an application that uses `Listen` with a handler of its own. |
 | `Close()` | Stops listening. The lock stays until the object goes, so no second copy slips in while this one shuts down. |
-| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. |
-| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. |
+| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. A window on another virtual desktop (workspace) is brought to the one in view, where the start that asked for it was made - with its window, when a dialog is what comes forward (`UltraCanvasWindowBase::MoveToCurrentDesktop`, which `RaiseAndFocus` calls; X11 - elsewhere the system decides whether the window comes over or the desktop changes). |
+| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. When this process's `Claim()` answered `AlreadyRunning`, the alert also says why the running copy's window did not come by itself: the bus's own reason when the bus could not be joined ("It could not be asked to come forward: ..." - a bus folder that is not this user's alone, a path too long for a socket), or "It did not answer when asked to come forward." when the copy is on the bus and silent. All of it in the application's language (`Tr`, the standard set): `Claim()` loads the language before it asks the bus, since the bus words its reason when it refuses. |
+| `HandOffMessage(displayName, note)` | The one line a start says on the terminal about the copy already running, without the line end, in the person's language: `HandOffNote::Running` ("... is already running."), `BroughtForward` ("...: brought it forward.", the default), `RequestTaken` ("...: handed the request to it.") or `OpeningHere` ("... but did not answer: opening a window here."). For the applications that are started from a terminal or by the desktop with `--background`; it loads the language itself when the start has no application yet. |
 
 ## Why it is compiled into the application
 
@@ -90250,6 +90310,74 @@ std::printf("%s", UMLTextExport::ToPlantUML(model).c_str());
   the full feature list and roadmap for the rendering element
 - [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md) — the shared
   orthogonal router the element will use
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md
+==============================================================================
+
+# UltraCanvasUnixSocketAddress
+
+The address of a Unix domain socket at a path **of any length** (Linux, macOS,
+the BSDs; the header is empty on Windows).
+
+A socket's address (`sockaddr_un`) holds a path of 107 bytes on Linux and 103
+on macOS and the BSDs. The sockets a program makes for itself lie under
+folders whose length it does not choose - the user's runtime folder, a
+virtual machine's own - and a longer path could not be bound or connected at
+all. `UnixSocketAddress` fills the address for a path that fits, and on Linux
+reaches a longer one **through its folder**: the folder is opened, which
+takes a path of any length, and the socket named as
+`/proc/self/fd/<n>/<file>`, which the kernel resolves to the same file. The
+socket stays where its path says; only the way to name it is shorter.
+
+```cpp
+#include "UltraCanvasUnixSocketAddress.h"
+
+UltraCanvas::UnixSocketAddress address;
+std::string error;
+if (!address.Resolve(socketPath, error)) {
+    // a path too long on macOS / the BSDs, or a folder that cannot be opened
+    return false;
+}
+const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+if (::connect(fd, address.Get(), address.Size()) != 0) {   // or bind()
+    ::close(fd);
+    return false;
+}
+```
+
+<!-- doc-check: std::string socketPath -->
+
+The address keeps the folder open, so it lives until `bind()` or `connect()`
+has returned. The folder must exist: a server makes it before it resolves the
+address, and a client that waits for a server reads `folderMissing` as "not
+yet".
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `UnixSocketAddress::Fits(path)` | Whether `path` can be an address as it is (shorter than `sun_path`). |
+| `Resolve(path, error, folderMissing = nullptr)` | Fills the address. False with `error` when the path is too long and cannot be reached through its folder: on macOS and the BSDs always, on Linux when the folder cannot be opened (`*folderMissing` is set when it is simply not there), when the file's own name is longer than about 80 bytes, or when `/proc` is not mounted. |
+| `LastFailure()`, `FolderError()` | Why the last `Resolve` answered false, for a caller that words the failure itself (UltraMessage does, in the person's language): `Failure::TooLong`, `FolderNotOpened` (with the `errno` in `FolderError()`), `NoProc`; `NoFailure` after a success. |
+| `Get()`, `Size()` | The `sockaddr*` and its length for `bind()` / `connect()`. |
+
+## When another program makes the socket
+
+A `/proc/self/fd/<n>/...` name means something only in the process that
+opened the folder, so it cannot be handed to a program this one starts (QEMU,
+virtiofsd). There, start the other program **in** the socket's folder and
+give it the file's name alone - a relative name is resolved against the
+folder the program runs in - and keep every other path it gets absolute.
+`Fits()` says when that is needed. UltraWin starts its machine that way
+(`core/UltraWin/UltraWinVm.cpp`), and reaches the control socket QEMU made
+with `Resolve`.
+
+## Who uses it
+
+UltraMessage's transport (the bus under `$XDG_RUNTIME_DIR`) and UltraWin's
+QMP client. The header has nothing of the framework in it, so the modules
+that do not link the core can include it.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVectorCanvas.md
@@ -108098,7 +108226,8 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
-UltraDatabase and nothing of the widget layer, so tools and tests stay
+UltraDatabase and UltraLocalisation - both UI-free - and nothing of the widget
+layer, so tools and tests stay
 headless; `Tests/UltraMessage/CMakeLists.txt` also configures on its own
 where the UI library cannot be built.
 
@@ -108242,6 +108371,47 @@ that is set, on every platform: the framework's machine-local data root
 (`UltraCanvasDataFolder.h`). A `ultramessage` folder an earlier version left
 on Linux is moved into `UltraMessage` on the first broker start. Socket, lock
 file and directories are owner-only.
+
+**The bus folder must be this user's alone.** Whoever holds the folder the
+socket lies in decides which broker an application meets there. Without
+`$XDG_RUNTIME_DIR` the bus lies at `/tmp/ultramessage-<uid>/ultramessage/`, a
+name any account can work out and make first. So on Linux, macOS and the BSDs
+a broker hosts, and an endpoint joins, only where
+
+- the bus folder is a real folder (not a link), owned by this user, and
+  nobody else may write to it - the broker makes every folder it creates on
+  the way owner-only, and tightens one of this user's that is looser; and
+- the folder above it is this user's or the system's (root's), and not one
+  everyone may write to - unless it has the sticky bit, as `/tmp` does, where
+  an entry is its owner's alone to rename.
+
+Otherwise the connect fails with `the bus folder ... is not this user's
+alone: ...`, naming which of these it was, and nothing is written there. A program
+running as root is let through: it joins a user's bus on purpose (a tool
+started with `sudo`). A custom `busPath` follows the same rule.
+
+A Unix socket's address holds a path of 107 bytes on Linux and 103 on macOS
+and the BSDs. A bus path longer than that - a long `$XDG_RUNTIME_DIR`, a
+sandbox's, a test's private folder - is reached through its folder on Linux
+(the folder is opened and the socket named as `/proc/self/fd/<n>/bus.sock` -
+`UltraCanvasUnixSocketAddress.h`),
+so the bus stays where the path says and broker and endpoints need nothing
+set. On macOS and the BSDs such a path is refused, and the error says so
+(`bus path too long for a Unix socket: ...`): give a shorter `busPath` or
+`TMPDIR` there.
+
+**Why a bus could not be hosted or joined is said in the person's language.**
+`UltraMsg_Connect`'s `error.message` is what an application shows - the
+single-instance "already running" alert puts it on screen - so the reasons a
+person can meet go through `Tr` (UltraLocalisation, the standard set): no
+broker listening or reachable, a broker that cannot be started, the bus
+folder that is not this user's alone, a bus path too long, a folder that
+cannot be made or opened, a broker that does not confirm the connection.
+They are worded when they happen, in the language loaded at that moment: a
+program that has not loaded one (`ultramsg`, a test) gets the English, which
+is also the catalogue key. What only a programmer meets stays English -
+an invalid topic or pattern, a missing callback, a call on an endpoint that
+is not connected, the journal's and the system calls' own errors.
 
 ### 3.5 Schemas and topics
 
@@ -111221,6 +111391,11 @@ forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
   `vmAllowWithoutKvm`, for tests), virtio disk/net, the guest's RDP port
   forwarded to loopback (`vmRdpHostPort`, default 13389), and a QMP
   control socket in the machine directory; it returns once QMP answers.
+  The machine directory may be of any length: where its sockets' paths
+  would pass the 107 bytes a Unix socket's address holds, QEMU and
+  virtiofsd are started in that directory and given the sockets by name,
+  and the control socket is reached through its folder
+  (`UltraCanvasUnixSocketAddress.h`).
   While install media is configured and setup has not completed, the
   machine boots from the ISO with the answer file attached as a virtual
   FAT volume.
@@ -115976,6 +116151,12 @@ windows are minimised, so the wallpaper shows.
   the window manager has more, it shows those too.
 - To put a window on another desktop, right-click its taskbar button →
   **Move to**.
+- A window that is already open on another desktop comes to the one you are
+  on when you ask for it again: **Desktop settings...**, the clipboard,
+  screenshot and UltraToDo buttons, the Sticker board, the Applications and
+  Task Manager windows, and every ULTRA OS application you start a second
+  time (Linux, X11). Other programs decide for themselves: some bring their
+  window over, some switch to its desktop, some open a second window.
 - On Windows, the buttons are Windows' own virtual desktops, which Explorer
   provides: they switch while Explorer runs (beside Explorer). A button for
   a desktop Windows does not have yet adds it in Task View when you click

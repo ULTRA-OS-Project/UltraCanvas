@@ -62,7 +62,8 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
-UltraDatabase and nothing of the widget layer, so tools and tests stay
+UltraDatabase and UltraLocalisation - both UI-free - and nothing of the widget
+layer, so tools and tests stay
 headless; `Tests/UltraMessage/CMakeLists.txt` also configures on its own
 where the UI library cannot be built.
 
@@ -206,6 +207,47 @@ that is set, on every platform: the framework's machine-local data root
 (`UltraCanvasDataFolder.h`). A `ultramessage` folder an earlier version left
 on Linux is moved into `UltraMessage` on the first broker start. Socket, lock
 file and directories are owner-only.
+
+**The bus folder must be this user's alone.** Whoever holds the folder the
+socket lies in decides which broker an application meets there. Without
+`$XDG_RUNTIME_DIR` the bus lies at `/tmp/ultramessage-<uid>/ultramessage/`, a
+name any account can work out and make first. So on Linux, macOS and the BSDs
+a broker hosts, and an endpoint joins, only where
+
+- the bus folder is a real folder (not a link), owned by this user, and
+  nobody else may write to it - the broker makes every folder it creates on
+  the way owner-only, and tightens one of this user's that is looser; and
+- the folder above it is this user's or the system's (root's), and not one
+  everyone may write to - unless it has the sticky bit, as `/tmp` does, where
+  an entry is its owner's alone to rename.
+
+Otherwise the connect fails with `the bus folder ... is not this user's
+alone: ...`, naming which of these it was, and nothing is written there. A program
+running as root is let through: it joins a user's bus on purpose (a tool
+started with `sudo`). A custom `busPath` follows the same rule.
+
+A Unix socket's address holds a path of 107 bytes on Linux and 103 on macOS
+and the BSDs. A bus path longer than that - a long `$XDG_RUNTIME_DIR`, a
+sandbox's, a test's private folder - is reached through its folder on Linux
+(the folder is opened and the socket named as `/proc/self/fd/<n>/bus.sock` -
+`UltraCanvasUnixSocketAddress.h`),
+so the bus stays where the path says and broker and endpoints need nothing
+set. On macOS and the BSDs such a path is refused, and the error says so
+(`bus path too long for a Unix socket: ...`): give a shorter `busPath` or
+`TMPDIR` there.
+
+**Why a bus could not be hosted or joined is said in the person's language.**
+`UltraMsg_Connect`'s `error.message` is what an application shows - the
+single-instance "already running" alert puts it on screen - so the reasons a
+person can meet go through `Tr` (UltraLocalisation, the standard set): no
+broker listening or reachable, a broker that cannot be started, the bus
+folder that is not this user's alone, a bus path too long, a folder that
+cannot be made or opened, a broker that does not confirm the connection.
+They are worded when they happen, in the language loaded at that moment: a
+program that has not loaded one (`ultramsg`, a test) gets the English, which
+is also the catalogue key. What only a programmer meets stays English -
+an invalid topic or pattern, a missing callback, a call on an endpoint that
+is not connected, the journal's and the system calls' own errors.
 
 ### 3.5 Schemas and topics
 

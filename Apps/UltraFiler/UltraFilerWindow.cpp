@@ -65,6 +65,12 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.53.0 - Edit in ArtCreator: a drawing's context menu starts ArtCreator with it
+// Version: 1.52.0 - Edit in UltraPaint: a picture's context menu starts UltraPaint with it
+//                  (BuildOpenMenuItems, on every folder display's openMenuProvider)
+// Version: 1.51.0 - IsOpen (MobilePC hands a later start's folders to an open window)
+// Version: 1.50.0 - Settings > Display > Favorite folders applied to every file display
+//                  (ApplyFavoriteHighlight): a fill, border or shade, its colour, the heart
 // Version: 1.49.1 - the preview pane is left as it is while a selection rectangle is drawn in the
 //                  folder display, and follows the selection once it is let go
 // Version: 1.49.0 - the path bar in the colours of Settings > Display > Path bar: #E4E6E9 for the
@@ -160,7 +166,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -174,10 +180,11 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
-#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files
+#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files, UltraPaint / ArtCreator to edit
+#include "UltraCanvasHostedApps.h"     // an editor carried by the same program (MobilePC)
 #include "UltraCanvasDiskCache.h"         // the cache entry of Extras > Open location
 #include "UltraCanvasFileAssociations.h"
-#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
+#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon; CanLoadVectorDocument
 #include "UltraCanvasMacBundle.h"      // a pinned application bundle, by path
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
@@ -1794,6 +1801,7 @@ void UltraFilerWindow::ApplyLook() {
         statusProgress->SetTrackColor(look.line);
     }
     ApplyTreeColors();   // the default drive rows have a light and a dark tint
+    ApplyFavoriteHighlightEverywhere();   // ... and the default favorite colour
     if (computerPane) computerPane->SetBackgroundColor(look.panel);
     // The Computer page's drive cards take their colours when they are
     // built: the ring's border and free slice, the percentage in its hole,
@@ -1833,6 +1841,10 @@ void UltraFilerWindow::Show() {
     // The first fit: the text is measured with the window's render context,
     // which is there once the window is.
     ScheduleTreeFit();
+}
+
+bool UltraFilerWindow::IsOpen() const {
+    return window && window->GetState() != WindowState::Closed;
 }
 
 void UltraFilerWindow::OpenFolders(const std::vector<std::string>& paths) {
@@ -2067,6 +2079,47 @@ bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
     return true;
 }
 
+std::vector<MenuItemData> UltraFilerWindow::BuildOpenMenuItems(const std::vector<FilerEntry>& targets) {
+    // Every target a file on the disk: an entry inside an archive or on a
+    // remote drive is a path no other program can open.
+    if (targets.empty()) return {};
+    std::vector<std::string> paths;
+    bool pictures = true;   // all of them raster pictures: UltraPaint
+    bool drawings = true;   // all of them drawings a vector reader takes: ArtCreator
+    for (const FilerEntry& entry : targets) {
+        if (entry.isDirectory || entry.isShortcut) return {};
+        std::error_code ec;
+        if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) || ec) return {};
+        paths.push_back(entry.path);
+        if (entry.category != FilerFileCategory::Image) pictures = false;
+        // What ArtCreator opens is what the framework's vector readers read
+        // (SVG, EPS, DXF, CDR, ... - whichever plug-ins this build has); a
+        // raster picture is UltraPaint's even where a reader would take it.
+        if (entry.category == FilerFileCategory::Image ||
+            !UltraCanvasFileLoader::CanLoadVectorDocument(entry.path))
+            drawings = false;
+    }
+    // Only where the editor can be started: installed beside UltraFiler or
+    // on the PATH, or carried by the same program (MobilePC).
+    auto editIn = [this, &paths](const char* program, const char* icon) -> std::vector<MenuItemData> {
+        if (UltraCanvasHostedApps::IdForProgram(program).empty() &&
+            UltraCanvasDesktopShell::FindProgram(program).empty())
+            return {};
+        const std::string name = program;
+        return {MenuItemData::Action(
+                TrF("Edit in {0}", name),
+                NormalizePath(GetResourcesDir() + "media/appicon/" + icon),
+                [this, name, paths]() {
+                    std::string error;
+                    if (!UltraCanvasDesktopShell::LaunchProgram(name, paths, &error) && statusLabel)
+                        statusLabel->SetText(TrF("{0} could not be started: {1}", name, error));
+                })};
+    };
+    if (pictures) return editIn("UltraPaint", "UltraPaint.png");
+    if (drawings) return editIn("ArtCreator", "ArtCreator.png");
+    return {};
+}
+
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
     if (path.empty()) return;
     // The pane and the window would otherwise both hold the file open, which
@@ -2248,6 +2301,8 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
+    // Display > Favorite folders: how a favorite stands out, on every display.
+    ApplyFavoriteHighlightEverywhere();
     // Display > Path bar: its colours, on the window's strip and the split
     // view's two (a restyle, no rebuild)...
     for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
@@ -2713,6 +2768,23 @@ void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) 
     target->SetFavoriteMarkProvider([this](const FilerEntry& entry) {
         return favorites.IsFavorite(entry.path);
     });
+    ApplyFavoriteHighlight(target);
+}
+
+void UltraFilerWindow::ApplyFavoriteHighlight(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+    target->SetFavoriteHighlight(settings.favoriteHighlight,
+            settings.EffectiveFavoriteHighlightColor(theme.dark, theme.roles.ground));
+    target->SetFavoriteHeartShown(settings.favoriteHeart);
+}
+
+void UltraFilerWindow::ApplyFavoriteHighlightEverywhere() {
+    for (FilerTabState* state : FolderDisplayStates())
+        if (state->filer) ApplyFavoriteHighlight(state->filer.get());
+    ApplyFavoriteHighlight(folderPreview.get());
+    for (const auto& f : historyFilers) ApplyFavoriteHighlight(f.get());
+    for (const auto& f : favoritesFilers) ApplyFavoriteHighlight(f.get());
 }
 
 void UltraFilerWindow::RepaintFavoriteMarks() {
@@ -7231,6 +7303,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    tab->filer->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
     WireFavoriteMarkProvider(tab->filer.get());
@@ -7556,6 +7629,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        histFiler->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
         WireFavoriteMarkProvider(histFiler.get());
@@ -7820,6 +7894,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        favFiler->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
         WireDisplayFormatCallbacks(favFiler.get());
         WireFolderIconProvider(favFiler.get());
         favFiler->onViewTypeChanged = [this](FilerViewType) {
@@ -7960,6 +8035,7 @@ void UltraFilerWindow::BuildComputerPage() {
     computerFolders->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     computerFolders->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     computerFolders->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    computerFolders->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
     WireDisplayFormatCallbacks(computerFolders.get());
     // The tiles carry the tree's icons for these folders - the house for
     // Home, the cloud for a cloud folder - and otherwise whatever the folder

@@ -89,8 +89,10 @@ int main(int argc, char* argv[]) {
     if (background) request.Set("background", true);
     const UltraCanvasSingleInstance::Start start = instance.Claim(request);
     if (start == UltraCanvasSingleInstance::Start::HandedOff) {
-        std::cout << (background ? "UltraNotifications is already running.\n"
-                                 : "UltraNotifications is already running: brought it forward.\n");
+        using Note = UltraCanvasSingleInstance::HandOffNote;
+        std::cout << UltraCanvasSingleInstance::HandOffMessage("UltraNotifications",
+                                                               background ? Note::Running : Note::BroughtForward)
+                  << "\n";
         return EXIT_SUCCESS;
     }
     try {

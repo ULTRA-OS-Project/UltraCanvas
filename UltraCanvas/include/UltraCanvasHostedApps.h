@@ -13,7 +13,13 @@
 // UltraCanvasDesktopShell::ListApplications lists every registered one where
 // the platform has no applications of its own to list (Android), each as an
 // entry whose shortcutPath is "hosted:<id>"; LaunchApplication with that
-// entry calls Launch.
+// entry calls Launch. An application may also stand in for programs by
+// name (`programs`: "UltraFiler"): UltraCanvasDesktopShell::LaunchProgram
+// starts it, with the program's arguments, instead of looking for an
+// executable - so a desktop button that starts "UltraFiler" starts the hosted
+// one.
+// Version: 1.1.0 - programs: the program names an application stands in for
+//                  (IdForProgram, which UltraCanvasDesktopShell::LaunchProgram asks)
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
@@ -34,10 +40,14 @@ namespace UltraCanvas {
         std::string comment;                  // its tooltip
         std::string iconFile;                 // an image file
         std::vector<std::string> categories;  // freedesktop categories
-        // Opens the application's window(s), with files to open if any.
+        // Opens the application's window(s), with files to open if any - or,
+        // started by program name, that program's command-line arguments.
         // False when it could not start; it must not run an event loop of
         // its own - the host's runs every application.
         std::function<bool(const std::vector<std::string>& files)> launch;
+        // The programs it stands in for, by executable name ("UltraFiler"):
+        // LaunchProgram of any of them starts this application instead.
+        std::vector<std::string> programs = {};
     };
 
     namespace UltraCanvasHostedApps {
@@ -56,6 +66,9 @@ namespace UltraCanvas {
         std::string PathFor(const std::string& id);
         // The id in such a path, "" for any other path.
         std::string IdFromPath(const std::string& path);
+        // The application standing in for `program` - a name or a path, whose
+        // file name counts, ".exe" aside, in any letter case - or "".
+        std::string IdForProgram(const std::string& program);
     }
 
 } // namespace UltraCanvas

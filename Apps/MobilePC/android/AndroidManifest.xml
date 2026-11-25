@@ -14,11 +14,22 @@
          device without one do the same. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
 
+    <!-- UltraFiler shows and changes the phone's own files by path
+         (/storage/emulated/0): "All files access", which the user switches
+         on in Settings, from Android 11; the storage permission before it
+         (UltraCanvasAndroidPermissions.h, RequestAllFilesAccess). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+                     android:maxSdkVersion="29"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+                     android:maxSdkVersion="29"/>
+
     <!-- The launcher icon is made from media/appicon/MobilePC.png
          (the icon option of scripts/android-package-apk.sh). -->
     <application
         android:label="MobilePC"
         android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true"
         android:hasCode="true">
 
         <!-- UltraCanvasActivity, not a plain NativeActivity: it puts the

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install MobilePC on a running emulator, give it a second display, and pass
-# only if the desktop is drawn on that display, a hosted application starts
-# on it, and the desktop moves back to the phone's screen when the display
+# only if the desktop is drawn on that display, two hosted applications start
+# on it (UltraPaint, and UltraFiler by its id), and the desktop moves back to the phone's screen when the display
 # goes - with the process alive throughout.
 #
 # The second display is the emulator's simulated one (Settings > Developer
@@ -81,16 +81,18 @@ sleep 3
 # adb shell hands one string to the device's shell, which splits it again:
 # the value is quoted for that shell too, or "ultrapaint" becomes am's
 # package argument and the app gets "--launch" alone.
-adb shell am start -W -n "$package/$activity" -e ultracanvas.args "'--launch ultrapaint'"
+adb shell am start -W -n "$package/$activity" -e ultracanvas.args "'--launch ultrapaint --launch ultrafiler'"
 
 wait_for 'desktop mode enabled' "$timeout"
 wait_for 'desktop output: the external display' 60
 wait_for 'desktop frame presented on external display' 60
-wait_for 'MobilePC: (started|ultrapaint did not start)' 60
-if app_lines | grep -q 'MobilePC: ultrapaint did not start'; then
-    echo "::error::UltraPaint did not start on the desktop"
-    exit 1
-fi
+for app in ultrapaint ultrafiler; do
+    wait_for "MobilePC: ($app did not start|started $app)" 60
+    if app_lines | grep -q "MobilePC: $app did not start"; then
+        echo "::error::$app did not start on the desktop"
+        exit 1
+    fi
+done
 sleep 5   # the screenshots show the settled desktop
 adb exec-out screencap -p > "$out/screenshot-phone-control-pad.png" || true
 

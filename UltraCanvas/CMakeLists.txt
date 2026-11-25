@@ -4506,7 +4506,11 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
-    target_link_libraries(uc-message PUBLIC uc-database Threads::Threads)
+    # uc-localisation: the reasons a person is shown for a bus that cannot be
+    # hosted or joined go through Tr. By its archive name, as every module
+    # archive names another ("MODULE HOMES"); UI-free, so the headless
+    # programs on the bus (ultramsg) link nothing more for it.
+    target_link_libraries(uc-message PUBLIC uc-database uc-localisation Threads::Threads)
     if(NOT ULTRACANVAS_BUILD_SHARED)
         target_link_libraries(uc-message PRIVATE uc-yyjson)
     endif()

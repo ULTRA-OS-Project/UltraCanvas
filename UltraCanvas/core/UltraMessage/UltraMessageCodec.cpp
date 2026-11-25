@@ -2,6 +2,7 @@
 // The codec half of UltraMessageInternal.h: identifiers, base64, the JSON
 // forms of every public type, frame encoding and decoding, topic matching and
 // the per-platform default paths.
+// Version: 0.1.3 - EnsureDirectory makes every folder it creates owner-only, not only the last
 // Version: 0.1.2 - the journal folder is UltraMessage on every platform (the Linux
 //                  ultramessage folder is moved into it once), from the framework's
 //                  machine-local data root
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <mutex>
 #include <random>
+#include <vector>
 
 using UltraCanvas::PathFromUtf8;
 using UltraCanvas::PathToUtf8;
@@ -697,10 +699,23 @@ std::string ParentDirectory(const std::string& path) {
 
 bool EnsureDirectory(const std::string& path) {
     if (path.empty()) return false;
+    const std::filesystem::path wanted = UltraCanvas::PathFromUtf8(path);
     std::error_code ec;
-    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(path), ec);
-    if (ec && !std::filesystem::is_directory(UltraCanvas::PathFromUtf8(path), ec)) return false;
 #ifndef _WIN32
+    // The folders made here, from the first that is missing down: each is
+    // owner-only, not only the last. The bus's fallback place is two folders
+    // deep in /tmp, and the upper one was left as the umask made it.
+    std::vector<std::filesystem::path> made;
+    for (std::filesystem::path p = wanted; !p.empty(); p = p.parent_path()) {
+        if (std::filesystem::exists(p, ec)) break;
+        made.push_back(p);
+        if (p == p.parent_path()) break;
+    }
+#endif
+    std::filesystem::create_directories(wanted, ec);
+    if (ec && !std::filesystem::is_directory(wanted, ec)) return false;
+#ifndef _WIN32
+    for (const std::filesystem::path& p : made) ::chmod(p.c_str(), 0700);
     ::chmod(path.c_str(), 0700);
 #endif
     return true;

@@ -577,6 +577,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasUnixSocketAddress** (`UltraCanvasUnixSocketAddress.h`,
+  header-only, not Windows) — the address of a Unix socket at a path of any
+  length. `UnixSocketAddress::Resolve(path, error)` fills a `sockaddr_un`;
+  a path longer than the 107 bytes it holds is reached through its folder
+  on Linux (`/proc/self/fd/<n>/<file>`), and refused with the reason on
+  macOS and the BSDs. `Fits(path)` says whether a path needs that. Used by
+  UltraMessage's transport and UltraWin's QMP client. See
+  `Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md`.
+
 - **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
   `SettingsPageKit`) — the look of an application's settings window, once:
   `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
@@ -1288,7 +1297,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   run inside their host program (MobilePC's): registered with an entry
   point, listed by `UltraCanvasDesktopShell::ListApplications` where the
   platform has none of its own, started in the process by
-  `LaunchApplication`. Core in `core/UltraCanvasHostedApps.cpp`. See
+  `LaunchApplication` - and by `LaunchProgram` with the name of a program an
+  application stands in for (`programs`: MobilePC's UltraFiler answers
+  "UltraFiler"). Core in `core/UltraCanvasHostedApps.cpp`. See
   `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
 
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth

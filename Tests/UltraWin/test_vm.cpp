@@ -4,15 +4,28 @@
 // no KVM needed, empty disk — no Windows required) and drives it through
 // QMP: start -> Running -> Suspend/Resume -> Kill. Skips when QEMU is not
 // installed, exactly like the real-wine test.
+// Version: 0.1.1 - the QMP client's socket: nothing open after a failed Connect, one
+//                  session after a second
 // Version: 0.1.0 (Stage 2a)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "test_framework.h"
 
 #include "UltraWinInternal.h"
+#include "UltraWinQmp.h"
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstring>
 #include <filesystem>
+#include <functional>
+#include <thread>
+#include <vector>
 
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
@@ -130,4 +143,127 @@ TEST(vm_provision_and_lifecycle_with_real_qemu) {
     REQUIRE(UltraWin_VmKill());
     REQUIRE_EQ(UltraWin_VmGetState(), UltraWinVmState::Stopped);
     UltraWin_Shutdown();
+}
+
+// The QMP client and its socket. Connect() left the socket of a connection
+// that failed open until the destructor, and opened a new one over it when
+// asked again - on the same object each try lost one. Now nothing stays open
+// after a false, and a session the client had is closed before the next.
+namespace {
+
+int OpenDescriptors() {
+    int count = 0;
+    std::error_code ec;
+    for (auto it = fs::directory_iterator("/proc/self/fd", ec);
+         !ec && it != fs::directory_iterator(); it.increment(ec))
+        ++count;
+    return count;
+}
+
+// A stand-in for QEMU's control socket: greets, and answers every line with
+// an empty return. Counts the sessions that the client ended.
+struct FakeQmp {
+    std::string path;
+    int listener = -1;
+    std::thread worker;
+    std::atomic<int> accepted{0};
+    std::atomic<int> closedByClient{0};
+    std::atomic<bool> stop{false};
+
+    bool Start(const std::string& socketPath) {
+        path = socketPath;
+        listener = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        if (listener < 0) return false;
+        sockaddr_un addr{};
+        addr.sun_family = AF_UNIX;
+        std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+        unlink(path.c_str());
+        if (bind(listener, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) return false;
+        if (listen(listener, 4) != 0) return false;
+        worker = std::thread([this] { Serve(); });
+        return true;
+    }
+
+    void Serve() {
+        std::vector<int> sessions;
+        while (!stop.load()) {
+            std::vector<pollfd> fds;
+            fds.push_back({listener, POLLIN, 0});
+            for (int s : sessions) fds.push_back({s, POLLIN, 0});
+            if (poll(fds.data(), fds.size(), 50) <= 0) continue;
+            if (fds[0].revents & POLLIN) {
+                const int session = accept(listener, nullptr, nullptr);
+                if (session >= 0) {
+                    const char greeting[] = "{\"QMP\":{\"version\":{}}}\n";
+                    (void)!write(session, greeting, sizeof(greeting) - 1);
+                    sessions.push_back(session);
+                    ++accepted;
+                }
+            }
+            for (size_t i = 1; i < fds.size(); ++i) {
+                if (!fds[i].revents) continue;
+                char buffer[512];
+                const ssize_t n = read(fds[i].fd, buffer, sizeof(buffer));
+                if (n <= 0) {
+                    close(fds[i].fd);
+                    sessions.erase(std::find(sessions.begin(), sessions.end(), fds[i].fd));
+                    ++closedByClient;
+                    continue;
+                }
+                const char answer[] = "{\"return\":{}}\n";
+                (void)!write(fds[i].fd, answer, sizeof(answer) - 1);
+            }
+        }
+        for (int s : sessions) close(s);
+    }
+
+    ~FakeQmp() {
+        stop = true;
+        if (worker.joinable()) worker.join();
+        if (listener >= 0) close(listener);
+        if (!path.empty()) unlink(path.c_str());
+    }
+};
+
+bool WaitUntil(const std::function<bool()>& done) {
+    for (int i = 0; i < 200 && !done(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    return done();
+}
+
+}  // namespace
+
+TEST(qmp_connect_leaves_nothing_open_when_it_fails) {
+    const std::string nowhere = ScratchRoot() + "/no-such-qmp.sock";
+    ultrawin_internal::QmpClient qmp;
+    REQUIRE(!qmp.Connect(nowhere, 50));   // once, so that anything lazy is open
+    const int before = OpenDescriptors();
+    for (int i = 0; i < 5; ++i) REQUIRE(!qmp.Connect(nowhere, 50));
+    REQUIRE_EQ(OpenDescriptors(), before);
+    // Not connected: a command says so at once instead of waiting out its time.
+    const auto asked = std::chrono::steady_clock::now();
+    REQUIRE(!qmp.Execute("query-status", 5000));
+    CHECK(std::chrono::steady_clock::now() - asked < std::chrono::seconds(1));
+    CHECK(qmp.LastError().find("not connected") != std::string::npos);
+}
+
+TEST(qmp_connect_again_closes_the_session_before) {
+    FakeQmp server;
+    REQUIRE(server.Start(ScratchRoot() + "/fake-qmp.sock"));
+    {
+        ultrawin_internal::QmpClient qmp;
+        REQUIRE(qmp.Connect(server.path, 3000));
+        REQUIRE(qmp.Execute("query-status", 3000));
+        const int connectedWith = OpenDescriptors();
+        // The same client, connected again: the first session ends, one is open.
+        REQUIRE(qmp.Connect(server.path, 3000));
+        REQUIRE(WaitUntil([&] { return server.closedByClient.load() == 1; }));
+        REQUIRE_EQ(server.accepted.load(), 2);
+        REQUIRE_EQ(OpenDescriptors(), connectedWith);
+        REQUIRE(qmp.Execute("query-status", 3000));
+
+        qmp.Disconnect();
+        REQUIRE(WaitUntil([&] { return server.closedByClient.load() == 2; }));
+        REQUIRE(!qmp.Execute("query-status", 3000));
+    }
 }

@@ -396,6 +396,8 @@
   "UltraFiler - Settings": "UltraFiler - Setări",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler simplu - pictogramele desenate de dosar și foaie",
   "UltraViewer could not be started: {0}": "UltraViewer nu a putut fi pornit: {0}",
+  "Edit in {0}": "Editează în {0}",
+  "{0} could not be started: {1}": "{0} nu a putut fi pornit: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer afișează imaginea, fișierul audio sau videoclipul la dimensiune completă, cu restul dosarului la o apăsare de tastă distanță. Când UltraViewer nu este instalat sau această opțiune este dezactivată, un astfel de fișier este tratat ca oricare altul, conform alegerii de mai jos.",
   "Upload: the name is already taken": "Încărcare: numele este deja folosit",
   "Uploaded: {0}": "Încărcat: {0}",

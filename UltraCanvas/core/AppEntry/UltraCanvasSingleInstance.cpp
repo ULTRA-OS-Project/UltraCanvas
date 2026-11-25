@@ -7,6 +7,13 @@
 // hand-off needs UltraMessage, a separate module the core does not link, and
 // the function defines ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE where
 // the build has it.
+// Version: 1.7.0 - HandOffMessage: what a start says on the terminal about the running
+//                  copy, in the person's language
+// Version: 1.6.0 - the "already running" alert says why the running copy was not brought
+//                  forward - the bus's own reason, or that the copy did not answer - and
+//                  its texts go through Tr
+// Version: 1.5.0 - BringToFront brings the window to the virtual desktop in view
+//                  (MoveToCurrentDesktop), also behind an open dialog
 // Version: 1.4.0 - a listening copy that lost the bus (the process hosting
 //                  the broker ended) is on it again within a second, hosting
 //                  it when nobody does - the endpoint reconnects by itself
@@ -21,7 +28,7 @@
 //                  no longer makes the other start wait and give up
 // Version: 1.1.0 - MakeOpenRequest / RequestPaths / ListenOpen
 // Version: 1.0.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSingleInstance.h"
@@ -32,7 +39,10 @@
 #include "UltraCanvasModalDialog.h"   // UltraCanvasDialogManager
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasSystemLanguage.h"
+#include "UltraCanvasUtils.h"          // NormalizePath
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -57,6 +67,42 @@ namespace UltraCanvas {
         Close();
     }
 
+    namespace {
+
+        // Why the last hand-off of this process ended in "already running",
+        // for the alert that says so: a start that only learns that another
+        // copy runs, and not why its window did not come, cannot tell the
+        // person what to do about it. One per process, as the instance is;
+        // written by Claim() and read by RunAlreadyRunningAlert(), both on
+        // the thread that starts the application.
+        struct HandOffFailure {
+            bool noAnswer = false;   // on the bus, and the running copy did not answer
+            std::string busError;    // no bus: what UltraMessage said (its words, not translated)
+        };
+        HandOffFailure& LastHandOffFailure() {
+            static HandOffFailure failure;
+            return failure;
+        }
+
+        // The person's language for a start that has no application yet: a
+        // second start speaks before UltraCanvasApplicationBase::Initialize
+        // has run - the bus words its refusal while Claim() waits, and a
+        // start that handed over quits without ever initialising. The
+        // catalogues as Initialize loads them: the shipped tree, the
+        // person's overrides and Language.conf, the desktop's languages.
+        // The name picks the application's own set, which nothing said here
+        // needs - these texts are the standard set's - and Initialize loads
+        // again under the application's name when the start goes on.
+        void LoadLanguageIfNone(const std::string& displayName) {
+            if (!UltraLocalisation::CurrentApplication().empty()) return;
+            const std::filesystem::path settings = UltraCanvasSettingsFolder();
+            UltraLocalisation::SetFolders(NormalizePath(GetResourcesDir() + "media/locale/"),
+                                          settings.empty() ? std::string() : PathToUtf8(settings));
+            UltraLocalisation::Initialize(displayName, SystemLanguageTags());
+        }
+
+    } // namespace
+
 #ifdef ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE
     namespace {
 
@@ -76,17 +122,21 @@ namespace UltraCanvas {
         std::string ShowTopic(const std::string& appId) { return appId + ".show"; }
 
         // `quiet` keeps the retry loop from saying the same thing forty times.
+        // `why`, when given, takes the bus's reason for a failure.
         UltraMsgHandle Connect(const std::string& appId, const std::string& displayName,
-                               bool hostBus, bool quiet) {
+                               bool hostBus, bool quiet, std::string* why = nullptr) {
             UltraMsgConnectOptions options;
             options.appId = EndpointAppId(appId);
             options.displayName = displayName;
             options.startBrokerIfAbsent = hostBus;   // the first copy hosts, so the next start finds it
             UltraMsgResult error;
             const UltraMsgHandle endpoint = UltraMsg_Connect(options, &error);
-            if (endpoint == UltraMsgInvalidHandle && !quiet)
-                debugOutput << displayName << ": single instance: no UltraMessage bus ("
-                            << error.message << ")" << std::endl;
+            if (endpoint == UltraMsgInvalidHandle) {
+                if (why) *why = error.message;
+                if (!quiet)
+                    debugOutput << displayName << ": single instance: no UltraMessage bus ("
+                                << error.message << ")" << std::endl;
+            }
             return endpoint;
         }
 
@@ -95,6 +145,9 @@ namespace UltraCanvas {
     UltraCanvasSingleInstance::Start UltraCanvasSingleInstance::HandOff(const JSONValue& request,
                                                                         const std::string& lockPath) {
         const JSONValue body = request.IsObject() ? request : JSONValue::MakeObject();
+        HandOffFailure& failure = LastHandOffFailure();
+        failure = HandOffFailure();
+        std::string busError;
         bool firstTry = true;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kStartingGraceMs);
         do {
@@ -108,7 +161,7 @@ namespace UltraCanvas {
             // The running copy hosts the bus once it listens, so this start
             // never hosts one of its own.
             if (endpoint_ == 0) {
-                const UltraMsgHandle endpoint = Connect(appId_, displayName_, false, !firstTry);
+                const UltraMsgHandle endpoint = Connect(appId_, displayName_, false, !firstTry, &busError);
                 if (endpoint != UltraMsgInvalidHandle) endpoint_ = endpoint;
             }
             if (endpoint_ != 0) {
@@ -128,6 +181,12 @@ namespace UltraCanvas {
             std::this_thread::sleep_for(std::chrono::milliseconds(kRetryPauseMs));
         } while (std::chrono::steady_clock::now() < deadline);
         if (lock_.Acquire(lockPath) == InstanceLockResult::Acquired) return Start::First;
+        // For the alert: never on the bus - its reason - or on it and unanswered.
+        if (endpoint_ == 0) failure.busError = busError;
+        else failure.noAnswer = true;
+        debugOutput << displayName_ << ": the running copy was not brought forward ("
+                    << (failure.noAnswer ? std::string("it did not answer on the bus") : failure.busError) << ")"
+                    << std::endl;
         return Start::AlreadyRunning;
     }
 
@@ -225,6 +284,7 @@ namespace UltraCanvas {
     UltraCanvasSingleInstance::Start UltraCanvasSingleInstance::HandOff(const JSONValue&,
                                                                         const std::string& lockPath) {
         // Nothing to hand to: the lock alone decides, once more.
+        LastHandOffFailure() = HandOffFailure();
         return lock_.Acquire(lockPath) == InstanceLockResult::Acquired ? Start::First : Start::AlreadyRunning;
     }
     void UltraCanvasSingleInstance::Listen(Handler) {}
@@ -254,6 +314,9 @@ namespace UltraCanvas {
                 break;
         }
         debugOutput << displayName_ << " is already running; asking it to come forward" << std::endl;
+        // Before the bus is asked: what it says when it refuses is shown to
+        // the person, in the alert, and is worded when it happens.
+        LoadLanguageIfNone(displayName_);
         const Start start = HandOff(request, lockPath);
         Close();
         return start;
@@ -321,11 +384,30 @@ namespace UltraCanvas {
             if (main->IsMinimized()) main->Restore();
             else if (main->GetState() == WindowState::Hidden) main->Show();
         }
+        // Onto the virtual desktop in view, where the start that asked was
+        // made: RaiseAndFocus brings the window it raises, and the main
+        // window follows a dialog that does not name it as its parent.
         if (!dialogs.empty()) {
+            if (main) main->MoveToCurrentDesktop();
             dialogs.back()->RaiseAndFocus();
             return;
         }
         if (main) main->RaiseAndFocus();
+    }
+
+    std::string UltraCanvasSingleInstance::HandOffMessage(const std::string& displayName, HandOffNote note) {
+        LoadLanguageIfNone(displayName);   // a start that handed over has no application yet
+        switch (note) {
+            case HandOffNote::Running:
+                return TrF("{0} is already running.", displayName);
+            case HandOffNote::RequestTaken:
+                return TrF("{0} is already running: handed the request to it.", displayName);
+            case HandOffNote::OpeningHere:
+                return TrF("{0} is already running but did not answer: opening a window here.", displayName);
+            case HandOffNote::BroughtForward:
+                break;
+        }
+        return TrF("{0} is already running: brought it forward.", displayName);
     }
 
     int UltraCanvasSingleInstance::RunAlreadyRunningAlert(UltraCanvasApplication& app,
@@ -333,9 +415,18 @@ namespace UltraCanvas {
         AlertOptions opts;
         opts.severity = AlertSeverity::Info;
         opts.title    = displayName;
-        opts.message  = displayName + " is already running.";
-        opts.details  = "Only one " + displayName + " runs at a time. "
-                        "Switch to the window that is already open.";
+        opts.message  = TrF("{0} is already running.", displayName);
+        opts.details  = TrF("Only one {0} runs at a time. Switch to the window that is already open.", displayName);
+        // Why that window did not come by itself, when Claim() found out: the
+        // person can then do something about it - a bus that refuses its
+        // folder, a copy that hangs - instead of looking for a window that
+        // may be on another desktop or behind everything.
+        const HandOffFailure& failure = LastHandOffFailure();
+        if (failure.noAnswer) {
+            opts.details += "\n\n" + Tr("It did not answer when asked to come forward.");
+        } else if (!failure.busError.empty()) {
+            opts.details += "\n\n" + TrF("It could not be asked to come forward: {0}", failure.busError);
+        }
         opts.onResult = [&app](DialogResult) { app.Exit(); };
         UltraCanvasAlert::Show(opts);
         app.Run();

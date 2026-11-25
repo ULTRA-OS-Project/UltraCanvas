@@ -12,10 +12,12 @@
 // its ultracanvas_app_main(), called by the framework's android_main(). Its
 // arguments come from the launching intent's ultracanvas.args extra:
 //   --launch <id>   start that application once the desktop is up (an id of
-//                   MobilePCHostedApps: texter, ultraviewer, ultrapaint,
-//                   artcreator)
+//                   MobilePCHostedApps: ultrafiler, texter, ultraviewer,
+//                   ultrapaint, artcreator)
 //   --debug         the framework's diagnostics, to logcat
 //
+// Version: 0.3.0 - the Vector plug-in registered: ArtCreator opens and saves drawings
+// Version: 0.2.0 - UltraFiler: its catalogue, its teardown after the loop
 // Version: 0.1.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework / ULTRA OS
@@ -33,6 +35,9 @@
 #include "UltraDesktopSettings.h"
 #include "UltraDesktopWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+#include "UltraCanvasVectorFormatsPlugin.h"
+#endif
 
 #include <android/log.h>
 
@@ -55,7 +60,8 @@ extern "C" int ultracanvas_app_main(int argc, char** argv) {
     // The texts of the desktop and of the applications it carries are in
     // their own catalogues: looked up after MobilePC's, as UOS-Settings takes
     // UltraDesktop's (UltraViewer has none of its own).
-    for (const char* set : {"UltraDesktop", "UltraTexter", "UltraPaint", "ArtCreator"}) UltraLocalisation::AddSet(set);
+    for (const char* set : {"UltraDesktop", "UltraFiler", "UltraTexter", "UltraPaint", "ArtCreator"})
+        UltraLocalisation::AddSet(set);
 
     UltraCanvasApplication app;
     if (!app.Initialize("MobilePC")) {
@@ -67,6 +73,12 @@ extern "C" int ultracanvas_app_main(int argc, char** argv) {
     // TV with the window that asks.
     UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+    // The drawing formats, as ArtCreator's main() registers them: its Open
+    // and Save, and UltraFiler's Edit in ArtCreator, which asks whether a
+    // file is one.
+    RegisterVectorFormatsPlugin();
+#endif
     MobilePC::RegisterHostedApps();
 
     // From here on every window is one of the desktop's - except the
@@ -106,6 +118,7 @@ extern "C" int ultracanvas_app_main(int argc, char** argv) {
                 });
             }
             app.Run();
+            MobilePC::ShutdownHostedApps();
         }
         desktop.onOutputChanged = nullptr;
     } catch (const std::exception& e) {

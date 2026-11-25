@@ -388,6 +388,8 @@
   "UltraFiler - Settings": "UltraFiler - 設定",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler 簡易 - 繪製的資料夾和紙張圖示",
   "UltraViewer could not be started: {0}": "無法啟動 UltraViewer：{0}",
+  "Edit in {0}": "在 {0} 中編輯",
+  "{0} could not be started: {1}": "無法啟動 {0}：{1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer 會以完整大小顯示圖片、音訊檔或影片，資料夾中的其他檔案只需按一個鍵即可切換。若未安裝 UltraViewer 或關閉此選項，此類檔案會依下方的選擇，像其他檔案一樣處理。",
   "Upload: the name is already taken": "上傳：名稱已被使用",
   "Uploaded: {0}": "上傳的項目：{0}",

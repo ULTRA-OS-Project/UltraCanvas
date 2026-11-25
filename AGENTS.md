@@ -453,6 +453,15 @@ user asks for a "distro build" with a pull request. A left-out row reports
 under its own name, so a required check never waits on it - and it reports
 **success** after a few seconds, with a notice that it was not built: a
 green row is not a build unless it ran for minutes.
+The Android build (`android-build.yml`) builds arm64-v8a alone on a pull
+request; x86_64 and the emulator jobs that run it - the demo at two
+densities, MobilePC on a second display - run on `main`, the weekly run and a
+manual dispatch, and on a pull request labelled `ci:emulator`. Ask for
+`ci:emulator` on a change to the Android layer or to what MobilePC carries,
+so it is seen running on a device before it merges rather than after;
+adding the label starts a run with those jobs. Without it they are left out
+under the names *android emulator (${{ matrix.label }})* and *android
+emulator (MobilePC, second display)*, reported **skipped**.
 There is no nightly run (switched off on 2026-11-25; `build.yml`'s `on:`
 says how to turn it back on). A change in a runner image or in the
 libraries the runners install fresh (MSYS2, Homebrew, apt) therefore shows
@@ -1307,6 +1316,10 @@ For assistants:
      takes as one name), line endings, locale, byte order, `#ifdef _WIN32` /
      `__APPLE__` branches, ARM-specific intrinsics; or
    - the user asks for a "distro build".
+
+   A change to the Android layer (`UltraCanvas/OS/Android/`) or to what
+   MobilePC carries also gets `ci:emulator`: a pull request otherwise builds
+   arm64 alone and runs no emulator (*Building and testing*).
 
    And when you report CI or merge "on green", count only the rows that
    built: a row the PR leaves out reports **success** in a few seconds with

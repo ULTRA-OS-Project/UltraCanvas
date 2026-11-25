@@ -2672,7 +2672,7 @@ jobs:
             TextAreaSearchHighlightTest TextAreaSpellCheckTest
             TextAreaSyntaxStateTest TextMetricsScreenshotTest
             TimecodeFieldElementTest ToolGroupButtonTest TooltipOwnWindowTest
-            VideoTimelineElementTest
+            VideoTimelineElementTest WindowCurrentDesktopTest
           )
           regex="^($(IFS='|'; echo "${tests[*]}"))\$"
           registered=$(ctest -N -R "$regex" | grep -cE '^ *Test +#' || true)

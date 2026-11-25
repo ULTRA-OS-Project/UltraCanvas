@@ -388,6 +388,8 @@
   "UltraFiler - Settings": "UltraFiler - 設定",
   "UltraFiler simple - the drawn folder and sheet icons": "UltraFiler シンプル - 描画されたフォルダーとシートのアイコン",
   "UltraViewer could not be started: {0}": "UltraViewer を起動できませんでした: {0}",
+  "Edit in {0}": "{0} で編集",
+  "{0} could not be started: {1}": "{0} を起動できませんでした: {1}",
   "UltraViewer shows the picture, audio file or video full size, with the rest of its folder a key press away. When UltraViewer is not installed, or this is switched off, such a file is handled like any other, by the choice below it.": "UltraViewer では、画像、オーディオファイル、ビデオがフルサイズで表示され、キーを押すだけで同じフォルダーのほかのファイルに移動できます。UltraViewer がインストールされていない場合、またはこの設定がオフの場合、そのようなファイルはほかのファイルと同様に、下の選択に従って処理されます。",
   "Upload: the name is already taken": "アップロード: 名前はすでに使われています",
   "Uploaded: {0}": "アップロードするファイル: {0}",

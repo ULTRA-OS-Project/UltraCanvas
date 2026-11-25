@@ -432,7 +432,9 @@ namespace UltraCanvas {
         // executable first (a build tree, a bundle), then on PATH. On macOS,
         // where every application is a bundle of its own, the <name>.app
         // beside this application's bundle and in ~/Applications and
-        // /Applications are tried before PATH.
+        // /Applications are tried before PATH. An application hosted in this
+        // program that stands in for `program` (UltraCanvasHostedApps,
+        // HostedAppInfo::programs) is started instead, with the arguments.
         static bool LaunchProgram(const std::string& program,
                                   const std::vector<std::string>& arguments = {},
                                   std::string* error = nullptr);

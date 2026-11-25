@@ -1,3 +1,194 @@
+#### 2026-11-25 *0.9.594*
+- **`ci:emulator`: the Android emulator on a pull request, when asked for.**
+  A pull request builds Android for arm64 alone and runs no emulator; one
+  labelled `ci:emulator` now gets what `main` runs - x86_64 as well, the demo
+  on the emulator at two densities and MobilePC on a second display - so an
+  Android change is seen running before it merges. Adding the label starts
+  that run without a push. Adding any other label starts no Android build
+  and cancels none in progress.
+- **A host's own entries after "Open with" in the file display's context
+  menu.** `UltraCanvasFilerWidget::openMenuProvider` is asked every time the
+  menu of a file or a selection opens, with the entries it acts on, and its
+  items go right after *Open with* - so an application offers an entry only
+  where it applies. UltraFiler adds *Edit in UltraPaint* for pictures and *Edit in ArtCreator*
+  for drawings there.
+- **A hosted application answers its program's name.** `HostedAppInfo` has
+  `programs`, the executable names an application inside its host stands in
+  for, and `UltraCanvasDesktopShell::LaunchProgram` starts that application -
+  with the program's arguments - before looking for an executable
+  (`UltraCanvasHostedApps::IdForProgram`). In MobilePC, UltraDesktop's
+  taskbar button for "UltraFiler" and UltraFiler's "UltraViewer" for a
+  double-clicked picture now start the applications in the same process;
+  before, they failed with "not installed". `HostedAppsTest` covers the
+  registry and the routing.
+- **Android: access to every file on the phone's storage.**
+  `AndroidPermissions::HasAllFilesAccess`, `RequestAllFilesAccess` and
+  `SharedStoragePath` (`OS/Android/UltraCanvasAndroidPermissions.h`), with
+  their Java half in `UltraCanvasActivity`: *All files access* from Android 11
+  - Settings' switch, opened on the phone - and the storage permission before
+  it. What a file manager such as MobilePC's UltraFiler needs to browse
+  `/storage/emulated/0` by path.
+- **The Vector plug-in builds for Android.** It needs only libvips, zlib
+  and tinyxml2, which the Android sysroot has, so the Android defaults no
+  longer switch it off: an Android app that links `UltraCanvasVectorPlugin`
+  and calls `RegisterVectorFormatsPlugin()` opens and saves SVG, AI, DXF,
+  DWG, EMF, WMF and ODG drawings. MobilePC does, for ArtCreator. The CDR,
+  XAR and EPS plug-ins stay off there.
+
+#### 2026-11-25 *0.9.593*
+- **A window asked to come forward comes to the virtual desktop in view
+  (X11).** `RaiseAndFocus` asked the window manager to activate the window and
+  nothing else. For a window on another virtual desktop (workspace) the
+  manager answers that as it likes: openbox and metacity only mark it "wants
+  attention" where it lies, so nothing happened that the person could see,
+  and icewm changes the desktop under them. A second start of a single-instance
+  application ended there (`UltraCanvasSingleInstance::BringToFront`): with
+  UOS-Settings or UltraClipboard open on desktop 1, UltraDesktop's *Desktop
+  settings...* and its clipboard button did nothing on desktop 2. The window
+  now asks to be moved to the current desktop first (`_NET_WM_DESKTOP`), then
+  to be activated, and the manager handles the two in that order: it appears
+  where it was asked for, in front, with the keyboard - measured under
+  openbox, metacity, icewm and xfwm4.
+  - `UltraCanvasWindowBase::MoveToCurrentDesktop()` is that move on its own,
+    and takes the window this one belongs to (its parent) along, so a dialog
+    brought over does not leave its window behind; `IsOnCurrentDesktop()`
+    says whether a shown window is where the person can see it. Both are
+    X11's so far: on the other platforms they answer "nothing to move" and
+    "yes", and the system decides as before (a Wayland compositor alone: no
+    protocol lets a client name a workspace).
+  - A window on every desktop stays on every desktop, and one the manager
+    names no desktop for (no manager, a popup) is left alone.
+  - `BringToFront` brings the main window over behind an open dialog too.
+  - `Tests/WindowCurrentDesktopTest.cpp` plays the window manager on a
+    display without one and reads what a manager would be asked; it runs
+    with the framework's window tests in CI.
+- **The "already running" alert says why the running copy did not come
+  forward, and speaks the application's language.** A second start that
+  cannot hand over to the running copy says "<App> is already running" and
+  asks the person to switch to its window. Why the window had not simply come
+  was only in the debug log - so with a bus that refused its folder, or a
+  copy that hung, the alert sent the person looking for a window with nothing
+  to go on. `UltraCanvasSingleInstance::RunAlreadyRunningAlert` now adds the
+  reason `Claim()` found:
+  - the bus could not be joined: "It could not be asked to come forward:"
+    and what UltraMessage said (`the bus folder ... is not this user's
+    alone: ...`, `bus path too long for a Unix socket: ...`), which is in
+    the person's language too (the entry on UltraMessage's reasons);
+  - the copy is on the bus and did not answer within the fifteen seconds a
+    start waits: "It did not answer when asked to come forward."
+  The debug log has the same line at the end of the wait. A build without
+  UltraMessage, where the lock alone decides, adds nothing.
+  - The alert's texts went straight to the screen in English in every
+    language. They go through `Tr` now, and the four are in the standard set
+    (`media/locale/en/Standard.json`) with drafts in all 29 languages
+    (`machine draft ..., reviewed by -`, as the rest of each file).
+  - No caller changes: the thirty applications call the alert as before.
+- **UltraMessage: the bus is hosted and joined only in a folder that is this
+  user's alone (Linux, macOS, BSD).** Whoever holds the folder the bus socket
+  lies in decides which broker an application meets there. Without
+  `$XDG_RUNTIME_DIR` the bus lies at `/tmp/ultramessage-<uid>/ultramessage/`,
+  a name any account on the machine can work out, in a folder everyone may
+  write to - and nothing looked at whose that folder was. Another account
+  that made it first and ran a broker in it was the bus: this user's
+  applications connected to it, and it read what they posted (notifications,
+  mail and chat previews) and could answer what they asked. Reproduced with
+  two accounts: the first account's broker printed the note the second one
+  posted.
+  - Before a broker hosts or an endpoint joins, the bus folder must be a real
+    folder (not a link) owned by this user that nobody else may write to, and
+    the folder above it this user's or root's and not open to everyone -
+    except with the sticky bit, as `/tmp` has, where an entry is its owner's
+    alone to rename (`BusFolderIsPrivate`, `UltraMessageTransport.cpp`).
+    Otherwise the connect fails with `the bus folder ... is not this user's
+    alone: ...`, naming which it was, and nothing is written there.
+  - The broker makes every folder it creates on the way owner-only, not only
+    the last (`EnsureDirectory`): the upper of the two in `/tmp` was left as
+    the umask made it. A folder of this user's with a looser mode is
+    tightened, as before.
+  - A program running as root is let through: it joins a user's bus on
+    purpose (a tool started with `sudo`).
+  - A custom `busPath` follows the same rule, so one in a folder shared with
+    other accounts is now refused. `Docs/Modules/UltraMessage/README.md` has
+    the rule.
+  - `Tests/UltraMessage/test_ultramessage.cpp` covers a folder others may
+    write to, a link in the folder's place, a private folder in one open to
+    everyone with and without the sticky bit, and the modes of the folders
+    the broker makes. It needs a user that is not root, which CI's is.
+- **UltraMessage: a bus under a long runtime folder is reached (Linux).** A
+  Unix socket's address holds a path of 107 bytes, and the bus lies at
+  `$XDG_RUNTIME_DIR/ultramessage/bus.sock`. With a runtime folder long enough
+  to pass that - a session's own, a sandbox's, a test's - no broker started
+  and no endpoint connected (`bus path too long for a Unix socket`), and the
+  only trace was in the debug log. What a person saw: a second start of a
+  single-instance application could not ask the running copy to come forward,
+  waited, and said "already running" instead; notifications and everything
+  else on the bus were silently off too. Such a socket is now bound and
+  connected through its folder - the folder is opened, which takes a path of
+  any length, and the socket named as `/proc/self/fd/<n>/bus.sock`
+  (`UltraCanvasUnixSocketAddress.h`). The bus stays exactly where its path says;
+  nothing is moved to a shorter place. A client that finds the folder not
+  there yet reads it as "no broker", as on a short path.
+  - macOS and the BSDs have no such way in, and still refuse a path past
+    their 103 bytes with the same message; `Docs/Modules/UltraMessage/README.md`
+    says so.
+  - `Tests/UltraMessage/test_ultramessage.cpp` hosts a broker on a bus path of
+    some 150 bytes and has one endpoint find and ask another across it.
+- **UltraMessage says why a bus could not be hosted or joined in the person's
+  language.** `UltraMsg_Connect`'s `error.message` is what an application
+  shows, and the single-instance "already running" alert now puts it on
+  screen: a German alert ended in an English clause ("... konnte nicht in den
+  Vordergrund geholt werden: the bus folder ... is not this user's alone").
+  The fourteen reasons a person can meet go through `Tr` - no broker
+  listening or reachable, a broker that cannot be started, the five ways a
+  bus folder is not this user's alone, a bus path too long (with and without
+  `/proc`), a bus folder that cannot be made or opened, a broker that does
+  not confirm the connection - and are in the standard set with drafts in
+  all 29 languages. What only a programmer meets (an invalid topic, a missing
+  callback, an endpoint that is not connected, the journal's and the system
+  calls' errors) stays English.
+  - The five folder reasons are whole sentences now, one entry each, so a
+    translator has a sentence and not two halves: `the bus folder {0} is not
+    this user's alone: it belongs to another user` where it was `... alone
+    (it belongs to another user)`.
+  - UltraMessage links UltraLocalisation for it (`uc-localisation`, by its
+    archive name; UI-free, as UltraDatabase is). The standalone test tree
+    (`Tests/UltraMessage/CMakeLists.txt`) compiles it in.
+  - A reason is worded when it happens, so `UltraCanvasSingleInstance::Claim`
+    loads the language before it asks the bus - a second start has no
+    application yet. A program that loads none (`ultramsg`, the tests) gets
+    the English, which is the catalogue key.
+  - `UltraCanvasUnixSocketAddress.h` 1.1.0: `LastFailure()` / `FolderError()`
+    say why `Resolve` failed, so the bus words a path that is too long
+    itself instead of matching the header's English.
+- **`UltraCanvasSingleInstance::HandOffMessage`: the terminal's line about
+  the running copy, translated.** UltraClipboard, UltraToDo,
+  UltraNotifications and UltraSnip each printed "<App> is already running:
+  brought it forward." in English from a literal of their own. One call
+  gives the line now - `Running`, `BroughtForward`, `RequestTaken`,
+  `OpeningHere` - from the standard set, and loads the language for a start
+  that quits before it has an application.
+- **`UltraCanvasUnixSocketAddress.h`: the address of a Unix socket at a path
+  of any length.** A socket's address holds a path of 107 bytes on Linux (103
+  on macOS and the BSDs), and two modules each refused a longer one in their
+  own words. `UnixSocketAddress::Resolve(path, error)` fills the address, and
+  on Linux reaches a longer path through its folder
+  (`/proc/self/fd/<n>/<file>`), so the socket stays where its path says;
+  `Fits(path)` says whether a path needs that. Header-only, with nothing of
+  the framework in it. UltraMessage's transport reaches a bus under a long
+  runtime folder with it (its own entry), and UltraWin's QMP client the
+  control socket of a machine in a long folder (UltraWin's changelog). Doc:
+  `Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md`.
+
+#### 2026-11-25 *0.9.592*
+- **Filer widget: a favorite can stand out by more than its heart.**
+  `SetFavoriteHighlight(look, colour)` gives every entry the favorite provider
+  names a solid background (the whole tile or row, its text switched to white
+  or dark, whichever reads on the colour), a border around it, or a shade -
+  the colour at the top, fading out to the bottom; `NoHighlight` (the default)
+  keeps only the heart. `SetFavoriteHeartShown(false)` leaves the heart out
+  and gives its gutter back. A selected favorite keeps the selection colour,
+  and the border is drawn over it.
+
 #### 2026-11-25 *0.9.591*
 - **Text drawn on several threads at once no longer crashes.** Every render
   context in the process shared one cache of Pango layouts, so a layout made
