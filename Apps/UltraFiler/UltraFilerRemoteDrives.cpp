@@ -1,4 +1,6 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+// Version: 1.15.1 - builds where the core has no UltraNet (Android: MobilePC): the
+//                  per-thread network hooks go through Net* helpers that are no-ops there
 // Version: 1.15.0 - RemoveDrive, InvalidateDrive, RefreshFolder; a failed
 //                   preview copy keeps what kind of failure it was
 //                   (RemoteFailure); the sign-in log's sessions are named by
@@ -24,7 +26,7 @@
 //                   under a name of its own; CachedListing, Revalidate
 // Version: 1.9.0 - a running preview copy can be called off (CancelActivePreviewLocked)
 // Version: 1.8.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerRemoteCache.h"
@@ -39,6 +41,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
+#include <utility>
 #include <fstream>
 #include <sstream>
 #include "UltraCanvasPathUtf8.h"
@@ -60,6 +64,48 @@
 namespace UltraCanvas {
 
 namespace fs = std::filesystem;
+
+// ===== ULTRANET'S PER-THREAD HOOKS =====
+// A job sets an abort check, an FTP session log and transfer callbacks on its
+// thread, and closes idle FTP connections when it is done. Where the core was
+// built without UltraNet (ULTRACANVAS_HAS_NET unset - the Android build
+// MobilePC carries UltraFiler in) the headers still declare them but nothing
+// defines them, and no drive can be reached anyway: the hooks do nothing and
+// hand back an empty previous value.
+namespace {
+    std::function<bool()> NetAbortCheck(std::function<bool()> check) {
+#ifdef ULTRACANVAS_HAS_NET
+        return UltraNet_SetThreadAbortCheck(std::move(check));
+#else
+        (void)check;
+        return {};
+#endif
+    }
+
+    UltraNetFtpLogCallback NetFtpLog(UltraNetFtpLogCallback sink) {
+#ifdef ULTRACANVAS_HAS_NET
+        return UltraNet_SetThreadFtpLog(std::move(sink));
+#else
+        (void)sink;
+        return {};
+#endif
+    }
+
+    void NetCloseIdleFtp() {
+#ifdef ULTRACANVAS_HAS_NET
+        UltraNet_FtpCloseIdleConnections();
+#endif
+    }
+
+    UltraNetTransferCallbacks NetTransferCallbacks(const UltraNetTransferCallbacks& callbacks) {
+#ifdef ULTRACANVAS_HAS_NET
+        return UltraNet_SetTransferCallbacks(callbacks);
+#else
+        (void)callbacks;
+        return {};
+#endif
+    }
+} // namespace
 
 // ===== THE ULTRACLOUD SIDE =====
 // Everything that needs the module is in here, so the class itself compiles
@@ -734,7 +780,7 @@ void UltraFilerRemoteDrives::StartSideListingLocked(const std::string& path) {
 
 void UltraFilerRemoteDrives::SideListingMain(const std::string& path) {
     // Called off with everything else when the window closes.
-    UltraNet_SetThreadAbortCheck([this]() { return stopping_.load(); });
+    NetAbortCheck([this]() { return stopping_.load(); });
     // Logged as the worker logs a listing: a session of its own, every step
     // of the connection in it.
     Job job;
@@ -745,7 +791,7 @@ void UltraFilerRemoteDrives::SideListingMain(const std::string& path) {
         log_.Append(logId, line);
         NotifyLogChanged();
     };
-    UltraNet_SetThreadFtpLog(
+    NetFtpLog(
             [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
     UltraCloud::SetThreadLog(
@@ -770,7 +816,7 @@ void UltraFilerRemoteDrives::SideListingMain(const std::string& path) {
     // The connection this thread opened goes with it - closed here, while
     // the thread still runs: on Windows a thread's last rites run under the
     // loader lock, no place for a QUIT.
-    UltraNet_FtpCloseIdleConnections();
+    NetCloseIdleFtp();
 
     bool queued = false;
     bool again = false;
@@ -1829,7 +1875,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
     // when Stop() has been called (quitting does not wait for a large upload
     // to finish), and when the preview copy being fetched is no longer to
     // go on (CancelActivePreviewLocked). The thread's one such check.
-    UltraNet_SetThreadAbortCheck([this, &jobCancel]() {
+    NetAbortCheck([this, &jobCancel]() {
         return stopping_.load() || (jobCancel && jobCancel->load() != PreviewKeep);
     });
     // Whether a job has run since the FTP connections this thread keeps open
@@ -1855,7 +1901,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 // later this happens, the longer it can hold the next job,
                 // or the window closing, which joins this thread.
                 lk.unlock();
-                UltraNet_FtpCloseIdleConnections();
+                NetCloseIdleFtp();
                 connectionsOpen = false;
                 continue;
             }
@@ -1864,9 +1910,9 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 // which would close it too - but on Windows a thread's last
                 // rites run under the loader lock, no place for a QUIT.
                 lk.unlock();
-                if (connectionsOpen) UltraNet_FtpCloseIdleConnections();
+                if (connectionsOpen) NetCloseIdleFtp();
                 // The check reads jobCancel, which goes with this function.
-                UltraNet_SetThreadAbortCheck({});
+                NetAbortCheck({});
                 return;
             }
             if (!queue_.empty()) {
@@ -1949,7 +1995,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
             if (reportsActivity) ReportActivity(*current, /*force=*/true);
         };
-        UltraNetFtpLogCallback previousLog = UltraNet_SetThreadFtpLog(
+        UltraNetFtpLogCallback previousLog = NetFtpLog(
                 [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
         // Asked by the thread's abort check as the job's calls run. Only a
         // preview copy has one: everything else is something the user asked
@@ -2002,7 +2048,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
             UltraNetTransferCallbacks bag;
             if (job.operation == RemoteOperation::Upload) bag.onUploadProgress = count;
             else                                          bag.onDownloadProgress = count;
-            previousCallbacks = UltraNet_SetTransferCallbacks(bag);
+            previousCallbacks = NetTransferCallbacks(bag);
         }
 
         // An exception leaving a std::thread ends the process, and a provider
@@ -2042,7 +2088,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 outcome.message = operationError;
             }
         }
-        UltraNet_SetThreadFtpLog(std::move(previousLog));
+        NetFtpLog(std::move(previousLog));
         jobCancel.reset();
         // Why the preview copy was called off, if it was and the download did
         // not finish anyway. Not a failure: the log shows it as called off and
@@ -2088,7 +2134,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // or in the next run (the preview cache's sweep removes one nobody
         // comes back for).
         if (job.isPreview && calledOff != PreviewKeep) {
-            if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
+            if (watchesBytes) NetTransferCallbacks(previousCallbacks);
             std::size_t left = 0;
             {
                 std::lock_guard<std::mutex> lk(mutex_);
@@ -2140,7 +2186,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 else previews_[job.path] = PreviewState{false, job.previewTarget,
                                                         previewError, previewFailure};
             }
-            if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
+            if (watchesBytes) NetTransferCallbacks(previousCallbacks);
             std::size_t left = 0;
             {
                 std::lock_guard<std::mutex> lk(mutex_);
@@ -2208,7 +2254,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
             lastOperationFailure_ = RemoteFailure::NoFailure;
         }
 
-        if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
+        if (watchesBytes) NetTransferCallbacks(previousCallbacks);
 
         // Idle only when nothing is left: between two files of one drop the
         // status line should say what is still coming, not blink back to
@@ -2397,7 +2443,7 @@ void RemoteSignInLog::Begin(const std::string& providerId, const std::string& dr
             drives.NotifyLogChanged();
         });
     };
-    state_->previousFtpLog = UltraNet_SetThreadFtpLog(
+    state_->previousFtpLog = NetFtpLog(
             [onLine](const UltraNetFtpLogLine& in) { onLine(ToRemoteLogLine(in)); });
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
     state_->previousCloudLog = UltraCloud::SetThreadLog(
@@ -2411,7 +2457,7 @@ bool RemoteSignInLog::Cancelled() const {
 
 void RemoteSignInLog::End(const UltraCloud::Result& result) {
     if (!state_ || !state_->sessionId) return;
-    UltraNet_SetThreadFtpLog(std::move(state_->previousFtpLog));
+    NetFtpLog(std::move(state_->previousFtpLog));
     bool failed = false;
     std::string message, category, diagnostics;
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
