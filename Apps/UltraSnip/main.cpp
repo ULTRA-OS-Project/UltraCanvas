@@ -5,6 +5,8 @@
 // picture, --delay N waits first. A second start hands its request to the
 // running copy (UltraCanvasSingleInstance), which is how UltraDesktop's
 // screenshot button and Super+Shift+S reach it.
+// Version: 0.2.1 - a running copy that does not answer (no UltraMessage bus): this
+//                  start opens the window itself instead of saying "already running"
 // Version: 0.2.0 - --background: resident for the session, nothing shown (UltraDesktop starts it)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -115,15 +117,23 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraSnip.png"));
-        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
-            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraSnip");
+        // A copy runs - the one UltraDesktop keeps resident (--background),
+        // usually - but did not take the request (no UltraMessage bus to
+        // reach it by). Saying "already running" would leave the person with
+        // no window at all, the resident one being hidden: this start shows
+        // its own, without the lock (so it does not listen for later starts).
+        const bool sideBySide = start == UltraCanvasSingleInstance::Start::AlreadyRunning;
+        if (sideBySide) {
+            if (request.background) return EXIT_SUCCESS;   // one resident copy is enough
+            std::cout << "UltraSnip is already running but did not answer: opening a window here.\n";
+        }
         window = std::make_unique<UltraSnip::UltraSnipWindow>(app);
         if (!window->Create()) {
             std::cerr << "Failed to create the main window\n";
             return EXIT_FAILURE;
         }
         UltraSnip::UltraSnipWindow* shown = window.get();
-        instance.Listen([shown, &app](const JSONValue& json) {
+        if (!sideBySide) instance.Listen([shown, &app](const JSONValue& json) {
             const UltraSnip::SnipRequest later = UltraSnip::RequestFromJson(json);
             app.PostToUIThread([shown, later]() { shown->Present(later); });
         });

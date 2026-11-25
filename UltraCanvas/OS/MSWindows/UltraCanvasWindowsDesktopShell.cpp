@@ -56,6 +56,7 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.11.0 - GetPointerPosition (GetCursorPos)
 // Version: 1.10.0 - ShowWindowThumbnail / HideWindowThumbnail: DWM live thumbnails (DwmRegisterThumbnail)
 // Version: 1.9.0 - the exclusive global shortcut: a low-level hook that swallows the key (StartExclusive)
 // Version: 1.8.0 - OpenDisplaySettings: Settings > Display (ms-settings:display)
@@ -76,7 +77,7 @@
 // Version: 1.2.0 - DesktopReplacement::Instead, EndSession, LaunchShortcut;
 //                  our own Shell_TrayWnd is not Explorer's taskbar
 // Version: 1.1.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 // IVirtualDesktopManager, DWMWA_CLOAKED and the cloaking events are declared
@@ -1605,6 +1606,20 @@ namespace {
         return TRUE;
     }
 } // namespace
+
+// Virtual-screen pixels, those of EnumDisplayMonitors (the process is
+// per-monitor DPI aware). Fails on a desktop without the input (a locked
+// session's secure desktop).
+bool GetPointerPosition(int& x, int& y) {
+    POINT at{};
+    if (!GetCursorPos(&at)) {
+        x = y = 0;
+        return false;
+    }
+    x = at.x;
+    y = at.y;
+    return true;
+}
 
 std::vector<DesktopScreenInfo> ListScreens() {
     std::vector<DesktopScreenInfo> screens;

@@ -49,6 +49,8 @@
 // in UltraCanvasWaylandPortals.cpp. A window's bounds and position are
 // the compositor's alone (no protocol tells a taskbar where a window is):
 // GetWindowBounds and MoveWindowTo answer false.
+// Version: 0.4.1 - GetPointerPosition answers false: a client is not told where
+//                  the pointer is on the screen
 // Version: 0.4.0 - CaptureWindowImage (ext-image-copy-capture-v1 through
 //                  ext-foreign-toplevel-list-v1)
 // Version: 0.3.0 - the virtual desktops (ext-workspace-v1); the portals in a
@@ -59,7 +61,7 @@
 //                  application; KillProcess shared; the backend entry points
 //                  added since phase 1
 // Version: 0.1.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -866,6 +868,13 @@ namespace X11 {
 // ===== BACKEND =====
 
 std::string BackendName() { return "wayland"; }
+
+// A client learns the pointer only over its own surfaces, in their
+// coordinates, never where it is on the screen (nor can it place a window).
+bool GetPointerPosition(int& x, int& y) {
+    x = y = 0;
+    return false;
+}
 
 bool IsAvailable() {
     auto* app = App();

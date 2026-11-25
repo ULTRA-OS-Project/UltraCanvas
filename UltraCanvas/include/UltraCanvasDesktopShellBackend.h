@@ -3,6 +3,7 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.13.0 - GetPointerPosition
 // Version: 1.12.0 - EmbeddedHost: an in-program window manager answers where
 //                  no native backend does (Android's desktop mode)
 // Version: 1.11.0 - macOS: the screen's capture native
@@ -111,6 +112,9 @@ namespace DesktopShellBackend {
     bool GetScreenSize(int& width, int& height);
     // Every monitor, any order; empty when the platform tells none apart.
     std::vector<DesktopScreenInfo> ListScreens();
+    // Where the mouse pointer is, in the pixels of ListScreens; false (with
+    // 0,0) where the platform does not say.
+    bool GetPointerPosition(int& x, int& y);
     bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom);
     // UltraCanvasDesktopShell::KeepMinimizedWindowsHidden; false where there is nothing to do.
     bool KeepMinimizedWindowsHidden();
