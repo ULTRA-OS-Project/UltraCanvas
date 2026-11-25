@@ -780,6 +780,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasUnixSocketAddress** (`UltraCanvasUnixSocketAddress.h`,
+  header-only, not Windows) — the address of a Unix socket at a path of any
+  length. `UnixSocketAddress::Resolve(path, error)` fills a `sockaddr_un`;
+  a path longer than the 107 bytes it holds is reached through its folder
+  on Linux (`/proc/self/fd/<n>/<file>`), and refused with the reason on
+  macOS and the BSDs. `Fits(path)` says whether a path needs that. Used by
+  UltraMessage's transport and UltraWin's QMP client. See
+  `Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md`.
+
 - **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
   `SettingsPageKit`) — the look of an application's settings window, once:
   `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
@@ -74245,8 +74254,9 @@ being built when `Listen` is called.
 | `MakeOpenRequest(paths)` | The `Claim()` request carrying this start's files, `{"paths": [...]}`. Each path is made absolute against this process's working folder — the running copy was started somewhere else — and an argument containing `://` (a URL) passes through unchanged. |
 | `RequestPaths(request)` | The paths of such a request, for an application that uses `Listen` with a handler of its own. |
 | `Close()` | Stops listening. The lock stays until the object goes, so no second copy slips in while this one shuts down. |
-| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. |
-| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. |
+| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. A window on another virtual desktop (workspace) is brought to the one in view, where the start that asked for it was made - with its window, when a dialog is what comes forward (`UltraCanvasWindowBase::MoveToCurrentDesktop`, which `RaiseAndFocus` calls; X11 - elsewhere the system decides whether the window comes over or the desktop changes). |
+| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. When this process's `Claim()` answered `AlreadyRunning`, the alert also says why the running copy's window did not come by itself: the bus's own reason when the bus could not be joined ("It could not be asked to come forward: ..." - a bus folder that is not this user's alone, a path too long for a socket), or "It did not answer when asked to come forward." when the copy is on the bus and silent. All of it in the application's language (`Tr`, the standard set): `Claim()` loads the language before it asks the bus, since the bus words its reason when it refuses. |
+| `HandOffMessage(displayName, note)` | The one line a start says on the terminal about the copy already running, without the line end, in the person's language: `HandOffNote::Running` ("... is already running."), `BroughtForward` ("...: brought it forward.", the default), `RequestTaken` ("...: handed the request to it.") or `OpeningHere` ("... but did not answer: opening a window here."). For the applications that are started from a terminal or by the desktop with `--background`; it loads the language itself when the start has no application yet. |
 
 ## Why it is compiled into the application
 
@@ -90275,6 +90285,74 @@ std::printf("%s", UMLTextExport::ToPlantUML(model).c_str());
   the full feature list and roadmap for the rendering element
 - [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md) — the shared
   orthogonal router the element will use
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md
+==============================================================================
+
+# UltraCanvasUnixSocketAddress
+
+The address of a Unix domain socket at a path **of any length** (Linux, macOS,
+the BSDs; the header is empty on Windows).
+
+A socket's address (`sockaddr_un`) holds a path of 107 bytes on Linux and 103
+on macOS and the BSDs. The sockets a program makes for itself lie under
+folders whose length it does not choose - the user's runtime folder, a
+virtual machine's own - and a longer path could not be bound or connected at
+all. `UnixSocketAddress` fills the address for a path that fits, and on Linux
+reaches a longer one **through its folder**: the folder is opened, which
+takes a path of any length, and the socket named as
+`/proc/self/fd/<n>/<file>`, which the kernel resolves to the same file. The
+socket stays where its path says; only the way to name it is shorter.
+
+```cpp
+#include "UltraCanvasUnixSocketAddress.h"
+
+UltraCanvas::UnixSocketAddress address;
+std::string error;
+if (!address.Resolve(socketPath, error)) {
+    // a path too long on macOS / the BSDs, or a folder that cannot be opened
+    return false;
+}
+const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+if (::connect(fd, address.Get(), address.Size()) != 0) {   // or bind()
+    ::close(fd);
+    return false;
+}
+```
+
+<!-- doc-check: std::string socketPath -->
+
+The address keeps the folder open, so it lives until `bind()` or `connect()`
+has returned. The folder must exist: a server makes it before it resolves the
+address, and a client that waits for a server reads `folderMissing` as "not
+yet".
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `UnixSocketAddress::Fits(path)` | Whether `path` can be an address as it is (shorter than `sun_path`). |
+| `Resolve(path, error, folderMissing = nullptr)` | Fills the address. False with `error` when the path is too long and cannot be reached through its folder: on macOS and the BSDs always, on Linux when the folder cannot be opened (`*folderMissing` is set when it is simply not there), when the file's own name is longer than about 80 bytes, or when `/proc` is not mounted. |
+| `LastFailure()`, `FolderError()` | Why the last `Resolve` answered false, for a caller that words the failure itself (UltraMessage does, in the person's language): `Failure::TooLong`, `FolderNotOpened` (with the `errno` in `FolderError()`), `NoProc`; `NoFailure` after a success. |
+| `Get()`, `Size()` | The `sockaddr*` and its length for `bind()` / `connect()`. |
+
+## When another program makes the socket
+
+A `/proc/self/fd/<n>/...` name means something only in the process that
+opened the folder, so it cannot be handed to a program this one starts (QEMU,
+virtiofsd). There, start the other program **in** the socket's folder and
+give it the file's name alone - a relative name is resolved against the
+folder the program runs in - and keep every other path it gets absolute.
+`Fits()` says when that is needed. UltraWin starts its machine that way
+(`core/UltraWin/UltraWinVm.cpp`), and reaches the control socket QEMU made
+with `Resolve`.
+
+## Who uses it
+
+UltraMessage's transport (the bus under `$XDG_RUNTIME_DIR`) and UltraWin's
+QMP client. The header has nothing of the framework in it, so the modules
+that do not link the core can include it.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVectorCanvas.md
@@ -108123,7 +108201,8 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
-UltraDatabase and nothing of the widget layer, so tools and tests stay
+UltraDatabase and UltraLocalisation - both UI-free - and nothing of the widget
+layer, so tools and tests stay
 headless; `Tests/UltraMessage/CMakeLists.txt` also configures on its own
 where the UI library cannot be built.
 
@@ -108267,6 +108346,47 @@ that is set, on every platform: the framework's machine-local data root
 (`UltraCanvasDataFolder.h`). A `ultramessage` folder an earlier version left
 on Linux is moved into `UltraMessage` on the first broker start. Socket, lock
 file and directories are owner-only.
+
+**The bus folder must be this user's alone.** Whoever holds the folder the
+socket lies in decides which broker an application meets there. Without
+`$XDG_RUNTIME_DIR` the bus lies at `/tmp/ultramessage-<uid>/ultramessage/`, a
+name any account can work out and make first. So on Linux, macOS and the BSDs
+a broker hosts, and an endpoint joins, only where
+
+- the bus folder is a real folder (not a link), owned by this user, and
+  nobody else may write to it - the broker makes every folder it creates on
+  the way owner-only, and tightens one of this user's that is looser; and
+- the folder above it is this user's or the system's (root's), and not one
+  everyone may write to - unless it has the sticky bit, as `/tmp` does, where
+  an entry is its owner's alone to rename.
+
+Otherwise the connect fails with `the bus folder ... is not this user's
+alone: ...`, naming which of these it was, and nothing is written there. A program
+running as root is let through: it joins a user's bus on purpose (a tool
+started with `sudo`). A custom `busPath` follows the same rule.
+
+A Unix socket's address holds a path of 107 bytes on Linux and 103 on macOS
+and the BSDs. A bus path longer than that - a long `$XDG_RUNTIME_DIR`, a
+sandbox's, a test's private folder - is reached through its folder on Linux
+(the folder is opened and the socket named as `/proc/self/fd/<n>/bus.sock` -
+`UltraCanvasUnixSocketAddress.h`),
+so the bus stays where the path says and broker and endpoints need nothing
+set. On macOS and the BSDs such a path is refused, and the error says so
+(`bus path too long for a Unix socket: ...`): give a shorter `busPath` or
+`TMPDIR` there.
+
+**Why a bus could not be hosted or joined is said in the person's language.**
+`UltraMsg_Connect`'s `error.message` is what an application shows - the
+single-instance "already running" alert puts it on screen - so the reasons a
+person can meet go through `Tr` (UltraLocalisation, the standard set): no
+broker listening or reachable, a broker that cannot be started, the bus
+folder that is not this user's alone, a bus path too long, a folder that
+cannot be made or opened, a broker that does not confirm the connection.
+They are worded when they happen, in the language loaded at that moment: a
+program that has not loaded one (`ultramsg`, a test) gets the English, which
+is also the catalogue key. What only a programmer meets stays English -
+an invalid topic or pattern, a missing callback, a call on an endpoint that
+is not connected, the journal's and the system calls' own errors.
 
 ### 3.5 Schemas and topics
 
@@ -111246,6 +111366,11 @@ forwarded RDP port (Stage 2b). What ships now is the machine's backbone:
   `vmAllowWithoutKvm`, for tests), virtio disk/net, the guest's RDP port
   forwarded to loopback (`vmRdpHostPort`, default 13389), and a QMP
   control socket in the machine directory; it returns once QMP answers.
+  The machine directory may be of any length: where its sockets' paths
+  would pass the 107 bytes a Unix socket's address holds, QEMU and
+  virtiofsd are started in that directory and given the sockets by name,
+  and the control socket is reached through its folder
+  (`UltraCanvasUnixSocketAddress.h`).
   While install media is configured and setup has not completed, the
   machine boots from the ISO with the answer file attached as a virtual
   FAT volume.
@@ -111597,6 +111722,46 @@ failures and their meaning:
 The answer file (`GenerateAutounattendXml`) and first-boot orchestration
 are deliberately marked experimental until this run has passed; iteration
 happens against these logs.
+
+==============================================================================
+FILE: Docs/Modules/UltraWin/changelog.d/long-machine-folder.md
+==============================================================================
+
+- **The machine starts in a folder of any length.** A Unix socket's address
+  holds a path of 107 bytes, and the machine has two sockets in its folder
+  (`UltraWinConfig::vmDirectory`): QEMU's control socket `qmp.sock` and
+  virtiofsd's `vfs.sock` for the home share. In a folder long enough to pass
+  that, QEMU refused the control socket and ended at once -
+  `UltraWin_VmStart` answered "QEMU did not answer on QMP" after its whole
+  timeout - virtiofsd refused its own, and UltraWin's QMP client refused the
+  path as well ("socket path too long").
+  - QEMU and virtiofsd make their sockets themselves, so in such a folder
+    both are now started **in** it and given the sockets by name
+    (`qmp.sock`, `vfs.sock`), which they resolve against it; the disk, the
+    ISOs and the answer-file folder are handed to QEMU as absolute paths
+    there, whatever the caller gave. In a folder that fits, nothing changes.
+  - The QMP client reaches the control socket through its folder
+    (`UltraCanvasUnixSocketAddress.h`, the framework's), on every later
+    command too: suspend, resume, stop, state.
+  - `Tests/UltraWin/test_sharedhome.cpp` boots a real QEMU with the home
+    share in a folder of some 150 bytes and drives it through suspend and
+    resume; it fails on the code before.
+
+==============================================================================
+FILE: Docs/Modules/UltraWin/changelog.d/qmp-connect-closes-socket.md
+==============================================================================
+
+- **The QMP client closes what it opened.** `QmpClient::Connect` left the
+  socket of a connection that failed open until the client was destroyed,
+  and opened a new one over it when asked again: on one client, each further
+  try lost a descriptor. Every caller makes a fresh client per command, so
+  nothing leaked in practice - it was a trap for the next caller. `Connect`
+  now closes an earlier session first and leaves nothing open when it answers
+  false; `Disconnect()` ends a session by hand; and a command on a client
+  that is not connected says "QMP not connected" at once instead of waiting
+  out its timeout. `Tests/UltraWin/test_vm.cpp` counts the open descriptors
+  over failed connects and has a stand-in server see the first session end
+  when the client connects again.
 
 ==============================================================================
 FILE: Docs/Modules/Vectorizer/README.md
@@ -115103,6 +115268,27 @@ encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
 
 ==============================================================================
+FILE: Docs/UltraClipboard/changelog.d/terminal-line-translated.md
+==============================================================================
+
+- **Started again from a terminal, UltraClipboard answers in your language.**
+  "UltraClipboard is already running: brought it forward." was English
+  whatever the language. It comes from the framework's standard set now
+  (`UltraCanvasSingleInstance::HandOffMessage`).
+
+==============================================================================
+FILE: Docs/UltraClipboard/changelog.d/window-comes-to-current-desktop.md
+==============================================================================
+
+- **Opened again from another virtual desktop, UltraClipboard comes to the
+  desktop you are on (Linux, X11).** With its window on desktop 1, the
+  desktop's clipboard button, *Search* or *Edit* from the quick panel, or a
+  second start did nothing on desktop 2: the window was only marked "wants
+  attention" where it was. It now moves to the current desktop and comes to
+  the front (the framework's `RaiseAndFocus`); while one of its dialogs is
+  open, the window comes over behind that dialog.
+
+==============================================================================
 FILE: Docs/UltraNotifications/README.md
 ==============================================================================
 
@@ -115176,6 +115362,16 @@ UltraNotifications --version | --help
 `BUILD_ULTRANOTIFICATIONS` (on by default) builds it wherever the
 `UltraMessageCenter` library is built. It is packaged with the other
 applications on Linux, Windows and macOS.
+
+==============================================================================
+FILE: Docs/UltraNotifications/changelog.d/terminal-line-translated.md
+==============================================================================
+
+- **Started again from a terminal, UltraNotifications answers in your
+  language.** "UltraNotifications is already running: brought it forward." -
+  and the plain "... is already running." of a `--background` start - were
+  English whatever the language. They come from the framework's standard set
+  now (`UltraCanvasSingleInstance::HandOffMessage`).
 
 ==============================================================================
 FILE: Docs/UltraSnip/README.md
@@ -115324,6 +115520,16 @@ change is kept in the settings folder and shows at the next start.
 | `ui/UltraSnipRecordingBar.*` | The floating bar: a notification-type window (above everything, never taking the keyboard) with the time, Pause / Resume and Stop |
 | `ui/UltraSnipWindow.*` | The window: the bar (`UltraCanvasButton`, two `UltraCanvasSegmentedControl`s, an `UltraCanvasDropdown`), the result (`UltraCanvasImageElement` / `UltraCanvasMediaViewer`), the actions and the Settings button, and the capture step by step |
 | `main.cpp` | The command line and the single instance |
+
+==============================================================================
+FILE: Docs/UltraSnip/changelog.d/terminal-line-translated.md
+==============================================================================
+
+- **Started again from a terminal, UltraSnip answers in your language.**
+  "UltraSnip is already running: handed the request to it." and "... is
+  already running but did not answer: opening a window here." were English
+  whatever the language. They come from the framework's standard set now
+  (`UltraCanvasSingleInstance::HandOffMessage`).
 
 ==============================================================================
 FILE: Docs/UltraToDo/README.md
@@ -115507,6 +115713,16 @@ alarms are shown in the window alone. The task model and the store
 (`Apps/UltraToDo/core`, library `UltraToDoCore`) have no UI;
 `Tests/UltraToDoTests.cpp` (with `BUILD_TESTS`) checks the order, the
 reminders and the store.
+
+==============================================================================
+FILE: Docs/UltraToDo/changelog.d/terminal-line-translated.md
+==============================================================================
+
+- **Started again from a terminal, UltraToDo answers in your language.**
+  "UltraToDo is already running: brought it forward." - and the plain
+  "... is already running." of a `--background` start - were English whatever
+  the language. They come from the framework's standard set now
+  (`UltraCanvasSingleInstance::HandOffMessage`).
 
 ==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md
@@ -116001,6 +116217,12 @@ windows are minimised, so the wallpaper shows.
   the window manager has more, it shows those too.
 - To put a window on another desktop, right-click its taskbar button →
   **Move to**.
+- A window that is already open on another desktop comes to the one you are
+  on when you ask for it again: **Desktop settings...**, the clipboard,
+  screenshot and UltraToDo buttons, the Sticker board, the Applications and
+  Task Manager windows, and every ULTRA OS application you start a second
+  time (Linux, X11). Other programs decide for themselves: some bring their
+  window over, some switch to its desktop, some open a second window.
 - On Windows, the buttons are Windows' own virtual desktops, which Explorer
   provides: they switch while Explorer runs (beside Explorer). A button for
   a desktop Windows does not have yet adds it in Task View when you click
@@ -117233,6 +117455,28 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/windows-come-to-current-desktop.md
+==============================================================================
+
+- **A window already open on another virtual desktop comes to the one you
+  are on (Linux, X11).** With UOS-Settings, UltraClipboard, UltraSnip or
+  UltraToDo open on desktop 1, *Desktop settings...* and the tool buttons did
+  nothing on desktop 2: the running application asked the window manager to
+  activate its window, and the manager only marked it "wants attention" on
+  the desktop it was on. The window now moves to the current desktop and
+  comes to the front there - the desktop's own Applications and Task Manager
+  windows too. This is the framework's (`RaiseAndFocus`, see its changelog), so every
+  ULTRA OS application started a second time does the same. A program that is
+  not ours still decides for itself: some bring their window over, some
+  switch to its desktop, some open a second window.
+- **The Sticker board's button brings the board over instead of hiding it
+  where nobody is looking.** With the board open on another desktop, a click
+  on its button closed it there - nothing to see - and a second click opened
+  it here. One click now brings it to the current desktop; the button hides
+  it only when it is on the desktop you are on. Files dropped on the
+  wallpaper bring it over the same way, so they are seen to land.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
