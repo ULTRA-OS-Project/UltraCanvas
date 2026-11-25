@@ -24,3 +24,13 @@
   - **Window hidden or minimised.** Its popups close (`HandleWindowHidden`);
     the windows of those that stay open are hidden, and never shown while
     their window is minimised.
+  - **Window covered without losing the focus.** A popup's own window was
+    topmost, above every window, so another program's window put in front
+    without taking the focus came under the menu. It is now kept above its
+    own window only - an owned window on Windows (no `WS_EX_TOPMOST`), a
+    child window at its level on macOS, the window's transient on X11 - so
+    whatever covers the window covers the menu. A window not in the ordinary
+    stack still has its popups above every window
+    (`UltraCanvasWindowBase::PopupsAboveEveryWindow`: a desktop - UltraDesktop's
+    bars are kept below the applications - a notification, an overlay, a lock
+    screen, or one `alwaysOnTop`).

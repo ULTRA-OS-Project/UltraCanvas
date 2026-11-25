@@ -1,5 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.16.0 - WindowType::Popup with a parentWindow is kept above that window only;
+//                   PopupsAboveEveryWindow says which windows' popups have none
 // Version: 2.15.0 - a popup in its own window closes when another window of the application comes to the
 //                   front, and when its window is hidden or minimised (HandleWindowHidden); a menu closes
 //                   when its window is moved on X11 and macOS too (ClosePopupsIfWindowMoved)
@@ -75,7 +77,11 @@ namespace UltraCanvas {
         // A popup's own window: the window a popup element (a menu, a
         // dropdown's list - anything opened with OpenPopup) is shown in, so
         // no other window covers it (see SetPopupsInOwnWindows). Undecorated,
-        // above every other window and never given the focus, but it takes
+        // never given the focus, and above config.parentWindow only - a
+        // window put over that one covers it too (an owned window on
+        // Windows, a child window on macOS) - or, with no parent, above
+        // every other window (a desktop's menus, see
+        // PopupsAboveEveryWindow); it takes
         // the pointer, which the window the popup belongs to receives as its
         // own. Placed where config.x / config.y say, in screen coordinates
         // (override-redirect with _NET_WM_WINDOW_TYPE_POPUP_MENU on X11;
@@ -774,6 +780,11 @@ namespace UltraCanvas {
         // `other` is this window, or a dialog of it (its transient parent,
         // or its parent's, is this window)
         bool IsSelfOrDialogOfSelf(UltraCanvasWindowBase* other);
+        // Whether this window's popups, in windows of their own, are kept
+        // above every window (made without a parent) rather than above this
+        // one only: a desktop window, kept below every other, a
+        // notification, an overlay, a lock screen, or one alwaysOnTop
+        bool PopupsAboveEveryWindow() const;
         // Closes the popups that close on a click outside them, the newest
         // first (only those in windows of their own with `ownWindowsOnly`)
         void ClosePopupsClosedByClickOutside(bool ownWindowsOnly);

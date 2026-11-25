@@ -1,5 +1,8 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.12.0 - a popup's own window is kept above its window only (its parent), not above every
+//                  window: another program's window put in front covers the menu too; above every
+//                  window still for a desktop's, a notification's, an overlay's or an always-on-top one
 // Version: 1.11.0 - a window that moved with a menu open closes it (ClosePopupsIfWindowMoved: X11, where
 //                  the window manager keeps the title-bar press, and macOS); popups in their own windows
 //                  close when the focus goes to another window of the application too (not only to
@@ -1368,6 +1371,15 @@ namespace UltraCanvas {
         // Placed only by its parent on Wayland: a popup of this window, or
         // an overlay-layer surface beside a desktop on the layer shell
         config.parentWindow = this;
+#else
+        // Above this window only, as a native menu is: a window that comes
+        // over this one - another program's, put in front without taking
+        // the focus - covers its popup too, which otherwise floated above
+        // it. Above every window (no parent) only where this window is not
+        // in the ordinary stack: a desktop's, kept below every other, whose
+        // bars' menus must still come over the applications' windows, and
+        // one kept above the others.
+        if (!PopupsAboveEveryWindow()) config.parentWindow = this;
 #endif
         auto window = CreateWindow(config);
         if (!window || !window->IsCreated()) {
@@ -1384,6 +1396,18 @@ namespace UltraCanvas {
         pe.host = window;
         pe.hostShapeFor = Size2Di(0, 0);
         return true;
+    }
+
+    bool UltraCanvasWindowBase::PopupsAboveEveryWindow() const {
+        switch (config_.type) {
+            case WindowType::Desktop:
+            case WindowType::Notification:
+            case WindowType::Overlay:
+            case WindowType::SessionLock:
+                return true;
+            default:
+                return config_.alwaysOnTop;
+        }
     }
 
     bool UltraCanvasWindowBase::SyncPopupHost(PopupElement& pe) {

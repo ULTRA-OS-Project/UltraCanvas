@@ -326,7 +326,7 @@ items run edge to edge and only their highlight is rounded.
 ### Its Own Window
 
 A popup menu or submenu is shown in a window of its own (`WindowType::Popup`),
-above every other window, like every popup - see
+like every popup - see
 `UltraCanvasWindowBase::SetPopupsInOwnWindows`. Composited onto the window it
 was opened in, a menu was covered by any window above that one: the menus of
 UltraDesktop's bars, whose window is kept below all others, opened under the
@@ -351,7 +351,16 @@ on Windows a press on the frame - the title bar or a border - counts as a click
 outside (`UltraCanvasWindowBase::ClosePopupsOnFramePress`); on X11 and macOS,
 where the window manager keeps that press to itself, the move does
 (`ClosePopupsIfWindowMoved`). A popup that does not close on a click outside
-follows its window instead. In the browser and on Android, and with
+follows its window instead.
+
+That window is kept above the window the menu was opened in, not above every
+window: a window that comes over that one - another program's, put in front
+without taking the focus - covers the menu too (an owned window on Windows, a
+child window on macOS). Only the menus of a window that is not in the ordinary
+stack are above every window: a desktop's (`WindowType::Desktop`, kept below
+every other, as UltraDesktop's bars are), a notification's, an overlay's, a lock
+screen's, or one kept `alwaysOnTop` - see
+`UltraCanvasWindowBase::PopupsAboveEveryWindow`. In the browser and on Android, and with
 `SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
 described above.
 

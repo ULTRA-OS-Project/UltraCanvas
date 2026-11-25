@@ -1,5 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
+// Version: 2.13.0 - a popup's own window with a parent is its child window at its level, not above every
+//                   window: a window put over the parent covers the menu too
 // Version: 2.12.0 - a move closes an open menu (ClosePopupsIfWindowMoved): the title bar's press never
 //                   reaches the program
 // Version: 2.11.0 - WindowType::Overlay: borderless and above the menu bar and the Dock (the
@@ -565,8 +567,14 @@ namespace UltraCanvas {
             // the shadow the system draws under such a window; out of the
             // window cycle and Mission Control, and shown over a full-screen
             // window. The pointer goes through a tooltip.
+            // A popup with a parent stays at the parent's level, as the
+            // parent's child window (AttachToParentWindow): a window put over
+            // the parent covers it too. Without one (a desktop's menus) the
+            // pop-up menu's level, above every window.
             if (overlay) {
-                [nsWindow setLevel:NSPopUpMenuWindowLevel];
+                if (!(config_.type == WindowType::Popup && config_.parentWindow)) {
+                    [nsWindow setLevel:NSPopUpMenuWindowLevel];
+                }
                 [nsWindow setOpaque:NO];
                 [nsWindow setBackgroundColor:[NSColor clearColor]];
                 [nsWindow setHasShadow:YES];
@@ -847,10 +855,12 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSWindow::AttachToParentWindow() {
-        // Dialogs only: a popup, a tooltip or the splash screen has a level of
-        // its own, and a child window moves with its parent. Never a desktop
+        // Dialogs, and a popup's own window with a parent (kept above that
+        // window only): a tooltip or the splash screen has a level of its
+        // own, and a child window moves with its parent. Never a desktop
         // window, which is held below every other.
-        if (!_created || !nsWindow || config_.type != WindowType::Dialog) return;
+        if (!_created || !nsWindow ||
+            (config_.type != WindowType::Dialog && config_.type != WindowType::Popup)) return;
         UltraCanvasWindowBase* parent = GetParentWindow();   // null once it is gone
         if (!parent || parent == this || parent->GetConfig().type == WindowType::Desktop) return;
 
