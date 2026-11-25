@@ -1,5 +1,10 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.14.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
+//                  shown on hover) and links (Ctrl+click opens them: OpenHyperlink, onOpenHyperlink),
+//                  SetCellComment / SetCellHyperlink as undo steps; the rules dialogs
+//                  (ShowConditionalFormatDialog, ShowDataValidationDialog, ShowCommentDialog,
+//                  ShowHyperlinkDialog); validation lists taken from cells
 // Version: 1.13.0 - GetNamedRangeList: every name with its scope, for the .xlsx / .ods writers
 // Version: 1.12.0 - PaintCell: one cell drawn as the grid draws it, for printing
 // Version: 1.11.0 - the system clipboard: Copy/Cut publish text and an HTML table; Paste reads other programs' (PasteHtml, PasteText); a paste is an undo step
@@ -234,6 +239,10 @@ private:
     bool functionMenuEnabled_ = true;
     // The items of the active cell's list rule (ShowValidationListAt).
     std::shared_ptr<UltraCanvasMenu> validationListMenu_;
+    // The cell whose comment or link the hover tooltip shows (-1: none).
+    int tipRow_ = -1;
+    int tipCol_ = -1;
+    void UpdateCellTip(const UCEvent& event, int row, int col);
     // StopEditing runs the commit and then takes the editor down: an answer to
     // a refused entry that arrives while it runs is held until it is done, so
     // Retry's new editor is not the one taken down (see RunAfterEditEnds).
@@ -421,6 +430,42 @@ public:
     // Enters `item` into the cell as typed, as picking it from the list does.
     // False (nothing changes) when it is not one of the cell's items.
     bool ChooseValidationListItem(int row, int col, const std::string& item);
+
+    // ===== CONDITIONAL FORMATS, VALIDATION, COMMENTS, LINKS =====
+    // The formats over a range are the sheet's (SpreadsheetSheet::
+    // AddConditionalFormat, GetConditionalFormatting); the grid draws them,
+    // as the printed page does. These act on the selection, as the dialogs do.
+    // A rule over the selection (GetFormattingRange), added after the others.
+    void AddSelectionConditionalFormat(const ConditionalFormatRule& rule);
+    // Removes every format that covers a cell of the selection.
+    void ClearSelectionConditionalFormats();
+    // The selection's validation rule; a rule of type Any removes it.
+    void SetSelectionValidation(const DataValidation& rule);
+
+    // A cell's note: a red corner marks it, and resting the pointer on the
+    // cell shows it. Each change is an undo step; empty text removes it.
+    void SetCellComment(int row, int col, const std::string& text, const std::string& author = "");
+    void RemoveCellComment(int row, int col);
+    // A cell's link: a web or mail address, a file, or a place in the
+    // workbook (HyperlinkType::InternalCell, "Sheet2.B4"). Its text shows
+    // blue and underlined, the pointer resting on it shows where it goes, and
+    // Ctrl+click opens it. Each change is an undo step.
+    void SetCellHyperlink(int row, int col, const CellHyperlink& link);
+    void RemoveCellHyperlink(int row, int col);
+    // Opens the cell's link: an address through the system (OpenURL), or
+    // `onOpenHyperlink` when set; a place in the workbook by selecting it.
+    // False when the cell has no link.
+    bool OpenHyperlink(int row, int col);
+    std::function<void(const CellHyperlink& link)> onOpenHyperlink;
+
+    // The dialogs that edit them for the selection, built from the
+    // framework's elements (UltraCanvasSpreadsheetRulesDialogs.cpp): the
+    // conditional formats over it (add, change, delete), its validation
+    // rule, the active cell's comment and its link.
+    void ShowConditionalFormatDialog();
+    void ShowDataValidationDialog();
+    void ShowCommentDialog();
+    void ShowHyperlinkDialog();
 
     // ===== FORMATTING =====
     // The range the SetSelection* / AdjustSelection* calls actually write to.

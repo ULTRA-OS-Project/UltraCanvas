@@ -43,6 +43,8 @@
 - [Sheet tab menu](#sheet-tab-menu)
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
 - [Data validation](#data-validation)
+- [Conditional formats](#conditional-formats)
+- [Comments and links](#comments-and-links)
 - [Best Practices](#best-practices)
 - [Printing and PDF](#printing-and-pdf)
 - [See Also](#see-also)
@@ -390,6 +392,10 @@ workbook opened and saved again comes back as it was:
 | Print area | `_xlnm.Print_Area` | `table:print-ranges` |
 | Rows / columns repeated on every page | `_xlnm.Print_Titles` | header rows / columns |
 | Page setup, header and footer, page breaks | `printOptions`, `pageMargins`, `pageSetup`, `headerFooter`, `rowBreaks` / `colBreaks` | the page layout and master page in `styles.xml`, `fo:break-before` |
+| Conditional formats | `conditionalFormatting`, their styles as `dxfs` in `styles.xml` | `calcext:conditional-formats`, their styles as common styles in `styles.xml` |
+| Validation rules | `dataValidations` | `table:content-validations`, named by the cells |
+| Comments | the comments part, and the legacy VML drawing Excel shows them with | `office:annotation` in the cell |
+| Links | `hyperlinks` (an address through the sheet's relationships, a place as `location`) | a `text:a` in the cell's text |
 
 Header and footer texts are kept in Excel's codes (`&P` page, `&N` pages,
 `&A` sheet, `&F` file, `&D` date, `&T` time, `&&` an ampersand), which an
@@ -1236,7 +1242,25 @@ in a dialog titled with `errorTitle` that shows `errorMessage` (or a default):
 
 A refused entry leaves no undo step. A rule with `showErrorAlert = false`
 keeps whatever is typed, and blanks pass while `allowBlank` is true (the
-default). Custom (formula) rules are not evaluated yet and always pass.
+default).
+
+A `Custom` rule is a formula that must come out true. It is written for the
+rule's top-left cell and moved to each other cell as a copied formula is
+(`=K1>A1` on K1:K5 checks `=K3>A3` in K3). A bound of the other rules may be
+a formula too (`=$F$1`), worked out when the cell is checked:
+
+```cpp
+DataValidation later;
+later.type = ValidationType::Custom;
+later.formula1 = "=B2>A2";                       // the end after the start, row by row
+grid->GetActiveSheet()->SetValidation(CellRange(1, 1, 50, 1), later);      // B2:B51
+
+DataValidation upTo;
+upTo.type = ValidationType::Decimal;
+upTo.op = ValidationOperator::LessOrEqual;
+upTo.formula1 = "=$F$1";                         // no more than F1 holds
+grid->GetActiveSheet()->SetValidation(CellRange(1, 4, 50, 4), upTo);       // E2:E51
+```
 
 To ask in your own way, set `onValidationFailed`. It replaces the dialog, and
 `answer` may be called at once or later, exactly once:
@@ -1259,9 +1283,113 @@ std::vector<std::string> items = grid->GetValidationListItems(1, 3);   // {"Open
 grid->ChooseValidationListItem(1, 3, "Done");                          // false for an item not offered
 ```
 
-The list's items are the rule's own text; a list taken from a range of cells
-(`$F$1:$F$5`) is not read yet. Neither ODS nor XLSX reads or writes rules yet,
-so they are set from code.
+A list rule whose `formula1` starts with `=` names cells instead
+(`IsRangeListSource`): `"=$G$1:$G$9"`, `"='Lists'.A1:A20"` or a named range.
+Its items are the cells' values, read when the arrow opens or an entry is
+checked, so the list follows the cells:
+
+```cpp
+DataValidation region;
+region.type = ValidationType::List;
+region.formula1 = "=$G$1:$G$3";                  // North, South, East in G1:G3
+grid->GetActiveSheet()->SetValidation(CellRange(1, 0, 50, 0), region);
+std::vector<std::string> regions = grid->GetActiveSheet()->GetValidationListItems(1, 0);
+```
+
+`.xlsx` and `.ods` read and write the rules (see *What a workbook file
+keeps*), and `ShowDataValidationDialog()` edits the selection's rule:
+what is allowed, the condition and its values, blanks, the list arrow, and
+how a wrong entry is answered (`SetSelectionValidation` from code; a rule of
+type `Any` removes it).
+
+## Conditional formats
+
+A conditional format changes how the cells of a range look by what they
+hold. The sheet keeps them (`SpreadsheetSheet::AddConditionalFormat`,
+`SetConditionalFormats`), and `UltraCanvasSpreadsheet::PaintCell` draws them,
+so the grid, the printed page and the PDF all show them. A format is a range
+and its rules:
+
+| Rule (`ConditionalFormatType`) | Holds when | Settings |
+|---|---|---|
+| `CellValue` | the value compares with `formula1` (and `formula2`) by `op` | a number, `"quoted text"` or a formula (`=$B$1`) |
+| `Expression` | the formula in `formula1` is true, moved to each cell from the range's top-left one | `=E1>$F$1` |
+| `ContainsText`, `NotContainsText`, `BeginsWithText`, `EndsWithText` | the shown text, ignoring case | the text in `formula1` |
+| `ContainsBlanks`, `NotContainsBlanks`, `ContainsErrors`, `NotContainsErrors` | the cell is empty / shows an error | |
+| `Top10` | among the highest (`bottom`: lowest) `formula1` values, or percent of them (`percent`) | |
+| `AboveAverage` | above the range's average (`aboveAverage` false: below; `equalAverage`: or equal) | |
+| `DuplicateValues`, `UniqueValues` | the text occurs more than once / once in the range | |
+| `ColorScale` | a number: the cell filled with `colorScale`'s two or three colours, mixed by where the value lies | `thresholds` (default lowest, 50th percentile, highest) |
+| `DataBar` | a number: a bar of `dataBarColor` from the left edge, as long as the value is far between the lowest and the highest | `thresholds`, `showValue` |
+
+A rule's `style` lays only what it sets over the cell's own
+(`ApplyConditionalStyle`): a fill, a font colour other than black, bold,
+italic, underline, strikethrough. Rules are tried by `priority` (lower first;
+one without a priority after those with one), then in order; the first
+style that holds wins, a colour scale and a data bar draw beside it, and
+`stopIfTrue` ends the search.
+
+```cpp
+SpreadsheetSheet* sheet = grid->GetActiveSheet();
+
+ConditionalFormatRule over;
+over.type = ConditionalFormatType::CellValue;
+over.op = ValidationOperator::GreaterThan;
+over.formula1 = "1000";
+over.style.fill = CellFill::Solid(Color(255, 199, 206));
+over.style.font.color = Color(156, 0, 6);
+
+ConditionalFormat amounts;
+amounts.range = CellRange(1, 2, 99, 2);                          // C2:C100
+amounts.rules.push_back(over);
+sheet->AddConditionalFormat(amounts);
+
+ConditionalFormatRule scale;
+scale.type = ConditionalFormatType::ColorScale;
+scale.colorScale = {Color(248, 105, 107), Color(255, 235, 132), Color(99, 190, 123)};
+ConditionalFormat heat;
+heat.range = CellRange(1, 3, 99, 3);                             // D2:D100
+heat.rules.push_back(scale);
+sheet->AddConditionalFormat(heat);
+
+ConditionalCellFormat look = sheet->GetConditionalFormatting(4, 2);   // what C5 is drawn with
+if (look.style) { /* the rule's style */ }
+if (look.fill) { /* a colour scale's colour */ }
+```
+
+The figures a colour scale, a data bar, top values and duplicates need (the
+lowest, the highest, the sorted values) are worked out once per change of the
+sheet's cells, not per cell drawn. `ShowConditionalFormatDialog()` lists the
+rules over the selection, adds one (a value comparison, a formula, text,
+blanks, errors, top or bottom values, above or below the average,
+duplicates, unique values, a two- or three-colour scale, a data bar) and
+changes or deletes the one picked; `AddSelectionConditionalFormat` and
+`ClearSelectionConditionalFormats` do the same from code. `.xlsx` and `.ods`
+read and write them; an icon set or a date rule is not drawn and not kept.
+
+## Comments and links
+
+A cell's comment (`CellComment`: text, author) is marked by a red corner
+at the cell's top right, and resting the pointer on the cell shows it. A
+link (`CellHyperlink`) draws its cell's text blue and underlined (unless the
+cell has a colour of its own); the pointer resting on it shows where it goes,
+and Ctrl+click opens it - a web or mail address through the system
+(`OpenURL`), a place in the workbook (`HyperlinkType::InternalCell`,
+`"Sheet2.B4"`) by selecting it. Setting `onOpenHyperlink` takes the opening
+over (to ask first, or in a test).
+
+```cpp
+grid->SetCellComment(0, 0, "Checked against the March statement", "Ann");   // an undo step
+grid->SetCellHyperlink(1, 0, CellHyperlink("https://example.com/report"));
+grid->SetCellHyperlink(2, 0, CellHyperlink("Summary.A1", HyperlinkType::InternalCell));
+grid->OpenHyperlink(2, 0);                       // goes to Summary!A1; false for a cell without a link
+grid->RemoveCellComment(0, 0);
+```
+
+A link set on an empty cell gives it the address as its text.
+`ShowCommentDialog()` and `ShowHyperlinkDialog()` edit the active cell's
+(each with a button that removes it); both are kept by `.xlsx` (with the VML
+drawing Excel needs to show a comment) and `.ods`.
 
 ## Best Practices
 
@@ -1272,6 +1400,7 @@ so they are set from code.
 - **Prefer the auto-detecting loaders for a quick "Open"** (`LoadFromFile`, single-arg `LoadCSV`); use the `*WithOptions` variants plus the import/export dialogs when the user needs to choose charset, separators, or quoting.
 - **Always check the return value and `GetLastError()`** after any `Load*`/`Save*` call to surface a clear reason to the user.
 - **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
+- **Rules live on the sheet, the dialogs on the grid.** Conditional formats and validation rules are `SpreadsheetSheet`'s (`AddConditionalFormat`, `SetValidation`); comments and links are a cell's. The grid's `Show...Dialog` calls edit them for the selection.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
 
 ## Printing and PDF

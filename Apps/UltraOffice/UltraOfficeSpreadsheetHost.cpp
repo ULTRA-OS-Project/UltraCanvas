@@ -2,10 +2,11 @@
 // A spreadsheet tab: the framework's grid (UltraCanvasSpreadsheet) - formula
 // bar, sheet tabs, its own format menu - read and written through its
 // LoadFromFile / SaveToFile (.ods, .xlsx, .csv, .tsv; .xls read-only), the
-// file types and password prompts through UltraCanvasFileLoader. Three
-// command tabs - Home, Data, View - and a status line with the sum, average
-// and count of the selection.
+// file types and password prompts through UltraCanvasFileLoader. Command
+// tabs - Home, Data, Review, Page, View - and a status line with the sum,
+// average and count of the selection.
 //
+// Version: 0.3.0 - Data: conditional formatting and data validation dialogs; Review: comments and links
 // Version: 0.2.0 - Export as PDF and Print, through the sheet's print pages
 // Version: 0.1.0
 // Last Modified: 2026-11-25
@@ -71,6 +72,7 @@ public:
         sheet_->onSelectionChange = [this]() { Sync(); if (onChanged) onChanged(); };
         BuildHome();
         BuildData();
+        BuildReview();
         BuildPage();
         BuildView();
     }
@@ -247,7 +249,32 @@ private:
         bar->AddSeparator();
         AddTool(*bar, "sheet-sum", Tr("Sum"), "office/sum.svg", Tr("Insert the SUM function"),
                 Act([](auto& s) { s.InsertFunction("SUM"); }));
+        bar->AddSeparator();
+        // The rules of the selection, in the grid's own dialogs.
+        AddTool(*bar, "sheet-conditional", Tr("Conditional formatting"), "menu/palette.svg",
+                Tr("Colour the selected cells by their values: rules, colour scales, data bars"),
+                Act([](auto& s) { s.ShowConditionalFormatDialog(); }));
+        AddTool(*bar, "sheet-validation", Tr("Data validation"), "list-check.svg",
+                Tr("Limit what may be typed into the selected cells, or offer a list"),
+                Act([](auto& s) { s.ShowDataValidationDialog(); }));
         tabs_.push_back({Tr("Data"), bar});
+    }
+
+    // Comments and links of the active cell.
+    void BuildReview() {
+        auto bar = MakeToolbar("office-sheet-review");
+        AddTool(*bar, "sheet-comment", Tr("Comment"), "quote.svg", Tr("Add or change the active cell's comment"),
+                Act([](auto& s) { s.ShowCommentDialog(); }));
+        AddTool(*bar, "sheet-comment-delete", Tr("Delete comment"), "delete.svg", Tr("Delete the active cell's comment"),
+                Act([](auto& s) { s.RemoveCellComment(s.GetActiveCell().row, s.GetActiveCell().col); }));
+        bar->AddSeparator();
+        AddTool(*bar, "sheet-link", Tr("Link"), "link.svg", Tr("Link the active cell to a web or mail address, or to a cell"),
+                Act([](auto& s) { s.ShowHyperlinkDialog(); }));
+        AddTool(*bar, "sheet-link-open", Tr("Open link"), "", Tr("Open the active cell's link (Ctrl+click)"),
+                Act([](auto& s) { s.OpenHyperlink(s.GetActiveCell().row, s.GetActiveCell().col); }));
+        AddTool(*bar, "sheet-link-remove", Tr("Remove link"), "link-slash.svg", Tr("Remove the active cell's link"),
+                Act([](auto& s) { s.RemoveCellHyperlink(s.GetActiveCell().row, s.GetActiveCell().col); }));
+        tabs_.push_back({Tr("Review"), bar});
     }
 
     // How the sheet prints: the print area, paper turned or not, fitted to
@@ -285,6 +312,9 @@ private:
     }
 
     void Sync() {
+        // A load takes the sheets down before it reads the new ones; with none
+        // there is nothing to show.
+        if (!sheet_->GetActiveSheet()) return;
         const CellFont font = sheet_->GetActiveCellFont();
         if (bold_) bold_->SetPressed(font.bold);
         if (italic_) italic_->SetPressed(font.italic);

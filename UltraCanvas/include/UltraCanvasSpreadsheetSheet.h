@@ -1,5 +1,8 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.5.0 - conditional formats drawn: GetConditionalFormatting (styles, colour scales, data
+//                  bars, formula rules), SetConditionalFormats; validation: Custom (formula) rules and
+//                  lists taken from cells (GetValidationListItems), GetValidations
 // Version: 1.4.0 - GetColumnDefinitions / GetRowDefinitions: the sized and hidden columns and rows,
 //                  for the .xlsx / .ods writers
 // Version: 1.3.0 - PasteCells pastes formulas (PasteType All), their references moved from where they were copied
@@ -126,6 +129,19 @@ std::string MoveFormulaReferencesForRowsColumns(const std::string& formula, cons
 // SPREADSHEET SHEET CLASS
 // ============================================================================
 
+// What the conditional formats over one cell make of it
+// (SpreadsheetSheet::GetConditionalFormatting).
+struct ConditionalCellFormat {
+    std::optional<CellStyle> style;   // the first rule that holds: laid over the cell's (ApplyConditionalStyle)
+    std::optional<Color> fill;        // a colour scale's colour for the value
+    bool hasDataBar = false;
+    double dataBarLength = 0.0;       // of the cell's width, 0 to 1
+    Color dataBarColor = Colors::Blue;
+    bool showValue = true;            // false: the data bar alone, without the number
+
+    bool IsEmpty() const { return !style && !fill && !hasDataBar; }
+};
+
 class SpreadsheetSheet {
 public:
     // ===== CALLBACKS =====
@@ -206,6 +222,25 @@ private:
     
     // Zoom level (percentage)
     int zoomLevel_ = 100;
+
+    // The conditional formats' figures over their ranges (lowest, highest,
+    // sorted values, how often each text occurs), worked out once and kept
+    // until a cell may have changed: contentRevision_ moves on every change,
+    // and on every non-const access to a cell (a pointer a caller may write
+    // through). Not copied by Clone.
+    struct ConditionalRangeStats {
+        std::vector<double> sortedNumbers;
+        std::unordered_map<std::string, int> textCounts;   // lower-case display text
+        double sum = 0.0;
+    };
+    mutable uint64_t contentRevision_ = 0;
+    mutable uint64_t conditionalStatsRevision_ = UINT64_MAX;
+    mutable std::map<std::pair<size_t, size_t>, ConditionalRangeStats> conditionalStats_;
+    // Set while conditional formats evaluate formulas, which read cells
+    // through the non-const accessors without changing them.
+    mutable bool contentRevisionFrozen_ = false;
+    void TouchContent() const { if (!contentRevisionFrozen_) ++contentRevision_; }
+    const ConditionalRangeStats& GetConditionalRangeStats(size_t formatIndex, size_t ruleIndex) const;
     
 public:
     // ===== CONSTRUCTOR =====
@@ -446,6 +481,12 @@ public:
     void ClearConditionalFormats();
     const std::vector<ConditionalFormat>& GetConditionalFormats() const { return conditionalFormats_; }
     std::optional<CellStyle> GetConditionalStyle(int row, int col) const;
+    // Every format replaced at once (the rules dialog).
+    void SetConditionalFormats(const std::vector<ConditionalFormat>& formats);
+    // The style of the first rule that holds for the cell, a colour scale's
+    // fill and a data bar - what the grid and the printed page draw. Rules
+    // are tried by priority, then in order; stopIfTrue ends the search.
+    ConditionalCellFormat GetConditionalFormatting(int row, int col) const;
     
     // ===== DATA VALIDATION =====
     
@@ -453,6 +494,11 @@ public:
     void RemoveValidation(const CellRange& range);
     void ClearAllValidations();
     const DataValidation* GetValidation(int row, int col) const;
+    // The rules set on ranges, oldest first (a later one wins where they overlap).
+    const std::vector<std::pair<CellRange, DataValidation>>& GetValidations() const { return validations_; }
+    // The items a List rule offers for the cell: its own list, or the values
+    // of the cells it names (IsRangeListSource). Empty without a List rule.
+    std::vector<std::string> GetValidationListItems(int row, int col) const;
     // The rule that applies to a cell: the one set on a range over it, else
     // the cell's own (SpreadsheetCell::SetValidation); null when neither.
     const DataValidation* GetEffectiveValidation(int row, int col) const;
@@ -590,6 +636,7 @@ public:
     // Iterate over all cells
     template<typename Func>
     void ForEachCell(Func&& func) {
+        TouchContent();
         for (auto& [coord, cell] : cells_) {
             func(coord.first, coord.second, *cell);
         }
@@ -616,7 +663,7 @@ public:
     
 private:
     // Mark used range as needing recalculation
-    void InvalidateUsedRange() { usedRangeDirty_ = true; }
+    void InvalidateUsedRange() { usedRangeDirty_ = true; TouchContent(); }
     
     // Update cell references after insert/delete
     void ShiftCellReferences(int startRow, int startCol, int rowDelta, int colDelta);
@@ -662,6 +709,7 @@ inline const SpreadsheetCell* SpreadsheetSheet::GetCellIfExists(int row, int col
 }
 
 inline SpreadsheetCell* SpreadsheetSheet::GetCellIfExists(int row, int col) {
+    TouchContent();   // the caller may write through the pointer
     auto it = cells_.find({row, col});
     return (it != cells_.end()) ? it->second.get() : nullptr;
 }
@@ -675,6 +723,7 @@ inline bool SpreadsheetSheet::HasCell(int row, int col) const {
 }
 
 inline SpreadsheetCell& SpreadsheetSheet::GetOrCreateCell(int row, int col) {
+    TouchContent();   // the caller may write through the reference
     auto key = std::make_pair(row, col);
     auto it = cells_.find(key);
     if (it == cells_.end()) {

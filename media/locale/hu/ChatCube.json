@@ -216,7 +216,6 @@
   "Members": "Tagok",
   "Members ({0})": "Tagok ({0})",
   "Members' ChatCube IDs, separated by commas": "A tagok ChatCube ID-jai vesszővel elválasztva",
-  "Message": "Üzenet",
   "Messages": "Üzenetek",
   "Messages - the key that sends, and whether typing is shown, to the other side and to you.": "Üzenetek - a küldő billentyű, és hogy a gépelés látszik-e a másik félnek és Önnek.",
   "Message…  (Ctrl+Enter sends, Enter for a new line)": "Üzenet…  (Ctrl+Enter: küldés, Enter: új sor)",

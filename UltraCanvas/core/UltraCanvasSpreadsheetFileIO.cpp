@@ -1,6 +1,9 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.4.0 - .ods keeps conditional formats (calcext:conditional-formats, their cell styles in
+//                  styles.xml), validations (table:content-validations), comments (office:annotation)
+//                  and links (text:a); a cell with only a note or a validation is written
 // Version: 1.3.0 - a cell's number is written to read back exactly (it kept six significant digits)
 // Version: 1.2.0 - .ods keeps what a sheet holds beyond its cells: frozen panes (settings.xml), hidden
 //                  rows and columns (table:visibility), named ranges of the workbook and of each sheet
@@ -30,6 +33,8 @@
 #include <iomanip>
 #include <locale>
 #include <algorithm>
+#include <climits>
+#include <tuple>
 #include <cstdio>
 #include <cstring>
 #include <cctype>
@@ -223,6 +228,7 @@ std::string GetCellText(const tinyxml2::XMLElement* cellElem) {
 std::string FindCellHyperlink(const tinyxml2::XMLElement* elem) {
     for (const tinyxml2::XMLElement* child = elem->FirstChildElement();
          child; child = child->NextSiblingElement()) {
+        if (std::string(child->Name()) == "office:annotation") continue;   // a note's link is the note's
         if (std::string(child->Name()) == "text:a") {
             std::string href = GetAttr(child, "xlink:href");
             if (!href.empty()) return href;
@@ -231,6 +237,295 @@ std::string FindCellHyperlink(const tinyxml2::XMLElement* elem) {
         if (!nested.empty()) return nested;
     }
     return "";
+}
+
+// ===== VALIDATIONS, CONDITIONAL FORMATS: CONDITION TEXT =====
+
+std::string TrimOdf(const std::string& text) {
+    const size_t a = text.find_first_not_of(" \t\r\n");
+    if (a == std::string::npos) return std::string();
+    const size_t b = text.find_last_not_of(" \t\r\n");
+    return text.substr(a, b - a + 1);
+}
+
+// "of:cell-content()" -> "cell-content()": the namespace prefix a condition
+// (and each part of it) may carry.
+std::string StripOdfPrefix(const std::string& text) {
+    std::string t = TrimOdf(text);
+    const size_t colon = t.find(':');
+    const size_t paren = t.find('(');
+    if (colon != std::string::npos && colon < paren && colon > 0 &&
+        std::all_of(t.begin(), t.begin() + static_cast<long>(colon),
+                    [](char c) { return std::isalpha(static_cast<unsigned char>(c)) != 0; })) {
+        t = t.substr(colon + 1);
+    }
+    return t;
+}
+
+// The arguments of "name(a,b)" / "name(a;b)" split at the top level (outside
+// quotes, brackets and parentheses); `text` is what is inside the parentheses.
+std::vector<std::string> SplitOdfArguments(const std::string& text) {
+    std::vector<std::string> args;
+    std::string current;
+    int depth = 0;
+    bool inQuote = false;
+    for (char c : text) {
+        if (c == '"') inQuote = !inQuote;
+        if (!inQuote) {
+            if (c == '(' || c == '[') ++depth;
+            else if (c == ')' || c == ']') --depth;
+            else if ((c == ',' || c == ';') && depth == 0) {
+                args.push_back(TrimOdf(current));
+                current.clear();
+                continue;
+            }
+        }
+        current += c;
+    }
+    if (!TrimOdf(current).empty() || !args.empty()) args.push_back(TrimOdf(current));
+    return args;
+}
+
+// "name(...)" -> what is inside the parentheses, when `text` is a call of
+// `name`; nothing otherwise.
+std::optional<std::string> OdfCallBody(const std::string& text, const std::string& name) {
+    const std::string t = TrimOdf(text);
+    if (t.size() < name.size() + 2 || t.compare(0, name.size(), name) != 0 || t[name.size()] != '(' ||
+        t.back() != ')') {
+        return std::nullopt;
+    }
+    return t.substr(name.size() + 1, t.size() - name.size() - 2);
+}
+
+// An ODF expression ("[.B1]*2") in the engine's syntax, with its '='.
+std::string OdsExpressionToNative(const std::string& expression) {
+    std::string native = OdsFormulaToNative("of:=" + TrimOdf(expression));
+    if (native.empty() || native[0] != '=') native = "=" + native;
+    return native;
+}
+
+bool IsOdfNumber(const std::string& text) {
+    const std::string t = TrimOdf(text);
+    if (t.empty()) return false;
+    double value = 0.0;
+    const char* first = t.c_str();
+    const char* last = first + t.size();
+    if (*first == '+' || *first == '-') ++first;
+    return first != last && ParseFloatClassic(first, last, value) == last;
+}
+
+// An operand read back: a number or "text" as it is, anything else a formula.
+std::string OdsOperandToNative(const std::string& operand) {
+    const std::string t = TrimOdf(operand);
+    if (t.empty() || IsOdfNumber(t) || (t.size() >= 2 && t.front() == '"' && t.back() == '"')) return t;
+    return OdsExpressionToNative(t);
+}
+
+std::string UnquoteOdf(const std::string& text) {
+    const std::string t = TrimOdf(text);
+    if (t.size() < 2 || t.front() != '"' || t.back() != '"') return t;
+    std::string out;
+    for (size_t i = 1; i + 1 < t.size(); ++i) {
+        out += t[i];
+        if (t[i] == '"' && i + 2 < t.size() && t[i + 1] == '"') ++i;
+    }
+    return out;
+}
+
+// A comparison at the start of `text` ("<=5"): the operator, and the rest.
+bool ReadOdfComparison(const std::string& text, ValidationOperator& op, std::string& rest) {
+    static const std::pair<const char*, ValidationOperator> kOperators[] = {
+        {"!=", ValidationOperator::NotEqual}, {"<>", ValidationOperator::NotEqual},
+        {"<=", ValidationOperator::LessOrEqual}, {">=", ValidationOperator::GreaterOrEqual},
+        {"<", ValidationOperator::LessThan}, {">", ValidationOperator::GreaterThan},
+        {"=", ValidationOperator::Equal}};
+    const std::string t = TrimOdf(text);
+    for (const auto& [symbol, value] : kOperators) {
+        const size_t n = std::char_traits<char>::length(symbol);
+        if (t.compare(0, n, symbol) == 0) {
+            op = value;
+            rest = t.substr(n);
+            return true;
+        }
+    }
+    return false;
+}
+
+// A table:content-validation's table:condition into a rule (type, operator,
+// formula1 / formula2); false when it is not one this reads.
+bool ParseOdfValidationCondition(const std::string& condition, DataValidation& rule) {
+    // The parts joined by " and ": a type test and a comparison.
+    std::vector<std::string> parts;
+    {
+        std::string t = TrimOdf(condition);
+        size_t start = 0;
+        int depth = 0;
+        bool inQuote = false;
+        for (size_t i = 0; i < t.size(); ++i) {
+            const char c = t[i];
+            if (c == '"') inQuote = !inQuote;
+            if (inQuote) continue;
+            if (c == '(' || c == '[') ++depth;
+            else if (c == ')' || c == ']') --depth;
+            else if (depth == 0 && t.compare(i, 5, " and ") == 0) {
+                parts.push_back(StripOdfPrefix(t.substr(start, i - start)));
+                start = i + 5;
+                i += 4;
+            }
+        }
+        parts.push_back(StripOdfPrefix(t.substr(start)));
+    }
+    rule.type = ValidationType::Decimal;
+    bool understood = false;
+    for (const std::string& part : parts) {
+        if (part == "cell-content-is-whole-number()") { rule.type = ValidationType::WholeNumber; continue; }
+        if (part == "cell-content-is-decimal-number()") { rule.type = ValidationType::Decimal; continue; }
+        if (part == "cell-content-is-date()") { rule.type = ValidationType::Date; continue; }
+        if (part == "cell-content-is-time()") { rule.type = ValidationType::Time; continue; }
+        if (auto body = OdfCallBody(part, "cell-content-is-in-list")) {
+            rule.type = ValidationType::List;
+            std::vector<std::string> items = SplitOdfArguments(*body);
+            if (items.size() == 1 && !items[0].empty() && items[0].front() != '"') {
+                rule.formula1 = OdsExpressionToNative(items[0]);   // cells
+            } else {
+                std::string list;
+                for (const std::string& item : items) list += (list.empty() ? "" : ",") + UnquoteOdf(item);
+                rule.formula1 = list;
+            }
+            understood = true;
+            continue;
+        }
+        if (auto body = OdfCallBody(part, "is-true-formula")) {
+            rule.type = ValidationType::Custom;
+            rule.formula1 = OdsExpressionToNative(*body);
+            understood = true;
+            continue;
+        }
+        const bool textLength = part.rfind("cell-content-text-length", 0) == 0;
+        const std::string between = textLength ? "cell-content-text-length-is-between" : "cell-content-is-between";
+        const std::string notBetween = textLength ? "cell-content-text-length-is-not-between"
+                                                  : "cell-content-is-not-between";
+        if (textLength) rule.type = ValidationType::TextLength;
+        std::optional<std::string> body = OdfCallBody(part, notBetween);
+        const bool isNot = body.has_value();
+        if (!body) body = OdfCallBody(part, between);
+        if (body) {
+            const std::vector<std::string> args = SplitOdfArguments(*body);
+            rule.op = isNot ? ValidationOperator::NotBetween : ValidationOperator::Between;
+            rule.formula1 = args.size() > 0 ? OdsOperandToNative(args[0]) : std::string();
+            rule.formula2 = args.size() > 1 ? OdsOperandToNative(args[1]) : std::string();
+            understood = true;
+            continue;
+        }
+        const std::string subject = textLength ? "cell-content-text-length()" : "cell-content()";
+        if (part.rfind(subject, 0) == 0) {
+            std::string rest;
+            if (ReadOdfComparison(part.substr(subject.size()), rule.op, rest)) {
+                rule.formula1 = OdsOperandToNative(rest);
+                understood = true;
+            }
+        }
+    }
+    return understood;
+}
+
+// A calcext:condition's calcext:value into a rule; false when it is not one
+// this reads. Formulas are written for `anchor` (the base cell).
+bool ParseOdfConditionValue(const std::string& value, ConditionalFormatRule& rule) {
+    const std::string t = TrimOdf(value);
+    auto textRule = [&](const char* name, ConditionalFormatType type) {
+        if (auto body = OdfCallBody(t, name)) {
+            rule.type = type;
+            rule.formula1 = UnquoteOdf(*body);
+            return true;
+        }
+        return false;
+    };
+    if (auto body = OdfCallBody(t, "formula-is")) {
+        rule.type = ConditionalFormatType::Expression;
+        rule.formula1 = OdsExpressionToNative(*body);
+        return true;
+    }
+    for (const char* name : {"between", "not-between"}) {
+        if (auto body = OdfCallBody(t, name)) {
+            const std::vector<std::string> args = SplitOdfArguments(*body);
+            rule.type = ConditionalFormatType::CellValue;
+            rule.op = std::string(name) == "between" ? ValidationOperator::Between : ValidationOperator::NotBetween;
+            rule.formula1 = args.size() > 0 ? OdsOperandToNative(args[0]) : std::string();
+            rule.formula2 = args.size() > 1 ? OdsOperandToNative(args[1]) : std::string();
+            return true;
+        }
+    }
+    if (textRule("contains-text", ConditionalFormatType::ContainsText) ||
+        textRule("not-contains-text", ConditionalFormatType::NotContainsText) ||
+        textRule("begins-with", ConditionalFormatType::BeginsWithText) ||
+        textRule("ends-with", ConditionalFormatType::EndsWithText)) {
+        return true;
+    }
+    struct Rank { const char* name; bool bottom; bool percent; };
+    for (const Rank& rank : {Rank{"top-elements", false, false}, Rank{"bottom-elements", true, false},
+                             Rank{"top-percent", false, true}, Rank{"bottom-percent", true, true}}) {
+        if (auto body = OdfCallBody(t, rank.name)) {
+            rule.type = ConditionalFormatType::Top10;
+            rule.formula1 = TrimOdf(*body);
+            rule.bottom = rank.bottom;
+            rule.percent = rank.percent;
+            return true;
+        }
+    }
+    if (t == "is-error") { rule.type = ConditionalFormatType::ContainsErrors; return true; }
+    if (t == "is-no-error") { rule.type = ConditionalFormatType::NotContainsErrors; return true; }
+    if (t == "duplicate") { rule.type = ConditionalFormatType::DuplicateValues; return true; }
+    if (t == "unique") { rule.type = ConditionalFormatType::UniqueValues; return true; }
+    if (t == "above-average" || t == "below-average" || t == "above-equal-average" || t == "below-equal-average") {
+        rule.type = ConditionalFormatType::AboveAverage;
+        rule.aboveAverage = t.rfind("above", 0) == 0;
+        rule.equalAverage = t.find("equal") != std::string::npos;
+        return true;
+    }
+    std::string rest;
+    if (ReadOdfComparison(t, rule.op, rest)) {
+        rule.type = ConditionalFormatType::CellValue;
+        rule.formula1 = OdsOperandToNative(rest);
+        return true;
+    }
+    return false;
+}
+
+ConditionalThreshold OdfThreshold(const std::string& type, const std::string& value) {
+    if (type == "maximum" || type == "auto-maximum") return ConditionalThreshold(ConditionalThresholdKind::Highest);
+    if (type == "percent") return ConditionalThreshold(ConditionalThresholdKind::Percent, value);
+    if (type == "percentile") return ConditionalThreshold(ConditionalThresholdKind::Percentile, value);
+    if (type == "number") {
+        return IsOdfNumber(value) ? ConditionalThreshold(ConditionalThresholdKind::Number, value)
+                                  : ConditionalThreshold(ConditionalThresholdKind::Formula, OdsOperandToNative(value));
+    }
+    if (type == "formula") return ConditionalThreshold(ConditionalThresholdKind::Formula, OdsOperandToNative(value));
+    return ConditionalThreshold(ConditionalThresholdKind::Lowest);
+}
+
+const char* OdfThresholdType(ConditionalThresholdKind kind) {
+    switch (kind) {
+        case ConditionalThresholdKind::Lowest: return "minimum";
+        case ConditionalThresholdKind::Highest: return "maximum";
+        case ConditionalThresholdKind::Number: return "number";
+        case ConditionalThresholdKind::Percent: return "percent";
+        case ConditionalThresholdKind::Percentile: return "percentile";
+        case ConditionalThresholdKind::Formula: return "formula";
+    }
+    return "minimum";
+}
+
+const char* OdfComparison(ValidationOperator op) {
+    switch (op) {
+        case ValidationOperator::Equal: return "=";
+        case ValidationOperator::NotEqual: return "!=";
+        case ValidationOperator::GreaterThan: return ">";
+        case ValidationOperator::LessThan: return "<";
+        case ValidationOperator::GreaterOrEqual: return ">=";
+        case ValidationOperator::LessOrEqual: return "<=";
+        default: return "=";
+    }
 }
 
 // ===== ODF ADDRESSES, PAGE LAYOUT, HEADERS =====
@@ -1135,6 +1430,11 @@ private:
                 }
 
                 styles_[styleName] = cellStyle;
+                // A common style is named by its display name where one
+                // names it ("Good" for "Good_5f_1"): a condition's
+                // calcext:apply-style-name does.
+                const std::string displayName = GetAttr(style, "style:display-name");
+                if (!displayName.empty()) styleDisplayNames_[displayName] = styleName;
             }
         }
     }
@@ -1163,6 +1463,11 @@ private:
             spreadsheet_->RemoveNamedRange(named.name, named.sheetScope);
         }
 
+        // The validations the cells name (table:content-validation-name).
+        if (auto* validations = spreadsheetElem->FirstChildElement("table:content-validations")) {
+            LoadContentValidations(validations);
+        }
+
         // Parse each table:table (sheet)
         int sheetIndex = 0;
         std::vector<std::pair<tinyxml2::XMLElement*, std::string>> sheetNames;
@@ -1175,6 +1480,8 @@ private:
             SpreadsheetSheet* sheet = spreadsheet_->AddSheet(sheetName);
             if (sheet) {
                 ParseTable(tableElem, sheet);
+                ApplyCellExtras(sheet);
+                ParseConditionalFormats(tableElem, sheet);
                 ApplyPageStyle(GetAttr(tableElem, "table:style-name"), sheet);
                 // The print area: the first of the table's print ranges.
                 std::vector<std::string> printRanges =
@@ -1412,6 +1719,7 @@ private:
             // Check if row has any cells
             auto* firstCell = rowElem->FirstChildElement("table:table-cell");
             if (!firstCell || GetAttr(firstCell, "office:value-type").empty()) {
+                RecordRowValidationRuns(rowElem, first, last);
                 rowIndex += rowRepeat;
                 return;
             }
@@ -1456,6 +1764,7 @@ private:
                 colIndex += colRepeat;
                 continue;
             }
+            RecordCellExtras(cellElem, rowIndex, colIndex, colRepeat);
             int colSpan = GetAttrInt(cellElem, "table:number-columns-spanned", 1);
             int rowSpan = GetAttrInt(cellElem, "table:number-rows-spanned", 1);
 
@@ -1558,7 +1867,13 @@ private:
         // Preserve a hyperlink target carried by a text:a run.
         std::string href = FindCellHyperlink(cellElem);
         if (!href.empty()) {
-            cell->SetHyperlink(href);
+            if (href[0] == '#') {
+                cell->SetHyperlink(href.substr(1), HyperlinkType::InternalCell);
+            } else {
+                cell->SetHyperlink(href, href.rfind("mailto:", 0) == 0 ? HyperlinkType::Email
+                                       : href.rfind("file:", 0) == 0 ? HyperlinkType::File
+                                                                     : HyperlinkType::URL);
+            }
         }
 
         // Apply style
@@ -1570,6 +1885,185 @@ private:
             }
         }
     }
+    // ===== VALIDATIONS, COMMENTS, CONDITIONAL FORMATS =====
+
+    // table:content-validation by name; the cells name theirs.
+    std::map<std::string, DataValidation> contentValidations_;
+    // A style's display name -> its style:name.
+    std::map<std::string, std::string> styleDisplayNames_;
+    // The cells of the table being read that name a validation, as
+    // rectangles (a run of repeated cells or rows is one), and its notes.
+    struct ValidationRun { int r0, r1, c0, c1; std::string name; };
+    std::vector<ValidationRun> validationRuns_;
+    struct PendingComment { int row, col; CellComment comment; };
+    std::vector<PendingComment> pendingComments_;
+
+    static std::string ParagraphsText(const tinyxml2::XMLElement* parent) {
+        std::string text;
+        bool first = true;
+        for (auto* p = parent->FirstChildElement("text:p"); p; p = p->NextSiblingElement("text:p")) {
+            if (!first) text += '\n';
+            first = false;
+            AppendElementText(p, text);
+        }
+        return text;
+    }
+
+    void LoadContentValidations(tinyxml2::XMLElement* validations) {
+        for (auto* v = validations->FirstChildElement("table:content-validation"); v;
+             v = v->NextSiblingElement("table:content-validation")) {
+            const std::string name = GetAttr(v, "table:name");
+            DataValidation rule;
+            if (name.empty() || !ParseOdfValidationCondition(GetAttr(v, "table:condition"), rule)) continue;
+            rule.allowBlank = GetAttr(v, "table:allow-empty-cell", "true") != "false";
+            rule.showDropdown = GetAttr(v, "table:display-list", "unsorted") != "none";
+            if (auto* help = v->FirstChildElement("table:help-message")) {
+                rule.showInputMessage = GetAttr(help, "table:display", "false") == "true";
+                rule.inputTitle = GetAttr(help, "table:title");
+                rule.inputMessage = ParagraphsText(help);
+            }
+            if (auto* error = v->FirstChildElement("table:error-message")) {
+                rule.showErrorAlert = GetAttr(error, "table:display", "false") == "true";
+                rule.errorTitle = GetAttr(error, "table:title");
+                rule.errorMessage = ParagraphsText(error);
+                const std::string type = GetAttr(error, "table:message-type", "stop");
+                rule.alertStyle = type == "warning" ? ValidationAlertStyle::Warning
+                                : type == "information" ? ValidationAlertStyle::Information
+                                                        : ValidationAlertStyle::Stop;
+            } else {
+                rule.showErrorAlert = false;
+            }
+            contentValidations_[name] = rule;
+        }
+    }
+
+    // A cell's validation name and note, `repeat` cells from (row, col).
+    void RecordCellExtras(tinyxml2::XMLElement* cellElem, int row, int col, int repeat) {
+        const std::string validation = GetAttr(cellElem, "table:content-validation-name");
+        if (!validation.empty() && col < SpreadsheetLimits::MaxColumns) {
+            validationRuns_.push_back({row, row, col,
+                                       std::min(col + std::max(1, repeat), SpreadsheetLimits::MaxColumns) - 1,
+                                       validation});
+        }
+        if (auto* note = cellElem->FirstChildElement("office:annotation")) {
+            CellComment comment(ParagraphsText(note), "");
+            if (auto* creator = note->FirstChildElement("dc:creator")) {
+                comment.author = creator->GetText() ? creator->GetText() : "";
+            }
+            comment.visible = GetAttr(note, "office:display") == "true";
+            pendingComments_.push_back({row, col, comment});
+        }
+    }
+
+    // The validation names of a block of rows passed over as empty.
+    void RecordRowValidationRuns(tinyxml2::XMLElement* rowElem, int firstRow, int lastRow) {
+        int col = 0;
+        for (auto* cellElem = rowElem->FirstChildElement(); cellElem; cellElem = cellElem->NextSiblingElement()) {
+            const std::string elemName = cellElem->Name();
+            if (elemName != "table:table-cell" && elemName != "table:covered-table-cell") continue;
+            const int repeat = std::max(1, GetAttrInt(cellElem, "table:number-columns-repeated", 1));
+            const std::string validation = GetAttr(cellElem, "table:content-validation-name");
+            if (!validation.empty() && col < SpreadsheetLimits::MaxColumns) {
+                validationRuns_.push_back({firstRow, lastRow, col,
+                                           std::min(col + repeat, SpreadsheetLimits::MaxColumns) - 1, validation});
+            }
+            col += repeat;
+        }
+    }
+
+    // The table's validations as ranges (runs of one rule joined down the
+    // rows), and its notes, onto the sheet.
+    void ApplyCellExtras(SpreadsheetSheet* sheet) {
+        std::sort(validationRuns_.begin(), validationRuns_.end(), [](const ValidationRun& a, const ValidationRun& b) {
+            return std::tie(a.name, a.c0, a.c1, a.r0) < std::tie(b.name, b.c0, b.c1, b.r0);
+        });
+        std::vector<ValidationRun> merged;
+        for (const ValidationRun& run : validationRuns_) {
+            if (!merged.empty()) {
+                ValidationRun& last = merged.back();
+                if (last.name == run.name && last.c0 == run.c0 && last.c1 == run.c1 && last.r1 + 1 >= run.r0) {
+                    last.r1 = std::max(last.r1, run.r1);
+                    continue;
+                }
+            }
+            merged.push_back(run);
+        }
+        for (const ValidationRun& run : merged) {
+            auto rule = contentValidations_.find(run.name);
+            if (rule != contentValidations_.end()) {
+                sheet->SetValidation(CellRange(run.r0, run.c0, run.r1, run.c1), rule->second);
+            }
+        }
+        for (const PendingComment& pending : pendingComments_) {
+            sheet->GetCell(pending.row, pending.col)->SetComment(pending.comment);
+        }
+        validationRuns_.clear();
+        pendingComments_.clear();
+    }
+
+    // calcext:conditional-formats: conditions (with their cell styles),
+    // colour scales and data bars.
+    void ParseConditionalFormats(tinyxml2::XMLElement* tableElem, SpreadsheetSheet* sheet) {
+        auto* formats = tableElem->FirstChildElement("calcext:conditional-formats");
+        if (!formats) return;
+        for (auto* format = formats->FirstChildElement("calcext:conditional-format"); format;
+             format = format->NextSiblingElement("calcext:conditional-format")) {
+            std::vector<CellRange> ranges;
+            for (const std::string& part : SplitOdfRangeList(GetAttr(format, "calcext:target-range-address"))) {
+                std::string rangeSheet;
+                CellRange range;
+                if (!ParseOdfRangeAddress(part, rangeSheet, range)) continue;
+                range.start.sheetName.clear();
+                range.end.sheetName.clear();
+                ranges.push_back(range);
+            }
+            if (ranges.empty()) continue;
+            std::vector<ConditionalFormatRule> rules;
+            for (auto* entry = format->FirstChildElement(); entry; entry = entry->NextSiblingElement()) {
+                const std::string name = entry->Name();
+                ConditionalFormatRule rule;
+                if (name == "calcext:condition") {
+                    if (!ParseOdfConditionValue(GetAttr(entry, "calcext:value"), rule)) continue;
+                    const std::string styleName = GetAttr(entry, "calcext:apply-style-name");
+                    auto style = styles_.find(styleName);
+                    if (style == styles_.end()) {
+                        auto named = styleDisplayNames_.find(styleName);
+                        if (named != styleDisplayNames_.end()) style = styles_.find(named->second);
+                    }
+                    if (style != styles_.end()) rule.style = style->second;
+                } else if (name == "calcext:color-scale") {
+                    rule.type = ConditionalFormatType::ColorScale;
+                    for (auto* point = entry->FirstChildElement("calcext:color-scale-entry"); point;
+                         point = point->NextSiblingElement("calcext:color-scale-entry")) {
+                        rule.thresholds.push_back(OdfThreshold(GetAttr(point, "calcext:type"),
+                                                               GetAttr(point, "calcext:value")));
+                        rule.colorScale.push_back(ParseHexColor(GetAttr(point, "calcext:color", "#ffffff")));
+                    }
+                    if (rule.colorScale.size() < 2) continue;
+                } else if (name == "calcext:data-bar") {
+                    rule.type = ConditionalFormatType::DataBar;
+                    rule.dataBarColor = ParseHexColor(GetAttr(entry, "calcext:positive-color", "#2a6099"));
+                    rule.showValue = GetAttr(entry, "calcext:show-value", "true") != "false";
+                    for (auto* point = entry->FirstChildElement("calcext:formatting-entry"); point;
+                         point = point->NextSiblingElement("calcext:formatting-entry")) {
+                        rule.thresholds.push_back(OdfThreshold(GetAttr(point, "calcext:type"),
+                                                               GetAttr(point, "calcext:value")));
+                    }
+                } else {
+                    continue;   // icon sets, dates: not drawn here
+                }
+                rules.push_back(std::move(rule));
+            }
+            if (rules.empty()) continue;
+            for (const CellRange& range : ranges) {
+                ConditionalFormat cf;
+                cf.range = range;
+                cf.rules = rules;
+                sheet->AddConditionalFormat(cf);
+            }
+        }
+    }
+
 };
 
 // ============================================================================
@@ -1641,6 +2135,7 @@ private:
            << "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
            << "office:version=\"1.3\">\n";
         ss << "<office:styles>\n";
+        WriteConditionalStyles(ss);
         ss << "</office:styles>\n";
         ss << "<office:automatic-styles>\n";
         for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
@@ -1815,6 +2310,9 @@ private:
            // The "of:" of every table:formula names this namespace: without
            // it LibreOffice cannot tell the formula's syntax and shows Err.
            << "xmlns:of=\"urn:oasis:names:tc:opendocument:xmlns:of:1.2\" "
+           << "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
+           << "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
+           << "xmlns:calcext=\"urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0\" "
            << "office:version=\"1.3\">\n";
 
         // Automatic styles
@@ -1883,7 +2381,8 @@ private:
         ss << "<office:body>\n";
         ss << "<office:spreadsheet>\n";
         
-        // Write each sheet
+        // The validations the cells name, then each sheet
+        WriteContentValidations(ss);
         for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
             auto* sheet = spreadsheet_->GetSheet(s);
             if (sheet) {
@@ -1925,6 +2424,21 @@ private:
         for (const auto& merge : sheet->GetMergedCells()) {
             extent.lastCellColumn = std::max(extent.lastCellColumn, merge.range.end.col);
             extent.lastRow = std::max(extent.lastRow, merge.range.end.row);
+        }
+        // A note, and a validation, live on the cells: those cells are
+        // written even when empty - a validation's as far as the cells in use
+        // or a thousand rows and 52 columns, not down whole columns.
+        sheet->ForEachCell([&](int row, int col, const SpreadsheetCell& cell) {
+            if (cell.HasComment() || cell.HasValidation()) {
+                extent.lastCellColumn = std::max(extent.lastCellColumn, col);
+                extent.lastRow = std::max(extent.lastRow, row);
+            }
+        });
+        const int validationRows = std::max(used.end.row, 999);
+        const int validationColumns = std::max(used.end.col, 51);
+        for (const auto& [range, rule] : sheet->GetValidations()) {
+            extent.lastCellColumn = std::max(extent.lastCellColumn, std::min(range.end.col, validationColumns));
+            extent.lastRow = std::max(extent.lastRow, std::min(range.end.row, validationRows));
         }
         extent.lastColumn = std::max(extent.lastColumn, extent.lastCellColumn);
         for (const auto& [index, def] : sheet->GetColumnDefinitions()) {
@@ -2004,6 +2518,7 @@ private:
         }
         for (const auto& [key, named] : sheet->GetNamedRanges()) sheetNames.push_back(named);
         WriteNamedRanges(ss, sheetNames, sheet->GetName());
+        WriteConditionalFormats(ss, sheet);
 
         ss << "</table:table>\n";
     }
@@ -2104,8 +2619,18 @@ private:
             if (rowSpan > 1) ss << " table:number-rows-spanned=\"" << rowSpan << "\"";
         }
         
+        // The validation that applies to the cell, by its name.
+        const std::string validationName = ValidationNameAt(sheet, row, col);
+        if (!validationName.empty()) ss << " table:content-validation-name=\"" << validationName << "\"";
+
         if (!cell || cell->IsEmpty()) {
-            ss << "/>\n";
+            if (cell && cell->HasComment()) {
+                ss << ">\n";
+                WriteAnnotation(ss, *cell->GetComment());
+                ss << "</" << element << ">\n";
+            } else {
+                ss << "/>\n";
+            }
             return;
         }
         
@@ -2176,8 +2701,10 @@ private:
         
         ss << ">\n";
         
-        // Text content
-        ss << "<text:p>" << EscapeXml(cell->GetDisplayValue()) << "</text:p>\n";
+        // The note (before the text, as ODF orders them), then the text -
+        // a link when the cell has one.
+        if (cell->HasComment()) WriteAnnotation(ss, *cell->GetComment());
+        WriteCellParagraph(ss, cell);
         
         ss << "</" << element << ">\n";
     }
@@ -2660,6 +3187,337 @@ private:
         ss << "</manifest:manifest>\n";
         return ss.str();
     }
+    // ===== VALIDATIONS, COMMENTS, LINKS, CONDITIONAL FORMATS =====
+
+    // The validations' names (val1, val2 ...) by the rule they are, and the
+    // conditional formats' cell styles (written as common styles in
+    // styles.xml, which calcext:apply-style-name names) by their rule.
+    std::map<const DataValidation*, std::string> validationNames_;
+    std::map<const ConditionalFormatRule*, std::string> conditionalStyleNames_;
+
+    static bool RuleHasStyle(const ConditionalFormatRule& rule) {
+        return rule.type != ConditionalFormatType::ColorScale && rule.type != ConditionalFormatType::DataBar &&
+               rule.type != ConditionalFormatType::IconSet && rule.type != ConditionalFormatType::TimePeriod;
+    }
+
+    // A formula of ours ("=A1>3", or without its '=') in ODF syntax, without
+    // the '=' ([.A1]>3); the text as it is when it does not parse.
+    static std::string NativeToOdsExpression(const std::string& formula) {
+        std::string text = TrimOdf(formula);
+        if (text.empty()) return text;
+        if (text[0] != '=') text = "=" + text;
+        SpreadsheetFormula parsed(text, CellAddress(0, 0));
+        if (parsed.Parse() && parsed.IsValid() && parsed.GetAST()) {
+            std::string odf = EmitODS(parsed.GetAST());
+            // EmitODS wraps each operation in parentheses; one around the
+            // whole is not needed.
+            return odf;
+        }
+        return text.substr(1);
+    }
+
+    // An operand: a number or "text" as it is, a formula in ODF syntax,
+    // bare text quoted.
+    static std::string OdsOperand(const std::string& operand) {
+        const std::string t = TrimOdf(operand);
+        if (t.empty() || IsOdfNumber(t) || (t.size() >= 2 && t.front() == '"' && t.back() == '"')) return t;
+        if (t[0] == '=') return NativeToOdsExpression(t);
+        std::string quoted = "\"";
+        for (char c : t) {
+            quoted += c;
+            if (c == '"') quoted += '"';
+        }
+        return quoted + "\"";
+    }
+
+    static std::string OdsBound(const std::string& bound, ValidationType type) {
+        if (auto number = ReadDataValidationBound(bound, type)) return FormatFloatRoundTrip(*number);
+        return OdsOperand(bound);
+    }
+
+    static std::string OdfValidationCondition(const DataValidation& rule) {
+        const bool pair = rule.op == ValidationOperator::Between || rule.op == ValidationOperator::NotBetween;
+        auto comparison = [&](const std::string& subject, const std::string& between) {
+            const std::string a = OdsBound(rule.formula1, rule.type);
+            if (pair) {
+                return between + (rule.op == ValidationOperator::NotBetween ? "-is-not-between(" : "-is-between(") +
+                       a + "," + OdsBound(rule.formula2, rule.type) + ")";
+            }
+            return subject + OdfComparison(rule.op) + a;
+        };
+        switch (rule.type) {
+            case ValidationType::WholeNumber:
+                return "of:cell-content-is-whole-number() and " + comparison("cell-content()", "cell-content");
+            case ValidationType::Decimal:
+                return "of:cell-content-is-decimal-number() and " + comparison("cell-content()", "cell-content");
+            case ValidationType::Date:
+                return "of:cell-content-is-date() and " + comparison("cell-content()", "cell-content");
+            case ValidationType::Time:
+                return "of:cell-content-is-time() and " + comparison("cell-content()", "cell-content");
+            case ValidationType::TextLength:
+                return "of:" + comparison("cell-content-text-length()", "cell-content-text-length");
+            case ValidationType::List: {
+                if (IsRangeListSource(rule)) {
+                    return "of:cell-content-is-in-list(" + NativeToOdsExpression(rule.formula1) + ")";
+                }
+                std::string items;
+                for (const std::string& item : DataValidationListItems(rule)) {
+                    std::string quoted = "\"";
+                    for (char c : item) {
+                        quoted += c;
+                        if (c == '"') quoted += '"';
+                    }
+                    items += (items.empty() ? "" : ";") + quoted + "\"";
+                }
+                return "of:cell-content-is-in-list(" + items + ")";
+            }
+            case ValidationType::Custom:
+                return "of:is-true-formula(" + NativeToOdsExpression(rule.formula1) + ")";
+            default:
+                return std::string();
+        }
+    }
+
+    // table:content-validations, before the tables: one entry per rule set
+    // on a range or carried by a cell, named for the cells to point at.
+    void WriteContentValidations(std::stringstream& ss) {
+        std::string entries;
+        int counter = 0;
+        auto add = [&](const SpreadsheetSheet* sheet, const DataValidation& rule, const CellAddress& base) {
+            const std::string condition = OdfValidationCondition(rule);
+            if (condition.empty()) return;
+            const std::string name = "val" + std::to_string(++counter);
+            validationNames_[&rule] = name;
+            entries += "<table:content-validation table:name=\"" + name + "\" table:condition=\"" +
+                       EscapeXml(condition) + "\" table:allow-empty-cell=\"" + (rule.allowBlank ? "true" : "false") +
+                       "\" table:base-cell-address=\"" +
+                       EscapeXml(OdfCellAddress(sheet->GetName(), base.row, base.col)) + "\"";
+            if (rule.type == ValidationType::List) {
+                entries += std::string(" table:display-list=\"") + (rule.showDropdown ? "unsorted" : "none") + "\"";
+            }
+            entries += ">";
+            if (rule.showInputMessage || !rule.inputMessage.empty() || !rule.inputTitle.empty()) {
+                entries += "<table:help-message table:title=\"" + EscapeXml(rule.inputTitle) +
+                           "\" table:display=\"" + (rule.showInputMessage ? "true" : "false") + "\">" +
+                           ParagraphsXml(rule.inputMessage) + "</table:help-message>";
+            }
+            const char* type = rule.alertStyle == ValidationAlertStyle::Warning ? "warning"
+                             : rule.alertStyle == ValidationAlertStyle::Information ? "information" : "stop";
+            entries += std::string("<table:error-message table:message-type=\"") + type + "\" table:title=\"" +
+                       EscapeXml(rule.errorTitle) + "\" table:display=\"" +
+                       (rule.showErrorAlert ? "true" : "false") + "\">" + ParagraphsXml(rule.errorMessage) +
+                       "</table:error-message>";
+            entries += "</table:content-validation>\n";
+        };
+        for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
+            const SpreadsheetSheet* sheet = spreadsheet_->GetSheet(s);
+            if (!sheet) continue;
+            for (const auto& [range, rule] : sheet->GetValidations()) {
+                if (rule.IsValid() && range.IsValid()) add(sheet, rule, range.start);
+            }
+            sheet->ForEachCell([&](int row, int col, const SpreadsheetCell& cell) {
+                if (cell.HasValidation() && cell.GetValidation()->IsValid()) {
+                    add(sheet, *cell.GetValidation(), CellAddress(row, col));
+                }
+            });
+        }
+        if (!entries.empty()) ss << "<table:content-validations>\n" << entries << "</table:content-validations>\n";
+    }
+
+    std::string ParagraphsXml(const std::string& text) {
+        std::string out;
+        size_t start = 0;
+        while (true) {
+            const size_t end = text.find('\n', start);
+            out += "<text:p>" + EscapeXml(text.substr(start, end == std::string::npos ? std::string::npos
+                                                                                     : end - start)) + "</text:p>";
+            if (end == std::string::npos) break;
+            start = end + 1;
+        }
+        return out;
+    }
+
+    // The name of the validation that applies to a cell, if any was written.
+    std::string ValidationNameAt(const SpreadsheetSheet* sheet, int row, int col) const {
+        const DataValidation* rule = sheet->GetEffectiveValidation(row, col);
+        if (!rule) return std::string();
+        auto found = validationNames_.find(rule);
+        return found == validationNames_.end() ? std::string() : found->second;
+    }
+
+    void WriteAnnotation(std::stringstream& ss, const CellComment& comment) {
+        ss << "<office:annotation" << (comment.visible ? " office:display=\"true\"" : "") << ">";
+        if (!comment.author.empty()) ss << "<dc:creator>" << EscapeXml(comment.author) << "</dc:creator>";
+        ss << ParagraphsXml(comment.text) << "</office:annotation>\n";
+    }
+
+    // The cell's shown text as its paragraph, a link (text:a) when it has one.
+    void WriteCellParagraph(std::stringstream& ss, const SpreadsheetCell* cell) {
+        const std::string text = EscapeXml(cell->GetDisplayValue());
+        const CellHyperlink* link = cell->GetHyperlink();
+        if (!link || link->target.empty()) {
+            ss << "<text:p>" << text << "</text:p>\n";
+            return;
+        }
+        std::string href = link->target;
+        const bool internal = link->type == HyperlinkType::InternalCell || link->type == HyperlinkType::InternalRange ||
+                              link->type == HyperlinkType::InternalNamedRange;
+        if (internal && href[0] != '#') href = "#" + href;
+        if (link->type == HyperlinkType::Email && href.rfind("mailto:", 0) != 0) href = "mailto:" + href;
+        ss << "<text:p><text:a xlink:href=\"" << EscapeXml(href) << "\" xlink:type=\"simple\"";
+        if (!link->tooltip.empty()) ss << " office:title=\"" << EscapeXml(link->tooltip) << "\"";
+        ss << ">" << text << "</text:a></text:p>\n";
+    }
+
+    // The conditional formats' cell styles, as common styles in styles.xml.
+    void WriteConditionalStyles(std::stringstream& ss) {
+        int counter = 0;
+        for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
+            const SpreadsheetSheet* sheet = spreadsheet_->GetSheet(s);
+            if (!sheet) continue;
+            for (const ConditionalFormat& format : sheet->GetConditionalFormats()) {
+                for (const ConditionalFormatRule& rule : format.rules) {
+                    if (!RuleHasStyle(rule)) continue;
+                    const std::string name = "ConditionalStyle_" + std::to_string(++counter);
+                    conditionalStyleNames_[&rule] = name;
+                    CellStyle style = rule.style;
+                    style.numberFormat = NumberFormat();   // a data style lives in content.xml
+                    WriteStyleDefinition(ss, name, style);
+                }
+            }
+        }
+    }
+
+    std::string OdfConditionValue(const ConditionalFormatRule& rule, const std::string& anchor) const {
+        auto quoted = [](const std::string& text) {
+            std::string out = "\"";
+            for (char c : text) {
+                out += c;
+                if (c == '"') out += '"';
+            }
+            return out + "\"";
+        };
+        switch (rule.type) {
+            case ConditionalFormatType::CellValue:
+                if (rule.op == ValidationOperator::Between || rule.op == ValidationOperator::NotBetween) {
+                    return std::string(rule.op == ValidationOperator::Between ? "between(" : "not-between(") +
+                           OdsOperand(rule.formula1) + "," + OdsOperand(rule.formula2) + ")";
+                }
+                return OdfComparison(rule.op) + OdsOperand(rule.formula1);
+            case ConditionalFormatType::Expression:
+                return "formula-is(" + NativeToOdsExpression(rule.formula1) + ")";
+            case ConditionalFormatType::ContainsText: return "contains-text(" + quoted(rule.formula1) + ")";
+            case ConditionalFormatType::NotContainsText: return "not-contains-text(" + quoted(rule.formula1) + ")";
+            case ConditionalFormatType::BeginsWithText: return "begins-with(" + quoted(rule.formula1) + ")";
+            case ConditionalFormatType::EndsWithText: return "ends-with(" + quoted(rule.formula1) + ")";
+            case ConditionalFormatType::ContainsBlanks: return "formula-is(LEN(TRIM(" + anchor + "))=0)";
+            case ConditionalFormatType::NotContainsBlanks: return "formula-is(LEN(TRIM(" + anchor + "))>0)";
+            case ConditionalFormatType::ContainsErrors: return "is-error";
+            case ConditionalFormatType::NotContainsErrors: return "is-no-error";
+            case ConditionalFormatType::DuplicateValues: return "duplicate";
+            case ConditionalFormatType::UniqueValues: return "unique";
+            case ConditionalFormatType::Top10: {
+                const int rank = std::atoi(TrimOdf(rule.formula1).c_str());
+                const std::string name = std::string(rule.bottom ? "bottom" : "top") +
+                                         (rule.percent ? "-percent(" : "-elements(");
+                return name + std::to_string(rank > 0 ? rank : 10) + ")";
+            }
+            case ConditionalFormatType::AboveAverage:
+                return std::string(rule.aboveAverage ? "above" : "below") + (rule.equalAverage ? "-equal" : "") +
+                       "-average";
+            default:
+                return std::string();
+        }
+    }
+
+    static std::vector<ConditionalThreshold> ThresholdsOf(const ConditionalFormatRule& rule, size_t count) {
+        if (rule.thresholds.size() == count) return rule.thresholds;
+        std::vector<ConditionalThreshold> points;
+        if (rule.colorScaleValues.size() == count) {
+            for (double v : rule.colorScaleValues) {
+                points.emplace_back(ConditionalThresholdKind::Number, FormatFloatRoundTrip(v));
+            }
+            return points;
+        }
+        points.emplace_back(ConditionalThresholdKind::Lowest);
+        if (count == 3) points.emplace_back(ConditionalThresholdKind::Percentile, "50");
+        points.emplace_back(ConditionalThresholdKind::Highest);
+        return points;
+    }
+
+    static std::string OdfThresholdValue(const ConditionalThreshold& point) {
+        if (point.kind == ConditionalThresholdKind::Lowest || point.kind == ConditionalThresholdKind::Highest) {
+            return "0";
+        }
+        if (point.kind == ConditionalThresholdKind::Formula ||
+            (point.kind == ConditionalThresholdKind::Number && !IsOdfNumber(point.value))) {
+            return NativeToOdsExpression(point.value);
+        }
+        return TrimOdf(point.value);
+    }
+
+    void WriteConditionalFormats(std::stringstream& ss, const SpreadsheetSheet* sheet) {
+        std::string body;
+        for (const ConditionalFormat& format : sheet->GetConditionalFormats()) {
+            if (!format.range.IsValid() || format.rules.empty()) continue;
+            const std::string base = OdfCellAddress(sheet->GetName(), format.range.start.row, format.range.start.col);
+            const std::string anchor = "[." + CellAddress::ColumnToLetter(format.range.start.col) +
+                                       std::to_string(format.range.start.row + 1) + "]";
+            std::string entries;
+            // ODF keeps the rules in the order they are tried: by priority
+            // (a rule without one after those with one), then as they are.
+            std::vector<const ConditionalFormatRule*> ordered;
+            for (const ConditionalFormatRule& rule : format.rules) ordered.push_back(&rule);
+            std::stable_sort(ordered.begin(), ordered.end(), [](const auto* a, const auto* b) {
+                const int pa = a->priority > 0 ? a->priority : INT_MAX;
+                const int pb = b->priority > 0 ? b->priority : INT_MAX;
+                return pa < pb;
+            });
+            for (const ConditionalFormatRule* rulePointer : ordered) {
+                const ConditionalFormatRule& rule = *rulePointer;
+                if (rule.type == ConditionalFormatType::ColorScale) {
+                    if (rule.colorScale.size() < 2) continue;
+                    const size_t count = std::min<size_t>(rule.colorScale.size(), 3);
+                    const auto points = ThresholdsOf(rule, count);
+                    entries += "<calcext:color-scale>";
+                    for (size_t i = 0; i < count; ++i) {
+                        entries += "<calcext:color-scale-entry calcext:value=\"" +
+                                   EscapeXml(OdfThresholdValue(points[i])) + "\" calcext:type=\"" +
+                                   OdfThresholdType(points[i].kind) + "\" calcext:color=\"" +
+                                   ColorToHex(rule.colorScale[i]) + "\"/>";
+                    }
+                    entries += "</calcext:color-scale>\n";
+                    continue;
+                }
+                if (rule.type == ConditionalFormatType::DataBar) {
+                    const auto points = ThresholdsOf(rule, 2);
+                    entries += "<calcext:data-bar calcext:max-length=\"100\" calcext:positive-color=\"" +
+                               ColorToHex(rule.dataBarColor) + "\" calcext:negative-color=\"#ff0000\"";
+                    if (!rule.showValue) entries += " calcext:show-value=\"false\"";
+                    entries += ">";
+                    for (const auto& point : points) {
+                        entries += "<calcext:formatting-entry calcext:value=\"" +
+                                   EscapeXml(OdfThresholdValue(point)) + "\" calcext:type=\"" +
+                                   OdfThresholdType(point.kind) + "\"/>";
+                    }
+                    entries += "</calcext:data-bar>\n";
+                    continue;
+                }
+                auto style = conditionalStyleNames_.find(&rule);
+                const std::string value = OdfConditionValue(rule, anchor);
+                if (style == conditionalStyleNames_.end() || value.empty()) continue;
+                entries += "<calcext:condition calcext:apply-style-name=\"" + style->second +
+                           "\" calcext:value=\"" + EscapeXml(value) + "\" calcext:base-cell-address=\"" +
+                           EscapeXml(base) + "\"/>\n";
+            }
+            if (entries.empty()) continue;
+            body += "<calcext:conditional-format calcext:target-range-address=\"" +
+                    EscapeXml(OdfRangeAddress(sheet->GetName(), format.range)) + "\">\n" + entries +
+                    "</calcext:conditional-format>\n";
+        }
+        if (!body.empty()) ss << "<calcext:conditional-formats>\n" << body << "</calcext:conditional-formats>\n";
+    }
+
 };
 
 // ============================================================================

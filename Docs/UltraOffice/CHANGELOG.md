@@ -10,8 +10,9 @@
     page break, footnote, contents), View (pages, page width, whole page,
     zoom);
   - spreadsheets: Home (clipboard, bold, italic, alignment, wrap, number
-    format, decimals), Data (sort, filter, fill, SUM), Page (print area,
-    landscape, fit to width, gridlines, headings), View (freeze panes);
+    format, decimals), Data (sort, filter, fill, SUM, conditional
+    formatting, data validation), Review (comments, links), Page (print
+    area, landscape, fit to width, gridlines, headings), View (freeze panes);
   - presentations: Home (new slide, layouts, duplicate, delete, hide,
     present), Insert (text box, shape, picture), Text (formatting), Table,
     Arrange (order, duplicate, delete), Slide show;
@@ -22,6 +23,11 @@
   .tsv; the status line adds up the selection. Export as PDF and Print, by
   the sheet's print settings. Copy and paste reach other programs: cells go
   out as text and a table, and another program's table or text comes in.
+  Conditional formatting and data validation (*Data*), comments and links
+  (*Review*, a new command tab) in the grid's own dialogs: rules over the
+  selection, colour scales and data bars drawn on screen, on paper and in
+  the PDF; a comment marked by a red corner and shown on hover; Ctrl+click
+  opens a link. All of it kept in .xlsx and .ods.
 - **Presentations** (.pptx, .odp and their kin) are edited in the slide
   editor: the slide strip, new slides from the deck's layouts, duplicate,
   move, hide and delete; text boxes, drawn shapes and pictures; shapes

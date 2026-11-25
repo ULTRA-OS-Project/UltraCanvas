@@ -9,6 +9,9 @@
 // borders, alignment, wrap). Number formats are classified by
 // ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
 // .xls reader.
+// Version: 1.5.0 - conditional formats (conditionalFormatting, dxfs), data validations (dataValidations),
+//                  hyperlinks (with their relationships) and comments (the comments part and the legacy
+//                  VML drawing Excel shows them with) read and written
 // Version: 1.4.0 - a cell's number is written to read back exactly (it kept six significant digits)
 // Version: 1.3.0 - keeps what a sheet holds beyond its cells: frozen panes (sheetViews), hidden rows and
 //                  columns, named ranges of the workbook and of each sheet (definedNames), the
@@ -376,6 +379,186 @@ constexpr double kPixelsPerWidthChar = 7.0;
 constexpr int kWideColumnRun = 512;
 constexpr double kPixelsPerPoint = 1.33;
 
+// ===== CONDITIONAL FORMATS, VALIDATIONS, LINKS, COMMENTS =====
+
+std::string TrimmedText(const std::string& text) {
+    const size_t a = text.find_first_not_of(" \t\r\n");
+    if (a == std::string::npos) return std::string();
+    const size_t b = text.find_last_not_of(" \t\r\n");
+    return text.substr(a, b - a + 1);
+}
+
+bool IsPlainNumber(const std::string& text) {
+    double value = 0.0;
+    const std::string t = TrimmedText(text);
+    if (t.empty()) return false;
+    const char* first = t.c_str();
+    const char* last = first + t.size();
+    if (*first == '+') ++first;
+    return first != last && ParseFloatClassic(first, last, value) == last;
+}
+
+bool IsQuotedText(const std::string& text) {
+    const std::string t = TrimmedText(text);
+    return t.size() >= 2 && t.front() == '"' && t.back() == '"';
+}
+
+std::string QuoteExcelText(const std::string& text) {
+    std::string out = "\"";
+    for (char c : text) {
+        out += c;
+        if (c == '"') out += '"';
+    }
+    return out + "\"";
+}
+
+// A rule's operand (a number, "quoted text", a formula "=$B$1", or bare
+// text) as Excel writes it in <formula>: no '=', text quoted.
+std::string ExcelOperand(const std::string& operand) {
+    const std::string t = TrimmedText(operand);
+    if (t.empty() || IsPlainNumber(t) || IsQuotedText(t)) return t;
+    if (t[0] == '=') return NativeFormulaToExcel(t).substr(1);
+    return QuoteExcelText(t);
+}
+
+// A formula of ours ("=A1>3", or without its '=') as Excel's <formula> text.
+std::string ExcelFormulaBody(const std::string& formula) {
+    std::string t = TrimmedText(formula);
+    if (t.empty()) return t;
+    if (t[0] != '=') t = "=" + t;
+    return NativeFormulaToExcel(t).substr(1);
+}
+
+// <formula> text read back: a number or quoted text as it is, anything else
+// a formula of ours ("=...").
+std::string OperandFromExcel(const std::string& excel) {
+    const std::string t = TrimmedText(excel);
+    if (t.empty() || IsPlainNumber(t) || IsQuotedText(t)) return t;
+    std::string native = ExcelFormulaToNative(t);
+    if (native.empty() || native[0] != '=') native = "=" + native;
+    return native;
+}
+
+const char* ExcelOperatorName(ValidationOperator op) {
+    switch (op) {
+        case ValidationOperator::Between: return "between";
+        case ValidationOperator::NotBetween: return "notBetween";
+        case ValidationOperator::Equal: return "equal";
+        case ValidationOperator::NotEqual: return "notEqual";
+        case ValidationOperator::GreaterThan: return "greaterThan";
+        case ValidationOperator::LessThan: return "lessThan";
+        case ValidationOperator::GreaterOrEqual: return "greaterThanOrEqual";
+        case ValidationOperator::LessOrEqual: return "lessThanOrEqual";
+    }
+    return "between";
+}
+
+ValidationOperator OperatorFromExcel(const std::string& name, ValidationOperator fallback) {
+    if (name == "between") return ValidationOperator::Between;
+    if (name == "notBetween") return ValidationOperator::NotBetween;
+    if (name == "equal") return ValidationOperator::Equal;
+    if (name == "notEqual") return ValidationOperator::NotEqual;
+    if (name == "greaterThan") return ValidationOperator::GreaterThan;
+    if (name == "lessThan") return ValidationOperator::LessThan;
+    if (name == "greaterThanOrEqual") return ValidationOperator::GreaterOrEqual;
+    if (name == "lessThanOrEqual") return ValidationOperator::LessOrEqual;
+    return fallback;
+}
+
+const char* ExcelThresholdType(ConditionalThresholdKind kind) {
+    switch (kind) {
+        case ConditionalThresholdKind::Lowest: return "min";
+        case ConditionalThresholdKind::Highest: return "max";
+        case ConditionalThresholdKind::Number: return "num";
+        case ConditionalThresholdKind::Percent: return "percent";
+        case ConditionalThresholdKind::Percentile: return "percentile";
+        case ConditionalThresholdKind::Formula: return "formula";
+    }
+    return "min";
+}
+
+ConditionalThreshold ThresholdFromExcel(const tinyxml2::XMLElement* cfvo) {
+    const std::string type = Attr(cfvo, "type");
+    const std::string val = Attr(cfvo, "val");
+    if (type == "max" || type == "autoMax") return ConditionalThreshold(ConditionalThresholdKind::Highest);
+    if (type == "num") {
+        return IsPlainNumber(val) ? ConditionalThreshold(ConditionalThresholdKind::Number, val)
+                                  : ConditionalThreshold(ConditionalThresholdKind::Formula, OperandFromExcel(val));
+    }
+    if (type == "percent") return ConditionalThreshold(ConditionalThresholdKind::Percent, val);
+    if (type == "percentile") return ConditionalThreshold(ConditionalThresholdKind::Percentile, val);
+    if (type == "formula") return ConditionalThreshold(ConditionalThresholdKind::Formula, OperandFromExcel(val));
+    return ConditionalThreshold(ConditionalThresholdKind::Lowest);
+}
+
+const char* ExcelValidationType(ValidationType type) {
+    switch (type) {
+        case ValidationType::WholeNumber: return "whole";
+        case ValidationType::Decimal: return "decimal";
+        case ValidationType::List: return "list";
+        case ValidationType::Date: return "date";
+        case ValidationType::Time: return "time";
+        case ValidationType::TextLength: return "textLength";
+        case ValidationType::Custom: return "custom";
+        default: return "none";
+    }
+}
+
+ValidationType ValidationTypeFromExcel(const std::string& name) {
+    if (name == "whole") return ValidationType::WholeNumber;
+    if (name == "decimal") return ValidationType::Decimal;
+    if (name == "list") return ValidationType::List;
+    if (name == "date") return ValidationType::Date;
+    if (name == "time") return ValidationType::Time;
+    if (name == "textLength") return ValidationType::TextLength;
+    if (name == "custom") return ValidationType::Custom;
+    return ValidationType::Any;
+}
+
+// "A1:B4 D2" -> the ranges; a single cell is a one-cell range.
+std::vector<CellRange> ParseSqref(const std::string& sqref) {
+    std::vector<CellRange> ranges;
+    std::istringstream in(sqref);
+    std::string part;
+    while (in >> part) {
+        const size_t colon = part.find(':');
+        int r1 = 0, c1 = 0, r2 = 0, c2 = 0;
+        if (colon == std::string::npos) {
+            if (ParseCellRef(part, r1, c1)) ranges.emplace_back(r1, c1, r1, c1);
+        } else if (ParseCellRef(part.substr(0, colon), r1, c1) &&
+                   ParseCellRef(part.substr(colon + 1), r2, c2)) {
+            ranges.emplace_back(r1, c1, r2, c2);
+        }
+    }
+    return ranges;
+}
+
+std::string RangeRef(const CellRange& range) {
+    if (range.IsSingleCell()) return CellRef(range.start.row, range.start.col);
+    return CellRef(range.start.row, range.start.col) + ":" + CellRef(range.end.row, range.end.col);
+}
+
+// A part's path inside the package from a relationship target, relative to
+// the folder of the part that names it ("xl/worksheets" + "../comments1.xml").
+std::string ResolvePartPath(const std::string& fromFolder, const std::string& target) {
+    if (!target.empty() && target[0] == '/') return target.substr(1);
+    std::vector<std::string> parts;
+    auto push = [&](const std::string& path) {
+        std::string piece;
+        std::istringstream in(path);
+        while (std::getline(in, piece, '/')) {
+            if (piece.empty() || piece == ".") continue;
+            if (piece == "..") { if (!parts.empty()) parts.pop_back(); continue; }
+            parts.push_back(piece);
+        }
+    };
+    push(fromFolder);
+    push(target);
+    std::string out;
+    for (const auto& piece : parts) out += (out.empty() ? "" : "/") + piece;
+    return out;
+}
+
 // ===== XLSX LOADER =====
 
 class XlsxLoader {
@@ -446,6 +629,7 @@ public:
             sheetsByPosition.back() = sheet;
             std::string sheetXml;
             if (zip_.ReadEntry(rel->second, sheetXml)) {
+                currentSheetPath_ = rel->second;
                 ParseWorksheet(sheetXml, sheet);
             }
         }
@@ -579,6 +763,7 @@ private:
         if (styles.Parse(stylesXml.c_str()) != tinyxml2::XML_SUCCESS) return;
         auto* root = styles.FirstChildElement("styleSheet");
         if (!root) return;
+        LoadDifferentialStyles(root);
 
         std::map<int, std::string> customFormats;
         if (auto* numFmts = root->FirstChildElement("numFmts")) {
@@ -807,6 +992,7 @@ private:
             ParseAutoFilter(autoFilter, sheet);
         }
         ParsePrintSettings(root, sheet);
+        ParseSheetExtras(root, sheet);
     }
 
     // The filter range and its buttons, and the columns filtered to a list of
@@ -1000,6 +1186,281 @@ private:
             if (meaningful) cell->SetStyle(style);
         }
     }
+    // ===== CONDITIONAL FORMATS, VALIDATIONS, LINKS, COMMENTS =====
+
+    std::vector<CellStyle> dxfStyles_;    // <dxfs>: what a conditional format's rule applies
+    std::string currentSheetPath_;        // the worksheet part being read, for its relationships
+
+    // A <dxf>: only what it sets - a fill, a font's colour, bold, italic,
+    // underline, strikethrough - as ApplyConditionalStyle lays it over a cell.
+    void LoadDifferentialStyles(tinyxml2::XMLElement* styleSheet) {
+        auto* dxfs = styleSheet->FirstChildElement("dxfs");
+        if (!dxfs) return;
+        for (auto* dxf = dxfs->FirstChildElement("dxf"); dxf; dxf = dxf->NextSiblingElement("dxf")) {
+            CellStyle style;
+            if (auto* font = dxf->FirstChildElement("font")) {
+                if (auto* b = font->FirstChildElement("b")) style.font.bold = std::string(Attr(b, "val")) != "0";
+                if (auto* i = font->FirstChildElement("i")) style.font.italic = std::string(Attr(i, "val")) != "0";
+                if (auto* strike = font->FirstChildElement("strike")) {
+                    style.font.strikethrough = std::string(Attr(strike, "val")) != "0";
+                }
+                if (auto* u = font->FirstChildElement("u")) {
+                    const std::string val = Attr(u, "val");
+                    if (val != "none") {
+                        style.font.underline = val == "double" ? UnderlineStyle::Double : UnderlineStyle::Single;
+                    }
+                }
+                if (auto* color = font->FirstChildElement("color")) {
+                    const std::string rgb = Attr(color, "rgb");
+                    if (!rgb.empty()) style.font.color = ArgbToColor(rgb);
+                }
+            }
+            if (auto* fill = dxf->FirstChildElement("fill")) {
+                if (auto* pattern = fill->FirstChildElement("patternFill")) {
+                    // A dxf's solid fill is its bgColor (fgColor in some writers).
+                    std::string rgb;
+                    if (auto* bg = pattern->FirstChildElement("bgColor")) rgb = Attr(bg, "rgb");
+                    if (rgb.empty()) {
+                        if (auto* fg = pattern->FirstChildElement("fgColor")) rgb = Attr(fg, "rgb");
+                    }
+                    if (!rgb.empty() && std::string(Attr(pattern, "patternType")) != "none") {
+                        style.fill = CellFill::Solid(ArgbToColor(rgb));
+                    }
+                }
+            }
+            dxfStyles_.push_back(style);
+        }
+    }
+
+    // The worksheet's relationships: id -> (type, part path or external target).
+    std::map<std::string, std::pair<std::string, std::string>> LoadSheetRelationships() {
+        std::map<std::string, std::pair<std::string, std::string>> rels;
+        const size_t slash = currentSheetPath_.rfind('/');
+        const std::string folder = slash == std::string::npos ? std::string() : currentSheetPath_.substr(0, slash);
+        const std::string file = slash == std::string::npos ? currentSheetPath_ : currentSheetPath_.substr(slash + 1);
+        std::string relsXml;
+        if (!zip_.ReadEntry(folder + "/_rels/" + file + ".rels", relsXml)) return rels;
+        tinyxml2::XMLDocument doc;
+        if (doc.Parse(relsXml.c_str()) != tinyxml2::XML_SUCCESS) return rels;
+        auto* root = doc.FirstChildElement("Relationships");
+        if (!root) return rels;
+        for (auto* rel = root->FirstChildElement("Relationship"); rel; rel = rel->NextSiblingElement("Relationship")) {
+            const std::string target = Attr(rel, "Target");
+            const bool external = std::string(Attr(rel, "TargetMode")) == "External";
+            rels[Attr(rel, "Id")] = {Attr(rel, "Type"), external ? target : ResolvePartPath(folder, target)};
+        }
+        return rels;
+    }
+
+    void ParseSheetExtras(tinyxml2::XMLElement* root, SpreadsheetSheet* sheet) {
+        for (auto* cf = root->FirstChildElement("conditionalFormatting"); cf;
+             cf = cf->NextSiblingElement("conditionalFormatting")) {
+            ParseConditionalFormatting(cf, sheet);
+        }
+        if (auto* validations = root->FirstChildElement("dataValidations")) {
+            for (auto* dv = validations->FirstChildElement("dataValidation"); dv;
+                 dv = dv->NextSiblingElement("dataValidation")) {
+                ParseDataValidation(dv, sheet);
+            }
+        }
+        const auto rels = LoadSheetRelationships();
+        if (auto* links = root->FirstChildElement("hyperlinks")) {
+            for (auto* link = links->FirstChildElement("hyperlink"); link; link = link->NextSiblingElement("hyperlink")) {
+                CellHyperlink hyperlink;
+                const std::string location = Attr(link, "location");
+                auto rel = rels.find(Attr(link, "r:id"));
+                if (rel != rels.end()) {
+                    hyperlink.target = rel->second.second;
+                    if (!location.empty()) hyperlink.target += "#" + location;
+                    hyperlink.type = hyperlink.target.rfind("mailto:", 0) == 0 ? HyperlinkType::Email
+                                   : hyperlink.target.rfind("file:", 0) == 0 ? HyperlinkType::File
+                                                                             : HyperlinkType::URL;
+                } else if (!location.empty()) {
+                    hyperlink.target = ExcelFormulaToNative(location);
+                    hyperlink.type = HyperlinkType::InternalCell;
+                } else {
+                    continue;
+                }
+                hyperlink.tooltip = Attr(link, "tooltip");
+                hyperlink.displayText = Attr(link, "display");
+                for (const CellRange& range : ParseSqref(Attr(link, "ref"))) {
+                    for (int r = range.start.row; r <= range.end.row && r - range.start.row < 1000; ++r) {
+                        for (int c = range.start.col; c <= range.end.col && c - range.start.col < 100; ++c) {
+                            sheet->GetCell(r, c)->SetHyperlink(hyperlink);
+                        }
+                    }
+                }
+            }
+        }
+        for (const auto& [id, rel] : rels) {
+            if (rel.first.size() >= 9 && rel.first.compare(rel.first.size() - 9, 9, "/comments") == 0) {
+                ParseComments(rel.second, sheet);
+            }
+        }
+    }
+
+    void ParseConditionalFormatting(tinyxml2::XMLElement* cf, SpreadsheetSheet* sheet) {
+        const std::vector<CellRange> ranges = ParseSqref(Attr(cf, "sqref"));
+        if (ranges.empty()) return;
+        std::vector<ConditionalFormatRule> rules;
+        for (auto* cfRule = cf->FirstChildElement("cfRule"); cfRule; cfRule = cfRule->NextSiblingElement("cfRule")) {
+            ConditionalFormatRule rule;
+            const std::string type = Attr(cfRule, "type");
+            rule.priority = cfRule->IntAttribute("priority", 0);
+            rule.stopIfTrue = AttrFlag(cfRule, "stopIfTrue");
+            const int dxfId = cfRule->IntAttribute("dxfId", -1);
+            if (dxfId >= 0 && dxfId < static_cast<int>(dxfStyles_.size())) {
+                rule.style = dxfStyles_[static_cast<size_t>(dxfId)];
+            }
+            std::vector<std::string> formulas;
+            for (auto* f = cfRule->FirstChildElement("formula"); f; f = f->NextSiblingElement("formula")) {
+                formulas.push_back(f->GetText() ? f->GetText() : "");
+            }
+            const std::string text = Attr(cfRule, "text");
+            if (type == "cellIs") {
+                rule.type = ConditionalFormatType::CellValue;
+                rule.op = OperatorFromExcel(Attr(cfRule, "operator"), ValidationOperator::Equal);
+                if (!formulas.empty()) rule.formula1 = OperandFromExcel(formulas[0]);
+                if (formulas.size() > 1) rule.formula2 = OperandFromExcel(formulas[1]);
+            } else if (type == "expression") {
+                rule.type = ConditionalFormatType::Expression;
+                if (!formulas.empty()) rule.formula1 = OperandFromExcel(formulas[0]);
+                if (!rule.formula1.empty() && rule.formula1[0] != '=') rule.formula1 = "=" + rule.formula1;
+            } else if (type == "containsText" || type == "notContainsText" ||
+                       type == "beginsWith" || type == "endsWith") {
+                rule.type = type == "containsText" ? ConditionalFormatType::ContainsText
+                          : type == "notContainsText" ? ConditionalFormatType::NotContainsText
+                          : type == "beginsWith" ? ConditionalFormatType::BeginsWithText
+                                                 : ConditionalFormatType::EndsWithText;
+                rule.formula1 = text;
+            } else if (type == "containsBlanks") {
+                rule.type = ConditionalFormatType::ContainsBlanks;
+            } else if (type == "notContainsBlanks") {
+                rule.type = ConditionalFormatType::NotContainsBlanks;
+            } else if (type == "containsErrors") {
+                rule.type = ConditionalFormatType::ContainsErrors;
+            } else if (type == "notContainsErrors") {
+                rule.type = ConditionalFormatType::NotContainsErrors;
+            } else if (type == "top10") {
+                rule.type = ConditionalFormatType::Top10;
+                rule.formula1 = std::to_string(cfRule->IntAttribute("rank", 10));
+                rule.percent = AttrFlag(cfRule, "percent");
+                rule.bottom = AttrFlag(cfRule, "bottom");
+            } else if (type == "aboveAverage") {
+                rule.type = ConditionalFormatType::AboveAverage;
+                rule.aboveAverage = std::string(Attr(cfRule, "aboveAverage")) != "0";
+                rule.equalAverage = AttrFlag(cfRule, "equalAverage");
+            } else if (type == "duplicateValues") {
+                rule.type = ConditionalFormatType::DuplicateValues;
+            } else if (type == "uniqueValues") {
+                rule.type = ConditionalFormatType::UniqueValues;
+            } else if (type == "colorScale") {
+                auto* scale = cfRule->FirstChildElement("colorScale");
+                if (!scale) continue;
+                rule.type = ConditionalFormatType::ColorScale;
+                for (auto* cfvo = scale->FirstChildElement("cfvo"); cfvo; cfvo = cfvo->NextSiblingElement("cfvo")) {
+                    rule.thresholds.push_back(ThresholdFromExcel(cfvo));
+                }
+                for (auto* color = scale->FirstChildElement("color"); color; color = color->NextSiblingElement("color")) {
+                    const std::string rgb = Attr(color, "rgb");
+                    rule.colorScale.push_back(rgb.empty() ? Colors::White : ArgbToColor(rgb));
+                }
+                if (rule.colorScale.size() < 2) continue;
+            } else if (type == "dataBar") {
+                auto* bar = cfRule->FirstChildElement("dataBar");
+                if (!bar) continue;
+                rule.type = ConditionalFormatType::DataBar;
+                rule.showValue = std::string(Attr(bar, "showValue")) != "0";
+                for (auto* cfvo = bar->FirstChildElement("cfvo"); cfvo; cfvo = cfvo->NextSiblingElement("cfvo")) {
+                    rule.thresholds.push_back(ThresholdFromExcel(cfvo));
+                }
+                if (auto* color = bar->FirstChildElement("color")) {
+                    const std::string rgb = Attr(color, "rgb");
+                    if (!rgb.empty()) rule.dataBarColor = ArgbToColor(rgb);
+                }
+            } else {
+                continue;   // icon sets and time periods are not drawn here
+            }
+            rules.push_back(std::move(rule));
+        }
+        if (rules.empty()) return;
+        for (const CellRange& range : ranges) {
+            ConditionalFormat format;
+            format.range = range;
+            format.rules = rules;
+            sheet->AddConditionalFormat(format);
+        }
+    }
+
+    void ParseDataValidation(tinyxml2::XMLElement* dv, SpreadsheetSheet* sheet) {
+        DataValidation rule;
+        rule.type = ValidationTypeFromExcel(Attr(dv, "type"));
+        if (rule.type == ValidationType::Any) return;
+        rule.op = OperatorFromExcel(Attr(dv, "operator"), ValidationOperator::Between);
+        rule.allowBlank = AttrFlag(dv, "allowBlank");
+        rule.showDropdown = !AttrFlag(dv, "showDropDown");   // Excel's flag hides the arrow
+        rule.showInputMessage = AttrFlag(dv, "showInputMessage");
+        rule.showErrorAlert = AttrFlag(dv, "showErrorMessage");
+        const std::string style = Attr(dv, "errorStyle");
+        rule.alertStyle = style == "warning" ? ValidationAlertStyle::Warning
+                        : style == "information" ? ValidationAlertStyle::Information
+                                                 : ValidationAlertStyle::Stop;
+        rule.errorTitle = Attr(dv, "errorTitle");
+        rule.errorMessage = Attr(dv, "error");
+        rule.inputTitle = Attr(dv, "promptTitle");
+        rule.inputMessage = Attr(dv, "prompt");
+        auto formula = [dv](const char* tag) {
+            auto* f = dv->FirstChildElement(tag);
+            return std::string(f && f->GetText() ? f->GetText() : "");
+        };
+        const std::string f1 = TrimmedText(formula("formula1"));
+        const std::string f2 = TrimmedText(formula("formula2"));
+        if (rule.type == ValidationType::List) {
+            // "a,b,c" quoted is the list itself; anything else names cells.
+            rule.formula1 = IsQuotedText(f1) ? f1.substr(1, f1.size() - 2) : OperandFromExcel(f1);
+            if (!rule.formula1.empty() && !IsQuotedText(f1) && rule.formula1[0] != '=') {
+                rule.formula1 = "=" + rule.formula1;
+            }
+        } else if (rule.type == ValidationType::Custom) {
+            rule.formula1 = OperandFromExcel(f1);
+            if (!rule.formula1.empty() && rule.formula1[0] != '=') rule.formula1 = "=" + rule.formula1;
+        } else {
+            rule.formula1 = OperandFromExcel(f1);
+            rule.formula2 = OperandFromExcel(f2);
+        }
+        for (const CellRange& range : ParseSqref(Attr(dv, "sqref"))) sheet->SetValidation(range, rule);
+    }
+
+    void ParseComments(const std::string& partPath, SpreadsheetSheet* sheet) {
+        std::string xml;
+        if (!zip_.ReadEntry(partPath, xml)) return;
+        tinyxml2::XMLDocument doc;
+        if (doc.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        auto* root = doc.FirstChildElement("comments");
+        if (!root) return;
+        std::vector<std::string> authors;
+        if (auto* list = root->FirstChildElement("authors")) {
+            for (auto* a = list->FirstChildElement("author"); a; a = a->NextSiblingElement("author")) {
+                authors.push_back(a->GetText() ? a->GetText() : "");
+            }
+        }
+        auto* list = root->FirstChildElement("commentList");
+        if (!list) return;
+        for (auto* c = list->FirstChildElement("comment"); c; c = c->NextSiblingElement("comment")) {
+            int row = 0, col = 0;
+            if (!ParseCellRef(Attr(c, "ref"), row, col)) continue;
+            const int authorId = c->IntAttribute("authorId", -1);
+            const std::string author = (authorId >= 0 && authorId < static_cast<int>(authors.size()))
+                                           ? authors[static_cast<size_t>(authorId)] : std::string();
+            std::string text;
+            if (auto* body = c->FirstChildElement("text")) CollectTextElements(body, text);
+            // Excel starts a note with its author's name in bold ("Ann:\n").
+            if (!author.empty() && text.rfind(author + ":\n", 0) == 0) text = text.substr(author.size() + 2);
+            CellComment comment(text, author);
+            sheet->GetCell(row, col)->SetComment(comment);
+        }
+    }
+
 };
 
 // ===== XLSX SAVER =====
@@ -1014,7 +1475,9 @@ public:
         std::vector<std::string> sheetXmls;
         for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
             const SpreadsheetSheet* sheet = spreadsheet_->GetSheet(s);
-            if (sheet) sheetXmls.push_back(BuildWorksheetXml(sheet));
+            if (!sheet) continue;
+            sheetParts_.emplace_back();   // this sheet's comments and relationships
+            sheetXmls.push_back(BuildWorksheetXml(sheet));
         }
         if (sheetXmls.empty()) {
             error = "The spreadsheet has no sheets to save";
@@ -1029,7 +1492,7 @@ public:
             error = "Cannot create file: " + filePath;
             return false;
         }
-        bool ok = zip_.AddEntry("[Content_Types].xml", BuildContentTypesXml(sheetXmls.size()))
+        bool ok = zip_.AddEntry("[Content_Types].xml", BuildContentTypesXml(sheetXmls.size(), ExtraContentTypes()))
                   && zip_.AddEntry("_rels/.rels", BuildRootRelsXml())
                   && zip_.AddEntry("xl/workbook.xml", BuildWorkbookXml())
                   && zip_.AddEntry("xl/_rels/workbook.xml.rels",
@@ -1040,6 +1503,7 @@ public:
             ok = zip_.AddEntry("xl/worksheets/sheet" + std::to_string(i + 1) + ".xml",
                                sheetXmls[i]);
         }
+        ok = ok && WriteSheetParts();
         if (!ok || !zip_.Finalize()) {
             error = "Failed to write workbook package: " + zip_.GetLastError();
             return false;
@@ -1198,7 +1662,8 @@ private:
         std::ostringstream xml;
         xml.imbue(std::locale::classic());   // numbers in the file are dot-decimal
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-            << "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n";
+            << "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+               "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n";
 
         CellRange used = sheet->GetUsedRange();
         const PrintSettings& print = sheet->GetPrintSettings();
@@ -1308,7 +1773,9 @@ private:
             xml << "</mergeCells>\n";
         }
 
+        WriteSheetExtras(xml, sheet);
         WritePrintSettings(xml, print, fitToPage);
+        WriteLegacyDrawing(xml);
         xml << "</worksheet>\n";
         return xml.str();
     }
@@ -1540,6 +2007,7 @@ private:
             << "<cellXfs count=\"" << xfs_.size() << "\">" << xfs.str() << "</cellXfs>\n"
             << "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" "
                "builtinId=\"0\"/></cellStyles>\n"
+            << BuildDxfsXml()
             << "</styleSheet>\n";
         return xml.str();
     }
@@ -1675,7 +2143,7 @@ private:
         return xml.str();
     }
 
-    static std::string BuildContentTypesXml(size_t sheetCount) {
+    static std::string BuildContentTypesXml(size_t sheetCount, const std::string& extraTypes) {
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
@@ -1696,6 +2164,7 @@ private:
             << "<Override PartName=\"/xl/sharedStrings.xml\" "
                "ContentType=\"application/vnd.openxmlformats-officedocument."
                "spreadsheetml.sharedStrings+xml\"/>\n"
+            << extraTypes
             << "</Types>\n";
         return xml.str();
     }
@@ -1708,6 +2177,449 @@ private:
                "Target=\"xl/workbook.xml\"/>\n"
                "</Relationships>\n";
     }
+    // ===== CONDITIONAL FORMATS, VALIDATIONS, LINKS, COMMENTS =====
+
+    // What a worksheet needs beside its own part: relationships (links,
+    // the comments and their drawing) and the comments' two parts.
+    struct SheetParts {
+        struct Relationship { std::string id, type, target; bool external = false; };
+        std::vector<Relationship> rels;
+        std::string commentsXml;
+        std::string vmlXml;
+    };
+    std::vector<SheetParts> sheetParts_;   // one per worksheet, in order
+    std::vector<CellStyle> dxfs_;          // the conditional formats' styles
+
+    static constexpr const char* kRelHyperlink =
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+    static constexpr const char* kRelComments =
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
+    static constexpr const char* kRelVmlDrawing =
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing";
+
+    std::string AddSheetRelationship(const std::string& type, const std::string& target, bool external) {
+        SheetParts& parts = sheetParts_.back();
+        std::string id = "rIdX" + std::to_string(parts.rels.size() + 1);
+        parts.rels.push_back({id, type, target, external});
+        return id;
+    }
+
+    int AddDxf(const CellStyle& style) {
+        dxfs_.push_back(style);
+        return static_cast<int>(dxfs_.size()) - 1;
+    }
+
+    // conditionalFormatting, dataValidations and hyperlinks, in the place
+    // the schema gives them (after mergeCells, before printOptions).
+    void WriteSheetExtras(std::ostringstream& xml, const SpreadsheetSheet* sheet) {
+        WriteConditionalFormats(xml, sheet);
+        WriteDataValidations(xml, sheet);
+        WriteHyperlinks(xml, sheet);
+        BuildComments(sheet);
+    }
+
+    void WriteConditionalFormats(std::ostringstream& xml, const SpreadsheetSheet* sheet) {
+        int priority = 0;
+        for (const ConditionalFormat& format : sheet->GetConditionalFormats()) {
+            if (!format.range.IsValid() || format.rules.empty()) continue;
+            const std::string topLeft = CellRef(format.range.start.row, format.range.start.col);
+            std::ostringstream rules;
+            rules.imbue(std::locale::classic());
+            for (const ConditionalFormatRule& rule : format.rules) {
+                ++priority;
+                const int rulePriority = rule.priority > 0 ? rule.priority : priority;
+                auto open = [&](const char* type, bool withStyle) {
+                    rules << "<cfRule type=\"" << type << "\"";
+                    if (withStyle) rules << " dxfId=\"" << AddDxf(rule.style) << "\"";
+                    rules << " priority=\"" << rulePriority << "\"";
+                    if (rule.stopIfTrue) rules << " stopIfTrue=\"1\"";
+                };
+                auto formula = [&](const std::string& f) {
+                    rules << "<formula>" << XmlEscape(f) << "</formula>";
+                };
+                const std::string quoted = QuoteExcelText(rule.formula1);
+                switch (rule.type) {
+                    case ConditionalFormatType::CellValue:
+                        open("cellIs", true);
+                        rules << " operator=\"" << ExcelOperatorName(rule.op) << "\">";
+                        formula(ExcelOperand(rule.formula1));
+                        if (rule.op == ValidationOperator::Between || rule.op == ValidationOperator::NotBetween) {
+                            formula(ExcelOperand(rule.formula2));
+                        }
+                        break;
+                    case ConditionalFormatType::Expression:
+                        open("expression", true);
+                        rules << ">";
+                        formula(ExcelFormulaBody(rule.formula1));
+                        break;
+                    case ConditionalFormatType::ContainsText:
+                        open("containsText", true);
+                        rules << " operator=\"containsText\" text=\"" << XmlEscape(rule.formula1) << "\">";
+                        formula("NOT(ISERROR(SEARCH(" + quoted + "," + topLeft + ")))");
+                        break;
+                    case ConditionalFormatType::NotContainsText:
+                        open("notContainsText", true);
+                        rules << " operator=\"notContains\" text=\"" << XmlEscape(rule.formula1) << "\">";
+                        formula("ISERROR(SEARCH(" + quoted + "," + topLeft + "))");
+                        break;
+                    case ConditionalFormatType::BeginsWithText:
+                        open("beginsWith", true);
+                        rules << " operator=\"beginsWith\" text=\"" << XmlEscape(rule.formula1) << "\">";
+                        formula("LEFT(" + topLeft + ",LEN(" + quoted + "))=" + quoted);
+                        break;
+                    case ConditionalFormatType::EndsWithText:
+                        open("endsWith", true);
+                        rules << " operator=\"endsWith\" text=\"" << XmlEscape(rule.formula1) << "\">";
+                        formula("RIGHT(" + topLeft + ",LEN(" + quoted + "))=" + quoted);
+                        break;
+                    case ConditionalFormatType::ContainsBlanks:
+                        open("containsBlanks", true);
+                        rules << ">";
+                        formula("LEN(TRIM(" + topLeft + "))=0");
+                        break;
+                    case ConditionalFormatType::NotContainsBlanks:
+                        open("notContainsBlanks", true);
+                        rules << ">";
+                        formula("LEN(TRIM(" + topLeft + "))>0");
+                        break;
+                    case ConditionalFormatType::ContainsErrors:
+                        open("containsErrors", true);
+                        rules << ">";
+                        formula("ISERROR(" + topLeft + ")");
+                        break;
+                    case ConditionalFormatType::NotContainsErrors:
+                        open("notContainsErrors", true);
+                        rules << ">";
+                        formula("NOT(ISERROR(" + topLeft + "))");
+                        break;
+                    case ConditionalFormatType::Top10: {
+                        open("top10", true);
+                        int rank = std::atoi(TrimmedText(rule.formula1).c_str());
+                        rules << " rank=\"" << (rank > 0 ? rank : 10) << "\"";
+                        if (rule.percent) rules << " percent=\"1\"";
+                        if (rule.bottom) rules << " bottom=\"1\"";
+                        rules << ">";
+                        break;
+                    }
+                    case ConditionalFormatType::AboveAverage:
+                        open("aboveAverage", true);
+                        if (!rule.aboveAverage) rules << " aboveAverage=\"0\"";
+                        if (rule.equalAverage) rules << " equalAverage=\"1\"";
+                        rules << ">";
+                        break;
+                    case ConditionalFormatType::DuplicateValues:
+                        open("duplicateValues", true);
+                        rules << ">";
+                        break;
+                    case ConditionalFormatType::UniqueValues:
+                        open("uniqueValues", true);
+                        rules << ">";
+                        break;
+                    case ConditionalFormatType::ColorScale: {
+                        if (rule.colorScale.size() < 2) continue;
+                        const size_t count = std::min<size_t>(rule.colorScale.size(), 3);
+                        open("colorScale", false);
+                        rules << "><colorScale>";
+                        WriteThresholds(rules, rule, count);
+                        for (size_t i = 0; i < count; ++i) {
+                            rules << "<color rgb=\"" << ColorToArgb(rule.colorScale[i]) << "\"/>";
+                        }
+                        rules << "</colorScale>";
+                        break;
+                    }
+                    case ConditionalFormatType::DataBar:
+                        open("dataBar", false);
+                        rules << "><dataBar";
+                        if (!rule.showValue) rules << " showValue=\"0\"";
+                        rules << ">";
+                        WriteThresholds(rules, rule, 2);
+                        rules << "<color rgb=\"" << ColorToArgb(rule.dataBarColor) << "\"/></dataBar>";
+                        break;
+                    default:
+                        continue;   // icon sets, time periods: not written
+                }
+                rules << "</cfRule>";
+            }
+            const std::string body = rules.str();
+            if (body.empty()) continue;
+            xml << "<conditionalFormatting sqref=\"" << RangeRef(format.range) << "\">" << body
+                << "</conditionalFormatting>\n";
+        }
+    }
+
+    // A colour scale's or data bar's points as <cfvo>s: the rule's own, else
+    // the defaults GetConditionalFormatting draws with.
+    static void WriteThresholds(std::ostringstream& out, const ConditionalFormatRule& rule, size_t count) {
+        std::vector<ConditionalThreshold> points = rule.thresholds;
+        if (points.size() != count) {
+            points.clear();
+            if (rule.colorScaleValues.size() == count) {
+                for (double v : rule.colorScaleValues) {
+                    points.emplace_back(ConditionalThresholdKind::Number, FormatFloatRoundTrip(v));
+                }
+            } else {
+                points.emplace_back(ConditionalThresholdKind::Lowest);
+                if (count == 3) points.emplace_back(ConditionalThresholdKind::Percentile, "50");
+                points.emplace_back(ConditionalThresholdKind::Highest);
+            }
+        }
+        for (const ConditionalThreshold& point : points) {
+            out << "<cfvo type=\"" << ExcelThresholdType(point.kind) << "\"";
+            if (point.kind == ConditionalThresholdKind::Formula ||
+                (point.kind == ConditionalThresholdKind::Number && !IsPlainNumber(point.value))) {
+                out << " val=\"" << XmlEscape(ExcelOperand(point.value.empty() || point.value[0] == '='
+                                                               ? point.value : "=" + point.value)) << "\"";
+            } else if (point.kind != ConditionalThresholdKind::Lowest &&
+                       point.kind != ConditionalThresholdKind::Highest) {
+                out << " val=\"" << XmlEscape(TrimmedText(point.value)) << "\"";
+            }
+            out << "/>";
+        }
+    }
+
+    // A bound of a Whole number / Decimal / Date / Time / Text length rule:
+    // the number (a date as its serial number), or the formula.
+    static std::string ExcelBound(const std::string& bound, ValidationType type) {
+        if (auto number = ReadDataValidationBound(bound, type)) return FormatFloatRoundTrip(*number);
+        return ExcelOperand(bound);
+    }
+
+    static void WriteDataValidation(std::ostringstream& out, const DataValidation& rule, const std::string& sqref) {
+        if (rule.type == ValidationType::Any) return;
+        out << "<dataValidation type=\"" << ExcelValidationType(rule.type) << "\"";
+        if (rule.type != ValidationType::List && rule.type != ValidationType::Custom &&
+            rule.op != ValidationOperator::Between) {
+            out << " operator=\"" << ExcelOperatorName(rule.op) << "\"";
+        }
+        if (rule.alertStyle == ValidationAlertStyle::Warning) out << " errorStyle=\"warning\"";
+        if (rule.alertStyle == ValidationAlertStyle::Information) out << " errorStyle=\"information\"";
+        if (rule.allowBlank) out << " allowBlank=\"1\"";
+        if (rule.type == ValidationType::List && !rule.showDropdown) out << " showDropDown=\"1\"";
+        if (rule.showInputMessage) out << " showInputMessage=\"1\"";
+        if (rule.showErrorAlert) out << " showErrorMessage=\"1\"";
+        if (!rule.errorTitle.empty()) out << " errorTitle=\"" << XmlEscape(rule.errorTitle) << "\"";
+        if (!rule.errorMessage.empty()) out << " error=\"" << XmlEscape(rule.errorMessage) << "\"";
+        if (!rule.inputTitle.empty()) out << " promptTitle=\"" << XmlEscape(rule.inputTitle) << "\"";
+        if (!rule.inputMessage.empty()) out << " prompt=\"" << XmlEscape(rule.inputMessage) << "\"";
+        out << " sqref=\"" << sqref << "\">";
+        if (rule.type == ValidationType::List) {
+            if (IsRangeListSource(rule)) {
+                out << "<formula1>" << XmlEscape(ExcelFormulaBody(rule.formula1)) << "</formula1>";
+            } else {
+                std::string items;
+                for (const std::string& item : DataValidationListItems(rule)) {
+                    items += (items.empty() ? "" : ",") + item;
+                }
+                out << "<formula1>" << XmlEscape("\"" + items + "\"") << "</formula1>";
+            }
+        } else if (rule.type == ValidationType::Custom) {
+            out << "<formula1>" << XmlEscape(ExcelFormulaBody(rule.formula1)) << "</formula1>";
+        } else {
+            out << "<formula1>" << XmlEscape(ExcelBound(rule.formula1, rule.type)) << "</formula1>";
+            if (rule.op == ValidationOperator::Between || rule.op == ValidationOperator::NotBetween) {
+                out << "<formula2>" << XmlEscape(ExcelBound(rule.formula2, rule.type)) << "</formula2>";
+            }
+        }
+        out << "</dataValidation>";
+    }
+
+    void WriteDataValidations(std::ostringstream& xml, const SpreadsheetSheet* sheet) {
+        std::ostringstream body;
+        body.imbue(std::locale::classic());
+        int count = 0;
+        for (const auto& [range, rule] : sheet->GetValidations()) {
+            if (!rule.IsValid() || !range.IsValid()) continue;
+            WriteDataValidation(body, rule, RangeRef(range));
+            ++count;
+        }
+        // A rule a cell carries itself, where no range rule covers it.
+        std::vector<std::pair<CellAddress, DataValidation>> own;
+        sheet->ForEachCell([&](int row, int col, const SpreadsheetCell& cell) {
+            if (cell.HasValidation() && cell.GetValidation()->IsValid() && !sheet->GetValidation(row, col)) {
+                own.emplace_back(CellAddress(row, col), *cell.GetValidation());
+            }
+        });
+        std::sort(own.begin(), own.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [at, rule] : own) {
+            WriteDataValidation(body, rule, CellRef(at.row, at.col));
+            ++count;
+        }
+        if (count > 0) {
+            xml << "<dataValidations count=\"" << count << "\">" << body.str() << "</dataValidations>\n";
+        }
+    }
+
+    void WriteHyperlinks(std::ostringstream& xml, const SpreadsheetSheet* sheet) {
+        std::vector<std::pair<CellAddress, CellHyperlink>> links;
+        sheet->ForEachCell([&](int row, int col, const SpreadsheetCell& cell) {
+            if (cell.HasHyperlink() && !cell.GetHyperlink()->target.empty()) {
+                links.emplace_back(CellAddress(row, col), *cell.GetHyperlink());
+            }
+        });
+        if (links.empty()) return;
+        std::sort(links.begin(), links.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        xml << "<hyperlinks>";
+        for (const auto& [at, link] : links) {
+            xml << "<hyperlink ref=\"" << CellRef(at.row, at.col) << "\"";
+            const bool internal = link.type == HyperlinkType::InternalCell ||
+                                  link.type == HyperlinkType::InternalRange ||
+                                  link.type == HyperlinkType::InternalNamedRange ||
+                                  (!link.target.empty() && link.target[0] == '#');
+            if (internal) {
+                std::string location = link.target[0] == '#' ? link.target.substr(1) : link.target;
+                xml << " location=\"" << XmlEscape(NativeFormulaToExcel(location)) << "\"";
+            } else {
+                std::string target = link.target;
+                if (link.type == HyperlinkType::Email && target.rfind("mailto:", 0) != 0) target = "mailto:" + target;
+                xml << " r:id=\"" << AddSheetRelationship(kRelHyperlink, target, true) << "\"";
+            }
+            if (!link.tooltip.empty()) xml << " tooltip=\"" << XmlEscape(link.tooltip) << "\"";
+            if (!link.displayText.empty()) xml << " display=\"" << XmlEscape(link.displayText) << "\"";
+            xml << "/>";
+        }
+        xml << "</hyperlinks>\n";
+    }
+
+    // The comments part (the notes' text) and the legacy VML drawing Excel
+    // shows them with; both named from the worksheet's relationships.
+    void BuildComments(const SpreadsheetSheet* sheet) {
+        std::vector<std::pair<CellAddress, CellComment>> notes;
+        sheet->ForEachCell([&](int row, int col, const SpreadsheetCell& cell) {
+            if (cell.HasComment()) notes.emplace_back(CellAddress(row, col), *cell.GetComment());
+        });
+        if (notes.empty()) return;
+        std::sort(notes.begin(), notes.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        const size_t number = sheetParts_.size();
+        std::vector<std::string> authors;
+        std::ostringstream list, shapes;
+        list.imbue(std::locale::classic());
+        shapes.imbue(std::locale::classic());
+        int shapeId = static_cast<int>(number) * 1024 + 1;
+        for (const auto& [at, note] : notes) {
+            auto found = std::find(authors.begin(), authors.end(), note.author);
+            const size_t authorId = static_cast<size_t>(found - authors.begin());
+            if (found == authors.end()) authors.push_back(note.author);
+            list << "<comment ref=\"" << CellRef(at.row, at.col) << "\" authorId=\"" << authorId
+                 << "\"><text><r><t xml:space=\"preserve\">" << XmlEscape(note.text) << "</t></r></text></comment>";
+            shapes << "<v:shape id=\"_x0000_s" << shapeId++ << "\" type=\"#_x0000_t202\" "
+                      "style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;"
+                      "z-index:1;visibility:" << (note.visible ? "visible" : "hidden") << "\" fillcolor=\"#ffffe1\" "
+                      "o:insetmode=\"auto\"><v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" "
+                      "obscured=\"t\"/><v:path o:connecttype=\"none\"/><v:textbox style=\"mso-direction-alt:auto\">"
+                      "<div style=\"text-align:left\"></div></v:textbox><x:ClientData ObjectType=\"Note\">"
+                      "<x:MoveWithCells/><x:SizeWithCells/><x:Anchor>"
+                   << (at.col + 1) << ", 15, " << at.row << ", 10, " << (at.col + 3) << ", 15, " << (at.row + 4)
+                   << ", 4</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>" << at.row << "</x:Row><x:Column>"
+                   << at.col << "</x:Column>" << (note.visible ? "<x:Visible/>" : "")
+                   << "</x:ClientData></v:shape>\n";
+        }
+        std::ostringstream comments;
+        comments << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                 << "<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors>";
+        for (const std::string& author : authors) comments << "<author>" << XmlEscape(author) << "</author>";
+        comments << "</authors><commentList>" << list.str() << "</commentList></comments>\n";
+
+        std::ostringstream vml;
+        vml << "<xml xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" "
+               "xmlns:x=\"urn:schemas-microsoft-com:office:excel\">\n"
+            << "<o:shapelayout v:ext=\"edit\"><o:idmap v:ext=\"edit\" data=\"" << number << "\"/></o:shapelayout>\n"
+            << "<v:shapetype id=\"_x0000_t202\" coordsize=\"21600,21600\" o:spt=\"202\" "
+               "path=\"m,l,21600r21600,l21600,xe\"><v:stroke joinstyle=\"miter\"/>"
+               "<v:path gradientshapeok=\"t\" o:connecttype=\"rect\"/></v:shapetype>\n"
+            << shapes.str() << "</xml>\n";
+
+        SheetParts& parts = sheetParts_.back();
+        parts.commentsXml = comments.str();
+        parts.vmlXml = vml.str();
+        AddSheetRelationship(kRelComments, "../comments" + std::to_string(number) + ".xml", false);
+    }
+
+    // <legacyDrawing>: the comments' VML drawing, last of the elements the
+    // worksheet carries here.
+    void WriteLegacyDrawing(std::ostringstream& xml) {
+        SheetParts& parts = sheetParts_.back();
+        if (parts.vmlXml.empty()) return;
+        const std::string id = AddSheetRelationship(
+            kRelVmlDrawing, "../drawings/vmlDrawing" + std::to_string(sheetParts_.size()) + ".vml", false);
+        xml << "<legacyDrawing r:id=\"" << id << "\"/>\n";
+    }
+
+    // Each worksheet's relationships, comments and drawing.
+    bool WriteSheetParts() {
+        for (size_t i = 0; i < sheetParts_.size(); ++i) {
+            const SheetParts& parts = sheetParts_[i];
+            const std::string number = std::to_string(i + 1);
+            if (!parts.rels.empty()) {
+                std::ostringstream rels;
+                rels << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                     << "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n";
+                for (const auto& rel : parts.rels) {
+                    rels << "<Relationship Id=\"" << rel.id << "\" Type=\"" << rel.type << "\" Target=\""
+                         << XmlEscape(rel.target) << "\"" << (rel.external ? " TargetMode=\"External\"" : "")
+                         << "/>\n";
+                }
+                rels << "</Relationships>\n";
+                if (!zip_.AddEntry("xl/worksheets/_rels/sheet" + number + ".xml.rels", rels.str())) return false;
+            }
+            if (!parts.commentsXml.empty() &&
+                (!zip_.AddEntry("xl/comments" + number + ".xml", parts.commentsXml) ||
+                 !zip_.AddEntry("xl/drawings/vmlDrawing" + number + ".vml", parts.vmlXml))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // The content types the parts above add.
+    std::string ExtraContentTypes() const {
+        std::string types;
+        bool anyVml = false;
+        for (size_t i = 0; i < sheetParts_.size(); ++i) {
+            if (sheetParts_[i].commentsXml.empty()) continue;
+            anyVml = true;
+            types += "<Override PartName=\"/xl/comments" + std::to_string(i + 1) +
+                     ".xml\" ContentType=\"application/vnd.openxmlformats-officedocument."
+                     "spreadsheetml.comments+xml\"/>\n";
+        }
+        if (anyVml) {
+            types += "<Default Extension=\"vml\" "
+                     "ContentType=\"application/vnd.openxmlformats-officedocument.vmlDrawing\"/>\n";
+        }
+        return types;
+    }
+
+    // <dxfs>: the conditional formats' styles, after cellStyles.
+    std::string BuildDxfsXml() const {
+        if (dxfs_.empty()) return std::string();
+        std::ostringstream xml;
+        xml.imbue(std::locale::classic());
+        xml << "<dxfs count=\"" << dxfs_.size() << "\">";
+        for (const CellStyle& style : dxfs_) {
+            xml << "<dxf>";
+            const CellFont& font = style.font;
+            const bool fontSet = font.bold || font.italic || font.strikethrough ||
+                                 font.underline != UnderlineStyle::NoUnderline || !(font.color == Colors::Black);
+            if (fontSet) {
+                xml << "<font>";
+                if (font.bold) xml << "<b/>";
+                if (font.italic) xml << "<i/>";
+                if (font.strikethrough) xml << "<strike/>";
+                if (font.underline == UnderlineStyle::Double) xml << "<u val=\"double\"/>";
+                else if (font.underline != UnderlineStyle::NoUnderline) xml << "<u/>";
+                if (!(font.color == Colors::Black)) xml << "<color rgb=\"" << ColorToArgb(font.color) << "\"/>";
+                xml << "</font>";
+            }
+            if (style.fill.HasFill()) {
+                xml << "<fill><patternFill patternType=\"solid\"><fgColor rgb=\""
+                    << ColorToArgb(style.fill.foregroundColor) << "\"/><bgColor rgb=\""
+                    << ColorToArgb(style.fill.foregroundColor) << "\"/></patternFill></fill>";
+            }
+            xml << "</dxf>";
+        }
+        xml << "</dxfs>\n";
+        return xml.str();
+    }
+
 };
 
 } // namespace

@@ -214,7 +214,6 @@
   "Members": "สมาชิก",
   "Members ({0})": "สมาชิก ({0})",
   "Members' ChatCube IDs, separated by commas": "ChatCube ID ของสมาชิก คั่นด้วยเครื่องหมายจุลภาค",
-  "Message": "ข้อความ",
   "Messages": "ข้อความ",
   "Messages - the key that sends, and whether typing is shown, to the other side and to you.": "ข้อความ - แป้นที่ใช้ส่ง และการแสดงว่ากำลังพิมพ์ ทั้งต่ออีกฝ่ายและต่อคุณ",
   "Message…  (Ctrl+Enter sends, Enter for a new line)": "ข้อความ…  (Ctrl+Enter เพื่อส่ง, Enter เพื่อขึ้นบรรทัดใหม่)",

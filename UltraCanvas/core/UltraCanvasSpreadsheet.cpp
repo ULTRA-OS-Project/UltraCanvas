@@ -1,5 +1,7 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.10.0 - conditional formats, comments (a red corner) and links (blue, underlined) drawn by PaintCell;
+//                   a comment or link shown while the pointer rests on its cell; Ctrl+click opens a link
 // Version: 1.9.0 - the system clipboard: text and an HTML table out, another program's table or text in; a paste is an undo step
 // Version: 1.8.0 - a keyboard move selects the cell it lands on, not only the active cell; Shift+arrow extends the range
 // Version: 1.7.0 - every change a sheet reports reaches the formula engine; Paste recalculates
@@ -20,6 +22,8 @@
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasTooltipManager.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <charconv>
 #include <functional>
@@ -527,10 +531,9 @@ void UltraCanvasSpreadsheet::RenderCells(IRenderContext* ctx) {
 }
 
 void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, const Rect2Di& bounds) {
-    auto* sheet = GetActiveSheet();
+    const SpreadsheetSheet* sheet = GetActiveSheet();
     if (!sheet) return;
     
-    const SpreadsheetCell* cell = sheet->GetCellIfExists(row, col);
 
     // In-cell editing: draw the live edit buffer over a clean background instead
     // of the committed value; both come from the editor child.
@@ -550,19 +553,37 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
                                        const Rect2Di& bounds) {
     const SpreadsheetCell* cell = sheet.GetCellIfExists(row, col);
 
+    // The conditional formats over the cell: a rule's style laid over the
+    // cell's own, a colour scale's fill, a data bar.
+    const ConditionalCellFormat conditional = sheet.GetConditionalFormatting(row, col);
+    const bool styled = (cell && cell->HasCustomStyle()) || conditional.style.has_value();
+    CellStyle style = (cell && cell->HasCustomStyle()) ? cell->GetStyle() : CellStyle();
+    if (conditional.style) ApplyConditionalStyle(style, *conditional.style);
+
     // Cell background
-    if (cell && cell->HasCustomStyle()) {
-        const auto& style = cell->GetStyle();
-        if (style.fill.pattern != FillPattern::NoFill) {
-            ctx->SetFillPaint(style.fill.foregroundColor);
-            ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
-        }
+    if (conditional.fill) {
+        ctx->SetFillPaint(*conditional.fill);
+        ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
+    } else if (styled && style.fill.pattern != FillPattern::NoFill) {
+        ctx->SetFillPaint(style.fill.foregroundColor);
+        ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
+    }
+
+    // A data bar from the left edge, as long as the value is far along the
+    // rule's range, under the value.
+    if (conditional.hasDataBar && bounds.width > 4 && bounds.height > 4) {
+        const double room = bounds.width - 4.0;
+        const double length = std::max(2.0, room * conditional.dataBarLength);
+        const Color bar = conditional.dataBarColor;
+        ctx->SetFillPaint(Color(bar.r, bar.g, bar.b, 170));
+        ctx->FillRectangle(Rect2Dd(bounds.x + 2.0, bounds.y + 2.0, length, bounds.height - 4.0));
+        ctx->SetStrokePaint(bar);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRectangle(Rect2Dd(bounds.x + 2.5, bounds.y + 2.5, length - 1.0, bounds.height - 5.0));
     }
 
     // Cell content
-    if (cell && !cell->IsEmpty()) {
-        const auto& style = cell->GetStyle();
-
+    if (cell && !cell->IsEmpty() && conditional.showValue) {
         // Set font
         FontStyle cellFont;
         cellFont.fontFamily = style.font.family.empty() ? "Arial" : style.font.family;
@@ -572,7 +593,11 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
         ctx->SetFontStyle(cellFont);
         // Negative values in a "red negatives" number format paint red, as in
         // the authoring application; otherwise the style's own font colour wins.
+        // A link reads as one - blue and underlined - unless its cell has a
+        // colour of its own.
         Color textColor = style.font.color;
+        const bool link = cell->HasHyperlink();
+        if (link && textColor == Colors::Black) textColor = Color(5, 99, 193);
         if (style.numberFormat.negativeRed && cell->IsNumeric() &&
             cell->GetNumber() < 0.0) {
             textColor = Color(255, 0, 0);
@@ -600,16 +625,14 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
         }
 
         // Horizontal alignment
+        const int textWidth = ctx->GetTextLineWidth(text);
         if (style.hAlign == HorizontalAlignment::Center) {
-            int textWidth = ctx->GetTextLineWidth(text);
             textX = bounds.x + (bounds.width - textWidth) / 2;
         } else if (style.hAlign == HorizontalAlignment::Right) {
-            int textWidth = ctx->GetTextLineWidth(text);
             textX = bounds.x + bounds.width - textWidth - padding;
         } else if (style.hAlign == HorizontalAlignment::General) {
             // Numbers and dates align right, text aligns left
             if (cell->IsNumeric()) {
-                int textWidth = ctx->GetTextLineWidth(text);
                 textX = bounds.x + bounds.width - textWidth - padding;
             }
         }
@@ -618,12 +641,27 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
         ctx->PushState();
         ctx->ClipRect(Rect2Df(bounds.x + 1, bounds.y + 1, bounds.width - 2, bounds.height - 2));
         ctx->DrawText(text, Point2Df(textX, textY));
+        // Underline (a link's too) and strikethrough, along the first line.
+        const bool underline = link || style.font.underline != UnderlineStyle::NoUnderline;
+        if ((underline || style.font.strikethrough) && text.find('\n') == std::string::npos) {
+            const double lineHeight = ctx->GetTextLineHeight(text);
+            ctx->SetStrokePaint(textColor);
+            ctx->SetStrokeWidth(1.0f);
+            if (underline) {
+                const double y = std::floor(textY + lineHeight * 0.92) + 0.5;
+                ctx->DrawLine(Point2Dd(textX, y), Point2Dd(textX + textWidth, y));
+            }
+            if (style.font.strikethrough) {
+                const double y = std::floor(textY + lineHeight * 0.55) + 0.5;
+                ctx->DrawLine(Point2Dd(textX, y), Point2Dd(textX + textWidth, y));
+            }
+        }
         ctx->PopState();
     }
 
     // Cell borders (if custom)
-    if (cell && cell->HasCustomStyle()) {
-        const auto& borders = cell->GetStyle().borders;
+    if (styled) {
+        const auto& borders = style.borders;
 
         if (borders.left.style != BorderStyle::NoBorder) {
             ctx->SetStrokePaint(borders.left.color);
@@ -647,6 +685,15 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
             ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
                           Point2Df(bounds.x + bounds.width, bounds.y + bounds.height));
         }
+    }
+
+    // A comment: the red corner the spreadsheet programs mark it with.
+    if (cell && cell->HasComment()) {
+        const double size = std::min(7.0, std::min(bounds.width, bounds.height) / 2.0);
+        const double right = bounds.x + bounds.width;
+        ctx->SetFillPaint(Color(220, 30, 30));
+        ctx->FillLinePath({Point2Dd(right - size, bounds.y), Point2Dd(right, bounds.y),
+                           Point2Dd(right, bounds.y + size)});
     }
 }
 
@@ -1276,6 +1323,12 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
                 StopEditing(true);
             }
             
+            // Ctrl+click on a link opens it; a plain click selects the cell.
+            if (event.ctrl && !event.shift && OpenHyperlink(hit.row, hit.col)) {
+                mouseDown_ = false;
+                break;
+            }
+
             mouseDownCell_ = clickedCell;
             
             if (event.shift) {
@@ -1523,6 +1576,9 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
     // column/row boundaries are draggable (the application applies the hovered
     // element's cursor automatically).
     HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
+    // A cell's comment or link shows while the pointer rests on it.
+    const bool overCell = hit.area == HitArea::Cell && !IsEditing();
+    UpdateCellTip(event, overCell ? hit.row : -1, overCell ? hit.col : -1);
     switch (hit.area) {
         case HitArea::ColumnResizer: SetMouseCursor(UCMouseCursor::SizeWE); break;
         case HitArea::RowResizer:    SetMouseCursor(UCMouseCursor::SizeNS); break;
@@ -1539,6 +1595,34 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
             break;
         default:                     SetMouseCursor(UCMouseCursor::Default); break;
     }
+}
+
+void UltraCanvasSpreadsheet::UpdateCellTip(const UCEvent& event, int row, int col) {
+    const SpreadsheetSheet* sheet = GetActiveSheet();
+    const SpreadsheetCell* cell = (sheet && row >= 0 && col >= 0) ? sheet->GetCellIfExists(row, col) : nullptr;
+    const bool tip = cell && (cell->HasComment() || cell->HasHyperlink());
+    if (!tip) row = col = -1;
+    if (row == tipRow_ && col == tipCol_) return;
+    tipRow_ = row;
+    tipCol_ = col;
+    // The application raises an element's tooltip as the pointer enters it,
+    // so a tip per cell is shown from here as the pointer crosses cells.
+    if (!tip) {
+        ClearTooltipContent();
+        UltraCanvasTooltipManager::HideTooltip();
+        return;
+    }
+    TooltipContent content;
+    if (const CellComment* note = cell->GetComment()) {
+        if (!note->author.empty()) content.AddTitle(note->author);
+        content.AddPlainText(note->text);
+    }
+    if (const CellHyperlink* link = cell->GetHyperlink()) {
+        content.AddPlainText(link->tooltip.empty() ? link->target : link->tooltip);
+        content.AddPlainText(Tr("Ctrl+click to open the link"));
+    }
+    SetTooltipContent(content);
+    if (auto* win = GetWindow()) UltraCanvasTooltipManager::UpdateAndShowTooltip(win, content, event.pointerWindow);
 }
 
 void UltraCanvasSpreadsheet::HandleMouseDoubleClick(const UCEvent& event) {
@@ -2519,7 +2603,7 @@ std::vector<std::string> UltraCanvasSpreadsheet::GetValidationListItems(int row,
     const auto* sheet = GetActiveSheet();
     const DataValidation* rule = sheet ? sheet->GetEffectiveValidation(row, col) : nullptr;
     if (!rule || rule->type != ValidationType::List || !rule->showDropdown) return {};
-    return DataValidationListItems(*rule);
+    return sheet->GetValidationListItems(row, col);   // its own list, or the cells it names
 }
 
 bool UltraCanvasSpreadsheet::ChooseValidationListItem(int row, int col, const std::string& item) {
