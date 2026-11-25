@@ -34,8 +34,28 @@ The command tabs:
 
 - **Documents** - *Home*: cut, copy, paste, paragraph style, font, size,
   bold, italic, underline, strikethrough, bullets, numbering, indent,
-  alignment. *Insert*: table, picture, link, page break, footnote, contents.
-  *View*: pages on or off, page width, whole page, zoom.
+  alignment, *Paragraph* (indents, space before and after, line spacing,
+  alignment, tab stops) and *Styles* (apply a named style, change one, or
+  make a new paragraph style from the selection). *Insert*: table, picture,
+  link, page break, *Footnote* (a footnote or an endnote, with its text or
+  opened for typing), *Contents* (headings to a level; a document that has
+  contents rebuilds them), *Caption* (Figure, Table or Equation, numbered),
+  *Cross-reference* (to a caption or a bookmark, its text or its page).
+  *Layout*: *Page setup* (paper, orientation, size, margins, header and
+  footer distance), *Table* (width, alignment, indent, header row, fitting
+  the contents, borders and their colour, cell padding, the cells' vertical
+  alignment) and *Picture* (alt text, wrapping, position, size). *Review*:
+  a new comment, the previous and next comment, *All comments* (go to, edit,
+  resolve or reopen, delete), show or hide comments (and their pane); track
+  changes, the previous and next change, accept, reject, accept all, reject
+  all. *View*: pages on or off, page width, whole page, zoom.
+
+  The dialogs are the framework's
+  ([Document dialogs](../UltraCanvas/UltraCanvasRichTextEdit.md#document-dialogs)),
+  shared with UltraTexter. What each OK changes is one undo step - the page
+  setup too - and Cancel changes nothing. Lengths are in centimetres,
+  spacing in points. Comments and changes are signed with the login name; a
+  double-click on a comment in the pane edits it.
 - **Spreadsheets** - *Home*: cut, copy, paste, bold, italic, alignment,
   wrap, number format, decimals. *Insert*: a chart of the selected cells
   (columns, columns stacked, bars, bars stacked, line, area, area stacked,

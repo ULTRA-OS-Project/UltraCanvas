@@ -6,6 +6,8 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.20.0 - RichPageSetup and RichTabStop compare (operator==), for the page setup and
+//                   paragraph dialogs' undo steps
 // Version: 1.19.0 - UCRichDocument::keptParts: package parts written back unchanged (a .docx theme and font table)
 // Version: 1.18.0 - RichShape::ApplyPreset: connectors, double and notched arrows, more stars and polygons,
 //                   snipped and rounded rectangles, callouts, more flowchart shapes
@@ -273,6 +275,7 @@ enum class RichTabKind {
 struct RichTabStop {
     float positionPt = 0.0f;   // from the text column's left edge (not the indent)
     RichTabKind kind = RichTabKind::Left;
+    bool operator==(const RichTabStop& other) const = default;
 };
 
 // A section of a document: its text in `columns` columns, `columnGapPt`
@@ -885,6 +888,7 @@ struct RichPageSetup {
     float footerBottomPt = 0.0f;
 
     bool HasPage() const { return widthPt > 0.0f && heightPt > 0.0f; }
+    bool operator==(const RichPageSetup& other) const = default;
 };
 
 // What a page carries besides the body: its header and footer. A letterhead

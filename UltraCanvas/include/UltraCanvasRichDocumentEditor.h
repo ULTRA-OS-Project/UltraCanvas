@@ -15,6 +15,10 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
+// Version: 1.5.0 - what the document dialogs set, each one undo step: SetParagraphFormat
+//                  (RichParagraphFormat), SetPageSetup (the page is part of the step),
+//                  SetTableProperties (RichTableProperties), SetImageWrap (a picture of its own
+//                  paragraph floats as a picture in the line); PreviousChange, NextComment
 // Version: 1.4.1 - DocumentStart is the first cell of a table that opens the
 //                  document, where a new document's caret starts too: on the
 //                  table outside its cells it stood the whole table high
@@ -182,6 +186,47 @@ struct RichAutoFormatOptions {
     bool AnyEnabled() const {
         return smartQuotes || dashes || ellipsis || symbols || lists || headings || rules;
     }
+};
+
+// ===== WHAT THE DOCUMENT DIALOGS SET =====
+// A paragraph's layout, as a paragraph dialog shows it: its alignment,
+// indents, spacing and tab stops (RichDocBlock's fields of the same names,
+// points). In a table cell only the alignment and the line spacing apply
+// (RichTableCell::align, lineSpacing, lineHeightPt).
+struct RichParagraphFormat {
+    RichTextAlign align = RichTextAlign::Default;
+    float leftIndentPt = 0.0f;
+    float rightIndentPt = 0.0f;
+    float firstLineIndentPt = 0.0f;     // negative: a hanging indent
+    float spaceBeforePt = -1.0f;        // < 0 = not stated (the view's own spacing)
+    float spaceAfterPt = -1.0f;
+    float lineSpacing = 0.0f;           // multiple of single; 0 = single
+    float lineHeightPt = 0.0f;          // > 0: exactly this, or at least this
+    bool lineHeightAtLeast = false;
+    std::vector<RichTabStop> tabStops;  // kept sorted by position
+    bool operator==(const RichParagraphFormat& other) const = default;
+};
+
+// A table's properties, as a table dialog shows them (RichDocBlock's table
+// fields, and what every cell has in common).
+struct RichTableProperties {
+    // Its width: widthPercent > 0 = that share of the text column, else
+    // widthPt > 0 = that many points, else the whole column.
+    float widthPercent = 0.0f;
+    float widthPt = 0.0f;
+    // Where a table narrower than the column sits; Default / Left =
+    // indentPt from the left edge.
+    RichTextAlign align = RichTextAlign::Default;
+    float indentPt = 0.0f;
+    bool autoFit = false;               // columns widen to hold their content
+    bool headerRow = false;             // the first row is a header row
+    // Lines round every cell: < 0 = the view's own grid (no lines of the
+    // document's), 0 = none, > 0 = lines this wide, in borderColor.
+    float borderWidthPt = -1.0f;
+    std::string borderColor;            // "#RRGGBB"; empty = automatic (black)
+    float cellPaddingPt = -1.0f;        // < 0 = the view's default
+    RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
+    bool operator==(const RichTableProperties& other) const = default;
 };
 
 // ===== THE EDITOR =====
@@ -388,6 +433,23 @@ public:
     std::string CurrentParagraphStyle() const;
     std::string CurrentCharacterStyle() const;
 
+    // ===== PARAGRAPH LAYOUT, PAGE, TABLE (what the dialogs set) =====
+    // The caret paragraph's layout (its cell's alignment and line spacing in
+    // a table).
+    RichParagraphFormat GetParagraphFormat() const;
+    // Gives every paragraph the selection touches (every selected cell, in a
+    // table) that layout: one undo step. False when nothing changed.
+    bool SetParagraphFormat(const RichParagraphFormat& format);
+    // The document's page: size, margins and where the header and footer
+    // start. One undo step (the page is part of it); false when the same.
+    bool SetPageSetup(const RichPageSetup& page);
+    // The properties of the table at `blockIndex`; false when it is none.
+    bool GetTableProperties(int blockIndex, RichTableProperties& out) const;
+    // Sets them, one undo step. The border, padding and vertical alignment
+    // go to every cell; a border of the document's own (borderWidthPt >= 0)
+    // makes the table draw the cells' lines rather than the view's grid.
+    bool SetTableProperties(int blockIndex, const RichTableProperties& properties);
+
     // ===== STRUCTURE =====
     void InsertHorizontalRule();
     void InsertPageBreak();
@@ -420,6 +482,15 @@ public:
     bool SetFloatOffset(const RichDocPosition& object, float offsetXPt, float offsetYPt);
     // Sets the description a screen reader or a text export gives for it.
     bool SetImageAltText(const RichDocPosition& image, const std::string& altText);
+    // How the text goes round it, and where a floating one sits across the
+    // column (Left / Center / Right; Default keeps its offset). A picture of
+    // its own paragraph (an Image block) that is made to float becomes a
+    // picture in the line of a paragraph holding only it, so its position
+    // ({block, 0}) stays the same. One undo step; false when nothing is there
+    // or nothing changes.
+    bool SetImageWrap(const RichDocPosition& image, RichTextRun::ImageWrap wrap,
+                      RichTextAlign align = RichTextAlign::Left);
+    bool GetImageWrap(const RichDocPosition& image, RichTextRun::ImageWrap& wrap, RichTextAlign& align) const;
     // Inserts a footnote or endnote reference at the caret, with a new note
     // holding one empty paragraph. Returns the note's index, or -1.
     int InsertNote(RichNote::Kind kind);
@@ -453,6 +524,8 @@ public:
     bool RejectChangeAt(const RichDocPosition& pos);
     // The start of the next tracked change after `pos` (wrapping), or false.
     bool NextChange(const RichDocPosition& pos, RichDocRange& out) const;
+    // The last tracked change that starts before `pos` (wrapping), or false.
+    bool PreviousChange(const RichDocPosition& pos, RichDocRange& out) const;
 
     // ===== COMMENTS =====
     // A comment on the selection (the word at the caret when nothing is
@@ -467,6 +540,10 @@ public:
     std::vector<int> CommentsAt(const RichDocPosition& pos) const;
     // The span a comment covers (first to last covered character).
     bool CommentRange(int index, RichDocRange& out) const;
+    // The comment whose text starts next after `pos` (forward) or last before
+    // it, in document order and wrapping round; resolved ones count too.
+    // False when the document has none.
+    bool NextComment(const RichDocPosition& pos, bool forward, int& outIndex) const;
 
     // ===== BOOKMARKS, CROSS-REFERENCES, CAPTIONS, CONTENTS =====
     // A bookmark on the caret's paragraph (the table's, in a cell). False
@@ -640,6 +717,9 @@ private:
         // Set when the step also changed the document's named styles.
         bool stylesChanged = false;
         std::vector<RichStyle> stylesBefore, stylesAfter;
+        // Set when the step also changed the document's page (SetPageSetup).
+        bool pageChanged = false;
+        RichPageSetup pageBefore, pageAfter;
     };
 
     // Records the blocks about to change, and on close records what they
@@ -657,10 +737,14 @@ private:
         bool typing = false;
         bool captureStyles = false;
         std::vector<RichStyle> stylesBefore;
+        bool capturePage = false;
+        RichPageSetup pageBefore;
         EditScope(UCRichDocumentEditor& e, int first, int count, bool isTyping = false);
         ~EditScope();
         // The step also records the named styles (a style edit).
         void CaptureStyles() { captureStyles = true; stylesBefore = ed.doc->styles; }
+        // The step also records the page (a page setup edit).
+        void CapturePage() { capturePage = true; pageBefore = ed.doc->page; }
     };
     friend struct EditScope;
 

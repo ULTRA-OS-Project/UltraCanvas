@@ -1,10 +1,14 @@
 // Apps/UltraOffice/UltraOfficeDocumentHost.cpp
 // A word-processing tab: the framework's WYSIWYG element
 // (UltraCanvasRichTextEdit) over a UCRichDocument, read and written through
-// UltraCanvasFileLoader (.odt, .docx, .doc read-only, .md, .tex), with three
-// command tabs - Home, Insert, View - whose toolbars follow the caret
-// (GetFormatState), and PDF export and printing of the pages.
+// UltraCanvasFileLoader (.odt, .docx, .doc read-only, .md, .tex), with five
+// command tabs - Home, Insert, Layout, Review, View - whose toolbars follow
+// the caret (GetFormatState), the framework's document dialogs
+// (UltraCanvasRichTextEditDialogs.h), and PDF export and printing of the pages.
 //
+// Version: 0.2.0 - the document dialogs: paragraph and styles (Home), contents, caption,
+//                  cross-reference and footnote (Insert), page setup, table and picture
+//                  (Layout, a new tab), comments and tracked changes (Review, a new tab)
 // Version: 0.1.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
@@ -17,7 +21,9 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasRichTextEditDialogs.h"
 #include "UltraCanvasRichTextPrint.h"
+#include "UltraCanvasPathUtf8.h"      // GetEnvUtf8
 #include "UltraCanvasWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -55,8 +61,18 @@ public:
         UltraCanvasRichTextEdit* edit = editor_.get();
         edit->onSelectionChanged = [this]() { Sync(); if (onChanged) onChanged(); };
         edit->onDocumentChanged = [this]() { Sync(); if (onChanged) onChanged(); };
+        // Comments and tracked changes are signed with the login name (UTF-8,
+        // as the document stores it); a double-click on a comment edits it.
+        std::string user = GetEnvUtf8("USER");
+        if (user.empty()) user = GetEnvUtf8("USERNAME");
+        edit->SetCommentAuthor(user);
+        edit->onCommentActivated = [this, edit](int index) {
+            ShowCommentDialog(*edit, index, [this](bool) { Sync(); });
+        };
         BuildHome();
         BuildInsert();
+        BuildLayout();
+        BuildReview();
         BuildView();
         NewBlank();
     }
@@ -134,6 +150,8 @@ private:
     UltraCanvasButton* underline_ = nullptr;
     UltraCanvasButton* strike_ = nullptr;
     UltraCanvasButton* pageView_ = nullptr;
+    UltraCanvasButton* trackChanges_ = nullptr;
+    UltraCanvasButton* showComments_ = nullptr;
     UltraCanvasDropdown* style_ = nullptr;
     UltraCanvasDropdown* font_ = nullptr;
     UltraCanvasDropdown* size_ = nullptr;
@@ -145,6 +163,13 @@ private:
     std::function<void()> Act(std::function<void(UltraCanvasRichTextEdit&)> action) {
         UltraCanvasRichTextEdit* edit = editor_.get();
         return [this, edit, action]() { action(*edit); Sync(); edit->SetFocus(true); };
+    }
+
+    // A tool that opens one of the framework's document dialogs; the toolbar
+    // follows what its OK changed.
+    std::function<void()> Dialog(std::function<void(UltraCanvasRichTextEdit&, RichDialogClosed)> show) {
+        UltraCanvasRichTextEdit* edit = editor_.get();
+        return [this, edit, show]() { show(*edit, [this](bool) { Sync(); }); };
     }
 
     void BuildHome() {
@@ -202,6 +227,13 @@ private:
         AddTool(*bar, "doc-centre", "", "textformat/align-centre.svg", Tr("Centre"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Center); }));
         AddTool(*bar, "doc-right", "", "textformat/align-right.svg", Tr("Align right"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Right); }));
         AddTool(*bar, "doc-justify", "", "office/justify.svg", Tr("Justify"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Justify); }));
+        bar->AddSeparator();
+        AddTool(*bar, "doc-paragraph", Tr("Paragraph"), "textformat/line-spacing.svg",
+                Tr("Indents, spacing, line spacing, alignment and tab stops"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowParagraphDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-styles", Tr("Styles"), "menu/palette.svg",
+                Tr("Apply, change or make a named style"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowStylesDialog(e, std::move(done)); }));
         tabs_.push_back({Tr("Home"), bar});
     }
 
@@ -213,10 +245,53 @@ private:
         AddTool(*bar, "doc-link", Tr("Link"), "link.svg", Tr("Make the selection a link"), [this]() { InsertLink(); });
         bar->AddSeparator();
         AddTool(*bar, "doc-pagebreak", Tr("Page break"), "", Tr("Start a new page here"), Act([](auto& e) { e.InsertPageBreak(); }));
-        AddTool(*bar, "doc-footnote", Tr("Footnote"), "", Tr("Insert a footnote at the caret"), Act([](auto& e) { e.InsertFootnote(); }));
-        AddTool(*bar, "doc-toc", Tr("Contents"), "", Tr("Insert a table of contents of the headings"),
-                Act([](auto& e) { e.InsertTableOfContents(3); }));
+        bar->AddSeparator();
+        AddTool(*bar, "doc-footnote", Tr("Footnote"), "superscript.svg", Tr("Insert a footnote or an endnote at the caret"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowNoteDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-toc", Tr("Contents"), "list-tree.svg", Tr("Insert or rebuild a table of contents of the headings"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowContentsDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-caption", Tr("Caption"), "add_text.svg", Tr("A numbered caption under the picture or table"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowCaptionDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-crossref", Tr("Cross-reference"), "menu/book.svg",
+                Tr("Refer to a caption or a bookmark by its text or its page"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowCrossReferenceDialog(e, std::move(done)); }));
         tabs_.push_back({Tr("Insert"), bar});
+    }
+
+    void BuildLayout() {
+        auto bar = MakeToolbar("office-document-layout");
+        AddTool(*bar, "doc-pagesetup", Tr("Page setup"), "document.svg", Tr("Paper, orientation, margins, header and footer"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowPageSetupDialog(e, std::move(done)); }));
+        bar->AddSeparator();
+        AddTool(*bar, "doc-tableprops", Tr("Table"), "table.svg", Tr("The width, alignment, header row and borders of the table"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowTablePropertiesDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-pictureprops", Tr("Picture"), "image.svg", Tr("The alt text, wrapping and size of the selected picture"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowPictureDialog(e, std::move(done)); }));
+        tabs_.push_back({Tr("Layout"), bar});
+    }
+
+    void BuildReview() {
+        auto bar = MakeToolbar("office-document-review");
+        AddTool(*bar, "doc-comment", Tr("Comment"), "clipboard/edit.svg", Tr("Comment on the selection"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowCommentDialog(e, -1, std::move(done)); }));
+        AddTool(*bar, "doc-prevcomment", "", "texter/angle-left.svg", Tr("Previous comment"), Act([](auto& e) { e.GoToPreviousComment(); }));
+        AddTool(*bar, "doc-nextcomment", "", "texter/angle-right.svg", Tr("Next comment"), Act([](auto& e) { e.GoToNextComment(); }));
+        AddTool(*bar, "doc-comments", Tr("All comments"), "list.svg", Tr("The comments of the document: go to, edit, resolve or delete one"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowCommentsDialog(e, std::move(done)); }));
+        showComments_ = AddToggleTool(*bar, "doc-showcomments", Tr("Show comments"), "", Tr("Show the comments and their pane"),
+                                      Act([](auto& e) { e.SetShowComments(!e.IsShowingComments()); })).get();
+        bar->AddSeparator();
+        trackChanges_ = AddToggleTool(*bar, "doc-track", Tr("Track changes"), "edit.svg", Tr("Mark what is typed and deleted"),
+                                      Act([](auto& e) { e.SetTrackChanges(!e.IsTrackingChanges()); })).get();
+        AddTool(*bar, "doc-prevchange", "", "arrow-left.svg", Tr("Previous change"), Act([](auto& e) { e.GoToPreviousChange(); }));
+        AddTool(*bar, "doc-nextchange", "", "arrow-right.svg", Tr("Next change"), Act([](auto& e) { e.GoToNextChange(); }));
+        AddTool(*bar, "doc-accept", Tr("Accept"), "ultramail/check.svg", Tr("Accept the change at the caret, or those selected"),
+                Act([](auto& e) { e.AcceptChangeAtCaret(); }));
+        AddTool(*bar, "doc-reject", Tr("Reject"), "delete.svg", Tr("Reject the change at the caret, or those selected"),
+                Act([](auto& e) { e.RejectChangeAtCaret(); }));
+        AddTool(*bar, "doc-acceptall", Tr("Accept all"), "", Tr("Accept every change"), Act([](auto& e) { e.AcceptAllChanges(); }));
+        AddTool(*bar, "doc-rejectall", Tr("Reject all"), "", Tr("Reject every change"), Act([](auto& e) { e.RejectAllChanges(); }));
+        tabs_.push_back({Tr("Review"), bar});
     }
 
     void BuildView() {
@@ -274,6 +349,8 @@ private:
         if (underline_) underline_->SetPressed(RichCharFormatState::IsOn(state.underline));
         if (strike_) strike_->SetPressed(RichCharFormatState::IsOn(state.strikethrough));
         if (pageView_) pageView_->SetPressed(editor_->IsPageView());
+        if (trackChanges_) trackChanges_->SetPressed(editor_->IsTrackingChanges());
+        if (showComments_) showComments_->SetPressed(editor_->IsShowingComments());
         if (style_) {
             const int level = editor_->GetCurrentHeadingLevel();
             style_->SetSelectedIndex(level >= 0 && level <= 4 ? level : 0, false);   // read out, not applied again

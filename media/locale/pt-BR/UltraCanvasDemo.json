@@ -137,7 +137,6 @@
   "ISO 10303 exact B-rep: analytic surfaces closed into solids, tessellated on import because the file carries no mesh": "B-rep exato ISO 10303: superfícies analíticas fechadas em sólidos, tesseladas na importação porque o arquivo não contém nenhuma malha",
   "Isolines, filled contour bands, kernel-density contours of a point cloud, inline labelled curves, zoom/pan with crosshair read-out, and 3D contour surfaces (software painter's algorithm and the UC OpenGL element) with isolines traced onto the terrain": "Isolinhas, bandas de contorno preenchidas, contornos de densidade de kernel de uma nuvem de pontos, curvas com rótulos embutidos, zoom/panorâmica com leitura em mira, e superfícies de contorno 3D (algoritmo do pintor por software e o elemento UC OpenGL) com isolinhas traçadas sobre o terreno",
   "JPEG Image display and manipulation": "Exibição e manipulação de imagens JPEG",
-  "Label": "Rótulo",
   "Labels, values and changes crawling across a band: set in a font, or lit on a 5x7 LED dot grid that the text steps across": "Rótulos, valores e variações deslizando por uma faixa: com uma fonte, ou acesos em uma grade de pontos LED de 5x7 pela qual o texto avança",
   "Layout System": "Sistema de layout",
   "Legacy Formats": "Formatos legados",

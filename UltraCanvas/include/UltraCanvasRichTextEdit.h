@@ -18,6 +18,10 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.20.0 - what the document dialogs (UltraCanvasRichTextEditDialogs.h) set, each one undo
+//                   step: SetParagraphFormat, SetPageSetup, SetTableProperties,
+//                   SetSelectedImageWrap; InsertNote with its text; GoToPreviousChange,
+//                   GoToNextComment / GoToPreviousComment / GoToComment
 // Version: 1.19.0 - RichTextEditStyle::adaptDocumentColors; AdaptDocumentColorToPage
 // Version: 1.18.0 - chartCache: a frame's chart drawn by the chart engine
 // Version: 1.17.1 - layoutStatedLines
@@ -260,6 +264,10 @@ public:
     // typing; double-clicking a note (or its reference) edits it, Escape goes
     // back. The marks number themselves: footnotes 1, 2, 3, endnotes i, ii.
     bool InsertFootnote();
+    // A footnote or endnote at the caret holding `text`; with no text it
+    // opens for typing, as InsertFootnote does. Returns the note's index, or
+    // -1.
+    int InsertNote(RichNote::Kind kind, const std::string& text);
     bool InsertEndnote();
     bool EditNote(int noteIndex);
     bool IsEditingNote() const { return furnitureEdit && furnitureEdit->noteIndex >= 0; }
@@ -423,6 +431,17 @@ public:
     bool SetSelectedImageSize(float widthPt, float heightPt);
     std::string GetSelectedImageAltText() const;
     bool SetSelectedImageAltText(const std::string& altText);
+    // How the text goes round the selected picture, and where a floating one
+    // sits (UCRichDocumentEditor::SetImageWrap). One undo step.
+    bool GetSelectedImageWrap(RichTextRun::ImageWrap& wrap, RichTextAlign& align) const;
+    bool SetSelectedImageWrap(RichTextRun::ImageWrap wrap, RichTextAlign align = RichTextAlign::Left);
+
+    // ===== PARAGRAPH LAYOUT =====
+    // The caret paragraph's indents, spacing, line spacing, alignment and tab
+    // stops, and the same given to every paragraph the selection touches (one
+    // undo step; see UCRichDocumentEditor::SetParagraphFormat).
+    RichParagraphFormat GetParagraphFormat() const { return editor.GetParagraphFormat(); }
+    bool SetParagraphFormat(const RichParagraphFormat& format);
 
     // ===== TABLES =====
     // Structural table editing, addressed from the caret: a menu item says
@@ -457,6 +476,10 @@ public:
     bool MergeSelectedCells();
         bool CanSplitCurrentCell() const;
     bool SplitCurrentCell();
+    // The caret's table's width, alignment, header row, borders and cell
+    // padding (RichTableProperties); false when the caret is not in a table.
+    bool GetTableProperties(RichTableProperties& out) const;
+    bool SetTableProperties(const RichTableProperties& properties);
 
     // ===== AUTOFORMAT AS YOU TYPE =====
     // On by default: typed quotes become “curly”, "--" a dash, "..." an
@@ -531,6 +554,9 @@ public:
     void EndPrintLayout();
     // The page the document is laid out on: its own, or A4 with 2 cm margins.
     RichPageSetup GetEffectivePageSetup() const { return EffectivePageSetup(); }
+    // Gives the document that page (size, margins, header and footer
+    // distance): one undo step, laid out again at once.
+    bool SetPageSetup(const RichPageSetup& page);
 
     // ===== ZOOM =====
     // 1 = 100%. Everything is drawn scaled - text, pictures, pages - and
@@ -647,6 +673,13 @@ public:
     bool RejectChangeAtCaret();
     // Selects the next tracked change after the caret (wrapping round).
     bool GoToNextChange();
+    // ...or the one before it.
+    bool GoToPreviousChange();
+    // Selects the text of the next / previous comment (wrapping round), or of
+    // comment `index`; false when there is none.
+    bool GoToNextComment();
+    bool GoToPreviousComment();
+    bool GoToComment(int index);
     // "2026-09-29T10:00:00Z": the time stamp comments and changes get.
     static std::string CurrentIsoTime();
     const std::string& GetCommentAuthor() const { return commentAuthor; }

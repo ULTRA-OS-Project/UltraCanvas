@@ -7,6 +7,8 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
+// Version: 1.5.0 - SetParagraphFormat, SetPageSetup (the page in the undo step), SetTableProperties,
+//                  SetImageWrap / GetImageWrap, PreviousChange, NextComment
 // Version: 1.4.0 - SetFloatOffset; text frames and drawings are addressed like pictures, and
 //                  a resized drawing keeps the size its shapes were drawn for
 // Version: 1.3.0 - letter spacing: a delta sets a run's own, the format state reports it, a
@@ -316,6 +318,11 @@ UCRichDocumentEditor::EditScope::~EditScope() {
         step.stylesChanged = true;
         step.stylesBefore = std::move(stylesBefore);
         step.stylesAfter = ed.doc->styles;
+    }
+    if (capturePage) {
+        step.pageChanged = true;
+        step.pageBefore = pageBefore;
+        step.pageAfter = ed.doc->page;
     }
     ed.CommitStep(std::move(step));
 }
@@ -914,7 +921,8 @@ void UCRichDocumentEditor::CommitStep(UndoStep step) {
 
     if (coalescing && step.typing && !undoStack.empty()) {
         UndoStep& last = undoStack.back();
-        if (last.typing && !last.stylesChanged && !step.stylesChanged && last.firstBlock == step.firstBlock
+        if (last.typing && !last.stylesChanged && !step.stylesChanged && !last.pageChanged && !step.pageChanged
+            && last.firstBlock == step.firstBlock
             && last.after.size() == step.before.size()) {
             // Same span, still typing: fold this keystroke into the open step
             // so a typed word undoes in one go.
@@ -946,6 +954,7 @@ bool UCRichDocumentEditor::Undo() {
     doc->blocks.erase(doc->blocks.begin() + first, doc->blocks.begin() + first + count);
     doc->blocks.insert(doc->blocks.begin() + first, step.before.begin(), step.before.end());
     if (step.stylesChanged) doc->styles = step.stylesBefore;
+    if (step.pageChanged) doc->page = step.pageBefore;
     EnsureNotEmpty();
     caret = ClampPosition(step.caretBefore);
     anchor = ClampPosition(step.anchorBefore);
@@ -972,6 +981,7 @@ bool UCRichDocumentEditor::Redo() {
     doc->blocks.erase(doc->blocks.begin() + first, doc->blocks.begin() + first + count);
     doc->blocks.insert(doc->blocks.begin() + first, step.after.begin(), step.after.end());
     if (step.stylesChanged) doc->styles = step.stylesAfter;
+    if (step.pageChanged) doc->page = step.pageAfter;
     EnsureNotEmpty();
     caret = ClampPosition(step.caretAfter);
     anchor = ClampPosition(step.anchorAfter);
@@ -2602,6 +2612,193 @@ std::string UCRichDocumentEditor::CurrentCharacterStyle() const {
     return run ? run->characterStyleId : std::string();
 }
 
+// ===== PARAGRAPH LAYOUT, PAGE, TABLE =====
+
+RichParagraphFormat UCRichDocumentEditor::GetParagraphFormat() const {
+    RichParagraphFormat format;
+    if (caret.blockIndex < 0 || caret.blockIndex >= GetBlockCount()) return format;
+    const RichDocBlock& block = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+    if (caret.InCell()) {
+        if (caret.cellRow < static_cast<int>(block.tableRows.size())) {
+            const RichTableRow& row = block.tableRows[static_cast<size_t>(caret.cellRow)];
+            if (caret.cellColumn >= 0 && caret.cellColumn < static_cast<int>(row.cells.size())) {
+                const RichTableCell& cell = row.cells[static_cast<size_t>(caret.cellColumn)];
+                format.align = cell.align;
+                format.lineSpacing = cell.lineSpacing;
+                format.lineHeightPt = cell.lineHeightPt;
+                format.lineHeightAtLeast = cell.lineHeightAtLeast;
+            }
+        }
+        return format;
+    }
+    format.align = block.align;
+    format.leftIndentPt = block.leftIndentPt;
+    format.rightIndentPt = block.rightIndentPt;
+    format.firstLineIndentPt = block.firstLineIndentPt;
+    format.spaceBeforePt = block.spaceBeforePt;
+    format.spaceAfterPt = block.spaceAfterPt;
+    format.lineSpacing = block.lineSpacing;
+    format.lineHeightPt = block.lineHeightPt;
+    format.lineHeightAtLeast = block.lineHeightAtLeast;
+    format.tabStops = block.tabStops;
+    return format;
+}
+
+bool UCRichDocumentEditor::SetParagraphFormat(const RichParagraphFormat& requested) {
+    RichParagraphFormat format = requested;
+    std::sort(format.tabStops.begin(), format.tabStops.end(),
+              [](const RichTabStop& a, const RichTabStop& b) { return a.positionPt < b.positionPt; });
+    // Exactly / at least a height, or a multiple: a fixed height wins.
+    if (format.lineHeightPt > 0.0f) format.lineSpacing = 0.0f;
+    else format.lineHeightAtLeast = false;
+
+    if (caret.InCell()) {
+        const std::vector<RichDocPosition> cells = HasCellSelection() ? SelectedCells()
+                                                                      : std::vector<RichDocPosition>{caret};
+        auto cellAt = [this](const RichDocPosition& at) -> RichTableCell* {
+            RichDocBlock& table = doc->blocks[static_cast<size_t>(at.blockIndex)];
+            if (at.cellRow < 0 || at.cellRow >= static_cast<int>(table.tableRows.size())) return nullptr;
+            RichTableRow& row = table.tableRows[static_cast<size_t>(at.cellRow)];
+            if (at.cellColumn < 0 || at.cellColumn >= static_cast<int>(row.cells.size())) return nullptr;
+            return &row.cells[static_cast<size_t>(at.cellColumn)];
+        };
+        bool differs = false;
+        for (const RichDocPosition& at : cells) {
+            const RichTableCell* cell = cellAt(at);
+            if (cell && (cell->align != format.align || cell->lineSpacing != format.lineSpacing
+                         || cell->lineHeightPt != format.lineHeightPt
+                         || cell->lineHeightAtLeast != format.lineHeightAtLeast)) {
+                differs = true;
+            }
+        }
+        if (!differs) return false;
+        {
+            EditScope scope(*this, caret.blockIndex, 1);
+            for (const RichDocPosition& at : cells) {
+                if (RichTableCell* cell = cellAt(at)) {
+                    cell->align = format.align;
+                    cell->lineSpacing = format.lineSpacing;
+                    cell->lineHeightPt = format.lineHeightPt;
+                    cell->lineHeightAtLeast = format.lineHeightAtLeast;
+                }
+            }
+        }
+        coalescing = false;
+        NotifyChanged();
+        return true;
+    }
+
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    last = std::min(last, GetBlockCount() - 1);
+    auto apply = [&format](RichDocBlock& block) {
+        block.align = format.align;
+        block.leftIndentPt = format.leftIndentPt;
+        block.rightIndentPt = format.rightIndentPt;
+        block.firstLineIndentPt = format.firstLineIndentPt;
+        block.spaceBeforePt = format.spaceBeforePt;
+        block.spaceAfterPt = format.spaceAfterPt;
+        block.lineSpacing = format.lineSpacing;
+        block.lineHeightPt = format.lineHeightPt;
+        block.lineHeightAtLeast = format.lineHeightAtLeast;
+        block.tabStops = format.tabStops;
+    };
+    bool differs = false;
+    for (int b = first; b <= last; b++) {
+        const RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        if (block.type == RichBlockType::Table) continue;
+        differs = differs || block.align != format.align || block.leftIndentPt != format.leftIndentPt
+               || block.rightIndentPt != format.rightIndentPt || block.firstLineIndentPt != format.firstLineIndentPt
+               || block.spaceBeforePt != format.spaceBeforePt || block.spaceAfterPt != format.spaceAfterPt
+               || block.lineSpacing != format.lineSpacing || block.lineHeightPt != format.lineHeightPt
+               || block.lineHeightAtLeast != format.lineHeightAtLeast || block.tabStops != format.tabStops;
+    }
+    if (!differs) return false;
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = first; b <= last; b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            if (block.type != RichBlockType::Table) apply(block);
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetPageSetup(const RichPageSetup& page) {
+    if (!page.HasPage() || page == doc->page) return false;
+    {
+        EditScope scope(*this, 0, 0);
+        scope.CapturePage();
+        doc->page = page;
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::GetTableProperties(int blockIndex, RichTableProperties& out) const {
+    if (blockIndex < 0 || blockIndex >= GetBlockCount()) return false;
+    const RichDocBlock& block = doc->blocks[static_cast<size_t>(blockIndex)];
+    if (block.type != RichBlockType::Table) return false;
+    out = RichTableProperties();
+    out.widthPercent = block.tableWidthPercent;
+    out.widthPt = block.tableWidthPt;
+    out.align = block.tableAlign;
+    out.indentPt = block.tableIndentPt;
+    out.autoFit = block.tableAutoFit;
+    out.headerRow = !block.tableRows.empty() && block.tableRows.front().header;
+    const RichTableCell* first = nullptr;
+    for (const RichTableRow& row : block.tableRows) {
+        if (!row.cells.empty()) { first = &row.cells.front(); break; }
+    }
+    if (block.tableBordersFromDocument) {
+        out.borderWidthPt = first ? first->borderTop.widthPt : 0.0f;
+        out.borderColor = first ? first->borderTop.color : std::string();
+    }
+    if (first) {
+        out.cellPaddingPt = first->paddingLeftPt;
+        out.verticalAlign = first->verticalAlign;
+    }
+    return true;
+}
+
+bool UCRichDocumentEditor::SetTableProperties(int blockIndex, const RichTableProperties& properties) {
+    RichTableProperties now;
+    if (!GetTableProperties(blockIndex, now) || now == properties) return false;
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(blockIndex)];
+        block.tableWidthPercent = std::max(0.0f, properties.widthPercent);
+        block.tableWidthPt = std::max(0.0f, properties.widthPt);
+        block.tableAlign = properties.align;
+        block.tableIndentPt = properties.indentPt;
+        block.tableAutoFit = properties.autoFit;
+        for (size_t r = 0; r < block.tableRows.size(); r++) {
+            // The header is the first row's; turning it off clears every row's.
+            block.tableRows[r].header = properties.headerRow && r == 0;
+        }
+        block.tableBordersFromDocument = properties.borderWidthPt >= 0.0f;
+        RichBorder line;
+        line.widthPt = std::max(0.0f, properties.borderWidthPt);
+        line.color = properties.borderColor;
+        const float padding = properties.cellPaddingPt >= 0.0f ? properties.cellPaddingPt : -1.0f;
+        for (RichTableRow& row : block.tableRows) {
+            for (RichTableCell& cell : row.cells) {
+                if (properties.borderWidthPt >= 0.0f) {
+                    cell.borderTop = cell.borderBottom = cell.borderLeft = cell.borderRight = line;
+                }
+                cell.paddingTopPt = cell.paddingBottomPt = cell.paddingLeftPt = cell.paddingRightPt = padding;
+                cell.verticalAlign = properties.verticalAlign;
+            }
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
 // ===== STRUCTURE =====
 
 void UCRichDocumentEditor::InsertStructuralBlock(RichBlockType type) {
@@ -3293,6 +3490,76 @@ bool UCRichDocumentEditor::SetImageAltText(const RichDocPosition& image, const s
     return true;
 }
 
+bool UCRichDocumentEditor::GetImageWrap(const RichDocPosition& image, RichTextRun::ImageWrap& wrap,
+                                        RichTextAlign& align) const {
+    if (!IsImageAt(image)) return false;
+    const RichDocBlock& block = doc->blocks[static_cast<size_t>(image.blockIndex)];
+    if (!image.InCell() && block.type == RichBlockType::Image) {
+        wrap = RichTextRun::ImageWrap::Inline;
+        align = block.align;
+        return true;
+    }
+    const RichTextRun* run = ImageRunAt(*RunsAt(image), image.byteOffset);
+    wrap = run->imageWrap;
+    align = run->imageFloatAlign;
+    return true;
+}
+
+bool UCRichDocumentEditor::SetImageWrap(const RichDocPosition& image, RichTextRun::ImageWrap wrap,
+                                        RichTextAlign align) {
+    RichTextRun::ImageWrap nowWrap = RichTextRun::ImageWrap::Inline;
+    RichTextAlign nowAlign = RichTextAlign::Default;
+    if (!GetImageWrap(image, nowWrap, nowAlign)) return false;
+    const bool floating = wrap != RichTextRun::ImageWrap::Inline;
+    // Where a picture in the line sits is its paragraph's alignment, not its own.
+    if (nowWrap == wrap && (!floating || align == RichTextAlign::Default || align == nowAlign)) return false;
+    {
+        EditScope scope(*this, image.blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(image.blockIndex)];
+        if (!image.InCell() && block.type == RichBlockType::Image) {
+            // A picture of its own paragraph floats as the one picture in the
+            // line of a paragraph: the same place, {block, 0}.
+            RichTextRun picture;
+            picture.text = RichTextRun::kObjectReplacement;
+            picture.mediaIndex = block.mediaIndex;
+            picture.imageAltText = block.imageAltText;
+            picture.imageWidthPt = block.imageWidthPt;
+            picture.imageHeightPt = block.imageHeightPt;
+            if ((picture.imageWidthPt <= 0.0f || picture.imageHeightPt <= 0.0f) && block.mediaIndex >= 0
+                && block.mediaIndex < static_cast<int>(doc->media.size())) {
+                int width = 0, height = 0;
+                if (UCRichDocument::SniffImagePixelSize(doc->media[static_cast<size_t>(block.mediaIndex)].data,
+                                                        width, height)) {
+                    picture.imageWidthPt = static_cast<float>(width) * 72.0f / 96.0f;
+                    picture.imageHeightPt = static_cast<float>(height) * 72.0f / 96.0f;
+                }
+            }
+            picture.imageWrap = wrap;
+            picture.imageFloatAlign = align == RichTextAlign::Default ? RichTextAlign::Left : align;
+            RichDocBlock paragraph;
+            paragraph.type = RichBlockType::Paragraph;
+            paragraph.bookmarks = block.bookmarks;
+            paragraph.sectionStart = block.sectionStart;
+            paragraph.section = block.section;
+            paragraph.quoteLevel = block.quoteLevel;
+            paragraph.runs.push_back(std::move(picture));
+            block = std::move(paragraph);
+            if (caret.blockIndex == image.blockIndex) caret = RichDocPosition(image.blockIndex, 0);
+            if (anchor.blockIndex == image.blockIndex) anchor = RichDocPosition(image.blockIndex, 0);
+        } else {
+            RichTextRun* run = const_cast<RichTextRun*>(ImageRunAt(*MutableRunsAt(image), image.byteOffset));
+            run->imageWrap = wrap;
+            if (floating && align != RichTextAlign::Default) {
+                run->imageFloatAlign = align;
+                run->imageOffsetXPt = 0.0f;
+            }
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
 int UCRichDocumentEditor::InsertNote(RichNote::Kind kind) {
     if (!IsTextContainer(caret)) return -1;
     RichNote note;
@@ -3613,12 +3880,14 @@ bool UCRichDocumentEditor::RejectChangeAt(const RichDocPosition& pos) {
     return true;
 }
 
-bool UCRichDocumentEditor::NextChange(const RichDocPosition& pos, RichDocRange& out) const {
-    // Body runs only, in document order; wraps round to the first.
-    struct Found { int block; int from; int to; };
-    std::vector<Found> changes;
-    for (int b = 0; b < GetBlockCount(); b++) {
-        const std::vector<RichTextRun>& runs = doc->blocks[static_cast<size_t>(b)].runs;
+namespace {
+// The tracked changes of the body's runs, in document order: a run of the
+// same change by the same revision is one.
+struct FoundChange { int block; int from; int to; };
+std::vector<FoundChange> CollectChanges(const std::vector<RichDocBlock>& blocks) {
+    std::vector<FoundChange> changes;
+    for (int b = 0; b < static_cast<int>(blocks.size()); b++) {
+        const std::vector<RichTextRun>& runs = blocks[static_cast<size_t>(b)].runs;
         int position = 0;
         for (size_t i = 0; i < runs.size(); i++) {
             const int start = position + (runs[i].lineBreakBefore ? 1 : 0);
@@ -3632,6 +3901,28 @@ bool UCRichDocumentEditor::NextChange(const RichDocPosition& pos, RichDocRange& 
             changes.push_back({b, start, end});
         }
     }
+    return changes;
+}
+} // namespace
+
+bool UCRichDocumentEditor::PreviousChange(const RichDocPosition& pos, RichDocRange& out) const {
+    const std::vector<FoundChange> changes = CollectChanges(doc->blocks);
+    if (changes.empty()) return false;
+    for (auto it = changes.rbegin(); it != changes.rend(); ++it) {
+        if (it->block < pos.blockIndex || (it->block == pos.blockIndex && it->from < pos.byteOffset)) {
+            out = RichDocRange(RichDocPosition(it->block, it->from), RichDocPosition(it->block, it->to));
+            return true;
+        }
+    }
+    out = RichDocRange(RichDocPosition(changes.back().block, changes.back().from),
+                       RichDocPosition(changes.back().block, changes.back().to));
+    return true;
+}
+
+bool UCRichDocumentEditor::NextChange(const RichDocPosition& pos, RichDocRange& out) const {
+    // Body runs only, in document order; wraps round to the first.
+    using Found = FoundChange;
+    const std::vector<FoundChange> changes = CollectChanges(doc->blocks);
     if (changes.empty()) return false;
     for (const Found& found : changes) {
         if (found.block > pos.blockIndex || (found.block == pos.blockIndex && found.from > pos.byteOffset)) {
@@ -3755,6 +4046,29 @@ bool UCRichDocumentEditor::CommentRange(int index, RichDocRange& out) const {
         }
     }
     return any;
+}
+
+bool UCRichDocumentEditor::NextComment(const RichDocPosition& pos, bool forward, int& outIndex) const {
+    std::vector<std::pair<RichDocPosition, int>> starts;
+    for (int index : doc->ActiveComments()) {
+        RichDocRange range;
+        if (CommentRange(index, range)) starts.emplace_back(range.start, index);
+    }
+    if (starts.empty()) return false;
+    std::stable_sort(starts.begin(), starts.end(),
+                     [](const auto& a, const auto& b) { return a.first < b.first; });
+    if (forward) {
+        for (const auto& [start, index] : starts) {
+            if (start > pos) { outIndex = index; return true; }
+        }
+        outIndex = starts.front().second;
+        return true;
+    }
+    for (auto it = starts.rbegin(); it != starts.rend(); ++it) {
+        if (it->first < pos) { outIndex = it->second; return true; }
+    }
+    outIndex = starts.back().second;
+    return true;
 }
 
 bool UCRichDocumentEditor::AddBookmark(const std::string& name) {

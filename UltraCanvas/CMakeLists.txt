@@ -1285,6 +1285,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        # Its document dialogs: page setup, paragraph, styles, table, picture,
+        # contents, caption, cross-reference, footnote, comments.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEditDialogs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp
         # DrawingML charts and colours, read alike from .docx, .pptx and .xlsx
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDrawingML.cpp
