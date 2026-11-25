@@ -21,6 +21,7 @@
 // Version: 0.5.0 - mail addresses in plain text (merged with main's 0.4.0)
 // Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
 //                  and mailbox addresses are not claims
+// Version: 0.5.0 - the reasons in the reader's language (a German catalogue)
 // Version: 0.4.0 - PlainLinkSpans (the Microsoft account mail's long links)
 // Version: 0.3.0 - PlainLinkAt
 // Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
@@ -30,7 +31,12 @@
 
 #include "UltraMailSenderBrands.h"
 #include "UltraMailThreatScan.h"
+#include "UltraLocalisation/UltraLocalisation.h"
+#include "UltraCanvasPathUtf8.h"
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -325,6 +331,46 @@ TEST(scanning_a_raw_message_reads_headers_and_body) {
     REQUIRE(HasFinding(r, "link-target-mismatch"));
     REQUIRE(HasFinding(r, "reply-to-mismatch"));
     REQUIRE(r.Summary().find("paypal.com") != std::string::npos);
+}
+
+TEST(the_reasons_are_written_in_the_readers_language) {
+    // A German catalogue for UltraMail with two of the reasons and the
+    // list's "and", in a folder of its own.
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+        ("ultramail-tr-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(dir / "de");
+    {
+        std::ofstream out(dir / "de" / "UltraMail.json", std::ios::binary);
+        out << "{\n  \"@language\": \"de\",\n"
+               "  \"A link points straight at the numeric address {0} instead of a named site.\": "
+               "\"Ein Link f\u00fchrt direkt zur Zahlenadresse {0} statt zu einer benannten Website.\",\n"
+               "  \"Replies would not go back to {0} but to {1}.\": "
+               "\"Antworten gingen nicht an {0} zur\u00fcck, sondern an {1}.\"\n}\n";
+    }
+    UltraCanvas::UltraLocalisation::SetFolders(UltraCanvas::PathToUtf8(dir), "");
+    REQUIRE(UltraCanvas::UltraLocalisation::Load("de", "UltraMail"));
+    const std::string raw =
+        "From: \"PayPal Service\" <service@paypa1-secure.example>\r\n"
+        "To: erika@example.com\r\n"
+        "Subject: Your account has been locked\r\n"
+        "Reply-To: collector@elsewhere.example\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
+        "\r\n"
+        "<html><body><p>Your account has been suspended.</p>"
+        "<a href=\"http://198.51.100.7/login\">www.paypal.com</a></body></html>\r\n";
+    const std::string german = ScanRawMessage(raw).Summary();
+    UltraCanvas::UltraLocalisation::Load("en", "UltraMail");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    REQUIRE(german.find("Ein Link f\xC3\xBChrt direkt zur Zahlenadresse 198.51.100.7") != std::string::npos);
+    REQUIRE(german.find("Antworten gingen nicht an paypa1-secure.example zur\xC3\xBC" "ck, sondern an "
+                        "elsewhere.example.") != std::string::npos);
+    // What the catalogue does not have stays English, never empty.
+    REQUIRE(german.find("A sign-in link is unencrypted") != std::string::npos);
+    // And back in English after the switch.
+    REQUIRE(ScanRawMessage(raw).Summary().find("A link points straight at the numeric address") !=
+            std::string::npos);
 }
 
 TEST(an_empty_or_unparseable_message_is_unscanned_not_clean) {

@@ -14,7 +14,7 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
-// Version: 0.15.0 - LinkHost (the host a link goes to); PlainLinkSpans: where the links of a line of plain text are, so the
+// Version: 0.15.0 - ThreatFinding::detail and Summary in the reader's language; LinkHost (the host a link goes to); PlainLinkSpans: where the links of a line of plain text are, so the
 //                   plain-text view can draw them as links
 // Version: 0.14.1 - SenderLists::StableAddress / Bare: "no-reply-<code>@..." and
 //                   "name+tag@..." are one sender

@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
-// Version: 0.28.0 - a web link of a message the warning strip warns of asks before it
+// Version: 0.28.0 - the scan's reasons of a message that warns are written again in the
+//                   reader's language when it is shown (SecurityFor); a web link of a message the warning strip warns of asks before it
 //                   opens: "Do you really want to open the link?", why it is
 //                   suspicious (the strip's verdict, the link's own domain when it is
 //                   not the sender's, the strip's reasons); "Do not open" is the default
@@ -1235,7 +1236,8 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
     // verdict, so the list can colour the row without parsing every .eml.
     // Also when the stored verdict came from older rules (kThreatRulesRevision):
     // what an earlier version let through is judged again.
-    if (!sec.Scanned() || sec.scannedAt < kThreatRulesRevision) {
+    const bool scanNow = !sec.Scanned() || sec.scannedAt < kThreatRulesRevision;
+    if (scanNow) {
         const ThreatReport report = ScanRawMessage(raw);
         sec.level  = report.level;
         sec.score  = report.score;
@@ -1252,6 +1254,18 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
     if (sec.attachments < 0) {
         sec.attachments = MimeCodec::CountAttachments(raw);
         changed = true;
+    }
+    // The reasons were written in the language of the day the message was
+    // scanned. Where the reader is told them - the warning strip, the link
+    // question - they are written again in today's, from a fresh scan that
+    // came to the same findings (so the text never tells another verdict
+    // than the badge). Only for a message that warns: the cost is a scan.
+    if (!scanNow && sec.level >= ThreatLevel::Suspicious && !sec.reason.empty()) {
+        const ThreatReport fresh = ScanRawMessage(raw);
+        if (fresh.Codes() == sec.findings && fresh.Summary() != sec.reason) {
+            sec.reason = fresh.Summary();
+            changed = true;
+        }
     }
     if (!changed) return sec;
     if (store_) store_->SetSecurity(env.accountId, env.folder, env.uid, sec);

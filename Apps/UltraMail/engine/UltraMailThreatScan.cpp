@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
-// Version: 0.13.0 - LinkHost; PlainLinkSpans (the links of a line of plain text, to draw them)
+// Version: 0.13.0 - the reasons in the reader's language (Tr / TrF, lists joined through
+//                   Tr); LinkHost; PlainLinkSpans (the links of a line of plain text, to draw them)
 // Version: 0.12.1 - SenderLists: a no-reply address with a code per message
 //                   ("no-reply-<code>@mail.anthropic.com") is one sender (StableAddress),
 //                   and so is "name+tag@..." (the tag dropped)
@@ -52,6 +53,7 @@
 #include "UltraMailThreatScan.h"
 
 #include "UltraMailSenderBrands.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // Tr: the reasons in the reader's language
 #include "UltraCanvasRunsCodeWhenOpened.h"   // which attachments are programs
 
 #include "HTMLReader/HTMLDocument.h"       // HTML::ExtractPlainText
@@ -70,7 +72,22 @@
 
 namespace UltraMail {
 
+using UltraCanvas::Tr;
+using UltraCanvas::TrC;
+using UltraCanvas::TrF;
+using UltraCanvas::TrN;
+
 namespace {
+
+// "a, b and c" in the reader's language: the separators through Tr.
+std::string JoinList(const std::vector<std::string>& parts) {
+    std::string out;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) out += i + 1 == parts.size() ? TrC("list", " and ") : TrC("list", ", ");
+        out += parts[i];
+    }
+    return out;
+}
 
 // Score thresholds. A rule's weight is its confidence, not its drama: only the
 // rules that catch a link actively lying about its destination can reach Scam
@@ -615,6 +632,28 @@ const std::vector<RomanceSigns>& RomanceSignKinds() {
     return v;
 }
 
+// A kind's name as the reason says it, in the reader's language. Each is
+// written out at a Tr of its own so the catalogue lists it (the extraction
+// reads literals only); the table keeps the English, which is also the key,
+// and a kind added there without a line here is still looked up.
+std::string RomanceSignName(const std::string& what) {
+    if (what == "pet names") return Tr("pet names");
+    if (what == "talk of love or attraction") return Tr("talk of love or attraction");
+    if (what == "an offer of sex or a meeting") return Tr("an offer of sex or a meeting");
+    if (what == "a self-introduction") return Tr("a self-introduction");
+    if (what == "how they came to write to you") return Tr("how they came to write to you");
+    if (what == "a site to sign up on or to be \"verified\" at")
+        return Tr("a site to sign up on or to be \"verified\" at");
+    if (what == "guilt or pressure to answer") return Tr("guilt or pressure to answer");
+    if (what == "a pretended acquaintance") return Tr("a pretended acquaintance");
+    if (what == "assurances of being real and honest") return Tr("assurances of being real and honest");
+    if (what == "photos") return Tr("photos");
+    if (what == "a push to write back") return Tr("a push to write back");
+    if (what == "a request for money") return Tr("a request for money");
+    if (what == "a hardship or far-away story") return Tr("a hardship or far-away story");
+    return Tr(what);
+}
+
 // The countries the "bride" letters write from, as "I live in Russia".
 const std::vector<std::string>& RomanceHomeCountries() {
     static const std::vector<std::string> v = {
@@ -642,14 +681,14 @@ std::string DescribeLookalike(const DomainLookalike& l) {
     const std::string& name = l.brand->name;
     switch (l.kind) {
         case LookalikeKind::Misspelt:
-            return "imitates " + name + ": \"" + l.worn + "\" is " + name + "'s name misspelt";
+            return TrF("imitates {0}: \"{1}\" is {0}'s name misspelt", name, l.worn);
         case LookalikeKind::OwnDomain:
-            return "puts " + name + "'s own domain (" + l.worn + ") in front of an unrelated one";
+            return TrF("puts {0}'s own domain ({1}) in front of an unrelated one", name, l.worn);
         case LookalikeKind::Homograph:
-            return "reads \"" + l.unicode + "\" - " + name + "'s name written with " +
-                   l.letters + " letters that look like Latin ones";
+            return TrF("reads \"{0}\" - {1}'s name written with {2} letters that look like Latin ones",
+                       l.unicode, name, l.letters);
         default:
-            return "wears " + name + "'s name (\"" + l.worn + "\") padded with other words";
+            return TrF("wears {0}'s name (\"{1}\") padded with other words", name, l.worn);
     }
 }
 
@@ -875,7 +914,7 @@ std::string ActivePageBehaviour(const std::string& page) {
         std::string url = Trim(target);
         if (url.compare(0, 2, "//") == 0) url = "https:" + url;
         const std::string host = HostOf(url);
-        return host.empty() ? std::string("another site") : host;
+        return host.empty() ? Tr("another site") : host;
     };
     auto web = [](const std::string& target) {
         const std::string t = Lower(Trim(target));
@@ -901,31 +940,31 @@ std::string ActivePageBehaviour(const std::string& page) {
         if (tag == "script") {
             const std::string src = e.GetAttribute("src");
             if (!Trim(src).empty())
-                found = "loads a program (a script) from " + where(src) + " when it is opened";
+                found = TrF("loads a program (a script) from {0} when it is opened", where(src));
             else if (const char* call = scripted(e.TextContent()))
-                found = std::string("runs a script that rewrites the page or sends the browser "
-                                    "elsewhere (\"") + call + "\")";
+                found = TrF("runs a script that rewrites the page or sends the browser "
+                            "elsewhere (\"{0}\")", call);
         } else if (tag == "form") {
             const std::string action = e.GetAttribute("action");
-            found = web(action) ? "has a form that sends what is typed into it to " + where(action)
-                                : std::string("has a form to type into");
+            found = web(action) ? TrF("has a form that sends what is typed into it to {0}", where(action))
+                                : Tr("has a form to type into");
         } else if (tag == "meta" && Lower(Trim(e.GetAttribute("http-equiv"))) == "refresh" &&
                    Contains(Lower(e.GetAttribute("content")), "url=")) {
             const std::string content = e.GetAttribute("content");
-            found = "sends the browser on to " +
-                    where(content.substr(Lower(content).find("url=") + 4));
+            found = TrF("sends the browser on to {0}",
+                        where(content.substr(Lower(content).find("url=") + 4)));
         } else if ((tag == "iframe" || tag == "frame" || tag == "embed") &&
                    web(e.GetAttribute("src"))) {
-            found = "shows a page of " + where(e.GetAttribute("src")) + " inside it";
+            found = TrF("shows a page of {0} inside it", where(e.GetAttribute("src")));
         } else if (tag == "object" && web(e.GetAttribute("data"))) {
-            found = "shows a page of " + where(e.GetAttribute("data")) + " inside it";
+            found = TrF("shows a page of {0} inside it", where(e.GetAttribute("data")));
         } else {
             // onload="location.href=…" and the like.
             for (const auto& attribute : e.attributes)
                 if (Lower(attribute.first).compare(0, 2, "on") == 0)
                     if (const char* call = scripted(attribute.second)) {
-                        found = std::string("runs a script that rewrites the page or sends the "
-                                            "browser elsewhere (\"") + call + "\")";
+                        found = TrF("runs a script that rewrites the page or sends the browser "
+                                    "elsewhere (\"{0}\")", call);
                         break;
                     }
         }
@@ -1570,7 +1609,7 @@ ThreatReport ScanMessage(const ScanInput& input) {
         Lower(input.spamStatus).compare(0, 4, "yes,") == 0 ||
         Lower(Trim(input.spamStatus)) == "yes") {
         Add(report, 40, "spam-flag",
-            "The receiving server already marked this message as spam.");
+            Tr("The receiving server already marked this message as spam."));
     }
 
     // ---- Authentication results -------------------------------------------
@@ -1593,8 +1632,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
     if (auth.dmarc == "fail" ||
         (auth.dmarc.empty() && !authenticated && (auth.spf == "fail" || dkimFailed))) {
         Add(report, 30, "auth-failure",
-            "The sending domain failed its own SPF/DKIM/DMARC checks, so the "
-            "From address may be forged.");
+            Tr("The sending domain failed its own SPF/DKIM/DMARC checks, so the "
+               "From address may be forged."));
     } else if (authenticated) {
         report.score -= 10;   // the From address is at least genuinely theirs
     }
@@ -1605,9 +1644,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
     if (claimed && !DomainBelongsToBrand(senderDomain, *claimed)) {
         const bool fromMailbox = IsPersonalMailboxDomain(senderDomain);
         Add(report, fromMailbox ? 55 : 40, "brand-impersonation",
-            "The message presents itself as " + claimed->name + ", but it was sent from " +
-            (senderDomain.empty() ? std::string("an address with no domain")
-                                  : senderDomain) + ", which is not " + claimed->name + ".");
+            TrF("The message presents itself as {0}, but it was sent from {1}, which is not {0}.",
+                claimed->name, senderDomain.empty() ? Tr("an address with no domain") : senderDomain));
     }
 
     // ---- A sender domain dressed up as a brand's ---------------------------
@@ -1620,8 +1658,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
         if (lookalike.brand) {
             Add(report, lookalike.kind == LookalikeKind::Name ? 45 : 50,
                 "sender-domain-lookalike",
-                "The sender's domain " + senderDomain + " " + DescribeLookalike(lookalike) +
-                ", but it is not one of " + lookalike.brand->name + "'s domains.");
+                TrF("The sender's domain {0} {1}, but it is not one of {2}'s domains.",
+                    senderDomain, DescribeLookalike(lookalike), lookalike.brand->name));
         }
     }
 
@@ -1663,13 +1701,13 @@ ThreatReport ScanMessage(const ScanInput& input) {
                     break;
                 }
             if (named.empty()) continue;
-            const std::string where = linkRegs.empty() ? std::string("nowhere on that site")
+            const std::string where = linkRegs.empty() ? Tr("nowhere on that site")
                                                        : *linkRegs.begin();
             Add(report, 30, "borrowed-brand-pictures",
-                "The message shows pictures from " + imageReg + " (the \"" + named +
-                "\" it names) but was sent from " +
-                (senderDomain.empty() ? std::string("an unknown address") : senderDomain) +
-                ", and its links go to " + where + ", not to " + imageReg + ".");
+                TrF("The message shows pictures from {0} (the \"{1}\" it names) but was sent "
+                    "from {2}, and its links go to {3}, not to {0}.",
+                    imageReg, named, senderDomain.empty() ? Tr("an unknown address") : senderDomain,
+                    where));
             break;
         }
     }
@@ -1689,9 +1727,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
         SplitAuthority(link.href, userinfo, host);
         if (!userinfo.empty() && userinfo.find('.') != std::string::npos) {
             Add(report, 45, "link-userinfo",
-                "A link is written as \"" + userinfo + "@" + host +
-                "\": everything before the @ is ignored by the browser, which goes to " +
-                host + ".");
+                TrF("A link is written as \"{0}\": everything before the @ is ignored by the "
+                    "browser, which goes to {1}.", userinfo + "@" + host, host));
         }
 
         // "https:////shop.example.ru/": the browser goes to shop.example.ru,
@@ -1701,30 +1738,30 @@ ThreatReport ScanMessage(const ScanInput& input) {
         if (!disguised.empty()) {
             const std::size_t colon = link.href.find(':');
             Add(report, 25, "link-disguised-address",
-                "A link is written \"" + link.href.substr(0, colon + 1) + disguised + link.host +
-                "\" instead of \"" + link.href.substr(0, colon + 1) + "//" + link.host +
-                "\": the browser still goes to " + link.host +
-                ", but a spam filter reading the address as written finds no site to check.");
+                TrF("A link is written \"{0}\" instead of \"{1}\": the browser still goes to "
+                    "{2}, but a spam filter reading the address as written finds no site to check.",
+                    link.href.substr(0, colon + 1) + disguised + link.host,
+                    link.href.substr(0, colon + 1) + "//" + link.host, link.host));
         }
 
         if (IsIpLiteral(link.host)) {
             Add(report, 35, "link-ip-host",
-                "A link points straight at the numeric address " + link.host +
-                " instead of a named site.");
+                TrF("A link points straight at the numeric address {0} instead of a named site.",
+                    link.host));
         }
         if (HasPunycodeLabel(link.host)) {
             Add(report, 25, "link-punycode",
-                "A link uses a punycode host (" + link.host +
-                "), which can be drawn to look like a familiar name.");
+                TrF("A link uses a punycode host ({0}), which can be drawn to look like a "
+                    "familiar name.", link.host));
         }
         if (HasNonAscii(link.host)) {
             Add(report, 25, "link-nonascii-host",
-                "A link's host contains non-Latin characters that can imitate ordinary letters.");
+                Tr("A link's host contains non-Latin characters that can imitate ordinary letters."));
         }
         if (Shorteners().count(linkReg)) {
             Add(report, 12, "link-shortener",
-                "A link is hidden behind the shortener " + linkReg +
-                ", so its real destination cannot be seen.");
+                TrF("A link is hidden behind the shortener {0}, so its real destination cannot "
+                    "be seen.", linkReg));
         }
 
         // The anchor text names one address and the link goes to another -
@@ -1736,8 +1773,7 @@ ThreatReport ScanMessage(const ScanInput& input) {
             if (!claimedReg.empty() && claimedReg != linkReg && !ownDomain &&
                 !(authenticated && claimedReg == senderReg)) {
                 Add(report, 50, "link-target-mismatch",
-                    "A link reads \"" + claimedHost + "\" but actually goes to " +
-                    link.host + ".");
+                    TrF("A link reads \"{0}\" but actually goes to {1}.", claimedHost, link.host));
             }
         }
 
@@ -1748,8 +1784,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
             if (linkBrand && !DomainBelongsToBrand(link.host, *linkBrand) &&
                 !(senderBrand && senderBrand->id == linkBrand->id)) {
                 Add(report, 20, "link-brand-mismatch",
-                    "A link labelled \"" + Trim(link.text) + "\" does not go to " +
-                    linkBrand->name + " but to " + link.host + ".");
+                    TrF("A link labelled \"{0}\" does not go to {1} but to {2}.", Trim(link.text),
+                        linkBrand->name, link.host));
             }
         }
 
@@ -1761,10 +1797,12 @@ ThreatReport ScanMessage(const ScanInput& input) {
             const DomainLookalike l = BrandImitatedByDomain(link.host);
             if (l.brand) {
                 Add(report, l.kind == LookalikeKind::Name ? 40 : 50, "link-domain-lookalike",
-                    "A link" + (link.text.empty() ? std::string()
-                                                  : " labelled \"" + Trim(link.text) + "\"") +
-                    " goes to " + link.host + ", which " + DescribeLookalike(l) +
-                    " - not one of " + l.brand->name + "'s domains.");
+                    link.text.empty()
+                        ? TrF("A link goes to {0}, which {1} - not one of {2}'s domains.",
+                              link.host, DescribeLookalike(l), l.brand->name)
+                        : TrF("A link labelled \"{0}\" goes to {1}, which {2} - not one of {3}'s "
+                              "domains.", Trim(link.text), link.host, DescribeLookalike(l),
+                              l.brand->name));
             }
         }
 
@@ -1777,8 +1815,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
             const SenderBrand* worn = BrandNamedIn(spaced);
             if (worn && !DomainBelongsToBrand(link.host, *worn)) {
                 Add(report, 40, "link-brand-lookalike",
-                    "A link wears " + worn->name + "'s name in front of an unrelated domain (" +
-                    link.host + ").");
+                    TrF("A link wears {0}'s name in front of an unrelated domain ({1}).",
+                        worn->name, link.host));
             }
         }
 
@@ -1789,8 +1827,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
                                       "password", "secure", "update" }) {
                 if (Contains(hrefLower, word)) {
                     Add(report, 20, "insecure-login-link",
-                        "A sign-in link is unencrypted (http://), so anything typed on that "
-                        "page travels in the clear.");
+                        Tr("A sign-in link is unencrypted (http://), so anything typed on that "
+                           "page travels in the clear."));
                     break;
                 }
             }
@@ -1799,8 +1837,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
 
     if (!authenticated && foreignDomains.size() >= 5) {
         Add(report, 8, "many-foreign-domains",
-            "The message links to " + std::to_string(foreignDomains.size()) +
-            " different domains, none of them the sender's.");
+            TrF("The message links to {0} different domains, none of them the sender's.",
+                foreignDomains.size()));
     }
 
     // ---- Language that asks for credentials, plus a link off-domain -------
@@ -1810,8 +1848,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
         for (const auto& phrase : CredentialPhrases()) {
             if (Contains(bodyLower, phrase)) {
                 Add(report, 30, "credential-request",
-                    "The message asks the reader to confirm account or payment details "
-                    "(\"" + phrase + "\") and links away from the sender's own domain.");
+                    TrF("The message asks the reader to confirm account or payment details "
+                        "(\"{0}\") and links away from the sender's own domain.", phrase));
                 break;
             }
         }
@@ -1827,15 +1865,15 @@ ThreatReport ScanMessage(const ScanInput& input) {
             const std::string* setting  = FirstPhraseIn(story, AdvanceFeeStoryPhrases());
             const int parts = (deceased ? 1 : 0) + (fee ? 1 : 0) + (setting ? 1 : 0);
             if (parts >= 1) {
-                std::string why = "The message promises a large sum of money (\"" + sum + "\")";
                 std::vector<std::string> extras;
-                if (deceased) extras.push_back("a dead relative, an estate or money nobody claimed (\"" + *deceased + "\")");
-                if (fee)      extras.push_back("taxes or fees to be paid first (\"" + *fee + "\")");
+                if (deceased) extras.push_back(TrF("a dead relative, an estate or money nobody claimed (\"{0}\")", *deceased));
+                if (fee)      extras.push_back(TrF("taxes or fees to be paid first (\"{0}\")", *fee));
                 if (setting)  extras.push_back("\"" + *setting + "\"");
-                for (std::size_t i = 0; i < extras.size(); ++i)
-                    why += (i == 0 ? " and mentions " : (i + 1 == extras.size() ? " and " : ", ")) + extras[i];
-                why += ". That is the pattern of an advance-fee (\"Nigeria connection\") scam: "
-                       "the money never exists, the fees you pay are the theft.";
+                const std::string why =
+                    TrF("The message promises a large sum of money (\"{0}\") and mentions {1}.", sum,
+                        JoinList(extras)) + " " +
+                    Tr("That is the pattern of an advance-fee (\"Nigeria connection\") scam: "
+                       "the money never exists, the fees you pay are the theft.");
                 // Money plus one ingredient is worth a second look; money plus
                 // two (an estate *and* a fee, say) is the scam itself.
                 Add(report, parts >= 2 ? 50 : 25, "advance-fee-fraud", why);
@@ -1869,19 +1907,22 @@ ThreatReport ScanMessage(const ScanInput& input) {
             const bool specific = !terms.empty() || !sum.empty();
             const int weight = ownDomain ? (specific ? 25 : 0) : (specific ? 50 : 30);
             if (weight > 0) {
-                std::string why = "The message offers a loan, credit or funding (\"" + *offer + "\")";
                 std::vector<std::string> extras;
-                if (!sum.empty())   extras.push_back("a large sum (\"" + sum + "\")");
-                if (!terms.empty()) extras.push_back("its terms (\"" + terms + "\")");
-                if (fee)            extras.push_back("a fee (\"" + *fee + "\")");
-                for (std::size_t i = 0; i < extras.size(); ++i)
-                    why += (i == 0 ? " and names " : (i + 1 == extras.size() ? " and " : ", ")) + extras[i];
-                why += ", but it was not sent by a bank";
-                if (freeSender) why += " - it came from a free mailbox (" + senderDomain + ")";
-                else if (!senderDomain.empty()) why += " (" + senderDomain + ")";
-                why += ". Banks do not offer loans to strangers by email; the \"lender\" asks "
-                       "for a processing fee, an insurance or a transfer charge first, and the "
-                       "loan never comes.";
+                if (!sum.empty())   extras.push_back(TrF("a large sum (\"{0}\")", sum));
+                if (!terms.empty()) extras.push_back(TrF("its terms (\"{0}\")", terms));
+                if (fee)            extras.push_back(TrF("a fee (\"{0}\")", *fee));
+                const std::string from =
+                    freeSender ? TrF("it came from a free mailbox ({0})", senderDomain) : senderDomain;
+                std::string why =
+                    extras.empty()
+                        ? TrF("The message offers a loan, credit or funding (\"{0}\"), but it was "
+                              "not sent by a bank", *offer)
+                        : TrF("The message offers a loan, credit or funding (\"{0}\") and names {1}, "
+                              "but it was not sent by a bank", *offer, JoinList(extras));
+                if (!from.empty()) why += freeSender ? " - " + from : " (" + from + ")";
+                why += ". " + Tr("Banks do not offer loans to strangers by email; the \"lender\" asks "
+                                 "for a processing fee, an insurance or a transfer charge first, and "
+                                 "the loan never comes.");
                 Add(report, weight, "loan-offer-fraud", why);
             }
         }
@@ -1910,18 +1951,20 @@ ThreatReport ScanMessage(const ScanInput& input) {
             if (replica || cheap) {
                 int weight = replica && cheap ? 45 : replica ? 40 : 30;
                 if (!replica && authenticated && report.bulk) weight = 15;
-                std::string why = "The message sells " + std::string(brand->name);
-                if (cheap) {
-                    std::string floor = std::to_string(brand->floor);
-                    for (int i = static_cast<int>(floor.size()) - 3; i > 0; i -= 3)
-                        floor.insert(static_cast<std::size_t>(i), ",");
-                    why += " for " + price + ", when a genuine one costs " + floor +
-                           " dollars or euros at the very least";
-                }
-                if (replica) why += std::string(cheap ? ", and" : "") + " calls it \"" +
-                                    *replica + "\"";
-                why += ". Luxury watches and bags sold at such prices are counterfeit, or "
-                       "never arrive: the shop keeps the payment and the card details.";
+                std::string floor = std::to_string(brand->floor);
+                for (int i = static_cast<int>(floor.size()) - 3; i > 0; i -= 3)
+                    floor.insert(static_cast<std::size_t>(i), ",");
+                std::string why =
+                    cheap && replica
+                        ? TrF("The message sells {0} for {1}, when a genuine one costs {2} dollars or "
+                              "euros at the very least, and calls it \"{3}\"", brand->name, price,
+                              floor, *replica)
+                    : cheap
+                        ? TrF("The message sells {0} for {1}, when a genuine one costs {2} dollars or "
+                              "euros at the very least", brand->name, price, floor)
+                        : TrF("The message sells {0} and calls it \"{1}\"", brand->name, *replica);
+                why += ". " + Tr("Luxury watches and bags sold at such prices are counterfeit, or "
+                                 "never arrive: the shop keeps the payment and the card details.");
                 Add(report, weight, "counterfeit-goods", why);
             }
         }
@@ -1961,14 +2004,15 @@ ThreatReport ScanMessage(const ScanInput& input) {
             if (fakeReply) weight += 10;
             weight = std::min(weight, 40);   // spam, not a scam: alone it stays below 45
             const std::string seoWord = *seo == "seo" ? std::string("SEO") : *seo;
-            std::string why = "The message offers search engine services (\"" + seoWord +
-                              "\") for " + *site;
-            if (freeSender) why += ", from a free mailbox (" + senderDomain + ")";
-            if (fakeReply) why += ", and calls itself a reply (\"" + Trim(input.subject) +
-                                  "\") to a message that was never sent";
-            why += ". Unsolicited SEO offers are sent to every address on a list; the "
-                   "\"audit\" or \"report\" is the sales pitch, and an answer only confirms "
-                   "the address for more.";
+            std::string why = TrF("The message offers search engine services (\"{0}\") for {1}",
+                                  seoWord, *site);
+            if (freeSender) why += TrF(", from a free mailbox ({0})", senderDomain);
+            if (fakeReply)
+                why += TrF(", and calls itself a reply (\"{0}\") to a message that was never sent",
+                           Trim(input.subject));
+            why += ". " + Tr("Unsolicited SEO offers are sent to every address on a list; the "
+                             "\"audit\" or \"report\" is the sales pitch, and an answer only "
+                             "confirms the address for more.");
             Add(report, weight, "seo-solicitation", why);
         }
     }
@@ -2016,23 +2060,23 @@ ThreatReport ScanMessage(const ScanInput& input) {
         weight = std::min(weight, 40);   // alone, below a scam's 45
         const std::string subject = Trim(input.subject);
         std::string why = forward
-            ? "The message is a forward (\"" + subject + "\") from a sender you have never written to"
-            : "The message calls itself a reply (\"" + subject + "\") from a sender you have never written to";
+            ? TrF("The message is a forward (\"{0}\") from a sender you have never written to", subject)
+            : TrF("The message calls itself a reply (\"{0}\") from a sender you have never written to",
+                  subject);
         if (noThread)
-            why += forward ? ", and names no message it forwards"
-                           : ", to a message that was never sent";
+            why += forward ? Tr(", and names no message it forwards")
+                           : Tr(", to a message that was never sent");
         else if (!otherCompany.empty())
-            why += ", in a conversation of " + otherCompany + " that " +
-                   (senderDomain.empty() ? std::string("the sender") : senderDomain) +
-                   " was never part of";
-        if (report.bulk) why += ", sent by a mailing tool (it has an unsubscribe link)";
+            why += TrF(", in a conversation of {0} that {1} was never part of", otherCompany,
+                       senderDomain.empty() ? Tr("the sender") : senderDomain);
+        if (report.bulk) why += Tr(", sent by a mailing tool (it has an unsubscribe link)");
         if (bill) {
             std::string word = *bill;
             if (word.back() == '*') word.pop_back();
-            why += "; it is about a bill (\"" + word + "\")";
+            why += TrF("; it is about a bill (\"{0}\")", word);
         }
-        why += ". A \"Re:\" or \"Fw:\" from a stranger is a common trick to look like an "
-               "ongoing conversation. If you know the sender, add them to your contacts.";
+        why += ". " + Tr("A \"Re:\" or \"Fw:\" from a stranger is a common trick to look like an "
+                         "ongoing conversation. If you know the sender, add them to your contacts.");
         Add(report, weight, "unsolicited-reply", why);
     }
 
@@ -2056,13 +2100,12 @@ ThreatReport ScanMessage(const ScanInput& input) {
         const std::string named = Lower(who) + " " + domainWords;
         const std::string letterText = Lower(input.subject) + "\n" + bodyLower;
         for (const Agency& agency : Agencies()) {
-            const std::string from = senderDomain.empty() ? std::string("an address with no domain")
+            const std::string from = senderDomain.empty() ? Tr("an address with no domain")
                                                           : senderDomain;
             if (const std::string* claim = FirstWordPhraseIn(named, agency.claims)) {
                 Add(report, 45, "government-impersonation",
-                    "The message presents itself as " + std::string(agency.name) + " (\"" +
-                    *claim + "\"), but it was sent from " + from +
-                    ", which is not a government address.");
+                    TrF("The message presents itself as {0} (\"{1}\"), but it was sent from {2}, "
+                        "which is not a government address.", agency.name, *claim, from));
                 break;
             }
             const std::string* claim = FirstWordPhraseIn(letterText, agency.claims);
@@ -2070,10 +2113,10 @@ ThreatReport ScanMessage(const ScanInput& input) {
                                               : nullptr;
             if (claim && letter) {
                 Add(report, 30, "government-impersonation",
-                    "The message speaks in the name of " + std::string(agency.name) +
-                    " about your money, a case or an arrest (\"" + *letter + "\"), but it "
-                    "was sent from " + from + ", which is not a government address. "
-                    "Agencies do not announce payments, compensation or arrests by email.");
+                    TrF("The message speaks in the name of {0} about your money, a case or an "
+                        "arrest (\"{1}\"), but it was sent from {2}, which is not a government "
+                        "address. Agencies do not announce payments, compensation or arrests by "
+                        "email.", agency.name, *letter, from));
                 break;
             }
         }
@@ -2085,7 +2128,7 @@ ThreatReport ScanMessage(const ScanInput& input) {
         const std::string replyReg = RegistrableDomain(DomainOfAddress(input.replyTo));
         if (!replyReg.empty() && replyReg != senderReg) {
             Add(report, 15, "reply-to-mismatch",
-                "Replies would not go back to " + senderReg + " but to " + replyReg + ".");
+                TrF("Replies would not go back to {0} but to {1}.", senderReg, replyReg));
         }
     }
 
@@ -2128,9 +2171,9 @@ ThreatReport ScanMessage(const ScanInput& input) {
             if (Contains(senderLabel, label) || Contains(label, senderLabel)) continue;
             if (!LabelIsDisplayName(label, nameWords)) continue;
             Add(report, authenticated ? 12 : 25, "sender-company-mismatch",
-                "The sender calls itself \"" + senderName + "\", whose own domain the message gives (" +
-                shown + "), but it was sent from " + senderDomain + ", which has nothing to do "
-                "with it - a stolen or made-up mailbox writing in a company's name.");
+                TrF("The sender calls itself \"{0}\", whose own domain the message gives ({1}), "
+                    "but it was sent from {2}, which has nothing to do with it - a stolen or "
+                    "made-up mailbox writing in a company's name.", senderName, shown, senderDomain));
             break;
         }
     }
@@ -2163,9 +2206,11 @@ ThreatReport ScanMessage(const ScanInput& input) {
             const std::string address = bodyLower.substr(a, b - a);
             if (address == from || !IsPersonalMailboxDomain(DomainOfAddress(address))) continue;
             Add(report, 15, "reply-elsewhere",
-                "The message asks for answers at another address (" + address +
-                "), a free mailbox that is not the one it was sent from" +
-                (from.empty() ? std::string() : " (" + from + ")") + ".");
+                from.empty()
+                    ? TrF("The message asks for answers at another address ({0}), a free mailbox "
+                          "that is not the one it was sent from.", address)
+                    : TrF("The message asks for answers at another address ({0}), a free mailbox "
+                          "that is not the one it was sent from ({1}).", address, from));
             break;
         }
     }
@@ -2188,19 +2233,19 @@ ThreatReport ScanMessage(const ScanInput& input) {
             // is weighted as one. (A colleague really does send the odd .jar.)
             if (looksLikeDocument)
                 Add(report, 55, "attachment-disguised-executable",
-                    "The attachment \"" + name + "\" is a program wearing a document's "
-                    "name: everything before the final \"." + ext + "\" is decoration.");
+                    TrF("The attachment \"{0}\" is a program wearing a document's name: "
+                        "everything before the final \".{1}\" is decoration.", name, ext));
             else
                 Add(report, 40, "attachment-executable",
-                    "The attachment \"" + name + "\" is a program, not a document.");
+                    TrF("The attachment \"{0}\" is a program, not a document.", name));
             continue;
         }
         // "invoice.pdf.zip" is not executable by itself, but two extensions on
         // an attachment are still worth saying out loud.
         if (!inner.empty() && !ext.empty() && inner.size() <= 4 && looksLikeDocument) {
             Add(report, 25, "attachment-double-extension",
-                "The attachment \"" + name + "\" carries two extensions, which is how a "
-                "program is made to look like a document.");
+                TrF("The attachment \"{0}\" carries two extensions, which is how a program "
+                    "is made to look like a document.", name));
         }
     }
 
@@ -2231,21 +2276,21 @@ ThreatReport ScanMessage(const ScanInput& input) {
                 if (std::regex_search(nameLower, m, number)) invoice = &pageName;
             }
             Add(report, invoice ? 40 : 25, "attachment-web-page",
-                "The attachment \"" + pageName + "\" is a web page: it opens in your browser, "
-                "outside the mail program, where it can show a fake sign-in form or load "
-                "anything from the internet." +
-                (invoice ? std::string(" The message presents it as an invoice or a payment "
-                                       "demand (\"") + (invoice == &pageName ? pageName : *invoice) +
-                               "\") - real invoices come as PDF documents, not as web pages."
+                TrF("The attachment \"{0}\" is a web page: it opens in your browser, outside "
+                    "the mail program, where it can show a fake sign-in form or load anything "
+                    "from the internet.", pageName) +
+                (invoice ? " " + TrF("The message presents it as an invoice or a payment demand "
+                                     "(\"{0}\") - real invoices come as PDF documents, not as web "
+                                     "pages.", invoice == &pageName ? pageName : *invoice)
                          : std::string()));
         }
         for (const auto& page : input.attachedPages) {
             const std::string behaviour = ActivePageBehaviour(page.content);
             if (behaviour.empty()) continue;
             Add(report, 50, "attachment-active-page",
-                "The attached page \"" + (page.name.empty() ? std::string("(no name)") : page.name) +
-                "\" " + behaviour + ". A document has no reason to; a page that does is "
-                "built to steal what you type or to install something.");
+                TrF("The attached page \"{0}\" {1}. A document has no reason to; a page that "
+                    "does is built to steal what you type or to install something.",
+                    page.name.empty() ? Tr("(no name)") : page.name, behaviour));
             break;
         }
     }
@@ -2319,21 +2364,18 @@ ThreatReport ScanMessage(const ScanInput& input) {
             std::vector<std::string> parts;
             for (std::size_t k = 0; k < kinds.size(); ++k)
                 if (!found[k].empty())
-                    parts.push_back(std::string(kinds[k].what) + " (\"" + found[k] + "\")");
-            std::string why = "The message reads like a romance scam: ";
-            for (std::size_t i = 0; i < parts.size(); ++i)
-                why += (i == 0 ? "" : (i + 1 == parts.size() ? " and " : ", ")) + parts[i];
+                    parts.push_back(RomanceSignName(kinds[k].what) + " (\"" + found[k] + "\")");
+            std::string why = TrF("The message reads like a romance scam: {0}", JoinList(parts));
             if (!photos.empty()) {
                 std::string named = photos.front().empty() ? std::string()
                                                            : " (\"" + photos.front() + "\")";
-                why += photos.size() == 1
-                    ? ", with a photo attached" + named
-                    : ", with " + std::to_string(photos.size()) + " photos attached" + named;
+                why += TrN(", with a photo attached", ", with {n} photos attached",
+                                        static_cast<long long>(photos.size())) + named;
             }
-            if (freeMailbox) why += ", sent from a free mailbox (" + senderDomain + ")";
-            why += ". Romance scammers write to strangers with a made-up profile and someone "
-                   "else's photos, and once they are trusted they ask for money - a ticket, "
-                   "a visa, the rent, a laptop, crypto.";
+            if (freeMailbox) why += TrF(", sent from a free mailbox ({0})", senderDomain);
+            why += ". " + Tr("Romance scammers write to strangers with a made-up profile and "
+                             "someone else's photos, and once they are trusted they ask for money "
+                             "- a ticket, a visa, the rent, a laptop, crypto.");
             Add(report, signs >= 5 ? 50 : signs == 4 ? 35 : 22, "romance-scam", why);
         }
     }
@@ -2346,14 +2388,14 @@ ThreatReport ScanMessage(const ScanInput& input) {
     // service is spared the last two (a deposit address, "your balance").
     if (cryptoTerm) {
         Add(report, verifiedBrand ? 0 : 10, "crypto-content",
-            "The message is about cryptocurrency (\"" + *cryptoTerm + "\"). A crypto payment "
-            "cannot be called back: whoever receives it keeps it.");
+            TrF("The message is about cryptocurrency (\"{0}\"). A crypto payment cannot be "
+                "called back: whoever receives it keeps it.", *cryptoTerm));
         const std::string secret = WalletSecretRequest(letter);
         if (!secret.empty()) {
             Add(report, 50, "crypto-wallet-secret",
-                "The message asks for a crypto wallet's " + secret + ". No genuine wallet, "
-                "exchange or help desk ever asks for it: whoever has it owns the wallet and "
-                "everything in it.");
+                TrF("The message asks for a crypto wallet's {0}. No genuine wallet, exchange or "
+                    "help desk ever asks for it: whoever has it owns the wallet and everything in "
+                    "it.", secret));
         }
         if (!verifiedBrand) {
             const std::string address =
@@ -2361,9 +2403,9 @@ ThreatReport ScanMessage(const ScanInput& input) {
                                                  : input.body);
             if (!address.empty()) {
                 Add(report, 40, "crypto-payment-demand",
-                    "The message gives a crypto wallet address to pay into (" + address +
-                    "). Blackmail (\"I recorded you through your camera\") and fake invoices "
-                    "ask for payment this way, because it cannot be traced or reversed.");
+                    TrF("The message gives a crypto wallet address to pay into ({0}). Blackmail "
+                        "(\"I recorded you through your camera\") and fake invoices ask for payment "
+                        "this way, because it cannot be traced or reversed.", address));
             }
             std::string lure;
             if (const std::string* p = FirstWordPhraseIn(letter, CryptoProfitPhrases())) {
@@ -2376,9 +2418,9 @@ ThreatReport ScanMessage(const ScanInput& input) {
             }
             if (!lure.empty()) {
                 Add(report, 35, "crypto-investment-lure",
-                    "The message pairs cryptocurrency with a promise of profit (\"" + lure +
-                    "\"). No genuine investment guarantees a return; the \"platforms\" "
-                    "strangers recommend show made-up gains and keep what is paid in.");
+                    TrF("The message pairs cryptocurrency with a promise of profit (\"{0}\"). No "
+                        "genuine investment guarantees a return; the \"platforms\" strangers "
+                        "recommend show made-up gains and keep what is paid in.", lure));
             }
         }
     }
@@ -2389,9 +2431,9 @@ ThreatReport ScanMessage(const ScanInput& input) {
     if (!input.senderBlockedBy.empty()) {
         Add(report, 30, "blocked-sender",
             input.senderBlockedBy.front() == '@'
-                ? "You blocked everything from " + input.senderBlockedBy.substr(1) +
-                  ", so its mail is marked as spam."
-                : "You blocked " + input.senderBlockedBy + ", so their mail is marked as spam.");
+                ? TrF("You blocked everything from {0}, so its mail is marked as spam.",
+                      input.senderBlockedBy.substr(1))
+                : TrF("You blocked {0}, so their mail is marked as spam.", input.senderBlockedBy));
     }
 
     // Settings > Spam/scam warnings: a kind switched off is not reported; and
