@@ -44,6 +44,7 @@
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
 - [Data validation](#data-validation)
 - [Best Practices](#best-practices)
+- [Printing and PDF](#printing-and-pdf)
 - [See Also](#see-also)
 
 ## Overview
@@ -1233,6 +1234,49 @@ so they are set from code.
 - **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
 
+## Printing and PDF
+
+`SpreadsheetPrintPages` (`UltraCanvasSpreadsheetPrint.h`) cuts a sheet into
+pages and draws them, for a PDF file and for printers. It prints the print
+area, or every cell in use, and follows the sheet's `PrintSettings`:
+
+| Setting | What it does on paper |
+|---|---|
+| `paperSize`, `orientation` | the page; Custom prints on Letter for now |
+| `marginTop` / `Bottom` / `Left` / `Right` (inches) | the room for cells |
+| `scale` (%), or `fitToWidth` / `fitToHeight` (pages) | the size; fitting never enlarges |
+| `rowBreaks`, `colBreaks` | a page starts at each of these rows (columns) |
+| `printGridlines`, `printRowColHeaders` | lines between the cells; column letters and row numbers |
+| `centerHorizontally`, `centerVertically` | the block of cells centred in the room |
+| `headerLeft` ... `footerRight`, `headerMargin`, `footerMargin` | lines in the margins; `&P` the page, `&N` the pages, `&A` the sheet, `&D` the date, `&&` an ampersand |
+
+Pages run down, then across. Hidden rows and columns are left out, a merged
+block is drawn once per page it reaches, and every cell is drawn by
+`UltraCanvasSpreadsheet::PaintCell`, the grid's own painter, so paper shows
+what the screen does: 100 % on paper is the size on screen at 100 %.
+`SetTitleRows` / `SetTitleColumns` repeat lines on every page after the ones
+they are on.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; UltraCanvasWindow* window; -->
+```cpp
+#include "UltraCanvasSpreadsheetPrint.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
+
+grid->GetPrintSettings().orientation = PageOrientation::Landscape;
+grid->GetPrintSettings().fitToWidth = 1;          // every column across one page
+grid->SetPrintArea(CellRange(0, 0, 49, 7));      // A1:H50
+
+auto pages = CreateSpreadsheetPrintPages(*grid);  // the sheet on show, copied
+pages->SetTitleRows(0, 0);                        // row 1 on every page
+std::string error;
+pages->ExportPdf("Budget.pdf", error);
+
+// Printing: the PDF for printers that take one, the pages for those that draw.
+std::vector<uint8_t> pdf;
+if (pages->ExportPdf(pdf, error))
+    PrintDocumentWithDialog("Budget", pdf, "application/pdf", window, pages);
+```
+
 ## See Also
 
 - [`Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp`](../../Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp) - Full working demo (sample data, Open/Import/Save flows)
@@ -1243,3 +1287,4 @@ so they are set from code.
 - [`include/UltraCanvasSpreadsheetFormatMenu.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormatMenu.h) - Cell formatting menu and number-format presets
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
+- [`include/UltraCanvasSpreadsheetPrint.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetPrint.h) - A sheet's pages for PDF and printers

@@ -5427,6 +5427,23 @@ add_test(NAME SpreadsheetClipboardTest COMMAND SpreadsheetClipboardTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetClipboardTest")
 
+# ===== SPREADSHEET PRINT TEST =====
+# A sheet cut into pages (paper, orientation, print area, breaks, fit, title
+# rows) and written as a PDF. No window.
+message(STATUS "  Building SpreadsheetPrintTest...")
+add_executable(SpreadsheetPrintTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetPrintTest.cpp
+)
+target_include_directories(SpreadsheetPrintTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetPrintTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetPrintTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetPrintTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetPrintTest COMMAND SpreadsheetPrintTest ${CMAKE_BINARY_DIR}/spreadsheet-print-test.pdf
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetPrintTest")
+
 # ===== SPREADSHEET KEYBOARD MOVE TEST =====
 # A keyboard move (arrows, Enter, Tab, Home, End, Ctrl+arrow) selects the
 # cell it lands on; Shift+arrow still extends. No window.

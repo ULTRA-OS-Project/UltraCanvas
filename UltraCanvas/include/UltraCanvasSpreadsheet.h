@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.12.0 - PaintCell: one cell drawn as the grid draws it, for printing
 // Version: 1.11.0 - the system clipboard: Copy/Cut publish text and an HTML table; Paste reads other programs' (PasteHtml, PasteText); a paste is an undo step
 // Version: 1.10.0 - MoveActiveCell selects the cell it lands on; ExtendSelectionBy (Shift+arrow)
 // Version: 1.9.0 - deleting a sheet removes the names scoped to it and makes those covering it #REF!
@@ -556,6 +557,12 @@ public:
     // is nothing to paste (no table, no text).
     bool PasteHtml(const std::string& html);
     bool PasteText(const std::string& text);
+
+    // ===== DRAWING A CELL =====
+    // One cell of `sheet` in `bounds` - its fill, its value as its format
+    // shows it, its borders - as the grid draws it; printing draws its pages
+    // with it (UltraCanvasSpreadsheetPrint.h).
+    static void PaintCell(IRenderContext* ctx, const SpreadsheetSheet& sheet, int row, int col, const Rect2Di& bounds);
     bool HasClipboardData() const { return clipboardOp_ != ClipboardOperation::NoOperation; }
     void ClearClipboard();
     

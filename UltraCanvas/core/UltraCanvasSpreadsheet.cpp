@@ -543,6 +543,12 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
         // RenderCellEditor once the grid is done (so it sits on top).
         return;
     }
+    PaintCell(ctx, *sheet, row, col, bounds);
+}
+
+void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetSheet& sheet, int row, int col,
+                                       const Rect2Di& bounds) {
+    const SpreadsheetCell* cell = sheet.GetCellIfExists(row, col);
 
     // Cell background
     if (cell && cell->HasCustomStyle()) {
