@@ -1,5 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.19.1 - a click is hit-tested against the line it lands on when the caret
+//                 moved there before the next frame (currentLineIndex)
 // Version: 3.19.0 - GetLineSpans: a subclass styles ranges of a plain line (colour,
 //                 bold, italic, underline) - a mail reader's links, say;
 //                 InvalidateLineSpans lays the lines out again when they change
@@ -1266,6 +1268,11 @@ namespace UltraCanvas {
         // MarkdownHybrid current line. When the cursor enters a line, this line gets text
         // and used in rendering and measuring
         std::unique_ptr<LineLayoutBase> currentLine;
+        // The line currentLine was laid out for. The caret can move to another
+        // line before the next render lays that one out (a mouse press moves it,
+        // and its release is hit-tested before a frame is drawn): until then
+        // currentLine is the old caret line's layout and is not used for the new.
+        int currentLineIndex = -1;
         // MarkdownHybrid display-math block holding the caret: every other line of it
         // (fences and LaTeX source) is shown raw too, since in rendered form those lines
         // collapse to zero height. rawBlockLines[k] stands in for line rawBlockStart + k;

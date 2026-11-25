@@ -1,5 +1,8 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.14.1 - GetActualLineLayout: the caret's layout only for the line it was laid
+//                 out for (a press moving the caret, then the release hit-tested
+//                 before a frame, missed the line)
 // Version: 3.14.0 - GetLineSpans: a subclass's own styled ranges on a plain line
 // Version: 3.13.1 - Render lays the lines out again when tables were sized before the visible width
 //                  was known (no word wrap: the first frame, a resize, a scrollbar)
@@ -287,6 +290,7 @@ namespace UltraCanvas {
         // Full text replacement: invalidate the layout cache + MD index.
         SetCursorPosition({0, 0});
         currentLine.reset();
+        currentLineIndex = -1;
         rawBlockLines.clear();
         rawBlockStart = -1;
         selectionStart = LineColumnIndex::INVALID;
@@ -1636,6 +1640,7 @@ namespace UltraCanvas {
                 // (or discard the stash if the line was modified). On focus regain, the swap
                 // re-runs via ReconcileLayoutState.
                 currentLine.reset();
+                currentLineIndex = -1;
                 rawBlockLines.clear();
                 rawBlockStart = -1;
                 RequestRedraw();
@@ -2400,6 +2405,7 @@ namespace UltraCanvas {
             lineLayouts[logicalLine].reset();
             if (logicalLine == cursorPosition.lineIndex) {
                 currentLine.reset();
+                currentLineIndex = -1;
             }
         }
     }
@@ -3858,7 +3864,9 @@ namespace UltraCanvas {
     }
 
     LineLayoutBase* UltraCanvasTextArea::GetActualLineLayout(int idx) {
-        if (currentLine && cursorPosition.lineIndex == idx) {
+        // The caret's own layout - only once it is laid out for the caret's
+        // line: straight after the caret moved, the line's ordinary layout.
+        if (currentLine && cursorPosition.lineIndex == idx && currentLineIndex == idx) {
             return currentLine.get();
         }
         if (rawBlockStart >= 0 && idx >= rawBlockStart &&
@@ -3951,9 +3959,11 @@ namespace UltraCanvas {
         if (cursorPosition.lineIndex >= 0 &&
             !(isReadOnly && editingMode == TextAreaEditingMode::MarkdownHybrid)) {
             currentLine = MakePlainLineLayout(ctx, cursorPosition.lineIndex, /*withComposition=*/true);
+            currentLineIndex = cursorPosition.lineIndex;
             currentLine->logicalLineNumber = lineLayouts[cursorPosition.lineIndex]->logicalLineNumber;
         } else {
             currentLine.reset();
+            currentLineIndex = -1;
         }
         UpdateRawMathBlockLines(ctx);
 

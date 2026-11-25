@@ -22,7 +22,9 @@
 // (message-preview-selection.ppm, -code.ppm, -code-bar.ppm), the links of a
 // plain-text mail (-plain-links.ppm), a phishing mail (-phishing.ppm) and the
 // question a click on its link asks (-link-question.ppm).
-// Version: 1.6.0 - a link of a message the warning strip warns of asks before it opens
+// Version: 1.6.0 - a link of a message the warning strip warns of asks before it opens; a
+//                  click (press and release without a frame between) on a link of a line
+//                  the caret was not on opens it
 // Version: 1.5.0 - a plain-text mail's links are drawn in the accent colour, a long one
 //                  wrapped over several lines too
 // Version: 1.4.0 - Copy link over a linked picture (a newsletter's button)
@@ -781,19 +783,18 @@ int main() {
     render();
     if (auto phishArea = Find(root, "prevBodyText")) {
         const Rect2Df area = phishArea->GetBoundsInWindow();
-        for (int y = 4; y < 120 && UltraCanvasDialogManager::GetActiveDialogCount() == 0; y += 8)
+        for (int y = 4; y < 120 && UltraCanvasDialogManager::GetActiveDialogCount() == 0; y += 6)
             for (int x = 4; x < static_cast<int>(area.width) - 20 &&
-                            UltraCanvasDialogManager::GetActiveDialogCount() == 0; x += 24) {
+                            UltraCanvasDialogManager::GetActiveDialogCount() == 0; x += 8) {
                 UCEvent ev;
                 ev.button = UCMouseButton::Left;
                 ev.pointer = Point2Di(x, y);
                 ev.pointerWindow = Point2Di(static_cast<int>(area.x) + x, static_cast<int>(area.y) + y);
                 ev.type = UCEventType::MouseDown;
+                // No frame between press and release: the press moves the
+                // caret to the link's line, and the release is still
+                // hit-tested against that line (not the old caret line).
                 phishArea->OnEvent(ev);
-                // A real click has a frame between press and release: the
-                // press moved the caret, and the caret's line is laid out
-                // again in it before the release is hit-tested.
-                render();
                 ev.type = UCEventType::MouseUp;
                 phishArea->OnEvent(ev);
             }
