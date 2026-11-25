@@ -13,7 +13,7 @@ It is built from the framework's elements, one per kind of document:
 |---|---|---|---|
 | Document | [`UltraCanvasRichTextEdit`](../UltraCanvas/UltraCanvasRichTextEdit.md), in page view | .odt, .docx, .doc, LaTeX, Markdown, text | .docx, .odt |
 | Spreadsheet | [`UltraCanvasSpreadsheet`](../UltraCanvas/UltraCanvasSpreadsheetExamples.md) | .ods, .xlsx, .xls, .csv, .tsv | .xlsx, .ods, .csv, .tsv |
-| Presentation | [`UltraCanvasMediaViewer`](../UltraCanvas/UltraCanvasMediaViewer.md), shown only | .pptx, .odp and their template and show variants | .pptx, .odp (Save as) |
+| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their template and show variants | .pptx, .odp |
 
 What a file is comes from `UltraCanvasFileLoader::DetectOfficeDocumentKind`:
 the extension, else the package inside (`mimetype`, `word/document.xml`,
@@ -40,8 +40,18 @@ The command tabs:
   wrap, number format, decimals. *Data*: sort, filter, fill down and right,
   SUM. *Page*: set and clear the print area, landscape, fit to width,
   gridlines, headings. *View*: freeze and unfreeze panes.
-- **Presentations** - *Home*: present from the first slide or this one
-  (F5, Shift+F5), the outline.
+- **Presentations** - *Home*: new slide (Ctrl+M) or one from the deck's
+  layouts, duplicate, delete and hide a slide, present. *Insert*: text box,
+  drawn shape (rectangle, rounded rectangle, ellipse, triangle, arrow, star),
+  picture. *Arrange*: bring to front, forward, backward, to back; duplicate
+  and delete shapes. *Slide show*: from the beginning or from this slide.
+
+  The slide strip shows every slide (drag one to move it); on the slide a
+  click selects a shape, a band several, and they are moved, resized and
+  turned with their handles, snapping to the slide and to each other;
+  double-click a shape (or Enter) to edit its text in place, Ctrl+Enter or a
+  click elsewhere to keep it, Escape to drop it. The show runs full screen in
+  a window of its own: a click or the arrows move on, Escape ends it.
 
 The **Start** tab opens a file, lists the recent ones and starts a new
 document or spreadsheet.
@@ -52,18 +62,19 @@ document or spreadsheet.
 |---|---|
 | New document | Ctrl+N |
 | New spreadsheet | Ctrl+Shift+N |
+| New presentation | |
 | Open... | Ctrl+O |
 | Open recent | |
 | Save | Ctrl+S |
 | Save as... | Ctrl+Shift+S |
-| Export as PDF... | documents and spreadsheets |
-| Print... | Ctrl+P, documents and spreadsheets |
+| Export as PDF... | every kind |
+| Print... | Ctrl+P, every kind |
 | Close | Ctrl+W |
 | New files are saved as | Office Open XML (.docx, .xlsx), the default, or OpenDocument (.odt, .ods) |
 | Quit | Ctrl+Q |
 
 Save writes a file where it came from in its own format; a file only read
-(.doc, .xls, Markdown, LaTeX, text) and a presentation ask for a name. A file
+(.doc, .xls, Markdown, LaTeX, text) asks for a name. A file
 opened with a password is saved protected with it again. A .docx saved again
 keeps the theme and font table it came with (`UCRichDocument::keptParts`). Closing a tab or
 the window with unsaved changes asks first.
@@ -83,7 +94,7 @@ When UltraOffice ends without closing, the copies stay, and the next start
 lists those documents on the **Start** tab, which shows their count, without
 stopping anything else: **Restore** opens each in a tab under its own file
 and name, with its changes still to save; **Discard the copies** deletes
-them, after asking. Presentations are not copied: they are not changed here.
+them, after asking.
 
 ## Starting it
 

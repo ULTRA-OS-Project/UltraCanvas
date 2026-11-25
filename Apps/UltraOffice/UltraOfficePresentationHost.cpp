@@ -40,12 +40,12 @@ namespace {
 
 constexpr int64_t kInch = 914400;
 
-// The shapes Insert > Shape offers: label, preset outline.
-struct GeometryChoice { const char* label; const char* geometry; };
-const GeometryChoice kGeometries[] = {
-    {"Rectangle", "rect"}, {"Rounded rectangle", "roundRect"}, {"Ellipse", "ellipse"},
-    {"Triangle", "triangle"}, {"Arrow", "rightArrow"}, {"Star", "star5"},
-};
+// The shapes Insert > Shape offers: their preset outlines, and (in the same
+// order) their names, each a literal Tr so the catalogue finds it.
+const char* const kGeometries[] = {"rect", "roundRect", "ellipse", "triangle", "rightArrow", "star5"};
+std::vector<std::string> GeometryNames() {
+    return {Tr("Rectangle"), Tr("Rounded rectangle"), Tr("Ellipse"), Tr("Triangle"), Tr("Arrow"), Tr("Star")};
+}
 
 class PresentationHost final : public OfficeHost {
 public:
@@ -269,9 +269,7 @@ private:
             const SlideBox box{Editor().SlideWidth() / 2 - 2 * kInch, Editor().SlideHeight() / 2 - kInch / 2, 4 * kInch, kInch};
             OpenText(Editor().InsertTextBox(box));
         });
-        std::vector<std::string> names;
-        for (const auto& choice : kGeometries) names.push_back(Tr(choice.label));
-        auto shapes = bar->AddDropdownButton("slides-shape", Tr("Shape"), names, nullptr);
+        auto shapes = bar->AddDropdownButton("slides-shape", Tr("Shape"), GeometryNames(), nullptr);
         shapes->SetTooltip(Tr("A drawn shape in the middle of the slide"));
         shapes->SetPlaceholderText(Tr("Shape"));
         shapes->SetSelectedIndex(-1, false);
@@ -282,7 +280,7 @@ private:
             const int64_t side = 2 * kInch;
             Editor().InsertGeometry(SlideBox{Editor().SlideWidth() / 2 - side / 2, Editor().SlideHeight() / 2 - side / 2,
                                              side, side},
-                                    kGeometries[index].geometry);
+                                    kGeometries[index]);
             dropdown->SetSelectedIndex(-1, false);
             edit_->SetFocus(true);
         };

@@ -12,7 +12,9 @@
   - spreadsheets: Home (clipboard, bold, italic, alignment, wrap, number
     format, decimals), Data (sort, filter, fill, SUM), Page (print area,
     landscape, fit to width, gridlines, headings), View (freeze panes);
-  - presentations: Home (present from the start or this slide, outline).
+  - presentations: Home (new slide, layouts, duplicate, delete, hide,
+    present), Insert (text box, shape, picture), Arrange (order, duplicate,
+    delete), Slide show;
 - **Documents** are edited in the WYSIWYG element, in page view: .odt and
   .docx read and written, .doc, Markdown and LaTeX read. Export as PDF and
   Print.
@@ -20,9 +22,12 @@
   .tsv; the status line adds up the selection. Export as PDF and Print, by
   the sheet's print settings. Copy and paste reach other programs: cells go
   out as text and a table, and another program's table or text comes in.
-- **Presentations** (.pptx, .odp and their kin) are shown - slides,
-  thumbnails, notes - and presented full screen; Save as writes them again
-  as PowerPoint or OpenDocument. Editing slides comes with the slide editor.
+- **Presentations** (.pptx, .odp and their kin) are edited in the slide
+  editor: the slide strip, new slides from the deck's layouts, duplicate,
+  move, hide and delete; text boxes, drawn shapes and pictures; shapes
+  selected, moved, resized and turned with snapping, ordered, duplicated and
+  deleted; a shape's text edited in place; every change undone. They are
+  presented full screen, exported as PDF, printed and saved in place.
 - New files are saved as Office Open XML (.docx, .xlsx) by default, or
   OpenDocument (*File > New files are saved as*). Protected files ask for
   their password and are saved protected again.

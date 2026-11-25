@@ -22,7 +22,7 @@ first lines as of 2026-10-18.
 | [UltraVideo](#ultravideo) | Video editor with timeline and one-button export | 0.7.0 | VideoFX |
 | [UltraViewer](#ultraviewer) | Universal media viewer | 1.0.7 | MediaViewer |
 | **Documents and files** | | | |
-| [UltraOffice](#ultraoffice) | Documents, spreadsheets and presentations in one window | 0.1.0 | RichTextEdit, Spreadsheet, MediaViewer, FileLoader |
+| [UltraOffice](#ultraoffice) | Documents, spreadsheets and presentations in one window | 0.1.0 | RichTextEdit, Spreadsheet, SlideEdit, FileLoader |
 | [Texter](#texter) | Text, code and word-processing editor | 1.67 | TextArea, RichTextEdit, FileLoader |
 | [UltraFiler](#ultrafiler) | Windows Explorer-style file manager | 1.75.0 | FilerWidget, VirtualFS, UltraCloud |
 | [AnchorPoint](#anchorpoint) | Peer-to-peer file transfer | 0.2.4 | UltraCrypt |
@@ -189,12 +189,13 @@ spreadsheets and presentations, each in a tab marked with its kind.
   written, .doc, Markdown and LaTeX read; Export as PDF and Print.
 - Spreadsheets (Spreadsheet): number formats, sort, filter, fill, SUM,
   freeze panes; .ods, .xlsx, .csv and .tsv read and written, .xls read.
-- Presentations (.pptx, .odp) shown and presented full screen; Save as
-  writes them again. Editing slides waits for the slide editor.
+- Presentations (.pptx, .odp) edited in the slide editor (slides from
+  layouts, shapes moved, resized and turned, text in place, pictures),
+  presented full screen, exported as PDF and printed.
 - The toolbar follows the tab; a Start tab with the recent files; new
   files saved as Office Open XML or OpenDocument.
 
-**Built on:** RichTextEdit, Spreadsheet, MediaViewer and FileLoader.
+**Built on:** RichTextEdit, Spreadsheet, SlideEdit and FileLoader.
 **Version:** 0.1.0 (2026-11-25).
 **Docs:** [UltraOffice/README.md](UltraOffice/README.md).
 
