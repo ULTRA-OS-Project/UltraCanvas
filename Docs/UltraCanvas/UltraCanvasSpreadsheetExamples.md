@@ -262,11 +262,24 @@ string of your own, the same rewrite is
 
 ### Clipboard, Undo/Redo, Formula Engine
 
+Copy and Cut keep the cells whole for a paste in the same program and put
+them on the system clipboard as other programs read them: the shown values
+as tab-separated text, beside an HTML table. Paste takes the grid's own copy
+while the system clipboard still holds it - a copied formula's references
+move with it (`=B2*2` copied from B3 to B8 is `=B7*2`), a cut one's stay -
+and otherwise another program's HTML table (spanned cells kept apart) or
+tab-, comma- or semicolon-separated text, each value read as if typed.
+Every paste is one undo step.
+
 ```cpp
 void Cut();
 void Copy();
 void Paste();
 void PasteSpecial(const PasteOptions& options);
+std::string RangeAsText(const CellRange& range) const;   // what Copy puts on the clipboard
+std::string RangeAsHtml(const CellRange& range) const;
+bool PasteHtml(const std::string& html);                 // another program's cells, at the active cell
+bool PasteText(const std::string& text);
 
 void Undo();
 void Redo();

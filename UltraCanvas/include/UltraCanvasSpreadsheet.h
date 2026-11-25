@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.11.0 - the system clipboard: Copy/Cut publish text and an HTML table; Paste reads other programs' (PasteHtml, PasteText); a paste is an undo step
 // Version: 1.10.0 - MoveActiveCell selects the cell it lands on; ExtendSelectionBy (Shift+arrow)
 // Version: 1.9.0 - deleting a sheet removes the names scoped to it and makes those covering it #REF!
 //                  (IsNamedRangeVisible); undo brings them back
@@ -182,6 +183,8 @@ private:
     CellRange clipboardRange_;
     std::string clipboardSheetName_;
     std::vector<std::vector<SpreadsheetCell>> clipboardData_;
+    std::string clipboardText_;   // what Copy put on the system clipboard as text
+    bool PasteValues(const std::vector<std::vector<std::string>>& rows);
     
     std::stack<SpreadsheetUndoAction> undoStack_;
     std::stack<SpreadsheetUndoAction> redoStack_;
@@ -536,10 +539,23 @@ public:
     void DeleteRowsAt(int row, int count = 1);
     
     // ===== CLIPBOARD =====
+    // Copy and Cut keep the cells whole for a paste in this program, and put
+    // them on the system clipboard as other programs read them: the shown
+    // text, a tab between cells and a line per row, beside an HTML table.
+    // Paste takes the grid's own copy while the system clipboard still holds
+    // it; else what another program copied - its HTML table, or tab- or
+    // comma-separated text - each value read as if typed. Every paste is one
+    // undo step.
     void Cut();
     void Copy();
     void Paste();
     void PasteSpecial(const PasteOptions& options);
+    std::string RangeAsText(const CellRange& range) const;
+    std::string RangeAsHtml(const CellRange& range) const;
+    // Another program's cells, pasted at the active cell; false when there
+    // is nothing to paste (no table, no text).
+    bool PasteHtml(const std::string& html);
+    bool PasteText(const std::string& text);
     bool HasClipboardData() const { return clipboardOp_ != ClipboardOperation::NoOperation; }
     void ClearClipboard();
     

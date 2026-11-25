@@ -5410,6 +5410,23 @@ add_test(NAME SpreadsheetValidationGridTest COMMAND SpreadsheetValidationGridTes
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetValidationGridTest")
 
+# ===== SPREADSHEET CLIPBOARD TEST =====
+# Copy and Paste through the system clipboard (a stand-in backend): text and
+# an HTML table out, another program's table or text in, undo. No window.
+message(STATUS "  Building SpreadsheetClipboardTest...")
+add_executable(SpreadsheetClipboardTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetClipboardTest.cpp
+)
+target_include_directories(SpreadsheetClipboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetClipboardTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetClipboardTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetClipboardTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetClipboardTest COMMAND SpreadsheetClipboardTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetClipboardTest")
+
 # ===== SPREADSHEET KEYBOARD MOVE TEST =====
 # A keyboard move (arrows, Enter, Tab, Home, End, Ctrl+arrow) selects the
 # cell it lands on; Shift+arrow still extends. No window.

@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.3.0 - PasteCells pastes formulas (PasteType All), their references moved from where they were copied
 // Version: 1.2.0 - inserting / deleting rows and columns moves the references in formulas
 //                  (MoveFormulaReferencesForRowsColumns)
 // Version: 1.1.0 - GetEffectiveValidation; SetCellValueFromString (a typed entry, notified)
@@ -13,6 +14,7 @@
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetMetrics.h"
 #include <string>
+#include <optional>
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -516,10 +518,14 @@ public:
     // Copy cell data for clipboard
     std::vector<std::vector<SpreadsheetCell>> CopyCells(const CellRange& range) const;
     
-    // Paste cell data
+    // Paste cell data. `from`: where the cells were copied from (their
+    // top-left cell); a pasted formula's references then move with it, as a
+    // spreadsheet's do ("=B2*2" copied from B3 to B8 is "=B7*2"). Without it
+    // a formula is pasted as it was written.
     void PasteCells(const CellAddress& destination,
                     const std::vector<std::vector<SpreadsheetCell>>& cells,
-                    const PasteOptions& options = PasteOptions());
+                    const PasteOptions& options = PasteOptions(),
+                    std::optional<CellAddress> from = std::nullopt);
     
     // ===== FILL OPERATIONS =====
     
