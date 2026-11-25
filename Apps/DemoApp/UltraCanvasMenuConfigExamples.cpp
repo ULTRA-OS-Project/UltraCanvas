@@ -300,7 +300,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
     DemoKit::Add(card, toolbar);
 
     auto status = DemoKit::AddText(card, "MenuConfigStatus", Tr("Ready."));
-    status->SetTextColor(Color(90, 90, 90, 255));
+    status->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
 
     // ----- registry + defaults (demo-local so the sample commands don't
     // leak into any real application registry) -----

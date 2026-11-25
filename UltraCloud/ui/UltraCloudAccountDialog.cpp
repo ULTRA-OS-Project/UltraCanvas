@@ -1,4 +1,5 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
+// Version: 0.10.2 - "Use as the default cloud account" wraps instead of being cut in a longer language
 // Version: 0.10.1 - the colours are the theme's (UiStyle 0.3.0): the form is dark under a dark
 //                  look, so its dropdowns, fields and the checkbox's label read on it
 // Version: 0.10.0 - the status line is as tall as what it says, so a long
@@ -455,6 +456,12 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
     // status line below it.
     auto makeDefault = UltraCanvasCheckbox::CreateCheckbox(
         "cloudAccDefault", 0, 0, 300, 26, Tr("Use as the default cloud account"), false);
+    // A longer translation wraps onto a second line instead of being cut
+    // off (Russian needs 487 px); the spacer above the buttons absorbs it.
+    makeDefault->SetLabelWrap(true);
+    makeDefault->size.height = CSSLayout::Dimension::Auto();
+    makeDefault->boxConstraints = CSSLayout::BoxConstraints{};
+    makeDefault->boxConstraints->minHeight = CSSLayout::Dimension::Px(26);
     AddFormWideRow(grid, makeDefault);
     form->makeDefault = makeDefault.get();
 

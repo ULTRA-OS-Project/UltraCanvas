@@ -1,5 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
+# Version: 1.5.1 - an iOS, tvOS, visionOS or watchOS configure stops with a message naming the
+#                  missing backend
 # Version: 1.5.0 - ultracanvas-module-link-probes: every module archive linked on its
 #                  own, whole, with no core, so an undeclared dependency fails here
 # Version: 1.4.9 - uc-net links UltraCanvasTextUtils, so a program that links UltraNet
@@ -67,8 +69,10 @@ if (BUILD_DEMO_APP)
     # WebAssembly: a wasm "shared library" is a dynamic-linking side module,
     # and the page is one statically linked program (the WASM block below
     # forces it, whatever the cache holds). Windows forces it ON
-    # below whenever the LaTeX plug-in is built, whatever this says.
-    if(ANDROID OR EMSCRIPTEN)
+    # below whenever the LaTeX plug-in is built, whatever this says. iOS is
+    # static too: an app may load a dynamic library only from a signed
+    # framework in its own bundle (Docs/UltraCanvas/iOSPortInvestigation.md 4.3).
+    if(ANDROID OR EMSCRIPTEN OR IOS)
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
     else()
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
@@ -175,6 +179,34 @@ option(ULTRACANVAS_PLUGIN_RTP    "Build the UltraNet RTP receiver plug-in (UDP-n
 if(WIN32)
     set(ULTRACANVAS_PLATFORM "Windows")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MSWindows")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Must be tested before APPLE: an iOS toolchain sets APPLE too, and the
+    # branch below would pick the AppKit backend (OS/MacOS), which needs
+    # Cocoa, IOKit and CoreWLAN, none of which iOS has. The UIKit backend is
+    # OS/iOS (Docs/UltraCanvas/iOSPortInvestigation.md). The core compiles
+    # with ULTRACANVAS_IOS (PUBLIC, below), which is what a source tests where
+    # __APPLE__ alone would mean macOS.
+    set(ULTRACANVAS_PLATFORM "iOS")
+    set(ULTRACANVAS_PLATFORM_DIR "OS/iOS")
+    # For every target here (the core's module archives compile sources of
+    # their own); the core also carries it PUBLIC to what links it.
+    add_compile_definitions(ULTRACANVAS_IOS=1)
+    # Static, and nothing loaded at run time: see ULTRACANVAS_BUILD_SHARED.
+    # No GL surfaces yet (iOSPortInvestigation.md 5: ANGLE on Metal later),
+    # and audio, video and UltraNet wait for their phase of the port.
+    set(ULTRACANVAS_BUILD_SHARED OFF CACHE BOOL "Build shared library instead of static" FORCE)
+    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+    set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Enable audio playback & recording (requires backend lib)" FORCE)
+    set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)" FORCE)
+    set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library" FORCE)
+elseif(CMAKE_SYSTEM_NAME MATCHES "^(tvOS|visionOS|watchOS)$")
+    # Tested before APPLE for the same reason as iOS above. No backend: the
+    # iOS one (OS/iOS) is the nearest start for any of them.
+    message(FATAL_ERROR
+        "UltraCanvas has no ${CMAKE_SYSTEM_NAME} backend (CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}).\n"
+        "  The macOS backend (OS/MacOS) is AppKit-only and cannot be used there;\n"
+        "  the iOS backend (OS/iOS) is UIKit, the nearest start for a port.\n"
+        "  What an iOS port needed: Docs/UltraCanvas/iOSPortInvestigation.md")
 elseif(APPLE)
     set(ULTRACANVAS_PLATFORM "MacOS")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MacOS")
@@ -307,8 +339,10 @@ pkg_check_modules(CAIRO REQUIRED cairo)
 # Pango - Text Layout
 pkg_check_modules(PANGO REQUIRED pango pangocairo)
 
-# FontConfig - bundled-font registration (Linux always; Windows when Pango is built with the FontConfig backend)
-if(NOT APPLE)
+# FontConfig - bundled-font registration (Linux always; Windows when Pango is built with the FontConfig backend).
+# Not macOS, whose text is CoreText; iOS is fontconfig and FreeType like Android
+# (cairo is built without its Quartz backend there).
+if(NOT APPLE OR IOS)
     pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
     # PangoFT2 - part of Pango itself, present wherever Pango is built against
     # FontConfig (which is every platform that reaches this branch). It is
@@ -700,6 +734,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveSeparator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopShell.cpp
+        # A window manager inside the program, for a backend that draws one
+        # output for many windows (Android's desktop mode, MobilePC), and the
+        # title bar it puts above a window
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedWindowManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedWindowFrame.cpp
+        # Applications that run inside their host program (MobilePC's)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHostedApps.cpp
         # Choosing an area of the screen over a frozen capture (UltraSnip, ChatCube)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScreenAreaPicker.cpp
         # A slippy map from OpenStreetMap's tiles: the element, a map drawn
@@ -1274,7 +1315,7 @@ set(ULTRACANVAS_CHART_MODULE_GRANULARITY "chart" CACHE STRING
 # Platforms without dlopen fall back to compile-time selection (proposal §12.11).
 # Android counts too: an app is a .so loaded by the VM (no host executable to
 # resolve core symbols from) and dlopen outside the APK's lib/ dir is blocked.
-if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_CHART_RUNTIME_MODULES)
+if((EMSCRIPTEN OR ANDROID OR IOS) AND ULTRACANVAS_CHART_RUNTIME_MODULES)
     message(STATUS "Charts: no dynamic loading on this platform - runtime modules disabled")
     set(ULTRACANVAS_CHART_RUNTIME_MODULES OFF)
 endif()
@@ -1316,7 +1357,7 @@ if(ULTRACANVAS_ENABLE_CHARTS)
     # chart out there is not a choice anybody made. Where modules were turned
     # off, or a static core on Windows rules them out (a module there links the
     # core DLL), leaving a chart out loses it, and the configure stops.
-    if(UC_CHART_MODULE_KEYS AND (EMSCRIPTEN OR ANDROID))
+    if(UC_CHART_MODULE_KEYS AND (EMSCRIPTEN OR ANDROID OR IOS))
         message(STATUS "Charts: no runtime modules on this platform - compiling in [${UC_CHART_MODULE_KEYS}]")
         list(APPEND UC_CHART_SELECTED_KEYS ${UC_CHART_MODULE_KEYS})
         set(UC_CHART_MODULE_KEYS "")
@@ -1412,7 +1453,7 @@ set(ULTRACANVAS_WIDGETS "all" CACHE STRING
     "Selectable widgets linked into the library: 'all', empty, or a ;-list of keys")
 option(ULTRACANVAS_WIDGET_RUNTIME_MODULES
     "Build unselected widgets as runtime-loadable modules" ON)
-if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+if((EMSCRIPTEN OR ANDROID OR IOS) AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
     message(STATUS "Widgets: no dynamic loading on this platform - runtime modules disabled")
     set(ULTRACANVAS_WIDGET_RUNTIME_MODULES OFF)
 endif()
@@ -1617,8 +1658,9 @@ endif()
 # module still builds and simply registers no printer backend. Not in the
 # browser, which has no printing system: the toolchain finds host programs,
 # so the host's cups-config answered for the wasm build and the link asked
-# for a -lcups that does not exist there.
-if(UNIX AND NOT EMSCRIPTEN)
+# for a -lcups that does not exist there. Nor on iOS, for the same reason: the
+# Mac's own cups-config would answer for an iOS build, and iOS has no CUPS.
+if(UNIX AND NOT EMSCRIPTEN AND NOT IOS)
     pkg_check_modules(ULTRACANVAS_CUPS QUIET cups)
     if(NOT ULTRACANVAS_CUPS_FOUND)
         # Older CUPS installs ship cups-config instead of a .pc file.
@@ -1813,8 +1855,8 @@ file(GLOB ULTRACANVAS_PLATFORM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.cpp
 )
 
-# macOS needs Objective-C++ files
-if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+# macOS and iOS need Objective-C++ files
+if(ULTRACANVAS_PLATFORM STREQUAL "MacOS" OR ULTRACANVAS_PLATFORM STREQUAL "iOS")
     file(GLOB ULTRACANVAS_OBJCPP_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
     )
@@ -1824,6 +1866,13 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
     )
     list(APPEND ULTRACANVAS_PLATFORM_SOURCES ${ULTRACANVAS_OBJCPP_SOURCES})
+    # The iOS backend is written for ARC (strong properties, __weak, blocks
+    # holding Objective-C objects). The glob-pattern property below names no
+    # real file, so it sets nothing: ARC goes on the files themselves.
+    if(ULTRACANVAS_PLATFORM STREQUAL "iOS")
+        set_source_files_properties(${ULTRACANVAS_OBJCPP_SOURCES}
+                PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    endif()
 
     set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
@@ -2529,12 +2578,12 @@ target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${UL
 foreach(_inc_dir ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS} ${TINYXML2_INCLUDE_DIRS})
     target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
 endforeach()
-if(NOT APPLE AND FONTCONFIG_FOUND)
+if((NOT APPLE OR IOS) AND FONTCONFIG_FOUND)
     foreach(_inc_dir ${FONTCONFIG_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
 endif()
-if(NOT APPLE AND PANGOFT2_FOUND)
+if((NOT APPLE OR IOS) AND PANGOFT2_FOUND)
     foreach(_inc_dir ${PANGOFT2_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
@@ -2928,6 +2977,38 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
     unset(_uc_src)
     unset(_uc_sym)
     unset(_uc_count)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "iOS")
+    # What a source tests where __APPLE__ alone would mean macOS (fontconfig
+    # instead of CoreText, no AppKit, no `open`): PUBLIC, so an application's
+    # sources see it too.
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_IOS=1)
+    # UIKit for the backend (OS/iOS), QuartzCore for the layer the window
+    # presents into, CoreGraphics for the image it presents, Foundation and
+    # CoreFoundation for the run loop. fontconfig is not an Apple library on
+    # iOS: it comes from the sysroot (scripts/ios-bootstrap-sysroot.sh).
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            "-framework UIKit"
+            "-framework Foundation"
+            "-framework CoreFoundation"
+            "-framework CoreGraphics"
+            "-framework QuartzCore"
+            "-framework CoreText"
+            "-framework Security"
+            "-framework UniformTypeIdentifiers"
+            ${FONTCONFIG_LIBRARIES}
+    )
+    # The sysroot's libraries are static archives named by pkg-config as bare
+    # -l names (configure with -DPKG_CONFIG_ARGN=--static for the full list),
+    # so their directories travel with the core to the application's link.
+    _uc_public_link_directories(${ULTRACANVAS_LIB_NAME}
+            ${CAIRO_LIBRARY_DIRS} ${PANGO_LIBRARY_DIRS} ${FREETYPE_LIBRARY_DIRS}
+            ${HARFBUZZ_LIBRARY_DIRS} ${GLIB_LIBRARY_DIRS} ${TINYXML2_LIBRARY_DIRS}
+            ${FONTCONFIG_LIBRARY_DIRS} ${LIBRSVG_LIBRARY_DIRS})
+    # main() is the framework's (OS/iOS/UltraCanvasiOSMain.mm), in this static
+    # archive: the application defines ultracanvas_app_main() instead. -u
+    # makes the linker take main's object from the archive whatever the
+    # order on the link line.
+    target_link_options(${ULTRACANVAS_LIB_NAME} INTERFACE "LINKER:-u,_main")
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
@@ -3495,7 +3576,9 @@ elseif(WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp)
-elseif(APPLE)
+elseif(APPLE AND NOT IOS)
+    # libproc, which iOS does not offer: iOS gets the null factory
+    # (NetworkMonitorBackend.h).
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)
 endif()

@@ -285,7 +285,7 @@ namespace {
                                                          const std::string& text) {
         auto lbl = DemoKit::CreateText(id, text);
         lbl->SetFontSize(11);
-        lbl->SetTextColor(Color(70, 70, 80, 255));
+        lbl->SetTextColor(DemoKit::Themed(Color(70, 70, 80, 255)));
         lbl->SetMargin(8, 12, 4, 12);   // top, right, bottom, left
         return lbl;
     }
@@ -315,7 +315,7 @@ namespace {
         void Heading(const std::string& id, const std::string& text) {
             auto lbl = DemoKit::CreateHeading(id, text);
             lbl->SetFontSize(12);
-            lbl->SetTextColor(Color(40, 50, 120, 255));
+            lbl->SetTextColor(DemoKit::Themed(Color(40, 50, 120, 255)));
             if (grid) lbl->SetMargin(6, 0, 0, 0);
             DemoKit::Add(panel, lbl);
             grid = DemoKit::CreateRow(id + "Grid", colGap);
@@ -340,7 +340,7 @@ namespace {
                                                   const std::string& id,
                                                   const std::string& text) {
             auto lbl = DemoKit::AddCaption(cell, id, text);
-            lbl->SetTextColor(Color(80, 80, 90, 255));
+            lbl->SetTextColor(DemoKit::Themed(Color(80, 80, 90, 255)));
             return lbl;
         }
 
@@ -675,7 +675,7 @@ namespace {
             const std::function<void(const std::shared_ptr<UltraCanvasGanttChartElement>&)>& configure,
             GanttDesign design, int innerW, int innerH) {
         auto tab = std::make_shared<UltraCanvasContainer>(id, 0, 0, innerW, innerH);
-        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab->layout.SetFlexColumn().SetFlexGap(4)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddFlexChild(tab, MakeTabDescription(id + "Desc", description), 0);
@@ -704,7 +704,7 @@ namespace {
         auto caption = DemoKit::CreateText("GanttPalCap" + suffix, menu[index].first);
         caption->SetFontSize(11);
         caption->SetFontWeight(FontWeight::Bold);
-        caption->SetTextColor(Color(50, 55, 70, 255));
+        caption->SetTextColor(DemoKit::Themed(Color(50, 55, 70, 255)));
         AddFlexChild(cell, caption, 0);
 
         auto data = BuildLaunchProject();
@@ -736,7 +736,7 @@ namespace {
     // palette, in a 2 x 4 grid that follows the page size.
     std::shared_ptr<UltraCanvasContainer> MakePaletteTab(int innerW, int innerH) {
         auto tab = std::make_shared<UltraCanvasContainer>("GanttTabPalettes", 0, 0, innerW, innerH);
-        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab->layout.SetFlexColumn().SetFlexGap(4)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
@@ -800,7 +800,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
 
     // ---- Tab 1: Design Studio (all appearance options) ----------------------
     auto studio = std::make_shared<UltraCanvasContainer>("GanttTabStudio", 0, 0, INNER_W, INNER_H);
-    studio->SetBackgroundColor(Color(255, 255, 255, 255));
+    studio->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     studio->layout.SetFlexRow().SetFlexGap(10)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
@@ -810,7 +810,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
     const float PANEL_W = 390.0f;
     auto panel = std::make_shared<UltraCanvasContainer>("GanttStudioPanel", 0, 0,
                                                         static_cast<int>(PANEL_W), INNER_H);
-    panel->SetBackgroundColor(Color(247, 247, 250, 255));
+    panel->SetBackgroundColor(DemoKit::Themed(Color(247, 247, 250, 255)));
     panel->size.width = CSSLayout::Dimension::Px(PANEL_W);
     panel->SetPadding(8, 12, 8, 12);
     panel->layout.SetFlexColumn().SetFlexGap(4)

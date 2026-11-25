@@ -787,7 +787,7 @@ std::shared_ptr<UltraCanvasLabel> MakeTabText(const std::string& id, const std::
     auto label = DemoKit::CreateText(id, text);
     label->SetFontSize(fontSize);
     if (bold) label->SetFontWeight(FontWeight::Bold);
-    label->SetTextColor(color);
+    label->SetTextColor(DemoKit::ThemedInk(color));
     return label;
 }
 
@@ -950,7 +950,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
 
     // ---------------------------------------------------------- control panel
     auto panel = std::make_shared<UltraCanvasContainer>("ShaderControls", 690, 36, 310, 650);
-    panel->SetBackgroundColor(Color(246, 246, 248, 255));
+    panel->SetBackgroundColor(DemoKit::Themed(Color(246, 246, 248, 255)));
     panel->SetBorders(1.0f);
     panel->SetPadding(10.0f);
     MakePanelColumn(*panel);
@@ -1009,7 +1009,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
     };
     auto makeGroup = [&panel](const char* id) {
         auto group = DemoKit::CreateColumn(id, 2);
-        group->SetBackgroundColor(Color(246, 246, 248, 255));
+        group->SetBackgroundColor(DemoKit::Themed(Color(246, 246, 248, 255)));
         DemoKit::Add(panel, group);
         return group;
     };

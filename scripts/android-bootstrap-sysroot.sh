@@ -102,6 +102,19 @@ echo "android-bootstrap-sysroot: triplet  $triplet"
 echo "android-bootstrap-sysroot: sysroot  $sysroot"
 echo
 
+# The GNU archives the manifest needs (gperf, libiconv, gettext), fetched
+# beforehand from other GNU mirrors when vcpkg's two GNU hosts are slow or
+# down - they timed out on gperf twice in a morning and failed the whole
+# arm64 sysroot. vcpkg takes a file already in its downloads folder when its
+# SHA512 is the port's; the helper never fails the build, vcpkg then tries
+# itself as before.
+seed_args=(--vcpkg-root "$vcpkg_root" --manifest "$manifest_dir"
+           --downloads "${VCPKG_DOWNLOADS:-$vcpkg_root/downloads}"
+           --overlay "$repo/MacOS/deps/ports")
+[ "$with_net" -eq 1 ] && seed_args+=(--feature net)
+[ "$with_chatcube" -eq 1 ] && seed_args+=(--feature chatcube)
+python3 "$repo/scripts/vcpkg_seed_gnu_sources.py" "${seed_args[@]}" || true
+
 "$vcpkg_root/vcpkg" "${install_args[@]}"
 
 installed="$sysroot/$triplet"

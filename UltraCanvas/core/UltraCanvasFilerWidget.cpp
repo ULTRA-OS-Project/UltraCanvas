@@ -51,6 +51,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.59.1 - a rescan of the folder shown keeps the previews of unchanged files: deleting one
+//                  file no longer redraws the whole folder with type glyphs before the thumbnails
+// Version: 1.59.0 - letting a selection rectangle go fires onSelectionChanged once more (IsDragInProgress)
 // Version: 1.57.0 - Run in background: the progress window's button, onBackgroundProgress on every
 //                  tick, BringOperationToFront; queued archive jobs stay in the background
 // Version: 1.56.0 - the progress window's figures, route and Pause: copies, moves and deletes count the
@@ -3798,6 +3801,21 @@ namespace UltraCanvas {
         renamedFromPath.clear();
         renamedToPath.clear();
 
+        // The folder already shown, listed again (a delete, a rename, a copy
+        // in, the folder watch): the thumbnails of the files that are still
+        // there, unchanged, stay. Dropping them all redrew the whole folder
+        // with type glyphs and the thumbnails a moment later, every time one
+        // file was deleted. Each file's stamp is kept to tell a file that
+        // changed (same name, new content) from one that did not.
+        const bool keepPreviews = !fileListMode && !currentPath.empty() &&
+                                  currentPath == thumbCacheFolder;
+        std::unordered_map<std::string, std::pair<std::time_t, uint64_t>> previousStamps;
+        if (keepPreviews) {
+            const std::vector<FilerEntry>& listed = filterAllEntries.empty() ? entries : filterAllEntries;
+            previousStamps.reserve(listed.size());
+            for (const FilerEntry& e : listed) previousStamps[e.path] = {e.modifiedTime, e.size};
+        }
+
         entries.clear();
         effectiveSizesValid = false;
         hoveredIndex = -1;
@@ -3815,7 +3833,16 @@ namespace UltraCanvas {
             statsQueue.clear();
             folderStatsCache.clear();
             aspectQueue.clear();
-            aspectCache.clear();
+            // A picture's proportions are kept with its thumbnail on a
+            // rescan of the same folder (PruneThumbnailCache drops those of
+            // changed files), so the rows keep their heights; a 0 is also
+            // the "probe queued" mark, and the queue was just emptied.
+            if (keepPreviews) {
+                for (auto it = aspectCache.begin(); it != aspectCache.end();)
+                    it = it->second == 0.0f ? aspectCache.erase(it) : std::next(it);
+            } else {
+                aspectCache.clear();
+            }
             mediaQueue.clear();
             mediaInfoCache.clear();
             lockQueue.clear();
@@ -3826,7 +3853,8 @@ namespace UltraCanvas {
         // An open question still counting a folder lost its walk with the
         // stats above: queue it again.
         RefreshLiveDialogFacts();
-        DropThumbnailCache();
+        if (!keepPreviews) DropThumbnailCache();
+        thumbCacheFolder = fileListMode ? std::string() : currentPath;
 
         std::error_code ec;
         // A remote drive's path is the host's to answer (see remoteListing),
@@ -4070,6 +4098,23 @@ namespace UltraCanvas {
         }
 
         SortEntries();
+
+        if (keepPreviews) {
+            // What is still listed, with the stamp it had: its previews stay.
+            // What changed (same name, new size or time) is decoded again in
+            // the background, keeping its old picture until the new one is in.
+            std::unordered_set<std::string> unchanged, changed;
+            const std::vector<FilerEntry>& listed = filterAllEntries.empty() ? entries : filterAllEntries;
+            for (const FilerEntry& e : listed) {
+                auto it = previousStamps.find(e.path);
+                if (it == previousStamps.end()) continue;
+                if (it->second.first == e.modifiedTime && it->second.second == e.size)
+                    unchanged.insert(e.path);
+                else
+                    changed.insert(e.path);
+            }
+            PruneThumbnailCache(unchanged, changed);
+        }
 
         // A delete that wiped out the whole selection left the entry that
         // inherits it here (SetSelectNextAfterDelete): it replaces the restore
@@ -13204,8 +13249,13 @@ namespace UltraCanvas {
                 }
                 if (!blob) {
                     if (it->second.state == ThumbState::Failed) return nullptr;
-                    // Pending: fall through and re-record the want so the
-                    // item keeps its place when the queue is rebuilt.
+                    // Pending: re-record the want so the item keeps its place
+                    // when the queue is rebuilt - and a file that changed on
+                    // disk keeps showing its old thumbnail meanwhile.
+                    if (it->second.stalePixmap) {
+                        thumbFrameWants.push_back(ThumbRequest{path, w, h, fit, scale, 0});
+                        return it->second.stalePixmap;
+                    }
                 }
             } else {
                 ThumbSlot fresh;
@@ -13631,6 +13681,69 @@ namespace UltraCanvas {
         textSlots.clear();
         peekQueue.clear();
         peekSlots.clear();
+    }
+
+    void UltraCanvasFilerWidget::PruneThumbnailCache(const std::unordered_set<std::string>& keepPaths,
+                                                     const std::unordered_set<std::string>& changedPaths) {
+        // A slot's key is "<path>|<w>x<h>|<fit>|<scale>": the path is what
+        // stands before the last three separators.
+        auto pathOfKey = [](const std::string& key) {
+            size_t end = key.size();
+            for (int i = 0; i < 3; ++i) {
+                if (end == 0) return key;
+                end = key.rfind('|', end - 1);
+                if (end == std::string::npos) return key;
+            }
+            return key.substr(0, end);
+        };
+        {
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            for (auto it = thumbSlots.begin(); it != thumbSlots.end();) {
+                const std::string path = pathOfKey(it->first);
+                if (keepPaths.count(path)) { ++it; continue; }
+                // Changed, not gone: decoded again, and until then the tile
+                // keeps the picture it had (a compressed slot's from its hot
+                // copy, or inflated here - a few tiles, not the folder).
+                std::shared_ptr<UCPixmap> previous;
+                if (changedPaths.count(path)) {
+                    if (it->second.state == ThumbState::Ready) {
+                        previous = it->second.pixmap;
+                        if (!previous) {
+                            auto hot = thumbHot.find(it->first);
+                            if (hot != thumbHot.end()) previous = hot->second.pixmap;
+                            else if (it->second.qoi) previous = QoiDecompressPixmap(*it->second.qoi);
+                        }
+                    } else {
+                        previous = it->second.stalePixmap;   // changed again while re-decoding
+                    }
+                }
+                ReleaseThumbSlotLocked(it->first, it->second);
+                if (previous) {
+                    ThumbSlot fresh;
+                    fresh.tick = it->second.tick;
+                    fresh.nativeIcon = it->second.nativeIcon;
+                    fresh.stalePixmap = std::move(previous);
+                    it->second = std::move(fresh);
+                    ++it;
+                } else {
+                    it = thumbSlots.erase(it);
+                }
+            }
+            // Queued work for files that are gone or changed is let go; what
+            // the kept tiles still want is asked for again by the next frame.
+            thumbQueue.clear();
+            textQueue.clear();
+            peekQueue.clear();
+            for (auto it = thumbFailedPaths.begin(); it != thumbFailedPaths.end();)
+                it = keepPaths.count(*it) ? std::next(it) : thumbFailedPaths.erase(it);
+            for (auto it = textSlots.begin(); it != textSlots.end();)
+                it = keepPaths.count(it->first) ? std::next(it) : textSlots.erase(it);
+            for (auto it = peekSlots.begin(); it != peekSlots.end();)
+                it = keepPaths.count(it->first) ? std::next(it) : peekSlots.erase(it);
+        }
+        std::lock_guard<std::mutex> lk(statsMutex);
+        for (auto it = aspectCache.begin(); it != aspectCache.end();)
+            it = keepPaths.count(it->first) ? std::next(it) : aspectCache.erase(it);
     }
 
     void UltraCanvasFilerWidget::SetCompressedThumbnails(bool enabled) {
@@ -14086,6 +14199,7 @@ namespace UltraCanvas {
                     slot.nativeIcon = nativeIcon;
                     if (pm) {
                         slot.state = ThumbState::Ready;
+                        slot.stalePixmap.reset();   // the new picture replaces the old
                         slot.rawBytes = static_cast<size_t>(pm->GetRawWidth())
                                       * static_cast<size_t>(pm->GetRawHeight()) * 4;
                         if (blob) {
@@ -14133,6 +14247,7 @@ namespace UltraCanvas {
                                               kUnreadableRetryDelay * slot.attempts;
                         } else {
                             slot.state = ThumbState::Failed;
+                            slot.stalePixmap.reset();
                             producedNothing = true;
                             // Its row no longer shrinks for it (EntryAspect).
                             if (!nativeIcon &&
@@ -17624,6 +17739,11 @@ namespace UltraCanvas {
             // which keeps its old meaning — clear the selection (a Ctrl
             // click on empty space leaves it alone).
             if (!marqueeAdditive) HandleItemClick(-1, false, false);
+        } else {
+            // The rectangle is let go: the selection it leaves, once more,
+            // now that IsDragInProgress() is false - a host that waited for
+            // the drag to end (a preview pane) follows it from here.
+            FireSelectionChanged();
         }
         marqueeBaseSelection.clear();
         RequestRedraw();

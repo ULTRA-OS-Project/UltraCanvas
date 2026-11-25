@@ -1037,8 +1037,14 @@ stuck; failed ones mean the files would not decode, and the log names each of
 them. `workerCount`, `longestJobPath` and `longestJobSeconds` name the job
 that has kept a worker busy longest: one running past 20 s is taken to be
 stuck, and another worker is started beside it (up to eight extra), so a
-single file that never finishes cannot stop every other thumbnail. Rescanning
-the folder or changing the view drops everything.
+single file that never finishes cannot stop every other thumbnail. Opening
+another folder or changing the view drops everything. A rescan of the folder
+already shown - a file deleted, renamed, copied in, or the folder watch
+noticing a change - keeps what was made for every file whose name, size and
+modification time are unchanged, so deleting one file does not redraw the
+folder with type glyphs before the thumbnails come back. A file that changed
+is made again in the background, and its tile keeps the old thumbnail until
+the new one is in.
 
 ### Thumbnails between runs
 
@@ -2062,8 +2068,9 @@ What it costs, and where it is drawn:
   on its way — or failed — shows as a blank sheet, so a folder never pops from
   "open" back to "closed".
 
-The listings are dropped with the thumbnail cache — on a rescan, so the folder
-watch's rescan after a change is what makes the previews current — and are
+The listings are dropped with the thumbnail cache — a subfolder's on a rescan
+that finds its modification time changed, so the folder watch's rescan after a
+change is what makes the previews current — and are
 capped at 4096 folders, past which everything outside the current frame goes.
 
 `FolderPreviewCardRects(box, count)` is the card geometry, public and pure so
@@ -3034,6 +3041,20 @@ auto-scrolls at the viewport edge, Escape abandons it (the previous
 selection returns), and a press-and-release without movement keeps its old
 meaning — a plain click on empty space clears the selection (a Ctrl click
 leaves it alone).
+While the band is drawn, `onSelectionChanged` fires with every entry it takes
+in or lets go. A host that follows the selection with something that opens,
+closes or reflows - a preview pane beside the list - waits for the drag to
+end: `IsDragInProgress()` is true while a band is drawn or entries are
+dragged, and letting the band go fires `onSelectionChanged` once more with it
+false, so the host sees where the band ended.
+
+```cpp
+std::function<void(const std::vector<FilerEntry>&)> showInPreview;   // the host's preview
+filer->onSelectionChanged = [&](const std::vector<FilerEntry>& selected) {
+    if (filer->IsDragInProgress()) return;   // the band's last state comes on release
+    showInPreview(selected);
+};
+```
 Double-clicking an entry with the **left** button opens/activates it (folders
 and archives are entered, files fire `onFileActivated`); the right and middle
 buttons do not, although Windows reports a double-click for those too — a

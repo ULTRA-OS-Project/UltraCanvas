@@ -21,6 +21,11 @@ name: Android build
 # library it built, so a run on a warm cache only builds the framework. A
 # manual dispatch from the Actions tab works against any branch.
 #
+# MobilePC (Apps/MobilePC: UltraDesktop and the applications it starts, on
+# the framework's desktop mode) is built in the same job against the same
+# sysroot, packaged as the run's MobilePC-<abi> artifact, and run by the
+# emulator-mobilepc job with a simulated second display.
+#
 # The chatcube job builds ChatCube for Android the same way: the sysroot with
 # its chatcube feature as well (UltraNet's OpenSSL, c-ares and curl, SQLite,
 # libsodium, Opus - android-bootstrap-sysroot.sh --with-chatcube), the core
@@ -45,11 +50,23 @@ on:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/vcpkg_seed_gnu_sources.py'
       - 'scripts/android-package-apk.sh'
+      - 'scripts/strip_method_parameters.py'
       - 'scripts/android-emulator-smoke.sh'
+      - 'scripts/android-mobilepc-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
+      - 'UltraCanvas/core/UltraCanvasEmbedded*'
+      - 'UltraCanvas/core/UltraCanvasHostedApps.cpp'
+      - 'UltraCanvas/core/UltraCanvasDesktopShell.cpp'
       - 'Apps/DemoApp/**'
       - 'Apps/ChatCube/**'
+      - 'Apps/MobilePC/**'
+      - 'Apps/UltraDesktop/**'
+      - 'Apps/Texter/**'
+      - 'Apps/UltraViewer/**'
+      - 'Apps/UltraPaint/**'
+      - 'Apps/ArtCreator/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -58,11 +75,23 @@ on:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/vcpkg_seed_gnu_sources.py'
       - 'scripts/android-package-apk.sh'
+      - 'scripts/strip_method_parameters.py'
       - 'scripts/android-emulator-smoke.sh'
+      - 'scripts/android-mobilepc-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
+      - 'UltraCanvas/core/UltraCanvasEmbedded*'
+      - 'UltraCanvas/core/UltraCanvasHostedApps.cpp'
+      - 'UltraCanvas/core/UltraCanvasDesktopShell.cpp'
       - 'Apps/DemoApp/**'
       - 'Apps/ChatCube/**'
+      - 'Apps/MobilePC/**'
+      - 'Apps/UltraDesktop/**'
+      - 'Apps/Texter/**'
+      - 'Apps/UltraViewer/**'
+      - 'Apps/UltraPaint/**'
+      - 'Apps/ArtCreator/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -335,6 +364,56 @@ jobs:
         with:
           name: UltraCanvasDemo-${{ matrix.abi }}
           path: apk/UltraCanvasDemo-${{ matrix.abi }}.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # MobilePC: UltraDesktop, Texter, UltraViewer, UltraPaint and ArtCreator in one
+      # app library on the desktop mode, against the same sysroot.
+      - name: Build the MobilePC app library
+        run: |
+          sysroot="$RUNNER_TEMP/android-sysroot/$TRIPLET"
+          export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
+          cmake --build build-android --target MobilePC --parallel "$(nproc)" -- -k 0
+
+      # As the demo's: the activity's entry point and every native method.
+      - name: Check the MobilePC library's entry points
+        run: |
+          lib="$(find build-android -name libMobilePC.so -print -quit)"
+          if [ -z "$lib" ]; then
+            echo "::error::libMobilePC.so was not built"
+            exit 1
+          fi
+          readelf="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          exported="$("$readelf" --dyn-syms --wide "$lib" | awk '$7 != "UND" {print $8}')"
+          missing=0
+          for sym in ANativeActivity_onCreate $(grep -ho 'Java_org_ultraos_[A-Za-z0-9_]*(' UltraCanvas/OS/Android/*.cpp | tr -d '(' | sort -u); do
+            if ! grep -qx "$sym" <<<"$exported"; then
+              echo "::error::$lib does not export $sym"
+              missing=1
+            fi
+          done
+          ls -l "$lib"
+          exit "$missing"
+
+      # Its own manifest, assets and icon, and its own version (line 1 of
+      # Docs/MobilePC/CHANGELOG.md).
+      - name: Package the MobilePC APK
+        run: |
+          version="$(sed -n '1s/^#### [0-9-]* \*\([0-9.]*\)\*.*/\1/p' Docs/MobilePC/CHANGELOG.md)"
+          scripts/android-package-apk.sh --abi "$ABI" \
+            --lib build-android/lib/libMobilePC.so \
+            --out "apk/MobilePC-$ABI.apk" \
+            --ndk "$ANDROID_NDK_LATEST_HOME" \
+            --manifest Apps/MobilePC/android/AndroidManifest.xml \
+            --assets Apps/MobilePC/android/assets.txt \
+            --icon media/appicon/MobilePC.png \
+            --version-name "$version"
+
+      - name: Upload the MobilePC APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: MobilePC-${{ matrix.abi }}
+          path: apk/MobilePC-${{ matrix.abi }}.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -617,5 +696,52 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: emulator-smoke/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # MobilePC on the emulator with a second display: the desktop must be drawn
+  # there, UltraPaint must start on it, and the desktop must come back to the
+  # phone's screen when the display goes (scripts/android-mobilepc-smoke.sh).
+  # It needs only the x86_64 APK: an arm64 leg that failed (a vcpkg mirror
+  # timing out on a source download) must not keep it from running, and the
+  # download step below fails it when the x86_64 leg built no APK.
+  emulator-mobilepc:
+    name: android emulator (MobilePC, second display)
+    needs: android
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download the x86_64 MobilePC APK
+        uses: actions/download-artifact@v6
+        with:
+          name: MobilePC-x86_64
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run MobilePC on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: scripts/android-mobilepc-smoke.sh apk/MobilePC-x86_64.apk mobilepc-smoke
+
+      - name: Upload the screenshots and logcat
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-mobilepc-smoke
+          path: mobilepc-smoke/
           if-no-files-found: ignore
           retention-days: 14

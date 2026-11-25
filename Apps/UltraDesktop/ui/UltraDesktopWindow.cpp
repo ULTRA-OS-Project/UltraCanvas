@@ -2,6 +2,7 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.4 - the wallpaper's JPEG beside an AVIF where the AVIF cannot be read (Android); builds without the message centre
 // Version: 0.8.3 - the settings button's menu has a title, "UltraDesktop"
 // Version: 0.8.2 - the tool group gains UltraToDo; the tool applications'
 //                  windows stay off the taskbar unless toolAppsOnTaskbar; the
@@ -308,7 +309,9 @@ UltraDesktopWindow::UltraDesktopWindow() = default;
 
 UltraDesktopWindow::~UltraDesktopWindow() {
     if (lookHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(lookHandler_);
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
     toasts_.reset();   // its windows, its bus connection
+#endif
     // The poll thread, the shell monitor and the shortcut's thread all hand
     // over through members of this object: stop them before anything else goes.
     StopDevicePoll();
@@ -431,19 +434,42 @@ std::string UltraDesktopWindow::WallpaperPath() const {
     return DefaultWallpaperPath();
 }
 
+namespace {
+// The JPEG beside an AVIF of ULTRA OS's own pictures (media/images/desktop
+// ships both): what a build without libheif shows - Android's, whose APK
+// carries only the JPEGs. "" for any other file.
+std::string JpegTwin(const std::string& path) {
+    const fs::path p = PathFromUtf8(path);
+    std::string ext = PathToUtf8(p.extension());
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (ext != ".avif") return std::string();
+    fs::path twin = p;
+    twin.replace_extension(".jpg");
+    std::error_code ec;
+    return fs::is_regular_file(twin, ec) ? PathToUtf8(twin) : std::string();
+}
+} // namespace
+
 std::string UltraDesktopWindow::DefaultWallpaperPath() {
-    // ULTRA OS's own picture; the framework's landscape where it is missing.
+    // ULTRA OS's own picture - as AVIF, else its JPEG - and the framework's
+    // landscape where both are missing.
     const std::string own = NormalizePath(GetResourcesDir() + kDefaultWallpaper);
     std::error_code ec;
     if (fs::is_regular_file(PathFromUtf8(own), ec)) return own;
+    fs::path jpeg = PathFromUtf8(own);
+    jpeg.replace_extension(".jpg");
+    if (fs::is_regular_file(jpeg, ec)) return PathToUtf8(jpeg);
     return NormalizePath(GetResourcesDir() + kFallbackWallpaper);
 }
 
 void UltraDesktopWindow::LoadWallpaper(UltraCanvasImageElement& wallpaper) const {
     const std::string path = WallpaperPath();
     if (wallpaper.LoadFromFile(path)) return;
-    // A picture this build cannot read (an AVIF without libheif): the
-    // framework's landscape rather than an empty desktop.
+    // An AVIF this build cannot read (no libheif): the same picture as JPEG.
+    const std::string twin = JpegTwin(path);
+    if (!twin.empty() && wallpaper.LoadFromFile(twin)) return;
+    // Anything else unreadable: the framework's landscape rather than an
+    // empty desktop.
     const std::string fallback = NormalizePath(GetResourcesDir() + kFallbackWallpaper);
     debugOutput << "UltraDesktop: the wallpaper \"" << path << "\" could not be read, showing " << fallback
                 << std::endl;
@@ -2336,6 +2362,12 @@ void UltraDesktopWindow::OnTimer() {
         ticksSinceNotices_ = 0;
         ApplyNotices();
     }
+    // As the session's shell on Windows, minimized windows stay out of
+    // sight - not parked as title bars along the bottom of the screen.
+    if (++ticksSinceMinimized_ >= kMinimizedTicks) {
+        ticksSinceMinimized_ = 0;
+        UltraCanvasDesktopShell::KeepMinimizedWindowsHidden();
+    }
 
     if (screenshotBadgeTicks_ > 0 && --screenshotBadgeTicks_ == 0 && organiser_) {
         organiser_->ClearItemBadge("screenshot");
@@ -2442,8 +2474,18 @@ void UltraDesktopWindow::RefreshWindows() {
             };
             button->onHoverEnter = [this, key]() { HoverRunning(key); };
             button->onHoverLeave = [this, key]() { UnhoverRunning(key); };
+            group.iconFile = iconFile;
         } else {
             button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(group.itemId));
+            // An icon that is found after the button was made (a Store
+            // application's, resolved a moment later) replaces the letter,
+            // and the letter comes back if it goes.
+            if (button && iconFile != group.iconFile) {
+                group.iconFile = iconFile;
+                button->SetIcon(iconFile);
+                button->SetText(iconFile.empty() ? group.letter : std::string());
+                button->SetUseIconAsMask(iconFile.empty());
+            }
         }
 
         // The windows keep the order they came in, not the stacking order,
@@ -3329,7 +3371,17 @@ void UltraDesktopWindow::RefreshTray() {
         } else {
             button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget(itemId));
             if (button && known->second != icon.iconFile) {
+                // The picture came (or went) after the button was made: the
+                // initial stands in only while there is none. It used to stay
+                // beside the picture ("W" beside WhatsApp's icon).
+                std::string text;
+                if (icon.iconFile.empty() && !icon.appClass.empty()) {
+                    text = icon.appClass.substr(0, 1);
+                    std::transform(text.begin(), text.end(), text.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+                }
                 button->SetIcon(icon.iconFile);
+                button->SetText(text);
                 known->second = icon.iconFile;
             }
         }

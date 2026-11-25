@@ -141,7 +141,7 @@ namespace UltraCanvas {
         // The sidebar beside a content column, which takes the rest of the
         // width and is as tall as its text.
         auto sidebarContainer = DemoKit::CreateRow("SidebarDemo", 16, false);
-        sidebarContainer->SetBackgroundColor(Color(245, 245, 245, 255));
+        sidebarContainer->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
         sidebarContainer->SetBorders(1, Color(220, 220, 220, 255));
         sidebarContainer->SetPadding(10);
         DemoKit::Add(card4, sidebarContainer);

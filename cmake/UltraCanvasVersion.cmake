@@ -139,6 +139,7 @@ _ultracanvas_declare_product(ULTRADBADMIN        "Docs/UltraDBAdmin/CHANGELOG.md
 _ultracanvas_declare_product(DEVICEEXPLORER      "Docs/DeviceExplorer/CHANGELOG.md")
 _ultracanvas_declare_product(SMARTHOMECENTER     "Docs/SmartHomeCenter/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRADESKTOP        "Docs/UltraDesktop/CHANGELOG.md")
+_ultracanvas_declare_product(MOBILEPC            "Docs/MobilePC/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLIPBOARD      "Docs/UltraClipboard/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRANOTIFICATIONS  "Docs/UltraNotifications/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRASNIP           "Docs/UltraSnip/CHANGELOG.md")

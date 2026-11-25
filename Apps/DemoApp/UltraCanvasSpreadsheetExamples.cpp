@@ -167,7 +167,7 @@ namespace UltraCanvas {
         // The status takes the rest of the line and wraps a long path.
         auto status = DemoKit::CreateText("ssStatus", "");
         status->SetFontSize(12);
-        status->SetTextColor(Color(90, 90, 90, 255));
+        status->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
         DemoKit::Add(toolbar, status, 1);
 
         // Second toolbar line: where the column widths came from, plus how to

@@ -1454,6 +1454,28 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
+- **UltraCanvasEmbeddedWindowManager** (`UltraCanvasEmbeddedWindowManager.h`)
+  — a window manager inside the program, for a backend that draws many
+  windows onto one surface: stacking bands, focus, placement, title bars kept
+  with their windows (`AttachFrame`; the bar itself is
+  `UltraCanvasEmbeddedWindowFrame`, a borderless window of an
+  `UltraCanvasLabel` and three `UltraCanvasButton`s), moving and resizing,
+  maximize into the work area reserved edges leave, pointer routing with the
+  button grab, damage, and compositing with a drawn pointer. Platform-neutral;
+  the Android backend's desktop mode (`OS/Android/UltraCanvasAndroidDesktop`,
+  MobilePC) runs on it, and through it answers `UltraCanvasDesktopShell` as
+  its embedded host. Core in `core/UltraCanvasEmbeddedWindowManager.cpp` and
+  `core/UltraCanvasEmbeddedWindowFrame.cpp`; tested by
+  `Tests/EmbeddedWindowManagerTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md`.
+
+- **UltraCanvasHostedApps** (`UltraCanvasHostedApps.h`) — applications that
+  run inside their host program (MobilePC's): registered with an entry
+  point, listed by `UltraCanvasDesktopShell::ListApplications` where the
+  platform has none of its own, started in the process by
+  `LaunchApplication`. Core in `core/UltraCanvasHostedApps.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
+
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
   operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
   Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,
@@ -8192,7 +8214,17 @@ keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
 opening and saving, APK asset extraction). The dependency sysroot builds in
 CI, and DemoApp links against it into `libUltraCanvasDemo.so`, the app library
 an APK carries, and CI packages that into a debug-signed APK for `arm64-v8a`
-and `x86_64`; nothing has installed one yet, so none of it has run on a device — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
+and `x86_64`. The x86_64 APK is installed and run on an emulator in CI
+(`scripts/android-emulator-smoke.sh`, at 160 and 420 dpi): the first frame
+with content, a tap landing on the element under it, typed text reaching the
+focused field, and an in-place rotation are observed there; ChatCube builds
+the same way, and MobilePC's desktop mode is run on the emulator with a
+simulated second display (`scripts/android-mobilepc-smoke.sh`). Dialogs, the
+IME's composing path and gestures are still designed and reviewed rather than
+seen working, and nothing has run on a physical device yet. The backend's
+[README](../../UltraCanvas/OS/Android/README.md) keeps the current state;
+`UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding
+and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -27850,6 +27882,7 @@ never to "every desktop".
 | `GetScreenSize(w, h)` | The default screen's size in pixels; on Windows the primary monitor's, the one at 0,0 that a desktop window covers. |
 | `ListScreens()` | Every monitor as a `DesktopScreenInfo` — `x`, `y`, `width`, `height` in physical pixels, `primary`, and `number` - the system's own number for the monitor where it gives one (Windows: n of `\\.\DISPLAYn`, as its display settings number them; 0 on X11) — the primary first, the rest left to right. On Windows `EnumDisplayMonitors`, the primary at 0,0 and a monitor left of or above it at negative coordinates; on X11 RandR's monitors in root-window coordinates, and while nobody chose a primary the one at the origin. Where the platform tells no monitors apart, the one screen `GetScreenSize` reports; a monitor that spans others (a server's automatic whole-screen monitor listed beside ones set with `xrandr --setmonitor`) is left out. A desktop puts its own window on the primary monitor through `WindowConfig::desktopArea` and covers the others with windows of `WindowType::Desktop` placed the same way — UltraDesktop puts its wallpaper there, so a monitor is not left black. |
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
+| `KeepMinimizedWindowsHidden()` | For a desktop that is the session's shell: on Windows without Explorer's taskbar, minimized windows kept out of sight as Explorer keeps them, instead of parked as small title bars along the bottom of the screen (Windows' behaviour when no shell says otherwise). Switches `ARW_HIDE` on for the session whenever something turned it off - an Explorer started and ended during the session puts it back as it ends - and moves a minimized window parked meanwhile off the screen, still minimized. Cheap enough every few seconds; UltraDesktop calls it every two. False beside Explorer's taskbar and on other systems. |
 | `CanCaptureScreen()` | Whether this build can capture the screen at all: Linux (X11, and Wayland through the desktop portal), the BSDs, Windows and macOS; false on Android and WebAssembly, where a screenshot button is better not shown (ChatCube hides its). True does not promise a capture - it can still fail, with its reason (macOS before the person allows it). To let the person choose an area of the capture, see [UltraCanvasScreenAreaPicker](UltraCanvasScreenAreaPicker.md). |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
@@ -28185,13 +28218,35 @@ the shell they are free.
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
 | Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. `CaptureWindowImage` is the compositor's copy of the window through `ext-image-copy-capture-v1` (with `ext-image-capture-source-v1` and `ext-foreign-toplevel-list-v1`, the three XML files carried under `OS/Linux/Wayland/protocols/`), into a `wl_shm` buffer, each step given a second and a half. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, an exclusive one (`StartExclusive`) and the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
-| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` (except on macOS, below), `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
+| macOS, Android, WebAssembly | `null` (on Android in desktop mode the embedded host below answers the windows, the screen and the applications): `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` (except on macOS, below), `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 | macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
 | macOS: the screen capture | `OS/MacOS/UltraCanvasMacOSScreenCapture.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE`): `CaptureScreen`, `CaptureScreenImage` and `CaptureScreenArea` through ScreenCaptureKit's `SCScreenshotManager` (macOS 14; `CGDisplayCreateImage` is obsolete from the macOS 15 SDK on). The main display - the one with the menu bar - whole, at its own pixels (a Retina display at twice its points), without the pointer, its top-left corner 0,0; other displays are not captured yet. macOS asks the person once for *Screen & System Audio Recording* (Privacy & Security): until it is allowed the capture fails with that reason, the first try opens the system's request, and the program needs starting again once it is granted. The call waits for ScreenCaptureKit (ten seconds at most), so it may be made from the UI thread. `ListScreens` stays empty on macOS. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
 fallback when it is absent.
+
+### Inside one program
+
+Where there is no native backend, the fallback can still answer: a window
+manager running inside the program installs itself as the
+`DesktopShellBackend::EmbeddedHost` (`SetEmbeddedHost`, in the internal
+`UltraCanvasDesktopShellBackend.h`), and the fallback forwards the window
+list, `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`, `CloseWindow`,
+`GetWindowBounds`, `MoveWindow`, `GetScreenSize`, `ListScreens`,
+`ReserveScreenEdges`, the application list and `LaunchApplication` of a
+`hosted:` entry to it. Its `NotifyEmbeddedChange()` wakes the shell monitor,
+so a taskbar follows windows opening, closing and taking the focus as it does
+on X11. `BackendName()` is the host's name then, and `IsAvailable()` true.
+
+The Android backend's desktop mode is that host (`UltraCanvasAndroidDesktop`,
+on [UltraCanvasEmbeddedWindowManager](UltraCanvasEmbeddedWindowManager.md)):
+its windows are the window manager's, the one screen is the desktop's output
+(an external display, else the phone's), and the applications are the ones
+the program carries ([UltraCanvasHostedApps](UltraCanvasHostedApps.md)) - so
+UltraDesktop runs there unchanged, as MobilePC shows it on a TV. The screen
+capture, the virtual desktops, the devices, the session's end and the
+loudspeaker stay the `null` backend's.
 
 ## See also
 
@@ -32131,6 +32186,180 @@ is kept out of the package by `package-win.sh`; see [*"Entry point not found"
 in a Windows DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md
+==============================================================================
+
+# UltraCanvasEmbeddedWindowManager — a window manager inside the program
+
+<!-- doc-check: cairo_surface_t* output; cairo_surface_t* SurfaceOf(uint64_t id); float scale; void ResizeWindow(uint64_t id, int width, int height); void DeliverMouseMove(uint64_t id, UltraCanvas::Point2Di local); -->
+
+Where a platform gives a program one surface and no window manager - an
+Android app drawing on a TV through a `Presentation`, a web page's canvas -
+the windows of that program still need stacking, focus, title bars, moving,
+resizing and a pointer. `UltraCanvasEmbeddedWindowManager` is that window
+manager: it keeps the windows of one output and composites their surfaces
+into it.
+
+```cpp
+#include "UltraCanvasEmbeddedWindowManager.h"
+using namespace UltraCanvas;
+
+UltraCanvasEmbeddedWindowManager wm;
+wm.SetOutputSize(1920, 1080);                       // logical px
+
+EmbeddedWindowSpec desktop;
+desktop.layer = EmbeddedWindowLayer::Desktop;
+desktop.fillsOutput = true;                         // always the whole output
+wm.AddWindow(1, desktop);
+wm.Show(1);
+
+EmbeddedWindowSpec editor;
+editor.rect = Rect2Di(-1, -1, 900, 640);            // -1: the manager places it
+editor.title = "Texter";
+wm.AddWindow(2, editor);
+wm.Show(2);                                         // shown, raised, focused
+
+wm.onGeometryChanged = [](uint64_t id, const Rect2Di& r) { ResizeWindow(id, r.width, r.height); };
+wm.Compose(output, scale, [](uint64_t id) { return SurfaceOf(id); }, wm.TakeDamage());
+```
+
+It is the Android backend's desktop mode underneath
+([`OS/Android/README.md`](../../UltraCanvas/OS/Android/README.md#desktop-mode-a-tv-or-monitor),
+`UltraCanvasAndroidDesktop`), which MobilePC uses to put UltraDesktop on a TV.
+It knows nothing of the platform and nothing of elements: windows are ids, a
+rectangle each, and a cairo image surface the caller hands it when it
+composites. `Tests/EmbeddedWindowManagerTest` exercises all of it with no
+display.
+
+## Contents
+
+- [What it keeps](#what-it-keeps)
+- [Bands](#bands)
+- [Title bars](#title-bars)
+- [The pointer](#the-pointer)
+- [Compositing](#compositing)
+- [API](#api)
+- [Related](#related)
+
+## What it keeps
+
+Every rectangle is the window's **content** in the output's logical pixels.
+
+- **Placement.** A window whose `rect` has `x` or `y` below 0 is placed: a
+  dialog (`transientFor`) centred over its window, anything else cascaded from
+  the work area's top left - centred when it is too big to step. Nothing is
+  larger than the work area, and part of every window stays on the output.
+- **The work area** is the output less the strips windows reserve with
+  `ReserveEdges` - a desktop's bars. Maximize fills it (title bar included).
+- **Focus.** Showing a window focuses it; a press in a window raises and
+  focuses it; minimizing, hiding or removing the focused window passes the
+  focus to the window a dialog belongs to, else the topmost one.
+  `onFocusChanged` reports each change. A frame, a popup, a tooltip and a
+  notification never take it (`focusable` false).
+- **State.** `Minimize`, `Maximize`, `Restore`, `ToggleMaximize`; a dialog is
+  raised with its window. `onStateChanged` reports a change the manager made.
+
+## Bands
+
+The stack is ordered by band, bottom first, and `Raise` moves a window to the
+top of its own band only - a click on the desktop never brings it above the
+windows, a dialog never covers a menu:
+
+| `EmbeddedWindowLayer` | For |
+|---|---|
+| `Desktop` | the desktop's window (wallpaper, bars) |
+| `Normal` | application windows and their dialogs |
+| `AlwaysOnTop` | a recording bar, a floating palette |
+| `Notification` | toasts |
+| `Popup` | a menu's or a list's own window |
+| `Tooltip` | tooltips |
+| `Lock` | a lock screen, over everything |
+
+`ListApplicationWindows()` is what a taskbar lists: the focusable windows of
+the `Normal` and `AlwaysOnTop` bands, without frames.
+
+## Title bars
+
+A decorated window gets its title bar as a **window of its own**, attached with
+`AttachFrame(clientId, frameId)`: the manager keeps it just above the window,
+as wide as it, and moves, raises, shows, hides and minimizes it with it. The
+backend draws it like any window; the framework's is
+`UltraCanvasEmbeddedWindowFrame` - an `UltraCanvasLabel` and three
+`UltraCanvasButton`s in a borderless window, so it behaves and looks like
+every other control (hover, theme, scale). A press on its title calls
+`BeginMove(clientId)`; a double click there maximizes or restores.
+
+Resizing needs no window: the edges and corners just **outside** a decorated,
+resizable, unmaximized window take the pointer (`resizeGrip`, 6 px), with the
+resize pointer shapes.
+
+## The pointer
+
+The pointer is the manager's, drawn by `Compose`. A backend feeds it either
+absolute positions (`PointerMove`, `PointerButton`) or relative motion
+(`MovePointerBy`, from a touchpad or a captured mouse). Each call returns an
+`EmbeddedPointerRoute`: the window to deliver the event to, the point in that
+window's own coordinates, and the window the pointer just left (to send it a
+`MouseLeave`). A button pressed in a window keeps the pointer there until the
+last button is released, as on a desktop. During a move or a resize the
+manager uses the events itself and routes nothing.
+
+```cpp
+EmbeddedPointerRoute route = wm.PointerMove(Point2Di(640, 400));
+if (route.windowId) DeliverMouseMove(route.windowId, route.local);
+```
+
+The shape is the window's own choice (`SetWindowCursor`, which a backend calls
+from `SelectMouseCursorNative`) over its content, and the manager's over an
+edge it resizes by. The shapes are drawn as vectors (`DrawPointer`), white
+with a dark outline, at the output's scale.
+
+## Compositing
+
+Every change adds **damage** - a window presented (`WindowPresented`), moved,
+raised, shown or hidden, the pointer moved - in logical pixels, merged as it
+comes. `Compose` draws only the damaged rectangles of the output: the
+background (`backgroundRgb`), every shown window bottom first with a soft
+shadow under the decorated ones, and the pointer. Each window's surface is
+copied pixel for pixel: a surface with a device scale (the framework's
+windows have one) is drawn at that scale, so a window rendered at the
+output's scale is never resampled. `Compose` returns the physical rectangle
+it drew, which is what a backend copies to the screen.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `SetOutputSize(w, h)` / `GetOutputSize()` | the output, logical px; windows that fill it follow, maximized ones re-maximize, the rest are kept on it |
+| `ReserveEdges(id, l, r, t, b)` / `GetWorkArea()` | strips kept free for a window; four zeros release them |
+| `AddWindow(id, spec)` → `Rect2Di` | joins hidden; the rectangle it was placed at |
+| `RemoveWindow(id)`, `HasWindow(id)`, `GetInfo(id, out)` | |
+| `AttachFrame(clientId, frameId)` | a title bar window for a window |
+| `ListWindows()` / `ListApplicationWindows()` | stacking order, bottom first |
+| `Show`, `Hide`, `SetTitle`, `SetRect`, `Raise`, `Activate` | `SetRect` is the window's own request: kept on the output and in its limits |
+| `Minimize`, `Maximize`, `Restore`, `ToggleMaximize` | |
+| `GetFocused()`, `GetKeyboardTarget()`, `TopmostFocusable(except)` | |
+| `SetPointerPosition`, `MovePointerBy`, `SetPointerVisible`, `SetWindowCursor` | |
+| `HitTest(point, &id)` → `EmbeddedWindowPart` | `Content`, a resize edge, or `Nothing` |
+| `PointerMove(point)`, `PointerButton(point, down)` → `EmbeddedPointerRoute` | |
+| `BeginMove(clientId)`, `IsMovingOrResizing()` | |
+| `AddDamage`, `DamageAll`, `WindowPresented`, `HasDamage`, `TakeDamage` | |
+| `Compose(output, scale, surfaceOf, damage)` → `Rect2Di` | |
+| `onGeometryChanged`, `onFocusChanged`, `onStateChanged` | callbacks to the backend |
+| `titleBarHeight` (32), `resizeGrip` (6), `keepVisible` (48), `backgroundRgb` | logical px; the colour as `0xRRGGBB` |
+
+Single-threaded: every call on the thread that owns the windows.
+
+## Related
+
+- [UltraCanvasDesktopShell](UltraCanvasDesktopShell.md) - a desktop's window
+  list, screens and applications, answered from this manager where the
+  platform has no window manager of its own (*Inside one program*).
+- [UltraCanvasHostedApps](UltraCanvasHostedApps.md) - applications that run
+  inside their host program, as MobilePC's do.
+- [MobilePC](../MobilePC/README.md) - UltraDesktop on a TV, on this manager.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasEmojiSettings.md
 ==============================================================================
 
@@ -34970,8 +35199,14 @@ stuck; failed ones mean the files would not decode, and the log names each of
 them. `workerCount`, `longestJobPath` and `longestJobSeconds` name the job
 that has kept a worker busy longest: one running past 20 s is taken to be
 stuck, and another worker is started beside it (up to eight extra), so a
-single file that never finishes cannot stop every other thumbnail. Rescanning
-the folder or changing the view drops everything.
+single file that never finishes cannot stop every other thumbnail. Opening
+another folder or changing the view drops everything. A rescan of the folder
+already shown - a file deleted, renamed, copied in, or the folder watch
+noticing a change - keeps what was made for every file whose name, size and
+modification time are unchanged, so deleting one file does not redraw the
+folder with type glyphs before the thumbnails come back. A file that changed
+is made again in the background, and its tile keeps the old thumbnail until
+the new one is in.
 
 ### Thumbnails between runs
 
@@ -35995,8 +36230,9 @@ What it costs, and where it is drawn:
   on its way — or failed — shows as a blank sheet, so a folder never pops from
   "open" back to "closed".
 
-The listings are dropped with the thumbnail cache — on a rescan, so the folder
-watch's rescan after a change is what makes the previews current — and are
+The listings are dropped with the thumbnail cache — a subfolder's on a rescan
+that finds its modification time changed, so the folder watch's rescan after a
+change is what makes the previews current — and are
 capped at 4096 folders, past which everything outside the current frame goes.
 
 `FolderPreviewCardRects(box, count)` is the card geometry, public and pure so
@@ -36967,6 +37203,20 @@ auto-scrolls at the viewport edge, Escape abandons it (the previous
 selection returns), and a press-and-release without movement keeps its old
 meaning — a plain click on empty space clears the selection (a Ctrl click
 leaves it alone).
+While the band is drawn, `onSelectionChanged` fires with every entry it takes
+in or lets go. A host that follows the selection with something that opens,
+closes or reflows - a preview pane beside the list - waits for the drag to
+end: `IsDragInProgress()` is true while a band is drawn or entries are
+dragged, and letting the band go fires `onSelectionChanged` once more with it
+false, so the host sees where the band ended.
+
+```cpp
+std::function<void(const std::vector<FilerEntry>&)> showInPreview;   // the host's preview
+filer->onSelectionChanged = [&](const std::vector<FilerEntry>& selected) {
+    if (filer->IsDragInProgress()) return;   // the band's last state comes on release
+    showInPreview(selected);
+};
+```
 Double-clicking an entry with the **left** button opens/activates it (folders
 and archives are entered, files fire `onFileActivated`); the right and middle
 buttons do not, although Windows reports a double-click for those too — a
@@ -40609,6 +40859,19 @@ void SetBackgroundColor(const Color& c);  // panel background
 void SetTextColor(const Color& c);        // value / title text colour
 void SetClockHandColor(const Color& c);   // AnalogClock: hour and minute hands, the hub
 void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbers
+```
+
+The gauge follows the theme. Under a dark one its own greys - captions,
+ticks, unlit segments, the face - and the default text, background, track,
+ring border and clock colours are drawn in the dark look
+(`UltraCanvasTheme::ForDarkLook`); a colour given with its setter is drawn
+as given, and the value colours (the gauge colour, ranges, warnings) are
+kept in either look. The speedometer's face is dark in both looks, so its
+value is light unless `SetTextColor` chose otherwise.
+
+```cpp
+void ApplyTheme(const UltraCanvasTheme& theme); // called for it when the theme changes
+bool IsDarkLook() const;
 ```
 
 ### Round-Gauge (CircularRing) Styling
@@ -44833,6 +45096,79 @@ never blocks on a lookup.
 [`UltraCanvasFilerWidget.md`](UltraCanvasFilerWidget.md)). The widget holds
 its own cache keyed by `HostFileIconKey` plus the icon size, resolved on one
 background thread, and draws its simple icons until an answer lands.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasHostedApps.md
+==============================================================================
+
+# UltraCanvasHostedApps — applications inside their host program
+
+<!-- doc-check: bool OpenViewer(const std::vector<std::string>& files); -->
+
+On a desktop every application is a program of its own, started by the
+desktop as a process. On Android one app carries everything - MobilePC is
+UltraDesktop *and* the applications its Apps window starts, in one process -
+so "start an application" has to mean "call its entry point". This registry
+is where such applications are listed, and what a desktop's Apps window
+starts them through.
+
+```cpp
+#include "UltraCanvasHostedApps.h"
+using namespace UltraCanvas;
+
+UltraCanvasHostedApps::Register({
+    "ultraviewer", "UltraViewer", "Pictures, videos, music and documents",
+    "media/appicon/UltraViewer.png", {"Graphics", "Viewer"},
+    [](const std::vector<std::string>& files) { return OpenViewer(files); }});
+
+std::string error;
+UltraCanvasHostedApps::Launch("ultraviewer", {}, &error);
+```
+
+## Contents
+
+- [Registering an application](#registering-an-application)
+- [How a desktop sees them](#how-a-desktop-sees-them)
+- [API](#api)
+
+## Registering an application
+
+A `HostedAppInfo` is an id (stable, lower case), the name a launcher shows, a
+comment, an icon file, freedesktop categories (UltraDesktop's Apps window
+groups by them) and `launch`: the code an application's own `main()` runs
+between `app.Initialize(...)` and `app.Run()` - make the main window, open the
+files. It must not run a loop of its own and must not end the process: the
+host runs one loop for all its applications, and closing an application's
+windows is how it quits. An application whose window class opens its own
+windows (UltraPaint's and ArtCreator's `OpenWindow`) needs nothing else; one
+that keeps its windows in `main()` moves that into a class first.
+
+`Launching()` names the application whose `launch` is running, so the windows
+it makes can be told apart from the host's (the Android desktop mode files
+each window under it, and a taskbar groups them).
+
+## How a desktop sees them
+
+Where the platform keeps no applications of its own to list (Android),
+`UltraCanvasDesktopShell::ListApplications` lists the registered ones - through
+the desktop shell's embedded host, see
+[UltraCanvasDesktopShell](UltraCanvasDesktopShell.md#inside-one-program) - each
+as a `UCDesktopEntry` whose `shortcutPath` is `hosted:<id>`, and
+`LaunchApplication` with that entry calls `Launch`. A desktop written for
+desktop platforms, like UltraDesktop, therefore lists and starts them
+unchanged.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `Register(info)` | adds it, or replaces the one with that id |
+| `List()`, `Has(id)` | |
+| `Launch(id, files, &error)` | runs its entry point on the calling (UI) thread; false with the reason |
+| `Launching()` | the id whose `Launch` is running, `""` outside one |
+| `PathFor(id)` / `IdFromPath(path)` | `"hosted:<id>"` and back |
+
+Header: `UltraCanvasHostedApps.h`; core in `core/UltraCanvasHostedApps.cpp`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasIconResource.md
@@ -73908,7 +74244,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
 
 # UltraCanvas Slider Control Documentation
 
-<!-- doc-check: void updateProgressBar(float value); void rotateObject(float angle); -->
+<!-- doc-check: void updateProgressBar(float value); void rotateObject(float angle); std::string FormatTime(float seconds); float bufferedSeconds; std::vector<float> bucketCounts; Color amber; Color red; -->
 
 ## Contents
 
@@ -73922,12 +74258,18 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
   - [SliderOrientation](#sliderorientation)
   - [SliderState](#sliderstate)
   - [SliderHandleShape](#sliderhandleshape)
+  - [SliderTickPosition and SliderTickStyle](#slidertickposition-and-slidertickstyle)
+  - [SliderColorZone](#slidercolorzone)
 - [Visual Style Structure](#visual-style-structure)
 - [Constructor](#constructor)
 - [Key Methods](#key-methods)
   - [Value Management](#value-management)
   - [Style Configuration](#style-configuration)
   - [Appearance Customization](#appearance-customization)
+  - [Tick Marks and Labels](#tick-marks-and-labels)
+  - [Fill Origin, Reset and Colour Zones](#fill-origin-reset-and-colour-zones)
+  - [Rotary, Seek, Histogram, Segments, Ruler](#rotary-seek-histogram-segments-ruler)
+  - [Size](#size)
   - [Range Mode (two handles)](#range-mode-two-handles)
 - [Event Callbacks](#event-callbacks)
 - [Factory Functions](#factory-functions)
@@ -73937,6 +74279,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
   - [Vertical Slider with Percentage](#vertical-slider-with-percentage)
   - [Circular Knob Control](#circular-knob-control)
   - [Custom Styled Slider](#custom-styled-slider)
+  - [Slider Designs](#slider-designs)
   - [Progress Bar Style](#progress-bar-style)
 - [Rendering Details](#rendering-details)
 - [Advanced Features](#advanced-features)
@@ -73953,18 +74296,26 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
 The **UltraCanvasSlider** is a versatile and feature-rich interactive slider control component for the UltraCanvas Framework. It provides multiple styles, value display options, and comprehensive customization capabilities for creating intuitive range selection interfaces.
 
 **File Location**: `include/UltraCanvasSlider.h`  
-**Version**: 2.0.2  
-**Last Modified**: 2026-10-07  
+**Version**: 3.10.0  
+**Last Modified**: 2026-11-24  
 **Author**: UltraCanvas Framework
 
 ## Features
 
 ### Core Functionality
-- ✅ **Multiple Slider Styles**: Horizontal, Vertical, Circular, Progress, Range (two handles)
+- ✅ **Multiple Slider Styles**: Horizontal, Vertical, Circular, Progress, Range (two handles),
+  Knob, Field, Seek, Ruler, Segmented
+- ✅ **Tick Marks and Scales**: before, after or on the track; lines, a ramp or dots; major and
+  minor intervals or chosen values; labels with a formatter; named stops
+- ✅ **Handle Shapes**: Circle, Square, Triangle, Diamond, Pointer, Bar, Block, FaderCap, or none,
+  with an optional shadow
+- ✅ **Value Bubble**: the value in a balloon over the handle, always or while dragging
+- ✅ **Fill Origin and Reset**: fill outward from a neutral value; double-click returns to it
 - ✅ **Value Management**: Min/max range, current value, percentage calculations
 - ✅ **Step Control**: Configurable increment/decrement step values
-- ✅ **Value Display Options**: Number, Percentage, Tooltip, Always Visible
-- ✅ **Mouse Interaction**: Click-to-set, drag-to-adjust
+- ✅ **Value Display Options**: Number, Percentage, Tooltip, Always Visible, Bubble
+- ✅ **Mouse Interaction**: Click-to-set, drag-to-adjust; knobs and the ruler turn by dragging
+  and take the wheel
 - ✅ **Keyboard Navigation**: Arrow keys, Home, End, Page Up/Down
 - ✅ **Visual Feedback**: Hover, pressed, focused, disabled states
 - ✅ **Custom Styling**: Configurable colors, sizes, fonts
@@ -73991,8 +74342,19 @@ enum class SliderStyle {
     Circular,       // Circular/knob style
     Progress,       // Progress bar style
     Range,          // Range slider with two handles
+    Knob,           // Rotary cap with a pointer line inside a ring of dots
+    Field,          // A field that fills with the value: a name on the left, the number on the right
+    Seek,           // Media timeline: thin line, buffered part, thumb shown on hover
+    Ruler,          // Fixed centre marker; the scale slides under it
+    Segmented       // A row (or column) of blocks lit up to the value, like a level meter
 };
 ```
+
+`Circular` and `Knob` are turned, not slid: dragging up raises the value
+(the whole range over 200 pixels), and the mouse wheel steps it. `Ruler` is
+dragged sideways - the scale follows the pointer, so the value moves the
+other way - and takes the wheel too. A linear slider ignores the wheel, so it
+does not catch a scrolling page.
 
 ### SliderValueDisplay
 Controls how the value is displayed:
@@ -74002,7 +74364,9 @@ enum class SliderValueDisplay {
     Number,          // Numeric value
     Percentage,      // Percentage display
     Tooltip,         // Show on hover
-    AlwaysVisible    // Always visible
+    AlwaysVisible,   // Always visible
+    Bubble,          // In a balloon over the handle, always
+    BubbleWhileDragging // In a balloon over the handle while it is dragged
 };
 ```
 
@@ -74041,7 +74405,42 @@ enum class SliderHandleShape {
     Circle,     // the default
     Square,
     Triangle,
-    Diamond
+    Diamond,
+    Pointer,    // Five-sided thumb that points at the ticks
+    Bar,        // Slim bar across the track, in the active colour (see handleGap)
+    Block,      // Small upright block, as on a compact desktop trackbar
+    FaderCap,   // Ribbed rectangular cap of a mixing-desk fader
+    NoHandle    // No handle at all (a meter, or a Seek bar at rest)
+};
+```
+
+A `Pointer` points at the ticks: up (or left) with `SliderTickPosition::Before`,
+down (or right) otherwise.
+
+### SliderTickPosition and SliderTickStyle
+Where tick marks go and how they look (`SetTickPosition`, `SetTickStyle`):
+```cpp
+enum class SliderTickPosition {
+    NoTicks,    // the default
+    Before,     // above a horizontal track, left of a vertical one
+    After,      // below / right
+    BothSides,
+    OnTrack     // inside the track itself
+};
+
+enum class SliderTickStyle {
+    Line,       // straight marks; major ones longer than minor ones
+    Ramp,       // marks that grow from the minimum to the maximum
+    Dot         // round dots
+};
+```
+
+### SliderColorZone
+A colour from a fraction of the range upward, for `SetColorZones`:
+```cpp
+struct SliderColorZone {
+    float fromFraction = 0.0f;
+    Color color;
 };
 ```
 
@@ -74067,17 +74466,41 @@ struct SliderVisualStyle {
     Color textColor = Colors::Black;
     Color disabledTextColor = Color(150, 150, 150);
 
+    // Ticks, labels, the value bubble, the tooltip, a Seek bar's buffered
+    // part and the histogram
+    Color tickColor = Color(110, 110, 110);
+    Color tickLabelColor = Color(90, 90, 90);
+    Color bubbleColor = Color(40, 40, 40);
+    Color bubbleTextColor = Colors::White;
+    Color tooltipColor = Color(255, 255, 220, 230);
+    Color tooltipBorderColor = Color(128, 128, 128);
+    Color secondaryTrackColor = Color(160, 160, 160);
+    Color histogramColor = Color(205, 205, 210);
+    Color histogramActiveColor = Color(0, 120, 215, 200);
+
     // Dimensions
     float trackHeight = 6.0f;
     float handleSize = 16.0f;
-    float borderWidth = 1.0f;
-    float cornerRadius = 3.0f;
-    SliderHandleShape handleShape = SliderHandleShape::Circle;  // Circle, Square, Triangle, Diamond
+    float borderWidth = 1.0f;           // the track's outline and the handle's border; 0 for none
+    float cornerRadius = 3.0f;          // rounds the track, its fill and the bar (at most half its thickness)
+    SliderHandleShape handleShape = SliderHandleShape::Circle;
+    bool handleShadow = false;          // a soft shadow under the handle
+    float handleGap = 0.0f;             // space clear of the track either side of a Bar handle
+    bool trackInset = false;            // a sunken, bevelled track
+    float tickLength = 6.0f;            // major ticks; a Ramp grows up to this
+    float minorTickLength = 3.0f;
+    float tickGap = 3.0f;               // between the handle's band and the ticks
 
     // Font
     FontStyle fontStyle;
 };
 ```
+
+`SliderVisualStyle::FromTheme` fills the colours from the theme's roles (ticks
+and their labels in muted ink, the bubble in ink with the ground's colour for
+its text, the histogram in the line colour) and keeps every size and flag of
+the style it is given, so a slider shaped by hand keeps its shape when the
+theme changes.
 
 ## Constructor
 
@@ -74189,6 +74612,102 @@ const SliderVisualStyle& GetStyle() const;
 void SetStyle(const SliderVisualStyle& st);
 ```
 
+### Tick Marks and Labels
+
+```cpp
+void SetTickPosition(SliderTickPosition position);   // NoTicks by default
+void SetTickStyle(SliderTickStyle tickStyle);        // Line, Ramp, Dot
+void SetTickInterval(float major, float minor = 0.0f);
+void SetTickMarks(const std::vector<float>& values); // ticks at these values only
+void SetTickLabels(bool show);                       // a label at each major tick
+void SetStopLabels(const std::vector<std::string>& labels);
+std::string GetTickLabel(float value) const;
+std::vector<std::pair<float, bool>> GetTickValues() const;  // value, is major
+
+std::function<std::string(float)> tickLabelFormatter;       // the label of a tick
+```
+
+With no interval set, the major ticks fall on every step when that gives at
+most 20 of them, and on every tenth of the range otherwise. Minor ticks are
+drawn only with a minor interval, and the major interval should be a multiple
+of it. `SetTickMarks` replaces the intervals with chosen values (all major):
+the 0 dB mark of a fader, or -100 / 0 / +100 of a balance control.
+
+`SetStopLabels` names each step from the minimum (`SetRange(0, 6)`,
+`SetStep(1)` and seven names): every stop gets a tick and its name, the name
+of the current stop is drawn in the text colour, and the value display shows
+the name instead of the number.
+
+Ticks and labels take room across the bar, and a label wider than the handle
+pulls both ends of the travel in so the end labels are not cut off: give the
+slider the height (or width) they need.
+
+### Fill Origin, Reset and Colour Zones
+
+```cpp
+void SetFillOrigin(float value);   // fill from this value to the handle
+void ClearFillOrigin();
+void SetResetValue(float value);   // a double-click returns here
+void ClearResetValue();
+void SetColorZones(const std::vector<SliderColorZone>& zones);
+```
+
+A fill origin makes a bipolar control: on a -100..100 balance slider,
+`SetFillOrigin(0)` fills outward from the middle and marks it. Colour zones
+colour the fill (and a `Segmented` slider's blocks) by how far up the range
+it reaches.
+
+### Rotary, Seek, Histogram, Segments, Ruler
+
+```cpp
+void SetArcAngles(float startDegrees, float sweepDegrees);  // Circular, Knob: 135, 270 by default
+
+void SetSecondaryValue(float value);   // Seek: what has loaded
+void ClearSecondaryValue();
+void SetHoverPreview(bool enabled);    // the value under the pointer, in a bubble
+std::function<std::string(float)> hoverText;
+
+void SetHistogram(const std::vector<float>& bucketCounts);  // bars behind a horizontal track
+void ClearHistogram();
+
+void SetSegmentCount(int count);       // Segmented
+void SetPixelsPerUnit(float pixels);   // Ruler
+```
+
+Angles are in degrees clockwise from 3 o'clock; the default arc starts at 135
+and sweeps 270, leaving a gap at the bottom. The histogram's buckets spread
+evenly across the range, in the free space above the track; the bars under
+the selection (or the fill) take `histogramActiveColor`.
+
+### Size
+
+```cpp
+Size2Df GetMinimumSize() const;   // the smallest box nothing is cut off in
+float GetPreferredLength() const; // the length when nothing sizes it: 160 px (96 for a knob, 200 for a ruler)
+void SetGrowToFit(bool grow);     // on by default
+bool GetGrowToFit() const;
+```
+
+A slider sizes itself in a layout: built without a size
+(`UltraCanvasSlider("Volume")`) it takes its preferred length and, across
+the bar, what it shows needs - the handle, the ticks and their labels, the
+value text, a bubble or a histogram. The labels are measured with the
+window's text engine once there is one, and estimated from the font before.
+
+A size given explicitly is kept along the bar. Across it, a size too small
+for the ticks, labels or value grows: the slider sets its own `min-height`
+(`min-width` when vertical) and the layout makes room. A plain slider
+(nothing beyond its bar) keeps whatever size it was given, as before; a
+`min-height` the application set itself is left alone; and
+`SetGrowToFit(false)` keeps the given size whatever is cut off.
+
+```cpp
+auto delay = CreateSlider("Delay", 0, 0, 300, 20);   // 20 px is too short for labels
+delay->SetTickPosition(SliderTickPosition::After);
+delay->SetTickLabels(true);                          // the layout now gives it ~44 px
+Size2Df needed = delay->GetMinimumSize();
+```
+
 ### Range Mode (two handles)
 
 ```cpp
@@ -74271,6 +74790,8 @@ The slider supports comprehensive keyboard navigation:
 | **Page Up** | Increase by 10 × step |
 | **Page Down** | Decrease by 10 × step |
 
+A double-click puts a slider with a reset value (`SetResetValue`) back to it.
+
 With a continuous slider (step 0) one key step is 1% of the range.
 
 ## Usage Examples
@@ -74350,6 +74871,134 @@ customSlider->SetValueFormat("%.1f dB");
 container->AddChild(customSlider);
 ```
 
+### Slider Designs
+
+Each of these is on the demo app's slider page. The first is a compact
+trackbar with ticks that grow towards the maximum:
+
+```cpp
+auto size = CreateSlider("BrushSize", 0, 0, 300, 40);
+size->SetStep(25.0f);
+size->SetTickPosition(SliderTickPosition::Before);
+size->SetTickStyle(SliderTickStyle::Ramp);
+size->SetTickInterval(25.0f);
+size->SetHandleShape(SliderHandleShape::Block);
+size->SetHandleSize(12.0f);
+size->GetStyle().trackInset = true;
+size->GetStyle().tickLength = 12.0f;
+```
+
+A pointer thumb over a row of ticks, and a labelled scale with a unit:
+
+```cpp
+auto pointer = CreateSlider("Pointer", 0, 0, 300, 40);
+pointer->SetStep(10.0f);
+pointer->SetTickPosition(SliderTickPosition::After);
+pointer->SetTickInterval(10.0f);
+pointer->SetHandleShape(SliderHandleShape::Pointer);
+
+auto delay = CreateSlider("Delay", 0, 0, 300, 56);
+delay->SetTickPosition(SliderTickPosition::After);
+delay->SetTickInterval(25.0f, 5.0f);
+delay->SetTickLabels(true);
+delay->tickLabelFormatter = [](float v) { return std::to_string(int(v)) + " ms"; };
+```
+
+Named stops, the value in a bubble, and a centre-origin balance control:
+
+```cpp
+auto sizes = CreateSlider("Size", 0, 0, 300, 56);
+sizes->SetRange(0, 6);
+sizes->SetStep(1);
+sizes->SetTickPosition(SliderTickPosition::OnTrack);
+sizes->SetTickStyle(SliderTickStyle::Dot);
+sizes->SetStopLabels({"Off", "XS", "S", "M", "L", "XL", "XXL"});
+sizes->SetTrackHeight(10.0f);
+
+auto opacity = CreateSlider("Opacity", 0, 0, 300, 56);
+opacity->SetValueDisplay(SliderValueDisplay::Bubble);
+opacity->SetValueFormat("%.0f%%");
+
+auto balance = CreateSlider("Balance", 0, 0, 300, 50);
+balance->SetRange(-100, 100);
+balance->SetFillOrigin(0);
+balance->SetResetValue(0);
+balance->SetTickPosition(SliderTickPosition::After);
+balance->SetTickMarks({-100, 0, 100});
+```
+
+A pill track split by a bar, and a soft thick track for touch:
+
+```cpp
+auto pill = CreateSlider("Pill", 0, 0, 300, 40);
+pill->SetTrackHeight(16.0f);
+pill->SetHandleShape(SliderHandleShape::Bar);
+pill->GetStyle().cornerRadius = 8.0f;
+pill->GetStyle().handleGap = 4.0f;
+pill->GetStyle().borderWidth = 0.0f;
+
+auto touch = CreateSlider("Touch", 0, 0, 300, 40);
+touch->SetTrackHeight(8.0f);
+touch->SetHandleSize(28.0f);
+touch->GetStyle().handleShadow = true;
+touch->GetStyle().borderWidth = 0.0f;
+```
+
+An inline field for a property panel, a media seek bar and a range with the
+data's spread behind it:
+
+```cpp
+auto roughness = CreateSlider("Roughness", 0, 0, 300, 28);
+roughness->SetSliderStyle(SliderStyle::Field);
+roughness->SetRange(0.0f, 1.0f);
+roughness->SetValueFormat("%.2f");
+roughness->SetCustomText("Roughness");   // the name; the number is drawn beside it
+
+auto timeline = CreateSlider("Timeline", 0, 0, 300, 50);
+timeline->SetSliderStyle(SliderStyle::Seek);
+timeline->SetSecondaryValue(bufferedSeconds);
+timeline->SetHoverPreview(true);
+timeline->hoverText = [](float v) { return FormatTime(v); };
+
+auto price = CreateRangeSlider("Price", 0, 0, 300, 110, 0.0f, 500.0f, 140.0f, 350.0f);
+price->SetHistogram(bucketCounts);
+price->SetValueDisplay(SliderValueDisplay::BubbleWhileDragging);
+```
+
+A ruler dial, the two knobs, a console fader and a level meter:
+
+```cpp
+auto straighten = CreateSlider("Straighten", 0, 0, 300, 64);
+straighten->SetSliderStyle(SliderStyle::Ruler);
+straighten->SetRange(-45.0f, 45.0f);
+straighten->SetStep(0.5f);
+straighten->SetTickInterval(10.0f, 2.0f);
+straighten->SetTickLabels(true);
+straighten->SetValueDisplay(SliderValueDisplay::Number);
+straighten->SetPixelsPerUnit(6.0f);
+
+auto gain = CreateCircularSlider("Gain", 0, 0, 120);
+gain->SetValueDisplay(SliderValueDisplay::Number);
+gain->SetArcAngles(135.0f, 270.0f);
+
+auto drive = CreateSlider("Drive", 0, 0, 120, 120);
+drive->SetSliderStyle(SliderStyle::Knob);
+drive->SetRange(0.0f, 10.0f);
+
+auto channel = CreateVerticalSlider("Channel", 0, 0, 100, 220);
+channel->SetHandleShape(SliderHandleShape::FaderCap);
+channel->SetTickPosition(SliderTickPosition::Before);
+channel->SetTickMarks({0.0f, 25.0f, 50.0f, 75.0f, 100.0f});
+channel->SetTickLabels(true);
+
+auto level = CreateVerticalSlider("Level", 0, 0, 60, 220);
+level->SetSliderStyle(SliderStyle::Segmented);
+level->SetSegmentCount(16);
+level->SetColorZones({{0.7f, amber}, {0.875f, red}});
+level->SetTrackHeight(26.0f);
+level->SetHandleShape(SliderHandleShape::NoHandle);
+```
+
 ### Progress Bar Style
 
 ```cpp
@@ -74374,16 +75023,23 @@ container->AddChild(progressBar);
 
 The slider uses the UltraCanvas rendering system to draw:
 
-1. **Track Rectangle**: Background track for the slider
-2. **Active Track**: Filled portion showing current value
-3. **Handle**: Draggable control element
-4. **Value Display**: Optional text showing current value
+1. **Histogram**: Optional bars behind the track
+2. **Track Rectangle**: Background track, rounded by `cornerRadius`
+3. **Active Track**: Filled portion from the minimum (or the fill origin) to the value
+4. **Ticks and Labels**: Optional, either side of the track or on it
+5. **Handle**: Draggable control element, in one of the handle shapes
+6. **Value Display**: Optional text, tooltip or bubble showing the value
 
 Different styles render with variations:
 - **Linear**: Traditional bar with handle
-- **Circular**: Arc track with rotating handle
+- **Circular**: An arc (135° to 405° by default) filled up to the value, the handle at its end
+- **Knob**: A raised cap with a pointer line inside a ring of dots
 - **Progress**: Bar without handle
 - **Range**: Bar with two handles and the range between them highlighted
+- **Field**: The whole element as a field that fills with the value
+- **Seek**: A thin line with the buffered part; the thumb shows on hover
+- **Ruler**: A moving scale under a fixed marker, fading at both ends
+- **Segmented**: Blocks lit up to the value, in the colour zones
 
 ## Advanced Features
 
@@ -82923,6 +83579,7 @@ those elements, the tabbed container and the text area
   - [Readability](#readability)
 - [Using it](#using-it)
   - [Following the theme](#following-the-theme)
+  - [Colours chosen for the light look](#colours-chosen-for-the-light-look)
 - [Fonts and text roles](#fonts-and-text-roles)
 - [The theme from the host](#the-theme-from-the-host)
 - [The policy](#the-policy)
@@ -83199,6 +83856,25 @@ brand.SetRole("rating.on", Color(242, 165, 58));                 // the brand's 
 brand.SetRole("calendar.weekend", brand.roles.inkMuted);         // weekends quiet, not red
 CheckboxVisualStyle box = CheckboxVisualStyle::FromTheme(brand); // the accent for the mark: not named
 RatingStyle stars = RatingStyle::FromTheme(brand, RatingStyle());
+```
+
+### Colours chosen for the light look
+
+An element (or a page) that draws with colours of its own - a caption's
+grey, a pale panel, an unlit segment - can carry them into a dark theme
+without a second palette: `ForDarkLook` turns a colour's lightness over
+into the dark look's range and keeps its hue, so white lands near the
+panel, black near white ink, a pale green panel becomes a dark green one
+and grey text light grey. Alpha is kept. `ForThisLook` does it under a dark
+theme and returns the colour unchanged under a light one. The gauge draws
+its greys through it (`UltraCanvasGaugeDiagramElement`), and the demo app's
+pages through `DemoKit::Themed`. Value colours - an accent, a warning red,
+a chart's palette - are better left as they are.
+
+```cpp
+const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+Color caption = theme.ForThisLook(Color(110, 110, 120));     // grey text, light grey in the dark
+Color panel = UltraCanvasTheme::ForDarkLook(Color(232, 245, 233)); // a pale green panel, dark green
 ```
 
 ## Fonts and text roles
@@ -96088,6 +96764,557 @@ converted like the others.
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it
 to the `.fodt`, regenerate both files and extend `CheckFormattingFixture`.
 Never commit a real person's document as a fixture.
+
+==============================================================================
+FILE: Docs/UltraCanvas/iOSPortInvestigation.md
+==============================================================================
+
+# iOS Port Investigation
+
+**Status:** Investigation / planning document, written before any iOS code
+existed. **Phases 1 and 2 (§8) are written but have not yet built green in
+CI.** Phase 1 is the dependency sysroot: `scripts/ios-bootstrap-sysroot.sh`
+and `UltraCanvas/OS/iOS/packaging/`, checked by `scripts/ios-check-sysroot.sh`.
+Phase 2 is the UIKit backend in `UltraCanvas/OS/iOS/` (its
+[README](../../UltraCanvas/OS/iOS/README.md) says what is there), the iOS
+branch of the CMake files, and DemoApp as `UltraCanvasDemo.app`.
+`.github/workflows/ios-build.yml` builds the sysroot for the simulator and
+for devices on GitHub's macOS runner. It then compiles the core and DemoApp
+for the simulator and launches the app on a booted simulator. tvOS, visionOS
+and watchOS still stop: in the configure and at the headers' `#error`.
+**Goal:** Bring UltraCanvas to iPhone and iPad with the support the Android
+backend has: one full-screen surface, touch and gestures, the on-screen
+keyboard with composition, clipboard, message dialogs, document picking and
+saving, fonts, networking, audio and video, and (later) GL surfaces.
+**Model:** [`AndroidPortInvestigation.md`](AndroidPortInvestigation.md), the
+audit that preceded the Android backend. Most of what it found about a
+single-surface, touch-first platform is solved in the core now, and this
+document leans on those solutions instead of repeating them.
+
+---
+
+## Contents
+
+- [1. Executive summary](#1-executive-summary)
+- [2. How an iOS backend plugs in](#2-how-an-ios-backend-plugs-in)
+- [3. Parts list: `UltraCanvas/OS/iOS/`](#3-parts-list-ultracanvasosios)
+- [4. Building the dependencies for iOS](#4-building-the-dependencies-for-ios)
+- [5. The GL / Metal decision](#5-the-gl--metal-decision)
+- [6. The CMake branch](#6-the-cmake-branch)
+- [7. Packaging, signing and CI](#7-packaging-signing-and-ci)
+- [8. Phased plan](#8-phased-plan)
+- [9. Key file index](#9-key-file-index)
+
+---
+
+## 1. Executive summary
+
+- **Feasible, and cheaper than Android was.** The Android port had to add the
+  mobile concepts to the core first; they exist now and are
+  platform-neutral:
+  - touch events with a stable `pointerId`, `touchPointCount`, routing in
+    `DispatchEvent`, and the `PinchZoom` event (`include/UltraCanvasEvent.h`);
+  - the "text editing started / stopped" signal that raises a soft keyboard
+    (`UltraCanvasCaret::onTextEditingChanged`, `include/UltraCanvasCaret.h`);
+  - IME pre-edit through the `TextComposition` event and
+    `DrawsTextComposition()`;
+  - saving to a document provider through
+    `UltraCanvasNativeDialogs::SaveContent(data, size, options)`, which takes
+    the bytes up front (`include/UltraCanvasNativeDialogs.h`);
+  - popups and the tooltip drawn inside the one surface: the switch already
+    excludes iOS (`core/UltraCanvasWindow.cpp:95`,
+    `core/UltraCanvasTooltipManager.cpp:63`);
+  - fallbacks in core for the platform services a backend does not supply
+    (hardware info, wireless, removable drives, desktop shell, geolocation,
+    network monitor), selected by `ULTRACANVAS_<X>_NATIVE`.
+- **Two templates, not one.** The macOS backend (`OS/MacOS/`, 10.9k lines,
+  Objective-C++) is the template for the language, the build (`.mm` sources,
+  ARC, Apple frameworks) and the run-loop wakeup (`CFRunLoopSource`). The
+  Android backend (`OS/Android/`, 4.5k lines) is the template for everything
+  mobile: one surface, lifecycle, touch, the soft keyboard, synchronous
+  dialogs over an asynchronous platform, and a sandboxed file system.
+- **Almost nothing in `OS/MacOS/` compiles for iOS as it is.** Clipboard,
+  dialogs, window, application, accessibility and spell check import
+  AppKit/Cocoa; the hardware, Wi-Fi, Bluetooth, removable-drive, screen
+  capture and folder-watch services use IOKit, CoreWLAN, IOBluetooth,
+  DiskArbitration, ScreenCaptureKit and FSEvents, which iOS lacks. The iOS
+  backend is a sibling directory, not a set of `#if`s in the macOS one
+  (house rule 4: platform logic stays in `OS/<Platform>/`).
+- **The three cost centres:**
+  1. the dependency stack (cairo, pango, glib, harfbuzz, fontconfig,
+     freetype, libvips and its codecs, OpenSSL) built static for
+     `arm64-ios` and `arm64-ios-simulator`;
+  2. the run loop: UIKit owns the main thread's loop through
+     `UIApplicationMain`, which never returns, while an UltraCanvas program's
+     `main()` creates its windows and then blocks in `Run()` (§3.2);
+  3. no plug-in DSOs: an App Store app may not `dlopen` code it did not ship
+     in a signed framework, so every plug-in and chart module is compiled in,
+     as on Android and WebAssembly.
+- **A Mac is required for every step past this document.** Xcode, the iOS SDK
+  and the simulator exist only on macOS; nothing here can be built or run in
+  the Linux CI containers. The GitHub macOS runners already used for the
+  macOS row can build and run the simulator.
+
+---
+
+## 2. How an iOS backend plugs in
+
+Platform selection is at compile time, by alias, exactly as described in
+§2 of the Android investigation. The iOS hooks that already exist:
+
+| Site | Today | iOS needs |
+|---|---|---|
+| `include/UltraCanvasWindow.h:806` | `#elif TARGET_OS_IPHONE` → **done:** includes the iOS window | include `../OS/iOS/UltraCanvasiOSWindow.h`, `using UltraCanvasWindow = UltraCanvasiOSWindow;` |
+| `include/UltraCanvasApplication.h:731` | `#elif TARGET_OS_IPHONE` → **done:** includes the iOS application | include `../OS/iOS/UltraCanvasiOSApplication.h`, `using UltraCanvasApplication = UltraCanvasiOSApplication;` |
+| `include/UltraCanvasMenu.h:48` | macOS shortcut format excluded on iOS | nothing: the pass-through format is right for a hardware keyboard on iPad |
+| `include/UltraCanvasNativeHandle.h:24` | `__APPLE__` → opaque `void*` | nothing: a `UIView*` (or `UIWindow*`) fits the same opaque handle |
+| `include/UltraCanvasEvent.h:372` | `__APPLE__` native-handle arm | check it holds for a `UIView*` |
+| `core/UltraCanvasClipboard.cpp:29,110` | `__APPLE__` → `OS/MacOS/UltraCanvasMacOSClipboard.h` | a `TARGET_OS_IPHONE` arm for the iOS clipboard, before the `__APPLE__` one |
+| `libspecific/GL/GLFramebuffer.cpp:6` | `__APPLE__` → `<OpenGL/gl3.h>` | a GLES arm (§5), or GL off |
+| `include/UltraCanvasHardwareInfoBackend.h:20`, `UltraCanvasWirelessBackend.h`, `UltraCanvasRemovableDrivesBackend.h`, `UltraCanvasDesktopShellBackend.h` | `defined(__APPLE__)` sets `ULTRACANVAS_<X>_NATIVE` | `&& !TARGET_OS_IPHONE`, so iOS links the core fallbacks until it has probes of its own |
+| `core/UltraCanvasWindow.cpp:95`, `core/UltraCanvasTooltipManager.cpp:63` | popups in their own windows off on iOS | nothing |
+
+That list is not the whole audit. There are 70 `__APPLE__` tests in 38 files
+under `UltraCanvas/core`, `include` and `libspecific`, and each must be read
+once for "means macOS" versus "means any Apple OS". The rule for the port:
+**an `__APPLE__` test that reaches AppKit, IOKit or any framework iOS lacks
+becomes `__APPLE__ && !TARGET_OS_IPHONE`**. The core then falls back to its
+portable path there, and the iOS arm is added only where iOS has something
+of its own.
+
+The same audit applies to CMake: `UltraCanvas/CMakeLists.txt` has 12
+`ULTRACANVAS_PLATFORM STREQUAL "MacOS"` branches and 17 `APPLE` tests. The
+`MacOS` ones are safe once iOS has its own `ULTRACANVAS_PLATFORM`; the `APPLE`
+ones must each be checked (§6).
+
+---
+
+## 3. Parts list: `UltraCanvas/OS/iOS/`
+
+### 3.1 Files and their contracts
+
+The pure-virtual sets are the ones the Android investigation lists (§3.2
+there). Today `UltraCanvasApplicationBase` has 20 pure virtuals and
+`UltraCanvasWindowBase` has 23. As on every backend, the statics
+(`GetInstance()`, `instance`) are declared in the backend, not the base.
+
+| File | Contract | Template |
+|---|---|---|
+| `UltraCanvasiOSApplication.{h,mm}` | the application base's pure virtuals; `RunBeforeMainLoop` / `RunInEventLoop` overrides (§3.2); `CFRunLoopSource` wakeup | macOS `UltraCanvasMacOSApplication.mm:271-358` (wakeup and timed wait); Android for lifecycle |
+| `UltraCanvasiOSMain.mm` | the process entry: `main()` calls `UIApplicationMain` with the backend's app delegate and scene delegate; the application's own `main()` is renamed `ultracanvas_app_main` (§3.2) | Android `UltraCanvasAndroidMain.cpp` (`ultracanvas_app_main`) |
+| `UltraCanvasiOSWindow.{h,mm}` | the window base's pure virtuals; a `UIView` subclass that presents the Cairo image surface (§3.3); `QueryNativeDeviceScale()` from the screen's scale; safe-area insets; rotation and iPad split view resize the surface | macOS `UltraCanvasMacOSWindow.mm` (view subclass, `drawRect:`); Android for "most window-management calls are no-ops" |
+| `UltraCanvasiOSTextInput.mm` | a view adopting `UITextInput` (`UIKeyInput` alone gives no composition): `insertText:` → `UCEvent::text`, `deleteBackward` → Backspace, `setMarkedText:selectedRange:` → `TextComposition`, `unmarkText` commits; `becomeFirstResponder` / `resignFirstResponder` driven by `onTextEditingChanged`; hardware keys from `pressesBegan:` (`UIKey.keyCode`) → `UCKeys` | Android `UltraCanvasAndroidTextInput.cpp` |
+| `UltraCanvasiOSClipboard.{h,mm}` | the clipboard backend's virtuals over `UIPasteboard.generalPasteboard`: text, images, URLs; `changeCount` replaces polling | Android `UltraCanvasAndroidClipboard.cpp` (simple model), macOS for the Objective-C |
+| `UltraCanvasiOSNativeDialogs.mm` | the static `UltraCanvasNativeDialogs` functions: messages and questions through `UIAlertController`; opening through `UIDocumentPickerViewController` (security-scoped URL → copy into the app's caches so path-based callers keep working); `SaveContent` through the picker's export mode; `SaveFile` and `SelectFolder` stubs, for the reasons Android gives (§3.5 there) | Android `UltraCanvasAndroidDialogBridge.cpp` and `UltraCanvasAndroidNativeDialogs.cpp` |
+| `UltraCanvasiOSCursor.mm` | the two cursor functions: `return true` on iPhone; iPad pointer shapes (`UIPointerInteraction`) later | Android `UltraCanvasAndroidCursor` stubs |
+| `UltraCanvasiOSFileLoader.mm` | `NotifyRecentFile` stub | `UltraCanvasAndroidFileLoader.cpp` |
+| `UltraCanvasiOSSystemLanguage.mm` | `NSLocale.preferredLanguages` | macOS `UltraCanvasMacOSSystemLanguage.mm` (Foundation only, so likely shared) |
+| `UltraCanvasiOSHostAppearance.mm` | dark mode, contrast, accent, Dynamic Type from `UITraitCollection` | macOS `UltraCanvasMacOSHostAppearance.mm` |
+| `UltraCanvasSpellCheckSupport.mm` | `UITextChecker` in place of `NSSpellChecker` | macOS `UltraCanvasSpellCheckSupport.mm` |
+| `UltraCanvasiOSAssets.mm` | `SetResourcesDir` arm: the app bundle's resource directory is a real, read-only file system, so `media/` and the rest are read in place, with no Android-style unpacking; writable state goes under `Library/Application Support` and `Library/Caches` | Android `UltraCanvasAndroidAssets.cpp` (what it had to work around) |
+| `UltraNetSupport.mm` | proxy settings (`CFNetworkCopySystemProxySettings` exists on iOS) | macOS `UltraNetSupport.mm`; check each call against the iOS SDK |
+| `UltraNetTlsImpl.mm` | TLS | **not** the macOS file as it is: it imports `Security/SecImportExport.h` (macOS only) and is built on SecureTransport, deprecated on every Apple OS. Use the OpenSSL implementation the other platforms build, and verify peers against the system roots through `SecTrustEvaluateWithError` |
+| `UltraNetDnsImpl.mm` | DNS | macOS file uses `<arpa/nameser.h>` / libresolv, which the iOS SDK has; or use the c-ares path, as Android does, and drop the file |
+| `GLContextManager*_iOS.*` | phase 3 only (§5) | Android `GLContextManagerEGL_Android.cpp` if ANGLE is chosen |
+
+Not ported (the core fallbacks answer, with a note saying what is
+unavailable): hardware info (no IOKit registry), Wi-Fi and Bluetooth lists
+(CoreWLAN and IOBluetooth do not exist; CoreBluetooth is a different API and
+a later decision), removable drives, volume monitor, folder watcher (no
+FSEvents; a `dispatch_source` on a file descriptor can come later), file
+associations, trash, aliases, host file icons, session lock, screen capture,
+portable devices, and "applications" enumeration.
+
+### 3.2 Run loop and lifecycle
+
+On every desktop platform the application's `main()` creates its windows and
+then blocks in `UltraCanvasApplicationBase::Run()`
+(`core/UltraCanvasApplication.cpp`), which pumps native events, timers and
+posted tasks and renders dirty windows. iOS breaks that in two ways:
+
+1. UIKit owns the main thread's run loop through `UIApplicationMain`, which
+   never returns.
+2. No window can be shown before the system connects a `UIWindowScene`, and
+   that happens only after `UIApplicationMain` has started.
+
+There are two ways to fit `Run()` onto that. The second already exists in
+the tree.
+
+**A. Nested pump (recommended for phase 1; zero core changes).**
+`UltraCanvasiOSMain.mm` provides `main()`, which calls `UIApplicationMain`.
+When the scene connects, the delegate creates the root `UIWindow` and view
+controller. It then *schedules* `ultracanvas_app_main(argc, argv)` on the
+main queue (`dispatch_async`) rather than calling it from
+`scene:willConnectToSession:`. A launch callback that does not return is
+killed by the system's launch watchdog. `ultracanvas_app_main` runs the
+application's unchanged body. Its windows attach to the root view
+controller, and `Run()` blocks. `CollectAndProcessNativeEvents` runs the main
+run loop for one turn (`CFRunLoopRunInMode` in the default mode, returning
+after one source), with the timeout from `GetTimeUntilNextTimer()`. UIKit's touch, keyboard and
+lifecycle sources fire inside that nested turn, so their callbacks queue
+`UCEvent`s as the macOS backend's do. The macOS backend already waits this
+way (`UltraCanvasMacOSApplication.mm:293`), and its `CFRunLoopSource` wakeup
+(`:335-358`) ports unchanged. SDL's UIKit backend has run applications this
+way for years (an outside reference; nothing in this repository depends on
+it). This is the closest analogue to Android's `android_main` thread.
+
+**B. Tick from the display (later, when frame pacing matters).**
+`RunBeforeMainLoop()` (`include/UltraCanvasApplication.h:649`) is the hook
+the WebAssembly backend uses: `Run()` calls it just before its loop, and
+`emscripten_set_main_loop` takes the loop over
+(`OS/WASM/UltraCanvasWASMApplication.cpp:288-296`). On iOS it would start a
+`CADisplayLink` and return control to UIKit. Each display frame then runs one
+iteration: events, timers, tasks and `UpdateAndRender`. The loop paces itself
+to the screen, including ProMotion's 120 Hz, and never nests. It needs the
+application's `main()` to have returned to UIKit by then, which is the same
+"`Run()` must not block" contract the WebAssembly port already lives with.
+
+**Lifecycle**, handled inside the backend as Android does
+(`OS/Android/UltraCanvasAndroidApplication.cpp:394-434`), with no new
+base-class virtuals:
+- `sceneDidEnterBackground:`: stop rendering and stop any GL work. iOS
+  terminates an app that submits GPU work in the background. Flush settings,
+  because a backgrounded app can be killed without another callback.
+- `sceneWillEnterForeground:`: mark every window dirty.
+- Size changes (rotation, split view, Stage Manager):
+  `viewWillTransitionToSize:` → `DoResizeNative` → `RecreateNativeSurface`.
+- `Run()` exits when `windows.empty()`. On iOS the user never closes the last
+  window, so the root window must not be destroyed by a scene disconnecting.
+  A disconnected scene drops its surface and keeps the window, like
+  Android's `APP_CMD_TERM_WINDOW`.
+
+### 3.3 Presentation and HiDPI
+
+The core renders each window into an offscreen Cairo surface and composites
+it onto the backend's `nativeSurface` (§2 of the Android investigation). On
+iOS:
+
+- **`nativeSurface` is a `cairo_image_surface_create(ARGB32)`**, the
+  Windows / Android model, **not** `cairo_quartz_surface_create` as on macOS.
+  `cairo-quartz.h` includes `<ApplicationServices/ApplicationServices.h>`,
+  which the iOS SDK does not have, so cairo's Quartz surface needs patching
+  to build for iOS at all. An image surface needs nothing from cairo's
+  platform code.
+- **Present:** in `InvalidateWindowNative()`, wrap the surface's pixels in a
+  `CGImage` (`CGDataProvider` over the buffer, premultiplied BGRA, which is
+  cairo's ARGB32 on a little-endian CPU) and set it as the view layer's
+  `contents`. Equivalently, draw it in `drawRect:` as the macOS view does
+  (`UltraCanvasMacOSWindow.mm:106-121`). Use `layer.contents` with
+  `contentsScale` set to the screen scale. It avoids a second copy and is
+  what CoreAnimation composites anyway.
+- **Scale:** `QueryNativeDeviceScale()` returns the view's
+  `traitCollection.displayScale` (2 or 3). The shared `deviceScale` /
+  `LogicalToPhysical` machinery does the rest
+  (`include/UltraCanvasWindow.h`), as on Android.
+- **Safe area:** the window's logical size is the view's bounds. The
+  application lays out inside `safeAreaInsets`, which the backend should
+  expose. That is new API, and it belongs on the window base so Android's
+  display cut-outs can use it too.
+
+### 3.4 Input
+
+- Touch: `touchesBegan/Moved/Ended/Cancelled:` → `TouchStart` /
+  `TouchMove` / `TouchEnd`, with `pointerId` taken from the `UITouch`
+  identity (a per-gesture map to small integers). Pointer-0 mouse synthesis
+  follows the Android rule: it stops for the rest of a gesture once a second
+  finger lands. The core does this already.
+- Gestures: two-finger pinch and rotate → `PinchZoom`, computed from the raw
+  touches as Android does. `UIPinchGestureRecognizer` would swallow the
+  touches the element under the finger needs.
+- Apple Pencil: `UITouch.force` / `maximumPossibleForce` → `UCEvent::pressure`.
+- iPad trackpad and mouse: `UIHoverGestureRecognizer` → `MouseMove` without
+  a button; `UIEvent.buttonMask` for the right button.
+- Hardware keyboard: `pressesBegan:` / `pressesEnded:` → `KeyDown` / `KeyUp`.
+  The mapping table is the macOS `kVK_*` one translated to
+  `UIKeyboardHIDUsage`.
+
+### 3.5 Files, sandbox and paths
+
+- Paths stay UTF-8 through `PathToUtf8` / `PathFromUtf8`
+  (`UltraCanvasPathUtf8.h`); `NSString.fileSystemRepresentation` is UTF-8 on
+  Apple platforms.
+- `HOME` points at the app container, and `TMPDIR` is set by the system. The
+  backend sets `XDG_CACHE_HOME` / `XDG_CONFIG_HOME` under `Library/`, as
+  Android's `ExportSandboxEnvironment` does, so path-based settings and cache
+  code works unchanged.
+- Every load and save still goes through `UltraCanvasFileLoader`. The
+  document picker is the only way out of the sandbox, which is why saving is
+  `SaveContent` and not `SaveFile` (§3.1).
+- `GetExecutableDir`: `NSBundle.mainBundle.bundlePath`, not
+  `_NSGetExecutablePath` + `..`. The executable sits at the bundle's root on
+  iOS, not in `Contents/MacOS/`.
+- `OpenURL`: `[UIApplication openURL:options:completionHandler:]`.
+
+### 3.6 Fonts
+
+fontconfig builds for iOS. The core's `SetupBundledFontconfig()`
+(`core/UltraCanvasApplication.cpp:960`) writes a runtime `fonts.conf` for
+platforms without a system one, and is reused as on Android. Bundle the
+fonts. Reading `/System/Library/Fonts` on iOS is not a documented interface,
+and its contents change between releases. If the system fonts are wanted,
+the supported route is CoreText, which harfbuzz's `coretext` feature
+already uses on macOS. That would be a later Pango backend change, not a
+fontconfig one. Defaults: the bundled UI font, or "SF Pro" through CoreText
+once that route exists.
+
+---
+
+## 4. Building the dependencies for iOS
+
+There is no cross-build for Apple mobile today. The macOS deps are Homebrew
+locally or vcpkg in CI (`cmake/UltraCanvasMacOSDeps.cmake`,
+`scripts/macos-deps.sh`, `MacOS/deps/`), and Android's sysroot is vcpkg with
+the NDK chainloaded (`scripts/android-bootstrap-sysroot.sh`,
+`UltraCanvas/OS/Android/packaging/vcpkg.json`). iOS follows the Android
+route with vcpkg's iOS triplets.
+
+### 4.1 Layout
+
+| Piece | Where | Modelled on |
+|---|---|---|
+| manifest | `UltraCanvas/OS/iOS/packaging/vcpkg.json` | the Android manifest: cairo, pango, fontconfig, freetype, harfbuzz, glib, tinyxml2, fmt, libvips; then openssl, c-ares, sqlite3 |
+| triplets | `UltraCanvas/OS/iOS/packaging/triplets/arm64-ios-ultracanvas.cmake`, `arm64-ios-simulator-ultracanvas.cmake` | `MacOS/deps/triplets/arm64-osx-ultracanvas.cmake` |
+| overlay ports | reuse `MacOS/deps/ports/` (libvips, librevenge, mupdf, zbar) where they apply | the macOS overlays |
+| driver | `scripts/ios-bootstrap-sysroot.sh [--with-net] [simulator\|device]` | `scripts/android-bootstrap-sysroot.sh` and `scripts/macos-deps.sh` (same pinned vcpkg commit) |
+| check | `scripts/ios-check-sysroot.sh <prefix> <simulator\|device>`: every archive's `LC_BUILD_VERSION` platform (7 simulator, 2 device), no `.dylib`, the `.pc` files the core asks for, no `cairo-quartz.h` | - |
+| CI | `.github/workflows/ios-build.yml`: both triplets on `macos-15`, vcpkg binary cache | `.github/workflows/android-build.yml` |
+
+**Status:** written, as laid out above. The manifest is the Android set, with
+OpenSSL, c-ares and curl behind its `net` feature. Only the libvips overlay is
+reused; librevenge, mupdf and zbar wait for the plug-ins that need them. The
+triplets are below:
+
+```text
+set(VCPKG_TARGET_ARCHITECTURE arm64)
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_BUILD_TYPE release)
+set(VCPKG_CMAKE_SYSTEM_NAME iOS)
+set(VCPKG_OSX_ARCHITECTURES arm64)
+set(VCPKG_OSX_DEPLOYMENT_TARGET 16.0)
+# simulator triplet adds: set(VCPKG_OSX_SYSROOT iphonesimulator)
+```
+
+Linkage is **static**. A dynamic library on iOS must be wrapped in a signed
+`.framework` inside the app bundle. That is possible, but it multiplies the
+packaging work for no gain, since there is only one process to share the
+libraries with. The deployment target is a decision to make with the
+packaging (16.0 is a placeholder).
+
+Device and simulator are two builds: same architecture, different SDKs.
+Bundling both into an `.xcframework` is only needed when the core is
+distributed as a binary; an app built from source picks one per
+configuration.
+
+### 4.2 The stack, dependency by dependency
+
+| Dependency | iOS notes |
+|---|---|
+| freetype, harfbuzz, fmt, tinyxml2, zlib | straightforward; zlib is in the SDK |
+| glib | the hardest one, as on Android. It needs a meson cross file for iOS; `gspawn` (no `fork`/`exec` on iOS) and the GIO modules must be built out or left unused. Check whether vcpkg's glib port builds for `arm64-ios` as it is |
+| fontconfig | builds; needs the runtime `fonts.conf` (§3.6) and a cache directory under `Library/Caches` |
+| cairo | image surface only. Turn the Quartz surface and font backends off (they include ApplicationServices); no XLib, no Win32 |
+| pango (+pangocairo) | the fontconfig/freetype backend, as on Android |
+| libvips | part of UltraCanvas on every platform (decided 2026-10-15, see the Android investigation §4.2). Start with the codecs Android carries (JPEG, PNG, WebP, TIFF, EXIF, lcms, GIF, Netpbm, SVG through librsvg 2.40) and add HEIF next: HEIC is the iPhone camera's format |
+| openssl | vcpkg builds it for iOS; needed for UltraNet TLS (§3.1) and the vendored curl |
+| c-ares | replaces the resolver file, as on Android |
+| sqlite3 | the SDK has `libsqlite3`, but vendoring the amalgamation keeps every platform on the same version |
+| libcurl | the vendored `third_party/curl` against the OpenSSL above; its Linux-only selection logic (the `objdump -T` probe) must not run |
+| miniaudio | vendored, and already has the iOS path (`AVAudioSession`, `MA_APPLE_MOBILE`); no build work, but the app must configure the audio session category |
+| GStreamer | not used; video is AVFoundation, which iOS has. `libspecific/Video/VideoBackendAVFoundation.mm` already draws into a raw `CGBitmapContext` rather than an AppKit view, so it is a candidate to compile as it is |
+| MuPDF, tesseract/leptonica, zbar, libcdr/ICU, MicroTeX, the Rust vectorizer | off for phase 1; each is a later, separate decision. MuPDF has its own iOS build; the vectorizer needs a Rust `aarch64-apple-ios` target |
+
+### 4.3 No plug-in DSOs
+
+The element, chart and UltraNet plug-ins are `MODULE` libraries `dlopen`ed at
+run time. iOS allows loading only the signed frameworks inside the app
+bundle, and App Review rejects downloaded code. So:
+- `ULTRACANVAS_BUILD_SHARED` defaults to OFF on iOS, as on Android and
+  WebAssembly (`UltraCanvas/CMakeLists.txt:73`).
+- `ULTRACANVAS_CHART_RUNTIME_MODULES` is forced OFF
+  (`UltraCanvas/CMakeLists.txt:1291` does it for WebAssembly and Android;
+  add iOS to that condition).
+- Every format plug-in an iOS app wants is compiled in; UltraNet protocol
+  plug-ins likewise.
+
+---
+
+## 5. The GL / Metal decision
+
+**What needs a GPU at all.** UltraCanvas's 2D rendering is Cairo on the CPU,
+presented as an image (§3.3). That is already how Windows and Android work,
+and it does not need Metal or GL. The only GPU users are the GL surfaces
+(`ULTRACANVAS_ENABLE_GL`: `UltraCanvasGLSurface`, the 3D chart elements such
+as `ContourSurface3D`, `GLFramebuffer`), which degrade to "unavailable" when
+GL is off.
+
+**The options for GL surfaces:**
+
+| Option | For | Against |
+|---|---|---|
+| 1. **GL off** | nothing to build; GL elements already degrade | no 3D charts or GL surfaces on iOS |
+| 2. OpenGL ES 3.0 through EAGL (`EAGLContext`, `GLKit`) | in the SDK; the GLES code paths already exist for Android (`GLFramebuffer.cpp`'s `__ANDROID__` arm) | deprecated since iOS 12, which warns at every build and can be removed in any release; EAGL is not EGL, so it needs a third context manager of its own |
+| 3. **ANGLE on its Metal back end** (GLES 3 + EGL over Metal) | the EGL context manager Android uses (`OS/Android/GLContextManagerEGL_Android.cpp`) ports nearly as it is; the GLES headers are the ones Android includes; Metal underneath is Apple's supported API | ANGLE is a large dependency to build for iOS (it is not in vcpkg for iOS today, so a script of our own); adds to `Docs/Dependencies.md`, `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md` (house rule 5) |
+| 4. A native Metal render path | the best performance | every GL surface and element rewritten against a second graphics API, for one platform. Out of proportion |
+
+**Recommendation: 1 now, 3 when 3D on iOS is wanted, never 2 or 4.**
+Phase 1 to 2 configure with `ULTRACANVAS_ENABLE_GL=OFF`. When GL surfaces
+are wanted, ANGLE's Metal back end keeps one GL code path (GLES 3 over EGL)
+shared by Android and iOS, and Apple's deprecation of OpenGL ES no longer
+matters. EAGL would be work spent on an API Apple has scheduled for removal.
+Rendering 2D through Metal (uploading the Cairo surface as an `MTLTexture`
+each frame) is a presentation detail that can replace `layer.contents`
+later if profiling asks for it. It is not a reason to start with Metal.
+
+---
+
+## 6. The CMake branch
+
+### 6.1 What is there now
+
+**Status: the branch of 6.2 below is written (phase 2).** `CMAKE_SYSTEM_NAME
+STREQUAL "iOS"` is tested before `APPLE`, which an iOS toolchain also sets,
+and selects `OS/iOS`. tvOS, visionOS and watchOS stop with a `FATAL_ERROR`
+that names this document, and the headers stop them with an `#error`. Without
+the test, such a configure picks `OS/MacOS` and fails much later on Cocoa,
+IOKit or CoreWLAN. The root `CMakeLists.txt` has an iOS defaults block like
+Android's: every application but DemoApp off, the plug-ins off, and the
+modules whose dependencies the sysroot lacks off.
+
+`ULTRACANVAS_IOS` is the compile definition the audit of §2 tests. It is set
+for every target and carried PUBLIC by the core, so a source tells macOS from
+iOS without including `<TargetConditionals.h>`. The sites it changed:
+
+- the fontconfig code in `core/UltraCanvasApplication.cpp`,
+  `core/UltraCanvasEmojiSettings.cpp` and `include/UltraCanvasApplication.h`,
+  compiled for iOS as well;
+- the no-op fallbacks in `core/UltraCanvasFileAssociations.cpp`,
+  `core/UltraCanvasHostFileIcons.cpp` and `core/UltraCanvasMacBundle.cpp`
+  (`ResolveFinderAlias`), compiled for iOS as well;
+- iOS's own clipboard arm in `core/UltraCanvasClipboard.cpp`;
+- `OpenURLiOS` in `core/UltraCanvasUtils.cpp`, since `system()` is
+  unavailable on iOS;
+- the hardware-info and network-monitor backends, excluded for iOS so it
+  links the core fallbacks;
+- the root `CMakeLists.txt`'s `ULTRACANVAS_HAS_NATIVE_*` platform tests,
+  which exclude iOS, as does the CUPS probe (the Mac's own `cups-config` would
+  answer for an iOS build).
+
+### 6.2 What the branch becomes
+
+When `OS/iOS/` exists, the `FATAL_ERROR` is replaced by:
+
+```text
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(ULTRACANVAS_PLATFORM "iOS")
+    set(ULTRACANVAS_PLATFORM_DIR "OS/iOS")
+```
+
+and these follow:
+
+1. **Objective-C++ sources.** The `*.mm` glob and the
+   `LANGUAGE OBJCXX` / `-fobjc-arc` properties at
+   `UltraCanvas/CMakeLists.txt:1831` are inside
+   `if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")`; that becomes
+   `MacOS OR iOS`. `enable_language(OBJCXX)` already runs for any `APPLE`.
+2. **Frameworks.** A new `elseif(ULTRACANVAS_PLATFORM STREQUAL "iOS")` arm
+   beside the macOS `find_library` block: UIKit, Foundation, CoreGraphics,
+   QuartzCore, CoreText, CoreFoundation, Security, UniformTypeIdentifiers,
+   AVFoundation, CoreMedia, CoreVideo, AudioToolbox. Not Cocoa, AppKit,
+   IOKit, CoreWLAN, IOBluetooth, DiskArbitration, ScreenCaptureKit,
+   ImageCaptureCore or CoreServices. The link line at the end
+   (`"-framework AppKit"`) gets its own iOS arm.
+3. **The 17 `APPLE` tests**, each read once. Some mean "any Apple" (the
+   `-dead_strip_dylibs` link option, OBJCXX) and stay as they are. Some mean
+   macOS (bundles, `Contents/MacOS`, notarisation, Homebrew) and become
+   `APPLE AND NOT IOS`.
+4. **`cmake/UltraCanvasMacOSDeps.cmake`** runs `brew --prefix`, whose answer
+   is macOS libraries. It now returns early for the four UIKit systems as
+   well as for `NOT APPLE` (phase 1). A sibling `cmake/UltraCanvasiOSDeps.cmake` points
+   `CMAKE_FIND_ROOT_PATH` and `PKG_CONFIG_LIBDIR` at the vcpkg prefix (§4),
+   as the WebAssembly build does with `cmake/UltraCanvasWasmSysroot.cmake`.
+5. **Defaults:** `ULTRACANVAS_BUILD_SHARED` OFF, chart runtime modules OFF,
+   plug-ins that need an unbuilt dependency OFF, `ULTRACANVAS_ENABLE_GL` OFF
+   until §5 option 3.
+6. **Applications:** the root `CMakeLists.txt` builds an `.app` only for the
+   applications meant for iOS (DemoApp first), with
+   `MACOSX_BUNDLE`, an iOS `Info.plist` (`UILaunchScreen`,
+   `UIApplicationSceneManifest`, supported orientations) and
+   `XCODE_ATTRIBUTE_DEVELOPMENT_TEAM` left to the developer. Desktop-only
+   applications are skipped on `IOS` the way UltraStore already is.
+
+A configure for the simulator would then read:
+
+```bash
+cmake -B build-ios-sim -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 -DULTRACANVAS_IOS_DEPS_PREFIX=<vcpkg prefix>
+```
+
+(`ULTRACANVAS_IOS_DEPS_PREFIX` does not exist yet; the name follows
+`ULTRACANVAS_MACOS_DEPS_PREFIX`.)
+
+---
+
+## 7. Packaging, signing and CI
+
+- **Simulator first.** A simulator build needs no signing and no Apple
+  developer account, and runs on the GitHub macOS runners
+  (`xcrun simctl boot`, `install`, `launch`, `io screenshot`). That is the
+  iOS counterpart of `scripts/android-emulator-smoke.sh`, and it should land
+  as an `ios-build.yml` workflow: build the sysroot (cached like Android's),
+  build DemoApp for the simulator, launch it, and fail on a crash or a blank
+  screenshot.
+- **Device builds** need a development team and a provisioning profile.
+  Those are secrets of whoever ships, so CI stops at an unsigned device
+  build (`CODE_SIGNING_ALLOWED=NO`), which proves it compiles and links.
+- **Store builds** add the privacy manifest (`PrivacyInfo.xcprivacy`, which
+  lists the "required reason" APIs: file timestamps, disk space, user
+  defaults), export compliance for the cryptography, and the review rule
+  against downloaded code (§4.3).
+- Rule 8 of *Branch and pull-request rules* in `AGENTS.md`: every pull
+  request of this port is platform-specific and gets the `ci:distro` label.
+
+---
+
+## 8. Phased plan
+
+| Phase | Delivers | Exit test |
+|---|---|---|
+| 0 | this document; the `#error` and `FATAL_ERROR` guards | done |
+| 1 | `scripts/ios-bootstrap-sysroot.sh`, triplets and manifest, `scripts/ios-check-sysroot.sh`, `ios-build.yml`; `cmake/UltraCanvasMacOSDeps.cmake` skips iOS | `ios-build.yml` builds both sysroots and the check passes. **Landed; first CI run pending** |
+| 2 | the `__APPLE__` audit of §2 and the CMake branch of §6.2; `OS/iOS/` application, window, main, touch, run loop (§3.2 option A), presentation (§3.3), clipboard (text, PNG), message and input dialogs (`UIAlertController`); the core library for `arm64-ios-simulator` with GL off; DemoApp as an `.app` | `ios-build.yml` builds the core library and DemoApp, and DemoApp is still running 45 s after launch on a simulator (screenshot in the run's artifact). **Written; first CI run pending.** Scrolling under a simulated touch is not tested yet |
+| 3 | text input with composition, clipboard, message dialogs, document picker open and `SaveContent`, host appearance, language | a text field takes input from the software keyboard in the simulator; a document opens and saves through the picker. **Partly written:** the software keyboard (now `UITextInput`), the hardware keyboard, host appearance and opening through the picker. Saving (`SaveContent` through the picker's export mode), `SelectFolder` and composition (`UITextInput` marked text as `TextComposition`) are written too. Autocorrection is open, and none of it has been driven on a simulator |
+| 4 | UltraNet (OpenSSL TLS with system roots, c-ares), audio (session category), AVFoundation video | a TLS fetch succeeds; a video plays |
+| 5 | GL surfaces through ANGLE/Metal (§5 option 3); option B run loop if frame pacing is wanted; iPad pointer and Pencil | the GL demo pages render |
+| 6 | a device build, signing documented, the privacy manifest | runs on an iPhone and an iPad |
+
+Phase 1 is entirely build work and needs no UIKit. It also tells, early,
+whether glib and libvips are a day's work on iOS or a week's. Compiling the
+core library moved to phase 2. The core includes `UltraCanvasWindow.h`
+everywhere, and that header needs a backend's window class to alias, so the
+core cannot compile for iOS until `OS/iOS/` has at least its application and
+window.
+
+---
+
+## 9. Key file index
+
+| What | Where |
+|---|---|
+| iOS in the headers | `UltraCanvas/include/UltraCanvasWindow.h:806`, `UltraCanvas/include/UltraCanvasApplication.h:731` |
+| The iOS backend | `UltraCanvas/OS/iOS/` and its `README.md` |
+| iOS in CMake | `UltraCanvas/CMakeLists.txt:182` (detection), the root `CMakeLists.txt`'s *iOS DEFAULTS* block |
+| macOS backend (Objective-C++ template) | `UltraCanvas/OS/MacOS/` |
+| macOS run-loop wait and wakeup | `UltraCanvas/OS/MacOS/UltraCanvasMacOSApplication.mm:271-358` |
+| macOS view presentation | `UltraCanvas/OS/MacOS/UltraCanvasMacOSWindow.mm:106-121`, `:644` |
+| Android backend (mobile template) | `UltraCanvas/OS/Android/`, its `README.md` |
+| Android entry and `ultracanvas_app_main` | `UltraCanvas/OS/Android/UltraCanvasAndroidMain.cpp` |
+| Android lifecycle | `UltraCanvas/OS/Android/UltraCanvasAndroidApplication.cpp:394-434` |
+| WebAssembly's loop takeover (`RunBeforeMainLoop`) | `UltraCanvas/OS/WASM/UltraCanvasWASMApplication.cpp:288-296`, `include/UltraCanvasApplication.h:649` |
+| Service fallbacks | `include/UltraCanvas*Backend.h` (`ULTRACANVAS_<X>_NATIVE`), e.g. `UltraCanvasHardwareInfoBackend.h:20` |
+| macOS dependencies | `cmake/UltraCanvasMacOSDeps.cmake`, `scripts/macos-deps.sh`, `MacOS/deps/` |
+| Android dependencies | `scripts/android-bootstrap-sysroot.sh`, `UltraCanvas/OS/Android/packaging/vcpkg.json` |
+| Shared-core and chart-module defaults | `UltraCanvas/CMakeLists.txt:73`, `:1291` |
+| Framework comparison (says "No iOS") | `Docs/UltraCanvasComparison.md:73`, `:210` |
 
 ==============================================================================
 FILE: Docs/Modules/AudioFX/README.md
@@ -113930,17 +115157,6 @@ change is kept in the settings folder and shows at the next start.
 | `main.cpp` | The command line and the single instance |
 
 ==============================================================================
-FILE: Docs/UltraSnip/changelog.d/picker-in-framework.md
-==============================================================================
-
-- **The selection over the screen is the framework's now.** UltraSnip's
-  overlay - the frozen, dimmed screen with the rectangle or the lit window -
-  moved into UltraCanvas (`UltraCanvasScreenAreaPicker`), so ChatCube's
-  screenshot button uses the same one. Nothing changes in how a snip is
-  taken. On a Mac the selection now opens, above the menu bar, now that the
-  framework captures the screen there.
-
-==============================================================================
 FILE: Docs/UltraToDo/README.md
 ==============================================================================
 
@@ -114216,51 +115432,6 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/close-tab-shows-it-first.md
-==============================================================================
-
-- **Closing a tab that is not on show brings it to the front first.** The
-  tab's **×** now shows the image it closes and asks "Close *name*?" before
-  it goes, so a click on the wrong tab's cross loses nothing. The tab on
-  show, without changes, still closes at once, as does *File ▸ Close Tab*
-  (`Ctrl+W`) on it.
-- **Closing an image with unsaved changes offers to save it.** The question
-  is now *Save the changes to name before closing it?* with **Save**, **Don't
-  save** and **Cancel**, where it used to offer only to discard them. Save
-  writes the image to its file - or asks where, through *Save As*, for an
-  untitled one - and closes the tab once it is saved; a save cancelled or
-  failed leaves the tab open.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/close-window-save-each.md
-==============================================================================
-
-- **Closing the window or quitting asks about each unsaved image.** Instead
-  of "N images have unsaved changes. Close anyway?", each image with unsaved
-  changes is brought to the front in turn and asks **Save**, **Don't save**
-  or **Cancel**. Save writes it (Save As for an untitled one) and goes on to
-  the next; Cancel - or a save cancelled or failed - keeps the window open,
-  with every image as it was. *File ▸ Quit* does this window by window.
-- **Files dropped on the start page open.** While no image is open, a file
-  dropped anywhere on the window opens as a drop on the canvas does; it used
-  to be ignored.
-- **The start page, the clipboard history picker and the save question are
-  translated** into the 30 languages UltraPaint ships.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/start-page.md
-==============================================================================
-
-- **A start page instead of a blank canvas.** A window started without files,
-  and one whose last tab has closed, shows three buttons one under the other
-  in the middle of the canvas area, each in a pastel of its own: **Create new
-  bitmap** (the New Image dialog), **Paste image** (the clipboard's picture as
-  a new image) and **Clipboard history**, which shows the 20 images copied
-  last as thumbnails - a click opens one as a new image. `Ctrl+V` on the start
-  page pastes as a new image. The commands that need an image do nothing
-  until one is open.
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md
@@ -114983,6 +116154,8 @@ From then on, UltraDesktop is the whole desktop:
 - **Win+V** opens UltraDesktop's clipboard history;
 - the **wallpaper** covers every monitor, and a monitor you plug in is covered
   within a few seconds;
+- **minimized windows** go to their taskbar buttons only, as with Explorer,
+  never to small title bars along the bottom of the screen;
 - the **⚙ right-click menu** offers **Sign out...**, **Restart...** and **Shut
   down...**. Each asks first, and open programs are asked to close.
 
@@ -115715,9 +116888,11 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
-(the framework's `media/images/landscape.jpg` where a package lacks it or
-cannot read AVIF). An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`.
+Each of ULTRA OS's pictures there has a JPEG beside it (`ULTRA OS A.jpg`):
+a build that cannot read AVIF (no libheif - Android's, whose APK carries only
+the JPEGs) shows that, and the framework's `media/images/landscape.jpg` only
+where neither can be read. An
 empty `ramDiscPath` leaves the RAM disc button out; `"ultrafiler"`, the
 default, asks UltraFiler for its RAM disc (with another `filerProgram` the
 button just opens it), and a folder opens that folder. A file holding the
@@ -115889,19 +117064,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/window-previews-of-minimized-windows.md
-==============================================================================
-
-- **The taskbar's window previews show minimized windows.** Resting the
-  pointer on a running application's button showed only the icon for a
-  window that was minimized - LINE in the tray, say - until it had been
-  opened once, because a minimized window cannot be asked to draw itself.
-  On Windows the previews are now DWM's live thumbnails, which show a
-  minimized window as it last looked, also one minimized before the desktop
-  started, and follow a window that changes while the strip is open.
-  Elsewhere a minimized window shows the last picture captured of it.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
@@ -117890,40 +119052,6 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/no-reply-codes.md
-==============================================================================
-
-- **"Always trust" works for senders that put a code in their no-reply
-  address.** Claude's sign-in mails come from
-  `no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com`, the next one from
-  another code - so *Always trust this sender*, *Block this sender* and
-  *Show images – Always from this sender* only ever applied to the one
-  message they were chosen on. Such an address is now one sender
-  (`no-reply@mail.anthropic.com`): chosen once, it holds for all its mail.
-  The same goes for a "+tag" on a mailbox: `orders+Q7x2Lm@shop.example` is
-  `orders@shop.example`.
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/stranger-replies.md
-==============================================================================
-
-- **A "Re:" or "Fw:" from someone you never wrote to is flagged as likely
-  fraud.** Fake invoices arrive as "WG: Rechnung 373115" forwarded by a
-  stranger, and sales spam as "Re: your sales" to a mail you never answered:
-  the prefix makes a first message look like part of a conversation. A
-  message whose subject starts with a reply or forward prefix (Re, AW, SV, VS,
-  Fw, Fwd, WG, TR, RV, ...; read past a tag such as "*** VIRUS ***" or
-  "[SPAM]") gets the *Likely spam* badge and a warning strip that says
-  *fraud* (`unsolicited-reply`) - more so when it names no message it
-  answers, when the thread it names is another company's, and when it is
-  about a bill. It counts only for strangers: everyone you write to is in
-  your address book, and a contact's replies are never flagged for it. The
-  warning strip has an **Add to contacts** button for a sender you do know;
-  once added, the message is shown again without the warning. A mailing
-  list's post (List-Id) is not flagged, nor a proven known service's help
-  desk. It has its own switch in *Settings > Warnings > Spam/scam warnings*.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md

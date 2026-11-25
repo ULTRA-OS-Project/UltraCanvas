@@ -412,7 +412,8 @@ namespace FileAssociationsBackend {
 // Android has no backend yet either: handing a file to another app is an
 // ACTION_VIEW Intent through a content:// URI, not an association database,
 // so until OS/Android does that it reports "not available" here too.
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+// iOS likewise: an app hands a file on through a share sheet, not a registry.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || defined(ULTRACANVAS_IOS)
 namespace FileAssociationsBackend {
     bool RefreshGlobalIndex() { return false; }
     std::vector<FileAssociationApp> ResolveFile(const std::string&) { return {}; }

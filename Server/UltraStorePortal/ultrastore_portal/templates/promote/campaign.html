@@ -1,0 +1,37 @@
+{% extends "console/base.html" %}
+{% block title %}{{ campaign.name }} - Advertising{% endblock %}
+{% block content %}
+<div class="page-head">
+  {% if app.icon %}<img class="app-icon" src="{{ app.icon.url }}" alt="" width="64" height="64">{% else %}<span class="app-icon">{{ app.name|slice:":1" }}</span>{% endif %}
+  <div><h1>{{ campaign.name }}</h1><span class="text-secondary">{{ sentence }}</span></div>
+  <span class="badge">{{ word }}</span>
+  <div class="ms-auto d-flex flex-wrap gap-2">
+    {% if campaign.state != "ended" %}
+      <a class="btn btn-primary" href="{% url 'promote:campaign_edit' campaign.pk %}">Change</a>
+      {% if campaign.state == "active" %}<form method="post" action="{% url 'promote:campaign_state' campaign.pk 'pause' %}">{% csrf_token %}<button class="btn btn-outline-secondary">Pause</button></form>
+      {% else %}<form method="post" action="{% url 'promote:campaign_state' campaign.pk 'resume' %}">{% csrf_token %}<button class="btn btn-outline-secondary">Resume</button></form>{% endif %}
+      <form method="post" action="{% url 'promote:campaign_state' campaign.pk 'end' %}">{% csrf_token %}<button class="btn btn-soft-danger">End</button></form>
+    {% endif %}
+  </div>
+</div>
+<div class="panels">
+{% if campaign.stopped %}<div class="alert alert-danger"><b>The store stopped this campaign.</b> {{ campaign.stop_reason }}</div>{% endif %}
+<div><div class="row row-cols-2 row-cols-lg-4 g-3">
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Budget per day</span><b>{{ campaign.daily_budget }} {{ currency }}</b><span class="small text-secondary">{% if campaign.max_click %}at most {{ campaign.max_click }} a click{% else %}the store bids for you{% endif %}</span></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Spent in all</span><b>{{ campaign.spent|floatformat:2 }} {{ currency }}</b><span class="small text-secondary">{% if campaign.total_budget %}of {{ campaign.total_budget }}{% else %}no limit in all{% endif %}</span></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Runs</span><b>{% if campaign.ends %}until {{ campaign.ends|date:"j M Y" }}{% else %}until stopped{% endif %}</b><span class="small text-secondary">since {{ campaign.starts|date:"j M Y" }}</span></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Balance</span><b>{{ balance.amount }} {{ currency }}</b><a class="small" href="{% url 'promote:balance' %}">The balance</a></div></div></div>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>Where it appears</h2>
+  <ul class="mb-0">{% for place in places %}<li><b>{{ place.area_name }}</b>: {{ place.name }}{% if not place.is_open %} <span class="text-secondary">(not open now)</span>{% endif %}</li>{% endfor %}</ul>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>The last {{ report.days }} days</h2>
+  {% include "promote/_report.html" with rows=report.by_place head="Place" %}
+  {% if report.by_day %}<h2 class="mt-4">By day</h2>{% include "promote/_report.html" with rows=report.by_day head="Day" %}{% endif %}
+  {% if report.by_country %}<h2 class="mt-4">By country</h2>{% include "promote/_report.html" with rows=report.by_country head="Country" %}{% endif %}
+  <p class="small text-secondary mt-3 mb-0">Installs and orders are the ones that followed a click on this advertisement within a week. Who clicked or bought is never shown, here or anywhere. A click that did not count - your own, a burst from one place - is not charged.</p>
+</div></div>
+</div>
+{% endblock %}

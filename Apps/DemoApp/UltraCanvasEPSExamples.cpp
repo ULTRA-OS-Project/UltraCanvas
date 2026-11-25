@@ -29,8 +29,8 @@ namespace UltraCanvas {
         // and it goes in at the bottom of the page.
         auto statusLabel = DemoKit::CreateText("EPSStatus", Tr("Ready. Click on an EPS file to view."));
         statusLabel->SetFontSize(11);
-        statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+        statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(230, 230, 230, 255)));
         statusLabel->SetPadding(6);
 
         // One tile per sample drawing in media/vector/EPS/

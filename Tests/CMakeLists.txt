@@ -1162,6 +1162,24 @@ else()
     message(STATUS "  WidgetAccessibilityTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== SLIDER DESIGNS TEST =====
+# The slider's tick positions and labels, named stops, the double-click reset,
+# and the relative drag of a knob and a ruler. Headless - no display needed.
+if(TARGET UltraCanvas)
+    add_executable(SliderDesignsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SliderDesignsTest.cpp
+    )
+    target_include_directories(SliderDesignsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SliderDesignsTest PRIVATE cxx_std_20)
+    target_link_libraries(SliderDesignsTest PRIVATE UltraCanvas)
+    set_target_properties(SliderDesignsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SliderDesignsTest COMMAND SliderDesignsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SliderDesignsTest")
+endif()
+
 # ===== CLIPBOARD HISTORY TEST =====
 # The clipboard history the desktop shows is newest first, and never records
 # content marked secret - a password copied from UltraPassword, or another
@@ -1231,6 +1249,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: KanbanFileDropTest")
 else()
     message(STATUS "  KanbanFileDropTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== EMBEDDED WINDOW MANAGER TEST =====
+# The in-program window manager (Android's desktop mode, MobilePC):
+# placement, stacking bands, focus, title bars kept with their windows,
+# maximize into the work area, pointer routing with the button grab, moving
+# and resizing, damage, and the composited pixels. Needs no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building EmbeddedWindowManagerTest...")
+    add_executable(EmbeddedWindowManagerTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedWindowManagerTest.cpp
+    )
+    target_include_directories(EmbeddedWindowManagerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(EmbeddedWindowManagerTest PRIVATE cxx_std_20)
+    target_link_libraries(EmbeddedWindowManagerTest PRIVATE UltraCanvas)
+    set_target_properties(EmbeddedWindowManagerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EmbeddedWindowManagerTest COMMAND EmbeddedWindowManagerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: EmbeddedWindowManagerTest")
+else()
+    message(STATUS "  EmbeddedWindowManagerTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== ULTRADESKTOP APP CATEGORIES TEST =====
@@ -3699,6 +3740,38 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: CSSLayoutAutoExpandTest")
+
+# ===== CSS LAYOUT CROSS MARGIN TEST =====
+# A flex item is measured at the cross extent it is arranged at: the
+# container's less its own cross margins (a wrapping caption with side
+# margins in a column was measured a line short). Pure geometry.
+message(STATUS "  Building CSSLayoutCrossMarginTest...")
+add_executable(CSSLayoutCrossMarginTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutCrossMarginTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutCrossMarginTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutCrossMarginTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutCrossMarginTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutCrossMarginTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutCrossMarginTest
+    COMMAND CSSLayoutCrossMarginTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutCrossMarginTest")
 
 # ===== CSS LAYOUT GROW FROM ZERO TEST =====
 # A row measured "at most this wide" gives an item that grows from a zero

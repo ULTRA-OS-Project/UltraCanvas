@@ -217,7 +217,7 @@ namespace {
         // Segment click feedback
         auto clickLabel = DemoKit::AddText(controlsCard, "MekkoClickLabel", Tr("Click a segment to inspect it..."));
         clickLabel->SetFontSize(11);
-        clickLabel->SetTextColor(Color(90, 90, 90, 255));
+        clickLabel->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
 
         auto onSegmentClick = [clickLabel](std::shared_ptr<MekkoChartDataVector> data) {
             return [clickLabel, data](size_t columnIndex, size_t seriesIndex) {

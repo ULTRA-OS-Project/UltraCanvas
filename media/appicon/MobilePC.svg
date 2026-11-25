@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e3a5f"/>
+      <stop offset="1" stop-color="#0b1a2c"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b82c4"/>
+      <stop offset="1" stop-color="#7c5cc4"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="40" fill="url(#ground)"/>
+  <!-- the TV or monitor, a desktop on it -->
+  <rect x="30" y="46" width="176" height="114" rx="10" fill="#e8edf3"/>
+  <rect x="38" y="54" width="160" height="98" rx="4" fill="url(#screen)"/>
+  <rect x="38" y="54" width="20" height="98" fill="#20262e" opacity="0.85"/>
+  <rect x="72" y="68" width="74" height="50" rx="3" fill="#f5f7fa"/>
+  <rect x="72" y="68" width="74" height="9" rx="3" fill="#c9d3df"/>
+  <rect x="104" y="160" width="28" height="22" fill="#c9d3df"/>
+  <rect x="80" y="180" width="76" height="8" rx="4" fill="#e8edf3"/>
+  <!-- the phone in front, the touchpad on it -->
+  <rect x="160" y="112" width="62" height="114" rx="11" fill="#14181e" stroke="#e8edf3" stroke-width="4"/>
+  <rect x="168" y="126" width="46" height="74" rx="5" fill="#2d3540"/>
+  <circle cx="191" cy="214" r="4" fill="#e8edf3"/>
+  <!-- the link between them -->
+  <path d="M150 196 C 130 214, 118 214, 112 200" fill="none" stroke="#5fb4ff" stroke-width="5" stroke-linecap="round"/>
+</svg>

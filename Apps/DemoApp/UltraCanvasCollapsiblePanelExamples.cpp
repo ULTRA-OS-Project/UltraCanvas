@@ -32,7 +32,7 @@ namespace UltraCanvas {
         }
         fold->GetBody()->SetPadding(6);
         auto foldOut = DemoKit::CreateText("CpFoldOut", Tr("Expanded"));
-        foldOut->SetBackgroundColor(Color(240, 240, 240));
+        foldOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         foldOut->SetPadding(3);
         fold->onExpandedChanged = [foldOut](bool e) { foldOut->SetText(e ? Tr("Expanded") : Tr("Collapsed")); };
         DemoKit::Add(foldCard, fold);
@@ -52,7 +52,7 @@ namespace UltraCanvas {
             queueBody->AddChild(CreateLabel(std::string("CpQ") + std::to_string(queueBody->GetChildCount()), 0, 0, 0, 22, text));
         }
         auto queueOut = DemoKit::CreateText("CpQueueOut", "");
-        queueOut->SetBackgroundColor(Color(240, 240, 240));
+        queueOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         queueOut->SetPadding(3);
         queue->AddHeaderButton("CpQueuePause", Tr("Pause all"), [queueOut]() { queueOut->SetText(Tr("Pause all pressed - the panel did not fold")); });
         queue->AddHeaderButton("CpQueueClear", Tr("Clear finished"), [queueOut, queueBody]() {
@@ -73,7 +73,7 @@ namespace UltraCanvas {
         above->SetWrap(TextWrap::WrapWord);
         above->SetPadding(12);
         above->layoutItem.SetFlexGrow(1);
-        above->SetBackgroundColor(Color(250, 250, 252, 255));
+        above->SetBackgroundColor(DemoKit::Themed(Color(250, 250, 252, 255)));
         dock->AddChild(above);
         auto bottom = CreateCollapsiblePanel("CpBottom", Tr("Log"));
         bottom->SetDetail(Tr("drag the top edge"));
@@ -86,7 +86,7 @@ namespace UltraCanvas {
                                                     TrF("{0}  catalog fetched, sequence {1}", "14:5" + std::to_string(i), 42)));
         }
         auto dockOut = DemoKit::CreateText("CpDockOut", TrF("Expanded height: {0}", 140));
-        dockOut->SetBackgroundColor(Color(240, 240, 240));
+        dockOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         dockOut->SetPadding(3);
         bottom->onExpandedHeightChanged = [dockOut](float h) { dockOut->SetText(TrF("Expanded height: {0}", static_cast<int>(h))); };
         dock->AddChild(bottom);

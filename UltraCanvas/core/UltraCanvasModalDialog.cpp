@@ -1,6 +1,7 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.11.1 - the Save dialog's "Drag to Folder" caption wraps onto two lines instead of being cut
 // Version: 3.11.0 - an input dialog's iconAboveInput: a picture centred above its field, in the
 //                  message colour (the Unlock dialog's lock)
 // Version: 3.10.0 - a SetStyle that changes only the type sizes keeps the dialog following the theme
@@ -2133,8 +2134,12 @@ namespace UltraCanvas {
                         "FileDialogFileIconCaption", 0, 0, kSaveIconBlockWidth, 14, Tr("Drag to Folder"));
                 fileIconCaption->SetFontSize(std::max(8.0f, fontSize - 2.0f));
                 fileIconCaption->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+                // Two lines where the translation needs them: one line of
+                // 96 px cut "Drag to Folder" in sixteen languages (139 px in
+                // Ukrainian). The fields beside it are taller than both.
+                fileIconCaption->SetWrap(TextWrap::WrapWord);
                 fileIconCaption->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconBlockWidth));
-                fileIconCaption->size.height = CSSLayout::Dimension::Px(14.0f);
+                fileIconCaption->size.height = CSSLayout::Dimension::Auto();
                 fileIconCaption->layoutItem.SetFlexShrink(0);
                 iconBlock->AddChild(fileIconCaption);
                 fields->AddChild(iconBlock);

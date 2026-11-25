@@ -2,6 +2,7 @@
 // Implementation of the Find text dialog and its file-name patterns.
 // Construction follows UltraFilerRunWindowsDialog (flex-column content,
 // custom Find / Cancel buttons).
+// Version: 1.0.2 - the prompt wraps onto a second line instead of being cut in a longer language
 // Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -92,9 +93,15 @@ void UltraFilerFindTextDialog::Initialize(const FilerFindTextOptions& initial) {
     content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     content->layout.SetFlexGap(6);
 
-    content->AddChild(std::make_shared<UltraCanvasLabel>(
+    // Wraps: the prompt is one line in English, two in most other
+    // languages (German needs 606 px), and the content has room for both.
+    auto textLabel = std::make_shared<UltraCanvasLabel>(
         "uf-findtext-text-label", 0, 0, 428.0f, 20,
-        Tr("Find files in this folder and its sub folders that contain:")));
+        Tr("Find files in this folder and its sub folders that contain:"));
+    textLabel->SetWrap(TextWrap::WrapWord);
+    textLabel->size.height = CSSLayout::Dimension::Auto();
+    textLabel->layoutItem.SetFlexShrink(0.0f);
+    content->AddChild(textLabel);
     textInput_ = std::make_shared<UltraCanvasTextInput>(
         "uf-findtext-text", 0, 0, 428.0f, 30.0f);
     textInput_->SetText(initial.text);

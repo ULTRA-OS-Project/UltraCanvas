@@ -528,9 +528,11 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
-(the framework's `media/images/landscape.jpg` where a package lacks it or
-cannot read AVIF). An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`.
+Each of ULTRA OS's pictures there has a JPEG beside it (`ULTRA OS A.jpg`):
+a build that cannot read AVIF (no libheif - Android's, whose APK carries only
+the JPEGs) shows that, and the framework's `media/images/landscape.jpg` only
+where neither can be read. An
 empty `ramDiscPath` leaves the RAM disc button out; `"ultrafiler"`, the
 default, asks UltraFiler for its RAM disc (with another `filerProgram` the
 button just opens it), and a folder opens that folder. A file holding the

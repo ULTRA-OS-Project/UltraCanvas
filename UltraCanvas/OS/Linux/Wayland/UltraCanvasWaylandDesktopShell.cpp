@@ -1169,6 +1169,9 @@ bool GetScreenSize(int& width, int& height) {
     return width > 0 && height > 0;
 }
 
+// A minimized window is the window manager's to show or not.
+bool KeepMinimizedWindowsHidden() { return false; }
+
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     auto* app = App();
     if (!app || id == 0) return false;

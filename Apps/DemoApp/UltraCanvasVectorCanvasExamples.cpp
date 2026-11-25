@@ -587,7 +587,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
     // taller than a short window the panel scrolls.
     auto panel = DemoKit::CreateColumn("VCPanel", 6);
     panel->size.width = CSSLayout::Dimension::Px(250);
-    panel->SetBackgroundColor(Color(255, 255, 255, 255));
+    panel->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     panel->SetBorders(1, Color(200, 200, 200, 255));
     panel->SetPadding(10);
     {
@@ -622,12 +622,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
             "the stops of a fill\n\n"
             "This page's tools are ~250 lines of application code over that."));
     info->SetFontSize(10);
-    info->SetTextColor(Color(60, 60, 60, 255));
+    info->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
 
     auto status = DemoKit::AddText(card, "VCStatus", "");
     status->SetFontSize(11);
-    status->SetTextColor(Color(60, 60, 60, 255));
-    status->SetBackgroundColor(Color(230, 230, 230, 255));
+    status->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
+    status->SetBackgroundColor(DemoKit::Themed(Color(230, 230, 230, 255)));
     editor->status = status;
 
     editor->Attach();

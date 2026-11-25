@@ -728,7 +728,7 @@ namespace UltraCanvas {
 
         // ===== STATUS AND NOTES =====
         auto status = DemoKit::AddText(card, "wysiwygStatus", "");
-        status->SetTextColor(Color(70, 70, 70, 255));
+        status->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
         page->status = status.get();
 
         auto notes = DemoKit::AddCaption(root, "wysiwygNotes",
@@ -935,7 +935,7 @@ namespace UltraCanvas {
         edit->SetModified(false);
 
         auto status = DemoKit::CreateText("wysiwygIntlStatus", "");
-        status->SetTextColor(Color(70, 70, 70, 255));
+        status->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
 
         // Raw pointers only: the root owns both, and the callbacks below live
         // exactly as long as it does.

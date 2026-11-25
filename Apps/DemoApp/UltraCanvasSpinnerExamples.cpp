@@ -40,7 +40,7 @@ namespace UltraCanvas {
         auto makeValueLabel = [](const std::shared_ptr<UltraCanvasContainer>& row,
                                  const std::string& id, const std::string& text) {
             auto lbl = DemoKit::CreateText(id, text);
-            lbl->SetBackgroundColor(Color(240, 240, 240));
+            lbl->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
             lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
             lbl->SetPadding(3);
             DemoKit::Add(row, lbl);

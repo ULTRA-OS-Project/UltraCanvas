@@ -18,20 +18,33 @@ project that is, in one place, what a store like Google Play is in two:
   package;
 - the **JSON service** a buyer's client reads - the whole signed
   `catalog.json` the native store already parses, a browsable list of apps,
-  and the checkout.
+  and the checkout;
+- the **account** every ULTRA OS shop and service signs in with - sign-up,
+  sign-in and the profile, and an **OpenID Connect provider** through which
+  another service (the store itself, cloud storage, the chat, advertising,
+  a merchant's own site) signs a person in without ever seeing the password
+  (*One sign-in for every service*). It can have an address of its own,
+  `https://account.ultraos.eu`, served by this same application;
+- **advertising** (UltraAds, its first phase) - a publisher promotes an app,
+  whose own card then appears marked *Sponsored* in the store's search, its
+  lists and beside similar apps; paid per click from a prepaid balance,
+  chosen from what is on the page and never from who is looking
+  (*Advertising*). Off until it is switched on.
 
 It is built to replace the store's small services (`Server/UltraStoreMarket`,
 `UltraStoreAccount`, `UltraStorePay`) and the two desktop tools on them
 (`ultrastoreadmin`, `ultrastoreop`). 0.1.0 was the essential path - register
-a publisher, publish an app, show and serve the catalog; 0.2.0 sells;
-*What comes next* names the rest.
+a publisher, publish an app, show and serve the catalog; 0.2.0 sells; 0.4.0
+is the account for every service; 0.5.0 is advertising's first phase; *What
+comes next* names the rest.
 
 ## Decisions
 
 | Question | Decision |
 |---|---|
 | How many stores, how many catalogs? | **One.** One store, one public catalog, generated from what the review published. There is no private or per-publisher catalog, and a publisher holds no signing key: a publisher is an account, the operator's key signs the catalog (decided 2026-11-20). |
-| Which addresses? | **Everything under one root**, `https://store.ultraos.eu` (`ULTRASTORE_PORTAL_BASE_URL`): the pages, the console, the JSON service under `/v1`, the pictures, the packages. No URL the portal writes names a second host (decided 2026-11-20). |
+| Which addresses? | **Everything of the store under one root**, `https://store.ultraos.eu` (`ULTRASTORE_PORTAL_BASE_URL`): the pages, the console, the JSON service under `/v1`, the pictures, the packages. No URL the portal writes for the store names a second host (decided 2026-11-20). **The account may have a root of its own** (decided 2026-11-24): `ULTRASTORE_PORTAL_ACCOUNT_URL`, in production `https://account.ultraos.eu` - the same application answering a second host, because the account is every service's and not the store's, and because its address is written into every token for good. |
+| Who signs people in for other services? | **The portal, as an OpenID Connect provider** (decided 2026-11-24): the authorization code flow with PKCE and nothing else, written on the `cryptography` package the portal already has rather than on a fourth dependency - one flow, and every refusal of it tested (*One sign-in for every service*). |
 | Compatibility with the earlier services? | **None kept** - they were not in use (decided 2026-11-20). The portal names no payment, account or marketplace service in the catalog. What is kept is the **catalog's format** (`catalog.json`, schema 2, the Ed25519 signature beside it), because it is the buyer client's, not a service's: the native UltraStore reads the portal's catalog with the parser and the verifier it has. |
 | Which stack? | **Django 5.2 LTS**, with its own accounts, forms, admin site and migrations, and three dependencies in all: Django, `cryptography` (the catalog's Ed25519 signature) and Pillow (checking uploaded pictures). No front-end build: server-rendered pages on **Bootstrap 5.3**, with Dropzone for the upload areas - both copied into `static/portal/vendor/` as published, nothing fetched from another host - a theme stylesheet and one script of the portal's own (*The pages*). The JSON service is plain Django views - ten read-only endpoints do not need a REST framework. |
 | Which database? | **MySQL in production** (decided 2026-11-20; MySQL 8.0 is what the tests run on, MariaDB speaks the same driver), SQLite for tests and development only. PostgreSQL works as well; the tests run on all three in CI. |
@@ -49,7 +62,10 @@ a publisher, publish an app, show and serve the catalog; 0.2.0 sells;
 | `/pay/<order>/` | the hand-off to the payment provider; `.../return/`, `.../cancel/` where it sends the buyer back |
 | `/orders/<order>/?secret=` | a buyer's purchase: its state, the licence, the receipt, the downloads |
 | `/publisher/<id>/` | a publisher's page |
-| `/account/…` | sign up, the mailed confirmation link, sign in, password reset, the profile |
+| `/account/…` | sign up, the mailed confirmation link, sign in, password reset, the profile. With the account at its own address these are that host's root (`https://account.ultraos.eu/signin/`), and the store's `/account/…` leads there |
+| `/.well-known/openid-configuration`, `/oauth/…` | the OpenID Connect provider, at the account's host (*One sign-in for every service*) |
+| `/sso/callback` | where the account sends a person back to the store, with two hosts |
+| `/promote/…`, `/console/apps/<app id>/promote/`, `/operator/promote/` | advertising: a publisher's campaigns and balance, the *Promote* page of a listing, the operator's prices and stops; `/promote/go/<token>/` a click on an advertisement, `/promote/why/<token>/` who paid for it and why it was shown (*Advertising*) |
 | `/console/…` | the developer console |
 | `/operator/…` | the operator's pages (staff only) |
 | `/admin/` | Django's admin site: every record as it is (staff only) |
@@ -301,6 +317,223 @@ against reports signed the documented way and a faked API; its first
 meeting with Skrill is a sandbox run with a merchant account in test mode.
 Until that run, treat the field names and the refund calls as unproven.
 
+## One sign-in for every service
+
+A person registers once. Every shop and service then sends them to the
+account to sign in, and learns from the account who they are - the way
+"Sign in with Google" works, by the same protocol, **OpenID Connect**. The
+service never sees the password; what it gets is a short signed statement
+(the identity token) and, if it asked, an access token.
+
+**The address.** `ULTRASTORE_PORTAL_ACCOUNT_URL` is the account's root and
+the **issuer** every token names.
+
+| | |
+|---|---|
+| unset | the account lives under the store's root as before (`<root>/account/…`), the provider's endpoints under `<root>/` - a developer's machine, and any installation that does not set it |
+| `https://account.ultraos.eu` | a second host this same application answers. It has the account's pages at its root and the provider's endpoints, and nothing of the store; the store's host has no password page any more and signs people in through the account like any other service (`identity/sso.py`: its client is `ultrastore`, registered by itself) |
+
+Set it **before the first service is registered and never change it**: the
+issuer is inside every token and in every client's configuration. Each host
+keeps its own session cookie; none is shared across `ultraos.eu`, so no
+other host under that name is ever sent a session - and under https they
+are `__Host-` cookies, which no other host under that name can set either.
+Neither host is told to trust the other's forms.
+
+**What a service does** (any OpenID Connect client library does it from the
+first address alone):
+
+| | |
+|---|---|
+| `GET <issuer>/.well-known/openid-configuration` | what the account can do, and where |
+| `GET <issuer>/oauth/jwks` | the public keys the identity tokens verify with |
+| `GET <issuer>/oauth/authorize?response_type=code&client_id=&redirect_uri=&scope=openid+profile+email&state=&nonce=&code_challenge=&code_challenge_method=S256` | the person is sent here; they sign in if they are not, agree if the service is not one of ours, and come back to `redirect_uri` with `code`, `state` and `iss`. Also read: `prompt` (`none`, `login`, `consent`), `max_age`, `login_hint` |
+| `POST <issuer>/oauth/token` | `grant_type=authorization_code`, `code`, `redirect_uri`, `code_verifier` → `access_token`, `id_token`, `expires_in`, `scope`, and `refresh_token` when `offline_access` was granted; `grant_type=refresh_token` for the next set. A server names itself with its secret (HTTP Basic, or in the form); an application or a page has no secret and proves itself with the code verifier |
+| `GET <issuer>/oauth/userinfo` | the person, for `Authorization: Bearer <access token>` |
+| `POST <issuer>/oauth/introspect` | `token=` → `{active, sub, scope, client_id, exp, …}`: for a service that is handed other services' tokens - the chat's relay asked by the chat's application - and is registered as one |
+| `POST <issuer>/oauth/revoke` | a token given back |
+| `GET <issuer>/oauth/logout?id_token_hint=&post_logout_redirect_uri=&state=` | the service signs the person out at the account. With the identity token of that sign-in it happens at once; without it the person is asked first |
+
+**Scopes and claims.** `openid` (required) gives `sub`; `profile` adds
+`name`; `email` adds `email` and `email_verified`; `offline_access` adds a
+refresh token. The identity token carries them too, with `iss`, `aud`,
+`exp`, `iat`, `auth_time`, `nonce`, `sid` (the sign-in) and `at_hash`, signed
+RS256.
+
+**Who a person is to a service** (`sub`). Our own services (`trusted`) all
+see the same subject for a person, so cloud storage and the chat know they
+have the same customer. Every other service gets a subject made for it
+alone, so two of them cannot compare notes. It is never the account's own
+number, and it never changes.
+
+**Registering a service.** In the admin site (*Clients*), or:
+
+```
+ultrastore-portal oidc client ultracloud --name UltraCloud --trusted \
+    --redirect-uri https://cloud.ultraos.eu/callback --post-logout-redirect-uri https://cloud.ultraos.eu/
+ultrastore-portal oidc client chatcube --name ChatCube --trusted --public \
+    --redirect-uri http://127.0.0.1/callback --scopes "openid profile offline_access"   # asked for each time: it is on the person's machine
+ultrastore-portal oidc client chat-relay --name "Chat relay" --resource-server --redirect-uri https://chat.ultraos.eu/unused
+ultrastore-portal oidc clients | issuer | rotate-key | retire-key <kid> | cleanup
+```
+
+A server's secret is printed once, when it is made (`--new-secret` makes
+another); only its hash is kept. `--public` is an application or a page
+that cannot keep one. A redirect address is `https`, matched exactly - or
+`http://127.0.0.1/…` for an application on the person's own machine, which
+stands for whatever port it got (UltraNet's `UltraNetOAuth2.h` signs in
+that way). `--trusted` is one of ours: no consent page - **except for an
+application on the person's own machine, which is asked for every time**,
+ours or not: anything running there can claim to be that application, and
+only the person can say it is the one they started. Every registration is a
+row in the audit log.
+
+**What is refused, and what is taken back.**
+
+- Only the code flow; PKCE with S256, always for a client without a secret.
+  No implicit flow, no password grant, no request objects.
+- An unknown client or return address is told to the person and sent
+  nowhere; every other mistake is told to the service at its own address.
+- A code is good once and for two minutes. Shown twice, it takes back what
+  the first showing got. A refresh token is spent by its use; shown twice,
+  its whole grant ends. A refresh may ask for less than was granted; the
+  next one has the whole grant again.
+- `prompt=login` means the password, typed after the account asked: the way
+  back from the sign-in page carries the account's signed note of when it
+  asked, and only a sign-in newer than the note goes on.
+- A thing named twice in a request (two return addresses, say) is refused.
+- Guessing at a client's secret is slowed down, by the client that is
+  named. A refused code or token is not counted: nobody guesses 256 random
+  bits, and counting them would let anyone shut a service's sign-in.
+- Codes, tokens and secrets are stored as their SHA-256, never as handed out.
+- A new password ends every grant and every other sign-in, wherever it is
+  set - the account's pages, the admin site, the command line. An account
+  switched off has no good tokens, and neither has a client switched off.
+- On their account's page a person sees the services they signed in to, with
+  what each was told - ours that hold a refresh token included - and takes
+  the access back.
+- The mailed confirmation link proves the address once and signs in only
+  then, and never replaces whoever is signed in.
+- Signing out at the account signs the store out; the store's *Sign out*
+  signs both out.
+
+**The keys.** The identity tokens are signed with an RSA key of 2048 bits:
+a PEM file (`ULTRASTORE_PORTAL_OIDC_KEY_FILE`), or one made on first use and
+kept in the database. `oidc rotate-key` makes a new stored key the signer
+and keeps the old one published until `oidc retire-key`. The secret the
+subjects are derived with (`ULTRASTORE_PORTAL_OIDC_SUBJECT_SECRET`, or made
+once and kept in the database) must never change, and belongs in every
+backup: without it every service sees every person as a stranger.
+
+**Not yet.** Written to the OpenID Connect Core, Discovery and RP-Initiated
+Logout texts and RFC 6749, 7636, 7009, 7662, 8252 and 9207, and tested
+through its own endpoints. One independent review of the code was made
+and what it found is fixed, each finding with a test; it is **not yet run
+against the OpenID Foundation's conformance suite and not reviewed from
+outside the project** - both before a service that is not ours is let in.
+In two-host mode the admin site's own sign-in (`/admin/login/` on the
+store's host) still takes a password directly. Also not built: a second
+factor at the sign-in, passkeys, telling a service's server that a person
+signed out (back-channel logout), a service registering itself.
+
+## Advertising
+
+UltraAds, phase 1 of
+[its design](../../Docs/Research/UltraAdsDesignProposal.md): **sponsored
+listings in the app store**. A publisher promotes one of its apps; the
+app's own card then appears, marked *Sponsored*, where the page calls for
+it; the publisher pays when someone clicks.
+
+**Switched off unless switched on.** `ULTRASTORE_PORTAL_PROMOTE=1` turns
+advertising on. Without it there is no *Promote* button, none of its pages
+exists, the JSON service answers an empty list, and no page shows an
+advertisement. `ULTRASTORE_PORTAL_PROMOTE_TOPUPS=1` is a second switch for
+paying money into a balance - **leave it off until the store writes tax
+invoices** (*What comes next*, 2); until then a balance comes from the
+operator's vouchers.
+
+**The rules, which the code holds to and the tests check:**
+
+- **Chosen from the page, never from the person** (decided 2026-11-24).
+  The search words, the category, the app being looked at, the system: that
+  is all `promote/decide.py` is ever handed. It takes no request, no session
+  and no account, so it could not use one. There is no profile and no
+  history, and the *Why this ad?* page says so with what matched.
+- **Always marked.** Every advertisement carries *Sponsored*, dark on
+  light, above the card, with *Why this ad?* beside it: who paid, what it
+  matched, and *Report this advertisement*.
+- **Money moves no unpaid result.** The store's search and its order are
+  made first (`store/queries.py`) and left as they are; advertisements are
+  placed before them. Editor's picks, *New and updated* and the rest are
+  never sold.
+- **Relevant or not shown.** In a search an advertisement must answer the
+  search by the store's own rule; in a category be of the category; beside
+  an app be of its category. Below that it is not shown at any price. A
+  short list does not repeat above itself an app it already shows.
+- **An auction on top of a price list.** Rank is the offer times how often
+  the listing is clicked in that place. The winner pays what it took to stay
+  ahead of the next publisher's - never more than it offered, never less
+  than the placement's floor, which the operator sets. With one advertiser
+  that is the floor. A publisher's own campaigns never bid against each
+  other.
+- **Prepaid, charged once.** A click draws the balance down; at zero the
+  campaigns wait and the publisher was mailed before. A click is charged
+  once however often it is told. Not charged: the publisher's own click, a
+  burst from one address, a click on a campaign that ended meanwhile, and
+  what the operator credits back.
+- **Counted, not followed.** Shown, clicked, spent, installed and ordered
+  are numbers per campaign, place, country and day. A click row holds no
+  account and no address and is removed after a month
+  (`ultrastore-portal promote cleanup`, a daily timer). An order counts for
+  a campaign only through the token the buyer's own store kept from the
+  click and sent with the checkout (`POST /v1/checkout`, `promote`); a
+  publisher reads "3 orders, 59.70 EUR", never who.
+
+**The publisher's pages.** *Promote* on an app's console page
+(`/console/apps/<id>/promote/`) is the shop's door: **where** - every shop
+and marketplace with its places (search, lists, the front page, beside
+similar apps), this shop's ticked, every other one listed to tick (decided
+2026-11-24); a shop that is not built yet is listed as *not open yet* -
+**how much** a day and, if wanted, the most for a click, and **how long**.
+`/promote/` lists the campaigns with what each cost and brought;
+`/promote/campaigns/<n>/` is one campaign's report by place, day and
+country, with *Change*, *Pause* and *End*; `/promote/balance/` the balance,
+what went in and what was spent by day. A publisher new to advertising has
+a ceiling per day for its first weeks.
+
+**The operator's page** (`/operator/promote/`): the placements with how
+many advertisements each holds, the least a click costs there and open or
+switched off; every campaign with *Stop* (the reason is the publisher's to
+read) and *Let it run*; a voucher into a publisher's balance; the recent
+clicks with *Did not count - credit*; revenue by place; and the settings
+(one advertisement per so many results, the days an order counts back, the
+burst rule, the ceiling for a new publisher, the threshold under which a
+country is folded into "other" in a report). Every action is a row in the
+audit log. **The floors in the table are starting values, not decided
+prices.**
+
+**For a store's client that draws its own pages** (the native store, the
+web store - neither uses it yet):
+
+| | |
+|---|---|
+| `POST /v1/promote/decide` | `{placement, count?, results?, context: {q, category, listing, os, country}, seen: [campaign ids]}` → `{ads: [{token, kind, id, name, campaign, label, payer: {id, name}, why: [...], why_url}]}`. Asked **without saying who asks**: a request with an `Authorization` header is refused, and nothing reads a session. `seen` is how a device keeps one advertisement from being shown forty times, without the server learning who saw what |
+| `POST /v1/promote/events` | `{events: [{token, type: shown \| clicked \| installed}]}` → `{accepted}` |
+| `GET /v1/promote/why/<token>` | who paid, and what it matched |
+| `POST /v1/checkout` | takes `promote`, the token of the advertisement last clicked, beside `code` |
+
+Placements: `store-search`, `store-category`, `store-home`, `store-detail`.
+The pages the portal draws itself ask the same function in the same request.
+
+**Not in this phase.** The native store and the web store showing
+advertisements (the catalog names no `promote_url` until one of them reads
+it); search words of the publisher's choosing, several listings in a
+campaign, banners and fixed slots, invoices, the public library of
+advertisements; every shop but the app store - their placements are listed
+and cannot be opened; an order refunded later is not taken out of a report;
+the page a browser is on is not kept from showing the same advertisement
+often (only a client that sends `seen` is).
+
 ## What is where on disk
 
 Under `ULTRASTORE_PORTAL_DATA_DIR` (`./var` on a developer's machine):
@@ -358,6 +591,10 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 | | |
 |---|---|
 | `BASE_URL` | the one root; `https://store.ultraos.eu` unless set |
+| `ACCOUNT_URL`, `ACCOUNT_NAME` | the account's own root and the issuer (`https://account.ultraos.eu`); unset, the account lives under the store's root. What the account calls itself there (`ULTRA OS account`) |
+| `OIDC_KEY_FILE`, `OIDC_SUBJECT_SECRET` | the identity tokens' key as a PEM file, and the secret the subjects are derived with; unset, each is made once and kept in the database |
+| `PROMOTE`, `PROMOTE_TOPUPS`, `PROMOTE_CURRENCY` (EUR) | advertising on (`1`); paying into a balance on (`1` - not before tax invoices); the one currency of balances |
+| `OIDC_CODE_TTL` (120), `OIDC_ACCESS_TOKEN_TTL` (3600), `OIDC_ID_TOKEN_TTL` (3600), `OIDC_REFRESH_TOKEN_TTL` (90 days) | how long each lasts, in seconds |
 | `SECRET_KEY` | Django's secret; required outside `DEBUG` |
 | `DB` | `mysql://…` (production), `postgresql://…`, `sqlite:///path` |
 | `DATA_DIR` | the folder of *What is where on disk* |
@@ -377,7 +614,22 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 ```
 ultrastore_portal/
   settings.py, urls.py, wsgi.py
+  urls_account.py  the addresses of the account's own host
   accounts/        the person: email as the sign-in name, the mailed proof
+  identity/        signing in for other services: OpenID Connect
+    models.py      Client, SignIn, Consent, Grant, Code, Token, SigningKey
+    provider.py    what a request may ask, what a code and a token are worth
+    keys.py        the RSA keys, the tokens' signatures, the subject secret
+    views.py       the endpoints
+    hosts.py       two hosts, one service: which addresses exist on which
+    sessions.py    a sign-in as a record; the store's session ends with it
+    sso.py         the store signing in through the account
+    management/commands/oidc.py   clients, keys, cleanup
+  promote/         advertising: UltraAds, phase 1
+    models.py      Placement, Campaign, Balance, LedgerEntry, TopUp, DayCount, Click, Attribution
+    decide.py      which advertisement goes where: from the page, never from the person
+    services.py    campaigns, the balance, counting and charging a click, an order counted back, reports
+    management/commands/promote.py   cleanup, voucher, placements
   store/           the records and the rules
     models.py      Publisher, PublisherMember, TermsVersion, App, Screenshot, Release, Package,
                    Report, AuditEntry, CatalogSnapshot
@@ -392,9 +644,9 @@ ultrastore_portal/
     services.py    an order opened, the provider's report believed or not, the licence, renewals, refunds, the signed link
     licence.py     the ULIC1 token
     skrill.py      Quick Checkout's form and signature, the refund and recurring API
-  web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, forms.py,
+  web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, promote.py, forms.py,
                    ui.py (a form's field with Bootstrap's classes)
-  api/             the JSON service: views.py (the catalog, the apps), billing.py (the checkout)
+  api/             the JSON service: views.py (the catalog, the apps), billing.py (the checkout), promote.py (advertising)
   templates/       the pages; console/_*.html are the parts a page draws again in place
   static/portal/   portal.css (the look of Docs/UltraStore/design/README.md, on Bootstrap),
                    portal.js (dependent fields, forms sent in place, uploads), vendor/ (Bootstrap, Dropzone)
@@ -414,19 +666,29 @@ In the order the store needs it:
    buyers paid, nothing about what a publisher is owed.
 3. **Buyer accounts** - sign-in from the native store, licences that follow
    a person across machines, devices. Today a purchase is reached by its
-   order's secret (kept by the store's app, mailed to a web buyer).
+   order's secret (kept by the store's app, mailed to a web buyer). The
+   sign-in itself is there (*One sign-in for every service*); what is
+   missing is the native store and `UltraAccountCore` using it, and the
+   orders and licences hung on the person.
 4. **Review of listing changes.** Today an edit to a public app's listing is
    live at once; only releases are reviewed.
-5. **Two-factor sign-in** for operators and publishers, and operator
+5. **Advertising, its next steps**: the native store and the web store
+   showing advertisements (and `promote_url` in the catalog); a daily timer
+   for `promote cleanup`; search words, banners and the public library
+   (the design's phase 2). Paying into a balance waits for step 2.
+6. **The provider, proven**: the OpenID Foundation's conformance suite and
+   an outside review before a service that is not ours is registered;
+   back-channel logout; a daily timer for `oidc cleanup`.
+7. **Two-factor sign-in** for operators and publishers, and operator
    **roles** (reviewer, support, auditor) - Django's groups and permissions
    are there, the pages check only *staff* today.
-6. **More people per publisher** - the membership table has the roles, the
+8. **More people per publisher** - the membership table has the roles, the
    console has no page to invite anyone.
-7. **Automatic checks on a build**: a malware scan and a smoke run; today
+9. **Automatic checks on a build**: a malware scan and a smoke run; today
    the reviewer downloads the build and checks by hand.
-8. **Translations** of listings (the catalog carries a text per language;
+10. **Translations** of listings (the catalog carries a text per language;
    the portal stores the one the publisher wrote) and of the portal's own
    pages; picture variants (`icon_variants`, `screenshot_variants`).
-9. Discount and affiliate codes (a `code` sent with a checkout is kept on
+11. Discount and affiliate codes (a `code` sent with a checkout is kept on
    the order and takes nothing off), strikes and notices to publishers, a
    hash chain over the audit log, statistics for publishers.

@@ -137,7 +137,7 @@ namespace UltraCanvas {
                          const std::string& id, const std::string& text) {
             auto title = DemoKit::AddHeading(page, id, text);
             title->SetFontSize(14);
-            title->SetTextColor(Color(50, 50, 150, 255));
+            title->SetTextColor(DemoKit::Themed(Color(50, 50, 150, 255)));
         }
 
         std::shared_ptr<UltraCanvasUIElement> BuildEncodePage() {
@@ -612,7 +612,7 @@ namespace UltraCanvas {
                 hint->SetText(Tr("Decoder support is not built in — install libzbar-dev and rebuild to enable scanning."));
             }
             hint->SetFontSize(11);
-            hint->SetTextColor(Color(110, 110, 110, 255));
+            hint->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
             DemoKit::Add(page, hint);
 
             // The button and, beside it, the status line (which takes the
@@ -658,7 +658,7 @@ namespace UltraCanvas {
 
             auto resultsBody = DemoKit::CreateText("DecResultsBody", Tr("(no image scanned yet)"));
             resultsBody->SetFontSize(11);
-            resultsBody->SetTextColor(Color(70, 70, 70, 255));
+            resultsBody->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
             resultsBody->SetWrap(TextWrap::WrapWordChar);
             DemoKit::Add(results, resultsBody);
             auto* resultsPtr = resultsBody.get();

@@ -283,7 +283,7 @@ namespace {
         auto lbl = std::make_shared<UltraCanvasLabel>(id, text);
         lbl->SetFontSize(11);
         lbl->SetWrap(TextWrap::WrapWord);
-        lbl->SetTextColor(Color(70, 70, 80, 255));
+        lbl->SetTextColor(DemoKit::Themed(Color(70, 70, 80, 255)));
         lbl->SetMargin(8, 12, 4, 12);
         return lbl;
     }
@@ -293,7 +293,7 @@ namespace {
             const std::shared_ptr<UltraCanvasKanbanBoardElement>& board,
             int innerW, int innerH) {
         auto tab = std::make_shared<UltraCanvasContainer>(id, 0, 0, innerW, innerH);
-        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab->layout.SetFlexColumn().SetFlexGap(4)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddFlexChild(tab, MakeTabDescription(id + "Desc", description), 0);
@@ -445,7 +445,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateKanbanBo
     {
         auto tab = std::make_shared<UltraCanvasContainer>("KanbanTabFlow", 0, 0,
                                                           INNER_W, INNER_H);
-        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab->layout.SetFlexColumn().SetFlexGap(6)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddFlexChild(tab, MakeTabDescription(

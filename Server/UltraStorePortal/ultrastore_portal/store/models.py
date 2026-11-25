@@ -363,7 +363,7 @@ class Report(models.Model):
 
     OPEN, RESOLVED, DISMISSED = "open", "resolved", "dismissed"
     STATES = [(OPEN, "Open"), (RESOLVED, "Resolved"), (DISMISSED, "Dismissed")]
-    TARGET_KINDS = [("app", "App"), ("release", "Release"), ("merchant", "Publisher")]
+    TARGET_KINDS = [("app", "App"), ("release", "Release"), ("merchant", "Publisher"), ("ad", "Advertisement")]
 
     public_id = models.CharField(max_length=32, unique=True, default=_report_id, editable=False)
     secret = models.CharField(max_length=64, default=_report_secret, editable=False)

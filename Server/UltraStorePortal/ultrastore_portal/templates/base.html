@@ -3,13 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}UltraStore{% endblock %}</title>
+<title>{% block title %}{{ brand }}{% endblock %}</title>
 <meta name="description" content="{% block description %}UltraStore: the apps of ULTRA OS and UltraCanvas for Linux, Windows and macOS.{% endblock %}">
 {% block meta %}{% endblock %}
 <link rel="stylesheet" href="{% static 'portal/vendor/bootstrap/bootstrap.min.css' %}">
 <link rel="stylesheet" href="{% static 'portal/portal.css' %}">
 </head>
 <body class="{% block body_class %}{% endblock %}">
+{% if account_site %}
+<nav class="navbar bg-white border-bottom sticky-top" aria-label="Main">
+  <div class="container">
+    <a class="navbar-brand" href="{% url 'account:profile' %}"><span class="brand-mark">U</span>{{ brand }}</a>
+    <ul class="navbar-nav flex-row ms-auto align-items-center gap-3">
+      {% if user.is_authenticated %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'account:profile' %}">{{ user.display_name }}</a></li>
+        <li class="nav-item"><form method="post" action="{% url 'account:signout' %}">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">Sign out</button></form></li>
+      {% else %}
+        <li class="nav-item"><a class="btn btn-primary btn-sm" href="{% url 'account:signin' %}">Sign in</a></li>
+      {% endif %}
+    </ul>
+  </div>
+</nav>
+{% else %}
 <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top" aria-label="Main">
   <div class="container">
     <a class="navbar-brand" href="{% url 'store:home' %}"><span class="brand-mark">U</span>UltraStore</a>
@@ -33,6 +48,7 @@
     </div>
   </div>
 </nav>
+{% endif %}
 {% block shell %}
 <main>
   <div class="container">
@@ -41,6 +57,14 @@
   </div>
 </main>
 {% endblock %}
+{% if account_site %}
+<footer>
+  <div class="container d-flex flex-wrap gap-3">
+    <span>{{ brand }} - ULTRA OS Project</span>
+    <a href="{{ store_root }}/">UltraStore</a>
+  </div>
+</footer>
+{% else %}
 <footer>
   <div class="container d-flex flex-wrap gap-3">
     <span>UltraStore - ULTRA OS Project</span>
@@ -50,6 +74,7 @@
     {% if store_download_url %}<a href="{{ store_download_url }}">Get the UltraStore app</a>{% endif %}
   </div>
 </footer>
+{% endif %}
 <script src="{% static 'portal/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
 {% block scripts %}{% endblock %}
 <script src="{% static 'portal/portal.js' %}"></script>

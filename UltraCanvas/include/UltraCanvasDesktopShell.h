@@ -326,6 +326,15 @@ namespace UltraCanvas {
         // whole length of its edge. Call it again to change or, with four
         // zeros, to release. `windowId` is the window's native handle.
         static bool ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom);
+        // For a desktop that is the session's shell, on Windows without
+        // Explorer's taskbar: minimized windows kept out of sight, as
+        // Explorer has them, not parked as small title bars along the
+        // screen's bottom edge - Windows' own behaviour when no shell says
+        // otherwise. Switches that on for the session (ARW_HIDE) whenever
+        // something turned it off, and moves a window parked meanwhile off
+        // the screen, still minimized. Cheap enough to call every few
+        // seconds. False where Explorer's taskbar runs and on other systems.
+        static bool KeepMinimizedWindowsHidden();
         // Whether this build can capture the screen at all: Linux (X11, and
         // Wayland through the desktop portal), the BSDs, Windows and macOS
         // 14 and later (the main display; the first capture asks for the

@@ -21,7 +21,7 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasLabel> ContentLabel(const std::string& id,
                                                            const std::string& text) {
         auto lbl = DemoKit::CreateText(id, text);
-        lbl->SetTextColor(Color(70, 70, 70, 255));
+        lbl->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
         lbl->SetMargin(2.0f);
         return lbl;
     }
@@ -54,7 +54,7 @@ namespace UltraCanvas {
         auto statusLabel = DemoKit::AddText(page, "GroupBoxStatus",
                 Tr("Toggle the checkable group's checkbox, or click the collapsible group's title."));
         statusLabel->SetFontSize(11);
-        statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
         statusLabel->SetBorders(1.0f, Color(220, 220, 220, 255));
         statusLabel->SetPadding(6.0f);
 

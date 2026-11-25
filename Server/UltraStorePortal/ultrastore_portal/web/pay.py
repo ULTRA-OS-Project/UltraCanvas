@@ -38,7 +38,8 @@ def buy(request, app_id: str):
             form.add_error(None, "Too many orders from this address. Try again later.")
         else:
             try:
-                order = billing.create_order(app.app_id, source="web", email=form.cleaned_data["email"])
+                from .promote import clicked_token
+                order = billing.create_order(app.app_id, source="web", email=form.cleaned_data["email"], promote=clicked_token(request, app))
             except billing.BillingError as refused:
                 form.add_error(None, refused.description)
             else:

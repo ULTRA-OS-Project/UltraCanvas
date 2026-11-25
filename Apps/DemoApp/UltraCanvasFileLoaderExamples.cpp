@@ -302,7 +302,7 @@ namespace {
         root->layout.SetFlexColumn().SetFlexGap(8)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         root->SetPadding(10, 12, 10, 12);
-        root->SetBackgroundColor(Colors::White);
+        root->SetBackgroundColor(DemoKit::Themed(Colors::White));
 
         DemoKit::AddHeading(root, "FileLoaderDemoTitle", Tr("FileLoader playground"));
 
@@ -327,7 +327,7 @@ namespace {
         // extension lists are long.
         auto status = DemoKit::AddText(root, "FileLoaderStatus", "");
         status->SetFontSize(11);
-        status->SetTextColor(Color(90, 90, 90, 255));
+        status->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
 
         // ----- Display area (swapped per family / loaded file) -----
         auto displayArea = std::make_shared<UltraCanvasContainer>("FileLoaderDisplay", 0, 0, 0, 0);
@@ -381,13 +381,13 @@ namespace {
                 switch (event.type) {
                     case UCEventType::DragEnter:
                     case UCEventType::DragOver:
-                        areaPtr->SetBordersColor(dropBorder);
+                        areaPtr->SetBordersColor(DemoKit::ThemedFill(dropBorder));
                         return true;
                     case UCEventType::DragLeave:
-                        areaPtr->SetBordersColor(normalBorder);
+                        areaPtr->SetBordersColor(DemoKit::ThemedFill(normalBorder));
                         return true;
                     case UCEventType::Drop: {
-                        areaPtr->SetBordersColor(normalBorder);
+                        areaPtr->SetBordersColor(DemoKit::ThemedFill(normalBorder));
                         if (event.droppedFiles.empty()) return false;
                         const std::string& path = event.droppedFiles.front();
                         int idx = FindGroupForFile(groups, path, dropdown->GetSelectedIndex());

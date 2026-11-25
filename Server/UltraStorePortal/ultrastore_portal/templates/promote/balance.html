@@ -1,0 +1,39 @@
+{% extends "console/base.html" %}
+{% load portal_ui %}
+{% block title %}Advertising balance - Developer console{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Advertising balance</h1></div>
+<div class="panels">
+<div><div class="row row-cols-1 row-cols-md-2 g-3">
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Balance</span><b>{{ balance.amount }} {{ currency }}</b><span class="small text-secondary">A click draws it down. At zero your campaigns wait; nothing is ever owed.</span></div></div></div>
+  <div class="col"><div class="card h-100"><div class="card-body">
+    <h2>Pay in</h2>
+    {% if possible %}
+    <form method="post" class="d-flex flex-wrap align-items-start gap-2">{% csrf_token %}
+      <div><label class="form-label" for="{{ form.amount.id_for_label }}" hidden>Amount</label>{{ form.amount|bs }}{% for error in form.amount.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+        <div class="form-text">{{ currency }}, at least {{ min_topup }}. You pay on the payment provider's page.</div></div>
+      <button class="btn btn-primary">Continue to pay</button>
+    </form>
+    {% else %}<p class="text-secondary mb-0">{{ why_not }}</p>{% endif %}
+  </div></div></div>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>What went in</h2>
+  {% if entries %}
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Date</th><th>What</th><th>Note</th><th class="text-end">Amount</th><th class="text-end">Balance after</th></tr></thead>
+    <tbody>{% for entry in entries %}<tr><td>{{ entry.created|date:"j M Y, H:i" }}</td><td>{{ entry.get_kind_display }}</td><td>{{ entry.note }}</td><td class="text-end">{{ entry.amount }}</td><td class="text-end">{{ entry.balance_after }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="text-secondary mb-0">Nothing yet.</p>{% endif %}
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>What was spent, by day</h2>
+  {% if spent %}
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Day</th><th class="text-end">Clicks</th><th class="text-end">Spent</th></tr></thead>
+    <tbody>{% for row in spent %}<tr><td>{{ row.day|date:"j M Y" }}</td><td class="text-end">{{ row.clicks }}</td><td class="text-end">{{ row.spent|floatformat:2 }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="text-secondary mb-0">Nothing in the last 30 days.</p>{% endif %}
+</div></div>
+</div>
+{% endblock %}

@@ -1,7 +1,8 @@
 """Buying, as the buyer's store asks for it (Apps/UltraStore/core/
 Purchase.cpp; the catalog's payment_url is the store's root):
 
-    POST /v1/checkout {app, code?, language?}        an order: order_id, secret, amount, currency, checkout_url
+    POST /v1/checkout {app, code?, language?, promote?}   an order: order_id, secret, amount, currency, checkout_url
+                                                     (promote: the token of the advertisement last clicked)
     GET  /v1/orders/<id>?secret=                     its state; when paid the licence, licence_id, receipt_no
     GET  /v1/orders/<id>/receipt?secret=[&no=]       the receipt: a page for a browser, text for anything else
     POST /v1/orders/<id>/download?secret=&file=      {url, expires}: a link to a restricted package, ten minutes
@@ -53,7 +54,8 @@ def checkout(request):
         body = None
     if not isinstance(body, dict) or not str(body.get("app") or "").strip():
         return error(400, "bad_request", "The body is a JSON object naming the app")
-    order = billing.create_order(str(body["app"]).strip(), source="store", code=str(body.get("code") or ""), language=str(body.get("language") or ""))
+    order = billing.create_order(str(body["app"]).strip(), source="store", code=str(body.get("code") or ""), language=str(body.get("language") or ""),
+                                 promote=str(body.get("promote") or ""))
     return answer({**billing.order_public(order), "secret": order.secret, "checkout_url": billing.checkout_url(order),
                    "environment": "sandbox" if settings.PAYMENT_PROVIDER == "test" else "production"})
 
