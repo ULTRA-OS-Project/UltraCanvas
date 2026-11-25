@@ -1,3 +1,18 @@
+#### 2026-11-25 *0.4.26*
+- **Instead of Explorer, minimized windows no longer appear as title bars
+  along the bottom of the screen.** UltraDesktop now keeps them out of sight
+  itself, every two seconds (`UltraCanvasDesktopShell::KeepMinimizedWindowsHidden`),
+  as Explorer does: they are on the taskbar's buttons only, also after
+  Explorer was started and ended during the session, which switched Windows
+  back to parking them.
+- **A tray icon no longer shows its initial beside its picture.** A program
+  that adds its notification-area icon before its picture is ready got a
+  button with its initial ("W" for WhatsApp); when the picture came, it was
+  put beside the letter instead of in its place. Now the letter stands in
+  only while there is no picture. The running applications' buttons do the
+  same: an icon found after the button was made (a Store application's)
+  replaces the letter, which they never did before - the letter stayed.
+
 #### 2026-11-24 *0.4.25*
 - **UltraDesktop builds without the message centre.** Its window kept the
   notification toasts' host as a member whatever the build had, so a build
