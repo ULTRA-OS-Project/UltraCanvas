@@ -106,7 +106,7 @@ being built when `Listen` is called.
 | `MakeOpenRequest(paths)` | The `Claim()` request carrying this start's files, `{"paths": [...]}`. Each path is made absolute against this process's working folder — the running copy was started somewhere else — and an argument containing `://` (a URL) passes through unchanged. |
 | `RequestPaths(request)` | The paths of such a request, for an application that uses `Listen` with a handler of its own. |
 | `Close()` | Stops listening. The lock stays until the object goes, so no second copy slips in while this one shuts down. |
-| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. |
+| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. A window on another virtual desktop (workspace) is brought to the one in view, where the start that asked for it was made - with its window, when a dialog is what comes forward (`UltraCanvasWindowBase::MoveToCurrentDesktop`, which `RaiseAndFocus` calls; X11 - elsewhere the system decides whether the window comes over or the desktop changes). |
 | `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. |
 
 ## Why it is compiled into the application

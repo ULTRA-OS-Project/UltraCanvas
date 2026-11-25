@@ -7,6 +7,8 @@
 // hand-off needs UltraMessage, a separate module the core does not link, and
 // the function defines ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE where
 // the build has it.
+// Version: 1.5.0 - BringToFront brings the window to the virtual desktop in view
+//                  (MoveToCurrentDesktop), also behind an open dialog
 // Version: 1.4.0 - a listening copy that lost the bus (the process hosting
 //                  the broker ended) is on it again within a second, hosting
 //                  it when nobody does - the endpoint reconnects by itself
@@ -21,7 +23,7 @@
 //                  no longer makes the other start wait and give up
 // Version: 1.1.0 - MakeOpenRequest / RequestPaths / ListenOpen
 // Version: 1.0.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSingleInstance.h"
@@ -321,7 +323,11 @@ namespace UltraCanvas {
             if (main->IsMinimized()) main->Restore();
             else if (main->GetState() == WindowState::Hidden) main->Show();
         }
+        // Onto the virtual desktop in view, where the start that asked was
+        // made: RaiseAndFocus brings the window it raises, and the main
+        // window follows a dialog that does not name it as its parent.
         if (!dialogs.empty()) {
+            if (main) main->MoveToCurrentDesktop();
             dialogs.back()->RaiseAndFocus();
             return;
         }

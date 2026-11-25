@@ -35,6 +35,7 @@
 // the build has it. Without UltraMessage the lock still stops a second copy;
 // it just cannot bring the first one forward, and Claim() answers
 // AlreadyRunning.
+// Version: 1.5.0 - BringToFront brings the window to the virtual desktop in view
 // Version: 1.4.0 - the listening copy rejoins the bus when it loses it (the
 //                  broker's host ended): a later start is handed over again
 //                  instead of saying "already running"
@@ -45,7 +46,7 @@
 // Version: 1.1.0 - MakeOpenRequest / ListenOpen: the second start's files go
 //                  to the running copy, as absolute paths
 // Version: 1.0.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -127,7 +128,9 @@ namespace UltraCanvas {
 
         // Restores and raises the application's main window - the first
         // window that is not a dialog - or, when a dialog is open, that
-        // dialog, which keeps what is typed in it.
+        // dialog, which keeps what is typed in it. A window on another
+        // virtual desktop comes to the one in view, where the start that
+        // asked for it was made (UltraCanvasWindowBase::MoveToCurrentDesktop).
         static void BringToFront();
         // Says "<displayName> is already running" and runs the event loop
         // until the alert is dismissed. Returns EXIT_SUCCESS, for main().

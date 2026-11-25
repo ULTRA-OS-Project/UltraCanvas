@@ -2,6 +2,8 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.5 - the Sticker board open on another virtual desktop comes to this one on a
+//                  click on its button (it was hidden there instead), and when files are dropped
 // Version: 0.8.4 - the wallpaper's JPEG beside an AVIF where the AVIF cannot be read (Android); builds without the message centre
 // Version: 0.8.3 - the settings button's menu has a title, "UltraDesktop"
 // Version: 0.8.2 - the tool group gains UltraToDo; the tool applications'
@@ -1769,7 +1771,9 @@ void UltraDesktopWindow::DropFiles(const std::vector<std::string>& files, const 
     PrepareCategoryBoard();
     if (!categoryBoard_) return;
     categoryBoard_->AddFilesToCategory(files, kUnsortedCategory);
-    if (!settings_.categoryBoard.visible) ToggleCategoryBoard(true);
+    if (!settings_.categoryBoard.visible || (boardWindow_ && !boardWindow_->IsOnCurrentDesktop())) {
+        ToggleCategoryBoard(true);
+    }
 }
 
 void UltraDesktopWindow::SetTaskbarEdge(TaskbarEdge edge) {
@@ -1998,6 +2002,13 @@ void UltraDesktopWindow::ToggleStickerboard(bool visible) {
 }
 
 void UltraDesktopWindow::ToggleCategoryBoard(bool visible) {
+    // Open, but on another virtual desktop: the click asks for the board and
+    // gets it here (ShowCategoryBoard brings it over). Hiding it where
+    // nobody is looking would look like a click that did nothing, and take
+    // a second one to show it.
+    if (!visible && boardWindow_ && boardWindow_->IsWindowVisible() && !boardWindow_->IsOnCurrentDesktop()) {
+        visible = true;
+    }
     settings_.categoryBoard.visible = visible;
     if (visible) ShowCategoryBoard();
     else if (boardWindow_) boardWindow_->Hide();
