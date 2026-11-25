@@ -6048,6 +6048,32 @@ else()
     message(STATUS "  PresentationOdpTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== PRESENTATION LAYOUTS ROUND TRIP TEST =====
+# Masters, layouts (PptxPresentation::masters / layouts, PptxSlide::layoutIndex)
+# and slide transitions through the .pptx and .odp readers and writers: a deck
+# with two layouts and transitions saved and read back in both formats, the
+# standard set for a deck without layouts, PptxSlideFromLayout on a read deck,
+# the LibreOffice-made fixtures, and (when soffice is installed) LibreOffice
+# converting our .pptx to .odp and our .odp to .pptx. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PresentationLayoutsRoundTripTest...")
+    add_executable(PresentationLayoutsRoundTripTest ${CMAKE_CURRENT_SOURCE_DIR}/PresentationLayoutsRoundTripTest.cpp)
+    target_include_directories(PresentationLayoutsRoundTripTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PresentationLayoutsRoundTripTest PRIVATE cxx_std_20)
+    target_link_libraries(PresentationLayoutsRoundTripTest PRIVATE UltraCanvas)
+    target_compile_definitions(PresentationLayoutsRoundTripTest PRIVATE
+        LAYOUTTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(PresentationLayoutsRoundTripTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PresentationLayoutsRoundTripTest COMMAND PresentationLayoutsRoundTripTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PresentationLayoutsRoundTripTest")
+else()
+    message(STATUS "  PresentationLayoutsRoundTripTest skipped (UltraCanvas target not present)")
+endif()
+
 # open but cannot list is one whose thumbnail nobody can switch on.
 if(TARGET UltraCanvas)
     message(STATUS "  Building FilerFormatListTest...")
