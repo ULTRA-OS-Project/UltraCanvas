@@ -126,5 +126,11 @@ once and drawn from then on.
 - `Tests/SlideDeckEditorTest.cpp` - every command with undo and redo, the
   selection put back, nudges joined, hit testing of turned shapes, handles,
   snapping.
+- `Tests/SlideEditElementTest.cpp` - the element driven by pointer and key
+  events: a click selects, a drag moves (one step, snapping to the slide's
+  centre), a corner with Shift keeps the proportions, the turning handle
+  turns by 15° with Shift, a band selects, the strip chooses and moves
+  slides, the keys nudge, delete, undo and add a slide, a double-click asks
+  for the text.
 - `Tests/PresentationPrintTest.cpp` - a slide drawn into a rectangle and
   nothing around it, prompt text, pages and the PDF.

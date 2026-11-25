@@ -527,7 +527,7 @@ bool UltraCanvasSlideEdit::OnEvent(const UCEvent& event) {
             RequestRedraw();
             return true;
         }
-        case UCEventType::KeyDown: return IsFocused() && OnKey(event);
+        case UCEventType::KeyDown: return OnKey(event);   // keys come only to the focused element
         default: return false;
     }
 }

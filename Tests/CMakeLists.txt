@@ -6006,6 +6006,23 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: SlideDeckEditorTest")
 endif()
 
+# ===== SLIDE EDIT ELEMENT TEST =====
+# The slide editor element driven by pointer and key events: select, drag
+# with snapping, handles, band, strip, keys, the text request. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SlideEditElementTest...")
+    add_executable(SlideEditElementTest ${CMAKE_CURRENT_SOURCE_DIR}/SlideEditElementTest.cpp)
+    target_include_directories(SlideEditElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SlideEditElementTest PRIVATE cxx_std_20)
+    target_link_libraries(SlideEditElementTest PRIVATE UltraCanvas)
+    set_target_properties(SlideEditElementTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SlideEditElementTest COMMAND SlideEditElementTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SlideEditElementTest")
+endif()
+
 # ===== OFFICE ENCRYPTION TEST =====
 # Password-protected .xlsx / .docx (ECMA-376 agile encryption): the decryptor
 # against fixtures msoffcrypto-tool encrypted - right, wrong and missing

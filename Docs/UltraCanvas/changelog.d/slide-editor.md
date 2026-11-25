@@ -15,5 +15,6 @@
     Documented in `Docs/UltraCanvas/UltraCanvasSlideEdit.md`.
 - **The slide painter decodes a picture once**, not on every paint.
 
-  Covered by `SlideDeckEditorTest` (and `PresentationPrintTest` for the
+  Covered by `SlideDeckEditorTest`, `SlideEditElementTest` (the element
+  driven by pointer and key events) and `PresentationPrintTest` (the
   drawing).
