@@ -40,6 +40,8 @@
 // they show), video and audio (beyond the poster frame).
 //
 // Specification: ECMA-376 Part 1, PresentationML (§19) and DrawingML (§20-21).
+// Version: 1.5.0 - masters, layouts (PptxLayout, PptxSlide::layoutIndex, PptxSlideFromLayout), transitions;
+//                  UCPresentation / UCSlide / UCSlideShape
 // Version: 1.4.0 - WritePptxPresentation / WritePptxPresentationToPackage (the writer, .pptx and kin,
 //                  with a password too) and PptxPresentationFromRichDocument
 // Version: 1.3.0 - what a slide looks like: fonts, spacing, indents, bullet characters and numbering
@@ -64,6 +66,15 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+struct PptxRun;
+struct PptxShape;
+struct PptxSlide;
+struct PptxPresentation;
+// Format-neutral names: the model is PowerPoint's and OpenDocument's alike.
+using UCPresentation = PptxPresentation;
+using UCSlide = PptxSlide;
+using UCSlideShape = PptxShape;
 
 struct PptxRun {
     std::string text;            // UTF-8; "\n" for a line break within the paragraph
@@ -185,14 +196,49 @@ struct PptxShape {
     RichChart chart;             // Chart: its data (UltraCanvasDrawingML)
 };
 
+// How a slide comes on in the show (p:transition / presentation:transition-*).
+// Only what the show can play is kept; a kind the reader does not know is
+// read as Fade, so the slide still comes on softly.
+enum class PptxTransitionKind { None, Fade, Push, Wipe, Split, Cover, Zoom };
+
+struct PptxTransition {
+    PptxTransitionKind kind = PptxTransitionKind::None;
+    double durationSec = 0.5;
+    bool advanceOnClick = true;  // false: only after advanceAfterSec
+    double advanceAfterSec = -1; // the show moves on by itself after this long; -1: never
+};
+
+// A slide layout (ppt/slideLayouts, ODP presentation:presentation-page-layout
+// with its master page): the placeholders a new slide made from it starts
+// with, placed and styled as the layout and its master say - resolved as the
+// reader resolves a slide's shapes, for drawing and for copying.
+struct PptxLayout {
+    std::string name;            // as the deck names it ("Title and Content")
+    // p:cSld/@type of the layout: "title", "obj", "twoObj", "titleOnly",
+    // "secHead", "blank" ...; empty when the file says none.
+    std::string type;
+    int masterIndex = 0;         // into PptxPresentation::masters
+    std::vector<PptxShape> placeholders;   // each with its `placeholder` type and prompt text
+    std::string background;      // "RRGGBB"; empty: the master's
+};
+
+// A slide master: the deck's design the layouts build on.
+struct PptxMaster {
+    std::string name;
+    std::vector<PptxShape> placeholders;   // the master's title, body, date, footer, number
+    std::string background;      // "RRGGBB"; empty: white
+};
+
 struct PptxSlide {
     int number = 0;              // 1-based, in presentation order
+    int layoutIndex = -1;        // into PptxPresentation::layouts; -1: none known
     bool hidden = false;         // left out of the slide show
     std::string title;           // the title placeholder's text
     std::vector<PptxShape> shapes;           // in z-order, back to front
     std::vector<PptxParagraph> notes;        // the speaker notes
     std::string background;      // "RRGGBB" from the slide, its layout or its master; empty: white
     std::string textColor;       // the theme's dark text colour (tx1); empty: black
+    PptxTransition transition;   // how the slide comes on in the show
 };
 
 struct PptxPresentation {
@@ -203,6 +249,11 @@ struct PptxPresentation {
     // The theme's heading and body typefaces (a:majorFont / a:minorFont's latin).
     std::string majorFont, minorFont;
     std::vector<PptxSlide> slides;
+    // The design: masters and the layouts a new slide is made from, in the
+    // file's order. Empty for a deck made in memory; the writers then write
+    // their own standard set.
+    std::vector<PptxMaster> masters;
+    std::vector<PptxLayout> layouts;
     // The pictures' bytes by package part (PptxShape::pictureTarget), when
     // read withPictures; empty otherwise.
     std::map<std::string, std::vector<uint8_t>> pictures;
@@ -224,6 +275,11 @@ bool ReadPptxPresentation(const std::string& filePath, PptxPresentation& out, st
 // The same for a package (the ZIP) already in memory.
 bool ReadPptxPresentationFromPackage(std::vector<uint8_t> package, PptxPresentation& out,
                                      std::string& error, bool withPictures = false);
+
+// A new slide made from layout `layoutIndex` of `deck`: its placeholders,
+// empty (their prompt text is the editor's to show), and the layout's
+// background; a title-and-content slide when the deck has no such layout.
+PptxSlide PptxSlideFromLayout(const PptxPresentation& deck, int layoutIndex);
 
 // The deck as an outline: per slide a heading (its number and title), its
 // text - bulleted paragraphs as list items at their level, the rest as
