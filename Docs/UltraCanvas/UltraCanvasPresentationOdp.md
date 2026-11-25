@@ -155,20 +155,43 @@ level's.
   space, none at a paragraph's start or end; `text:s`, `text:tab` and
   `text:line-break` stay. A field (page number, date, ...) gives the text it
   holds, a link its text.
+- An empty title, subtitle or outline frame, and one still showing its
+  prompt (`presentation:placeholder="true"`, whose text is the prompt, not
+  content), is kept as an empty placeholder - an editor types into it - in
+  its place, with one empty paragraph whose run has the look its styles give.
 - Left out: the header, footer, date and page-number frames, a notes page's
-  slide picture, a placeholder still showing its prompt
-  (`presentation:placeholder="true"`), embedded objects other than charts
+  slide picture, embedded objects other than charts
   (and the picture that stands in for them), comments on a page
   (`officeooo:annotation`), and a table's preview picture.
 - Charts: a chart object (`draw:object`) read through
   [UltraCanvasOdfChart](UltraCanvasOdfChart.md) - the package's
   `Object N/content.xml`, or a flat file's chart document inline - into the
   shape's `chart`.
-- Not read: master pages' own shapes (a logo on every slide), shadows and
+- The design: each master page into `PptxPresentation::masters` (its
+  display name, background and placeholder frames - title, subtitle,
+  outline, date, footer, number; an empty one, as Impress leaves its own,
+  gets Impress's prompt text); each `style:presentation-page-layout` into
+  `layouts`, on the master page its slides use it with (one layout per
+  master when slides use it on several; the first master when none does),
+  its placeholders where the page layout puts them with the look of the
+  master's frame of their class, named and typed from what they hold
+  ("Title and Content", `obj`) unless the file gives a display name; a deck
+  with no page layouts gets a layout per master page from its frames, and a
+  slide on no page layout a blank one. Each slide's `layoutIndex` follows its
+  `presentation:presentation-page-layout-name` and master page.
+- Transitions: the drawing-page style's `smil:type` (`fade`, `pushWipe` ->
+  Push, `barWipe` -> Wipe, `barnDoorWipe` -> Split, `slideWipe` -> Cover,
+  `zoom`; any other as Fade; ODF 1.0's `presentation:transition-style` as
+  Fade), `presentation:transition-speed`, the length from the page's
+  `anim:transitionFilter` `smil:dur` where Impress keeps it, and
+  `presentation:transition-type="automatic"` with `presentation:duration`
+  (`PT5S`) as `advanceAfterSec`. ODF has no "only after the time": a slide
+  always moves on with a click as well.
+- Not read: master pages' shapes other than placeholders (a logo on every slide), shadows and
   other effects, bitmap and hatch fills (a hatch on a solid ground keeps the
   ground), outlines built from formulas (an Office preset still draws by its
   name; an ODF type the list above does not name draws as a box), picture
-  crops, animations and transitions. Pictures are kept as bytes
+  crops, animations, a transition's direction. Pictures are kept as bytes
   (`withPictures`), not decoded.
 - A password-protected deck (`manifest:encryption-data` in the manifest) is
   decrypted with the password `ReadOdpPresentation` and
@@ -199,7 +222,20 @@ if (ReadPptxPresentation(pptxPath, deck, error, "", true)) {     // a PowerPoint
 
 `WriteOdpPresentation(deck, path, error)` writes:
 
-- one master page of the deck's slide size; each slide a `draw:page` with
+- the deck's masters as master pages of the deck's slide size (one plain
+  `Default` for a deck without masters): name and display name, background,
+  placeholder frames in the master's styles (the date, footer and number as
+  Impress's fields), and `<master>-title` / `-subtitle` / `-outline1..9`
+  presentation styles carrying their look, which the slides' frames take as
+  parents;
+- the deck's layouts as presentation page layouts (`UCL1` ..., with the
+  layout's name as display name), each slide on its layout (-1: the first)
+  and that layout's master page;
+- each slide's transition in its drawing-page style (smil type and subtype,
+  speed, `presentation:transition-type="automatic"` with
+  `presentation:duration`) and its exact length as the page's
+  `anim:transitionFilter`, as Impress writes it;
+- each slide a `draw:page` with
   its background and hidden flag (a drawing-page style);
 - titles, subtitles and content as presentation frames (`title`,
   `subtitle`, `outline`) at their places; text boxes as frames; any other
@@ -237,7 +273,7 @@ inline). `WriteOdpPresentationToMemory` gives the bytes. There is no
 password: ODF encryption is read ([UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)),
 not written, so `UltraCanvasFileLoader::SavePresentation` refuses one for
 an `.odp` rather than save it unprotected. Not written: effects, animations,
-transitions, comments.
+a transition's direction, comments.
 
 ## Test
 
@@ -254,7 +290,8 @@ transitions, comments.
 - `Tests/fixtures/presentation-features.fodp` - a flat deck written by hand,
   which LibreOffice opens: white space, units, inherited text styles, nested,
   header and unnumbered lists, a line break, a link and a tab, a group, a
-  hyperlinked frame, the footer and a prompting placeholder left out, a hidden
+  hyperlinked frame, the footer left out and a prompting placeholder kept
+  empty, a hidden
   slide, a table with header rows and a covered cell, an embedded chart left
   out, an inline picture, a field, and a page comment left out.
 - a flat deck written in the test for the look as drawn: a style through its

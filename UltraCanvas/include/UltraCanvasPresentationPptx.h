@@ -35,11 +35,25 @@
 // UltraCanvasDrawingML into a RichChart; SmartArt is read from the drawing
 // PowerPoint saves beside it, as ordinary shapes. Runs keep their hyperlinks.
 //
+// The design is read as well: every slide master and slide layout, in the
+// file's order, into PptxPresentation::masters / layouts - name, layout type,
+// master, background, and the placeholders resolved as a slide's are (place,
+// kind, text look) with their prompt text ("Click to edit Master title
+// style") - and each slide's layoutIndex. A slide's transition (p:transition,
+// also PowerPoint 2010's inside mc:AlternateContent) is read into
+// PptxSlide::transition: its kind (one the model has none for as Fade), its
+// length (p14:dur, else the speed) and when the show moves on. An empty
+// placeholder on a slide is kept (an editor types into it): its place and one
+// empty paragraph whose run has the size a:endParaRPr or the layout gives; a
+// p:ph naming no type (ECMA's obj) reads as "body".
+//
 // What is not read: effects (shadows, glow, 3D), pattern and picture fills,
-// animations, transitions, comments, embedded objects (beyond the picture
-// they show), video and audio (beyond the poster frame).
+// animations, a transition's direction and sound, comments, embedded objects
+// (beyond the picture they show), video and audio (beyond the poster frame).
 //
 // Specification: ECMA-376 Part 1, PresentationML (§19) and DrawingML (§20-21).
+// Version: 1.6.0 - masters, layouts and transitions read and written (.pptx here, .odp in
+//                  UltraCanvasPresentationOdp.h); PptxLayout::type is p:sldLayout/@type
 // Version: 1.5.0 - masters, layouts (PptxLayout, PptxSlide::layoutIndex, PptxSlideFromLayout), transitions;
 //                  UCPresentation / UCSlide / UCSlideShape
 // Version: 1.4.0 - WritePptxPresentation / WritePptxPresentationToPackage (the writer, .pptx and kin,
@@ -54,7 +68,7 @@
 //                  text sizes, colours and alignment, anchors, fills, outlines, the background,
 //                  the theme's colours, and (withPictures) the pictures' bytes
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -214,8 +228,9 @@ struct PptxTransition {
 // reader resolves a slide's shapes, for drawing and for copying.
 struct PptxLayout {
     std::string name;            // as the deck names it ("Title and Content")
-    // p:cSld/@type of the layout: "title", "obj", "twoObj", "titleOnly",
-    // "secHead", "blank" ...; empty when the file says none.
+    // p:sldLayout/@type: "title", "obj", "twoObj", "titleOnly", "secHead",
+    // "blank" ... (an .odp's worked out from its placeholders); empty when
+    // the file says none.
     std::string type;
     int masterIndex = 0;         // into PptxPresentation::masters
     std::vector<PptxShape> placeholders;   // each with its `placeholder` type and prompt text
@@ -302,7 +317,14 @@ UCRichDocument PptxPresentationToRichDocument(const PptxPresentation& presentati
 // pictures from `deck.pictures` with their crop (a picture whose bytes were
 // not kept is written as a grey box with its description); charts
 // (UltraCanvasDrawingML's chart parts); speaker notes; the theme's colours and
-// heading and body fonts. The extension names the package kind: .pptx,
+// heading and body fonts; each slide's transition (with p14:dur in
+// mc:AlternateContent for a length no speed names, advClick, advTm). A deck
+// with layouts is written with its own masters and layouts - names, types,
+// backgrounds, placeholders with their look as a list style and their prompt
+// text, a blank layout for a master that has none - each slide on its
+// layoutIndex (-1: the first) and its placeholders matched to the layout's;
+// a deck without (one made in memory) gets the standard master and its Title
+// and Content layout. The extension names the package kind: .pptx,
 // .potx (a template), .ppsx (a show), and their macro-enabled .pptm / .potm
 // / .ppsm, which carry no macros. With a `password` the package is
 // encrypted (UltraCanvasOfficeEncryption.h), as PowerPoint's "Encrypt with

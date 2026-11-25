@@ -1,5 +1,11 @@
 // core/UltraCanvasPresentationOdp.cpp
 // OpenDocument presentation (.odp / .otp / .fodp) reader - see UltraCanvasPresentationOdp.h.
+// Version: 1.4.0 - the master pages (name, background, placeholder frames) into
+//                  PptxPresentation::masters, the presentation page layouts (each with the master
+//                  its slides use; one per master page when the deck has none) into layouts, each
+//                  slide's layoutIndex; transitions from the drawing-page style and its
+//                  anim:transitionFilter into PptxSlide::transition; an empty title, subtitle or
+//                  outline placeholder kept (one empty paragraph in its look)
 // Version: 1.3.0 - the look as drawn: styles resolved through their parents and defaults (fills, gradients,
 //                  outlines, dashes, arrowheads, text areas, fonts, sizes, colours, spacing, bullets and
 //                  numbering), outlines (ODF and Office shape types, enhanced paths, rectangles, ellipses,
@@ -8,7 +14,7 @@
 // Version: 1.2.0 - charts (chart objects, UltraCanvasOdfChart): a package's "Object N" and a flat file's inline one
 // Version: 1.1.0 - a password-protected deck opened with its password (UltraCanvasOdfEncryption.h)
 // Version: 1.0.0
-// Last Modified: 2026-11-22
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #include "UltraCanvasPresentationOdp.h"
 #include "UltraCanvasOdfChart.h"
@@ -194,8 +200,12 @@ struct OdpContext {
     std::map<std::string, std::string> fonts;                      // font face -> its family
     struct Master {
         std::string pageLayout, pageStyle;
+        std::string displayName;
+        const tinyxml2::XMLElement* element = nullptr;
     };
     std::map<std::string, Master> masters;
+    std::vector<std::string> masterOrder;                              // the master pages' names, in order
+    std::vector<const tinyxml2::XMLElement*> presentationLayouts;      // style:presentation-page-layout, in order
     std::map<std::string, std::pair<int64_t, int64_t>> pageLayouts;   // page layout -> width, height
     std::map<std::string, std::string> themeColors;
     std::string firstMaster;
@@ -218,6 +228,10 @@ void CollectStyles(const tinyxml2::XMLElement* container, OdpContext& context,
             context.defaults[Attr(s, "family", "style")] = s;
         } else if (Is(s, "list-style")) {
             for (StyleScope* scope : scopes) scope->lists[name] = s;
+        } else if (Is(s, "presentation-page-layout")) {
+            const bool known = std::any_of(context.presentationLayouts.begin(), context.presentationLayouts.end(),
+                                           [&](const tinyxml2::XMLElement* l) { return Attr(l, "name", "style") == name; });
+            if (!known && !name.empty()) context.presentationLayouts.push_back(s);
         } else if (Is(s, "page-layout")) {
             const tinyxml2::XMLElement* props = Child(s, "page-layout-properties");
             context.pageLayouts[name] = {LengthToEmu(Attr(props, "page-width", "fo")),
@@ -254,7 +268,9 @@ void CollectMasters(const tinyxml2::XMLElement* masterStyles, OdpContext& contex
         if (!Is(m, "master-page")) continue;
         const std::string name = Attr(m, "name", "style");
         if (context.firstMaster.empty()) context.firstMaster = name;
-        context.masters[name] = {Attr(m, "page-layout-name", "style"), Attr(m, "style-name", "draw")};
+        if (!context.masters.count(name)) context.masterOrder.push_back(name);
+        context.masters[name] = {Attr(m, "page-layout-name", "style"), Attr(m, "style-name", "draw"),
+                                 Attr(m, "display-name", "style"), m};
         // LibreOffice's theme (7.6 and later), its colours by Office's names.
         if (!context.themeColors.empty()) continue;
         for (auto* c = Child(Child(Child(m, "theme"), "theme-colors"), "color"); c; c = c->NextSiblingElement()) {
@@ -690,6 +706,7 @@ public:
 
     void ReadPresentation(const tinyxml2::XMLElement* presentation) {
         std::string sizeMaster;
+        std::vector<std::pair<std::string, std::string>> slideKeys;   // each slide's master page and page layout
         int number = 0;
         std::map<std::string, int> pageNumbers;   // a page's name -> its number, for links to it
         for (auto* page = Child(presentation, "page"); page; page = page->NextSiblingElement()) {
@@ -700,6 +717,9 @@ public:
             slide.number = ++number;
             pageNumbers.emplace(Attr(page, "name", "draw"), number);
             const Look pageLook = Look(context_).With(context_.content, "drawing-page", Attr(page, "style-name", "draw"));
+            slideKeys.push_back({masterName.empty() ? context_.firstMaster : masterName,
+                                 Attr(page, "presentation-page-layout-name", "presentation")});
+            ReadTransition(page, pageLook, slide.transition);
             slide.hidden = pageLook.Get("drawing-page-properties", "visibility", "presentation") == "hidden";
             slide.background = Background(pageLook);
             if (slide.background.empty()) {
@@ -738,6 +758,7 @@ public:
             }
         }
         out_.themeColors = context_.themeColors;
+        ReadDesign(slideKeys);
         // Links to a page by its name ("#Slide 3", the writer's "#page3") as jumps to its slide.
         auto relink = [&](std::vector<PptxParagraph>& paragraphs) {
             for (PptxParagraph& p : paragraphs)
@@ -763,6 +784,293 @@ private:
     const OdpContext& context_;
     PptxPresentation& out_;
     int inlinePictures_ = 0;
+    // The styles the shapes being read see: the content's, or (a master
+    // page's) styles.xml's.
+    const StyleScope* scope_ = &context_.content;
+    bool masterPage_ = false;   // reading a master page: its placeholder frames are kept, empty or not
+
+    // ---- masters, layouts, transitions ----
+
+    // The placeholders on a master page, read in its styles: title, subtitle
+    // and outline with their look (an empty one with Impress's prompt), and
+    // the date, footer and number.
+    std::vector<PptxShape> MasterPlaceholders(const tinyxml2::XMLElement* masterPage) {
+        std::vector<PptxShape> shapes, out;
+        const StyleScope* scope = scope_;
+        scope_ = &context_.master;
+        masterPage_ = true;
+        ReadShapes(masterPage, shapes);
+        masterPage_ = false;
+        scope_ = scope;
+        for (PptxShape& shape : shapes)
+            if (!shape.placeholder.empty()) out.push_back(std::move(shape));
+        return out;
+    }
+
+    // A placeholder of `presentationClass` a master page has no frame for:
+    // its look from the master's presentation style ("<master>-title").
+    PptxShape StyledPlaceholder(const std::string& masterName, const std::string& presentationClass) {
+        const std::string styleClass = presentationClass == "outline" ? "outline1" : presentationClass;
+        const std::string xml = "<draw:frame presentation:style-name=\"" + masterName + "-" + styleClass +
+                                "\" presentation:class=\"" + presentationClass +
+                                "\" presentation:placeholder=\"true\"><draw:text-box/></draw:frame>";
+        tinyxml2::XMLDocument doc;
+        std::vector<PptxShape> shapes;
+        if (doc.Parse(xml.c_str(), xml.size()) == tinyxml2::XML_SUCCESS) {
+            const StyleScope* scope = scope_;
+            scope_ = &context_.master;
+            masterPage_ = true;
+            ReadFrame(doc.RootElement(), shapes);
+            masterPage_ = false;
+            scope_ = scope;
+        }
+        return shapes.empty() ? PptxShape() : shapes.front();
+    }
+
+    // An ODF presentation placeholder's object as the model's placeholder type.
+    static std::string PlaceholderTypeOf(const std::string& object) {
+        if (object == "title" || object == "vertical_title") return "title";
+        if (object == "subtitle") return "subTitle";
+        if (object == "graphic") return "pic";
+        if (object == "chart") return "chart";
+        if (object == "table") return "tbl";
+        if (object == "orgchart") return "dgm";
+        if (object == "page" || object == "notes" || object == "handout") return "";
+        return "body";   // outline, text, object, vertical_outline
+    }
+
+    // A layout's name and PowerPoint type from what its placeholders hold.
+    static void NameLayout(int titles, int subtitles, int bodies, PptxLayout& layout) {
+        const char* name = "Custom Layout";
+        const char* type = "";
+        if (titles && subtitles && !bodies) name = "Title Slide", type = "title";
+        else if (titles && !subtitles && bodies == 1) name = "Title and Content", type = "obj";
+        else if (titles && !subtitles && bodies == 2) name = "Two Content", type = "twoObj";
+        else if (titles && !subtitles && bodies == 4) name = "Four Content", type = "fourObj";
+        else if (titles && !subtitles && !bodies) name = "Title Only", type = "titleOnly";
+        else if (!titles && !subtitles && !bodies) name = "Blank", type = "blank";
+        if (layout.name.empty()) layout.name = name;
+        layout.type = type;
+    }
+
+    // A layout from a presentation page layout on master `masterIndex`: its
+    // placeholders where the page layout puts them, each with the look of
+    // the master's frame of its class, and the master's date, footer and number.
+    PptxLayout LayoutOf(const tinyxml2::XMLElement* pageLayout, int masterIndex) {
+        PptxLayout layout;
+        layout.masterIndex = masterIndex;
+        layout.name = Attr(pageLayout, "display-name", "style");
+        const std::string& masterName = context_.masterOrder[static_cast<size_t>(masterIndex)];
+        const PptxMaster& master = out_.masters[static_cast<size_t>(masterIndex)];
+        int titles = 0, subtitles = 0, bodies = 0;
+        for (auto* ph = Child(pageLayout, "placeholder"); ph; ph = ph->NextSiblingElement()) {
+            if (!Is(ph, "placeholder")) continue;
+            const std::string type = PlaceholderTypeOf(Attr(ph, "object", "presentation"));
+            if (type.empty()) continue;
+            const PptxShapeKind kind = type == "title"    ? PptxShapeKind::Title
+                                     : type == "subTitle" ? PptxShapeKind::Subtitle
+                                                          : PptxShapeKind::Body;
+            (kind == PptxShapeKind::Title ? titles : kind == PptxShapeKind::Subtitle ? subtitles : bodies)++;
+            PptxShape shape;
+            const auto from = std::find_if(master.placeholders.begin(), master.placeholders.end(),
+                                           [&](const PptxShape& s) { return s.kind == kind; });
+            if (from != master.placeholders.end()) shape = *from;
+            else shape = StyledPlaceholder(masterName, kind == PptxShapeKind::Title      ? "title"
+                                                       : kind == PptxShapeKind::Subtitle ? "subtitle"
+                                                                                         : "outline");
+            shape.kind = kind;
+            shape.placeholder = type;
+            const int64_t width = LengthToEmu(Attr(ph, "width", "svg")), height = LengthToEmu(Attr(ph, "height", "svg"));
+            if (width > 0 && height > 0) {
+                shape.x = LengthToEmu(Attr(ph, "x", "svg"));
+                shape.y = LengthToEmu(Attr(ph, "y", "svg"));
+                shape.width = width;
+                shape.height = height;
+            }
+            layout.placeholders.push_back(std::move(shape));
+        }
+        NameLayout(titles, subtitles, bodies, layout);
+        for (const PptxShape& shape : master.placeholders)
+            if (shape.placeholder == "dt" || shape.placeholder == "ftr" || shape.placeholder == "sldNum")
+                layout.placeholders.push_back(shape);
+        return layout;
+    }
+
+    // A layout of a master page's own frames: for a deck with no page layouts.
+    PptxLayout LayoutOfMaster(int masterIndex) {
+        PptxLayout layout;
+        layout.masterIndex = masterIndex;
+        layout.placeholders = out_.masters[static_cast<size_t>(masterIndex)].placeholders;
+        int titles = 0, subtitles = 0, bodies = 0;
+        for (const PptxShape& shape : layout.placeholders) {
+            if (shape.kind == PptxShapeKind::Title) ++titles;
+            else if (shape.kind == PptxShapeKind::Subtitle) ++subtitles;
+            else if (shape.kind == PptxShapeKind::Body) ++bodies;
+        }
+        NameLayout(titles, subtitles, bodies, layout);
+        return layout;
+    }
+
+    // The masters (master pages, in order), the layouts (each presentation
+    // page layout with each master its slides use it on, else the first;
+    // a layout per master page when the deck has no page layouts; a blank
+    // one for a slide that names none) and each slide's layoutIndex.
+    void ReadDesign(const std::vector<std::pair<std::string, std::string>>& slideKeys) {
+        std::map<std::string, int> masterIndex;
+        for (const std::string& name : context_.masterOrder) {
+            const OdpContext::Master& page = context_.masters.at(name);
+            PptxMaster master;
+            master.name = page.displayName.empty() ? name : page.displayName;
+            master.background = Background(Look(context_).With(context_.master, "drawing-page", page.pageStyle));
+            master.placeholders = MasterPlaceholders(page.element);
+            masterIndex[name] = static_cast<int>(out_.masters.size());
+            out_.masters.push_back(std::move(master));
+        }
+        if (out_.masters.empty()) return;
+        auto indexOf = [&](const std::string& name) {
+            const auto found = masterIndex.find(name);
+            return found == masterIndex.end() ? 0 : found->second;
+        };
+        // The page layouts a slide can be on: not the handout's.
+        std::vector<const tinyxml2::XMLElement*> pageLayouts;
+        for (const tinyxml2::XMLElement* layout : context_.presentationLayouts) {
+            bool forSlides = false;
+            for (auto* ph = Child(layout, "placeholder"); ph; ph = ph->NextSiblingElement())
+                forSlides = forSlides || !PlaceholderTypeOf(Attr(ph, "object", "presentation")).empty();
+            const std::string name = Attr(layout, "name", "style");
+            const bool used = std::any_of(slideKeys.begin(), slideKeys.end(),
+                                          [&](const auto& key) { return key.second == name; });
+            if (forSlides || used) pageLayouts.push_back(layout);
+        }
+        std::map<std::pair<std::string, int>, int> layoutIndex;   // (page layout, master) -> layout
+        for (const tinyxml2::XMLElement* pageLayout : pageLayouts) {
+            const std::string name = Attr(pageLayout, "name", "style");
+            std::vector<int> masters;
+            for (const auto& [master, layout] : slideKeys) {
+                const int m = indexOf(master);
+                if (layout == name && std::find(masters.begin(), masters.end(), m) == masters.end()) masters.push_back(m);
+            }
+            if (masters.empty()) masters.push_back(0);
+            for (int m : masters) {
+                layoutIndex[{name, m}] = static_cast<int>(out_.layouts.size());
+                out_.layouts.push_back(LayoutOf(pageLayout, m));
+            }
+        }
+        if (pageLayouts.empty()) {
+            for (size_t m = 0; m < out_.masters.size(); ++m) {
+                layoutIndex[{std::string(), static_cast<int>(m)}] = static_cast<int>(out_.layouts.size());
+                out_.layouts.push_back(LayoutOfMaster(static_cast<int>(m)));
+            }
+        }
+        for (size_t i = 0; i < slideKeys.size() && i < out_.slides.size(); ++i) {
+            const int m = indexOf(slideKeys[i].first);
+            std::string name = slideKeys[i].second;
+            if (!layoutIndex.count({name, m})) name.clear();
+            auto found = layoutIndex.find({name, m});
+            if (found == layoutIndex.end()) {
+                // A slide on no page layout, in a deck that has some: a blank layout of its master.
+                PptxLayout blank;
+                blank.masterIndex = m;
+                NameLayout(0, 0, 0, blank);
+                for (const PptxShape& shape : out_.masters[static_cast<size_t>(m)].placeholders)
+                    if (shape.placeholder == "dt" || shape.placeholder == "ftr" || shape.placeholder == "sldNum")
+                        blank.placeholders.push_back(shape);
+                found = layoutIndex.emplace(std::make_pair(std::string(), m), static_cast<int>(out_.layouts.size())).first;
+                out_.layouts.push_back(std::move(blank));
+            }
+            out_.slides[i].layoutIndex = found->second;
+        }
+    }
+
+    // A length of time in seconds: an ISO 8601 duration ("PT5S",
+    // "PT00H00M05.5S") or a SMIL clock value ("2s", "750ms", "0:00:02", "2");
+    // -1 for none.
+    static double Seconds(const std::string& text) {
+        if (text.empty()) return -1;
+        if (text[0] == 'P') {
+            double total = 0;
+            std::string number;
+            bool inTime = false;
+            for (char c : text.substr(1)) {
+                if (c == 'T') {
+                    inTime = true;
+                    continue;
+                }
+                if (std::isdigit(static_cast<unsigned char>(c)) || c == '.' || c == ',') {
+                    number += c == ',' ? '.' : c;
+                    continue;
+                }
+                double value = 0;
+                if (!number.empty() && TryParseFloat(number, value)) {
+                    if (c == 'H') total += value * 3600;
+                    else if (c == 'M') total += inTime ? value * 60 : value * 30 * 86400;
+                    else if (c == 'S') total += value;
+                    else if (c == 'D') total += value * 86400;
+                }
+                number.clear();
+            }
+            return total;
+        }
+        if (text.find(':') != std::string::npos) {
+            double total = 0;
+            size_t start = 0;
+            while (start <= text.size()) {
+                const size_t end = std::min(text.find(':', start), text.size());
+                double value = 0;
+                if (!TryParseFloat(text.substr(start, end - start), value)) return -1;
+                total = total * 60 + value;
+                start = end + 1;
+            }
+            return total;
+        }
+        double value = 0;
+        if (!Number(text, value)) return -1;
+        if (text.size() > 2 && text.compare(text.size() - 2, 2, "ms") == 0) return value / 1000.0;
+        if (text.size() > 3 && text.compare(text.size() - 3, 3, "min") == 0) return value * 60;
+        if (!text.empty() && text.back() == 'h') return value * 3600;
+        return value;
+    }
+
+    // The anim:transitionFilter of a page's timing root: what Impress keeps
+    // a transition's exact length in.
+    static const tinyxml2::XMLElement* TransitionFilter(const tinyxml2::XMLElement* e, int depth = 0) {
+        for (auto* c = e && depth < 8 ? e->FirstChildElement() : nullptr; c; c = c->NextSiblingElement()) {
+            if (Is(c, "transitionFilter")) return c;
+            if (Is(c, "par") || Is(c, "seq"))
+                if (const tinyxml2::XMLElement* found = TransitionFilter(c, depth + 1)) return found;
+        }
+        return nullptr;
+    }
+
+    // A slide's transition from its drawing-page style (smil:type /
+    // smil:subtype, or ODF 1.0's presentation:transition-style; the speed;
+    // presentation:transition-type automatic with presentation:duration)
+    // and its timing root's transition filter (the exact length).
+    static PptxTransitionKind TransitionKindOf(const std::string& smilType, const std::string& oldStyle) {
+        if (smilType.empty()) return oldStyle.empty() || oldStyle == "none" ? PptxTransitionKind::NoTransition
+                                                                           : PptxTransitionKind::Fade;
+        if (smilType == "pushWipe") return PptxTransitionKind::Push;
+        if (smilType == "barWipe") return PptxTransitionKind::Wipe;
+        if (smilType == "barnDoorWipe") return PptxTransitionKind::Split;
+        if (smilType == "slideWipe") return PptxTransitionKind::Cover;
+        if (smilType == "zoom") return PptxTransitionKind::Zoom;
+        return PptxTransitionKind::Fade;   // fade, and the kinds the model has none of its own for
+    }
+
+    void ReadTransition(const tinyxml2::XMLElement* page, const Look& pageLook, PptxTransition& out) const {
+        const char* props = "drawing-page-properties";
+        const tinyxml2::XMLElement* filter = TransitionFilter(Child(page, "par"));
+        std::string smilType = pageLook.Get(props, "type", "smil", false);
+        if (smilType.empty() && filter) smilType = Attr(filter, "type", "smil");
+        out.kind = TransitionKindOf(smilType, pageLook.Get(props, "transition-style", "presentation", false));
+        const std::string speed = pageLook.Get(props, "transition-speed", "presentation", false);
+        out.durationSec = speed == "slow" ? 1.0 : speed == "fast" ? 0.5 : 0.75;   // ODF's default is medium
+        if (const double exact = filter ? Seconds(Attr(filter, "dur", "smil")) : -1; exact > 0) out.durationSec = exact;
+        if (pageLook.Get(props, "transition-type", "presentation", false) == "automatic") {
+            const double after = Seconds(pageLook.Get(props, "duration", "presentation", false));
+            out.advanceAfterSec = after >= 0 ? after : 0;
+        }
+    }
 
     // ---- fills, outlines, the text area ----
 
@@ -977,8 +1285,8 @@ private:
     // The look of a shape's own styles (draw:style-name, presentation:style-name).
     Look ShapeLook(const tinyxml2::XMLElement* e) const {
         return Look(context_)
-            .With(context_.content, "presentation", Attr(e, "style-name", "presentation"))
-            .With(context_.content, "graphic", Attr(e, "style-name", "draw"));
+            .With(*scope_, "presentation", Attr(e, "style-name", "presentation"))
+            .With(*scope_, "graphic", Attr(e, "style-name", "draw"));
     }
 
     void ReadShapes(const tinyxml2::XMLElement* parent, std::vector<PptxShape>& out) {
@@ -1149,24 +1457,34 @@ private:
     // The look a shape's text starts from: its text style
     // (draw:text-style-name) over its own styles.
     Look TextLook(const tinyxml2::XMLElement* e, const Look& shapeLook) const {
-        return shapeLook.With(context_.content, "paragraph", Attr(e, "text-style-name", "draw"));
+        return shapeLook.With(*scope_, "paragraph", Attr(e, "text-style-name", "draw"));
     }
 
     void ReadFrame(const tinyxml2::XMLElement* frame, std::vector<PptxShape>& out) {
         const std::string presentationClass = Attr(frame, "class", "presentation");
-        // Slide furniture, a notes page's slide picture, and a placeholder
-        // still showing its prompt.
+        if (masterPage_) {
+            ReadMasterFrame(frame, presentationClass, out);
+            return;
+        }
+        // Slide furniture and a notes page's slide picture are left out; an
+        // empty title, subtitle or outline (presentation:placeholder, still
+        // showing its prompt) is kept, as an editor types into it.
+        const bool prompt = presentationClass == "title" || presentationClass == "subtitle" ||
+                            presentationClass == "outline";
         if (presentationClass == "header" || presentationClass == "footer" ||
             presentationClass == "date-time" || presentationClass == "page-number" ||
             presentationClass == "page" || presentationClass == "handout" ||
-            Attr(frame, "placeholder", "presentation") == "true")
+            (Attr(frame, "placeholder", "presentation") == "true" && !prompt))
             return;
 
         PptxShape shape;
         shape.name = Attr(frame, "name", "draw");
         ReadPlace(frame, shape);
         const Look look = ShapeLook(frame);
-        if (const tinyxml2::XMLElement* textBox = Child(frame, "text-box")) {
+        const tinyxml2::XMLElement* textBox = Child(frame, "text-box");
+        const bool emptyPlaceholder = !textBox && prompt && !Child(frame, "table") && !Child(frame, "object") &&
+                                      !Child(frame, "image");
+        if (textBox || emptyPlaceholder) {
             shape.kind = presentationClass == "title"                                  ? PptxShapeKind::Title
                        : presentationClass == "subtitle"                               ? PptxShapeKind::Subtitle
                        : presentationClass == "outline" || presentationClass == "notes" ? PptxShapeKind::Body
@@ -1177,7 +1495,21 @@ private:
             else if (shape.kind == PptxShapeKind::Subtitle) shape.placeholder = "subTitle";
             else if (presentationClass == "outline") shape.placeholder = "body";
             ReadGraphic(look, shape, true);
-            ReadParagraphs(textBox, TextLook(frame, look), shape.paragraphs);
+            if (textBox) ReadParagraphs(textBox, TextLook(frame, look), shape.paragraphs);
+            if (prompt && (!HasText(shape) || Attr(frame, "placeholder", "presentation") == "true")) {
+                // An empty placeholder (a presentation:placeholder's text is
+                // its prompt, not its content): one empty paragraph whose run
+                // has the look the frame's styles give its text.
+                PptxParagraph p = shape.paragraphs.empty() ? PptxParagraph() : shape.paragraphs.front();
+                PptxRun run = p.runs.empty() ? RunOf(TextLook(frame, look)) : p.runs.front();
+                run.text.clear();
+                run.hyperlink.clear();
+                p.runs = {run};
+                if (shape.paragraphs.empty()) p.bullet = presentationClass == "outline";
+                shape.paragraphs = {p};
+                out.push_back(std::move(shape));
+                return;
+            }
             if (shape.kind == PptxShapeKind::Text ? Visible(shape) : HasText(shape)) out.push_back(std::move(shape));
         } else if (const tinyxml2::XMLElement* table = Child(frame, "table")) {
             shape.kind = PptxShapeKind::Table;
@@ -1237,6 +1569,58 @@ private:
                 shape.altText.pop_back();
             out.push_back(std::move(shape));
         }
+    }
+
+    // A master page's frame: a placeholder (title, subtitle, outline, date,
+    // footer, number) kept empty or not - an empty one given Impress's
+    // prompt in its look - or, any other frame, read as on a slide.
+    void ReadMasterFrame(const tinyxml2::XMLElement* frame, const std::string& presentationClass,
+                         std::vector<PptxShape>& out) {
+        static const std::map<std::string, std::pair<std::string, const char*>> kClasses = {
+            {"title", {"title", "Click to edit the title text format"}},
+            {"subtitle", {"subTitle", "Click to edit the subtitle text format"}},
+            {"outline", {"body", "Click to edit the outline text format"}},
+            {"date-time", {"dt", ""}},
+            {"footer", {"ftr", ""}},
+            {"page-number", {"sldNum", "<number>"}}};
+        const auto known = kClasses.find(presentationClass);
+        if (known == kClasses.end()) {
+            if (presentationClass.empty()) {
+                masterPage_ = false;
+                ReadFrame(frame, out);
+                masterPage_ = true;
+            }
+            return;
+        }
+        PptxShape shape;
+        shape.name = Attr(frame, "name", "draw");
+        shape.placeholder = known->second.first;
+        shape.kind = presentationClass == "title"      ? PptxShapeKind::Title
+                   : presentationClass == "subtitle"   ? PptxShapeKind::Subtitle
+                   : presentationClass == "outline"    ? PptxShapeKind::Body
+                                                       : PptxShapeKind::Text;
+        ReadPlace(frame, shape);
+        const Look look = ShapeLook(frame);
+        ReadGraphic(look, shape, true);
+        const tinyxml2::XMLElement* textBox = Child(frame, "text-box");
+        if (textBox) ReadParagraphs(textBox, TextLook(frame, look), shape.paragraphs);
+        if (!HasText(shape) && *known->second.second) {
+            // Impress keeps no prompt on its master page: its own, in the frame's look.
+            const std::string prompt = known->second.second;
+            const std::string text = "<draw:text-box>" + std::string(shape.kind == PptxShapeKind::Body
+                                                                         ? "<text:list><text:list-item><text:p>"
+                                                                         : "<text:p>") +
+                                     (prompt == "<number>" ? std::string("&lt;number&gt;") : prompt) +
+                                     (shape.kind == PptxShapeKind::Body ? "</text:p></text:list-item></text:list>"
+                                                                        : "</text:p>") +
+                                     "</draw:text-box>";
+            tinyxml2::XMLDocument doc;
+            if (doc.Parse(text.c_str(), text.size()) == tinyxml2::XML_SUCCESS) {
+                shape.paragraphs.clear();
+                ReadParagraphs(doc.RootElement(), TextLook(frame, look), shape.paragraphs);
+            }
+        }
+        out.push_back(std::move(shape));
     }
 
     // ---- tables ----
@@ -1312,7 +1696,7 @@ private:
             } else if (Is(e, "table-column")) {
                 Column column;
                 column.width = LengthToEmu(Look(context_)
-                                               .With(context_.content, "table-column", Attr(e, "style-name", "table"))
+                                               .With(*scope_, "table-column", Attr(e, "style-name", "table"))
                                                .Get("table-column-properties", "column-width", "style", false));
                 column.cellStyle = Attr(e, "default-cell-style-name", "table");
                 double repeat = 1;
@@ -1347,7 +1731,7 @@ private:
             for (const Column& column : columns) shape.columnWidths.push_back(column.width);
         for (size_t r = 0; r < rows.size(); ++r) {
             const tinyxml2::XMLElement* row = rows[r];
-            const Look rowLook = Look(context_).With(context_.content, "table-row", Attr(row, "style-name", "table"));
+            const Look rowLook = Look(context_).With(*scope_, "table-row", Attr(row, "style-name", "table"));
             std::string height = rowLook.Get("table-row-properties", "row-height", "style", false);
             if (height.empty()) height = rowLook.Get("table-row-properties", "min-row-height", "style", false);
             shape.rowHeights.push_back(LengthToEmu(height));
@@ -1363,8 +1747,8 @@ private:
                 if (styleName.empty() && c < columns.size()) styleName = columns[c].cellStyle;
                 const std::string templateStyle = TemplateStyle(table, r, c, rows.size(), width);
                 const Look cellLook = Look(context_)
-                                          .With(context_.content, "table-cell", templateStyle)
-                                          .With(context_.content, "table-cell", styleName);
+                                          .With(*scope_, "table-cell", templateStyle)
+                                          .With(*scope_, "table-cell", styleName);
                 PptxCellStyle look;
                 look.mergedAway = covered;
                 double span = 1;
@@ -1391,8 +1775,8 @@ private:
                 std::vector<PptxParagraph> paragraphs;
                 // The cell's text: its styles over the table frame's.
                 ReadParagraphs(cell,
-                               frameLook.With(context_.content, "table-cell", templateStyle)
-                                   .With(context_.content, "table-cell", styleName),
+                               frameLook.With(*scope_, "table-cell", templateStyle)
+                                   .With(*scope_, "table-cell", styleName),
                                paragraphs);
                 texts.push_back(std::move(paragraphs));
                 looks.push_back(look);
@@ -1417,7 +1801,7 @@ private:
     };
 
     const tinyxml2::XMLElement* ListStyleNamed(const std::string& name) const {
-        for (const StyleScope* scope : {&context_.content, &context_.master}) {
+        for (const StyleScope* scope : {scope_, scope_ == &context_.content ? &context_.master : &context_.content}) {
             const auto found = scope->lists.find(name);
             if (found != scope->lists.end()) return found->second;
         }
@@ -1551,7 +1935,7 @@ private:
                                 const tinyxml2::XMLElement* indentStyle = nullptr) {
         PptxParagraph paragraph;
         paragraph.level = level;
-        const Look look = state.look.With(context_.content, "paragraph", Attr(p, "style-name", "text")).AtOutlineLevel(level);
+        const Look look = state.look.With(*scope_, "paragraph", Attr(p, "style-name", "text")).AtOutlineLevel(level);
 
         const std::string align = look.Get("paragraph-properties", "text-align", "fo");
         paragraph.align = align == "center"                     ? PptxAlign::Center
@@ -1744,12 +2128,12 @@ private:
             const tinyxml2::XMLElement* e = node->ToElement();
             if (!e) continue;
             if (Is(e, "span")) {
-                const Look spanLook = look.With(context_.content, "text", Attr(e, "style-name", "text"));
+                const Look spanLook = look.With(*scope_, "text", Attr(e, "style-name", "text"));
                 PptxRun spanRun = RunOf(spanLook);
                 spanRun.hyperlink = run.hyperlink;
                 ReadInline(e, spanRun, spanLook, state);
             } else if (Is(e, "a")) {
-                const Look linkLook = look.With(context_.content, "text", Attr(e, "style-name", "text"));
+                const Look linkLook = look.With(*scope_, "text", Attr(e, "style-name", "text"));
                 PptxRun linkRun = Attr(e, "style-name", "text").empty() ? run : RunOf(linkLook);
                 linkRun.hyperlink = Attr(e, "href", "xlink");
                 ReadInline(e, linkRun, linkLook, state);

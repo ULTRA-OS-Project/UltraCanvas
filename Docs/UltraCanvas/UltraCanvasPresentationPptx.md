@@ -93,8 +93,11 @@ UCRichDocument outline = PptxPresentationToRichDocument(deck);
 
 | Type | Holds |
 |---|---|
-| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `majorFont` / `minorFont` (the theme's heading and body typefaces), `pictures` (bytes by part, read `withPictures`) |
-| `PptxSlide` | `number` (1-based), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black) |
+| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `majorFont` / `minorFont` (the theme's heading and body typefaces), `masters` and `layouts` (the design, in the file's order), `pictures` (bytes by part, read `withPictures`) |
+| `PptxSlide` | `number` (1-based), `layoutIndex` (into `layouts`; -1: none known), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black), `transition` |
+| `PptxMaster` | `name`, `placeholders` (title, body, date, footer, number), `background` |
+| `PptxLayout` | `name` ("Title and Content"), `type` (`p:sldLayout/@type`: `title`, `obj`, `twoObj`, `titleOnly` ...), `masterIndex`, `placeholders` (each with its `placeholder` type and prompt text), `background` (empty: the master's) |
+| `PptxTransition` | `kind` (`PptxTransitionKind`: `NoTransition`, `Fade`, `Push`, `Wipe`, `Split`, `Cover`, `Zoom`), `durationSec`, `advanceOnClick`, `advanceAfterSec` (-1: never by itself) |
 | `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`, `Connector`, `Chart`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `rotationDeg`, `flipH` / `flipV`, `placeholder` (its type), `anchor`, `fontScale` (autofit), the text's `insetLeft` ... `insetBottom` (EMU, -1: PowerPoint's own), `wrap`, `textRotation` (90 / 270 for vertical text), `fill` (and a gradient's `gradientStops`, `gradientAngleDeg`, `gradientRadial`), `line`, `lineWidthPt`, `dash`, `arrowStart` / `arrowEnd`, `geometry` (the preset) or `customPath` (a freeform's outline, 0..1 across the box), `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `cellStyles` (`PptxCellStyle` each), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`), `altText` and crop (`cropLeft` ... `cropBottom`, a share of the picture); a chart's `chart` (`RichChart`) |
 | `PptxCellStyle` | a table cell's `fill`, `textColor` and `bold` (from the table style), its four borders (`color`, `widthPt`), `gridSpan` / `rowSpan`, `mergedAway` (covered by a merged cell), insets and `anchor` |
 | `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`, `spaceBefore` / `spaceAfter` / `lineSpacing` (`PptxSpacing`: a share of a line or points), `marginLeft` and `indent` (EMU), `bulletChar`, `bulletFont`, `bulletColor`, `bulletSizePercent`, `numberScheme` (`a:buAutoNum`'s type) and `numberStartAt`; `Text()` joins the runs |
@@ -118,7 +121,11 @@ reads a package already in memory.
   subtitle, any other (`body`, `obj`, or none) content, bulleted unless a
   paragraph says `buNone`. A text box is not bulleted unless it says `buChar`
   or `buAutoNum`. The date, footer and slide-number placeholders are slide
-  furniture and left out.
+  furniture and left out. A placeholder's `placeholder` is its `p:ph` type;
+  one that names none (`<p:ph idx="1"/>`, ECMA's `obj`) reads as `"body"`.
+  An empty placeholder is kept - an editor shows its prompt and types into
+  it - in its place, with one empty paragraph whose run keeps the size
+  `a:endParaRPr` (else its layout and master) gives.
 - Groups are read through, their shapes in order and placed on the slide (the
   group's offset and scaling applied). Connectors (`p:cxnSp`) are read as
   lines: their outline (`line`, a bent or curved connector's preset), dash
@@ -170,9 +177,45 @@ reads a package already in memory.
   An equation (`a14:m`) reads as the text of its `m:t` runs ("p=r−c"), a
   chart the reader cannot read as the picture its Fallback holds.
 - Not read: picture and pattern fills, effects (shadows, glow, 3D), comments,
-  animations and transitions, embedded objects beyond the picture they show,
-  video and audio beyond the poster frame. Pictures are named; their bytes
+  animations, a transition's direction and sound, embedded objects beyond
+  the picture they show, video and audio beyond the poster frame. Pictures are named; their bytes
   are kept with `withPictures`, not decoded.
+
+## Masters, layouts and transitions
+
+The reader reads the deck's design as well as its slides:
+
+- every slide master (`p:sldMasterIdLst`) into `masters` and every layout
+  it lists into `layouts`, in the file's order: the name (`p:cSld/@name`),
+  the layout's `type`, its master, the background, and the placeholders
+  resolved as a slide's are - place, kind, text look - keeping their prompt
+  text ("Click to edit Master title style") and the date, footer and slide
+  number;
+- each slide's `layoutIndex`, from its relationship to its layout;
+- `p:transition`, also inside `mc:AlternateContent` (PowerPoint 2010's
+  `p14` kinds and lengths): the kind (one the model has none for, such as
+  `p14:vortex`, reads as `Fade`; `p:cut` as `NoTransition`), the length
+  (`p14:dur` in milliseconds, else `spd`: slow 1 s, med 0.75 s, fast 0.5 s),
+  `advClick` and `advTm`.
+
+`PptxSlideFromLayout(deck, layoutIndex)` makes a new slide from a layout:
+its placeholders without the date, footer and number, emptied but keeping
+their look and place (a placeholder with no place of its own takes its
+master's), and the layout's background:
+
+```cpp
+#include "UltraCanvasPresentationPptx.h"
+using namespace UltraCanvas;
+
+void AddSlide(PptxPresentation& deck, int layoutIndex) {
+    PptxSlide slide = PptxSlideFromLayout(deck, layoutIndex);
+    slide.number = static_cast<int>(deck.slides.size()) + 1;
+    slide.transition.kind = PptxTransitionKind::Fade;
+    slide.transition.durationSec = 2.0;
+    slide.transition.advanceAfterSec = 5.0;   // moves on by itself after 5 s
+    deck.slides.push_back(slide);
+}
+```
 
 ## Drawing a slide
 
@@ -248,9 +291,18 @@ PptxPresentation laidOut = PptxPresentationFromRichDocument(document);
 `WritePptxPresentation(deck, path, error, password)` writes the model as a
 package PowerPoint, LibreOffice and the reader open:
 
-- the slides in order, their size, background and hidden flag; a theme with
-  the deck's colours and heading and body fonts; one slide master and a
-  "Title and Content" layout;
+- the slides in order, their size, background and hidden flag, and their
+  transitions (`p:transition` with `advClick` / `advTm`; a length no speed
+  names in `p14:dur`, inside `mc:AlternateContent` with the speed alone as
+  its Fallback, as PowerPoint writes it); a theme with the deck's colours
+  and heading and body fonts;
+- a deck with `layouts`: its own masters and layouts - names, types,
+  backgrounds, placeholders with their look as a list style and their prompt
+  text, the date and slide number as fields, a blank layout for a master
+  that has none - each slide linked to its `layoutIndex` (-1: the first)
+  with its placeholders naming the layout's (`p:ph` type and `idx`); a deck
+  without (one made in memory, `PptxPresentationFromRichDocument`): one
+  slide master and a "Title and Content" layout;
 - every shape kind at its place, turned and mirrored, in its preset or custom
   outline, solid or gradient fill and line (width, dash, arrowheads);
   titles, subtitles and content as placeholders (with their place written
@@ -288,10 +340,19 @@ the other below it. A deck's own outline reads back as its slides: "1. Title
 (hidden)" as the title of a hidden slide, a "Notes:" quote as its speaker
 notes.
 
-Not written: effects, animations, transitions, comments, embedded objects
-and media (they are not in the model).
+Not written: effects, animations, a transition's direction, comments,
+embedded objects and media (they are not in the model).
 
 ## Test
+
+`Tests/PresentationLayoutsRoundTripTest.cpp` saves a deck with one master,
+two layouts and transitions (Fade over 2 s moving on after 5 s, Push) as
+`.pptx` and `.odp` and reads it back - names, types, placeholder kinds, each
+slide's layout, the transitions, the package's parts and ids - checks the
+standard set for a deck without layouts, `PptxSlideFromLayout` on a read
+deck, the LibreOffice-made `pptx-features` fixtures, and (with `soffice`
+installed) LibreOffice converting our `.pptx` to `.odp` and our `.odp` to
+`.pptx`.
 
 `Tests/OfficeEncryptionTest.cpp` reads `Tests/fixtures/office-pptx-sample.pptx`,
 which python-pptx - an independent writer - builds from its default template

@@ -2,7 +2,9 @@
 // What the deck model does beside reading and writing
 // (include/UltraCanvasPresentationPptx.h): a new slide from a layout.
 //
+// Version: 1.0.1 - a layout's placeholder with no place of its own takes its master's
 // Version: 1.0.0
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #include "UltraCanvasPresentationPptx.h"
 
@@ -66,7 +68,20 @@ PptxSlide PptxSlideFromLayout(const PptxPresentation& deck, int layoutIndex) {
             // not to a new slide's content.
             if (placeholder.placeholder == "dt" || placeholder.placeholder == "ftr" || placeholder.placeholder == "sldNum")
                 continue;
-            slide.shapes.push_back(Emptied(placeholder));
+            PptxShape shape = Emptied(placeholder);
+            // A placeholder the layout gives no place takes its master's of the same kind.
+            if ((shape.width <= 0 || shape.height <= 0) && layout.masterIndex >= 0 &&
+                layout.masterIndex < static_cast<int>(deck.masters.size())) {
+                for (const PptxShape& m : deck.masters[static_cast<size_t>(layout.masterIndex)].placeholders) {
+                    if (m.kind != shape.kind || m.width <= 0 || m.height <= 0) continue;
+                    shape.x = m.x;
+                    shape.y = m.y;
+                    shape.width = m.width;
+                    shape.height = m.height;
+                    break;
+                }
+            }
+            slide.shapes.push_back(std::move(shape));
         }
         return slide;
     }
