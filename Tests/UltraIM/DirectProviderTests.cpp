@@ -1554,14 +1554,13 @@ void TestRecovery(const std::string& relayUrl, const fs::path& base) {
         again.Shutdown();
     }
 }
-#endif
 
 // The owner's profile picture: Alice sets one, Bob (her contact) gets it
 // sealed, through the link or the relay's queue, and sees it on her chat, in
 // his contacts and beside her messages; one too large or no picture at all
 // is refused and changes nothing; an update without pictureChanged leaves it;
 // removing it takes it away at Bob's too; Carol, added after it was set, gets
-// it when she becomes a contact - and not while she is a stranger.
+// it once she is a contact. (POSIX only, as the end-to-end test that calls it.)
 bool HasPicture(const UltraIMEvent& e, const std::string& conversationId, bool present) {
     return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == conversationId &&
            e.conversation.avatarPath.empty() != present;
@@ -1677,6 +1676,7 @@ void TestProfilePicture(DirectProvider& alice, Events& aliceEvents, DirectProvid
     CHECK(!fs::exists(UltraCanvas::PathFromUtf8(atBob)));
     std::printf("  profile picture: set, shared, refused when too large or no picture, sent to a later contact, removed\n");
 }
+#endif
 
 void TestEndToEnd() {
 #if defined(_WIN32)
