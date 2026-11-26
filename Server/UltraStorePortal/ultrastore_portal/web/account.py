@@ -4,6 +4,9 @@ With two hosts (identity/hosts.py) these pages are the account's own, at
 its address; what they link to and send people on to in the store is named
 by its whole address then.
 
+Version: 0.8.0 - closing the account, deleting it, taking a deletion back,
+                 and reactivating a closed one from the sign-in page
+                 (accounts/closure.py)
 Version: 0.4.0 - the account at an address of its own; signing in again when
                  a service asks for it; the services a person let in
 Version: 0.1.0
@@ -18,12 +21,16 @@ from django.core.mail import send_mail
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
+from django.utils.formats import date_format
 
 from django.views.decorators.http import require_POST
 
+from django.conf import settings
+
+from ..accounts import closure
 from ..identity import hosts, provider, sessions
 from ..identity.models import Client
-from .forms import EmailForm, ProfileForm, SignInForm, SignUpForm
+from .forms import ClosedAccountResetForm, EmailForm, LeaveForm, ProfileForm, SignInForm, SignUpForm
 from .utils import too_many
 
 User = get_user_model()
@@ -54,6 +61,10 @@ def signup(request):
             # not: only its owner learns which, by mail.
             if existing is None:
                 user = User.objects.create_user(email, form.cleaned_data["password"], name=form.cleaned_data["name"])
+                # Somebody an affiliate's link brought here is that affiliate's customer from now on.
+                from ..affiliates import services as affiliates
+                from .affiliates import last_click
+                affiliates.signed_up(user, last_click(request))
                 send_verification(user)
             elif existing.email_verified:
                 send_existing_account(existing)
@@ -138,11 +149,17 @@ class SignIn(auth_views.LoginView):
             form.is_valid()
             form.add_error(None, "Too many attempts. Wait fifteen minutes and try again.")
             return self.form_invalid(form)
+        # A closed account does not sign in; its owner, with the right
+        # password, is offered it back.
+        closed = closure.closed_account(request.POST.get("username", ""), request.POST.get("password", ""))
+        if closed is not None:
+            return render(request, "account/reactivate.html", {"token": closure.reactivation_token(closed), "erase_after": closed.erase_after})
         return super().post(request, *args, **kwargs)
 
 
 class PasswordReset(auth_views.PasswordResetView):
     template_name = "form_page.html"
+    form_class = ClosedAccountResetForm
     email_template_name = "mail/password_reset.txt"
     subject_template_name = "mail/password_reset_subject.txt"
     success_url = reverse_lazy("account:password_reset_done")
@@ -191,8 +208,55 @@ def profile(request):
         form.save()
         messages.success(request, "Saved.")
         return redirect("account:profile")
+    from ..affiliates import services as affiliates
     return render(request, "account/profile.html", {
-        "form": form, "console_url": hosts.store_url("console:home"), "services": provider.services_of(request.user)})
+        "form": form, "console_url": hosts.store_url("console:home"), "services": provider.services_of(request.user),
+        "referred_by": affiliates.binding_of(request.user) if affiliates.enabled() else None})
+
+
+@login_required
+def leave(request):
+    """Close the account or ask for its deletion, with the password."""
+    user = request.user
+    refused = closure.refusal(user)
+    form = LeaveForm(request.POST or None, user=user, closed_days=settings.ACCOUNT_CLOSED_DAYS, grace_days=settings.ACCOUNT_DELETION_GRACE_DAYS)
+    if request.method == "POST" and not refused:
+        if too_many(request, "leave", 5, 900, key=str(user.pk)):
+            form.is_valid()
+            form.add_error(None, "Too many attempts. Wait fifteen minutes and try again.")
+        elif form.is_valid():
+            if form.cleaned_data["what"] == LeaveForm.CLOSE:
+                closure.close(user)
+                messages.success(request, f"The account is closed. Sign in again before {date_format(user.erase_after, 'j F Y')} to bring it back; after that it is removed.")
+                return redirect("account:signin")   # the sign-in ended with the account
+            closure.request_deletion(user)
+            messages.success(request, f"The account will be deleted on {date_format(user.erase_after, 'j F Y')}. Until then you can keep it, from this page.")
+            return redirect("account:profile")
+    return render(request, "account/leave.html", {"form": form, "refused": refused, "state": user.state, "erase_after": user.erase_after})
+
+
+@login_required
+@require_POST
+def keep(request):
+    """A deletion that was asked for, taken back."""
+    if request.user.state == request.user.DELETING:
+        closure.cancel_deletion(request.user)
+        messages.success(request, "The deletion is cancelled. The account stays.")
+    return redirect("account:profile")
+
+
+@require_POST
+def reactivate(request):
+    """A closed account, brought back by whoever just gave its password on
+    the sign-in page (the token says so, for a quarter of an hour)."""
+    user = closure.from_reactivation_token(request.POST.get("token", ""))
+    if user is None:
+        messages.error(request, "That took too long, or the account is no longer closed. Sign in again.")
+        return redirect("account:signin")
+    closure.reactivate(user)
+    login(request, user, backend=BACKEND)
+    messages.success(request, "Welcome back. The account is as you left it; the services it was signed in to need signing in again.")
+    return redirect("account:profile")
 
 
 @login_required

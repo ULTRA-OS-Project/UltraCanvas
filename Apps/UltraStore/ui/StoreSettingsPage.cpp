@@ -103,6 +103,12 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
     catalog->AddChild(Theme::Caption("usS.languageHint",
         TrF("Two letters (de, fr, th); empty follows the system ({0}). English is the fallback for a text that has no translation.", SystemLanguage())));
 
+    countryInput_ = Theme::Pin(CreateTextInput("usS.country", 0, 0, 80, Theme::kControlHeight));
+    countryInput_->SetPlaceholder(BuyerCountryNow(""));   // what an empty field gives today
+    catalog->AddChild(FieldRow("usS.countryRow", Tr("Country"), countryInput_));
+    catalog->AddChild(Theme::Caption("usS.countryHint",
+        Tr("Two letters (DE, FR, AT); empty uses your account's country, else the system's. A price includes the VAT of this country, and the invoice names it.")));
+
     catalog->AddChild(Theme::Text("usS.serversLabel", Tr("Servers"), 12.0f));
     serversArea_ = ListArea("usS.servers", 72.0f);
     serversArea_->SetPlaceholder("https://store.ultraos.eu/v1");
@@ -182,6 +188,7 @@ void StoreWindow::LoadSettingsIntoPage() {
     if (!channelDropdown_) return;
     channelDropdown_->SetSelectedIndex(settings_.channel == "beta" ? 1 : 0, false);
     languageInput_->SetText(settings_.language);
+    if (countryInput_) countryInput_->SetText(settings_.country);
     if (accountUrlInput_) accountUrlInput_->SetText(settings_.accountUrl);
     serversArea_->SetText(Joined(settings_.servers), false);
     keysArea_->SetText(Joined(settings_.extraKeys), false);
@@ -209,6 +216,15 @@ void StoreWindow::SaveSettingsFromPage() {
         return;
     }
     s.language = language;
+    if (countryInput_) {
+        std::string country = countryInput_->GetText();
+        country.erase(std::remove_if(country.begin(), country.end(), [](unsigned char c) { return std::isspace(c); }), country.end());
+        if (!country.empty() && BuyerCountry(country, "", "").empty()) {
+            Alert(Tr("The country is two letters, such as DE or FR, or empty."));
+            return;
+        }
+        s.country = BuyerCountry(country, "", "");
+    }
     s.servers = Lines(serversArea_->GetText());
     for (const std::string& url : s.servers) {
         if (url.rfind("https://", 0) != 0 && url.rfind("http://", 0) != 0) {

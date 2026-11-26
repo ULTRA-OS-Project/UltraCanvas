@@ -10,6 +10,9 @@ draw again, {"ok": false, "error" | "errors": {field: [...]}} what was wrong.
 The same address sent by a browser without the script answers with a
 redirect and a message, as every other form here does.
 
+Version: 0.9.0 - Sales shows the tax and the payouts; a payout's statement;
+                 the owner says where the share is paid
+Version: 0.7.0 - Sales shows each payment's split and the publisher's share
 Version: 0.3.0 - pictures uploaded where they are chosen and packages added,
                  edited and removed without leaving the page; no release
                  before the listing has what a review needs
@@ -28,7 +31,9 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from ..billing.models import Payment
+from ..billing import payouts, split, tax
+from ..billing.models import Payment, Payout
+from ..store.models import PublisherMember
 from ..store import services
 from ..store.models import App, Package, Release, Screenshot, TermsVersion
 from ..store.packages import store_upload
@@ -105,7 +110,7 @@ def apply(request):
 
 @publisher_required
 def publisher_profile(request):
-    form = PublisherProfileForm(request.POST or None, instance=request.publisher)
+    form = PublisherProfileForm(request.POST or None, instance=request.publisher, owner=request.publisher_role == PublisherMember.OWNER)
     if request.method == "POST" and form.is_valid():
         form.save()
         services.audit(request.user, "publisher.edit", "publisher", request.publisher.slug, fields=form.changed_data)
@@ -117,19 +122,35 @@ def publisher_profile(request):
 
 @publisher_required
 def sales(request):
-    """What the publisher's apps sold: every payment and every reversal,
-    and the net per currency."""
+    """What the publisher's apps sold: every payment and every reversal
+    with its split, and per currency what buyers paid, the store's fee and
+    the publisher's share (billing/split.py)."""
     payments = (Payment.objects.filter(order__app__publisher=request.publisher).select_related("order__app").order_by("-at", "-id"))
     totals: dict[str, dict] = {}
     for payment in payments:
-        row = totals.setdefault(payment.currency, {"currency": payment.currency, "sold": 0, "reversed": 0, "net": 0, "sales": 0})
+        row = totals.setdefault(payment.currency, {"currency": payment.currency, "sold": 0, "reversed": 0, "net": 0, "sales": 0, "fee": 0, "share": 0})
         if payment.kind in (Payment.SALE, Payment.RENEWAL):
             row["sold"] += payment.amount
             row["sales"] += 1
         else:
             row["reversed"] += payment.amount
         row["net"] += payment.signed_amount
-    return render(request, "console/sales.html", {"payments": payments[:500], "totals": list(totals.values())})
+        row["fee"] += payment.signed_store_fee
+        row["share"] += payment.signed_publisher_share
+    for row in totals.values():
+        row["vat"] = row["net"] - row["fee"] - row["share"]   # what of the net was tax
+    return render(request, "console/sales.html", {
+        "payments": payments[:500], "totals": list(totals.values()), "fee_percent": split.percent_text(split.fee_percent()),
+        "taxed": tax.configured() or any(row["vat"] for row in totals.values()), "owed": payouts.owed(request.publisher),
+        "payouts": Payout.objects.filter(publisher=request.publisher)[:60], "hold_days": settings.PAYOUT_HOLD_DAYS,
+        "payout_details": request.publisher.payout_details})
+
+
+@publisher_required
+def payout(request, pk: int):
+    """A payout's statement: what it paid, payment by payment."""
+    subject = get_object_or_404(Payout, pk=pk, publisher=request.publisher)
+    return render(request, "console/payout.html", {"payout": subject, **payouts.lines(subject)})
 
 
 @require_POST

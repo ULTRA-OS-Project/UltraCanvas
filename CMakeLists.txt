@@ -623,6 +623,13 @@ if(NOT IOS AND (WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)))
     set(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK ON)
 endif()
 
+# And for starting a program at sign-in (UltraCanvasLaunchAtLogin: an XDG
+# autostart entry / the HKCU Run key / a LaunchAgent). Without the define the
+# core file compiles a fallback: LaunchAtLoginAvailable() is false.
+if(NOT IOS AND (WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)))
+    set(ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN ON)
+endif()
+
 # Which platforms can give a copy its original's dates (UltraCanvasFileTimes:
 # SetFileTime on Windows, setattrlist + utimensat on macOS, utimensat on Linux
 # and the BSDs). Elsewhere the core file copies the modification date through

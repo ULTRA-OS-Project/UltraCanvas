@@ -8,6 +8,13 @@
 # Runs on a push that changes the script or this file (on any branch: the
 # check is seconds long and touches nothing but its own probe), and by hand
 # from the Actions tab after the settings change (Run workflow).
+#
+# Run by hand with a version in `latest`, it sets the server's pub/LATEST -
+# the newest version UltraCanvasStart offers as an update - to that version
+# instead (upload-sdk-website.sh --latest), once it has checked that the
+# version's SHA256SUMS is on the server. That is the way back after a bad
+# release, and the way to start LATEST for releases uploaded before the
+# upload wrote it.
 name: SDK website check
 
 on:
@@ -16,6 +23,11 @@ on:
       - scripts/upload-sdk-website.sh
       - .github/workflows/sdk-website-check.yml
   workflow_dispatch:
+    inputs:
+      latest:
+        description: "Set pub/LATEST to this version (x.y.z) instead of checking; empty: check only"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -44,4 +56,10 @@ jobs:
           ULTRAOS_SFTP_DIR: ${{ vars.ULTRAOS_SFTP_DIR || secrets.ULTRAOS_SFTP_DIR }}
           ULTRAOS_SFTP_KEY: ${{ secrets.ULTRAOS_SFTP_KEY }}
           ULTRAOS_SFTP_KNOWN_HOSTS: ${{ secrets.ULTRAOS_SFTP_KNOWN_HOSTS }}
-        run: scripts/upload-sdk-website.sh --check
+          LATEST: ${{ inputs.latest }}
+        run: |
+          if [ -n "$LATEST" ]; then
+            scripts/upload-sdk-website.sh --latest "$LATEST"
+          else
+            scripts/upload-sdk-website.sh --check
+          fi

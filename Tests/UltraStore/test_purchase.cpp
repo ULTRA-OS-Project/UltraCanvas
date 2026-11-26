@@ -88,7 +88,20 @@ TEST(checkout_poll_licence_and_download_through_the_service) {
     REQUIRE(order.Value().codeApplied);
     REQUIRE(!order.Value().Paid());
     REQUIRE(s.calls[0].find(R"("code":"anna-20")") != std::string::npos);
+    REQUIRE(s.calls[0].find("country") == std::string::npos);              // none known: none sent, the service reckons with the seller's
     REQUIRE(!StartCheckout("", "org.ultraos.ultravideo", "", s.Call()));   // no service named
+    // The buyer's country goes with the checkout: it decides the VAT in the price.
+    REQUIRE(StartCheckout("https://pay.example/", "org.ultraos.ultravideo", "", s.Call(), "AT"));
+    REQUIRE(s.calls.back().find(R"("country":"AT")") != std::string::npos);
+    REQUIRE(s.calls.back().find("code") == std::string::npos);
+    // Which country: the settings', else the account's, else the system's - and nothing that is not one.
+    REQUIRE_EQ(BuyerCountry("fr", "DE", "AT"), std::string("FR"));
+    REQUIRE_EQ(BuyerCountry("", "de", "AT"), std::string("DE"));
+    REQUIRE_EQ(BuyerCountry("", "", "AT"), std::string("AT"));
+    REQUIRE_EQ(BuyerCountry(" at ", "", ""), std::string("AT"));
+    REQUIRE_EQ(BuyerCountry("Germany", "D3", "AT"), std::string("AT"));   // neither is a country: the next one
+    REQUIRE(BuyerCountry("", "", "").empty());
+    REQUIRE(BuyerCountry("DEU", "1", "-").empty());
 
     // Open, then paid.
     s.answers["GET https://pay.example/v1/orders/ord1?secret=sec1"] = R"({"order_id":"ord1","app":"org.ultraos.ultravideo","status":"open","amount":"23.92","currency":"EUR"})";

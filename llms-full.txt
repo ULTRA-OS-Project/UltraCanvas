@@ -749,6 +749,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+- **UltraCanvasLaunchAtLogin** (`UltraCanvasLaunchAtLogin.h`) — starting a
+  program when the user signs in: `SetLaunchAtLogin(entry, enabled, error)`,
+  `IsLaunchAtLoginEnabled(id)`, `LaunchAtLoginAvailable()`,
+  `LaunchAtLoginCommand(entry)`; `LaunchAtLoginEntry` (id, name, comment, icon,
+  executable - empty for this program, the AppImage or the .app bundle -
+  and arguments). The computer's own list is the record, so an entry switched
+  off there reads as off. Backends: `OS/Linux/UltraCanvasLinuxLaunchAtLogin.cpp`
+  (an XDG autostart entry in `$XDG_CONFIG_HOME/autostart`, `Hidden=true` over a
+  system one), `OS/MSWindows/UltraCanvasWindowsLaunchAtLogin.cpp` (the HKCU
+  `Run` key, the Task Manager's `StartupApproved` on / off respected) and
+  `OS/MacOS/UltraCanvasMacOSLaunchAtLogin.cpp` (a LaunchAgent with
+  `RunAtLoad`). Not available in a Flatpak, a Snap or an MSIX package; Android,
+  iOS and WebAssembly get the fallback in `core/UltraCanvasLaunchAtLogin.cpp`
+  (`ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN` unset). ChatCube's *Settings >
+  General > Startup* uses it. See `Docs/UltraCanvas/UltraCanvasLaunchAtLogin.md`.
 - **UltraCanvasFileTimes** (`UltraCanvasFileTimes.h`) — a file's dates read,
   set, and carried to a copy. `FileTimes` (created / modified / accessed,
   nanoseconds since 1970, 0 = unknown), `GetFileTimes(path, out)`,
@@ -1067,6 +1082,25 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`,
   `core/UltraCanvasSpreadsheetChartGallery.cpp`.
   See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts`.
+- **UltraCanvasSpreadsheetPivot** (`UltraCanvasSpreadsheetPivot.h`) — pivot
+  tables: `SpreadsheetPivotTable` (a source block, row / column / filter
+  fields `PivotField` with order, subtotals, hidden items and `PivotGrouping`,
+  value fields `PivotValueField` with `PivotSummary` and `PivotShowAs`,
+  grand totals), `MakeSpreadsheetPivot`, `MakePivotValueField`,
+  `ComputeSpreadsheetPivot` (laid out as `PivotOutput` cells),
+  `RefreshSpreadsheetPivot` / `ClearSpreadsheetPivotCells` (written onto a
+  sheet), `SpreadsheetPivotFieldItems`, `SpreadsheetPivotDrillDownRows`, and
+  the .xlsx / .ods parts (`WriteXlsxPivots`, `ReadXlsxSheetPivots`,
+  `WriteOdsPivots`, `ReadOdsPivots`). A sheet keeps them
+  (`SpreadsheetSheet::GetPivotTables`); the grid inserts, changes, refreshes
+  and removes them (`InsertPivotTable`, `SetPivotTable`, `RefreshPivotTables`,
+  `RemovePivotTable`), keeps their cells read-only, refreshes them when the
+  source changes and drills into a value. The field list:
+  `UltraCanvasSpreadsheetPivotPanel` (`UltraCanvasSpreadsheetPivotPanel.h`),
+  `ShowSpreadsheetPivotDialog`. In `core/UltraCanvasSpreadsheetPivot.cpp`,
+  `core/UltraCanvasSpreadsheetPivotIO.cpp`,
+  `core/UltraCanvasSpreadsheetPivotDialog.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#pivot-tables`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
   presentations (`.odp`, `.otp` templates, flat `.fodp`) read into
@@ -6238,8 +6272,8 @@ FILE: Docs/UltraCanvasSDK.md
 
 # The UltraCanvas SDK
 
-**Version:** 1.3.1
-**Last Modified:** 2026-10-10
+**Version:** 1.4.0
+**Last Modified:** 2026-11-26
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -6276,8 +6310,14 @@ version in the name is the framework's, from the first line of
 ```
 https://start.ultraos.eu/pub/<version>/<archive>
 https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/LATEST
 https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-Windows-0.9.465-x86_64.zip
 ```
+
+`LATEST` is one line, the newest version on the server. The upload writes
+it once that version's files are all in place, and never moves it back to
+an older version; UltraCanvasStart reads it to offer a newer SDK
+(`Apps/UltraCanvasStart/README.md`, *Updating the SDK*).
 
 The `publish-sdk-website` job of `.github/workflows/build.yml` uploads them
 there over SFTP, into `<ULTRAOS_SFTP_DIR>/<version>/`, which the web server
@@ -6287,7 +6327,9 @@ is set, as a repository variable or a secret; the script's head lists the
 other settings. The *SDK website check* workflow
 (`.github/workflows/sdk-website-check.yml`, *Run workflow* in the Actions tab)
 tests those settings without a release: it logs in, writes, renames and
-removes a probe file in the directory. Each version of `main` also has a GitHub release tagged
+removes a probe file in the directory. Run with a version in its `latest`
+input, it sets `LATEST` to that version instead, after checking that the
+version's `SHA256SUMS` is there. Each version of `main` also has a GitHub release tagged
 `v<version>` (the `publish-sdk` job of `.github/workflows/build.yml` creates
 it from the release build that `changelog-fold.yml` dispatches, with the
 version's changelog section as its notes), and the archives are its assets at
@@ -6458,8 +6500,11 @@ An SDK is built on one platform leg and is for that platform and architecture
 only. The Linux SDK follows Ubuntu 22.04's library ABI; a newer distribution
 runs it, an older one may not. The Windows SDK's DLL expects the MSYS2 runtime
 DLLs it was built against (`libc++.dll`, cairo, pango, vips and the rest) on
-`PATH`, as any MSYS2-built program does. The macOS SDK is static and carries no
-runtime dependency beyond the libraries named above.
+`PATH`, as any MSYS2-built program does. The macOS SDK's core is a shared
+`libUltraCanvas.dylib` too: the libraries it was built against are in `deps/lib`
+with `@rpath` install names, so it needs no Homebrew at run time, only the run
+path to `lib/` and `deps/lib` that the package gives a build-tree executable
+(see *Using it*).
 
 The package version in `UltraCanvasConfigVersion.cmake` is the framework's,
 with `SameMajorVersion` compatibility, so `find_package(UltraCanvas 0.9)`
@@ -29518,6 +29563,129 @@ tornadoChart->AddDataRow("Variable C", {{"Negative Impact", -30}, {"Positive Imp
 - Mouse interaction is handled through the base class event system
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasDocumentNavigator.md
+==============================================================================
+
+# UltraCanvasDocumentNavigator
+
+<!-- doc-check: std::shared_ptr<UltraCanvasRichTextEdit> edit; std::shared_ptr<UltraCanvasSplitPane> split; void OpenMyCommentEditor(int index); -->
+
+A word processor's navigator for any application that edits with
+[`UltraCanvasRichTextEdit`](UltraCanvasRichTextEdit.md): a side panel that
+lists what the document holds, read from its model, and goes there on a
+click. UltraOffice shows it at the left of a document tab, UltraTexter beside
+a word-processing tab.
+
+- Header: `UltraCanvas/include/UltraCanvasDocumentNavigator.h`
+- The outline it shows (UI-free): `UltraCanvas/include/UltraCanvasRichDocumentOutline.h`
+- The section moves (UI-free, with undo): `UCRichDocumentEditor::MoveHeadingSection`,
+  `ChangeHeadingSectionLevel` in `UltraCanvasRichDocumentEditor.h`
+- Tests: `Tests/RichDocumentOutlineTest.cpp` (no display),
+  `Tests/DocumentNavigatorElementTest.cpp` (Xvfb)
+
+## What it lists
+
+From top to bottom: a search box, four buttons, and one tree
+(`UltraCanvasTreeView`) with a row per list that has entries.
+
+| List | Rows | A click | A double-click |
+|---|---|---|---|
+| Headings | the headings, as a tree by level; the one the caret is under is the selected row and follows the caret | the caret to the heading | ...and the keyboard to the document |
+| Tables | a table's caption, else "Table *n*" and its first cell's words; the tooltip gives its rows and columns | the caret into its first cell | |
+| Pictures | a picture's caption, else its alt text, else "Picture *n*" (paragraph pictures, pictures in the line and in table cells) | selects the picture | |
+| Charts | a chart's caption, else its title | selects the chart | |
+| Comments | "author: text"; a resolved one dimmed; the tooltip gives the words it is on | selects the commented words | opens the list of comments (`ShowCommentsDialog`), or calls `onCommentActivated` |
+| Bookmarks | the document's bookmarks (not the "_Toc" marks a table of contents gives headings) | the caret to it | |
+| Footnotes and endnotes | the mark and the note's words | the caret to the reference | opens the note for editing |
+| Tracked changes | "Inserted: words" / "Deleted: words"; the tooltip gives who and when | selects the change | |
+| Found in the text | while the search box holds something: the places the document says it, with the words round them | selects the find | |
+
+The search box filters every list by its words in any case and any script
+(`utf8_find`); a heading stays when one under it matches, so the tree keeps
+its shape.
+
+## Moving a chapter
+
+A heading's **section** is the heading, its text and its subheadings: the
+blocks up to the next heading of its level or a higher one. The buttons above
+the tree act on the selected heading (or the caret's):
+
+| Button | Icon | What it does |
+|---|---|---|
+| Promote | `office/outdent.svg` | the heading and every heading in its section one level up (Heading 2 becomes 1, its 3s become 2s) |
+| Demote | `office/indent.svg` | one level down |
+| Move up | `menu/chevron-up.svg` | the section before the sibling heading of its level before it |
+| Move down | `menu/chevron-down.svg` | after the sibling's section after it |
+
+A heading row is also dragged onto another heading row (its section goes
+before that heading, keeping its level) or onto the Headings row (to the end
+of the document); a drop into its own section is refused. Each is one undo
+step of the document. Promote is refused at level 1, demote at level 6, and
+the moves when there is no sibling under the same parent.
+
+## Following the document
+
+```cpp
+#include "UltraCanvasDocumentNavigator.h"
+
+auto navigator = std::make_shared<UltraCanvasDocumentNavigator>("navigator", 0, 0, 260, 600);
+navigator->SetEdit(edit);                 // held weakly; listens through AddDocumentObserver
+navigator->SetRefreshDelay(400);          // read again 400 ms after the typing pauses (0: after every edit)
+navigator->onCommentActivated = [](int index) { OpenMyCommentEditor(index); };
+split->GetPane(0)->AddChild(navigator);   // a resizable side panel
+```
+
+The navigator listens to the edit with `AddDocumentObserver`, so the host's
+own `onDocumentChanged` and `onSelectionChanged` stay the host's. An edit is
+read again once the typing pauses (`SetRefreshDelay`, 400 ms by default;
+every new edit puts it off again), and the tree is rebuilt only when the
+outline changed - typing in body text leaves the rows as they are, rows the
+user closed stay closed. A caret move selects the current heading at once.
+`Refresh()` reads the document now.
+
+What a host or a test drives without the mouse:
+
+| Call | |
+|---|---|
+| `SetFilterText(text)` / `GetFilterText()` | what the search box does; `GetFoundRanges()` the finds |
+| `GoToEntry(kind, index)` / `ActivateEntry(kind, index)` | a click / a double-click on a row (`EntryKind`, index into the outline's list) |
+| `GetCurrentHeading()` | the heading the caret is under (index into `GetOutline().headings`) |
+| `PromoteHeading()`, `DemoteHeading()`, `MoveHeadingUp()`, `MoveHeadingDown()` | the four buttons |
+| `MoveHeadingBefore(dragged, target)` | a drop (target -1: the Headings row) |
+| `EntryId(kind, index)`, `ParseEntryId(id, kind, index)`, `IsEntryShown(kind, index)` | a row's id in `GetTree()`, and whether the search shows it |
+
+## The outline without a view
+
+`BuildRichDocumentOutline(document)` is what the navigator reads, and needs
+no display: `RichDocumentOutline` holds `headings` (level, words, parent,
+section end), `tables` (rows, columns, caption, first cell), `pictures` and
+`charts` (position, caption, alt text or title), `comments` (author, text,
+the range and words it is on; one no text refers to is left out),
+`bookmarks`, `notes` (mark, words, the reference's position) and `changes`
+(inserted or deleted, author, date, range). `HeadingAt(block)` is the heading
+a block is under; two outlines compare with `==`.
+
+```cpp
+#include "UltraCanvasRichDocumentOutline.h"
+
+UCRichDocument document = UCRichDocument::FromMarkdown("# Plan\n\n## Costs\n\n## Dates\n");
+RichDocumentOutline outline = BuildRichDocumentOutline(document);
+int parent = outline.headings[1].parent;                      // 0: "Costs" is under "Plan"
+UCRichDocumentEditor editor(std::make_shared<UCRichDocument>(document));
+editor.MoveHeadingSectionUp(outline.headings[2].blockIndex);  // "Dates" before "Costs", one undo step
+(void)parent;
+```
+
+## Not done yet
+
+- Headings, footnotes and changes in headers, footers and text frames are
+  not listed: the outline walks the body.
+- A heading in a style of its own (not *Heading n*) changes level but keeps
+  its style when promoted or demoted.
+- The finds are the editing core's (`FindAll`), which does not yet look into
+  table cells.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDrawingML.md
 ==============================================================================
 
@@ -48958,6 +49126,90 @@ std::vector<bool> visible = DeclutterAxisTicks(tickCentres, tickWidths,
    stays readable on any background.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasLaunchAtLogin.md
+==============================================================================
+
+# UltraCanvasLaunchAtLogin
+
+Starting a program when the user signs in to the computer: what a settings
+page offers as *Start: manually / when the computer starts*. One call puts the
+program in the computer's own list of programs that start at sign-in, or
+takes it out, on Linux and the BSDs, Windows and macOS.
+
+```cpp
+#include "UltraCanvasLaunchAtLogin.h"
+
+LaunchAtLoginEntry entry;
+entry.id = "org.ultraos.ChatCube";       // the entry's name in the list
+entry.displayName = "ChatCube";
+entry.iconName = "ChatCube";             // the Linux entry's Icon=
+entry.arguments = {"--minimized"};       // started in the background
+// entry.executable empty: this program
+
+std::string error;
+if (!SetLaunchAtLogin(entry, true, error)) {
+    // error: a short, user-readable reason; the list is as it was
+}
+bool startsWithComputer = IsLaunchAtLoginEnabled(entry.id);
+```
+
+ChatCube's *Settings > General > Startup* is the first user: *Manually* or
+*When the computer starts*, the latter with `--minimized`, so messages
+arrive from sign-in on and the window waits.
+
+## The computer's list is the record
+
+Nothing is kept in the program's own settings. Ask `IsLaunchAtLoginEnabled`
+each time the choice is shown: an entry the user switched off where the
+computer keeps the list - the Task Manager's *Startup* tab, macOS's *Login
+Items*, the desktop's autostart settings - reads as off, and the page shows
+what will really happen at the next sign-in.
+
+## Calls
+
+| Call | Meaning |
+|---|---|
+| `LaunchAtLoginAvailable()` | Whether this platform, and this kind of install, can start a program at sign-in. False on Android, iOS and WebAssembly, in a Flatpak or a Snap, and in an MSIX package - leave the choice out, or show it disabled with a word on why. |
+| `IsLaunchAtLoginEnabled(id)` | Whether an entry of that name is in the list and switched on. |
+| `SetLaunchAtLogin(entry, enabled, error)` | Adds the entry (replacing one of the same `id`) or takes it out. False with a reason in `error` when it could not; the list is then unchanged. Taking out an entry that is not there succeeds. |
+| `LaunchAtLoginCommand(entry)` | The command line the entry starts, for a settings page to show ("Started as: ..."). Empty where nothing is available. |
+
+`LaunchAtLoginEntry`:
+
+| Field | Meaning |
+|---|---|
+| `id` | The entry's name: the `.desktop` file's, the registry value's, the LaunchAgent's label. Reverse-DNS by convention; letters, digits, `.`, `-` and `_` only (anything else is refused). |
+| `displayName` | The program's name, where the desktop lists the entries. |
+| `comment`, `iconName` | The Linux entry's `Comment=` and `Icon=` (optional). |
+| `executable` | The program to start (UTF-8). Empty: this program - inside an AppImage the AppImage (`$APPIMAGE`, since the mounted copy is gone once it ends), inside a macOS `.app` bundle the bundle. |
+| `arguments` | Its arguments, each passed as one argument whatever it holds (spaces, quotes, `%`). |
+
+## Backends
+
+| Platform | Where the entry goes |
+|---|---|
+| Linux, BSD | An XDG autostart entry, `$XDG_CONFIG_HOME/autostart/<id>.desktop` (`~/.config/autostart`), which GNOME, KDE, Xfce, LXQt, Cinnamon, MATE and UltraDesktop's session start. `Hidden=true` or `X-GNOME-Autostart-enabled=false` reads as off. An entry of the same name the system installs (`$XDG_CONFIG_DIRS/autostart`, `/etc/xdg/autostart`) is switched off with a `Hidden=true` entry in the user's folder. |
+| Windows | A value named `<id>` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the program's path quoted. The Task Manager's *Startup* tab keeps its own on / off under `Explorer\StartupApproved\Run`: an entry switched off there reads as off, and switching it on here clears that. |
+| macOS | A LaunchAgent, `~/Library/LaunchAgents/<id>.plist`, with `RunAtLoad`. It is not loaded at once (that would start a second copy now), only at the next sign-in. A program inside an `.app` bundle starts through `open -a <bundle>`, so it starts as an application. |
+| Android, iOS, WebAssembly | None: `LaunchAtLoginAvailable()` is false and `SetLaunchAtLogin` fails (the fallback in `core/UltraCanvasLaunchAtLogin.cpp`). |
+
+Not available, and so reported: a Flatpak or a Snap, whose config folder is
+their own (the Background portal is what those would need), and an MSIX
+package, whose `HKCU` writes stay inside the package (a `StartupTask` in its
+manifest is what that would need).
+
+## A program started at sign-in
+
+Start it unseen - minimized, or to the tray - with an argument of its own,
+as ChatCube's `--minimized`: a window opening in the middle of signing in is
+in the way. A single-instance program (`ultracanvas_single_instance`) that
+the user then opens by hand only brings the running copy forward.
+
+The entry names the program where it is now. A program that moves (an
+AppImage downloaded again to another folder) is started from the old place
+until the choice is made again; turning it off and on writes the new path.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasLayoutExamples.md
 ==============================================================================
 
@@ -64088,9 +64340,15 @@ level's.
 
 - Slides in document order; every `draw:page` is one, the hidden ones marked.
 - Text frames, drawing shapes (custom shapes, rectangles, ellipses, polygons,
-  paths, ...), lines and connectors, groups (`draw:g`) and shapes behind a
-  hyperlink (`draw:a`) are read through. A shape with neither text, fill nor
-  outline is left out.
+  paths, ...), lines and connectors and shapes behind a hyperlink
+  (`draw:a`) are read through. A group (`draw:g`) is kept: its shapes, on
+  the page already, each with the group in its `groupPath` and its
+  `draw:name` in the slide's `groupNames`. A shape with neither text, fill
+  nor outline is left out.
+- A picture's crop: its graphic style's `fo:clip="rect(top, right, bottom,
+  left)"`, lengths of the picture at its own size - its pixels at the
+  resolution it states, else 96 to the inch (`PptxPictureNaturalSize`), as
+  LibreOffice measures it - as the shares `cropLeft` ... `cropBottom`.
 - White space as ODF has it: a run of spaces, tabs and line ends is one
   space, none at a paragraph's start or end; `text:s`, `text:tab` and
   `text:line-break` stay. A field (page number, date, ...) gives the text it
@@ -64130,8 +64388,8 @@ level's.
 - Not read: master pages' shapes other than placeholders (a logo on every slide), shadows and
   other effects, bitmap and hatch fills (a hatch on a solid ground keeps the
   ground), outlines built from formulas (an Office preset still draws by its
-  name; an ODF type the list above does not name draws as a box), picture
-  crops, animations, a transition's direction. Pictures are kept as bytes
+  name; an ODF type the list above does not name draws as a box),
+  animations, a transition's direction. Pictures are kept as bytes
   (`withPictures`), not decoded.
 - A password-protected deck (`manifest:encryption-data` in the manifest) is
   decrypted with the password `ReadOdpPresentation` and
@@ -64189,9 +64447,11 @@ if (ReadPptxPresentation(pptxPath, deck, error, "", true)) {     // a PowerPoint
   `draw:mirror-*` applies after the turn and leaves the fill alone);
 - connectors as lines between their ends, or paths, mirrored and turned
   into place;
+- groups: a `draw:g` round the shapes of each `groupPath`, nested, its
+  `draw:name` from `groupNames`;
 - pictures from `deck.pictures` (`Pictures/imageN.*`; a picture whose bytes
-  were not kept is a grey box with its description) - not cropped: ODF crops
-  by the picture's own size, which the model does not carry;
+  were not kept is a grey box with its description), cropped by `fo:clip`
+  in lengths of the picture's own size (`PptxPictureNaturalSize`);
 - tables with merged cells (`table:number-columns-spanned` /
   `-rows-spanned`, covered cells), fills, borders, padding and vertical
   alignment; one without cell looks in PowerPoint's default colours;
@@ -64597,11 +64857,11 @@ UCRichDocument outline = PptxPresentationToRichDocument(deck);
 | Type | Holds |
 |---|---|
 | `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `majorFont` / `minorFont` (the theme's heading and body typefaces), `masters` and `layouts` (the design, in the file's order), `pictures` (bytes by part, read `withPictures`) |
-| `PptxSlide` | `number` (1-based), `layoutIndex` (into `layouts`; -1: none known), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black), `transition` |
+| `PptxSlide` | `number` (1-based), `layoutIndex` (into `layouts`; -1: none known), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black), `transition`, `groupNames` (a group's name by its id) |
 | `PptxMaster` | `name`, `placeholders` (title, body, date, footer, number), `background` |
 | `PptxLayout` | `name` ("Title and Content"), `type` (`p:sldLayout/@type`: `title`, `obj`, `twoObj`, `titleOnly` ...), `masterIndex`, `placeholders` (each with its `placeholder` type and prompt text), `background` (empty: the master's) |
 | `PptxTransition` | `kind` (`PptxTransitionKind`: `NoTransition`, `Fade`, `Push`, `Wipe`, `Split`, `Cover`, `Zoom`), `durationSec`, `advanceOnClick`, `advanceAfterSec` (-1: never by itself) |
-| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`, `Connector`, `Chart`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `rotationDeg`, `flipH` / `flipV`, `placeholder` (its type), `anchor`, `fontScale` (autofit), the text's `insetLeft` ... `insetBottom` (EMU, -1: PowerPoint's own), `wrap`, `textRotation` (90 / 270 for vertical text), `fill` (and a gradient's `gradientStops`, `gradientAngleDeg`, `gradientRadial`), `line`, `lineWidthPt`, `dash`, `arrowStart` / `arrowEnd`, `geometry` (the preset) or `customPath` (a freeform's outline, 0..1 across the box), `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `cellStyles` (`PptxCellStyle` each), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`), `altText` and crop (`cropLeft` ... `cropBottom`, a share of the picture); a chart's `chart` (`RichChart`) |
+| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`, `Connector`, `Chart`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `rotationDeg`, `flipH` / `flipV`, `placeholder` (its type), `anchor`, `fontScale` (autofit), the text's `insetLeft` ... `insetBottom` (EMU, -1: PowerPoint's own), `wrap`, `textRotation` (90 / 270 for vertical text), `fill` (and a gradient's `gradientStops`, `gradientAngleDeg`, `gradientRadial`), `line`, `lineWidthPt`, `dash`, `arrowStart` / `arrowEnd`, `geometry` (the preset) or `customPath` (a freeform's outline, 0..1 across the box), `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `cellStyles` (`PptxCellStyle` each), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`), `altText` and crop (`cropLeft` ... `cropBottom`, a share of the picture); a chart's `chart` (`RichChart`); `groupPath`, the groups it is in (ids, outermost first; empty: none) |
 | `PptxCellStyle` | a table cell's `fill`, `textColor` and `bold` (from the table style), its four borders (`color`, `widthPt`), `gridSpan` / `rowSpan`, `mergedAway` (covered by a merged cell), insets and `anchor` |
 | `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`, `spaceBefore` / `spaceAfter` / `lineSpacing` (`PptxSpacing`: a share of a line or points), `marginLeft` and `indent` (EMU), `bulletChar`, `bulletFont`, `bulletColor`, `bulletSizePercent`, `numberScheme` (`a:buAutoNum`'s type) and `numberStartAt`; `Text()` joins the runs |
 | `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline`, `strike`, `baseline` (per cent: > 0 superscript, < 0 subscript), `allCaps` / `smallCaps`, `highlight`, `hyperlink` (a URL, or `#slide3` for a jump within the deck), `sizePt`, `color` and `font` (resolved; 0 / empty when nothing says) |
@@ -64629,8 +64889,13 @@ reads a package already in memory.
   An empty placeholder is kept - an editor shows its prompt and types into
   it - in its place, with one empty paragraph whose run keeps the size
   `a:endParaRPr` (else its layout and master) gives.
-- Groups are read through, their shapes in order and placed on the slide (the
-  group's offset and scaling applied). Connectors (`p:cxnSp`) are read as
+- Groups (`p:grpSp`) are kept: their shapes in order and placed on the
+  slide (the group's offset and its `chOff` / `chExt` scaling applied, and a
+  turned group's `rot` - each shape's centre goes round the group's, each
+  shape turns as much), each with the group in its `groupPath` and the
+  group's name in the slide's `groupNames`; a group inside a group nests.
+  A reader of the shapes alone draws the slide as it is. `PptxGroupIds` and
+  `PptxNewGroupId` give the ids a slide uses and a free one. Connectors (`p:cxnSp`) are read as
   lines: their outline (`line`, a bent or curved connector's preset), dash
   and arrowheads. A placeholder that names no place
   takes its layout's, then its master's (matched by `idx`, then by type; a
@@ -64818,7 +65083,11 @@ package PowerPoint, LibreOffice and the reader open:
 - tables with their cells' merges (`gridSpan`, `rowSpan`, `hMerge`, `vMerge`),
   fills, borders, margins and anchors; a table without cell looks (from the
   OpenDocument reader) takes PowerPoint's default table style;
-- pictures from `deck.pictures` with their crop - read the deck
+- groups: a `p:grpSp` round the shapes of each `groupPath`, nested, named
+  from `groupNames` (else "Group <id>"), its `a:off` / `a:ext` the box of
+  its shapes and its `a:chOff` / `a:chExt` the same, so the shapes keep their
+  places;
+- pictures from `deck.pictures` with their crop (`a:srcRect`) - read the deck
   `withPictures`, or a picture is written as a grey box with its
   description; charts as chart parts ([UltraCanvasDrawingML](UltraCanvasDrawingML.md)'s
   `WriteDrawingMLChart`, values as literals, no workbook); speaker notes.
@@ -69194,6 +69463,7 @@ state of the selection** rather than two asterisks in a buffer.
   - [Charts](#charts)
   - [Structure](#structure)
 - [Document dialogs](#document-dialogs)
+- [Navigator](#navigator)
 - [Following the theme](#following-the-theme)
   - [A document's colours on a dark page](#a-documents-colours-on-a-dark-page)
 - [Keyboard](#keyboard)
@@ -70148,6 +70418,40 @@ RichPageSetupDialogValues page = ReadPageSetupDialogValues(*editor);
 page.paper = 4;                    // RichPaperSizes()[4]: Letter
 page.landscape = true;
 ApplyPageSetupDialogValues(*editor, page);       // what the dialog's OK does
+```
+
+## Navigator
+
+`UltraCanvasDocumentNavigator` ([doc](UltraCanvasDocumentNavigator.md)) is
+the side panel a word processor puts beside this element: the headings as a
+tree by level (the caret's heading selected, following it), the tables,
+pictures, charts, comments, bookmarks, notes and tracked changes, a search
+box that filters them and lists the finds, and buttons that promote, demote
+and move a heading's section. It reads the model through
+`BuildRichDocumentOutline` (`UltraCanvasRichDocumentOutline.h`, UI-free) and
+uses what this element offers any such panel:
+
+| Call | What it does |
+|---|---|
+| `AddDocumentObserver(fn)` / `RemoveDocumentObserver(id)` | Any number of listeners besides the host's `onDocumentChanged` / `onSelectionChanged`: `fn(true)` after every edit (undo and a new document included), `fn(false)` after the caret or the selection moved |
+| `GoToPosition(pos)`, `GoToRange(range)` | The caret at a body position, or a body range selected, scrolled into view (a header or note being edited is finished first) |
+| `MoveHeadingSection(heading, beforeBlock)` | A heading with its text and subheadings moved before another block (`GetBlockCount()` = to the end), one undo step |
+| `MoveHeadingSectionUp(heading)` / `MoveHeadingSectionDown(heading)` | ...past the sibling heading of its level before or after it |
+| `ChangeHeadingSectionLevel(heading, delta)` | The heading and every heading in its section one level up (-1) or down (+1); a heading in its level's style takes the new level's style |
+
+The section rules are the editing core's, so they are tested without a
+display: `UCRichDocumentEditor::HeadingSectionEnd` (a heading's section ends
+at the next heading of its level or above) and `SiblingHeading`.
+
+```cpp
+#include "UltraCanvasDocumentNavigator.h"
+
+auto navigator = std::make_shared<UltraCanvasDocumentNavigator>("navigator", 0, 0, 260, 600);
+navigator->SetEdit(editor);                       // follows its document from now on
+const int id = editor->AddDocumentObserver([](bool documentChanged) { (void)documentChanged; /* a word count */ });
+editor->ChangeHeadingSectionLevel(0, +1);         // the first heading's chapter one level down
+editor->Undo();                                   // ...and back, in one step
+editor->RemoveDocumentObserver(id);
 ```
 
 UltraOffice's document tab opens them from its Home, Insert, Layout and
@@ -75058,9 +75362,13 @@ a step: `change` edits a copy of the slide.
 
 | Group | Calls |
 |---|---|
-| Slides | `NewSlide(layout)`, `InsertSlide`, `DuplicateSlide`, `DeleteSlide`, `MoveSlide`, `SetSlideHidden`, `SetSlideNotes`, `SetCurrentSlide` |
-| Selection | `Select`, `SelectAll`, `ClearSelection`, `ToggleSelected`, `SelectionBox` |
+| Slides | `NewSlide(layout)`, `InsertSlide`, `DuplicateSlide`, `DeleteSlide`, `MoveSlide`, `SetSlideHidden`, `SetSlideNotes` (plain text, or paragraphs), `SetCurrentSlide`; several at once: `MoveSlides`, `DuplicateSlides`, `DeleteSlides`, `SetSlidesHidden` |
+| Selection | `Select`, `SelectAll`, `ClearSelection`, `ToggleSelected`, `SelectionBox` - a group whole |
+| Groups | `GroupSelection`, `UngroupSelection`, `CanGroup`, `CanUngroup`, `EnterGroup`, `ExitGroup`, `GetEnteredGroup`, `UnitOf`, `SelectionUnits`, `SelectionIsOneGroup`, `RotateSelection` |
+| Aligning | `AlignSelection(SlideAlignment)` (left, centre, right, top, middle, bottom), `DistributeSelection(horizontally)` |
 | Shapes | `MoveSelection`, `NudgeSelection`, `SetShapeBox`, `SetSelectionBox`, `SetShapeRotation`, `DeleteSelection`, `DuplicateSelection`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `SetShapeText` |
+| Pictures | `SetPictureCropBox`, `SetPictureCrop`, `ResetPictureCrop`, `PictureFullBox` |
+| Charts | `SetShapeChart`, `ChartDataRows`, `ChartWithDataRows` |
 | Inserting | `InsertTextBox`, `InsertGeometry` (a preset outline), `InsertPicture` (bytes, kept in `deck.pictures`), `InsertShape`, `InsertTable` |
 | Text | `SetShapeText` (plain lines), `FormatSelectedText` (every run and paragraph of the selected shapes, table cells too), `AllSelectedText` (a toggle's state) |
 | Tables | `TableCellBox`, `TableCellAt`, `InsertTableRow`, `DeleteTableRow`, `InsertTableColumn`, `DeleteTableColumn` |
@@ -75093,8 +75401,10 @@ edit->onChange = []() { /* mark the document modified */ };
 | Where | What |
 |---|---|
 | The strip | Click a slide to show it; drag it to move it; Delete deletes it, Ctrl+D duplicates it; hidden slides are dimmed |
-| The slide | Click selects a shape (Shift or Ctrl adds or takes away), a band selects what it covers; dragging moves the selection, snapping (Alt: not; Shift: across or down only); the handles resize (Shift keeps the proportions, Alt from the centre) and the one above turns (Shift: by 15°) |
-| Keys | Arrows nudge (Ctrl: by a point), Delete, Ctrl+A, Escape, Ctrl+D, Ctrl+C / X / V, Ctrl+Z / Y, Tab the next shape, Enter or F2 its text, Page Up / Down, Ctrl+M a new slide, Ctrl+wheel zoom |
+| The slide | Click selects a shape - a group whole (Shift or Ctrl adds or takes away), a band selects what it covers; dragging moves the selection, snapping (Alt: not; Shift: across or down only); the handles resize (Shift keeps the proportions, Alt from the centre) and the one above turns (Shift: by 15°) - a group's turn it as one; a double-click selects inside a group, or asks for a chart's data (`onEditChart`) |
+| Crop mode | `SetCropMode(true)` with a picture selected: the handles crop it, the rest of it shown faintly; Enter, Escape or a click elsewhere ends it |
+| The sorter | `SetView(SlideEditView::Sorter)`: every slide in a grid; click, Ctrl+click, Shift+click choose slides, a drag moves them all (one step), a double-click or Enter edits one, Delete, Ctrl+D, Ctrl+A, the arrows; a right-click calls `onContextMenu` |
+| Keys | Arrows nudge (Ctrl: by a point), Delete, Ctrl+A, Escape (out of a group, then none), Ctrl+D, Ctrl+C / X / V, Ctrl+Z / Y, Ctrl+G group, Ctrl+Shift+G ungroup, Tab the next shape or group, Enter or F2 its text, Page Up / Down, Ctrl+M a new slide, Ctrl+wheel zoom |
 
 A drag draws a preview copy of the slide and becomes one command when the
 button is let go. Empty placeholders show their prompt ("Click to add title")
@@ -75107,6 +75417,79 @@ The show is `UltraCanvasSlideShowPlayer`
 ([UltraCanvasSlideShowPlayer.md](UltraCanvasSlideShowPlayer.md)): the slides'
 transitions, auto-advance, the presenter view on a second monitor
 (`StartSlideShow(deck, fromSlide)`).
+
+## Groups
+
+A group (PowerPoint's `p:grpSp`, OpenDocument's `draw:g`) is kept in the
+model as each shape's `groupPath` - the groups it is in, outermost first -
+and the slide's `groupNames`; its shapes stand together in the z-order and
+each keeps its place on the slide, so everything that draws, prints or
+exports a slide needs nothing more. The editor chooses groups whole: a
+click, Shift or Ctrl+click, a band and Tab take a group with all its
+shapes, and moving, resizing (its shapes scale with it), turning (each
+shape goes round the group's centre and turns as much), deleting, copying
+and the z-order commands act on it as on one shape; a copy of a group is a
+group of its own. A double-click enters a group (`EnterGroup`): one of its
+shapes - or a group inside it - is chosen alone, until Escape or a click
+outside it (`ExitGroup`). Grouping inside a group entered makes a group in
+it.
+
+```cpp
+const int a = edit->Editor().InsertGeometry(SlideBox{914400, 914400, 914400, 914400}, "rect");
+const int b = edit->Editor().InsertGeometry(SlideBox{3 * 914400, 914400, 914400, 914400}, "ellipse");
+edit->Editor().Select({a, b});
+edit->Editor().GroupSelection();             // Ctrl+G: one step
+edit->Editor().RotateSelection(45);          // the group turned as one
+edit->Editor().AlignSelection(SlideAlignment::Centre);   // one group: centred on the slide
+edit->Editor().UngroupSelection();           // Ctrl+Shift+G
+```
+
+`AlignSelection` lines the selected groups and shapes up with each other
+(their left edges, centres, right edges, tops, middles or bottoms), or with
+the slide when one is selected; `DistributeSelection` gives each two the
+same gap, the outermost two staying, or spreads fewer than three over the
+slide. Each is one step.
+
+## Pictures and charts
+
+`SetCropMode(true)` crops the selected picture with its handles: what a
+handle takes away is a share of the picture (`cropLeft` ... `cropBottom`,
+`a:srcRect` in .pptx, `fo:clip` in .odp), the picture's scale unchanged.
+`SetPictureCropBox(shape, box)` does it from code, `SetPictureCrop` by the
+shares, `ResetPictureCrop` shows the whole picture again, and
+`PictureFullBox` says where the whole picture would stand.
+
+A chart's data - from the file, or a chart pasted from a spreadsheet - is
+edited as cells: `ChartDataRows(chart)` gives the series' names along the
+top and a row per category (a scatter chart's x values first),
+`ChartWithDataRows(chart, rows)` takes them back keeping the chart's kind,
+title, legend and colours, and `SetShapeChart` puts it into the shape as one
+step. UltraOffice shows the cells in a small `UltraCanvasSpreadsheet` in a
+dialog when a chart is double-clicked (`onEditChart`).
+
+```cpp
+const PptxShape& chart = edit->Editor().CurrentSlide()->shapes[2];
+auto rows = UCSlideDeckEditor::ChartDataRows(chart.chart);
+rows[1][1] = "42";                             // the first series' first value
+edit->Editor().SetShapeChart(2, UCSlideDeckEditor::ChartWithDataRows(chart.chart, rows));
+```
+
+## The slide sorter and the notes
+
+`SetView(SlideEditView::Sorter)` shows every slide as a thumbnail in a
+grid, drawn by the slide painter as the strip is (`UltraCanvasAlbum` was
+looked at first: it shows files from disk and moves one tile at a time;
+`UltraCanvasListView` is rows). `GetSorterSelection` says which slides are
+chosen; a host's context menu acts on them with `DuplicateSlides`,
+`SetSlidesHidden` and `DeleteSlides`, each one step.
+
+The speaker notes are `PptxSlide::notes`, paragraphs like a shape's text: a
+host edits them in an `UltraCanvasRichTextEdit` through
+`PptxParagraphsToRichDocument` / `PptxParagraphsFromRichDocument` and puts
+them back with `SetSlideNotes(index, paragraphs)`, one step that leaves the
+slide shown as it is. UltraOffice keeps them in a pane under the slide (a
+splitter between, shown or hidden from the View tab) and commits them on
+leaving the pane or on a change of slide.
 
 ## Copy and paste
 
@@ -75190,7 +75573,11 @@ row inserted under the header takes the body rows' look.
 
 ## Not yet
 
-- Grouping, alignment and distribution commands, guides of one's own.
+- Guides of one's own; a group's frame turned with it (a turned group is
+  framed by the box round its shapes' unturned boxes) and a group's
+  mirroring.
+- Moving a picture inside its crop (the crop handles move the edges only);
+  cropping a turned picture keeps its centre where the crop puts it.
 - Merging and splitting table cells, resizing a table's columns by dragging.
 - Animations of single shapes in the show (the slides' transitions play).
 
@@ -75200,13 +75587,25 @@ row inserted under the header takes the body rows' look.
   selection put back, nudges joined, hit testing of turned shapes, handles,
   snapping; the text's round trip through the rich document (looks, line
   breaks, bullets, numbering, an empty paragraph's look); formatting the
-  selected shapes; tables (cells, rows, columns, undo).
+  selected shapes; tables (cells, rows, columns, undo); groups (grouped,
+  selected whole, moved, resized and turned with their shapes, entered, kept
+  together by the z-order commands, copied as new groups, ungrouped, nested,
+  each undone); align and distribute; picture crops and their reset; notes as
+  paragraphs (one step, kept in .pptx and .odp); a chart's data as cells and
+  back; several slides moved, duplicated, hidden and deleted as one step;
+  groups and crops through .pptx, .odp and .fodp - a turned group's shapes
+  too - and through LibreOffice both ways when soffice is installed.
 - `Tests/SlideEditElementTest.cpp` - the element driven by pointer and key
   events: a click selects, a drag moves (one step, snapping to the slide's
   centre), a corner with Shift keeps the proportions, the turning handle
   turns by 15° with Shift, a band selects, the strip chooses and moves
   slides, the keys nudge, delete, undo and add a slide, a double-click asks
-  for the text.
+  for the text; a group made with Ctrl+G, clicked, dragged, resized and
+  turned as one, entered with a double-click, left with Escape, taken apart
+  with Ctrl+Shift+G; crop mode's left handle cropping half a picture (one
+  step, drawn so); the sorter's click, Ctrl+click, Shift+click, a drag of two
+  slides, Ctrl+D, Delete, a right-click and a double-click; a double-click on
+  a chart asking for its data.
 - `Tests/PresentationPrintTest.cpp` - a slide drawn into a rectangle and
   nothing around it, prompt text, pages and the PDF.
 
@@ -78517,6 +78916,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - [Printing and PDF](#printing-and-pdf)
 - [Charts](#charts)
   - [Every chart type](#every-chart-type)
+- [Pivot tables](#pivot-tables)
 - [Copy and paste with documents and slides](#copy-and-paste-with-documents-and-slides)
 - [Accessibility](#accessibility)
 - [See Also](#see-also)
@@ -78548,6 +78948,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
 - **Charts**: every chart of the framework a block of cells can feed - columns, bars, lines, areas, pies, scatter, bubbles, waterfall, Sankey, Gantt, heatmap, ternary and forty more - picked in a chart gallery and made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
+- **Pivot tables**: a block of cells summarised by its fields - rows, columns, filters and values with sums, counts, averages, min, max, products, standard deviations and variances, shares of the totals, subtotals and grand totals, the items' order and filters, dates grouped by year, quarter or month and numbers by a step; read-only cells refreshed when the source changes, drilled into with a double-click, built in a field list, kept in `.xlsx` and `.ods` (see [Pivot tables](#pivot-tables))
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
@@ -80258,6 +80659,119 @@ puts the real kind back:
 Excel's own 2016 kinds (`cx:` waterfall, histogram, funnel, box and
 whisker, treemap, sunburst) are not written as `cx:` parts: those take the
 extension route too, so Excel shows their columns.
+
+## Pivot tables
+
+A pivot table summarises a block of cells whose first row names its
+columns - the fields (`UltraCanvasSpreadsheetPivot.h`). A
+`SpreadsheetPivotTable` names its source (`sourceSheet`, `sourceRange`, or a
+named range in `sourceName`), the cell its table starts at (`target`) and its
+fields, each a column of the source:
+
+- `rowFields` and `columnFields` (`PivotField`) put the distinct items of
+  their columns down the side and across the top, nested in the order given;
+  `filterFields` stand above the table and leave records out;
+- `valueFields` (`PivotValueField`) summarise a column for every combination:
+  `PivotSummary::Sum`, `Count` (cells with anything in them), `Average`,
+  `Max`, `Min`, `Product`, `CountNumbers`, `StdDev` / `StdDevP`, `Var` /
+  `VarP`, shown as they are or as a share (`PivotShowAs::PercentOfTotal`,
+  `PercentOfRow`, `PercentOfColumn`). Several value fields stand side by side
+  under a *Values* level, or one under the other with `valuesInRows`.
+- Each axis field has its order (`descending`; numbers and dates by value,
+  before texts), its `subtotals` after each item's group (the innermost
+  field has none), the items it leaves out (`hiddenItems`, by
+  `PivotItem::key`) and a grouping: dates by `PivotGroupBy::Years`,
+  `Quarters` or `Months` (a month gathers every year's), numbers by
+  `NumberRange` of a `step`, from an automatic or a set `start` to an
+  `end`. `grandTotalRow` and `grandTotalColumn` turn the totals at the
+  bottom and at the right on or off.
+
+`ComputeSpreadsheetPivot` lays the summary out as cells (`PivotOutput`):
+the filters, a blank row, the caption and the column fields' names, the
+column items (each label once over its group, `"<item> Total"` columns,
+*Grand Total*), the row fields' names, then a row per item with its
+subtotal and grand total rows. `RefreshSpreadsheetPivot` writes it onto a
+sheet at `target`: the cells it filled before are cleared, names, items and
+totals take a header style (bold, a light band, a rule over the totals) and
+values the source column's number format (a share as a percentage, a count
+as a plain number). `SpreadsheetPivotDrillDownRows` gives the source rows
+behind a value or a total.
+
+On the grid a sheet keeps the pivots that stand on it
+(`SpreadsheetSheet::GetPivotTables`). `InsertPivotTable(pivot, sheetIndex)`
+writes one (onto a new sheet *Pivot* with -1), `SetPivotTable` changes its
+fields and writes it again, `RemovePivotTable` clears it, `RefreshPivotTable`
+and `RefreshPivotTables` compute it from its source again. Its cells are
+read-only: typing, pasting, cutting or clearing them is refused with a
+message on `onStatusChange`. When a cell of a pivot's source changes, the
+grid refreshes the pivot before it draws next and before it saves
+(`RefreshChangedPivotTables`). A double-click on a value or a total opens a
+new sheet of the source rows behind it (`DrillDownPivotCell`, or
+`onPivotDrillDown`); on any other cell of a pivot, its field list.
+`ShowInsertPivotTableDialog` builds a pivot from the selection in the field
+list (`ShowSpreadsheetPivotDialog`: the source, a new sheet or a cell, and
+the fields), `ShowPivotTableDialog` edits one, `ShowPivotSourceDialog` asks
+for its source. The field list is an element of its own,
+`UltraCanvasSpreadsheetPivotPanel` (`UltraCanvasSpreadsheetPivotPanel.h`),
+which an application can dock beside the grid: the fields, the four areas,
+add / remove / move buttons, the picked field's summary, show-as, order,
+grouping, subtotals and items, the totals.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetPivot.h"
+
+// Region in A, product in B, date in C, sales in D, their names in row 1.
+SpreadsheetSheet* data = grid->GetSheet(0);
+SpreadsheetPivotTable pivot = MakeSpreadsheetPivot(*data, CellRange(0, 0, 40, 3));
+pivot.rowFields.push_back(PivotField{0});                    // Region down the side
+PivotField year{2};
+year.grouping.by = PivotGroupBy::Years;                     // the dates by year
+pivot.columnFields.push_back(year);                          // across the top
+pivot.valueFields.push_back(MakePivotValueField(*data, pivot.sourceRange, 3));   // Sum of Sales
+PivotValueField share{3};
+share.showAs = PivotShowAs::PercentOfTotal;
+pivot.valueFields.push_back(share);
+std::string problem;
+int index = grid->InsertPivotTable(pivot, -1, &problem);    // onto a new sheet "Pivot"
+
+data->SetCellValue(5, 3, 120.0);       // the pivot follows the next time the grid draws
+grid->RefreshChangedPivotTables();     // ...or now
+
+SpreadsheetPivotTable changed = grid->GetActiveSheet()->GetPivotTables()[0];
+changed.rowFields[0].hiddenItems.push_back("North");         // leave North out
+changed.grandTotalColumn = false;
+grid->SetPivotTable(grid->GetActiveSheetIndex(), index, changed);
+```
+
+A pivot computed without a grid - into any sheet:
+
+<!-- doc-check: SpreadsheetSheet& data; SpreadsheetSheet& report; -->
+```cpp
+SpreadsheetPivotTable pivot = MakeSpreadsheetPivot(data, CellRange(0, 0, 40, 3));
+pivot.rowFields.push_back(PivotField{1});
+pivot.valueFields.push_back(PivotValueField{3, PivotSummary::Average});
+PivotOutput out;
+if (ComputeSpreadsheetPivot(pivot, data, out)) {
+    for (const PivotOutputCell& cell : out.cells) {
+        // cell.row, cell.col from the target; cell.kind, cell.text or cell.number
+    }
+}
+pivot.target = CellAddress(0, 0);
+RefreshSpreadsheetPivot(pivot, report, [&data](const std::string&) { return &data; });
+```
+
+| Format | How a pivot is kept |
+|---|---|
+| .xlsx | `xl/pivotCache/pivotCacheDefinitionN.xml` (the source as a `worksheetSource`, a `cacheField` per column with its distinct values and, for a grouped field, its `fieldGroup` / `rangePr`), `pivotCacheRecordsN.xml` (each source row as indexes into them) and `xl/pivotTables/pivotTableN.xml` (the `location`, a `pivotField` per column with its axis, items, hidden items, order and subtotal, `rowFields`, `colFields`, `pageFields`, `dataFields` with `subtotal` and `showDataAs`); the workbook lists the caches in `<pivotCaches>`, the worksheet relates to its tables. The cache says `refreshOnLoad`, so Excel computes the table again when it opens it; the pivot's cells are in the sheet for any program that does not |
+| .ods | a `table:data-pilot-table` in the workbook's `table:data-pilot-tables`: `table:target-range-address`, `table:grand-total`, a `table:source-cell-range` and a `table:data-pilot-field` per field (`table:orientation` row, column, page or data, `table:function`, `table:data-pilot-level` with its subtotals, hidden `table:data-pilot-member`s and sort order, `table:data-pilot-groups` for a grouping, `table:data-pilot-field-reference` for a share, `table:selected-page` for a filter of one item) |
+
+Reading takes either back into the model; a pivot made elsewhere with
+something the model cannot represent - a calculated field, a grouping that
+adds fields (Excel's *Years* beside *Months*), a source outside the workbook,
+a value shown as a difference or a running total - keeps the cells the file
+has, is not refreshed, and says why in `unsupportedReason`.
 
 ## Copy and paste with documents and slides
 
@@ -82773,6 +83287,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextAreaExamples.md
   - [API](#api)
 - [Character Range Geometry](#character-range-geometry)
 - [Links in Markdown mode](#links-in-markdown-mode)
+- [The caret's line in Markdown mode](#the-carets-line-in-markdown-mode)
 - [Math in Markdown mode](#math-in-markdown-mode)
 - [Notes and Best Practices](#notes-and-best-practices)
 - [Related Components](#related-components)
@@ -83910,6 +84425,29 @@ md.linkUnderline = false;
 area->onMarkdownLinkClick = [](const std::string& url) { OpenURL(url); };
 ```
 
+## The caret's line in Markdown mode
+
+In `MarkdownHybrid` mode every line is shown rendered except the one holding
+the caret, which is shown as its source so each character can be edited where
+it stands. With `MarkdownHybridStyle::styleCaretLine` (the default) that source
+is formatted like the rendered lines around it: a heading at its size and bold,
+bold, italic, struck-through, code and link text in their styles, and a table
+row with each `|` on its column's divider and each cell's text where the
+rendered cell's starts. The markup the formatting comes from - `#`, `**`, `` ` ``,
+`](url)`, `|`, a quote's `>` - is drawn in `markupColor`; a list marker in
+`bulletColor`. Code blocks and display formulas keep their syntax colours. The
+text, the caret's columns and the selection are those of the source: only how
+it looks changes. Turned off, the line is plain source in the syntax colours.
+
+```cpp
+auto& md = area->GetMarkdownStyleMutable();
+md.markupColor = Color(150, 150, 150);   // the dimmed markup
+md.styleCaretLine = true;                // false: the caret's line is plain source
+```
+
+A selection covers the rendered lines too: inside a table's cells, and as a
+tint across a rule, a picture or a display formula.
+
 ## Math in Markdown mode
 
 In `MarkdownHybrid` editing mode a formula between dollar signs is typeset
@@ -83972,6 +84510,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.20.0** (2026-11-26): `MarkdownHybridStyle::styleCaretLine` and `markupColor` - the caret's line in Markdown mode is formatted like the rendered lines, its markup dimmed and a table row under its columns; a selection shows in table cells and over rules, pictures and formulas
 - **3.19.0** (2026-11-25): `GetLineSpans()` (protected, virtual) and `TextAreaLineSpan` - a subclass styles ranges of a plain line; `InvalidateLineSpans()`
 - **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks, with each one's name and code in a tooltip
 - **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`
@@ -91373,6 +91912,7 @@ doc file name. For the prose on a given element, use
 | Single-line text | `UltraCanvasTextInput` | `UltraCanvasTextInput.h` |
 | Multi-line text or code | `UltraCanvasTextArea` | `UltraCanvasTextArea.h` |
 | A **formatted document** edited as it looks — fonts, sizes, colours, headings, lists, tables, images ([doc](UltraCanvasRichTextEdit.md)) | `UltraCanvasRichTextEdit` | `UltraCanvasRichTextEdit.h` |
+| A **document navigator** beside an `UltraCanvasRichTextEdit` — the headings as a tree that follows the caret (promote, demote, move or drag a chapter), tables, pictures, charts, comments with their authors, bookmarks, notes and tracked changes, a search box that filters them and lists the finds ([doc](UltraCanvasDocumentNavigator.md)) | `UltraCanvasDocumentNavigator` | `UltraCanvasDocumentNavigator.h` |
 | The **text formatting bar** over text the user sets — Font (every installed family, each shown in itself), Size, Bold, Italic, Underline, Strikethrough, alignment, line and letter spacing; reports each change, helpers for an `UltraCanvasRichTextEdit` typed on a canvas ([doc](UltraCanvasTextFormatBar.md)) | `UltraCanvasTextFormatBar` | `UltraCanvasTextFormatBar.h` |
 | Text with a suggestion list | `UltraCanvasAutoComplete` | `UltraCanvasAutoComplete.h` |
 | Tokens / tags typed into a field | `UltraCanvasTagInput` | `UltraCanvasChip.h` |
@@ -91486,6 +92026,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
 | List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree ([`UltraCanvasColumnsTreeView`](UltraCanvasTreeViewExamples.md#columnar-layout-ultracanvascolumnstreeview): aligned Name / Type / Value columns with a header band, resizable boundaries and section-header rows); sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| A spreadsheet pivot table's field list - the source's fields, its rows, columns, values and filters, each value's summary and show-as, each field's order, grouping, subtotals and items, the totals; in a dialog (`ShowSpreadsheetPivotDialog`) or beside the grid ([doc](UltraCanvasSpreadsheetExamples.md#pivot-tables)) | `UltraCanvasSpreadsheetPivotPanel` | `UltraCanvasSpreadsheetPivotPanel.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 | The desktop message centre: every chat, mail and notification on the UltraMessage feed, with sources, filters, search and the notification's actions ([doc](UltraCanvasMessageCenter.md)) | `UltraCanvasMessageCenter` | `Plugins/UltraMessage/UltraCanvasMessageCenter.h` |
@@ -119206,6 +119747,177 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
+FILE: Docs/UltraCanvasStart/Info.md
+==============================================================================
+
+# UltraCanvas Start and the SDK packages
+
+**Version:** 1.1.0
+**Last Modified:** 2026-11-26
+**Author:** UltraCanvas Framework
+
+UltraCanvas is a C++20 framework for desktop applications on Linux, Windows
+and macOS. To write an application with it you need two things: a computer
+with a compiler and a few libraries, and the framework itself. **UltraCanvas
+Start** takes care of the first, and the **SDK packages** are the second,
+ready to use. Together they take a computer that has nothing from a fresh
+download to a first application that builds, without compiling the framework
+and without reading a page of setup instructions.
+
+## UltraCanvas Start
+
+UltraCanvas Start is a small application that sets a computer up for
+UltraCanvas development. You download it, open it, answer a few questions,
+and it checks, installs and writes everything else. It walks you through six
+steps:
+
+1. **Your computer** - shows what it found: operating system, architecture,
+   package manager, git, the AI coding assistants installed, and the way in
+   for your platform.
+2. **Features** - choose what your application will use (the core is
+   always included; CDR, PDF, OCR, vectorising, audio, barcodes and
+   networking are optional) and which AI assistant you work with, if any:
+   Claude Code, Codex, Copilot, Gemini or another.
+3. **Tools** - checks every compiler, tool and library those choices need,
+   one row each, and installs what is missing with your system's package
+   manager (`apt`, `dnf`, `pacman`, `zypper`, Homebrew, or MSYS2 on Windows,
+   which it sets up itself when it is not there yet). You see the exact
+   command before it runs and its output while it runs.
+4. **Framework** - downloads the SDK package for your platform, verifies it
+   against the published checksums and unpacks it. You can also point it at
+   an archive you downloaded yourself, or choose to build the framework from
+   a clone of the source instead.
+5. **Project** - writes a new application: `CMakeLists.txt`, `main.cpp`,
+   `CMakePresets.json`, a `README.md`, and the instruction file for your AI
+   assistant.
+6. **Build** - builds that application, to prove the installation works,
+   and hands over the first prompt for your assistant.
+
+Every step can be revisited at any time, and a report of the whole setup can
+be copied for support.
+
+### Updating to a newer SDK
+
+Each UltraCanvas Start downloads the SDK of its own release, and also asks
+the server for the newest one. When a newer SDK is out, the Framework step
+says so and offers **Download** for it, with a link to the UltraCanvas Start
+of that release, whose checks know what the new SDK needs. **Move a
+project...** then points an existing application at the new SDK, so its next
+build uses it. From a terminal: `UltraCanvasStart --update-check`,
+`--update-sdk <folder>` and `--update-project <folder> --sdk <prefix>`. UltraCanvas Start also runs without a window -
+`UltraCanvasStart --check`, `--plan` and `--create` work over ssh and in
+scripts.
+
+### Getting UltraCanvas Start
+
+UltraCanvas Start is published with every framework release, on its own, so
+it can reach a computer that has nothing installed yet:
+
+| Platform | Download |
+|---|---|
+| Linux (x86_64, arm64) | `UltraCanvasStart-Linux-<version>-<arch>.tar.xz` |
+| Windows (x86_64, arm64) | `UltraCanvasStart-Windows-<version>-<arch>.zip` |
+| macOS (Apple silicon, Intel) | `UltraCanvasStart-MacOS-<version>-<arch>.dmg` - signed and notarized |
+
+The downloads are on the release page:
+
+```
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/tag/v<version>
+```
+
+On Windows the executable is not code-signed yet, so SmartScreen asks once
+before the first start.
+
+## The SDK packages
+
+An SDK package is the UltraCanvas framework **already built**: the headers,
+the shared core library, the file-format plug-ins and the CMake package that
+`find_package(UltraCanvas)` reads, packed into one archive. Unpack it, point
+CMake at it, and your application builds against it - no forty-minute
+framework build first.
+
+| Package | Built for |
+|---|---|
+| `UltraCanvas-SDK-Linux-<version>-x86_64.tar.xz`, `-arm64` | Linux, Ubuntu 22.04 library ABI and newer |
+| `UltraCanvas-SDK-Windows-<version>-x86_64.zip`, `-arm64` | Windows with the MSYS2 CLANG64 / CLANGARM64 toolchain |
+| `UltraCanvas-SDK-MacOS-<version>-arm64.tar.gz`, `-x86_64` | macOS, Apple silicon and Intel |
+
+Linux x86_64 and arm64, Windows x86_64 and macOS arm64 are in every release;
+Windows arm64 is in nearly every release and macOS Intel only in some.
+
+Each package contains:
+
+- `include/` - the framework's headers;
+- `lib/` - the shared core (`libUltraCanvas`) with every module inside it,
+  the plug-ins, and the CMake package;
+- `deps/` (Windows and macOS) - the libraries the framework uses (cairo,
+  pango, glib, freetype, libvips and the rest), so no Homebrew or MSYS2
+  packages are needed to build against it; on Linux the distribution's
+  development packages take that role, and UltraCanvas Start installs them;
+- `examples/PackageConsumer/` - a two-file application that opens a window
+  and loads every file format: copy it, rename it, start there;
+- this framework's licenses and its SDK documentation.
+
+### Getting an SDK package
+
+Every release is published on the UltraOS server, with a `SHA256SUMS` file
+to verify the download, and on the GitHub release:
+
+```
+https://start.ultraos.eu/pub/<version>/<archive>
+https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/LATEST          (the newest version, one line)
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/<archive>
+```
+
+UltraCanvas Start's Framework step picks the right archive for your platform
+and version, downloads, verifies and unpacks it for you.
+
+### Using it by hand
+
+```bash
+tar xf UltraCanvas-SDK-Linux-<version>-x86_64.tar.xz
+cmake -S MyApp -B build -DCMAKE_PREFIX_PATH=$PWD/UltraCanvas-SDK-Linux-<version>-x86_64
+cmake --build build
+```
+
+with this in `MyApp/CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(MyApp LANGUAGES CXX)
+find_package(UltraCanvas CONFIG REQUIRED)
+add_executable(MyApp main.cpp)
+target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas
+                                    ${ULTRACANVAS_PLUGIN_TARGETS}
+                                    UltraCanvas::UltraCanvasAllFormats)
+```
+
+### What you still need
+
+The SDK saves building the framework; it does not bring a compiler. The
+computer still needs a C++20 compiler, CMake 3.16 or newer and pkg-config -
+on Windows, MSYS2's CLANG64 (or CLANGARM64) toolchain. UltraCanvas Start's
+Tools step checks and installs exactly these.
+
+## Versions and quality
+
+UltraCanvas Start, the SDK packages and the release share one version
+number: the SDK for `v0.9.604` is `UltraCanvas-SDK-…-0.9.604-…`, and the
+UltraCanvas Start of that release downloads it. Every release is tested
+before it is published: each UltraCanvas Start archive is started once
+after packing, and on Linux a clean Ubuntu 22.04 container runs UltraCanvas
+Start's install, then builds its project skeleton and the `PackageConsumer`
+example against the very SDK that is published.
+
+## Further reading
+
+- [`Apps/UltraCanvasStart/README.md`](../../Apps/UltraCanvasStart/README.md) - UltraCanvas Start in detail: every step, the command line, the engine
+- [`Docs/UltraCanvasSDK.md`](../UltraCanvasSDK.md) - the SDK's layout, linking and run-time details per platform
+- [`Docs/GettingStarted.md`](../GettingStarted.md) - the same setup, step by step, by hand
+- [`Docs/GettingStarted-Cloud.md`](../GettingStarted-Cloud.md) - working with an AI assistant without a local compiler
+
+==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
 ==============================================================================
 
@@ -119274,7 +119986,7 @@ as `code`, and each numbered step of a guide is one action.
 | **1 Your computer** | What was detected, as key/value rows: OS, architecture, distribution, the package manager (a found / not-found badge and its path), the MSYS2 root on Windows (a link to install it when missing), home, the AI assistants found, git, the framework version. Under it the guide: Linux, macOS or Windows in a segmented control, preselected to the detected one, and that platform's way in as a numbered guide with the SDK archive named for this version and linked to its release. | Nothing; it is where the reader starts. |
 | **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The AI assistant: *None* first, in red, for a local IDE or the compiler alone (no instruction file, no first prompt), then Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
 | **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each on a row with a switch: an installed one is on and locked; a missing or not checkable one that a package provides can be flipped - on (the default) installs it with the rest, off leaves it out of the install, the command and the report; the row shows the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* (*N missing, M off* with switches off) or *everything installed*, and the line under the buttons says what *Install what is missing* will do - the package manager, how many and the exact command - or why it cannot run. *Install what is missing* (enabled only while something is missing) runs the package manager after a confirmation that shows the command again: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree, after `pacman -Syuu` (twice, in a login shell) brings an installed MSYS2's package lists and core up to date. On Windows without MSYS2 the rows still name MSYS2's packages and Install sets MSYS2 up first: `winget install --id MSYS2.MSYS2` into `C:\msys64`, a first login shell (pacman's keyring) running `pacman -Syuu` twice (a core update ends the first run), then its `pacman` installs the rest and MSYS2 is detected again before the checks. The output is shown in a console as it comes, line by line, and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
-| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its address on [start.ultraos.eu/pub](https://start.ultraos.eu/pub/) and the same archive on the GitHub release; *Download* fetches the archive into a folder you pick, checks it against the version's `SHA256SUMS`, unpacks it there and fills the prefix in (a build without the network library opens the address in the browser instead); *Unpack...* does the same for an archive you downloaded yourself; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
+| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its address on [start.ultraos.eu/pub](https://start.ultraos.eu/pub/) and the same archive on the GitHub release; *Download* fetches the archive into a folder you pick, checks it against the version's `SHA256SUMS`, unpacks it there and fills the prefix in (a build without the network library opens the address in the browser instead); *Unpack...* does the same for an archive you downloaded yourself; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder; *Move a project...* points an existing project at the SDK in the prefix field. *Newest SDK* says what the server's `pub/LATEST` names against the SDK in use, with *Download <version>* and the matching UltraCanvasStart when it is newer (see *Updating the SDK*). For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
 | **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then what was written. The step carries the error marker while no project exists. | The application. |
 | **6 Build** | The proof that the installation works: the two commands a programmer runs (`cmake --preset default`, `cmake --build --preset default`) shown for the project folder, *Build the project* runs them (`engine/StartBuild`: cmake with `-S` and the preset, then the preset's `build/` directory; on Windows the MSYS2 bin directories on the child's PATH), cmake's output in a console, a badge that says *not built yet*, *building...*, *built* or *failed*; the step carries the error marker after a failed build. Under it the hand-over: the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | Whether the application compiles here. |
 
@@ -119287,6 +119999,48 @@ v0.9.252) does not build as written: its `main.cpp` calls
 `app.CreateWindow(config)`, a method the application class does not have.
 Change that line to `auto window = CreateWindow(config);` - the framework's
 function - and it builds; projects written by 0.3.2 and later have it so.
+
+## Updating the SDK
+
+A build of UltraCanvasStart downloads the SDK of its own version. A newer
+release is found through one file on the server, written by
+`scripts/upload-sdk-website.sh` after every release it uploads:
+
+```
+https://start.ultraos.eu/pub/LATEST        one line: the newest version, e.g. 0.9.604
+https://start.ultraos.eu/pub/<version>/    that version's archives and SHA256SUMS
+```
+
+The first visit to the Framework step asks for it in the background
+(*Check again* asks again), and the *Newest SDK* row compares it with the
+SDK in use - the version in the prefix's
+`lib/cmake/UltraCanvas/UltraCanvasConfigVersion.cmake`, or the folder's name,
+or this build's version when no prefix is set:
+
+- **newer, and its `SHA256SUMS` lists this machine's archive**:
+  *Download <version>* fetches, checks and unpacks it like *Download*, into
+  a folder you pick, and fills the prefix in. The row under it links the
+  UltraCanvasStart of that release: a newer SDK can need a package this
+  build's Tools step does not know, and that one does.
+- **newer, without this machine's archive** (macOS Intel is not in every
+  release): it says so and offers nothing.
+- **not newer**: it says the SDK in use is the newest.
+
+*Move a project...* then points an existing project at the SDK in the
+prefix field: it sets every `CMAKE_PREFIX_PATH` in the project's
+`CMakePresets.json` (or adds one to the first `cacheVariables`), writes the
+file beside the old one and renames it over it, and removes
+`build/CMakeCache.txt`, because `find_package` keeps the old SDK's folder in
+`UltraCanvas_DIR`. The build folder's objects stay; the next
+`cmake --preset default` and `cmake --build --preset default` rebuild what
+the new headers change. On the command line the same is
+`--update-check`, `--update-sdk <folder>` and `--update-project <folder> --sdk <prefix>`.
+
+LATEST is written only after the version's files are all on the server, and
+never moved back by a re-run of an older release. The *SDK website check*
+workflow, run by hand with a version in `latest`, sets it to that version
+(`upload-sdk-website.sh --latest <version>`) - the way back after a bad
+release.
 
 ## Command line
 
@@ -119302,6 +120056,11 @@ UltraCanvasStart --plan --assistant codex   # the plan and the project for anoth
 UltraCanvasStart --plan --assistant none    # the plan without an AI assistant
 UltraCanvasStart --create ~/MyApp --name "My App" --sdk ~/UltraCanvas-SDK-Linux-0.9.240-x86_64
                                     # write the project skeleton (the Project step) and exit
+UltraCanvasStart --update-check     # the newest SDK on the server against this build's; exit 3 when newer
+UltraCanvasStart --update-check --sdk ~/UltraCanvas-SDK-Linux-0.9.580-x86_64   # ...against that SDK's
+UltraCanvasStart --update-sdk ~/SDKs   # download, check and unpack the newest SDK there, when it is newer
+UltraCanvasStart --update-project ~/MyApp --sdk ~/SDKs/UltraCanvas-SDK-Linux-0.9.604-x86_64
+                                    # point the project at that SDK (CMakePresets.json, the cache removed)
 UltraCanvasStart --version
 ```
 
@@ -119326,8 +120085,8 @@ static library the GUI, the CLI modes and the tests share:
 | `StartPackages` | the dependency table with the package per manager (apt, dnf, pacman, zypper, Homebrew, MSYS2), `InstallStep`, `Msys2SetupSteps` (winget, first start, update), MSYS2 architecture prefixes |
 | `StartChecks` | `CheckTool`, `CheckPkgConfigModule`, `RunChecks` |
 | `StartPlan` | `BuildPlan`, `RenderReport`, `PlatformNotes`, `DisplayCommand` |
-| `StartSdk` | artifact names matching the CI workflow, the archive's address on start.ultraos.eu and the release page, `DownloadSdk` (the archive, checked against `SHA256SUMS` with `ChecksumFor`), `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix` |
-| `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep` |
+| `StartSdk` | artifact names matching the CI workflow, the archive's address on start.ultraos.eu and the release page, `DownloadSdk` (the archive, checked against `SHA256SUMS` with `ChecksumFor`), `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix`; the update: `SdkLatestUrl`, `ParseLatestVersion`, `CheckSdkUpdate`, `SdkPrefixVersion`, `StartAppDownloadUrl` |
+| `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep`; `RepointPresets` and `RepointProjectSdk`, which move a project to another SDK |
 | `StartAi` | `DetectAi` (claude, codex, copilot, gemini), `AssistantInstallInstructions`, `AssistantGuidanceNotes`, `FirstPrompt`, `CloudChecklist` |
 | `StartGuide` | the pages' prose as Markdown: `PlatformGuide` (one action per step, the SDK named and linked), `AiGuide`; `CheckDetail` and `InstallPreview` for the Tools step's rows and what Install will do; `PlainText` for the report, `Linkify` |
 | `StartRunner` | `RunStep` through `RunProcessCaptured`, with pkexec/sudo for elevated steps |
@@ -119341,8 +120100,9 @@ shell ever sees a string. The dependency table mirrors step 1 of
 `Tests/UltraCanvasStart` (`-DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON`,
 target `UltraCanvasStartEngineTests`): os-release parsing, version
 comparison, the table, the install command, SDK names, the plan, the
-scaffold over a temporary folder with a non-ASCII name, and the guides (one
-action per numbered step, the SDK named for real, the report plain).
+scaffold over a temporary folder with a non-ASCII name, the update (LATEST's
+format, an SDK's version, a project moved to another SDK), and the guides
+(one action per numbered step, the SDK named for real, the report plain).
 
 ## Versioning
 

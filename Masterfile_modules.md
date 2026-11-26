@@ -546,6 +546,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+- **UltraCanvasLaunchAtLogin** (`UltraCanvasLaunchAtLogin.h`) — starting a
+  program when the user signs in: `SetLaunchAtLogin(entry, enabled, error)`,
+  `IsLaunchAtLoginEnabled(id)`, `LaunchAtLoginAvailable()`,
+  `LaunchAtLoginCommand(entry)`; `LaunchAtLoginEntry` (id, name, comment, icon,
+  executable - empty for this program, the AppImage or the .app bundle -
+  and arguments). The computer's own list is the record, so an entry switched
+  off there reads as off. Backends: `OS/Linux/UltraCanvasLinuxLaunchAtLogin.cpp`
+  (an XDG autostart entry in `$XDG_CONFIG_HOME/autostart`, `Hidden=true` over a
+  system one), `OS/MSWindows/UltraCanvasWindowsLaunchAtLogin.cpp` (the HKCU
+  `Run` key, the Task Manager's `StartupApproved` on / off respected) and
+  `OS/MacOS/UltraCanvasMacOSLaunchAtLogin.cpp` (a LaunchAgent with
+  `RunAtLoad`). Not available in a Flatpak, a Snap or an MSIX package; Android,
+  iOS and WebAssembly get the fallback in `core/UltraCanvasLaunchAtLogin.cpp`
+  (`ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN` unset). ChatCube's *Settings >
+  General > Startup* uses it. See `Docs/UltraCanvas/UltraCanvasLaunchAtLogin.md`.
 - **UltraCanvasFileTimes** (`UltraCanvasFileTimes.h`) — a file's dates read,
   set, and carried to a copy. `FileTimes` (created / modified / accessed,
   nanoseconds since 1970, 0 = unknown), `GetFileTimes(path, out)`,

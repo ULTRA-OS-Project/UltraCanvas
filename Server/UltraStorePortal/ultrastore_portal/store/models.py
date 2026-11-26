@@ -64,6 +64,11 @@ class Publisher(models.Model):
     website = models.URLField(blank=True)
     support_email = models.EmailField(help_text="Where buyers and the operator reach you.")
     description = models.TextField(blank=True, max_length=2000, help_text="A few lines about who you are.")
+    # For the payouts (billing/payouts.py): where the publisher's share goes,
+    # and who it is to the tax office. Seen by the publisher's owner and the operator.
+    payout_details = models.TextField(blank=True, max_length=500, help_text="Where your share is paid: the account holder and IBAN (with the BIC outside the SEPA area), or a Skrill address.")
+    legal_name = models.CharField(max_length=200, blank=True, help_text="The name the account is held in: yours, or the company's.")
+    vat_id = models.CharField("VAT id", max_length=32, blank=True, help_text="If you have one.")
     state = models.CharField(max_length=16, choices=STATES, default=APPLIED, db_index=True)
     decision_message = models.TextField(blank=True)
     decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")

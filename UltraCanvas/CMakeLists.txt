@@ -880,6 +880,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # lives in OS/<Platform>/UltraCanvas*SessionLock.* and is picked up by
         # the platform glob.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSessionLock.cpp
+        # Starting a program when the user signs in. The platform backend
+        # lives in OS/<Platform>/UltraCanvas*LaunchAtLogin.* and is picked up
+        # by the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLaunchAtLogin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         # ExtractText: the words in a file (documents, PDF, spreadsheets,
         # pictures through text recognition, recordings through speech to text).
@@ -2814,6 +2818,12 @@ endif()
 # leave "Move to Trash" out where there is none.
 if(ULTRACANVAS_HAS_NATIVE_TRASH)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_TRASH)
+endif()
+# Starting at sign-in: the same arrangement for UltraCanvasLaunchAtLogin.
+# Only its core file reads the define (LaunchAtLoginAvailable() answers the
+# rest), so it stays PRIVATE.
+if(ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN)
 endif()
 # Copied dates: the same arrangement for UltraCanvasFileTimes. Only its core
 # file reads the define, so it stays PRIVATE.

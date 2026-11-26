@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}This account is closed - {{ brand }}{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>This account is closed</h1>
+  <p>You closed it. It is kept until <b>{{ erase_after|date:"j F Y" }}</b> and then removed. Reactivating it brings it back as you left it; the services it was signed in to need signing in again.</p>
+  <form method="post" action="{% url 'account:reactivate' %}" class="mt-4">
+    {% csrf_token %}<input type="hidden" name="token" value="{{ token }}">
+    <button class="btn btn-primary btn-lg">Reactivate my account</button>
+    <a class="btn btn-outline-secondary btn-lg ms-2" href="{% url 'account:signin' %}">Leave it closed</a>
+  </form>
+</div>
+{% endblock %}

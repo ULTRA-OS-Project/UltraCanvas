@@ -53,7 +53,7 @@ class Settings:
     recovery_codes_per_day: int = 5
     session_idle_days: int = 90
     code_minutes: int = 10
-    deletion_grace_days: int = 30
+    deletion_grace_days: int = 90
     default_seats: int = 3
 
     @classmethod

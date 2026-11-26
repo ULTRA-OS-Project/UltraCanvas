@@ -24,6 +24,15 @@ Two providers: Skrill Quick Checkout (skrill.py), and "test", which a
 developer's machine and the tests use - the hand-off page has a button in
 Skrill's place that sends the same signed report through the same code.
 
+Version: 0.11.0 - an order knows its buyer's account, and the last
+                  affiliate's link the buyer followed (`via`)
+Version: 0.10.0 - an order may carry an affiliate's link (`ref`); every
+                  payment is told to the affiliate programme (_record)
+Version: 0.9.0 - an order keeps the buyer's country; a payment carries its
+                 tax and gets its invoice or credit note (tax.py)
+Version: 0.7.0 - every payment is written with its split (split.py): the
+                 store's fee and the publisher's share; a refund and a
+                 chargeback give the fee back in proportion
 Version: 0.1.0
 """
 
@@ -47,7 +56,7 @@ from django.utils import timezone
 
 from ..store.models import App, Package, Release, Setting
 from ..store.services import audit
-from . import skrill
+from . import skrill, split, tax
 from .licence import LicenceKey
 from .models import Order, Payment
 
@@ -171,19 +180,35 @@ def sellable_app(app_id: str) -> App:
     return app
 
 
-def create_order(app_id: str, *, source: str = "store", email: str = "", language: str = "", code: str = "", promote: str = "") -> Order:
+def _record(payment: Payment) -> Payment:
+    """What follows every payment the portal writes: its invoice or credit
+    note (tax.py), and what it earns an affiliate or takes back from one
+    (affiliates/services.py)."""
+    from ..affiliates import services as affiliates
+
+    tax.issue_invoice(payment)
+    affiliates.payment_recorded(payment)
+    return payment
+
+
+def create_order(app_id: str, *, source: str = "store", email: str = "", language: str = "", code: str = "", promote: str = "",
+                 country: str = "", ref: str = "", via: str = "", buyer=None) -> Order:
     missing = missing_settings()
     if missing:
         raise BillingError(503, "not_configured", "The store is not set up to sell: " + ", ".join(missing))
     app = sellable_app(app_id)
     order = Order.objects.create(
         app=app, app_name=app.name, amount=app.price, currency=app.currency.upper(), list_price=app.price,
+        country=tax.clean_country(country), buyer=buyer if getattr(buyer, "is_authenticated", False) else None,
         code=code[:40], code_applied=False,   # discount codes are not built: the code is kept, the price is the list price
         cycle=CYCLES.get(app.pricing_model, ""), provider=settings.PAYMENT_PROVIDER, source=source, payer_email=email, language=language[:8])
     audit(None, "order.open", "order", order.public_id, app=app.app_id, amount=money(order.amount), currency=order.currency, source=source)
     if promote:   # the token of the advertisement the buyer last clicked, kept by their store
         from ..promote import services as advertising
         advertising.order_opened(order, promote)
+    if ref or via:   # the token of an affiliate's link to this product, and of the last link followed (affiliates/)
+        from ..affiliates import services as affiliates
+        affiliates.order_opened(order, ref, via)
     return order
 
 
@@ -221,8 +246,9 @@ def order_public(order: Order) -> dict:
         out["refunded"] = money(order.refunded)
     payments = list(order.payments.all())
     if payments:
+        numbers = dict(order.invoices.values_list("payment_id", "number"))
         out["payments"] = [{"kind": p.kind, "at": p.at.strftime("%Y-%m-%d"), "amount": money(p.amount), "currency": p.currency,
-                            "receipt_no": p.receipt_no or 0} for p in payments]
+                            "receipt_no": p.receipt_no or 0, **({"invoice_no": numbers[p.pk]} if p.pk in numbers else {})} for p in payments]
     return out
 
 
@@ -283,8 +309,9 @@ def _chargeback(order: Order, fields: dict[str, str]) -> None:
     if order.payments.filter(kind=Payment.CHARGEBACK, reverses=reverses).exists():
         return
     amount = parse_money(fields.get("mb_amount", "")) or order.amount
-    Payment.objects.create(order=order, kind=Payment.CHARGEBACK, amount=amount, currency=order.currency, provider_transaction="",
-                           reverses=reverses, note="chargeback" + _reason(fields))
+    _record(Payment.objects.create(
+        order=order, kind=Payment.CHARGEBACK, amount=amount, currency=order.currency, provider_transaction="",
+        reverses=reverses, note="chargeback" + _reason(fields), **split.reversal_split(order, reverses, amount)))
     order.refunded += amount
     order.status = Order.CHARGEBACK
     order.revoked_at = timezone.now()
@@ -327,8 +354,9 @@ def process_status(fields: dict[str, str]) -> Order:
         order.receipt_no = next_receipt_no()
         order.licence = issue(order)
         order.save()
-        Payment.objects.create(order=order, kind=Payment.SALE, amount=order.amount, currency=order.currency,
-                               provider_transaction=transaction_id, receipt_no=order.receipt_no)
+        _record(Payment.objects.create(
+            order=order, kind=Payment.SALE, amount=order.amount, currency=order.currency,
+            provider_transaction=transaction_id, receipt_no=order.receipt_no, **split.sale_split(order, order.amount)))
         audit(None, "order.paid", "order", order.public_id, app=order.app.app_id, amount=money(order.amount), currency=order.currency,
               receipt=order.receipt_no)
         from ..promote import services as advertising
@@ -396,8 +424,9 @@ def process_recurring(fields: dict[str, str]) -> Order:
         order.licence = issue(order)
         order.save()
         number = next_receipt_no()
-        Payment.objects.create(order=order, kind=Payment.RENEWAL, amount=order.list_price, currency=order.currency,
-                               provider_transaction=transaction_id, receipt_no=number)
+        _record(Payment.objects.create(
+            order=order, kind=Payment.RENEWAL, amount=order.list_price, currency=order.currency,
+            provider_transaction=transaction_id, receipt_no=number, **split.sale_split(order, order.list_price)))
         audit(None, "order.renewed", "order", order.public_id, app=order.app.app_id, amount=money(order.list_price), receipt=number,
               paid_until=order.paid_until.isoformat())
         return order
@@ -534,8 +563,10 @@ def refund(order: Order, actor, *, amount: str = "", revoke: bool | None = None,
         provider_transaction = done.get("mb_transaction_id", "")
     order.refunded += value
     take_back = revoke if revoke is not None else order.refunded >= total
-    Payment.objects.create(order=order, kind=Payment.REFUND, amount=value, currency=order.currency, provider_transaction=provider_transaction,
-                           reverses=payment.provider_transaction, receipt_no=next_receipt_no(), note=note[:300])
+    _record(Payment.objects.create(
+        order=order, kind=Payment.REFUND, amount=value, currency=order.currency, provider_transaction=provider_transaction,
+        reverses=payment.provider_transaction, receipt_no=next_receipt_no(), note=note[:300],
+        **split.reversal_split(order, payment.provider_transaction, value)))
     if take_back and not order.revoked:
         order.status = Order.REFUNDED
         order.revoked_at = timezone.now()

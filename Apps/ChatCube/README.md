@@ -298,6 +298,11 @@ a back arrow. Building, packaging and what is not there yet:
 9. **Settings** - the gear beside the copy button at the top of the sidebar
    - opens a window laid out as UltraFiler's: the sections on the left, the
    chosen page on the right, *Restore defaults* and *Close* at the foot.
+   *General*: the startup - *Manually* (when you open it) or *When the
+   computer starts* (minimized, as you sign in). That choice is kept in the
+   computer's own list of programs that start at sign-in (the Task Manager's
+   Startup tab, macOS Login Items, `~/.config/autostart`), not in
+   `settings.json`, so switching it off there shows here too.
    *Appearance*: the look - System, Light or Dark, shown at once - and how
    times and dates are written (`14:05` or `2:05 PM`; `31.10.2026`,
    `2026-10-31` or `10/31/2026`). *Display*: the feature icons - for each,
@@ -363,7 +368,8 @@ data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
 
 `ChatCube --minimized` starts with the window minimized, so messages
-arrive in the background - what UltraDesktop's *Start with the desktop*
+arrive in the background - what *Settings > General > Startup* puts in the
+computer's startup list, and what UltraDesktop's *Start with the desktop*
 asks for (a running copy is left alone; a second start would only bring
 its window forward).
 

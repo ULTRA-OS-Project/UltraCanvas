@@ -2,6 +2,8 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.20.1 - a picture alone in its paragraph keeps the paragraph's indents, alignment and spacing,
+//                   read and written
 // Version: 1.20.0 - a Word template (.dotx) is written as one: its main part's template content type
 // Version: 1.19.0 - the theme and font table are kept from the file read and written back (UCRichDocument::keptParts)
 // Version: 1.18.1 - a chart part is written by UltraCanvasDrawingML (WriteDrawingMLChart) too
@@ -3037,10 +3039,19 @@ private:
             block.type = RichBlockType::HorizontalRule;
         }
 
-        // A picture on a line of its own is a standalone image, not a run.
+        // A picture on a line of its own is a standalone image, not a run -
+        // in its paragraph's place: the paragraph's indents, alignment and
+        // spacing stay with it, as the ODT reader keeps them. A letterhead's
+        // logo set out into the margin (a negative left indent) was drawn at
+        // the margin, and a picture paragraph's space after was the view's.
         RichDocBlock promoted;
         if (block.type == RichBlockType::Paragraph
             && WordFormatInternal::ParagraphIsOneInlineImage(block.runs, promoted)) {
+            promoted.align = block.align;
+            promoted.leftIndentPt = block.leftIndentPt;
+            promoted.rightIndentPt = block.rightIndentPt;
+            promoted.spaceBeforePt = block.spaceBeforePt;
+            promoted.spaceAfterPt = block.spaceAfterPt;
             doc_->blocks.push_back(std::move(promoted));
             for (auto& image : ctx.trailingImages) doc_->blocks.push_back(std::move(image));
             return;
@@ -3534,6 +3545,8 @@ private:
         page.marginRightPt = twips(margins, "w:right");
         page.headerTopPt = twips(margins, "w:header");
         page.footerBottomPt = twips(margins, "w:footer");
+        // Word's text starts right below a header taller than the margin.
+        page.furnitureSpacingPt = 0.0f;
         // A negative top/bottom margin means "exactly, whatever the header".
         page.marginTopPt = std::abs(page.marginTopPt);
         page.marginBottomPt = std::abs(page.marginBottomPt);
@@ -4190,7 +4203,13 @@ private:
         if (block.mediaIndex < 0 || block.mediaIndex >= static_cast<int>(doc_->media.size())) {
             return;
         }
-        xml << "<w:p><w:r>";
+        // Its paragraph's place: indents, spacing and alignment.
+        std::ostringstream pPr;
+        WriteGeometry(pPr, block);
+        if (const char* jc = JcValue(block.align)) pPr << "<w:jc w:val=\"" << jc << "\"/>";
+        xml << "<w:p>";
+        if (!pPr.str().empty()) xml << "<w:pPr>" << pPr.str() << "</w:pPr>";
+        xml << "<w:r>";
         WriteDrawingElement(xml, block, drawingId);
         xml << "</w:r></w:p>\n";
     }

@@ -42,6 +42,7 @@
   - [API](#api)
 - [Character Range Geometry](#character-range-geometry)
 - [Links in Markdown mode](#links-in-markdown-mode)
+- [The caret's line in Markdown mode](#the-carets-line-in-markdown-mode)
 - [Math in Markdown mode](#math-in-markdown-mode)
 - [Notes and Best Practices](#notes-and-best-practices)
 - [Related Components](#related-components)
@@ -1179,6 +1180,29 @@ md.linkUnderline = false;
 area->onMarkdownLinkClick = [](const std::string& url) { OpenURL(url); };
 ```
 
+## The caret's line in Markdown mode
+
+In `MarkdownHybrid` mode every line is shown rendered except the one holding
+the caret, which is shown as its source so each character can be edited where
+it stands. With `MarkdownHybridStyle::styleCaretLine` (the default) that source
+is formatted like the rendered lines around it: a heading at its size and bold,
+bold, italic, struck-through, code and link text in their styles, and a table
+row with each `|` on its column's divider and each cell's text where the
+rendered cell's starts. The markup the formatting comes from - `#`, `**`, `` ` ``,
+`](url)`, `|`, a quote's `>` - is drawn in `markupColor`; a list marker in
+`bulletColor`. Code blocks and display formulas keep their syntax colours. The
+text, the caret's columns and the selection are those of the source: only how
+it looks changes. Turned off, the line is plain source in the syntax colours.
+
+```cpp
+auto& md = area->GetMarkdownStyleMutable();
+md.markupColor = Color(150, 150, 150);   // the dimmed markup
+md.styleCaretLine = true;                // false: the caret's line is plain source
+```
+
+A selection covers the rendered lines too: inside a table's cells, and as a
+tint across a rule, a picture or a display formula.
+
 ## Math in Markdown mode
 
 In `MarkdownHybrid` editing mode a formula between dollar signs is typeset
@@ -1241,6 +1265,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.20.0** (2026-11-26): `MarkdownHybridStyle::styleCaretLine` and `markupColor` - the caret's line in Markdown mode is formatted like the rendered lines, its markup dimmed and a table row under its columns; a selection shows in table cells and over rules, pictures and formulas
 - **3.19.0** (2026-11-25): `GetLineSpans()` (protected, virtual) and `TextAreaLineSpan` - a subclass styles ranges of a plain line; `InvalidateLineSpans()`
 - **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks, with each one's name and code in a tooltip
 - **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`

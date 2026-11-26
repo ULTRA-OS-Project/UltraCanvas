@@ -1,3 +1,232 @@
+#### 2026-11-26 *0.9.607*
+- **A wiki for the whole framework: `Docs/Wiki/`.** One place that starts at
+  the beginning - an introduction, a feature overview, getting started, and
+  guide pages on the core concepts, layout, events and callbacks, styling and
+  themes, rendering (with a custom element), files / text / localisation and
+  the sibling modules - and goes down to a reference page for every element:
+  what it is for, its header and include, base classes and derived elements,
+  factories and constructors, **every callback** with its signature and what
+  it reports, every setter, query and public field, and the option structs
+  and enums of its header with their defaults. Group pages follow the element
+  catalogue's sections; an element index and a callback index list
+  everything A-Z (202 elements, 836 callbacks).
+  - The reference is generated from the headers by the new
+    `scripts/generate_wiki.py` (grouping and purpose from
+    `UltraCanvasUIElements.md`), so it lists exactly what the code declares;
+    `--check` reports when it is stale. The guide pages are written by hand
+    and their C++ compiles with `scripts/check_doc_examples.py`.
+
+#### 2026-11-26 *0.9.606*
+- **The SDK page no longer calls the macOS SDK static.** Its Compatibility
+  section now matches the artifact table and the build: the macOS core is a
+  shared `libUltraCanvas.dylib`, with its libraries in `deps/lib`
+  (`Docs/UltraCanvasSDK.md` 1.3.2).
+- **New info text on UltraCanvas Start and the SDK packages**
+  (`Docs/UltraCanvasStart/Info.md`): what each is for, the six steps, the
+  downloads per platform and how to use an SDK by hand.
+- **The SDK server names its newest version in `pub/LATEST`.** After it has
+  uploaded a release's archives and `SHA256SUMS`,
+  `scripts/upload-sdk-website.sh` writes `<ULTRAOS_SFTP_DIR>/LATEST`, one line
+  with the version. It writes `LATEST.part` and renames it, the way the
+  archives go up, and leaves the file alone when it already names a newer
+  version (`sort -V`), so a re-run of an old release does not move it back.
+  `--latest <version>` sets it by hand once that version's `SHA256SUMS` is on
+  the server; the *SDK website check* workflow runs that when it is started
+  with a version in its new `latest` input - the way back after a bad
+  release, and the way to start `LATEST` for the releases uploaded before.
+  UltraCanvasStart reads the file to offer a newer SDK (UltraCanvasStart
+  changelog: `update-to-the-newest-sdk`; `Docs/UltraCanvasSDK.md` 1.4.0).
+
+#### 2026-11-26 *0.9.605*
+- **UltraCanvasLaunchAtLogin: starting a program when the user signs in.**
+  `SetLaunchAtLogin(entry, enabled, error)` puts a program in the computer's
+  own startup list or takes it out; `IsLaunchAtLoginEnabled(id)` reads it
+  back, so an entry switched off by the user elsewhere reads as off. Linux
+  and the BSDs write an XDG autostart entry (`~/.config/autostart`, with
+  `Exec=` quoted to the specification and `Hidden=true` over a system entry
+  of the same name), Windows the `HKCU\...\Run` value (respecting the Task
+  Manager's on / off), macOS a LaunchAgent with `RunAtLoad`. An AppImage is
+  started as the AppImage, a program in an `.app` bundle through
+  `open -a`. Not available in a Flatpak, a Snap or an MSIX package, nor on
+  Android, iOS or WebAssembly (`LaunchAtLoginAvailable()` is false).
+  `Docs/UltraCanvas/UltraCanvasLaunchAtLogin.md`.
+
+#### 2026-11-26 *0.9.604*
+- **New design proposal: UltraAffiliates, one affiliate programme for every
+  ULTRA OS shop and marketplace** (`Docs/Research/UltraAffiliatesDesignProposal.md`),
+  with the owner's decisions of 2026-11-26 worked in. Until now there was a
+  two-tier, code-based scheme for the app store only, run from the
+  merchant's desktop (`UltraStoreAdmin`), and the portal that replaces it
+  keeps an order's code without crediting anyone. The proposal makes the
+  operator the network between merchants and affiliates. It costs a
+  merchant nothing and has no opt-in and no opt-out: every product can be
+  advertised by every affiliate, and every affiliate sale pays 5 % of the
+  net price out of the operator's fee. A merchant may add a boost of 1 to
+  45 % from its own proceeds - a percentage for software, a percentage or a
+  fixed amount per unit for hardware, set by the merchant's owner.
+  - A new customer is bound to the affiliate whose link brought them and
+    earns that affiliate a commission on every later purchase in every shop,
+    at the 5 % the operator pays. A link to one product wins that product's
+    commission, the merchant's boost included, for 90 days without moving
+    the binding. A customer who has bought nothing for six months and buys
+    within two weeks of an affiliate's link is bound to that affiliate. It is suspended while the account is closed,
+    restored on reactivation and ends with the account's erasure.
+  - An affiliate who brings in another affiliate - by a recruiting link, or
+    because their referred customer becomes one - is that affiliate's
+    superaffiliate and earns 10 % of their commissions on top, paid by the
+    operator, one level up and no further.
+  - A commission is approved after 30 days; 5 % of it is held back for six
+    months against refunds and chargebacks, and the affiliate's statistics
+    show the amount held. An affiliate is identified by a phone number and
+    an ID, and can be blocked or banned with a record they get on request.
+  - The proposal also covers self-billed credit notes, fraud defences, the
+    questions for a lawyer, four phases, and a record of what was checked against the code and against
+    outside sources (the portal has no account handle, no phone number, no
+    account closure and no codes in its catalog yet).
+
+#### 2026-11-26 *0.9.603*
+- **TextArea, Markdown view: a selection now shows over rendered lines.** It was
+  painted only into a line's own text layout, so across a table it showed on
+  the raw line under the caret alone, and never on a rule, a picture or a
+  display formula. Each table cell now maps its text back to the source line
+  (`cpMap`), so a selection or a search match paints inside the cells; a
+  selected rule, table separator, picture or display formula is tinted across
+  its row (`DrawBlockSelection`). `TextAreaMarkdownSelectionTest`.
+- **TextArea, Markdown view: the caret's line is formatted like the lines
+  around it.** It is still its source, character for character - the caret,
+  editing and selection are unchanged - but a heading is at its size and bold,
+  bold, italic, code, links and footnotes are in their styles, a table row
+  has each `|` on its column's divider and each cell's text where the
+  rendered cell's starts (the first visual line of a row that wraps), and the
+  markup is drawn in the new `MarkdownHybridStyle::markupColor`.
+  `MarkdownHybridStyle::styleCaretLine` (on by default) turns it off.
+  `TextAreaMarkdownCaretLineTest`.
+- TextArea: the empty `ApplySelectionAttributes` / `ClearSelectionAttributes`
+  stubs are removed.
+
+#### 2026-11-26 *0.9.602*
+- **CI: a cancelled duplicate Build run no longer leaves a commit without a
+  "Build result".** `build-result.yml` let only the newest Build run of a
+  commit set the status, and took the newest to be the first run the API
+  listed. Two labels added together on pull request #1402 started two Build
+  runs in the same second; the build's concurrency cancelled the older, the
+  API listed that one first, and every event of the real run - its pending,
+  its failure, its re-run's success - was skipped, so the commit never had a
+  "Build result" at all. The newest is now the run with the highest id among
+  the commit's runs that were not cancelled (among all of them when every one
+  was), so a run its successor cancelled never stands in for it.
+
+#### 2026-11-26 *0.9.601*
+- **A word processor's navigator, in the framework.**
+  `UltraCanvasDocumentNavigator` (new, `UltraCanvasDocumentNavigator.h`) is
+  the side panel beside an `UltraCanvasRichTextEdit`: the headings as a tree
+  by level, whose selected row is the heading the caret is under and follows
+  it; the tables, pictures, charts, comments (with their authors; a
+  double-click opens the list of comments), bookmarks, footnotes and
+  endnotes and tracked changes; a click goes there and selects the picture,
+  chart, comment or change. Its search box filters every list and lists the
+  places the document says it. Buttons promote, demote and move a heading's
+  section (the heading, its text and its subheadings) up or down, and a
+  heading's row dragged onto another heading moves the section before it.
+  The lists follow the edits once the typing pauses (`SetRefreshDelay`), and
+  the tree is rebuilt only when the outline changed. UltraOffice and
+  UltraTexter show it.
+- **The outline, UI-free.** `BuildRichDocumentOutline`
+  (`UltraCanvasRichDocumentOutline.h`, new) reads a `UCRichDocument` into a
+  `RichDocumentOutline`: headings (level, words, parent, section end),
+  tables (rows, columns, caption, first cell), pictures and charts (where
+  they are, caption, alt text, title), comments (author, the range and words
+  they are on), bookmarks, notes (mark, words, reference) and tracked changes
+  (who, when, what); `HeadingAt` is the heading a block is under.
+- **Heading sections, as undo steps.** `UCRichDocumentEditor::HeadingSectionEnd`,
+  `SiblingHeading`, `MoveHeadingSection` (before any block, or to the end),
+  `MoveHeadingSectionUp` / `Down` and `ChangeHeadingSectionLevel` (promote or
+  demote a heading with every heading under it; a heading in its level's
+  style takes the new level's), each one undo step; the same on
+  `UltraCanvasRichTextEdit`, which also gains `GoToPosition`, `GoToRange` and
+  `AddDocumentObserver` / `RemoveDocumentObserver` - any number of listeners
+  to its edits and caret moves besides the host's own callbacks.
+
+  Covered in `RichDocumentOutlineTest` (no display) and
+  `DocumentNavigatorElementTest` (Xvfb).
+- **Slides: groups, alignment, picture crops, the slide sorter, notes as
+  paragraphs and a chart's data, in the deck model and the slide editor.**
+  - The deck model keeps group shapes: `PptxShape::groupPath` (the groups a
+    shape is in, outermost first) and `PptxSlide::groupNames`. The .pptx
+    reader keeps `p:grpSp` (its `chOff` / `chExt` scaling applied as before,
+    a turned group's shapes now turned with it) and the writer writes it
+    back, nested, its box the shapes'; the .odp reader and writer keep
+    `draw:g`. `PptxGroupIds`, `PptxNewGroupId`.
+  - A picture's crop is read from and written to an .odp's `fo:clip`, in
+    lengths of the picture at its own size (`PptxPictureNaturalSize`: its
+    pixels at the resolution a PNG's `pHYs` or a JPEG's JFIF states, else
+    96 to the inch, as LibreOffice measures it); the .pptx's `a:srcRect` was
+    kept already.
+  - `UCSlideDeckEditor`: groups are selected whole (`Select`,
+    `ToggleSelected`, `ShapesInside`), `GroupSelection` / `UngroupSelection`
+    (one step each), `EnterGroup` / `ExitGroup` to choose inside one,
+    `RotateSelection` turns a group as one, the z-order commands keep a
+    group together and a copy of a group is a group of its own;
+    `AlignSelection(SlideAlignment)` and `DistributeSelection` (to the
+    slide for one shape); `SetPictureCropBox`, `SetPictureCrop`,
+    `ResetPictureCrop`, `PictureFullBox`; `SetShapeChart`, `ChartDataRows`,
+    `ChartWithDataRows` (a chart's data as cells, its kind kept);
+    `SetSlideNotes(index, paragraphs)`; `MoveSlides`, `DuplicateSlides`,
+    `DeleteSlides`, `SetSlidesHidden` for several slides as one step.
+  - `UltraCanvasSlideEdit`: Ctrl+G / Ctrl+Shift+G, a group framed, resized
+    and turned with its own handles, a double-click selecting inside it and
+    Escape going back; crop mode (`SetCropMode`) with crop handles over the
+    picture's faint whole; the slide sorter (`SetView(SlideEditView::Sorter)`:
+    a grid of thumbnails, click, Ctrl and Shift choose, a drag moves them
+    together, Ctrl+D, Delete, a right-click for a host's menu);
+    `onEditChart` on a double-click on a chart, `onModeChange`.
+  - The .pptx reader no longer bullets the speaker notes by default (the
+    slide master's body style was applied to them); the .odp writer no longer
+    reads past the theme's colours for a table in a deck made in memory.
+  - `PptxSlideDrawOptions::background`: false draws a slide's shapes alone,
+    over what the context holds.
+- **Pivot tables in spreadsheets** (`UltraCanvasSpreadsheetPivot.h`). A
+  `SpreadsheetPivotTable` summarises a block of cells whose first row names
+  its fields: row and column fields (nested, each with its order, subtotals,
+  hidden items and a grouping - dates by years, quarters or months, numbers
+  by a step), filter fields above the table, and value fields summed,
+  counted, averaged, as min, max, product, count of numbers, standard
+  deviation or variance (sample or population), shown as they are or as a
+  share of the grand total, of the row or of the column; grand totals at the
+  bottom and the right on or off, several values side by side or one under
+  the other. The model is display-free: `ComputeSpreadsheetPivot` lays it
+  out as cells, `RefreshSpreadsheetPivot` writes them onto a sheet with a
+  header style (and clears where it stood), `SpreadsheetPivotDrillDownRows`
+  gives the source rows behind a value.
+- **On the grid.** A sheet keeps the pivots standing on it
+  (`SpreadsheetSheet::GetPivotTables`); `InsertPivotTable`, `SetPivotTable`,
+  `RemovePivotTable`, `RefreshPivotTable(s)`, `SetPivotTableSource`. A
+  pivot's cells are read-only (typing, pasting, cutting and clearing them is
+  refused with a message), a change to its source refreshes it before the
+  grid draws and before it saves (`RefreshChangedPivotTables`), and a
+  double-click on a value opens a sheet of the rows behind it
+  (`DrillDownPivotCell`, `onPivotDrillDown`) - on any other of its cells, its
+  field list. The field list is an element, `UltraCanvasSpreadsheetPivotPanel`
+  (fields, rows, columns, values and filters, each field's settings and
+  items), in a dialog (`ShowSpreadsheetPivotDialog`, the grid's
+  `ShowInsertPivotTableDialog` / `ShowPivotTableDialog`) or docked beside
+  the grid; `ShowPivotSourceDialog` asks for a new source.
+- **.xlsx and .ods keep them.** .xlsx: a pivot cache definition per pivot
+  (`xl/pivotCache/pivotCacheDefinitionN.xml`, its source, its fields'
+  values and groupings, `refreshOnLoad`), its records, a pivot table part
+  (`xl/pivotTables/pivotTableN.xml`) with their relationships and content
+  types, and the workbook's `<pivotCaches>`; .ods: `table:data-pilot-tables`
+  with a `table:data-pilot-table` per pivot (`table:source-cell-range`,
+  `table:data-pilot-field`s with their levels, members, sort order, groups
+  and field references). Both are read back - Excel's and LibreOffice's own
+  too; what the model cannot represent (a calculated field, a grouping that
+  adds fields, a source outside the workbook) keeps the file's cells and
+  says why (`unsupportedReason`). `SpreadsheetPivotTest` checks the sums
+  against hand-worked ones and the files through LibreOffice, including
+  pivots LibreOffice made itself.
+- `SpreadsheetSheet::NotifyCellsChanged`: cells written straight through
+  `GetOrCreateCell` reach the formula engine and the grid.
+
 #### 2026-11-26 *0.9.600*
 - **Cells, charts and text could not be pasted from one office kind into
   another, and the spreadsheet grid and the slide editor said nothing to a

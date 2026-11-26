@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.22.0 - RichPageSetup::furnitureSpacingPt: the room between a header or footer and the text
 // Version: 1.21.0 - RichPageSetup and RichTabStop compare (operator==), for the page setup and
 //                   paragraph dialogs' undo steps
 // Version: 1.20.0 - RichChart: every chart of the framework a table can feed (Waterfall, Histogram, Funnel,
@@ -915,6 +916,10 @@ struct RichPageSetup {
     // the bottom edge (inside the top / bottom margin).
     float headerTopPt = 0.0f;
     float footerBottomPt = 0.0f;
+    // Room between a header and the text below it, and between the text and
+    // a footer (points); < 0 = Writer's 0.25 cm. Word keeps none: its text
+    // starts right below a header taller than the top margin.
+    float furnitureSpacingPt = -1.0f;
 
     bool HasPage() const { return widthPt > 0.0f && heightPt > 0.0f; }
     bool operator==(const RichPageSetup& other) const = default;

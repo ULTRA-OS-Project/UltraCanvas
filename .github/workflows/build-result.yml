@@ -18,6 +18,15 @@ name: Build result
 #
 # Only the newest run (and attempt) of Build for a commit sets its status: a
 # late event of a superseded run or of an earlier attempt changes nothing.
+# The newest is the one with the highest run id, not the first the API
+# lists, and a run cancelled when another of the same commit superseded it
+# never counts as the newest while any run of the commit was not cancelled.
+# On 2026-11-25 pull request #1402 was given its ci:distro and ci:intel
+# labels together: two Build runs started in the same second, the build's
+# concurrency cancelled the older, and the API listed that cancelled run
+# first. Taken as the newest, it left the real run's every event - its
+# pending, its failure, its re-run's success - without a status: the commit
+# never had a "Build result" at all.
 #
 # A job GitHub never started is re-run, not reported. On 2026-11-23 the
 # macos-15 leg of pull request #1371 sat queued for 20 minutes and then 15
@@ -75,10 +84,17 @@ jobs:
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a commit: $SHA"; exit 1; }
 
           # The newest Build run of this commit, and its attempt: only it may
-          # set the status.
+          # set the status. The highest run id - runs started in the same
+          # second are listed in no useful order - among the runs not
+          # cancelled, so a run its successor cancelled never stands in for
+          # it; among all of them when every one was cancelled.
           read -r newest_id newest_attempt < <(gh api \
-            "repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?head_sha=$SHA&per_page=1" \
-            --jq '.workflow_runs[0] | "\(.id) \(.run_attempt)"')
+            "repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?head_sha=$SHA&per_page=100" \
+            --jq '.workflow_runs as $all
+                  | ([ $all[] | select(.status != "completed" or .conclusion != "cancelled") ]
+                     | if length > 0 then . else $all end)
+                  | max_by(.id)
+                  | "\(.id) \(.run_attempt)"')
           if [ "$newest_id" != "$RUN_ID" ] || [ "$newest_attempt" != "$ATTEMPT" ]; then
             echo "Run $RUN_ID attempt $ATTEMPT is not the newest for $SHA" \
                  "(that is $newest_id attempt $newest_attempt): status left as it is."

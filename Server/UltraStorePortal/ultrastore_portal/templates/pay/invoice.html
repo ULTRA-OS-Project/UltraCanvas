@@ -1,0 +1,26 @@
+{% extends "pay/base.html" %}
+{% block title %}{{ invoice.get_kind_display }} {{ invoice.number }} - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>{{ invoice.get_kind_display }} {{ invoice.number }}</h1>
+  <div class="card mt-3"><div class="card-body">
+    <dl class="facts">
+      <dt>Seller</dt><dd>{{ invoice.seller_name }}<br>{{ invoice.seller_address|linebreaksbr }}<br>VAT id {{ invoice.seller_vat_id }}</dd>
+      <dt>Buyer</dt><dd>{{ invoice.buyer_email|default:"-" }}{% if invoice.buyer_country %}, {{ invoice.buyer_country }}{% endif %}</dd>
+      <dt>Date</dt><dd>{{ invoice.issued|date:"j F Y" }}</dd>
+      <dt>Supplied</dt><dd>{{ payment.at|date:"j F Y" }}</dd>
+      {% if invoice.corrects %}<dt>Corrects</dt><dd>invoice {{ invoice.corrects }}</dd>{% endif %}
+      <dt>For</dt><dd>{{ invoice.description }}</dd>
+      <dt>Publisher</dt><dd>{{ order.app.publisher.name }}</dd>
+      <dt>Net</dt><dd>{{ invoice.net }} {{ invoice.currency }}</dd>
+      <dt>VAT {{ invoice.vat_percent_text }} %</dt><dd>{{ invoice.vat }} {{ invoice.currency }}</dd>
+      <dt>Total</dt><dd><b>{{ invoice.gross }} {{ invoice.currency }}</b></dd>
+      {% if invoice.note %}<dt>Note</dt><dd>{{ invoice.note }}</dd>{% endif %}
+      <dt>Order</dt><dd class="font-monospace">{{ order.public_id }}</dd>
+      {% if payment.receipt_no %}<dt>Receipt no.</dt><dd>{{ payment.receipt_no }}</dd>{% endif %}
+      {% if order.licence_id %}<dt>Licence</dt><dd class="font-monospace">{{ order.licence_id }}</dd>{% endif %}
+    </dl>
+  </div></div>
+  <p class="text-secondary small mt-3">{% if is_reversal %}This credit note takes back the invoice it names, in whole or in part.{% else %}The amount was paid when this invoice was written.{% endif %}</p>
+</div>
+{% endblock %}

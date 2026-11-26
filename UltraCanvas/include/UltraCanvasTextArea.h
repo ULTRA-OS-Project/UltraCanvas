@@ -1,5 +1,11 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.20.0 - MarkdownHybridStyle::styleCaretLine / markupColor: the caret's line is
+//                 formatted like the rendered lines, its markup dimmed, a table row's
+//                 cells under their columns (StyleMarkdownCaretLine)
+// Version: 3.19.2 - a selection shows over rendered Markdown: in table cells (GetLineSelectionRange)
+//                 and as a tint over a rule, a picture or a formula (DrawBlockSelection);
+//                 the empty ApplySelectionAttributes / ClearSelectionAttributes are removed
 // Version: 3.19.1 - a click is hit-tested against the line it lands on when the caret
 //                 moved there before the next frame (currentLineIndex)
 // Version: 3.19.0 - GetLineSpans: a subclass styles ranges of a plain line (colour,
@@ -126,6 +132,15 @@ namespace UltraCanvas {
         // Header font size multipliers (relative to base font size)
         std::array<float, 6> headerSizeMultipliers = {1.8f, 1.5f, 1.3f, 1.2f, 1.1f, 1.0f};
 
+        // The line holding the caret is shown as its source, so every character
+        // can be edited where it stands. With styleCaretLine it is formatted as
+        // the rendered lines are - a heading at its size, bold, italic, code and
+        // links in their style, a table's cells in their columns - and the
+        // markup that formatting comes from (#, **, `, [](url), |) is drawn in
+        // markupColor. Off, the line is plain source in the syntax colours.
+        bool styleCaretLine = true;
+        Color markupColor = Color(165, 165, 165);
+
         // Code styling
         Color codeTextColor = Color(200, 50, 50);
         Color codeBackgroundColor = Color(245, 245, 245);
@@ -250,6 +265,7 @@ namespace UltraCanvas {
             s.abbreviationBackground = Color(70, 70, 80, 120);
             s.abbreviationUnderlineColor = Color(140, 140, 160);
             s.footnoteRefColor = Color(100, 180, 255);
+            s.markupColor = Color(115, 115, 115);
             s.nestedBulletCharacters = {
                 "\xe2\x80\xa2",     // level 0: •
                 "\xe2\x97\xa6",     // level 1: ◦
@@ -1188,6 +1204,12 @@ namespace UltraCanvas {
 
         // `outInlineMath` receives the $...$ formulas placed in the layout (typeset through
         // `ctx` when the LaTeX module is available); both may be null.
+        // MarkdownHybrid: formats the caret's line (currentLine), which keeps
+        // its source text, like the rendered lines around it, and puts a table
+        // row's cells under their columns. Runs once the tables are sized.
+        // See MarkdownHybridStyle::styleCaretLine.
+        void StyleMarkdownCaretLine(LineLayoutBase* ll, int lineIndex);
+
         void ApplyInlineRunsAndAbbreviations(ITextLayout* layout,
                                              const std::string& visibleText,
                                              const std::vector<InlineRun>& runs,
@@ -1407,15 +1429,19 @@ namespace UltraCanvas {
         // inside the current selection. When selection changes, ReconcileLayoutState
         // invalidates the union of old+new selected line ranges so MakeLineLayout runs again.
         void ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex);
+        // The part of line `lineIndex` (codepoints) the selection covers; false
+        // when none of it is selected. A line the selection runs through is
+        // selected even when empty (startCp == endCp).
+        bool GetLineSelectionRange(int lineIndex, int& startCp, int& endCp) const;
+        // Tints the whole row of a line that shows none of its own text (a rule,
+        // a table's separator, a picture, a display formula) while it is selected.
+        void DrawBlockSelection(IRenderContext* ctx, LineLayoutBase* ll, int lineIndex);
         // Search-match backgrounds of one line, applied before the selection so
         // the current match (the selection) shows over them.
         void ApplyLineSearchHighlights(LineLayoutBase* ll, int lineIndex);
         // Paints [startCp, endCp) of a real line (codepoints) in color.
         void ApplyLineBackgroundRange(LineLayoutBase* ll, int lineIndex,
                                       int startCp, int endCp, const Color& color);
-        // Kept as no-op stubs — attribute application happens during rebuild, not in-place patching.
-        void ApplySelectionAttributes();
-        void ClearSelectionAttributes(int logicalLine);
 
         // Called at the top of UpdateLineLayouts each frame. Detects cursor-line
         // changes (to swap in/out MarkdownHybrid raw-editing mode) and selection-range changes

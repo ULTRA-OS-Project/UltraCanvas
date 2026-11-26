@@ -2,23 +2,31 @@
 releases in review, the decision on each, the reports, the catalog and the
 audit log. Staff only.
 
+Version: 0.9.0 - tax (the rates, a quarter's figures) and the payouts
+Version: 0.7.0 - an order's payments with their split
 Version: 0.1.0
 """
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+import datetime as dt
+
+from django.utils import timezone
+
+from ..billing import payouts, tax
 from ..billing import services as billing
-from ..billing.models import Order
+from ..billing.models import Order, Payout, VatRate
 from ..store import catalog, services
 from ..store.models import App, AuditEntry, Package, Publisher, Release, Report
 from ..store.packages import package_path
-from .forms import DecisionForm, ReportDecisionForm
+from .forms import DecisionForm, ReportDecisionForm, VatRateForm
 from .utils import operator_required
 
 
@@ -160,6 +168,73 @@ def order(request, pk: int):
     paid = billing.paid_total(subject)
     return render(request, "operator/order.html", {"order": subject, "payments": subject.payments.all(), "left": paid - subject.refunded,
                                                    "history": AuditEntry.objects.filter(target_kind="order", target=subject.public_id)[:30]})
+
+
+@operator_required
+def tax_page(request):
+    """Tax: what is missing, the VAT rates, and a quarter's figures by
+    country and rate - what the one-stop-shop return asks for."""
+    form = VatRateForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data
+        row, made = VatRate.objects.update_or_create(country=data["country"], valid_from=data["valid_from"],
+                                                     defaults={"percent": data["percent"], "note": data["note"]})
+        services.audit(request.user, "tax.rate", "vat_rate", f"{row.country} {row.valid_from}", percent=str(row.percent), new=made)
+        messages.success(request, f"{row.country}: {row.percent} % from {row.valid_from}.")
+        return redirect("operator:tax")
+    today = timezone.localdate()
+    year, quarter = tax.quarter_of(today)
+    try:
+        year, quarter = int(request.GET.get("year", year)), int(request.GET.get("quarter", quarter))
+        if not (2000 <= year <= 2200 and 1 <= quarter <= 4):
+            raise ValueError
+    except ValueError:
+        year, quarter = tax.quarter_of(today)
+    current = []
+    for code, name in sorted(tax.EU.items(), key=lambda item: item[1]):
+        rows = list(VatRate.objects.filter(country=code))
+        current.append({"code": code, "name": name, "now": next((r for r in rows if r.valid_from <= today), None),
+                        "later": [r for r in rows if r.valid_from > today]})
+    return render(request, "operator/tax.html", {
+        "form": form, "problems": tax.problems(), "configured": tax.configured(), "countries": current,
+        "report": tax.quarter_report(year, quarter),
+        "previous": (year, quarter - 1) if quarter > 1 else (year - 1, 4), "following": (year, quarter + 1) if quarter < 4 else (year + 1, 1)})
+
+
+@operator_required
+def payouts_page(request):
+    """The payouts: make them for everything due, and see what is to pay."""
+    until = payouts.default_until()
+    if request.method == "POST":
+        try:
+            until = dt.date.fromisoformat(request.POST.get("until", ""))
+            made = payouts.build(until, request.user)
+            messages.success(request, f"{len(made)} payout(s) made for what was due on {until}." if made else f"Nothing was due on {until}.")
+            return redirect("operator:payouts")
+        except (ValueError, payouts.PayoutError) as refused:
+            messages.error(request, str(refused) if isinstance(refused, payouts.PayoutError) else "Give the day as YYYY-MM-DD.")
+    state = request.GET.get("state", Payout.OPEN)
+    found = Payout.objects.select_related("publisher")
+    if state in dict(Payout.STATES):
+        found = found.filter(state=state)
+    page = Paginator(found, 50).get_page(request.GET.get("page"))
+    return render(request, "operator/payouts.html", {"page": page, "state": state, "states": Payout.STATES, "until": until,
+                                                     "hold_days": settings.PAYOUT_HOLD_DAYS, "minimum": settings.PAYOUT_MINIMUM})
+
+
+@operator_required
+def payout_page(request, pk: int):
+    """One payout: what it holds, where it goes, and marking it paid."""
+    subject = get_object_or_404(Payout.objects.select_related("publisher"), pk=pk)
+    if request.method == "POST":
+        try:
+            payouts.mark_paid(subject, request.user, request.POST.get("reference", ""), request.POST.get("note", ""))
+            messages.success(request, "The payout is marked paid.")
+            return redirect("operator:payout", pk)
+        except payouts.PayoutError as refused:
+            messages.error(request, str(refused))
+        subject.refresh_from_db()
+    return render(request, "operator/payout.html", {"payout": subject, **payouts.lines(subject)})
 
 
 @require_POST

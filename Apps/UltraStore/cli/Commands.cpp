@@ -69,6 +69,7 @@
 
 #include <iostream>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSystemLanguage.h"
 #include "UltraCanvasUtils.h"
 
 #include <cstdio>
@@ -106,12 +107,13 @@ int UltraStore::Cli::Usage(FILE* to) {
         "  ultrastore remove <app-id> [--root <dir>]\n"
         "  ultrastore installed [--root <dir>]\n"
         "  ultrastore gc [--root <dir>]\n"
-        "  ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]\n"
-        "                                     through the catalog's payment service: the browser pays, the licence is kept\n"
+        "  ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--country <CC>] [--root <dir>]\n"
+        "                                     through the catalog's payment service: the browser pays, the licence is kept;\n"
+        "                                     the country (two letters; default: the settings', else the system's) decides the VAT\n"
         "  ultrastore licences [--root <dir>]  the apps bought here\n"        "  ultrastore licence <app-id> [--root <dir>] [--key <hex>]\n"
         "                                     one purchase: its terms, and the licence file checked against the key\n"
         "  ultrastore code [<CODE> | clear] [--cache <dir>]\n"
-        "                                     the discount or partner code in force (30 days), checked against the cached catalog\n"
+        "                                     the discount or partner code in force (90 days), checked against the cached catalog\n"
         "  ultrastore ultrastore://code/<CODE>  the same, from a QR code or a page: opens the window with it\n"
         "  ultrastore account signup <email> [--country DE] [--year 1990] [--marketing] [--url <service>] [--root <dir>]\n"
         "                                     an account at the catalog's account service: the password from ULTRASTORE_PASSWORD or a line on stdin, a code mailed\n"
@@ -499,7 +501,14 @@ int CmdBuy(const std::vector<std::string>& args) {
     std::string code = Option(args, "--code");
     if (code.empty()) code = StoreSettings::Load().CodeInForce(NowIso8601Utc().substr(0, 10));
     const HttpCall http = UltraNetHttpCall();
-    const auto started = StartCheckout(catalog.paymentUrl, pos[2], code, http);
+    // Where the buyer is, for the tax in the price: --country, else the
+    // settings', else the region of the system's language.
+    const std::string asked = Option(args, "--country");
+    if (!asked.empty() && BuyerCountry(asked, "", "").empty()) return Fail("--country is two letters, such as DE");
+    std::string system = CountryOfLanguageTags(UltraCanvas::SystemLanguageTags());
+    if (system.empty()) system = SystemCountry();
+    const std::string country = BuyerCountry(asked, StoreSettings::Load().country, system);
+    const auto started = StartCheckout(catalog.paymentUrl, pos[2], code, http, country);
     if (!started) return Fail(started.error);
     Order order = started.Value();
     std::printf("order %s: %s for %s %s%s\npay at %s\n", order.orderId.c_str(), app->name.c_str(), order.amount.c_str(), order.currency.c_str(),
@@ -795,7 +804,8 @@ int CmdAccount(const std::vector<std::string>& args) {
 }
 
 // code [<CODE> | clear]: the code in force, checked against the cached
-// catalog with the settings' keys, kept in the settings file for 30 days.
+// catalog with the settings' keys, kept in the settings file for
+// StoreSettings::kCodeDays (90).
 int CmdCode(const std::vector<std::string>& args) {
     const auto pos = Positional(args);
     StoreSettings settings = StoreSettings::Load();

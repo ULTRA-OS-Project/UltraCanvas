@@ -1,5 +1,7 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.14.0 - LayoutLineExtent::fontHeight: the height of a line's fonts, line gap included, which a
+//                   line spacing factor multiplies
 // Version: 2.13.0 - CreateDocumentTextLayout (glyphs where the font puts them) and TextAttributeFactory::CreateFontFeatures
 // Version: 2.12.0 - TextAttributeFactory::CreateLetterSpacing takes fractional pixels
 // Version: 2.11.0 - GetFontStyle: the font DrawText draws in now; TextTopCentredOnCaps(row) in it;
@@ -929,6 +931,13 @@ namespace UltraCanvas {
         int lengthBytes = 0;
         float top = 0.0f;
         float height = 0.0f;
+        // The height of the line's fonts: ascent, descent and the line gap
+        // their designers gave them, the tallest in the line - what a line
+        // spacing factor (ITextLayout::SetLineSpacing) multiplies, from
+        // baseline to baseline. A layout ends at its last line's descent, so
+        // that line's `height` lacks the room the factor gives the others.
+        // 0 = not known.
+        float fontHeight = 0.0f;
     };
 
     // ===== UCTextAttribute =====

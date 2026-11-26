@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Products to advertise - {{ brand }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Products to advertise</h1><span class="text-secondary">{{ products|length }}</span></div>
+<div class="panels">
+<div class="card"><div class="card-body">
+  <p class="text-secondary">Every paid product of the store, with what a link to it earns you: the store's own share of every sale, and what the publisher adds. A link counts for {{ link_days }} days.</p>
+  <form method="get" class="d-flex gap-2 mb-3" style="max-width: 32rem"><input class="form-control" type="search" name="q" value="{{ q }}" placeholder="A product, a publisher, a category" aria-label="Search"><button class="btn btn-outline-secondary">Search</button></form>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Product</th><th>Publisher</th><th>Price</th><th class="text-end">You earn</th><th>Your link</th></tr></thead>
+    <tbody>
+    {% for row in products %}
+    <tr><td><a href="{{ row.app.get_absolute_url }}">{{ row.app.name }}</a><div class="small text-secondary">{{ row.app.summary }}</div></td><td>{{ row.app.publisher.name }}</td><td>{{ row.app.price_label }}</td>
+      <td class="text-end"><b>{{ row.total }} %</b>{% if row.boost %}<div class="small text-secondary">{{ row.base.normalize }} + {{ row.boost.normalize }} from the publisher</div>{% endif %}</td>
+      <td class="font-monospace small">{% if profile.active %}{{ base_url }}/r/{{ profile.handle }}/{{ row.app.app_id }}/{% else %}<span class="text-secondary">when your profile is active</span>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="5" class="text-secondary">Nothing found.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div></div>
+<p><a href="{% url 'affiliate:home' %}">Back to your affiliate page</a></p>
+</div>
+{% endblock %}
