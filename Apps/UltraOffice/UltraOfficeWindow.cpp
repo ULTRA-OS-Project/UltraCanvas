@@ -2,6 +2,7 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.7.0 - each tab gets the settings (AttachSettings) and the keys the window leaves alone (F5)
 // Version: 0.6.0 - PowerPoint 97-2003 decks (.ppt, .pps, .pot) are read, not written: Save asks for a name
 // Version: 0.5.0 - new from template: the Start tab's gallery, File > New from template, a template
 //                  opened as a new untitled document; Save as template
@@ -235,6 +236,7 @@ UltraOfficeWindow::OpenDocument* UltraOfficeWindow::AddDocument(std::unique_ptr<
     doc->name = name;
     doc->password = password;
     doc->host = std::move(host);
+    doc->host->AttachSettings(&settings_);
     const int id = doc->id;
     doc->host->onChanged = [this, id]() {
         if (OpenDocument* d = FindById(id)) { d->changedSinceCopy = true; Refresh(*d); }
@@ -816,6 +818,9 @@ void UltraOfficeWindow::RestoreRecovered(const std::vector<std::filesystem::path
 // A filter, not OnEvent: the window's own keys come before the element with
 // the keyboard, which would otherwise take Ctrl+S or Ctrl+N for itself.
 bool UltraOfficeWindow::HandleShortcut(const UCEvent& event) {
+    // The tab's own keys first (F5: the document's navigator).
+    if (event.type == UCEventType::KeyDown)
+        if (OpenDocument* doc = Active(); doc && doc->host->HandleShortcut(event)) return true;
     if (event.type == UCEventType::KeyDown && event.ctrl && !event.alt) {
         OpenDocument* doc = Active();
         switch (event.virtualKey) {

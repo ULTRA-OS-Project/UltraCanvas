@@ -2,6 +2,8 @@
 // OpenDocument presentation (.odp / .otp / .fodp) writer - see
 // UltraCanvasPresentationOdp.h: a PptxPresentation written as an Impress deck
 // LibreOffice and the reader open.
+// Version: 1.2.0 - group shapes as draw:g, nested; a picture's crop as its style's fo:clip; a table in a
+//                  deck without a theme no longer reads past the theme's colours
 // Version: 1.1.0 - the deck's masters as master pages (name, background, placeholder frames, their
 //                  presentation styles), its layouts as presentation page layouts, each slide on its
 //                  layout's master; transitions (smil type, speed, auto-advance, the exact length
@@ -800,7 +802,17 @@ private:
         PptxShape outlined = shape;
         outlined.fill.clear();
         outlined.gradientStops.clear();
-        const std::string style = styles_->Get("graphic", "gr", GraphicProperties(outlined, false));
+        std::string properties = GraphicProperties(outlined, false);
+        // Its crop: fo:clip, lengths of the picture at its own size.
+        int64_t naturalW = 0, naturalH = 0;
+        if ((shape.cropLeft != 0 || shape.cropTop != 0 || shape.cropRight != 0 || shape.cropBottom != 0) &&
+            PptxPictureNaturalSize(bytes->second, naturalW, naturalH)) {
+            const double w = static_cast<double>(naturalW), h = static_cast<double>(naturalH);
+            properties.insert(properties.size() - 2, " fo:clip=\"rect(" + Cm(shape.cropTop * h) + ", " +
+                                                         Cm(shape.cropRight * w) + ", " + Cm(shape.cropBottom * h) + ", " +
+                                                         Cm(shape.cropLeft * w) + ")\"");
+        }
+        const std::string style = styles_->Get("graphic", "gr", properties);
         std::string image;
         if (flat_) {
             image = "<draw:image><office:binary-data>" + Base64Encode(bytes->second, false) + "</office:binary-data></draw:image>";
@@ -876,9 +888,10 @@ private:
         // A table without cell looks (from another reader): PowerPoint's
         // default - a dark header row and banded rows in the first accent.
         const auto accentFound = deck_.themeColors.find("accent1");
-        const std::string accent = Colour(accentFound == deck_.themeColors.end() ? "4472C4" : accentFound->second).empty()
-                                       ? "#4472c4"
-                                       : Colour(accentFound->second);
+        // (A deck made in memory has no theme: the default accent, never the
+        // end of the map dereferenced.)
+        const std::string themed = accentFound == deck_.themeColors.end() ? std::string() : Colour(accentFound->second);
+        const std::string accent = themed.empty() ? "#4472c4" : themed;
         std::string xml = "<table:table>";
         for (size_t c = 0; c < columns; ++c) {
             const std::string col = styles_->Get("table-column", "co",
@@ -1212,7 +1225,21 @@ private:
         if (layout >= 0) xml += " presentation:presentation-page-layout-name=\"UCL" + std::to_string(layout + 1) + "\"";
         if (!transition.type.empty()) xml += " draw:id=\"" + id + "\" xml:id=\"" + id + "\"";
         xml += ">";
-        for (const PptxShape& shape : slide.shapes) xml += Shape(shape);
+        // Each group (PptxShape::groupPath) a draw:g round its shapes, which keep their places.
+        std::vector<int> open;
+        for (const PptxShape& shape : slide.shapes) {
+            const std::vector<int>& path = shape.groupPath;
+            size_t common = 0;
+            while (common < open.size() && common < path.size() && open[common] == path[common]) ++common;
+            for (; open.size() > common; open.pop_back()) xml += "</draw:g>";
+            for (; open.size() < path.size(); open.push_back(path[open.size()])) {
+                const auto named = slide.groupNames.find(path[open.size()]);
+                xml += named != slide.groupNames.end() && !named->second.empty()
+                           ? "<draw:g draw:name=\"" + Escape(named->second) + "\">" : std::string("<draw:g>");
+            }
+            xml += Shape(shape);
+        }
+        for (; !open.empty(); open.pop_back()) xml += "</draw:g>";
         if (!transition.type.empty()) {
             // The exact length, where Impress keeps it: the page's timing root.
             xml += "<anim:par presentation:node-type=\"timing-root\"><anim:par smil:begin=\"" + id +

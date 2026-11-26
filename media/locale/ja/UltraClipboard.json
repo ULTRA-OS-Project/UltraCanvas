@@ -17,7 +17,6 @@
     "other": "{n} 個のファイルを {0} に移動できませんでした:"
   },
   "Delete the item from the clipboard?": "この項目をクリップボードから削除しますか?",
-  "Deleted": "削除しました",
   "Edit clipboard entry": "クリップボードのエントリを編集",
   "Edit in UltraPaint": "UltraPaint で編集",
   "Edit…": "編集…",

@@ -1,5 +1,8 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.20.0 - pivot tables: InsertPivotTable, SetPivotTable, RemovePivotTable, RefreshPivotTables,
+//                  SetPivotTableSource, DrillDownPivotCell, the field list (ShowInsertPivotTableDialog,
+//                  ShowPivotTableDialog); a pivot's cells are read-only and follow its source's changes
 // Version: 1.19.0 - every chart of the framework: ShowInsertChartDialog / ShowChartTypeDialog (the chart
 //                  gallery), InsertChartOfTypeFromSelection; the charts drawn by any chart element
 // Version: 1.18.0 - templates: LoadFromFile reads .ots, .xltx and .xltm, SaveToFile writes .ots and .xltx
@@ -184,6 +187,12 @@ public:
     // A chart was double-clicked: (index). Unset, the chart's properties
     // dialog opens (ShowChartPropertiesDialog).
     std::function<void(int)> onChartDoubleClick;
+    // A pivot table was inserted, changed, refreshed or removed.
+    std::function<void()> onPivotTablesChange;
+    // A value or total of a pivot was double-clicked: (row, col). Unset, a
+    // new sheet shows the source rows behind it (DrillDownPivotCell); any
+    // other cell of a pivot opens its field list (ShowPivotTableDialog).
+    std::function<void(int, int)> onPivotDrillDown;
     
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
@@ -337,6 +346,20 @@ private:
     Rect2Di chartDragBox_;               // the chart's box in sheet pixels when the drag began
     std::vector<SpreadsheetChart> chartsBeforeDrag_;
     bool chartsDirty_ = true;
+    // Pivot tables (UltraCanvasSpreadsheetPivot.h): the sheets whose cells
+    // changed since the pivots last read them, and whether the pivots are
+    // writing their own cells (which is no change to a source).
+    std::vector<std::string> pivotSourcesChanged_;
+    bool writingPivots_ = false;
+    void NotePivotSourceChange(const std::string& sheetName, const CellRange& range);
+    bool WritePivotTable(SpreadsheetSheet& sheet, SpreadsheetPivotTable& pivot, std::string* problem);
+    // True, and a message on the status line, when `range` of the active
+    // sheet reaches into a pivot's cells, which only the pivot writes.
+    bool RefusePivotEdit(const CellRange& range);
+    // The active sheet's columns under `pivot` fitted to what they hold.
+    void FitPivotColumns(const SpreadsheetPivotTable& pivot);
+    // A double-click on a pivot's cell: true when it was one.
+    bool HandlePivotDoubleClick(int row, int col);
     std::map<uint64_t, std::shared_ptr<UltraCanvasUIElement>> chartCache_;
     bool HandleChartEvent(const UCEvent& event);
     void RenderCharts(IRenderContext* ctx);
@@ -744,6 +767,46 @@ public:
     // The chart gallery for chart `index`, its own type chosen; the type
     // picked becomes its type (one undo step).
     void ShowChartTypeDialog(int index);
+
+    // ===== PIVOT TABLES (UltraCanvasSpreadsheetPivot.h) =====
+    // `pivot` written onto sheet `sheetIndex` - or, with -1, onto a new
+    // sheet after the active one, at A1 - computed from its source; its
+    // index on that sheet, or -1 and why in `problem`. Its cells are the
+    // pivot's: typing, pasting or clearing them is refused.
+    int InsertPivotTable(const SpreadsheetPivotTable& pivot, int sheetIndex, std::string* problem = nullptr);
+    // Pivot `index` of sheet `sheetIndex` becomes `pivot`, its cells
+    // written again (cleared where it stood before).
+    bool SetPivotTable(int sheetIndex, int index, const SpreadsheetPivotTable& pivot, std::string* problem = nullptr);
+    // Removes the pivot and clears its cells.
+    bool RemovePivotTable(int sheetIndex, int index);
+    // Computes the pivot from its source again ("Refresh").
+    bool RefreshPivotTable(int sheetIndex, int index, std::string* problem = nullptr);
+    // Every pivot of the workbook; how many were written. A pivot read from
+    // a file that the model cannot represent keeps its cells.
+    int RefreshPivotTables();
+    // Refreshes the pivots whose source cells changed since they were last
+    // written; true when any was. The grid does it before drawing, the
+    // writers before saving.
+    bool RefreshChangedPivotTables();
+    // The pivot whose cells hold the active cell of the active sheet: its
+    // index there, -1 for none.
+    int GetActivePivotTable() const;
+    // Pivot `index` of the active sheet takes its data from `range` of
+    // `sheetName`; its fields are kept where the new source has their
+    // columns (matched by name).
+    bool SetPivotTableSource(int index, const std::string& sheetName, const CellRange& range,
+                             std::string* problem = nullptr);
+    // A new sheet after the active one holding the source rows behind
+    // cell (row, col) of the active sheet - a pivot's value or total -
+    // under the source's field names; its index, -1 for any other cell.
+    int DrillDownPivotCell(int row, int col);
+    // The field list (ShowSpreadsheetPivotDialog) for a new pivot over the
+    // selection (Insert > Pivot table), or for pivot `index` of the active
+    // sheet; OK writes it.
+    void ShowInsertPivotTableDialog();
+    void ShowPivotTableDialog(int index);
+    // Asks for pivot `index`'s source range ("Sheet1.A1:D40").
+    void ShowPivotSourceDialog(int index);
 
     // ===== UNDO/REDO =====
     void Undo();

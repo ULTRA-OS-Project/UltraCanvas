@@ -1192,6 +1192,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChartIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChartGallery.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivot.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivotIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivotDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGalleryPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetRulesDialogs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetComponent.cpp
@@ -1294,6 +1297,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # Its document dialogs: page setup, paragraph, styles, table, picture,
         # contents, caption, cross-reference, footnote, comments.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEditDialogs.cpp
+        # Its navigator: the document's outline (UI-free) and the side panel
+        # that lists it - headings, tables, pictures, comments, notes, changes.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentOutline.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDocumentNavigator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp
         # DrawingML charts and colours, read alike from .docx, .pptx and .xlsx
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDrawingML.cpp

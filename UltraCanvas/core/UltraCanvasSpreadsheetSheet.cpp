@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheetSheet.cpp
 // Spreadsheet worksheet implementation (non-inline members)
+// Version: 1.7.0 - pivot tables: cloned with the sheet
 // Version: 1.6.0 - conditional formats evaluated for drawing (GetConditionalFormatting: formula rules,
 //                  colour scales, data bars, top / average / duplicates); Custom validation rules and
 //                  lists taken from cells
@@ -2142,6 +2143,7 @@ std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::Clone(const std::string& new
     clone->scrollCol_ = scrollCol_;
     clone->zoomLevel_ = zoomLevel_;
     clone->charts_ = charts_;
+    clone->pivots_ = pivots_;
 
     if (autoFilter_) {
         clone->autoFilter_ = std::make_unique<AutoFilter>(*autoFilter_);

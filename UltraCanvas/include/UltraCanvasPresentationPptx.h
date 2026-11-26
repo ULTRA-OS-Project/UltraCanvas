@@ -52,6 +52,9 @@
 // (beyond the picture they show), video and audio (beyond the poster frame).
 //
 // Specification: ECMA-376 Part 1, PresentationML (§19) and DrawingML (§20-21).
+// Version: 1.7.0 - group shapes kept (PptxShape::groupPath, PptxSlide::groupNames): p:grpSp read and
+//                  written with its chOff / chExt, a turned group's children turned with it; ODP's
+//                  draw:g; PptxGroupIds, PptxNewGroupId; PptxPictureNaturalSize (an .odp's crop)
 // Version: 1.6.0 - masters, layouts and transitions read and written (.pptx here, .odp in
 //                  UltraCanvasPresentationOdp.h); PptxLayout::type is p:sldLayout/@type
 // Version: 1.6.0 - PptxParagraphsToRichDocument / PptxParagraphsFromRichDocument: a shape's text for the
@@ -210,6 +213,12 @@ struct PptxShape {
     // Picture: what its a:srcRect crops away from each side, a share of the picture (0..1).
     double cropLeft = 0, cropTop = 0, cropRight = 0, cropBottom = 0;
     RichChart chart;             // Chart: its data (UltraCanvasDrawingML)
+    // The groups the shape is in (p:grpSp, draw:g), outermost first: ids that
+    // PptxSlide::groupNames names, unique on the slide; empty: in none. A
+    // group's shapes stand next to each other in the z-order, and each keeps
+    // its place on the slide (the group's scaling and turn already applied),
+    // so a reader of the shapes alone draws the slide as it is.
+    std::vector<int> groupPath;
 };
 
 // How a slide comes on in the show (p:transition / presentation:transition-*).
@@ -256,7 +265,21 @@ struct PptxSlide {
     std::string background;      // "RRGGBB" from the slide, its layout or its master; empty: white
     std::string textColor;       // the theme's dark text colour (tx1); empty: black
     PptxTransition transition;   // how the slide comes on in the show
+    // The groups' names by id (PptxShape::groupPath); a group without one is
+    // written as "Group <id>".
+    std::map<int, std::string> groupNames;
 };
+
+// Every group id the slide's shapes use, in no particular order, and an id
+// none of them (nor groupNames) uses yet.
+std::vector<int> PptxGroupIds(const PptxSlide& slide);
+int PptxNewGroupId(const PptxSlide& slide);
+
+// A picture's own size in EMU, from its bytes (PNG, JPEG, GIF): its pixels
+// at the resolution it states (a PNG's pHYs, a JPEG's JFIF density), else
+// at 96 to the inch - what OpenDocument's fo:clip measures a crop in, as
+// LibreOffice does. False when the bytes give no size.
+bool PptxPictureNaturalSize(const std::vector<uint8_t>& bytes, int64_t& width, int64_t& height);
 
 struct PptxPresentation {
     int64_t slideWidth = 0, slideHeight = 0; // EMU (16:9 is 12192000 x 6858000)
@@ -332,7 +355,9 @@ UCRichDocument PptxPresentationToRichDocument(const PptxPresentation& presentati
 // and content; tables with their cells' merges, fills, borders, margins and
 // anchors (a table without cell looks takes PowerPoint's default style);
 // pictures from `deck.pictures` with their crop (a picture whose bytes were
-// not kept is written as a grey box with its description); charts
+// not kept is written as a grey box with its description); groups (p:grpSp
+// round the shapes of a PptxShape::groupPath, nested, chOff / chExt the
+// group's box); charts
 // (UltraCanvasDrawingML's chart parts); speaker notes; the theme's colours and
 // heading and body fonts; each slide's transition (with p14:dur in
 // mc:AlternateContent for a length no speed names, advClick, advTm). A deck

@@ -48,9 +48,13 @@ a step: `change` edits a copy of the slide.
 
 | Group | Calls |
 |---|---|
-| Slides | `NewSlide(layout)`, `InsertSlide`, `DuplicateSlide`, `DeleteSlide`, `MoveSlide`, `SetSlideHidden`, `SetSlideNotes`, `SetCurrentSlide` |
-| Selection | `Select`, `SelectAll`, `ClearSelection`, `ToggleSelected`, `SelectionBox` |
+| Slides | `NewSlide(layout)`, `InsertSlide`, `DuplicateSlide`, `DeleteSlide`, `MoveSlide`, `SetSlideHidden`, `SetSlideNotes` (plain text, or paragraphs), `SetCurrentSlide`; several at once: `MoveSlides`, `DuplicateSlides`, `DeleteSlides`, `SetSlidesHidden` |
+| Selection | `Select`, `SelectAll`, `ClearSelection`, `ToggleSelected`, `SelectionBox` - a group whole |
+| Groups | `GroupSelection`, `UngroupSelection`, `CanGroup`, `CanUngroup`, `EnterGroup`, `ExitGroup`, `GetEnteredGroup`, `UnitOf`, `SelectionUnits`, `SelectionIsOneGroup`, `RotateSelection` |
+| Aligning | `AlignSelection(SlideAlignment)` (left, centre, right, top, middle, bottom), `DistributeSelection(horizontally)` |
 | Shapes | `MoveSelection`, `NudgeSelection`, `SetShapeBox`, `SetSelectionBox`, `SetShapeRotation`, `DeleteSelection`, `DuplicateSelection`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `SetShapeText` |
+| Pictures | `SetPictureCropBox`, `SetPictureCrop`, `ResetPictureCrop`, `PictureFullBox` |
+| Charts | `SetShapeChart`, `ChartDataRows`, `ChartWithDataRows` |
 | Inserting | `InsertTextBox`, `InsertGeometry` (a preset outline), `InsertPicture` (bytes, kept in `deck.pictures`), `InsertShape`, `InsertTable` |
 | Text | `SetShapeText` (plain lines), `FormatSelectedText` (every run and paragraph of the selected shapes, table cells too), `AllSelectedText` (a toggle's state) |
 | Tables | `TableCellBox`, `TableCellAt`, `InsertTableRow`, `DeleteTableRow`, `InsertTableColumn`, `DeleteTableColumn` |
@@ -83,8 +87,10 @@ edit->onChange = []() { /* mark the document modified */ };
 | Where | What |
 |---|---|
 | The strip | Click a slide to show it; drag it to move it; Delete deletes it, Ctrl+D duplicates it; hidden slides are dimmed |
-| The slide | Click selects a shape (Shift or Ctrl adds or takes away), a band selects what it covers; dragging moves the selection, snapping (Alt: not; Shift: across or down only); the handles resize (Shift keeps the proportions, Alt from the centre) and the one above turns (Shift: by 15°) |
-| Keys | Arrows nudge (Ctrl: by a point), Delete, Ctrl+A, Escape, Ctrl+D, Ctrl+C / X / V, Ctrl+Z / Y, Tab the next shape, Enter or F2 its text, Page Up / Down, Ctrl+M a new slide, Ctrl+wheel zoom |
+| The slide | Click selects a shape - a group whole (Shift or Ctrl adds or takes away), a band selects what it covers; dragging moves the selection, snapping (Alt: not; Shift: across or down only); the handles resize (Shift keeps the proportions, Alt from the centre) and the one above turns (Shift: by 15°) - a group's turn it as one; a double-click selects inside a group, or asks for a chart's data (`onEditChart`) |
+| Crop mode | `SetCropMode(true)` with a picture selected: the handles crop it, the rest of it shown faintly; Enter, Escape or a click elsewhere ends it |
+| The sorter | `SetView(SlideEditView::Sorter)`: every slide in a grid; click, Ctrl+click, Shift+click choose slides, a drag moves them all (one step), a double-click or Enter edits one, Delete, Ctrl+D, Ctrl+A, the arrows; a right-click calls `onContextMenu` |
+| Keys | Arrows nudge (Ctrl: by a point), Delete, Ctrl+A, Escape (out of a group, then none), Ctrl+D, Ctrl+C / X / V, Ctrl+Z / Y, Ctrl+G group, Ctrl+Shift+G ungroup, Tab the next shape or group, Enter or F2 its text, Page Up / Down, Ctrl+M a new slide, Ctrl+wheel zoom |
 
 A drag draws a preview copy of the slide and becomes one command when the
 button is let go. Empty placeholders show their prompt ("Click to add title")
@@ -97,6 +103,79 @@ The show is `UltraCanvasSlideShowPlayer`
 ([UltraCanvasSlideShowPlayer.md](UltraCanvasSlideShowPlayer.md)): the slides'
 transitions, auto-advance, the presenter view on a second monitor
 (`StartSlideShow(deck, fromSlide)`).
+
+## Groups
+
+A group (PowerPoint's `p:grpSp`, OpenDocument's `draw:g`) is kept in the
+model as each shape's `groupPath` - the groups it is in, outermost first -
+and the slide's `groupNames`; its shapes stand together in the z-order and
+each keeps its place on the slide, so everything that draws, prints or
+exports a slide needs nothing more. The editor chooses groups whole: a
+click, Shift or Ctrl+click, a band and Tab take a group with all its
+shapes, and moving, resizing (its shapes scale with it), turning (each
+shape goes round the group's centre and turns as much), deleting, copying
+and the z-order commands act on it as on one shape; a copy of a group is a
+group of its own. A double-click enters a group (`EnterGroup`): one of its
+shapes - or a group inside it - is chosen alone, until Escape or a click
+outside it (`ExitGroup`). Grouping inside a group entered makes a group in
+it.
+
+```cpp
+const int a = edit->Editor().InsertGeometry(SlideBox{914400, 914400, 914400, 914400}, "rect");
+const int b = edit->Editor().InsertGeometry(SlideBox{3 * 914400, 914400, 914400, 914400}, "ellipse");
+edit->Editor().Select({a, b});
+edit->Editor().GroupSelection();             // Ctrl+G: one step
+edit->Editor().RotateSelection(45);          // the group turned as one
+edit->Editor().AlignSelection(SlideAlignment::Centre);   // one group: centred on the slide
+edit->Editor().UngroupSelection();           // Ctrl+Shift+G
+```
+
+`AlignSelection` lines the selected groups and shapes up with each other
+(their left edges, centres, right edges, tops, middles or bottoms), or with
+the slide when one is selected; `DistributeSelection` gives each two the
+same gap, the outermost two staying, or spreads fewer than three over the
+slide. Each is one step.
+
+## Pictures and charts
+
+`SetCropMode(true)` crops the selected picture with its handles: what a
+handle takes away is a share of the picture (`cropLeft` ... `cropBottom`,
+`a:srcRect` in .pptx, `fo:clip` in .odp), the picture's scale unchanged.
+`SetPictureCropBox(shape, box)` does it from code, `SetPictureCrop` by the
+shares, `ResetPictureCrop` shows the whole picture again, and
+`PictureFullBox` says where the whole picture would stand.
+
+A chart's data - from the file, or a chart pasted from a spreadsheet - is
+edited as cells: `ChartDataRows(chart)` gives the series' names along the
+top and a row per category (a scatter chart's x values first),
+`ChartWithDataRows(chart, rows)` takes them back keeping the chart's kind,
+title, legend and colours, and `SetShapeChart` puts it into the shape as one
+step. UltraOffice shows the cells in a small `UltraCanvasSpreadsheet` in a
+dialog when a chart is double-clicked (`onEditChart`).
+
+```cpp
+const PptxShape& chart = edit->Editor().CurrentSlide()->shapes[2];
+auto rows = UCSlideDeckEditor::ChartDataRows(chart.chart);
+rows[1][1] = "42";                             // the first series' first value
+edit->Editor().SetShapeChart(2, UCSlideDeckEditor::ChartWithDataRows(chart.chart, rows));
+```
+
+## The slide sorter and the notes
+
+`SetView(SlideEditView::Sorter)` shows every slide as a thumbnail in a
+grid, drawn by the slide painter as the strip is (`UltraCanvasAlbum` was
+looked at first: it shows files from disk and moves one tile at a time;
+`UltraCanvasListView` is rows). `GetSorterSelection` says which slides are
+chosen; a host's context menu acts on them with `DuplicateSlides`,
+`SetSlidesHidden` and `DeleteSlides`, each one step.
+
+The speaker notes are `PptxSlide::notes`, paragraphs like a shape's text: a
+host edits them in an `UltraCanvasRichTextEdit` through
+`PptxParagraphsToRichDocument` / `PptxParagraphsFromRichDocument` and puts
+them back with `SetSlideNotes(index, paragraphs)`, one step that leaves the
+slide shown as it is. UltraOffice keeps them in a pane under the slide (a
+splitter between, shown or hidden from the View tab) and commits them on
+leaving the pane or on a change of slide.
 
 ## Copy and paste
 
@@ -180,7 +259,11 @@ row inserted under the header takes the body rows' look.
 
 ## Not yet
 
-- Grouping, alignment and distribution commands, guides of one's own.
+- Guides of one's own; a group's frame turned with it (a turned group is
+  framed by the box round its shapes' unturned boxes) and a group's
+  mirroring.
+- Moving a picture inside its crop (the crop handles move the edges only);
+  cropping a turned picture keeps its centre where the crop puts it.
 - Merging and splitting table cells, resizing a table's columns by dragging.
 - Animations of single shapes in the show (the slides' transitions play).
 
@@ -190,12 +273,24 @@ row inserted under the header takes the body rows' look.
   selection put back, nudges joined, hit testing of turned shapes, handles,
   snapping; the text's round trip through the rich document (looks, line
   breaks, bullets, numbering, an empty paragraph's look); formatting the
-  selected shapes; tables (cells, rows, columns, undo).
+  selected shapes; tables (cells, rows, columns, undo); groups (grouped,
+  selected whole, moved, resized and turned with their shapes, entered, kept
+  together by the z-order commands, copied as new groups, ungrouped, nested,
+  each undone); align and distribute; picture crops and their reset; notes as
+  paragraphs (one step, kept in .pptx and .odp); a chart's data as cells and
+  back; several slides moved, duplicated, hidden and deleted as one step;
+  groups and crops through .pptx, .odp and .fodp - a turned group's shapes
+  too - and through LibreOffice both ways when soffice is installed.
 - `Tests/SlideEditElementTest.cpp` - the element driven by pointer and key
   events: a click selects, a drag moves (one step, snapping to the slide's
   centre), a corner with Shift keeps the proportions, the turning handle
   turns by 15° with Shift, a band selects, the strip chooses and moves
   slides, the keys nudge, delete, undo and add a slide, a double-click asks
-  for the text.
+  for the text; a group made with Ctrl+G, clicked, dragged, resized and
+  turned as one, entered with a double-click, left with Escape, taken apart
+  with Ctrl+Shift+G; crop mode's left handle cropping half a picture (one
+  step, drawn so); the sorter's click, Ctrl+click, Shift+click, a drag of two
+  slides, Ctrl+D, Delete, a right-click and a double-click; a double-click on
+  a chart asking for its data.
 - `Tests/PresentationPrintTest.cpp` - a slide drawn into a rectangle and
   nothing around it, prompt text, pages and the PDF.
