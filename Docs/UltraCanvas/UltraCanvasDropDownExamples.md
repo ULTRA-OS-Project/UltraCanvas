@@ -319,8 +319,11 @@ bool masked = view->GetIconsAsMask();
 
 ## A font list: each font shown in itself
 
-A row is drawn in its item's `fontFamily` when it has one, so a font picker is
-an ordinary dropdown - no element of its own and no drawing callback:
+A row is drawn in its item's `fontFamily` when it has one, so a short font list
+is an ordinary dropdown. For a word processor's font list - the closed box in
+the current font, every installed font with its format icon, the document's
+and the recent fonts on top, a family's styles beside it, symbol fonts with a
+sample - use [`UltraCanvasFontPicker`](UltraCanvasFontPicker.md) instead.
 
 ```cpp
 auto fonts = CreateDropdown("font", 0, 0, 210, 26);

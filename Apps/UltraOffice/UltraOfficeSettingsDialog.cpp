@@ -3,6 +3,8 @@
 // the framework's UltraCanvasSettingsPageKit; the controls are the
 // framework's elements (a text field, lists, checkboxes, buttons).
 //
+// Version: 0.2.0 - a new document's font from every installed font (UltraCanvasFontPicker), the
+//                  recent fonts on top
 // Version: 0.1.1 - the format list on Saving wide enough for its names
 // Version: 0.1.0
 // Last Modified: 2026-11-26
@@ -17,6 +19,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasFontPicker.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasTextInput.h"
@@ -69,7 +72,7 @@ struct DialogState : public UltraCanvasSettingsWindow {
     std::shared_ptr<UltraCanvasCheckbox> recovery;
     std::shared_ptr<UltraCanvasDropdown> minutes;
 
-    std::shared_ptr<UltraCanvasDropdown> font;
+    std::shared_ptr<UltraCanvasFontPicker> font;
     std::shared_ptr<UltraCanvasDropdown> size;
     std::shared_ptr<UltraCanvasDropdown> page;
     std::shared_ptr<UltraCanvasCheckbox> navigator;
@@ -138,11 +141,7 @@ void Refresh(DialogState* d) {
         if (at >= 0) d->minutes->SetSelectedIndex(at, false);
         else { d->minutes->SetSelectedIndex(-1, false); d->minutes->SetPlaceholderText(std::to_string(s.GetAutosaveMinutes())); }
     }
-    if (d->font) {
-        const int at = IndexOf(OfficeSettings::FontChoices(), s.GetDocumentFont());
-        if (at >= 0) d->font->SetSelectedIndex(at, false);
-        else { d->font->SetSelectedIndex(-1, false); d->font->SetPlaceholderText(s.GetDocumentFont()); }
-    }
+    if (d->font) d->font->SetCurrentFont(s.GetDocumentFont());
     if (d->size) {
         const int at = IndexOf(OfficeSettings::FontSizeChoices(), s.GetDocumentFontSize());
         if (at >= 0) d->size->SetSelectedIndex(at, false);
@@ -310,14 +309,20 @@ std::shared_ptr<UltraCanvasContainer> BuildSaving(DialogState* d) {
 std::shared_ptr<UltraCanvasContainer> BuildDocuments(DialogState* d) {
     PageParts parts = MakePage("office-set-documents", Tr("Documents"),
                                Tr("New documents, and how documents are shown:"));
-    std::vector<std::string> fonts = OfficeSettings::FontChoices();
-    fonts.front() = Tr("Default font");
-    d->font = MakeList("office-set-font", fonts, [d](int index) {
-        const auto choices = OfficeSettings::FontChoices();
-        if (d->syncing || index >= static_cast<int>(choices.size())) return;
-        d->Settings().SetDocumentFont(choices[static_cast<size_t>(index)]);
+    // Every installed font, each in itself, the default first and the
+    // recent fonts on top.
+    d->font = std::make_shared<UltraCanvasFontPicker>("office-set-font", 0, 0, kControlWidth, 26);
+    d->font->size.width = CSSLayout::Dimension::Px(kControlWidth);
+    d->font->size.height = CSSLayout::Dimension::Px(26);
+    d->font->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    d->font->SetListWidth(kWideControlWidth);
+    d->font->SetDefaultFontEntry(Tr("Default font"));
+    FontListSettings(*d->font, [d]() { return d->owner ? &d->Settings().Store() : nullptr; });
+    d->font->onFontChosen = [d](const FontPickerChoice& choice) {
+        if (d->syncing) return;
+        d->Settings().SetDocumentFont(choice.family);
         Changed(d);
-    });
+    };
     parts.body->AddChild(MakeLabelledRow("office-set-font-row", Tr("Font:"), d->font, kCaptionWidth));
     std::vector<std::string> sizes;
     for (float s : OfficeSettings::FontSizeChoices()) sizes.push_back(SizeText(s));

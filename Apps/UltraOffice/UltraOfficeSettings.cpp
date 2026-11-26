@@ -1,6 +1,7 @@
 // Apps/UltraOffice/UltraOfficeSettings.cpp
 // See the header.
 //
+// Version: 0.2.0 - the recent fonts ("recentFonts")
 // Version: 0.1.0
 // Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
@@ -32,6 +33,7 @@ const char* kRecoveryKey = "recoveryCopies";
 const char* kAutosaveMinutesKey = "autosaveMinutes";
 const char* kDocumentFontKey = "documentFont";
 const char* kDocumentFontSizeKey = "documentFontSize";
+const char* kRecentFontsKey = "recentFonts";   // not a setting: kept by RestoreDefaults, like the recent files
 const char* kPageSizeKey = "pageSize";
 const char* kNavigatorKey = "documentNavigator";
 const char* kDocumentFitKey = "documentFit";
@@ -140,6 +142,23 @@ void OfficeSettings::SetAutosaveMinutes(int minutes) { store_.Set(kAutosaveMinut
 
 std::string OfficeSettings::GetDocumentFont() const { return store_.GetString(kDocumentFontKey); }
 void OfficeSettings::SetDocumentFont(const std::string& family) { store_.Set(kDocumentFontKey, family); }
+
+std::vector<std::string> OfficeSettings::GetRecentFonts() const {
+    std::vector<std::string> families = store_.GetList(kRecentFontsKey);
+    families.erase(std::remove(families.begin(), families.end(), std::string()), families.end());
+    if (families.size() > static_cast<size_t>(kMaxRecentFonts)) families.resize(static_cast<size_t>(kMaxRecentFonts));
+    return families;
+}
+
+void OfficeSettings::SetRecentFonts(const std::vector<std::string>& families) {
+    std::vector<std::string> kept;
+    for (const std::string& family : families) {
+        if (family.empty() || std::find(kept.begin(), kept.end(), family) != kept.end()) continue;
+        kept.push_back(family);
+        if (kept.size() >= static_cast<size_t>(kMaxRecentFonts)) break;
+    }
+    store_.Set(kRecentFontsKey, kept);
+}
 
 float OfficeSettings::GetDocumentFontSize() const {
     const double size = store_.GetNumber(kDocumentFontSizeKey, kDefaultFontSize);

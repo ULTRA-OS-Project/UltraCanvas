@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.22.0 - the font report names every family the document uses (FontReport::namedFamilies)
 // Version: 1.21.0 - FromTheme: the page the lighter of well and panel, the desk a shade darker
 // Version: 1.20.0 - document observers; GoToPosition, GoToRange; heading sections moved and promoted
 // Version: 1.19.0 - SetPageSetup, SetParagraphFormat, Get/SetTableProperties, Get/SetSelectedImageWrap,
@@ -61,6 +62,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasInstalledFonts.h"   // IsInstalledFontName
 #include "UltraCanvasRichDocumentChart.h"
 #include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasUI.h"
@@ -7362,7 +7364,8 @@ int UltraCanvasRichTextEdit::CommentBoxAt(const Point2Di& elementPoint) const {
 // ===== FONTS THE DOCUMENT NEEDS =====
 
 bool UltraCanvasRichTextEdit::FontReport::operator==(const FontReport& other) const {
-    if (missingFamilies != other.missingFamilies || missingScripts.size() != other.missingScripts.size()) return false;
+    if (missingFamilies != other.missingFamilies || missingScripts.size() != other.missingScripts.size() ||
+        namedFamilies != other.namedFamilies) return false;
     for (size_t i = 0; i < missingScripts.size(); ++i) {
         const MissingScriptFont& a = missingScripts[i];
         const MissingScriptFont& b = other.missingScripts[i];
@@ -7446,14 +7449,17 @@ void UltraCanvasRichTextEdit::RefreshFontReport() {
             addBlocks(furniture->footer);
         }
 
+        report.namedFamilies = named;
         if (!named.empty()) {
             std::vector<std::string> installed = GetInstalledFontFamilies();
             for (std::string& family : installed) family = LowerAscii(family);
             for (const std::string& family : named) {
                 // Not installed, and nothing installed stands in for it by
-                // name (Helvetica is Arial on Windows, as in every program).
+                // name (Helvetica is Arial on Windows, as in every program),
+                // nor is it a face's own name ("Segoe UI Semibold", which
+                // Word writes for a weight).
                 if (std::find(installed.begin(), installed.end(), LowerAscii(family)) == installed.end()
-                    && FontFamilySubstitute(family).empty())
+                    && FontFamilySubstitute(family).empty() && !IsInstalledFontName(family))
                     report.missingFamilies.push_back(family);
             }
         }

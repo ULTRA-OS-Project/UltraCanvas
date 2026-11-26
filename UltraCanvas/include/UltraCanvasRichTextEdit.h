@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.25.0 - FontReport::namedFamilies: every family the document names, for a font list's
+//                   "in this document" section (UltraCanvasFontPicker)
 // Version: 1.24.0 - ZoomFit::WidthShare, ZoomToWidthShare: the page fills a share of the view's width,
 //                   centred, and keeps fitting as the element is resized
 // Version: 1.23.0 - page view: a white page on a grey desk in the light theme (FromTheme: the paper
@@ -659,6 +661,12 @@ public:
     struct FontReport {
         std::vector<std::string> missingFamilies;
         std::vector<MissingScriptFont> missingScripts;
+        // Every family the document's text names, installed or not, each
+        // once in the order it first appears - the "in this document"
+        // section of a font list (UltraCanvasFontPicker::SetDocumentFonts).
+        // Not part of IsEmpty: a document set in installed fonts has
+        // nothing to report.
+        std::vector<std::string> namedFamilies;
         bool IsEmpty() const { return missingFamilies.empty() && missingScripts.empty(); }
         bool operator==(const FontReport& other) const;
     };

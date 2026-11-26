@@ -13,6 +13,9 @@
 // chosen and the share. A new document starts with the Settings window's
 // font, size and page.
 //
+// Version: 0.6.0 - the font list is the framework's UltraCanvasFontPicker: every installed font, each
+//                  in itself, the document's fonts and the recent ones on top, a family's styles beside
+//                  it (a style sets bold and italic, a light or condensed one its face's family name)
 // Version: 0.5.0 - Home fits beside the view group at 1280 px: narrower style, font and size lists,
 //                  the lists and the alignment each one slot (a tool group), Paragraph and Styles as
 //                  icons; Insert's table, picture and link and Review's comment tools as icons
@@ -57,10 +60,10 @@ using namespace UltraCanvas;
 
 namespace {
 
-// The lists a new tab starts with; a font or size a document uses that is
-// not here joins its tab's list when the caret first reaches it. The empty
-// family is "Default font": text with no font of its own.
-const std::vector<std::string> kFonts = OfficeSettings::FontChoices();
+// The sizes a new tab's list starts with; a size a document uses that is
+// not here joins its tab's list when the caret first reaches it. (The font
+// list is every installed font; the empty family is "Default font": text
+// with no font of its own.)
 const std::vector<float> kSizes = OfficeSettings::FontSizeChoices();
 
 // "10.5", whatever the locale: the list reads the same as the size boxes
@@ -317,9 +320,8 @@ private:
     UltraCanvasButton* trackChanges_ = nullptr;
     UltraCanvasButton* showComments_ = nullptr;
     UltraCanvasDropdown* style_ = nullptr;
-    UltraCanvasDropdown* font_ = nullptr;
+    UltraCanvasFontPicker* font_ = nullptr;
     UltraCanvasDropdown* size_ = nullptr;
-    std::vector<std::string> fonts_ = kFonts;
     std::vector<float> sizes_ = kSizes;
 
     // Every tool acts on the document and then brings the toolbar into step:
@@ -354,13 +356,13 @@ private:
             edit->SetFocus(true);
         };
         style_ = style.get();
-        std::vector<std::string> fontNames = kFonts;
-        fontNames.front() = Tr("Default font");
-        auto font = bar->AddDropdownButton("doc-font", "", fontNames, nullptr);
-        font->SetTooltip(Tr("Font"));
-        font->size.width = CSSLayout::Dimension::Px(130);
-        font->onSelectionChanged = [this, edit](int index, const DropdownItem&) {
-            if (index >= 0 && index < static_cast<int>(fonts_.size())) edit->SetFontFamily(fonts_[static_cast<size_t>(index)]);
+        // Every installed font, each in itself; on top the fonts this
+        // document uses and the ones chosen last (the window's settings).
+        auto font = AddFontList(*bar, "doc-font", [this]() { return settings_; },
+                                [edit]() { return edit->GetFontReport().namedFamilies; });
+        font->SetDefaultFontEntry(Tr("Default font"));
+        font->onFontChosen = [this, edit](const FontPickerChoice& choice) {
+            ApplyFontChoice(*edit, choice);
             Sync();
             edit->SetFocus(true);
         };
@@ -644,17 +646,8 @@ private:
         if (sizePt <= 0.0f && !state.fontSizeMixed && editor_->GetCurrentHeadingLevel() == 0)
             sizePt = static_cast<float>(base.fontSize);
         if (font_) {
-            int index = -1;
-            if (!state.fontFamilyMixed) {
-                auto it = std::find(fonts_.begin(), fonts_.end(), family);
-                if (it == fonts_.end()) {
-                    fonts_.push_back(family);
-                    font_->AddItem(family);
-                    it = fonts_.end() - 1;
-                }
-                index = static_cast<int>(it - fonts_.begin());
-            }
-            font_->SetSelectedIndex(index, false);
+            if (state.fontFamilyMixed) font_->SetMixed();
+            else font_->SetCurrentFont(family);
         }
         if (size_) {
             int index = -1;

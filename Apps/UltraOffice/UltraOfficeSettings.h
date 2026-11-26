@@ -6,6 +6,8 @@
 // with Save(). No window or display is needed, so the model is tested on its
 // own (Tests/UltraOfficeSettingsTest.cpp).
 //
+// Version: 0.2.0 - the font lists: every installed font (FontChoices gone), the recent fonts kept
+//                  (GetRecentFonts / RememberRecentFonts)
 // Version: 0.1.0 - the Settings window's model: General (name, language, theme, recent files, reopening),
 //                  Saving (format, autosave, recovery copies, interval), Documents (font, size, page,
 //                  navigator, fit and width share), Spreadsheets (gridlines), Presentations (slide size,
@@ -89,16 +91,19 @@ public:
 
     // ===== DOCUMENTS =====
     // The font and size a new document's text has: "" is the editor's
-    // default font; 6 to 96 points, 12 by default.
-    // The fonts and sizes the lists offer ("" first: the default font).
-    static std::vector<std::string> FontChoices() {
-        return {"", "Ubuntu", "Arial", "Georgia", "Times New Roman", "Courier New", "Verdana"};
-    }
+    // default font, any installed family otherwise (the font lists are
+    // UltraCanvasFontPicker, every installed font); 6 to 96 points, 12 by
+    // default. The sizes the lists offer:
     static std::vector<float> FontSizeChoices() { return {8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72}; }
     std::string GetDocumentFont() const;
     void SetDocumentFont(const std::string& family);
     float GetDocumentFontSize() const;
     void SetDocumentFontSize(float points);
+    // The fonts chosen last in any font list, newest first: the lists'
+    // "Recent" section, shared by every tab. Kept: kMaxRecentFonts.
+    static constexpr int kMaxRecentFonts = 10;
+    std::vector<std::string> GetRecentFonts() const;
+    void SetRecentFonts(const std::vector<std::string>& families);
     PageSizeChoice GetPageSize() const;
     void SetPageSize(PageSizeChoice size);
     // The navigator beside a document (F5); every tab follows it.

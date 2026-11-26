@@ -2662,7 +2662,7 @@ jobs:
             ColorPickerDesignSelectorTest ColorPickerDragTest
             ColorPickerModelDropdownTest DialogCloseAllTest DialogEscapeTest
             DialogStackingTest DocumentNavigatorElementTest ElementPressTakenTest
-            ExitDuringWarmUpTest FilerPaneDragTest
+            ExitDuringWarmUpTest FilerPaneDragTest FontPickerElementTest
             FilerRescanKeepsThumbnailsTest
             ImageFileWatchDisplayTest LabelNaturalTextWidthTest
             LabelSelectionTest MediaViewerLoadingTest
