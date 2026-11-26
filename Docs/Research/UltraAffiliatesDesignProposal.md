@@ -59,7 +59,7 @@ it is reactivated.**
 | The operator is the network (§5.12) | The affiliate contracts with the operator, not with each merchant: one set of terms, one self-billed credit note a month, one payout, one tax relationship. The operator pays the base and the superaffiliate's share out of its own fee and passes the merchant's boost through. It is the only model in which a customer bound in the games shop can earn their affiliate money in the book shop. |
 | Two ways in, from one programme (§5.2, §5.4) | **Affiliates browse** every shop's products with what each pays - 5 %, or more where the merchant boosts - and take links. **Merchants raise the boost** on what they want sold. |
 | The binding is first-touch, and moves in one case only (§5.5) | The owner's rule. The first affiliate whose link brings a **new** customer - one who has never paid for anything in any shop - is that customer's referrer. Customers who are buying cannot be claimed by sending them a link. Decided 2026-11-26: a customer who has bought nothing for more than six months and then buys within two weeks of an affiliate's link is bound to that affiliate, whether they had a referrer before or not. |
-| A product link wins its product, last click, 90 days (§5.6) | The owner's override. A link to a product credits its affiliate for that product, bought within the window, and nothing else in the basket; the binding does not move. **A link and a code count for the same 90 days** (decided 2026-11-26; the store keeps a code for 30 today, `StoreSettings::kCodeDays`). |
+| A product link wins its product, last click, 90 days (§5.6) | The owner's override. A link to a product credits its affiliate for that product, bought within the window, and nothing else in the basket; the binding does not move. **A link and a code count for the same 90 days** (decided 2026-11-26; the store's `StoreSettings::kCodeDays` was raised from 30 to 90 the same day). |
 | One commission per sale, plus the superaffiliate's share (§5.15) | Decided 2026-11-26. An affiliate who brings in another affiliate - by a recruiting link, or because their referred customer becomes an affiliate - earns a percentage (10 % unless set otherwise) of that affiliate's commissions, on top, paid by the operator. One level up and no further, as the store's earlier scheme had it. |
 | A bound customer's purchase pays the base (§5.2) | "Every later purchase" pays the 5 % everywhere, because the operator pays it. The merchant's boost is for the affiliate who promoted the product with a link, and for no one else (decided 2026-11-26). |
 | Commissions are pending, then approved, then paid, with 5 % held back (§5.8) | A sale can be refunded, returned or charged back. A commission is approved 30 days after the sale, is taken back in proportion to a refund (as `Apps/UltraStoreAdmin` already does), and is paid monthly above a threshold. Decided 2026-11-26: 5 % of each commission is held back for six months against late refunds and chargebacks, and the affiliate's statistics show the amount held. |
@@ -137,13 +137,14 @@ build, because its accounts cannot be closed at all today (§3).
 |---|---|---|
 | An affiliate scheme, merchant-side | Partners with codes and a share of each sale made with them; **two tiers**: a recruiter earns a recruit share one level up, never further; QR codes and `go/<CODE>`, `join/<affiliate>` pages; a sales ledger with credits, reversals taken back in proportion, payouts recorded, a report of what is owed | `Apps/UltraStoreAdmin/core/Affiliates.{h,cpp}`, `Tests/UltraStoreAdmin/test_affiliates.cpp`, `Docs/UltraStoreAdmin/README.md` |
 | Codes in the catalog | `codes[]`: kind `discount` or `affiliate`, what it takes off, the apps, the validity, the partner's opaque id | `Docs/UltraStore/README.md`, *Affiliates and codes* |
-| Attribution in the store app | One code kept in the settings, in force **30 days**, sent with the checkout; `ultrastore://code/<CODE>` and `ultrastore://app/<id>?code=<CODE>` links | `Apps/UltraStore/core/StoreSettings.h` (`kCodeDays`) |
+| Attribution in the store app | One code kept in the settings, in force **90 days** (30 until 2026-11-26), sent with the checkout; `ultrastore://code/<CODE>` and `ultrastore://app/<id>?code=<CODE>` links | `Apps/UltraStore/core/StoreSettings.h` (`kCodeDays`) |
 | The portal, which replaces all of the above | One Django application for the store at `store.ultraos.eu`; it **decided to keep no compatibility** with the earlier services and desktop tools, which "were not in use" (2026-11-20). An order keeps the `code` sent with it and **takes nothing off and credits no one** (`code_applied=False`: "discount codes are not built"). The catalog the portal writes carries **no `codes[]`** | `Server/UltraStorePortal/README.md`, *Decisions*, *What comes next* 11; `billing/models.py` (`Order.code`), `billing/services.py` (`create_order`) |
 | Orders | One app per order, no buyer account on it (a purchase is reached by the order's secret); `Payment` rows for payments, refunds and chargebacks | `billing/models.py` |
 | Buyer accounts on orders | **Missing**, the portal's next step 3 | the portal's README, *What comes next* |
-| The split of a sale, tax invoices, payouts | **Missing**, the portal's next step 2 | idem |
+| The split of a sale | **Built 2026-11-26** (portal 0.7.0): every payment carries the store's fee of 15 % and the publisher's share, a reversal gives the fee back in proportion, `/console/sales/` shows the share | the portal's README, *Buying*; `billing/split.py` |
+| Tax invoices, VAT, payouts | **Missing**, the rest of the portal's next step 2. The fee is reckoned on the amount paid, not yet on the amount without VAT | the portal's README, *What comes next* |
 | One account for every shop | The portal as an OpenID Connect provider. Its `User` is an email, a name and a password: **no handle, no country, no closure** | the portal's README, *One sign-in for every service*; `accounts/models.py` |
-| A handle, and account deletion | **Only in the account service the portal is built to replace**, which the UltraAccount app still signs in to: a handle (3 to 32 letters, digits, dots, underscores); a deletion requested with the password, `deleting` for 30 days (signed in still, *cancel* restores it), then carried out - the row kept under its id with the email replaced. **The portal has neither**: no page and no code closes, deactivates or deletes an account | `Server/UltraStoreAccount/README.md`, *What a deletion does*; `Docs/UltraAccount/README.md` |
+| A handle, and account deletion | **Only in the account service the portal is built to replace**, which the UltraAccount app still signs in to: a handle (3 to 32 letters, digits, dots, underscores); a deletion requested with the password, `deleting` for 90 days (30 until 2026-11-26; signed in still, *cancel* restores it), then carried out - the row kept under its id with the email replaced. **The portal has neither**: no page and no code closes, deactivates or deletes an account | `Server/UltraStoreAccount/README.md`, *What a deletion does*; `Docs/UltraAccount/README.md` |
 | A phone number on the account | **Only in the replaced account service** (verified by a texted code). The portal's `User` has none and the portal sends no text messages | `Server/UltraStoreAccount/README.md`; no `phone` in the portal's code |
 | Click attribution in advertising | **Built, and the pattern to follow.** `POST /v1/checkout` takes `promote`, the token of the advertisement last clicked; `create_order` hands it to `promote.services.order_opened`, the paid order to `order_paid`; `promote.Attribution` is one row per order. Clicks go through `/go/<token>/`. Totals, never who; small numbers folded. The native store does not send the token yet | the portal's `billing/services.py`, `promote/models.py`, `urls.py`; `Docs/Research/UltraAdsDesignProposal.md` §4.9 |
 | The shops besides apps | Design variants only: games, marketplace (baskets with several sellers, delivery, returns), video, music, books (editions, a credit subscription) | `Docs/UltraStore/design/README.md` |
@@ -158,9 +159,11 @@ What this means for the design:
   operator's fee and the boost out of the merchant's proceeds; until the
   portal settles shares (next step 2) the programme can count and approve,
   not pay - as `UltraStoreAdmin` did before the payment service existed.
-  **The general shop fee is 15 %** (decided 2026-11-26), and it is not
-  built: the portal's code and README name no store fee, so the fee itself
-  is part of that step.
+  **The general shop fee is 15 %** (decided 2026-11-26) and the portal
+  has it since 0.7.0, written on every payment with the publisher's share
+  (`billing/split.py`). What the affiliate programme adds to that split is
+  its own two lines: the base and the superaffiliate's share out of the
+  fee, the boost out of the publisher's share.
 - **The rule of `UltraStoreAdmin` moves, its code does not.** The portal
   replaces the desktop tools; the two-tier credit, the proportional
   reversal and the go/join pages are the design this proposal keeps or
@@ -357,7 +360,8 @@ nothing else, unless the customer is won back with it (§5.5).
 **One window for links and codes: 90 days** (decided 2026-11-26). A click
 on a link and a code entered in the store both count for 90 days - for the
 product they name, and towards binding a new customer who signs up or first
-buys in that time. `StoreSettings::kCodeDays` is 30 today and becomes 90.
+buys in that time. `StoreSettings::kCodeDays` is 90 (raised from 30 on
+2026-11-26).
 The win-back's two weeks (§5.5) and the approval period's 30 days (§5.8)
 are different waits and stay as they are.
 
@@ -546,9 +550,10 @@ the operator can end a binding made by obvious collusion (§5.11).
 An account gets a `closed` state that is not a deletion: signed out, nothing
 sold to it, kept for **twelve months** and then erased unless reactivated.
 A deletion the person asks for outright has **90 days** of grace in which a
-cancel restores the account; the earlier service had 30, and the store's
-account page says 30 in two of its texts (`StoreAccountPage.cpp`), which
-change with it.
+cancel restores the account. The account service's default and the store's
+two texts were changed from 30 to 90 on 2026-11-26
+(`ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS`, `kDeletionGraceDays` in
+`Account.h`); the `closed` state is still to build.
 The binding rules above apply to both.
 
 **The affiliate's account.**
@@ -665,12 +670,13 @@ fixed amount per unit exists for the marketplace's hardware alone (§5.2).
   `referral.token` / `referral.at` keep the last `ultrastore://r/` link; both
   go with `POST /v1/checkout` (`{app, code, ref}`, beside the `promote`
   the checkout already takes for advertising).
-- **The store's code window goes from 30 to 90 days** (decided 2026-11-26):
-  `StoreSettings::kCodeDays`. The two texts that name the number
-  (`StoreWindow.cpp`) are built from the constant and follow it; the
-  store's README says 30 and is changed with it.
-- The store's account page promises "30 days" for a deletion in two texts
-  (`StoreAccountPage.cpp`); with D4 they say 90.
+- **The store's code window is 90 days** (decided and changed 2026-11-26):
+  `StoreSettings::kCodeDays`, with the two texts that name the number
+  (`StoreWindow.cpp`) built from the constant, the command line's help and
+  the store's README.
+- **A deletion's grace is 90 days** (changed 2026-11-26): the account
+  service's default, and the store's account page, whose two texts now take
+  the number from `kDeletionGraceDays` (`Account.h`).
 - `UltraStoreAdmin`'s partner list, two-tier credits, go/join pages and
   payouts are not migrated: the portal replaced the desktop tools with no
   compatibility kept, because they "were not in use" (the portal's README,
@@ -849,9 +855,9 @@ one ledger serves every shop. Models, in outline:
 | Phase | What | Needs first |
 |---|---|---|
 | 0 | The lawyer's and tax adviser's answers to L1-L4, L8, L9, L11, T1. Nothing is open with the owner (§9.1) | - |
-| 1 | **Product links in the app store**: affiliate profiles with a handle, **identified by a phone number and an ID**; **the base of 5 % and the merchant's boost**, saved by the Owner; the products with what each pays; `/r/` links, clicks, the `ref` on the checkout; attribution of a paid order to a product link; **recruiting links and the superaffiliate's share**; **block and ban with their record**; commissions pending and reversed; the dashboards; approval and payout marked by the operator by hand. The store's code window raised to 90 days. Affiliate **codes** with it or right after: the portal has to learn to publish and apply codes first (its next step 11) | a way to send a text message from the portal; the net price of a line (VAT is the portal's next step 2) |
+| 1 | **Product links in the app store**: affiliate profiles with a handle, **identified by a phone number and an ID**; **the base of 5 % and the merchant's boost**, saved by the Owner; the products with what each pays; `/r/` links, clicks, the `ref` on the checkout; attribution of a paid order to a product link; **recruiting links and the superaffiliate's share**; **block and ban with their record**; commissions pending and reversed; the dashboards; approval and payout marked by the operator by hand. Affiliate **codes** with it or right after: the portal has to learn to publish and apply codes first (its next step 11) | a way to send a text message from the portal; the net price of a line (VAT is the portal's next step 2) |
 | 2 | **The binding**: bind at sign-up and first order, the **win-back** after six months, the base on every bound customer's purchase, the customer's "Referred by"; a referred customer who becomes an affiliate gets their referrer as superaffiliate; **closing and reactivating an account** (twelve months closed, 90 days of grace for a deletion), which the portal does not have, with the binding suspended and restored | buyer accounts on orders (portal next step 3) |
-| 3 | **Money and the other shops**: automatic approval after the approval period, **the 5 % holdback and its release**, statements, self-billed credit notes, Skrill payouts, the boost deducted in the merchant's settlement; baskets with several sellers, **fixed boosts for hardware**, physical goods' approval from delivery, subscriptions' renewals; the native store's `ultrastore://r/` and `ref`; UltraAccount's *Affiliate* section | the settlement of shares and tax invoices (next step 2), the operator's fee among them; the shops themselves |
+| 3 | **Money and the other shops**: automatic approval after the approval period, **the 5 % holdback and its release**, statements, self-billed credit notes, Skrill payouts, the boost deducted in the merchant's settlement; baskets with several sellers, **fixed boosts for hardware**, physical goods' approval from delivery, subscriptions' renewals; the native store's `ultrastore://r/` and `ref`; UltraAccount's *Affiliate* section | VAT, tax invoices and payouts (the rest of next step 2; the fee and the split are built); the shops themselves |
 | 4 | **Beyond the portal**: the conversions call for UltraPress shops and services; fraud scoring on the click aggregates | phase 3 |
 
 Phase 1 is useful alone: every product has affiliates selling it without a
@@ -1026,7 +1032,7 @@ outside sources, as far as this environment reaches.
 | A two-tier, code-based scheme in `UltraStoreAdmin`; the third level earns nothing; a partner may use their own code | **Confirmed** | `Affiliates.h` (`CreditsFor`), `test_affiliates.cpp` (lines 2, 123), `Docs/UltraStoreAdmin/README.md` |
 | Percentages rounded to the cent, half up | **Confirmed** | `PercentOf`: `(cents * percent + 50) / 100` |
 | Refunds and chargebacks take the credits back in proportion; payouts are recorded | **Confirmed** | `Finance.cpp` (`Proportion`), `AdminDatabase.h` (`PayoutRecord`, schema 5) |
-| The store keeps one code for 30 days; `ultrastore://code/` and `ultrastore://app/<id>?code=` | **Confirmed** | `StoreSettings.h` (`kCodeDays = 30`), `StoreWindow.cpp` (line 902) |
+| The store keeps one code for 30 days (90 since 2026-11-26); `ultrastore://code/` and `ultrastore://app/<id>?code=` | **Confirmed** as it stood | `StoreSettings.h` (`kCodeDays = 30`), `StoreWindow.cpp` (line 902) |
 | The portal replaces the earlier services and tools; no compatibility; decided 2026-11-20 | **Confirmed**, and the reason found: they "were not in use" | the portal's README, *Decisions* |
 | An order keeps the code, takes nothing off, credits no one | **Confirmed** | `create_order`: `code_applied=False` |
 | One app per order; no buyer account on it | **Confirmed** | `billing/models.py`: the only relations are `Order.app` and `Payment.order` |
@@ -1073,9 +1079,9 @@ version contradicted itself, all corrected above:
 | Self-billing, §19 UStG, DAC7 | **Still unverified** for affiliates; §19 changed on 1 January 2025 | §7, T1 and T2 |
 | A ban owes the user its reasons (checked 2026-11-26, for N7) | **Confirmed** as a rule for hosting services: DSA Art. 17, covering suspended accounts and stopped payments, with the facts and circumstances in the statement; whether an affiliate profile falls under it is L9 | the Commission's DSA transparency pages; the regulation's Article 17 |
 | A copy of an ID may be kept (checked 2026-11-26, for N6) | **Corrected before it was written**: only with consent and marked as a copy; a note of the check is what the authorities advise | German data-protection and consumer bodies on §20(2) PAuswG |
-| The shop fee is 15 % (checked 2026-11-26, for N9 and N11) | **Decided by the owner; not in the repository.** No store fee is named anywhere in the portal's code or README, or in the store's and the operator tool's documents | a search of those files; §3 |
+| The shop fee is 15 % (checked 2026-11-26, for N9 and N11) | **Decided by the owner, and built the same day** (portal 0.7.0, `STORE_FEE_PERCENT`, `billing/split.py`). When it was checked, no store fee was named anywhere in the portal's code or README, or in the store's and the operator tool's documents | a search of those files; §3 |
 | The portal's account has a phone number (checked 2026-11-26, for N6) | **No**: only the replaced account service has one | no `phone` in the portal's code |
-| The store's texts follow `kCodeDays` (checked 2026-11-26, for N3) | **Confirmed** for the two texts in `StoreWindow.cpp`; the account page's "30 days" for a deletion is written out twice | `StoreWindow.cpp` lines 898, 1109; `StoreAccountPage.cpp` lines 853, 866 |
+| The store's texts follow `kCodeDays` (checked 2026-11-26, for N3) | **Confirmed** for the two texts in `StoreWindow.cpp`; the account page's "30 days" for a deletion was written out twice, and is `kDeletionGraceDays` (90) since | `StoreWindow.cpp` lines 898, 1109; `StoreAccountPage.cpp` lines 853, 866 |
 
 Sources read: <https://affiliate-program.amazon.com/help/node/topic/G9SMD8TQHFJ7728F>,
 <https://www.awin.com/gb/pricing/advertisers>,

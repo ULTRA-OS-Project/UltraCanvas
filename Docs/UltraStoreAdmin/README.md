@@ -25,6 +25,18 @@ store itself is [`Docs/UltraStore/README.md`](../UltraStore/README.md).
 | Translations | **UltraAI**, the `ITranslator` of the module, with the provider the settings name (`ai.provider`: `qwen`, `llama-cpp`, a configured endpoint; empty follows the routing policy, local first). The creator writes at least one language; `translate` fills every language of `texts.languages` (the official languages, by default) the component lacks, from its `source_language`, and lists them under `machine_translated`. A text a person wrote is never overwritten; a machine one is redone on `--redo`. |
 | Which languages? | The EU's 24 official languages, the EFTA countries' and the UK's, then the other markets the apps ship to (Ukrainian, Turkish, Serbian, Russian, Arabic, Hebrew, Hindi, Indonesian, Japanese, Korean, Thai, Vietnamese, Chinese simplified and traditional, Brazilian Portuguese): `Translation.cpp`, narrowed or widened by the setting. |
 
+> **Affiliates: where this stands (2026-11-26).** The partners, the two
+> tiers and the ledger described here are what this tool does, and they are
+> the earlier scheme. The owner has decided **UltraAffiliates**
+> ([`Docs/Research/UltraAffiliatesDesignProposal.md`](../Research/UltraAffiliatesDesignProposal.md))
+> for every shop: run by the operator in the store portal
+> (`Server/UltraStorePortal`, which replaces this tool), free for the
+> merchant, 5 % of every affiliate sale from the store's fee plus a boost
+> the merchant may add, and a superaffiliate in place of the recruit share.
+> A merchant keeps no partner list and no ledger of its own there. Nothing
+> here is migrated: the portal kept no compatibility with this tool. The
+> store keeps a code for 90 days now (it was 30).
+
 ## The pieces
 
 ```
@@ -340,6 +352,8 @@ store's README, *Packaging an application for the store*).
    files reach the server?*).
 4. **Affiliates and codes** (*Decisions*): the partners, two tiers, the
    codes in the catalog, QR codes and links, the ledger and the report.
+   Built; superseded as the design by UltraAffiliates (the note above *The
+   pieces*).
 5. **Payment**: Paysafe with Skrill Quick Checkout (the store's README,
    *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
    sales into the ledger, the catalog naming the service from the

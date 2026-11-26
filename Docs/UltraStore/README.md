@@ -347,6 +347,22 @@ runs before any language is loaded.
 
 ### Affiliates and codes
 
+> **Where this stands (2026-11-26).** This section describes the scheme the
+> native store and the admin backend were built with, and it is what their
+> code does today. It is **not the programme going forward**. The owner has
+> decided **UltraAffiliates**
+> ([`Docs/Research/UltraAffiliatesDesignProposal.md`](../Research/UltraAffiliatesDesignProposal.md)):
+> one programme for every shop, in the portal, free for the merchant; 5 % of
+> every affiliate sale paid from the store's fee of 15 %, plus a boost a
+> merchant may add; a referred customer bound to their affiliate; and a
+> superaffiliate in place of the recruit share below. None of that is built.
+> The portal, which replaces the admin backend, publishes no codes and
+> applies none at a checkout yet; what it has is the store's fee and the
+> split of a sale (its README, *Buying*).
+> **What carries over** from this section: the code kept by the store, the
+> `ultrastore://` links and the QR codes. **What does not:** the two tiers
+> with their shares, and a merchant's own partner list and ledger.
+
 A partner brings buyers with a **code** - typed into the store's Discover
 page, or carried by the partner's **QR code** and link - and earns a share
 of each sale made with it; a **discount code** without a partner takes
@@ -370,9 +386,10 @@ something off the price. The scheme is decided as follows.
   today and what it is for; `DiscountedPrice` and `PriceLabel` show the
   price with it ("23.92 EUR (was 29.90)"), to the cent, never below 0.00,
   only in the app's currency. The code entered is kept in the settings
-  (`code.value`, `code.enteredAt`) and stays **in force for 30 days**
-  (`StoreSettings::kCodeDays`): a buyer who arrived through a partner's
-  link and buys within that time credits the partner. `ultrastore code
+  (`code.value`, `code.enteredAt`) and stays **in force for 90 days**
+  (`StoreSettings::kCodeDays`; 30 until 2026-11, raised to the one window a
+  link and a code share in UltraAffiliates): a buyer who arrived through a
+  partner's link and buys within that time credits the partner. `ultrastore code
   <CODE>` does the same from the command line; `code clear` forgets it.
 - **Links.** `ultrastore://code/<CODE>` opens the store with the code and
   `ultrastore://app/<id>?code=<CODE>` an app's details with it; the store
@@ -909,7 +926,7 @@ this section settles where it lives, and what of it is built.
 | What is the second factor? | **TOTP** - UltraAuthenticator or any authenticator app - **with recovery codes** (eight, hashed, each good once, shown once; a new set from Security). The service asks for it at sign-in and at a password reset; the operator can reset it after checking the person's identity another way, and the person is told. Passkeys are drawn and come later: WebAuthn needs the platform's authenticator on each machine. |
 | What does the operator see, and do? | **Accounts as far as the store needs them**: the email masked, the name and handle, the country, the state, two-factor on or off, the devices and licences counted, the requests; one user's file with the devices, the licences without their tokens, the notices, the archives, the sign-ins and the history. Never the password hash, the year of birth, a payment method, the listening and watch history. The actions - a notice, sign out everywhere, reset two-factor, release the archive, suspend with a reason and days, reinstate, delete - are rows in the account service's own hash-chained audit log, and a notice to the person where one is due. A deletion the person did not ask for is refused. |
 | How does the operator reach a buyer, and a merchant? | **Customer messaging is a notice on the account** (decided 2026-11-19): written once by the operator (`POST /v1/users/{id}/notice`: notice, security, warning, suspension, information request), kept on the account under Notifications until read, and sent by mail. The service itself writes the security notices (a new sign-in, a password change, a recovery code used). **A merchant never reaches a buyer directly**: the merchant has no buyer identity (the marketplace service hides the reporter, the payment service names no account). A merchant's message to a buyer goes through the marketplace service with the order as the key, relayed by the operator's services into a notice on the account the order belongs to, the buyer's identity never given to the merchant - decided, built later, once the payment service records the account at checkout. Until then the report's outcome line is the merchant-to-buyer channel, as today. |
-| What does the person take with them, and how does it end? | **A data archive and a grace.** The archive is everything the account holds of the person as one JSON file, built at once when asked for, released by the operator within a day, downloaded once. The deletion is asked for with the password, carried out after 30 days unless cancelled - by the daily maintenance, or by the operator on the person's request - and leaves the row under its id with the email replaced, so the audit rows still name a target and the address is free again; the invoices are the payment service's and stay as the law asks. |
+| What does the person take with them, and how does it end? | **A data archive and a grace.** The archive is everything the account holds of the person as one JSON file, built at once when asked for, released by the operator within a day, downloaded once. The deletion is asked for with the password, carried out after 90 days unless cancelled (the service's `ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS`; 30 until 2026-11) - by the daily maintenance, or by the operator on the person's request - and leaves the row under its id with the email replaced, so the audit rows still name a target and the address is free again; the invoices are the payment service's and stay as the law asks. |
 | Does the store need an account to install? | **No.** A free app installs without one, as before; an account is for what follows the person. The store's window shows *Sign in* only when the catalog names the service. |
 
 **Built so far** (`Server/UltraStoreAccount`, its README): the service with
@@ -1026,7 +1043,8 @@ UltraMail on it (`UltraCanvas-runtime-store-<os>-<arch>`).
    catalog (schema 2, `trusted_keys`, see *Keys*).
 6. **Affiliates and codes** (*Affiliates and codes*): discount and
    affiliate codes in the catalog, QR codes and links, two-tier partners in
-   the admin backend with the sales ledger and the report.
+   the admin backend with the sales ledger and the report. Built; superseded
+   as the design by UltraAffiliates (the note at the head of that section).
 7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout. The
    payment service (`Server/UltraStorePay`): the checkout, the status
    report, the licence, the receipt, the signed URLs for `restricted/`, the
