@@ -689,7 +689,9 @@ float UltraCanvasRichTextEdit::FitZoom() const {
     const float height = bounds.height - 2 * style.padding;
     if (width <= 1.0f || height <= 1.0f) return 0.0f;
     const RichPageSetup page = EffectivePageSetup();
-    float fit = width / (Px(page.widthPt) + 2.0f * style.pageGap);
+    // WidthShare: the page alone, not the desk, is the share of the width.
+    float fit = zoomFit == ZoomFit::WidthShare ? width * zoomWidthShare / Px(page.widthPt)
+                                               : width / (Px(page.widthPt) + 2.0f * style.pageGap);
     if (zoomFit == ZoomFit::WholePage) fit = std::min(fit, height / (Px(page.heightPt) + 2.0f * style.pageGap));
     return std::clamp(fit, minZoom, maxZoom);
 }
@@ -698,6 +700,12 @@ void UltraCanvasRichTextEdit::SetZoomFit(ZoomFit fit) {
     zoomFit = fit;
     visibleAreaDirty = true;
     RequestRedraw();
+}
+
+void UltraCanvasRichTextEdit::ZoomToWidthShare(float share) {
+    if (!(share > 0.0f)) return;
+    zoomWidthShare = std::clamp(share, 0.1f, 1.0f);
+    SetZoomFit(ZoomFit::WidthShare);
 }
 
 void UltraCanvasRichTextEdit::SetZoom(float factor) {

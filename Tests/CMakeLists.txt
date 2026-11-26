@@ -5673,6 +5673,51 @@ if(BUILD_ULTRAOFFICE AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     message(STATUS "    Test registered: UltraOfficeTemplateWindowTest")
 endif()
 
+# ===== ULTRAOFFICE SETTINGS TESTS =====
+# The settings' model (Apps/UltraOffice/UltraOfficeSettings.h) with no
+# window: defaults, ranges, a save and a fresh load. And in the real window
+# (build.yml's framework window tests run it under Xvfb): each kind's view
+# group at the toolbar's right end, staying whole in a narrow window; the
+# document's fits, the text width's share of the view; the Settings window's
+# pages, a change saved, applied at once and read back.
+if(BUILD_ULTRAOFFICE)
+    message(STATUS "  Building UltraOfficeSettingsTest...")
+    add_executable(UltraOfficeSettingsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraOfficeSettingsTest.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraOffice/UltraOfficeSettings.cpp
+    )
+    target_include_directories(UltraOfficeSettingsTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/Apps/UltraOffice)
+    target_compile_features(UltraOfficeSettingsTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraOfficeSettingsTest PRIVATE UltraCanvas)
+    set_target_properties(UltraOfficeSettingsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOfficeSettingsTest COMMAND UltraOfficeSettingsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraOfficeSettingsTest")
+endif()
+if(BUILD_ULTRAOFFICE AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    message(STATUS "  Building UltraOfficeSettingsWindowTest...")
+    add_executable(UltraOfficeSettingsWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraOfficeSettingsWindowTest.cpp
+        ${_ultraOfficeSources}
+    )
+    target_include_directories(UltraOfficeSettingsWindowTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/Apps/UltraOffice ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(UltraOfficeSettingsWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraOfficeSettingsWindowTest PRIVATE UltraCanvas)
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraOfficeSettingsWindowTest PRIVATE fmt::fmt)
+    endif()
+    set_target_properties(UltraOfficeSettingsWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOfficeSettingsWindowTest COMMAND UltraOfficeSettingsWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraOfficeSettingsWindowTest")
+endif()
+
 # ===== SPREADSHEET WORKBOOK ROUND-TRIP TEST =====
 # What a sheet holds besides its cells - frozen panes, hidden rows and columns,
 # named ranges of the workbook and of a sheet, the auto-filter, the print area

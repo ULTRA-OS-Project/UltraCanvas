@@ -28,6 +28,8 @@
 //   player->onShowEnd = []() { /* close the show's window */ };
 //   player->Start(0);
 //
+// Version: 1.1.0 - StartSlideShow(..., showOnSecondScreen): the show on the first monitor, the presenter
+//                  view on the second, when false
 // Version: 1.0.0 - transitions (Fade, Push, Wipe, Split, Cover, Zoom), timings, a slide by number, black and
 //                  white screens; the presenter view; StartSlideShow on two monitors
 // Last Modified: 2026-11-25
@@ -259,11 +261,12 @@ struct SlideShowWindows {
 
 // Plays `deck` from `fromSlide`: with two monitors or more
 // (UltraCanvasDesktopShell::ListScreens) the show full screen on the second
-// and, with `presenterView`, the presenter view full screen on the first;
-// with one, the show alone full screen. Null when no window could be made.
-// Where the platform places windows itself (Wayland) or lists no monitors
-// (macOS for now) the windows go where it puts them.
+// and, with `presenterView`, the presenter view full screen on the first -
+// the other way round with `showOnSecondScreen` false; with one, the show
+// alone full screen. Null when no window could be made. Where the platform
+// places windows itself (Wayland) or lists no monitors (macOS for now) the
+// windows go where it puts them.
 std::shared_ptr<SlideShowWindows> StartSlideShow(std::shared_ptr<PptxPresentation> deck, int fromSlide = 0,
-                                                 bool presenterView = true);
+                                                 bool presenterView = true, bool showOnSecondScreen = true);
 
 } // namespace UltraCanvas

@@ -6,8 +6,15 @@
 // pictures, and every change undone and redone. A shape's text is edited in
 // place, as plain lines, in a text area laid over the shape at the slide's
 // zoom (the rich in-place editor comes with Phase 4). The show runs full
-// screen in a window of its own; PDF and print draw the same slides.
+// screen in a window of its own; PDF and print draw the same slides. At the
+// toolbar's right end the view group: normal, the slide sorter, the notes,
+// the fitted slide and the zoom.
 //
+// Version: 0.9.0 - Text and Arrange fit beside the view group at 1280 px: narrower font and size lists,
+//                  the shapes' alignment and distribution one slot (a tool group), group and ungroup as icons
+// Version: 0.8.0 - the view group (normal, slide sorter, notes, fit the slide, zoom out, the zoom level,
+//                  zoom in) replaces the View tab; a new deck's slide size and the show's monitors from
+//                  the settings
 // Version: 0.7.0 - an Arrange tab with group / ungroup, align and distribute; a Format tab with crop,
 //                  reset crop and the chart's data (a small spreadsheet in a dialog, also on a
 //                  double-click); a View tab with the slide sorter and the notes pane under the slide
@@ -24,6 +31,7 @@
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeHost.h"
+#include "UltraOfficeSettings.h"
 #include "UltraOfficeToolbar.h"
 
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"   // PrintDocumentWithDialog
@@ -47,6 +55,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace UltraOffice {
 
@@ -158,7 +167,7 @@ public:
         BuildArrange();
         BuildFormat();
         BuildShow();
-        BuildView();
+        BuildViewGroup();
     }
 
     ~PresentationHost() override {
@@ -171,10 +180,18 @@ public:
     OfficeKind GetKind() const override { return OfficeKind::Presentation; }
     std::shared_ptr<UltraCanvasUIElement> GetContent() override { return content_; }
     const std::vector<CommandTab>& GetCommandTabs() override { return tabs_; }
+    std::shared_ptr<UltraCanvasToolbar> GetViewToolbar() override { return viewBar_; }
+    void AttachSettings(UltraCanvasAppSettings* settings) override { settings_ = settings; }
+
+    // The slide's zoom: 100 % is the slide fitting the space.
+    void ZoomIn() override { SetSlideZoom(edit_->GetZoom() * 1.25); }
+    void ZoomOut() override { SetSlideZoom(edit_->GetZoom() / 1.25); }
+    void ZoomToActualSize() override { SetSlideZoom(1.0); }
 
     void NewBlank() override {
         auto deck = std::make_shared<PptxPresentation>();
-        deck->slideWidth = 12192000;   // 16:9
+        const bool standard = settings_ && OfficeSettings(*settings_).GetSlideSize() == SlideSizeChoice::Standard;
+        deck->slideWidth = standard ? 9144000 : 12192000;   // 10 x 7.5 inches (4:3), or 13.33 x 7.5 (16:9)
         deck->slideHeight = 6858000;
         // A title slide: the title and, under it, the subtitle.
         PptxSlide slide = PptxSlideFromLayout(*deck, -1);
@@ -272,6 +289,9 @@ private:
     UltraCanvasButton* sorterView_ = nullptr;
     UltraCanvasButton* notesTool_ = nullptr;
     UltraCanvasButton* crop_ = nullptr;
+    UltraCanvasAppSettings* settings_ = nullptr;   // the window's
+    std::shared_ptr<UltraCanvasToolbar> viewBar_;
+    UltraCanvasDropdown* zoomBox_ = nullptr;
     std::shared_ptr<InPlaceRichText> text_;
     int textShape_ = -1;      // the shape whose text is open; -1: none
     int textRow_ = -1, textCol_ = -1;   // a table's cell; -1: the shape's own text
@@ -471,28 +491,23 @@ private:
 
     void BuildArrange() {
         auto bar = MakeToolbar("office-slides-arrange");
-        AddTool(*bar, "slides-group", Tr("Group"), "artcreator/group.svg", Tr("The selected shapes as one group (Ctrl+G)"),
+        AddTool(*bar, "slides-group", "", "artcreator/group.svg", Tr("Group: the selected shapes as one group (Ctrl+G)"),
                 Act([](UCSlideDeckEditor& e) { e.GroupSelection(); }));
-        AddTool(*bar, "slides-ungroup", Tr("Ungroup"), "artcreator/ungroup.svg",
-                Tr("The selected group taken apart (Ctrl+Shift+G)"), Act([](UCSlideDeckEditor& e) { e.UngroupSelection(); }));
+        AddTool(*bar, "slides-ungroup", "", "artcreator/ungroup.svg",
+                Tr("Ungroup: the selected group taken apart (Ctrl+Shift+G)"), Act([](UCSlideDeckEditor& e) { e.UngroupSelection(); }));
         bar->AddSeparator();
         // Lined up with each other, or with the slide when one is selected.
-        AddTool(*bar, "slides-align-left", "", "artcreator/align-left.svg", Tr("Align left edges"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Left); }));
-        AddTool(*bar, "slides-align-centre", "", "artcreator/align-hcentre.svg", Tr("Align centres"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Centre); }));
-        AddTool(*bar, "slides-align-right", "", "artcreator/align-right.svg", Tr("Align right edges"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Right); }));
-        AddTool(*bar, "slides-align-top", "", "artcreator/align-top.svg", Tr("Align tops"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Top); }));
-        AddTool(*bar, "slides-align-middle", "", "artcreator/align-vcentre.svg", Tr("Align middles"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Middle); }));
-        AddTool(*bar, "slides-align-bottom", "", "artcreator/align-bottom.svg", Tr("Align bottoms"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Bottom); }));
-        AddTool(*bar, "slides-distribute-h", "", "artcreator/distribute-h.svg", Tr("Distribute horizontally"),
-                Act([](UCSlideDeckEditor& e) { e.DistributeSelection(true); }));
-        AddTool(*bar, "slides-distribute-v", "", "artcreator/distribute-v.svg", Tr("Distribute vertically"),
-                Act([](UCSlideDeckEditor& e) { e.DistributeSelection(false); }));
+        // One slot: the alignment picked last; resting the pointer on it
+        // shows every alignment and the two distributions.
+        AddActionGroup(*bar, "slides-align", {
+            {"slides-align-left", "artcreator/align-left.svg", Tr("Align left edges"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Left); })},
+            {"slides-align-centre", "artcreator/align-hcentre.svg", Tr("Align centres"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Centre); })},
+            {"slides-align-right", "artcreator/align-right.svg", Tr("Align right edges"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Right); })},
+            {"slides-align-top", "artcreator/align-top.svg", Tr("Align tops"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Top); })},
+            {"slides-align-middle", "artcreator/align-vcentre.svg", Tr("Align middles"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Middle); })},
+            {"slides-align-bottom", "artcreator/align-bottom.svg", Tr("Align bottoms"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Bottom); })},
+            {"slides-distribute-h", "artcreator/distribute-h.svg", Tr("Distribute horizontally"), Act([](UCSlideDeckEditor& e) { e.DistributeSelection(true); })},
+            {"slides-distribute-v", "artcreator/distribute-v.svg", Tr("Distribute vertically"), Act([](UCSlideDeckEditor& e) { e.DistributeSelection(false); })}});
         bar->AddSeparator();
         AddTool(*bar, "slides-front", Tr("Bring to front"), "", Tr("In front of every other shape"),
                 Act([](UCSlideDeckEditor& e) { e.BringToFront(); }));
@@ -539,22 +554,37 @@ private:
         tabs_.push_back({Tr("Format"), bar});
     }
 
-    // The slide being edited or every slide in a grid; the notes under it.
-    void BuildView() {
-        auto bar = MakeToolbar("office-slides-view");
-        normalView_ = AddToggleTool(*bar, "slides-view-normal", Tr("Normal"), "", Tr("The slide being edited, the slides beside it"),
+    // ===== THE VIEW GROUP =====
+    // normal | slide sorter | notes | fit the slide | zoom out | [zoom] | zoom in
+    void BuildViewGroup() {
+        viewBar_ = MakeViewToolbar("office-slides-view");
+        viewBar_->AddSeparator();
+        normalView_ = AddToggleTool(*viewBar_, "slides-view-normal", "", "office/view-normal.svg",
+                                    Tr("Normal: the slide being edited, the slides beside it"),
                                     [this]() { SetView(SlideEditView::Normal); }).get();
-        sorterView_ = AddToggleTool(*bar, "slides-view-sorter", Tr("Slide sorter"), "artcreator/grid.svg",
-                                    Tr("Every slide in a grid, to order, duplicate, hide and delete them"),
+        sorterView_ = AddToggleTool(*viewBar_, "slides-view-sorter", "", "artcreator/grid.svg",
+                                    Tr("Slide sorter: every slide in a grid, to order, duplicate, hide and delete them"),
                                     [this]() { SetView(SlideEditView::Sorter); }).get();
-        bar->AddSeparator();
-        notesTool_ = AddToggleTool(*bar, "slides-view-notes", Tr("Notes"), "desktop/notes.svg",
-                                   Tr("The speaker notes under the slide"), [this]() {
+        notesTool_ = AddToggleTool(*viewBar_, "slides-view-notes", "", "office/notes.svg",
+                                   Tr("Notes: the speaker notes under the slide"), [this]() {
                                        notesWanted_ = !notesWanted_;
                                        SyncView();
                                    }).get();
-        tabs_.push_back({Tr("View"), bar});
+        viewBar_->AddSeparator();
+        AddTool(*viewBar_, "slides-fit", "", "office/fit-slide.svg", Tr("Fit the slide (Ctrl+0)"),
+                [this]() { SetSlideZoom(1.0); });
+        AddTool(*viewBar_, "slides-zoomout", "", "menu/zoom-out.svg", Tr("Zoom out (Ctrl+-)"), [this]() { ZoomOut(); });
+        zoomBox_ = AddPercentBox(*viewBar_, "slides-zoom", ZoomLevelChoices(), 25, 800,
+                                 Tr("Zoom level: 100 % is the slide fitting the space"), Tr("Zoom"), window_,
+                                 [this](int percent) { SetSlideZoom(percent / 100.0); }).get();
+        AddTool(*viewBar_, "slides-zoomin", "", "menu/zoom-in.svg", Tr("Zoom in (Ctrl++)"), [this]() { ZoomIn(); });
         SyncView();
+    }
+
+    void SetSlideZoom(double zoom) {
+        edit_->SetZoom(zoom);
+        SyncView();
+        edit_->SetFocus(true);
     }
 
     void SetView(SlideEditView view) {
@@ -572,6 +602,7 @@ private:
         if (sorterView_) sorterView_->SetPressed(sorter);
         if (notesTool_) notesTool_->SetPressed(notesWanted_);
         if (crop_) crop_->SetPressed(edit_->IsCropping());
+        if (zoomBox_) ShowPercent(*zoomBox_, ZoomLevelChoices(), static_cast<int>(std::lround(edit_->GetZoom() * 100.0)));
         ShowNotes(notesWanted_ && !sorter);
     }
 
@@ -780,6 +811,7 @@ private:
         auto font = bar->AddDropdownButton("slides-font", "", fonts, nullptr);
         font->SetTooltip(Tr("Font"));
         font->SetPlaceholderText(Tr("Font"));
+        font->size.width = CSSLayout::Dimension::Px(130);
         font->onSelectionChanged = [this, fonts](int index, const DropdownItem&) {
             if (index < 0 || index >= static_cast<int>(fonts.size())) return;
             const std::string family = fonts[static_cast<size_t>(index)];
@@ -792,6 +824,7 @@ private:
         auto size = bar->AddDropdownButton("slides-size", "", sizeNames, nullptr);
         size->SetTooltip(Tr("Font size"));
         size->SetPlaceholderText(Tr("Size"));
+        size->size.width = CSSLayout::Dimension::Px(64);
         size->onSelectionChanged = [this, sizes](int index, const DropdownItem&) {
             if (index < 0 || index >= static_cast<int>(sizes.size())) return;
             const float pt = sizes[static_cast<size_t>(index)];
@@ -807,6 +840,7 @@ private:
         auto colour = bar->AddDropdownButton("slides-colour", "", colourNames, nullptr);
         colour->SetTooltip(Tr("Text colour"));
         colour->SetPlaceholderText(Tr("Colour"));
+        colour->size.width = CSSLayout::Dimension::Px(104);
         UltraCanvasDropdown* colourBox = colour.get();
         colour->onSelectionChanged = [this, colours, colourBox](int index, const DropdownItem&) {
             if (index < 0 || index >= static_cast<int>(colours.size())) return;
@@ -1034,7 +1068,11 @@ private:
         CloseText(true);
         CommitNotes();
         if (show_) return;
-        show_ = StartSlideShow(Editor().GetDeck(), fromSlide, true);
+        // With two monitors: the show on the one the settings say, the
+        // presenter view on the other unless they turn it off.
+        const bool presenter = !settings_ || OfficeSettings(*settings_).GetPresenterView();
+        const bool second = !settings_ || OfficeSettings(*settings_).GetShowOnSecondScreen();
+        show_ = StartSlideShow(Editor().GetDeck(), fromSlide, presenter, second);
         if (!show_) return;
         SlideShowWindows* raw = show_.get();
         show_->onEnd = [this, raw]() {
@@ -1050,6 +1088,7 @@ private:
     void Sync() {
         SyncText();
         if (crop_) crop_->SetPressed(edit_->IsCropping());
+        if (zoomBox_) ShowPercent(*zoomBox_, ZoomLevelChoices(), static_cast<int>(std::lround(edit_->GetZoom() * 100.0)));
         const auto& editor = Editor();
         if (hidden_) {
             const PptxSlide* slide = editor.CurrentSlide();
