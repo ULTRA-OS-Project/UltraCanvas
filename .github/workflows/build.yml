@@ -2670,6 +2670,7 @@ jobs:
             PopupOwnWindowTest RichTextEditElementTest SessionLockTest
             TabPillStyleScreenshotTest TagInputGrowTest
             TextAreaAutoCompleteTest TextAreaDetachedTest
+            TextAreaMarkdownCaretLineTest TextAreaMarkdownSelectionTest
             TextAreaSearchHighlightTest TextAreaSpellCheckTest
             TextAreaSyntaxStateTest TextMetricsScreenshotTest
             TimecodeFieldElementTest ToolGroupButtonTest TooltipOwnWindowTest
