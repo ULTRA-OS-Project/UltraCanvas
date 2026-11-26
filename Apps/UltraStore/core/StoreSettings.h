@@ -32,6 +32,9 @@ namespace UltraStore {
 struct StoreSettings {
     std::string channel = "stable";       // "stable" or "beta"
     std::string language;                 // "de"; empty: the system's (SystemLanguage())
+    // Where the buyer is, for the tax in a price: "AT"; empty: the account's
+    // country, else the region of the system's language (Purchase.h, BuyerCountry).
+    std::string country;
     std::vector<std::string> servers;     // base URLs, tried in order; empty: the built-in ones
     std::vector<std::string> extraKeys;   // hex public keys the user added
     std::string accountUrl;               // the account service to sign in to; empty: the catalog's (account_url)

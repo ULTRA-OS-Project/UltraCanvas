@@ -218,11 +218,22 @@ does the purchase:
 
 | Step | Who | What |
 |---|---|---|
-| 1 | the store | `POST /v1/checkout {app, code}`: an order priced from the same signed catalog the stores read, with the code in force applied the way the store showed it (*Affiliates and codes*) |
+| 1 | the store | `POST /v1/checkout {app, code, country}`: an order priced from the same signed catalog the stores read, with the code in force applied the way the store showed it (*Affiliates and codes*), and the buyer's country, which decides the VAT in the price (below) |
 | 2 | the store | opens the order's `checkout_url` in the browser: the Quick Checkout form, submitted to `pay.skrill.com` with the order as `transaction_id` |
 | 3 | Skrill | posts the status report to the service, signed with the secret word (`md5sig`); the service checks the signature, the amount and the currency; status 2 pays the order, issues the licence and numbers the receipt - a repeat changes nothing, a forgery is refused |
 | 4 | the store | polls the order with its secret until it is paid, keeps the licence, and fetches the paid app's package through a signed URL that lives ten minutes (`restricted/`, *Where the server is reached*) |
 | 5 | the admin backend | fetches the sales (`GET /v1/sales?since=`) and records each in its ledger with the partners' credits, one level up and no further; fetches the refunds and chargebacks (`GET /v1/reversals?since=`) and takes the credits back in proportion, so its Finance page's net and what a partner is owed are right |
+
+**The buyer's country** goes with the checkout, because the price includes
+the VAT of the country the buyer is in and the invoice names it (the
+portal's README, *Buying*). The store sends the first of these that is a
+country (`BuyerCountry`, `Purchase.h`): the **Country** set on the Settings
+page (`purchase.country`), the country of the account the store is signed in
+to, the region of the system's language (`de-AT` is Austria). The last is a
+guess, which is why the first two go before it and why the Settings field
+shows what an empty one gives. With none of the three the store sends
+nothing and the service reckons with the seller's country.
+`ultrastore buy ... --country <CC>` says it on the command line.
 
 **The licence** is `ULIC1.<payload>.<signature>`: the licence id, the app,
 the order, the day and what the purchase includes, signed Ed25519 with the

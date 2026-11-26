@@ -101,7 +101,7 @@ the catalog's `payment_url` is the root):
 
 | | |
 |---|---|
-| `POST /v1/checkout` | `{app, code?, language?}` → the order: `order_id`, `secret`, `amount`, `currency`, `list_price`, `status`, `cycle`, `checkout_url` (`<root>/pay/<order>/`, opened in the browser). 404 `no_such_app`, 400 `free_app`, 503 `not_configured` |
+| `POST /v1/checkout` | `{app, code?, language?, country?}` → the order: `order_id`, `secret`, `amount`, `currency`, `list_price`, `status`, `cycle`, `checkout_url` (`<root>/pay/<order>/`, opened in the browser). 404 `no_such_app`, 400 `free_app`, 503 `not_configured` |
 | `GET /v1/orders/<order>?secret=` | the order's state; when paid `licence`, `licence_id`, `receipt_no`, `paid_at`, the `payments`; a subscription's `paid_until`, `valid_until`, `subscription_status`; `revoked` with `revoked_reason` after a refund or a chargeback (no `licence` then) |
 | `GET /v1/orders/<order>/receipt?secret=[&no=]` | the receipt of the sale, or of the payment with that number: a page for a browser, text for anything else |
 | `POST /v1/orders/<order>/download?secret=&file=restricted/<sha256>.<format>` | `{url, expires}`: a link to one of the app's restricted packages; 409 once the licence is taken back or the subscription ended |
@@ -336,7 +336,9 @@ what is missing.
 - **The rate is the buyer's country's on the day the money moves** - the
   rule for digital services sold to consumers in the EU. The country comes
   with the order: the buy page asks for it, a client sends `country` with
-  `POST /v1/checkout`; with none, it is the seller's. A country outside the
+  `POST /v1/checkout` (the native store does: its Settings' country, else
+  the signed-in account's, else the region of the system's language); with
+  none, it is the seller's. A country outside the
   EU is charged no EU tax and the payment says so.
 - **The rates are the operator's data** (`VatRate`: a country, a
   percentage, the day it counts from), kept on `/operator/tax/`, where a
@@ -852,9 +854,8 @@ In the order the store needs it:
    payouts are built (*Buying*, 0.9.0). Left: a business buyer's VAT id and
    the reverse charge, the evidence of a buyer's country beyond what they
    said, the taxes of countries outside the EU, the payment provider's fee
-   in the split, paying a payout through the provider's interface, the
-   self-billed document a payout is to a publisher, and the native store
-   sending the buyer's country with its checkout.
+   in the split, paying a payout through the provider's interface, and the
+   self-billed document a payout is to a publisher.
 3. **Buyer accounts** - sign-in from the native store, licences that follow
    a person across machines, devices. Today a purchase is reached by its
    order's secret (kept by the store's app, mailed to a web buyer). The

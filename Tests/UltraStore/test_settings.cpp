@@ -122,3 +122,13 @@ TEST(the_code_stays_in_force_for_ninety_days) {
     REQUIRE_EQ(back.code, std::string("ANNA-20"));
     REQUIRE_EQ(back.codeEnteredAt, std::string("2026-10-01"));
 }
+
+TEST(the_buyers_country_is_kept) {
+    StoreSettings s;
+    REQUIRE(s.country.empty());   // empty: the account's, else the system's
+    s.country = "AT";
+    const std::string dir = TempRoot("settings-country");
+    auto file = UltraCanvas::UltraCanvasAppSettings::AtFile(UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "settings.json"));
+    s.WriteTo(file);
+    REQUIRE_EQ(StoreSettings::From(file).country, std::string("AT"));
+}
