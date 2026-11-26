@@ -1,3 +1,77 @@
+#### 2026-11-26 *0.3.0*
+- **Every chart of the framework, in a chart gallery.** *Chart* opens a
+  gallery of 52 types in nine categories - columns and bars, lines and
+  areas, pies, radar and polar charts, scatter and bubbles, waterfall,
+  histogram, box and whisker, stock, funnel, Sankey, chord, treemap,
+  sunburst, Gantt, timeline, heatmaps, contour and surface, word cloud,
+  parliament and more - each tile drawn from the selection, with what the
+  type shows and the columns it reads; a type the selection does not fit
+  shows a sample and says why. A click or the arrow keys pick one, Enter
+  takes it; the new *Chart type* button and the properties dialog change a
+  chart's type through the same gallery. A type Excel and LibreOffice have
+  no form for is saved as a column chart of its numbers, which they show,
+  with the real type beside it for UltraOffice to read back.
+- **The document dialogs.** A document's *Home* tab opens *Paragraph*
+  (indents, spacing, line spacing, alignment, tab stops) and *Styles*
+  (apply, change, or make a style from the selection); *Insert* has
+  *Footnote* (a footnote or an endnote, with its text), *Contents* (to a
+  heading level; contents already there are rebuilt), *Caption* and
+  *Cross-reference*. They are the framework's dialogs, shared with
+  UltraTexter, and each OK is one undo step; Cancel changes nothing.
+- **A Layout tab**: *Page setup* (paper, orientation, size, margins, header
+  and footer distance), *Table* (width, alignment, header row, borders,
+  padding) and *Picture* (alt text, wrapping, position, size).
+- **A Review tab**: a new comment, the previous and next comment, all the
+  comments in a list (go to, edit, resolve, delete), comments shown or
+  hidden; track changes, the previous and next change, accept and reject
+  one or all. Comments and changes are signed with the login name, and a
+  double-click on a comment in the pane edits it.
+- **New from template.** The Start tab shows a gallery of templates - a
+  card each, with a picture of its first page, its sheet or its first slide -
+  and the File menu lists them under *New from template...*, with *Other
+  template...* for one anywhere else. A template opens as a new, untitled
+  document ("Document 3"), whether it is picked there, opened with *Open...*,
+  from the recent list or from the command line: Save asks for a name, and
+  the template itself is never written over.
+  - Shipped: a letter, a report with headings and a memo; a budget, an
+    invoice and a simple list; a plain and a dark presentation
+    (`media/templates/office/`, made by the framework's own writers through
+    `Tests/OfficeTemplatesTest.cpp --write`).
+  - The user's own are in `UltraOffice/templates/` in the settings folder.
+- **Save as template...** (File) writes the open document as a template of
+  its kind - .dotx / .ott, .xltx / .ots, .potx / .otp, in the format new files
+  are saved as - into the user's templates folder. The document keeps its own
+  file, name and unsaved changes, and the gallery shows the template at once.
+- The Start tab scrolls when the window is shorter than it.
+- A spreadsheet's *Save as* no longer offers the template types or .xls,
+  which it cannot write; the templates are *Save as template*'s.
+- **Copy and paste between the kinds.** Cells copied from a sheet paste
+  into a document as a table and onto a slide as a table shape; a chart
+  copied from a sheet (selected, then Copy) pastes into a document or onto a
+  slide as a chart, and into other programs as a picture; a document's
+  selection or any text pastes onto a slide as a text box, a picture as a
+  picture. The presentation's Home bar has Cut, Copy and Paste. Through the
+  framework's office clipboard (`UltraCanvasOfficeClipboard.h`).
+- **A screen reader reads the sheet and the slides**: the grid as a table
+  whose active cell is named by its address and value, the slide editor as
+  the slide shown with its shapes and the slide strip.
+- **Old PowerPoint decks open.** A PowerPoint 97-2003 presentation (.ppt,
+  and the .pps show) opens in the slide editor with its slides, text and
+  bullets, shapes, pictures, tables, notes, hidden slides and transitions;
+  it is shown, printed and exported to PDF like any deck. Saving one asks
+  for a name and writes .pptx or .odp. A .pot template opens as a new,
+  untitled deck, like the other templates. A password-protected .ppt is
+  refused with a reason.
+- **Array formulas that spill.** A formula whose result is a block - FILTER,
+  SORT, SORTBY, UNIQUE, SEQUENCE, RANDARRAY, TRANSPOSE, XLOOKUP returning
+  rows, `{1,2;3,4}`, a range times a range - fills the cells below and to the
+  right, shows #SPILL! when they are taken, and is referred to as `A1#`.
+  LET, LAMBDA, MAP, REDUCE, SCAN, BYROW, BYCOL and MAKEARRAY; Ctrl+Shift+Enter
+  enters a formula over the selection as a legacy array formula. Kept in
+  .xlsx as dynamic arrays and in .ods as array formulas.
+- **Financial functions**: NPER, RATE, IPMT, PPMT, CUMIPMT, CUMPRINC, IRR,
+  XIRR, XNPV, MIRR, SLN, SYD, DB, DDB, VDB, EFFECT and NOMINAL.
+
 #### 2026-11-25 *0.2.0*
 - **Spreadsheet charts.** Charts of the selection - columns and bars (side
   by side or stacked), lines, areas, pies, doughnuts, scatter and radar
