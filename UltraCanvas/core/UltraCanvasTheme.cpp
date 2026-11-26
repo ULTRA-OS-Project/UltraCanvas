@@ -1,4 +1,5 @@
 // core/UltraCanvasTheme.cpp
+// Version: 1.5.0 - DeriveAccent: white text on any mid-tone accent (never black on Windows blue)
 // Version: 1.4.0 - ForDarkLook
 // Version: 1.3.0 - TakeHostFonts, FromHost through it
 // Version: 1.3.0 - ThemeFonts and the text roles' sizes; LightHighContrast / DarkHighContrast;
@@ -6,7 +7,7 @@
 // Version: 1.2.0 - Light's lineStrong meets 3:1 on panel and raised (a mid grey, not ButtonShadow)
 // Version: 1.1.0 - change handlers
 // Version: 1.0.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
 
@@ -200,23 +201,21 @@ Color Mix(const Color& from, const Color& to, double amount) {
 ThemeRoles UltraCanvasTheme::DeriveAccent(ThemeRoles roles, const Color& accent, bool dark, double onAccentContrast) {
     const Color darkInk = Light().roles.ink;
     Color base = Color(accent.r, accent.g, accent.b, 255);
-    // Text on the accent: white or the dark ink, whichever reads better;
-    // the accent moved toward black or white, a step at a time, until the
-    // better one reaches the contrast asked for (a mid-grey or a yellow
-    // accent reaches neither as it is).
-    // White when it reads (the conventional look on a blue or a red), else
-    // the dark ink when it reads, else whichever reads better.
-    auto better = [&](const Color& c) {
-        if (Contrast(Colors::White, c) >= onAccentContrast) return Colors::White;
-        if (Contrast(darkInk, c) >= onAccentContrast) return darkInk;
-        return Contrast(Colors::White, c) >= Contrast(darkInk, c) ? Colors::White : darkInk;
-    };
-    for (int step = 0; step < 64 && Contrast(better(base), base) < onAccentContrast; ++step) {
-        const bool towardWhite = Contrast(Colors::White, base) < Contrast(darkInk, base);
-        base = Mix(base, towardWhite ? Colors::White : Colors::Black, 0.06);
-    }
+    // Text on the accent. WCAG 2 contrast overrates dark text on saturated
+    // mid-tone accents: Windows blue (0,120,215) measures 4.50:1 with white
+    // and 4.67:1 with black, yet black on it is hard to read and white is
+    // what every desktop writes there. So white is the text on any accent it
+    // already reaches 3:1 on (blues, reds, purples, mid greens), and the
+    // accent is darkened a step at a time until white reaches the contrast
+    // asked for - a few percent, the same hue. Only on a light accent
+    // (yellow, light cyan, a pastel), where white falls under 3:1, is the
+    // text the dark ink, the accent lightened until that ink reaches it.
+    const bool whiteText = Contrast(Colors::White, base) >= 3.0;
+    const Color text = whiteText ? Colors::White : darkInk;
+    for (int step = 0; step < 64 && Contrast(text, base) < onAccentContrast; ++step)
+        base = Mix(base, whiteText ? Colors::Black : Colors::White, 0.06);
     roles.accent = base;
-    roles.onAccent = better(base);
+    roles.onAccent = text;
     roles.accentHover = Mix(base, roles.ink, 0.08);
     roles.accentSoft = Mix(roles.panel, base, dark ? 0.18 : 0.14);
     roles.focus = Contrast(base, roles.ground) >= 3.0 ? base : roles.lineStrong;
