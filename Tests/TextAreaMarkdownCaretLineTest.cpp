@@ -78,6 +78,12 @@ struct Shot {
         for (const auto& p : px) if (Near(p, c)) n++;
         return n;
     }
+    // Everything drawn: the pixels that are not the background.
+    int Ink() const {
+        int n = 0;
+        for (const auto& p : px) if (!Near(p, kWhite)) n++;
+        return n;
+    }
 };
 
 Shot Grab(const std::shared_ptr<UltraCanvasWindow>& window,
@@ -138,11 +144,13 @@ int main() {
     area->SetHighlightSyntax(false);
     area->SetFontSize(20);
 
-    TextAreaStyle& style = area->GetStyle();
+    // SetStyle: an area follows the theme's colours until its style is set by hand.
+    TextAreaStyle style = area->GetStyle();
     style.selectionColor = kSelection;
     style.fontColor = kText;
     style.backgroundColor = kWhite;
     style.cursorColor = kWhite;   // the caret is not what is measured
+    area->SetStyle(style);
 
     MarkdownHybridStyle md = area->GetMarkdownStyle();
     md.markupColor = kMarkup;
@@ -162,11 +170,12 @@ int main() {
     Shot plainHeading = Grab(window, area);
     SetCaretStyling(area, true);
     Shot styledHeading = Grab(window, area);
-    std::cerr << "   text pixels plain " << plainHeading.Count(kText)
-              << ", styled " << styledHeading.Count(kText)
+    std::cerr << "   ink plain " << plainHeading.Ink() << ", styled " << styledHeading.Ink()
+              << "; text " << styledHeading.Count(kText)
               << "; markup " << styledHeading.Count(kMarkup) << std::endl;
     TEST("The heading is drawn larger than plain source",
-         styledHeading.Count(kText) > plainHeading.Count(kText) * 3 / 2);
+         styledHeading.Ink() > plainHeading.Ink() * 3 / 2);
+    TEST("Its text is in the text colour, not a syntax colour", styledHeading.Count(kText) > 200);
     TEST("Its # is in the markup colour", styledHeading.Count(kMarkup) > 40);
     TEST("Plain source has no markup colour", plainHeading.Count(kMarkup) == 0);
     TEST("The source text is unchanged", area->GetText() == "# Title");

@@ -1219,10 +1219,14 @@ namespace UltraCanvas {
         auto toLayout = [&](int b) {
             return (compositionByte >= 0 && b > compositionByte) ? b + compositionBytes : b;
         };
+        // ChangeAttribute, not InsertAttribute: where two attributes of a kind
+        // overlap, Pango draws the one that starts later, so a syntax colour
+        // starting mid-line would beat a colour laid over the whole line. A
+        // changed attribute replaces whatever of its kind the range had.
         auto add = [&](std::unique_ptr<ITextAttribute> a, int from, int to) {
             if (from >= to) return;
             a->SetRange(toLayout(from), toLayout(to));
-            layout->InsertAttribute(std::move(a));
+            layout->ChangeAttribute(std::move(a));
         };
         auto dim = [&](int from, int to) {
             add(TextAttributeFactory::CreateForeground(markdownStyle.markupColor), from, to);
@@ -1234,9 +1238,12 @@ namespace UltraCanvas {
             add(TextAttributeFactory::CreateRise(static_cast<int>(lh * rise)), from, to);
         };
 
-        // The text in the text colour, as the rendered lines draw it: the syntax
-        // colours give way to the formatting.
+        // The text in the text colour and the regular face, as the rendered lines
+        // draw it: the syntax colours and emphasis give way to the formatting.
         add(TextAttributeFactory::CreateForeground(style.fontColor), 0, n);
+        add(TextAttributeFactory::CreateFontWeight(FontWeight::Normal), 0, n);
+        add(TextAttributeFactory::CreateFontStyle(FontSlant::Normal), 0, n);
+        add(TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineNone), 0, n);
 
         // Inline formatting of txt[from, to): the renderer's own parse, its runs
         // mapped back onto the source through its cpMap. A stretch of source no
@@ -1368,15 +1375,18 @@ namespace UltraCanvas {
                 // Each cell under its column: the space before a `|` widens to put
                 // the bar on the column's divider, the space after it to start the
                 // cell's text where the rendered cell's starts. Measured left to
-                // right, each spacer after the ones before it. A line that wraps,
-                // or a cell too wide for its column, keeps its natural spacing.
+                // right, each spacer after the ones before it. A cell too wide for
+                // its column keeps its natural spacing; in a row that wraps, the
+                // bars on its first line are placed and the rest follow as they fall.
                 const auto* tbl = dynamic_cast<const TableLineLayout*>(rendered);
-                if (!tbl || layout->GetLineCount() > 1) break;
+                if (!tbl) break;
                 const int cols = static_cast<int>(tbl->cellsLayouts.size());
                 const double pad = markdownStyle.tableCellPadding;
                 auto xAt = [&](int b) { return static_cast<double>(layout->IndexToPos(toLayout(b)).x); };
                 auto isBlank = [&](int b) { return b >= 0 && b < n && (txt[b] == ' ' || txt[b] == '\t'); };
+                const int firstLineY = layout->IndexToPos(0).y;
                 auto spacer = [&](int b, double target) {
+                    if (layout->IndexToPos(toLayout(b)).y != firstLineY) return;
                     const double w = target - xAt(b);
                     if (w >= 1.0) add(TextAttributeFactory::CreateShapeSpacer(w), b, b + 1);
                 };
