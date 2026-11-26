@@ -25,7 +25,11 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasAccessibilityBridge.h"
+#include "UltraCanvasZipPackage.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "DisplayRequired.h"
+
+#include <cairo/cairo.h>
 
 #include <algorithm>
 #include <cmath>
@@ -3112,6 +3116,233 @@ int main() {
         TEST("A smoothed scatter series is drawn as a curve through its points", smoothed && smoothed->GroupLineRuns(0).size() == 1
              && smoothed->GroupLineRuns(0)[0].knots.size() == 3 && smoothed->GroupLineRuns(0)[0].points.size() > 20);
         window->RemoveChild(chartEdit);
+    }
+
+    // ===== A WORD DOCUMENT'S LINES AND PICTURES =====
+    // Documents written here as .docx and read as UltraOffice reads them.
+    // Lines are as tall as their font's own height - ascent, descent and the
+    // line gap its designer gave it - times the paragraph's line spacing, and
+    // the last line of a paragraph as tall as the others: a one-line paragraph
+    // in a font with a tall line (Palatino: 1.2 em) was laid out 1.0 em tall,
+    // and a page of them ran a sixth short. A picture fills the frame the
+    // document gives it, whatever its own proportions.
+    {
+        std::cerr << "\n--- A Word document's lines and pictures ---" << std::endl;
+        // An 8 x 8 red PNG: square, set in frames four times as wide as high.
+        static const std::vector<uint8_t> kRedPng = {
+            0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+            0x00,0x00,0x00,0x08,0x00,0x00,0x00,0x08,0x08,0x02,0x00,0x00,0x00,0x4B,0x6D,0x29,
+            0xDC,0x00,0x00,0x00,0x11,0x49,0x44,0x41,0x54,0x78,0xDA,0x63,0xF8,0xCF,0xC0,0x80,
+            0x15,0x31,0x0C,0x2D,0x09,0x00,0x28,0xFF,0x3F,0xC1,0xCE,0x77,0xC8,0x4F,0x00,0x00,
+            0x00,0x00,0x49,0x45,0x4E,0x44,0xAE,0x42,0x60,0x82};
+        const std::string ns =
+            "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
+            "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+            "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+            "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"";
+        // A package of `body` (and `header`, the default header's paragraphs),
+        // read back as a document.
+        auto readDocx = [&](const std::string& name, const std::string& body, const std::string& header) {
+            auto document = std::make_shared<UCRichDocument>();
+            const std::string path = PathToUtf8(std::filesystem::temp_directory_path() / name);
+            const std::string rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships "
+                "xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "image\" Target=\"media/image1.png\"/>";
+            UCZipPackageWriter zip;
+            bool written = zip.Open(path);
+            written = written && zip.AddEntry("[Content_Types].xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types "
+                "xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/"
+                "vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
+                "<Override PartName=\"/word/header1.xml\" ContentType=\"application/"
+                "vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/></Types>");
+            written = written && zip.AddEntry("_rels/.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships "
+                "xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "officeDocument\" Target=\"word/document.xml\"/></Relationships>");
+            written = written && zip.AddEntry("word/_rels/document.xml.rels", rels
+                + "<Relationship Id=\"rId9\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                  "header\" Target=\"header1.xml\"/></Relationships>");
+            written = written && zip.AddEntry("word/_rels/header1.xml.rels", rels + "</Relationships>");
+            written = written && zip.AddEntry("word/document.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:document " + ns + "><w:body>" + body
+                + "<w:sectPr>" + (header.empty() ? "" : "<w:headerReference w:type=\"default\" r:id=\"rId9\"/>")
+                + "<w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1417\" w:bottom=\"1134\" "
+                  "w:left=\"1417\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/></w:sectPr></w:body></w:document>");
+            written = written && zip.AddEntry("word/header1.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:hdr " + ns + ">" + header + "</w:hdr>");
+            written = written && zip.AddEntry("word/media/image1.png", kRedPng.data(), kRedPng.size());
+            written = written && zip.Finalize();
+            std::string error;
+            const bool read = written && UCWordDocumentIO::LoadDocx(path, *document, error);
+            std::error_code ignored;
+            std::filesystem::remove(PathFromUtf8(path), ignored);
+            return read ? document : nullptr;
+        };
+
+        // --- Lines ---
+        // A font with a tall line where the machine has one (P052, the
+        // Palatino of the URW fonts: 1.2 em, a fifth of it line gap), else
+        // whatever the paragraph is drawn in: the multiples hold for any font.
+        std::string font;
+        for (const char* candidate : {"P052", "Liberation Serif", "DejaVu Serif"}) {
+            if (IsFontFamilyAvailable(candidate)) { font = candidate; break; }
+        }
+        if (font.empty()) font = edit->GetStyle().baseFont.fontFamily;
+        std::cerr << "  (measured in " << font << ")" << std::endl;
+        // A paragraph at Word's line spacing `line` (240ths of single, "auto"),
+        // its text and its mark in `font` at `halfPoints`; "|" breaks the line.
+        auto paragraph = [&](const std::string& text, int line, int halfPoints) {
+            const std::string rPr = "<w:rPr><w:rFonts w:ascii=\"" + font + "\" w:hAnsi=\"" + font + "\"/><w:sz w:val=\""
+                                  + std::to_string(halfPoints) + "\"/></w:rPr>";
+            std::string xml = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"" + std::to_string(line)
+                            + "\" w:lineRule=\"auto\"/>" + rPr + "</w:pPr>";
+            size_t from = 0;
+            while (from <= text.size() && !text.empty()) {
+                const size_t bar = text.find('|', from);
+                const std::string piece = text.substr(from, bar == std::string::npos ? std::string::npos : bar - from);
+                xml += "<w:r>" + rPr + (from > 0 ? "<w:br/>" : "") + "<w:t>" + piece + "</w:t></w:r>";
+                if (bar == std::string::npos) break;
+                from = bar + 1;
+            }
+            return xml + "</w:p>";
+        };
+        auto lines = readDocx("rte-line-heights.docx",
+                              paragraph("One", 276, 24) + paragraph("Two", 276, 24) + paragraph("Three", 240, 24)
+                              + paragraph("Four|Five", 240, 24) + paragraph("", 240, 48) + paragraph("Big", 240, 48)
+                              + paragraph("Six", 240, 24) + paragraph("End", 240, 24), "");
+        TEST("A synthetic .docx is read", lines && lines->blocks.size() == 8);
+        if (lines && lines->blocks.size() == 8) {
+            TEST("...its empty paragraph keeps its mark's size and font",
+                 lines->blocks[4].runs.empty() && lines->blocks[4].paragraphFontSizePt == 24.0f
+                 && lines->blocks[4].paragraphFontFamily == font);
+            auto lineEdit = std::make_shared<UltraCanvasRichTextEdit>("Lines", 0, 0, 780, 560);
+            window->AddChild(lineEdit);
+            lineEdit->SetDocument(lines);
+            window->UpdateAndRender();
+            UCRichDocumentEditor& lineEditor = lineEdit->GetEditor();
+            auto top = [&](int block, int offset) {
+                lineEditor.SetCaret(RichDocPosition(block, offset));
+                window->UpdateAndRender();
+                return lineEdit->GetCaretRectForTest().y;
+            };
+            // The font's line: between the two lines of one paragraph at
+            // single spacing.
+            const float line = top(3, static_cast<int>(lineEditor.BlockText(3).find("Five"))) - top(3, 0);
+            const float bigLine = top(6, 0) - top(5, 0);
+            std::cerr << "  line " << line << " px, a line of twice the size " << bigLine << " px" << std::endl;
+            const float em = 12.0f * 96.0f / 72.0f;
+            TEST("A line is as tall as its font says (" + std::to_string(line / em) + " em)",
+                 line > em * 0.95f && line < em * 1.6f);
+            if (font == "P052") {
+                // Its ascent and descent are 1.0 em; its line gap makes 1.2.
+                TEST("...a tall font's line gap included", std::abs(line - em * 1.2f) <= 1.0f);
+            }
+            auto within = [](float a, float b) { return std::abs(a - b) <= 1.0f; };
+            TEST("A one-line paragraph at 1.15 is 1.15 of its font's line: "
+                 + std::to_string(top(1, 0) - top(0, 0)) + " for " + std::to_string(line * 1.15f),
+                 within(top(1, 0) - top(0, 0), line * 1.15f));
+            TEST("...the next one too", within(top(2, 0) - top(1, 0), line * 1.15f));
+            TEST("A one-line paragraph at single spacing is one line: "
+                 + std::to_string(top(3, 0) - top(2, 0)) + " for " + std::to_string(line),
+                 within(top(3, 0) - top(2, 0), line));
+            TEST("A two-line paragraph is two lines", within(top(4, 0) - top(3, 0), 2.0f * line));
+            TEST("An empty paragraph is a line of its mark's font: " + std::to_string(top(5, 0) - top(4, 0))
+                 + " for " + std::to_string(bigLine), within(top(5, 0) - top(4, 0), bigLine) && bigLine > line * 1.5f);
+            window->RemoveChild(lineEdit);
+        }
+
+        // --- Pictures ---
+        // The red square in a frame 2 x 0.5 inch: inline in the body, anchored
+        // in the body (on a line of its own), and inline in the header.
+        const std::string graphic =
+            "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic>"
+            "<pic:nvPicPr><pic:cNvPr id=\"0\" name=\"red\"/><pic:cNvPicPr><a:picLocks noChangeAspect=\"1\"/>"
+            "</pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rId1\"/><a:stretch><a:fillRect/></a:stretch>"
+            "</pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"457200\"/></a:xfrm>"
+            "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>";
+        const std::string inlineRun =
+            "<w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
+            "<wp:extent cx=\"1828800\" cy=\"457200\"/><wp:docPr id=\"1\" name=\"red\"/>" + graphic
+            + "</wp:inline></w:drawing></w:r>";
+        // Alone in its paragraph (a picture paragraph of its own, as an ODT
+        // frame's is too), among words, and - in the header - set out 284
+        // twips (14.2 pt) into the left margin.
+        const std::string inlinePicture = "<w:p>" + inlineRun + "</w:p>";
+        const std::string pictureAmongWords = "<w:p><w:r><w:t>A </w:t></w:r>" + inlineRun + "<w:r><w:t> b</w:t></w:r></w:p>";
+        const std::string outdentedPicture = "<w:p><w:pPr><w:ind w:left=\"-284\"/></w:pPr>" + inlineRun + "</w:p>";
+        const std::string anchoredPicture =
+            "<w:p><w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" "
+            "relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
+            "<wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\"><wp:posOffset>0</wp:posOffset>"
+            "</wp:positionH><wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV>"
+            "<wp:extent cx=\"1828800\" cy=\"457200\"/><wp:wrapTopAndBottom/><wp:docPr id=\"2\" name=\"red\"/>" + graphic
+            + "</wp:anchor></w:drawing></w:r><w:r><w:t>x</w:t></w:r></w:p>";
+        const std::string closing = "<w:p><w:r><w:t>End</w:t></w:r></w:p>";
+        // The red drawn when the view paints `document`: its bounding box.
+        auto redBox = [&](const std::shared_ptr<UCRichDocument>& document, bool pages) {
+            const int width = 1000, height = 1250;
+            auto view = std::make_shared<UltraCanvasRichTextEdit>("Pictures", 0, 0, width, height);
+            window->AddChild(view);
+            view->SetDocument(document);
+            view->SetPageView(pages);
+            window->UpdateAndRender();
+            Rect2Di box(0, 0, 0, 0);
+            auto paint = CreateRenderContext(Size2Di(width, height), nullptr);
+            cairo_t* cr = paint ? static_cast<cairo_t*>(paint->GetNativeContext()) : nullptr;
+            if (cr) {
+                view->Render(paint.get(), Rect2Df(0, 0, width, height));
+                cairo_surface_t* surface = cairo_get_target(cr);
+                cairo_surface_flush(surface);
+                const unsigned char* data = cairo_image_surface_get_data(surface);
+                const int stride = cairo_image_surface_get_stride(surface);
+                int left = width, right = -1, topRow = height, bottom = -1;
+                for (int y = 0; y < height; ++y) {
+                    const uint32_t* row = reinterpret_cast<const uint32_t*>(data + y * stride);
+                    for (int x = 0; x < width; ++x) {
+                        const uint32_t p = row[x];
+                        if (((p >> 16) & 0xFF) > 200 && ((p >> 8) & 0xFF) < 60 && (p & 0xFF) < 60) {
+                            left = std::min(left, x);
+                            right = std::max(right, x);
+                            topRow = std::min(topRow, y);
+                            bottom = std::max(bottom, y);
+                        }
+                    }
+                }
+                if (right >= left) box = Rect2Di(left, topRow, right - left + 1, bottom - topRow + 1);
+            }
+            window->RemoveChild(view);
+            return box;
+        };
+        // 2 x 0.5 inch at 96 pixels an inch - however the view is zoomed, four
+        // times as wide as high.
+        auto fills = [](const Rect2Di& box) {
+            return box.height > 8 && std::abs(static_cast<float>(box.width) / static_cast<float>(box.height) - 4.0f) < 0.15f;
+        };
+        auto describe = [](const Rect2Di& box) {
+            return std::to_string(box.width) + " x " + std::to_string(box.height) + " px";
+        };
+        const Rect2Di alone = redBox(readDocx("rte-picture-alone.docx", inlinePicture + closing, ""), false);
+        TEST("A picture alone in its paragraph fills its frame, not its own proportions: " + describe(alone),
+             fills(alone) && std::abs(alone.width - 192) <= 2);
+        const Rect2Di amongWords = redBox(readDocx("rte-picture-words.docx", pictureAmongWords + closing, ""), false);
+        TEST("...so does one among words: " + describe(amongWords), fills(amongWords) && std::abs(amongWords.width - 192) <= 2);
+        const Rect2Di anchored = redBox(readDocx("rte-picture-anchored.docx", anchoredPicture + closing, ""), false);
+        TEST("...and an anchored one: " + describe(anchored), fills(anchored) && std::abs(anchored.width - 192) <= 2);
+        const Rect2Di inHeader = redBox(readDocx("rte-picture-header.docx", closing, inlinePicture), true);
+        TEST("...and one in the header: " + describe(inHeader), fills(inHeader));
+        const Rect2Di outdented = redBox(readDocx("rte-picture-outdented.docx", closing, outdentedPicture), true);
+        // 14.2 pt at the page's zoom (the frame is 144 pt wide).
+        const float outdent = 14.2f * static_cast<float>(inHeader.width) / 144.0f;
+        TEST("...set out into the margin by its paragraph's negative indent: " + std::to_string(inHeader.x - outdented.x)
+             + " px for " + std::to_string(outdent), fills(outdented) && std::abs((inHeader.x - outdented.x) - outdent) <= 1.5f);
     }
 
     std::cerr << "\n========================================" << std::endl;

@@ -1,5 +1,6 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.3.0 - GetLineExtents gives each line's font height (LayoutLineExtent::fontHeight)
 // Version: 1.2.0 - a layout with glyph positions left unrounded (a document's text); CreateFontFeatures
 // Version: 1.1.8 - CreateLetterSpacing takes fractional pixels
 // Version: 1.1.7 - GetCapHeight measures the font the text starts in, font
@@ -1069,6 +1070,11 @@ namespace UltraCanvas {
             extent.lengthBytes = line ? line->length : 0;
             extent.top = static_cast<float>(y0) / PANGO_SCALE;
             extent.height = static_cast<float>(y1 - y0) / PANGO_SCALE;
+            // The fonts' own height, line gap included: what Pango spaces
+            // lines by when the layout has a line spacing factor.
+            int fontHeight = 0;
+            if (line) pango_layout_line_get_height(line, &fontHeight);
+            extent.fontHeight = static_cast<float>(fontHeight) / PANGO_SCALE;
             extents.push_back(extent);
         } while (pango_layout_iter_next_line(iter));
         pango_layout_iter_free(iter);

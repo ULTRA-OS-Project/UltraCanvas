@@ -1471,7 +1471,10 @@ cell's lines are its paragraphs, empty ones included, and the room between two
 of them (the one's space after and the other's before) is an empty line of
 exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
 below the last it is part of the cell's padding. Lines are a font's own
-height apart, its line gap included, and letters are pair-kerned - unless the
+height apart, its line gap included - the last line of a paragraph or a cell
+as tall as the others, so a one-line paragraph in Palatino at single spacing
+is 1.2 em and at Word's 1.15 is 1.38 em, as in Word and Writer, and an empty
+paragraph is a line of its paragraph mark's font - and letters are pair-kerned - unless the
 document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
 Word's files are unkerned, older Writer files have no line gap). A cell's
 lines can have a set height (`RichTableCell::lineHeightPt`, exactly or - with
@@ -1485,7 +1488,10 @@ font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
 picture lower than a line of its run's font stands in such a line. A table can
 start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and
 a column whose width the document states is kept however narrow. A picture is
-stretched to the size its document gives it.
+stretched to the size its document gives it - a picture alone in its
+paragraph too (an Image block, which a .docx picture on a line of its own and
+an ODT frame become), which also keeps its paragraph's indent, out into the
+margin in page view where that is negative.
 
 **Columns that give way to their content.** With `RichDocBlock::tableAutoFit`
 (Word's "autofit" table layout, its default; `w:tblLayout w:type="fixed"`
@@ -1522,7 +1528,9 @@ Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
 otherwise), with page number and page count fields
 (`RichTextRun::field`) filled in for that page. The body starts below the
 top margin, or below the header when the header is taller than the margin
-leaves room for; the footer likewise.
+leaves room for; the footer likewise. Between them lies Writer's 0.25 cm, or
+the document's own room (`RichPageSetup::furnitureSpacingPt`): none in a
+.docx, where Word starts the text right below the header.
 
 A heading is set in the size and font its document's style gives it
 (`paragraphFontSizePt`, `paragraphFontFamily`), the document's first paragraph

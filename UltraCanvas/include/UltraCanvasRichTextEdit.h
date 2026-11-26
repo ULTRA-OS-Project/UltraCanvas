@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.22.1 - a paragraph's last line as tall as its others (its fonts' height times the line
+//                   spacing, line gap included); "at least" measured against the font's own line
 // Version: 1.22.0 - what a navigator needs (UltraCanvasDocumentNavigator.h): AddDocumentObserver /
 //                   RemoveDocumentObserver, more than one listener to edits and caret moves;
 //                   GoToPosition, GoToRange; MoveHeadingSection, MoveHeadingSectionUp / Down,
@@ -1096,6 +1098,9 @@ private:
     // (RichTextRun::emptyLineHeightPt) is scaled from.
     mutable std::map<std::string, float> lineUnitCache;
     mutable float emptyLineUnitPx = 0.0f;
+    // The natural line of the paragraph being laid out "at least" so high
+    // (its largest font's, line gap included), in pixels; 0 = not measured.
+    mutable float layoutNaturalLinePx = 0.0f;
     mutable bool layoutStatedLines = false;       // the layout being made is a cell's with set line heights
     mutable bool layoutHasBox = false;            // the layout being made has a box standing in a line
     // The paragraphs of the frames standing in a table cell's lines, by
