@@ -1895,6 +1895,36 @@ else()
     message(STATUS "  FileDialogTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== INSTALLED FONTS TEST =====
+# The installed fonts' catalogue (UltraCanvasInstalledFonts.h): families,
+# styles, formats, symbol fonts, the hidden families left out. No window.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building InstalledFontsTest...")
+    add_executable(InstalledFontsTest ${CMAKE_CURRENT_SOURCE_DIR}/InstalledFontsTest.cpp)
+    target_include_directories(InstalledFontsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(InstalledFontsTest PRIVATE cxx_std_20)
+    target_link_libraries(InstalledFontsTest PRIVATE UltraCanvas)
+    set_target_properties(InstalledFontsTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME InstalledFontsTest COMMAND InstalledFontsTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: InstalledFontsTest")
+endif()
+
+# ===== FONT PICKER ELEMENT TEST =====
+# UltraCanvasFontPicker on a window, read back from the composited pixels:
+# the sections, the names in their own fonts, the styles list, typing to
+# jump. ULTRACANVAS_SCREENSHOT_DIR=<dir> writes PPM screenshots. Skips itself
+# without a DISPLAY; CI runs it under Xvfb (the framework window tests).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontPickerElementTest...")
+    add_executable(FontPickerElementTest ${CMAKE_CURRENT_SOURCE_DIR}/FontPickerElementTest.cpp)
+    target_include_directories(FontPickerElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(FontPickerElementTest PRIVATE cxx_std_20)
+    target_link_libraries(FontPickerElementTest PRIVATE UltraCanvas)
+    set_target_properties(FontPickerElementTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME FontPickerElementTest COMMAND FontPickerElementTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontPickerElementTest")
+endif()
+
 # ===== TEXT METRICS SCREENSHOT TEST =====
 # Cap-height centring, level indicators, crisp 1px borders and a caret that
 # spans the text's line box, read back from the composited pixels. It is also

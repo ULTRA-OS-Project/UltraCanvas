@@ -77,6 +77,26 @@ The command tabs:
   changes, the previous and next change, accept, reject, accept all, reject
   all.
 
+  **The font list** is the framework's
+  [`UltraCanvasFontPicker`](../UltraCanvas/UltraCanvasFontPicker.md): 130 px
+  on the bar, showing the font at the caret in itself, it opens 300 px wide
+  with *Default font*, then *In this document* (every family the document
+  names - one this computer lacks in grey italics, *(not installed)* or
+  *(shown in ...)* with the font drawn in its place), *Recent* (the last ten
+  fonts chosen in any font list of UltraOffice, kept in the settings) and
+  *All fonts*: every installed family A to Z, each drawn in itself, with an
+  icon for its format (OpenType, TrueType, Type 1, bitmap); a symbol font
+  (Wingdings, Symbol) is named in the interface's font with a few of its
+  characters. A family with styles B and I cannot reach (Light, SemiBold,
+  Black, Condensed) has an arrow: resting on it, or Right, opens its styles,
+  each drawn in itself. A family's row changes the font and keeps bold and
+  italic; a style sets bold and italic as it is, and a light or condensed one
+  is kept by the face's own family name where the font has one the text
+  engine gives back ("Ubuntu Thin", "Segoe UI Semibold" - what Word writes;
+  else, and on macOS, the nearest of bold or not). Typing jumps to the first font starting with the letters typed;
+  Up, Down, Return, Escape work as in any list. The presentation *Text* tab,
+  the Settings window's font and the *Styles* dialog's font are the same list.
+
   The dialogs are the framework's
   ([Document dialogs](../UltraCanvas/UltraCanvasRichTextEdit.md#document-dialogs)),
   shared with UltraTexter. What each OK changes is one undo step - the page
@@ -335,7 +355,7 @@ and each page says when it applies.
 | | Autosave documents into their own files | each document with a file it can write saved into it | at once |
 | | Keep recovery copies of unsaved changes | the copies of *Autosave and recovery* (on by default) | at once |
 | | How often | every 1 (the default), 2, 5, 10, 15, 30 or 60 minutes, for both | at once |
-| Documents | Font, Font size | a new document's text (the default font, 12 points); written as the document's *Normal* style, so other programs show it too | new documents |
+| Documents | Font, Font size | a new document's text (the default font, 12 points; any installed font, from the font list); written as the document's *Normal* style, so other programs show it too | new documents |
 | | Page | A4 (2 cm margins) or Letter (one-inch margins) | new documents |
 | | Show the navigator | as F5 does | at once, every document tab |
 | | Zoom | page width, whole page, text width or 100 %; the view group's last choice is the same setting | at once, every document tab |
@@ -362,6 +382,7 @@ folder (`UltraCanvasAppSettings`), read and written through the model in
 | `saveFormat` | `ooxml` or `odf` |
 | `autosave`, `recoveryCopies`, `autosaveMinutes` | on or off; on or off; 1 to 60 |
 | `documentFont`, `documentFontSize`, `pageSize` | a family (empty: the default); points; `a4` or `letter` |
+| `recentFonts` | the fonts chosen last in the font lists, newest first (ten); not reset by *Restore defaults* |
 | `documentNavigator`, `documentNavigatorWidth` | shown or not; its width in pixels |
 | `documentFit`, `documentWidthShare` | `pageWidth`, `wholePage`, `widthShare` or `actual`; 0.1 to 1 |
 | `sheetGridlines` | shown or not |

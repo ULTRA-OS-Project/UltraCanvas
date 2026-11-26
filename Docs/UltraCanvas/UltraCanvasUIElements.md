@@ -68,7 +68,8 @@ from an external "Show password" checkbox. See
 | Checkbox | `UltraCanvasCheckbox` | `UltraCanvasCheckbox.h` |
 | Radio button / group | `UltraCanvasRadio`, `UltraCanvasRadioGroup` | `UltraCanvasRadio.h` |
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
-| Pick one of a list (a row can be drawn in a font of its own: a font list, `DropdownItem::fontFamily`) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
+| Pick one of a list (a row can be drawn in a font of its own: `DropdownItem::fontFamily`; for a font list use the font picker below) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
+| **Pick a font**: a word processor's font list - the box in the current font, every installed family drawn in itself with its format icon (OpenType, TrueType, Type 1, bitmap), the document's and the recent fonts on top, a family's styles (Light, SemiBold, Condensed ...) beside it, type-ahead ([doc](UltraCanvasFontPicker.md)); the fonts themselves are `GetInstalledFontCatalogue` (`UltraCanvasInstalledFonts.h`) | `UltraCanvasFontPicker` | `UltraCanvasFontPicker.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | Pick one of many choices shown as live pictures in titled sections - a chart gallery, styles, templates: a click or the arrow keys pick a tile, Enter takes it; tall content scrolls in its container | `UltraCanvasGalleryPicker` | `UltraCanvasGalleryPicker.h` |
 | Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |

@@ -4,6 +4,7 @@
 // element's calls, so each change is one undo step where the editor keeps one
 // - and the form that shows them, built of the framework's own elements
 // (UltraCanvasFormLayout in an UltraCanvasModalDialog).
+// Version: 1.1.0 - the Styles dialog's font from every installed font (UltraCanvasFontPicker), not nine
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -13,6 +14,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasFontPicker.h"
 #include "UltraCanvasFormLayout.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasSpinner.h"
@@ -868,12 +870,6 @@ struct StylesDialogState {
     std::string newName;
 };
 
-const std::vector<std::string>& FontChoices() {
-    static const std::vector<std::string> fonts = {"Ubuntu", "Arial", "Georgia", "Times New Roman", "Courier New",
-                                                   "Verdana", "Liberation Serif", "Liberation Sans", "DejaVu Sans"};
-    return fonts;
-}
-
 } // namespace
 
 void ShowStylesDialog(UltraCanvasRichTextEdit& edit, RichDialogClosed onClosed) {
@@ -903,7 +899,11 @@ void ShowStylesDialog(UltraCanvasRichTextEdit& edit, RichDialogClosed onClosed) 
                                               Tr("New paragraph style from the selection")}, 0);
     auto style = MakeChoice("StylesStyle", names, current);
     auto name = MakeField("StylesName", "");
-    auto font = MakeChoice("StylesFont", {}, 0);
+    // Every installed font, each in itself; "Default" leaves the style's
+    // font unset.
+    auto font = std::make_shared<UltraCanvasFontPicker>("StylesFont", 0, 0, 0, kRowHeight);
+    font->SetDefaultFontEntry(Tr("Default"));
+    font->SetListWidth(300);
     auto size = MakePoints("StylesSize", -1.0f, 400.0, true, 0.5);
     auto bold = MakeCheck("StylesBold", Tr("Bold"), false);
     auto italic = MakeCheck("StylesItalic", Tr("Italic"), false);
@@ -933,7 +933,7 @@ void ShowStylesDialog(UltraCanvasRichTextEdit& edit, RichDialogClosed onClosed) 
 
     // Raw: the dialog owns them all.
     UltraCanvasTextInput* nameRaw = name.get();
-    UltraCanvasDropdown* fontRaw = font.get();
+    UltraCanvasFontPicker* fontRaw = font.get();
     UltraCanvasSpinner* sizeRaw = size.get();
     UltraCanvasCheckbox* boldRaw = bold.get();
     UltraCanvasCheckbox* italicRaw = italic.get();
@@ -973,18 +973,7 @@ void ShowStylesDialog(UltraCanvasRichTextEdit& edit, RichDialogClosed onClosed) 
         state->values.styleId = id;
         state->values.name = shown.name;
         nameRaw->SetText(shown.name);
-        fontRaw->ClearItems();
-        fontRaw->AddItem(Tr("Default"));
-        int fontIndex = 0;
-        for (size_t i = 0; i < FontChoices().size(); ++i) {
-            fontRaw->AddItem(FontChoices()[i]);
-            if (shown.character.fontFamily && *shown.character.fontFamily == FontChoices()[i]) fontIndex = static_cast<int>(i) + 1;
-        }
-        if (shown.character.fontFamily && fontIndex == 0 && !shown.character.fontFamily->empty()) {
-            fontRaw->AddItem(*shown.character.fontFamily);
-            fontIndex = static_cast<int>(FontChoices().size()) + 1;
-        }
-        fontRaw->SetSelectedIndex(fontIndex, false);
+        fontRaw->SetCurrentFont(shown.character.fontFamily ? *shown.character.fontFamily : std::string());
         sizeRaw->SetValue(shown.character.fontSizePt ? *shown.character.fontSizePt : -1.0f);
         boldRaw->SetChecked(shown.character.bold.value_or(false));
         italicRaw->SetChecked(shown.character.italic.value_or(false));
@@ -1006,9 +995,20 @@ void ShowStylesDialog(UltraCanvasRichTextEdit& edit, RichDialogClosed onClosed) 
         refresh();
     };
     name->onTextChanged = [state](const std::string& text) { state->values.name = text; };
-    font->onSelectionChanged = [state](int index, const DropdownItem& item) {
-        if (index <= 0) state->values.character.fontFamily.reset();
-        else state->values.character.fontFamily = item.text;
+    font->onFontChosen = [state, boldRaw, italicRaw](const FontPickerChoice& choice) {
+        if (choice.family.empty()) {
+            state->values.character.fontFamily.reset();
+            return;
+        }
+        state->values.character.fontFamily = choice.family;
+        // A style from its list says bold and italic too, as the toolbar's
+        // does (the boxes follow, and set the style's values as they change).
+        if (choice.fromStyles) {
+            boldRaw->SetChecked(choice.weight >= 600);
+            italicRaw->SetChecked(choice.slant != FontSlant::Normal);
+            state->values.character.bold = choice.weight >= 600;
+            state->values.character.italic = choice.slant != FontSlant::Normal;
+        }
     };
     size->onValueChanged = [state](double v) {
         if (v > 0.0) state->values.character.fontSizePt = static_cast<float>(v);

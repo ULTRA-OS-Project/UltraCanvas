@@ -10,6 +10,9 @@
 // toolbar's right end the view group: normal, the slide sorter, the notes,
 // the fitted slide and the zoom.
 //
+// Version: 0.10.0 - the Text tab's font list is the framework's UltraCanvasFontPicker: every installed
+//                   font, each in itself, the deck's fonts and the recent ones on top, a family's styles
+//                   beside it; it shows the selected text's font
 // Version: 0.9.0 - Text and Arrange fit beside the view group at 1280 px: narrower font and size lists,
 //                  the shapes' alignment and distribution one slot (a tool group), group and ungroup as icons
 // Version: 0.8.0 - the view group (normal, slide sorter, notes, fit the slide, zoom out, the zoom level,
@@ -300,6 +303,7 @@ private:
     std::vector<CommandTab> tabs_;
     UltraCanvasButton* hidden_ = nullptr;
     UltraCanvasButton* bold_ = nullptr;
+    UltraCanvasFontPicker* font_ = nullptr;
     UltraCanvasButton* italic_ = nullptr;
     UltraCanvasButton* underline_ = nullptr;
     UltraCanvasButton* strike_ = nullptr;
@@ -807,17 +811,21 @@ private:
         strike_ = AddToggleTool(*bar, "slides-strike", "", "textformat/strike.svg", Tr("Strikethrough"),
                                 [this]() { ToggleRuns("Strikethrough", &PptxRun::strike, &UltraCanvasRichTextEdit::ToggleStrikethrough); }).get();
         bar->AddSeparator();
-        const std::vector<std::string> fonts = {"Calibri", "Arial", "Helvetica", "Georgia", "Times New Roman", "Verdana", "Courier New"};
-        auto font = bar->AddDropdownButton("slides-font", "", fonts, nullptr);
-        font->SetTooltip(Tr("Font"));
-        font->SetPlaceholderText(Tr("Font"));
-        font->size.width = CSSLayout::Dimension::Px(130);
-        font->onSelectionChanged = [this, fonts](int index, const DropdownItem&) {
-            if (index < 0 || index >= static_cast<int>(fonts.size())) return;
-            const std::string family = fonts[static_cast<size_t>(index)];
-            FormatText("Font", [family](UltraCanvasRichTextEdit& e) { e.SetFontFamily(family); },
-                       [family](PptxRun& r) { r.font = family; });
+        // Every installed font, each in itself; on top the deck's fonts and
+        // the ones chosen last (the window's settings).
+        auto font = AddFontList(*bar, "slides-font", [this]() { return settings_; }, [this]() { return DeckFonts(); });
+        font->onFontChosen = [this](const FontPickerChoice& choice) {
+            const FontChoiceRun run = FontChoiceForRun(choice);
+            FormatText("Font", [choice](UltraCanvasRichTextEdit& e) { ApplyFontChoice(e, choice); },
+                       [run](PptxRun& r) {
+                           r.font = run.family;
+                           if (run.setsStyle) {
+                               r.bold = run.bold;
+                               r.italic = run.italic;
+                           }
+                       });
         };
+        font_ = font.get();
         const std::vector<float> sizes = {10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 54, 60, 72, 96};
         std::vector<std::string> sizeNames;
         for (float size : sizes) sizeNames.push_back(std::to_string(static_cast<int>(size)));
@@ -913,9 +921,58 @@ private:
         edit_->SetFocus(true);
     }
 
+    // The families the deck's text is set in: its theme's two, then every
+    // run's, each once - the font list's "In this document".
+    std::vector<std::string> DeckFonts() {
+        std::vector<std::string> families;
+        auto add = [&families](const std::string& family) {
+            if (!family.empty() && std::find(families.begin(), families.end(), family) == families.end())
+                families.push_back(family);
+        };
+        const auto& deck = Editor().GetDeck();
+        if (!deck) return families;
+        add(deck->majorFont);
+        add(deck->minorFont);
+        auto paragraphs = [&add](const std::vector<PptxParagraph>& list) {
+            for (const PptxParagraph& paragraph : list)
+                for (const PptxRun& run : paragraph.runs) add(run.font);
+        };
+        for (const PptxSlide& slide : deck->slides) {
+            for (const PptxShape& shape : slide.shapes) {
+                paragraphs(shape.paragraphs);
+                for (const auto& row : shape.rows)
+                    for (const auto& cell : row) paragraphs(cell);
+            }
+        }
+        return families;
+    }
+
+    // The font list shows the selected text's font: one family, or blank
+    // for several (or none).
+    void SyncFont() {
+        if (!font_) return;
+        if (TextOpen()) {
+            const RichCharFormatState state = text_->GetFormatState();
+            std::string family = state.fontFamily;
+            if (family.empty() && !state.fontFamilyMixed) family = text_->GetStyle().baseFont.fontFamily;
+            if (state.fontFamilyMixed || family.empty()) font_->SetMixed();
+            else font_->SetCurrentFont(family);
+            return;
+        }
+        std::string first;
+        bool any = false;
+        const bool same = Editor().AllSelectedText([&first, &any](const PptxRun& r) {
+            if (!any) { first = r.font; any = true; }
+            return r.font == first;
+        });
+        if (any && same && !first.empty()) font_->SetCurrentFont(first);
+        else font_->SetMixed();
+    }
+
     // The text tools show what the text has.
     void SyncText() {
         auto set = [](UltraCanvasButton* button, bool on) { if (button) button->SetPressed(on); };
+        SyncFont();
         if (TextOpen()) {
             const RichCharFormatState state = text_->GetFormatState();
             set(bold_, RichCharFormatState::IsOn(state.bold));
