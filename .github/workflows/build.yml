@@ -3427,12 +3427,13 @@ jobs:
           echo "https://github.com/${{ github.repository }}/releases/tag/$tag"
 
   # ===== THE SDKS ON THE ULTRAOS WEBSITE =====
-  # UltraCanvasStart's Framework step opens https://ultraos.eu/download-file/
-  # (Apps/UltraCanvasStart/engine/StartSdk.cpp) and names the archive for
-  # its version; this job puts the same archives the release above
-  # carries on the server behind that page, so the page can offer a version
-  # the moment it is released instead of when someone copies it over. Over
-  # SFTP, into <ULTRAOS_SFTP_DIR>/<version>/ with a SHA256SUMS beside them
+  # UltraCanvasStart's Framework step downloads the SDK of its version from
+  # https://start.ultraos.eu/pub/<version>/ (Apps/UltraCanvasStart/engine/StartSdk.cpp);
+  # this job puts the same archives the release above carries on that
+  # server, the moment it is released instead of when someone copies it
+  # over. Over SFTP, into <ULTRAOS_SFTP_DIR>/<version>/ with a SHA256SUMS
+  # beside them, then <ULTRAOS_SFTP_DIR>/LATEST set to the version, which
+  # UltraCanvasStart's update check reads
   # (scripts/upload-sdk-website.sh, which documents every setting). After
   # publish-sdk, so the website never has a version the release lacks; a job
   # of its own, so an unreachable server turns this job red, not the

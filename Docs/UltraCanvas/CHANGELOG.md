@@ -1,3 +1,42 @@
+#### 2026-11-26 *0.9.607*
+- **A wiki for the whole framework: `Docs/Wiki/`.** One place that starts at
+  the beginning - an introduction, a feature overview, getting started, and
+  guide pages on the core concepts, layout, events and callbacks, styling and
+  themes, rendering (with a custom element), files / text / localisation and
+  the sibling modules - and goes down to a reference page for every element:
+  what it is for, its header and include, base classes and derived elements,
+  factories and constructors, **every callback** with its signature and what
+  it reports, every setter, query and public field, and the option structs
+  and enums of its header with their defaults. Group pages follow the element
+  catalogue's sections; an element index and a callback index list
+  everything A-Z (202 elements, 836 callbacks).
+  - The reference is generated from the headers by the new
+    `scripts/generate_wiki.py` (grouping and purpose from
+    `UltraCanvasUIElements.md`), so it lists exactly what the code declares;
+    `--check` reports when it is stale. The guide pages are written by hand
+    and their C++ compiles with `scripts/check_doc_examples.py`.
+
+#### 2026-11-26 *0.9.606*
+- **The SDK page no longer calls the macOS SDK static.** Its Compatibility
+  section now matches the artifact table and the build: the macOS core is a
+  shared `libUltraCanvas.dylib`, with its libraries in `deps/lib`
+  (`Docs/UltraCanvasSDK.md` 1.3.2).
+- **New info text on UltraCanvas Start and the SDK packages**
+  (`Docs/UltraCanvasStart/Info.md`): what each is for, the six steps, the
+  downloads per platform and how to use an SDK by hand.
+- **The SDK server names its newest version in `pub/LATEST`.** After it has
+  uploaded a release's archives and `SHA256SUMS`,
+  `scripts/upload-sdk-website.sh` writes `<ULTRAOS_SFTP_DIR>/LATEST`, one line
+  with the version. It writes `LATEST.part` and renames it, the way the
+  archives go up, and leaves the file alone when it already names a newer
+  version (`sort -V`), so a re-run of an old release does not move it back.
+  `--latest <version>` sets it by hand once that version's `SHA256SUMS` is on
+  the server; the *SDK website check* workflow runs that when it is started
+  with a version in its new `latest` input - the way back after a bad
+  release, and the way to start `LATEST` for the releases uploaded before.
+  UltraCanvasStart reads the file to offer a newer SDK (UltraCanvasStart
+  changelog: `update-to-the-newest-sdk`; `Docs/UltraCanvasSDK.md` 1.4.0).
+
 #### 2026-11-26 *0.9.605*
 - **UltraCanvasLaunchAtLogin: starting a program when the user signs in.**
   `SetLaunchAtLogin(entry, enabled, error)` puts a program in the computer's

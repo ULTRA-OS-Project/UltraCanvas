@@ -1,5 +1,7 @@
 // Tests/UltraCanvasStart/test_plan.cpp
 // The plan, the SDK names and the report.
+// Version: 0.1.6 - pub/LATEST: ParseLatestVersion, CheckSdkUpdate's failures,
+//                  the matching UltraCanvasStart's name
 // Version: 0.1.5 - the SDK's address on start.ultraos.eu, ChecksumFor, DownloadSdk's failures
 // Version: 0.1.4 - an installed MSYS2 is updated first; RunStep streams its lines
 // Version: 0.1.3 - Windows without MSYS2: winget sets it up before pacman
@@ -287,6 +289,43 @@ TEST(DownloadSdk_fails_cleanly_without_a_server) {
     REQUIRE(refused.error.find("http://127.0.0.1:1/pub/0.9.465/SHA256SUMS") != std::string::npos);
     REQUIRE(fs::is_empty(dir));
     fs::remove_all(dir);
+}
+
+TEST(ParseLatestVersion_reads_the_first_line) {
+    // What scripts/upload-sdk-website.sh writes, and what an editor might.
+    REQUIRE_EQ(ParseLatestVersion("0.9.604\n"), std::string("0.9.604"));
+    REQUIRE_EQ(ParseLatestVersion("\xEF\xBB\xBF  0.9.604 \r\n"), std::string("0.9.604"));
+    REQUIRE_EQ(ParseLatestVersion("\n\n1.0.0\nsomething after\n"), std::string("1.0.0"));
+    // Anything else names no version: a page, a partial number, words.
+    REQUIRE(ParseLatestVersion("<html><body>Not Found</body></html>").empty());
+    REQUIRE(ParseLatestVersion("0.9").empty());
+    REQUIRE(ParseLatestVersion("0.9.604 beta").empty());
+    REQUIRE(ParseLatestVersion("v0.9.604").empty());
+    REQUIRE(ParseLatestVersion("").empty());
+    REQUIRE_EQ(SdkLatestUrl(), std::string("https://start.ultraos.eu/pub/LATEST"));
+    REQUIRE_EQ(SdkLatestUrl("http://127.0.0.1:8000/pub/"), std::string("http://127.0.0.1:8000/pub/LATEST"));
+}
+
+TEST(StartAppDownloadUrl_names_the_release_asset) {
+    REQUIRE_EQ(StartAppArchiveName(Platform::Linux, "0.9.604", "arm64"),
+               std::string("UltraCanvasStart-Linux-0.9.604-arm64.tar.xz"));
+    REQUIRE_EQ(StartAppArchiveName(Platform::Windows, "0.9.604", "x86_64"),
+               std::string("UltraCanvasStart-Windows-0.9.604-x86_64.zip"));
+    REQUIRE_EQ(StartAppArchiveName(Platform::MacOS, "0.9.604", "arm64"),
+               std::string("UltraCanvasStart-MacOS-0.9.604-arm64.dmg"));
+    REQUIRE_EQ(StartAppDownloadUrl(Platform::Linux, "0.9.604", "x86_64"),
+               std::string("https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.604/"
+                           "UltraCanvasStart-Linux-0.9.604-x86_64.tar.xz"));
+}
+
+TEST(CheckSdkUpdate_fails_cleanly_without_a_server) {
+    const SdkUpdateCheck check = CheckSdkUpdate(Platform::Linux, "0.9.465", "x86_64", "http://127.0.0.1:1/pub/");
+    REQUIRE(!check.ok);
+    REQUIRE(!check.newer);
+    REQUIRE_EQ(check.installed, std::string("0.9.465"));
+    // Without UltraNet it says the build cannot ask; with it, that the
+    // address could not be reached. Either way the address is named.
+    REQUIRE(check.error.find("http://127.0.0.1:1/pub/LATEST") != std::string::npos);
 }
 
 TEST(UnpackStep_uses_tar) {
