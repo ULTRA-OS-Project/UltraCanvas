@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.18.0 - the rich text page the lighter of well and panel, the desk darker (rich-text.desk)
 // Version: 1.17.0 - ForDarkLook / ForThisLook; the gauge's dark look
 // Version: 1.16.0 - the dialog's destructive outline answer and the Filer's operation list under a
 //                  dark theme; a dialog given type sizes keeps following the theme and its sizes
