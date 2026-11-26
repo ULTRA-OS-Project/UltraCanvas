@@ -1,3 +1,8 @@
+#### 2026-11-26 *0.29.0*
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
+
 #### 2026-11-22 *0.28.0*
 - **Desktop → Tool applications.** A new row chooses whether UltraClipboard,
   UltraSnip and UltraToDo show only on UltraDesktop's tool group (the

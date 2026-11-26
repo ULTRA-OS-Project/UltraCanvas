@@ -1,0 +1,8 @@
+{
+  "@language": "ko",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "쿠키 {0}개를 삭제했습니다. 앱의 장치 권한은 초기화됩니다",
+  "No cookies to clear; the apps' device permissions are forgotten": "삭제할 쿠키가 없습니다. 앱의 장치 권한은 초기화됩니다",
+  "{0} wants to use your camera": "{0}이(가) 카메라를 사용하려고 합니다",
+  "{0} wants to use your microphone": "{0}이(가) 마이크를 사용하려고 합니다"
+}

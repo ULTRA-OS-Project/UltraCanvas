@@ -1029,17 +1029,35 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasOdfChart** (`UltraCanvasOdfChart.h`) — OpenDocument chart
   objects for every ODF format: `WriteOdfChartObject` (a `RichChart` as an
   `office:chart` document with its series, styles and table) and
-  `ReadOdfChartObject` (back, and LibreOffice's). The `.odt` reader and
-  writer, the `.odp` reader and writer. In `core/UltraCanvasOdfChart.cpp`.
+  `ReadOdfChartObject` (back, and LibreOffice's); a spreadsheet's chart with
+  its series' ranges into the sheets (`OdfChartSeriesSource`,
+  `ReadOdfChartSources`). The `.odt` reader and writer, the `.odp` reader and
+  writer, the `.ods` charts. In `core/UltraCanvasOdfChart.cpp`.
   See `Docs/UltraCanvas/UltraCanvasOdfChart.md`.
 - **UltraCanvasDrawingML** (`UltraCanvasDrawingML.h`) — DrawingML read once
   for every Office format: `ReadDrawingMLChart` (a `c:chartSpace` chart part
   into `RichChart` - kind, series, colours, categories, title, legend, axis
   ranges), `DrawingMLColor` (srgb / sys / scrgb / preset / scheme colours with
-  tint, shade and luminance), `DrawingMLDefaultThemeColors`. Local names, any
-  prefix. The `.docx` reader's and the PowerPoint reader's charts. In
+  tint, shade and luminance), `DrawingMLDefaultThemeColors`,
+  `WriteDrawingMLChart` (literals, or with `DrawingMLSeriesSource` the
+  series' `c:f` cell references and caches - `ReadDrawingMLChartSources`
+  reads them back). Local names, any prefix. The `.docx` reader's and the
+  PowerPoint reader's charts, and a workbook's. In
   `core/UltraCanvasDrawingML.cpp`.
   See `Docs/UltraCanvas/UltraCanvasDrawingML.md`.
+- **UltraCanvasSpreadsheetChart** (`UltraCanvasSpreadsheetChart.h`) — charts
+  on a spreadsheet: `SpreadsheetChart` (a `RichChart` anchored to two cells
+  with offsets, its series `SpreadsheetChartSeries` ranges of cells),
+  `MakeSpreadsheetChart` (from a block, names and categories found),
+  `RefreshSpreadsheetChart` (the data read from the cells again),
+  `SpreadsheetChartBox` / `SpreadsheetChartAnchorForBox`,
+  `DrawSpreadsheetChart`, and the .xlsx / .ods parts
+  (`ReadXlsxSheetCharts`, `WriteXlsxCharts`, `ReadOdsCharts`,
+  `WriteOdsSheetCharts`). A sheet keeps them (`SpreadsheetSheet::GetCharts`);
+  the grid inserts (`InsertChartFromSelection`), draws, selects, moves,
+  resizes, deletes and undoes them and prints them. In
+  `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
   presentations (`.odp`, `.otp` templates, flat `.fodp`) read into
@@ -16414,7 +16432,7 @@ std::vector<std::string> ListDriveRoots();
 
 struct FolderBreadcrumbOptions {
     bool showComputerItem = true;            // leading node listing all drives
-    std::string computerLabel = "Computer";
+    std::string computerLabel;               // empty: "Computer" in the language shown
     bool subFolderDropdowns = true;          // per-segment dropdown of that folder's sub-folders
     // What a click on the "Computer" node itself does. Unset, it navigates to
     // the drive root of the shown path; a host with a page of its own for the
@@ -29493,6 +29511,27 @@ slice colours, the categories, the title, the legend, the axes and the ranges
 the chart states (`valueMin` / `valueMax`, a scatter chart's `xMin` / `xMax`).
 `ReadDrawingMLChart` reads it back as it was.
 
+A workbook's chart (`xl/charts/chartN.xml`) keeps references to the cells
+instead: `WriteDrawingMLChart(chart, sources)` writes each series' name,
+categories, values and - scatter - x values as `c:strRef` / `c:numRef` with
+the formula a `DrawingMLSeriesSource` gives (`'Sales Data'!$B$2:$B$7`) and the
+chart's values as their cache, and `ReadDrawingMLChartSources` reads the
+formulas back, one per series in the part's order. The spreadsheet's charts
+([UltraCanvasSpreadsheetExamples](UltraCanvasSpreadsheetExamples.md#charts))
+are written and read this way.
+
+<!-- doc-check: UltraCanvas::RichChart chart; -->
+```cpp
+std::vector<DrawingMLSeriesSource> sources(1);
+sources[0].name = "Sheet1!$B$1";
+sources[0].categories = "Sheet1!$A$2:$A$7";
+sources[0].values = "Sheet1!$B$2:$B$7";
+const std::string part = WriteDrawingMLChart(chart, sources);
+for (const DrawingMLSeriesSource& source : ReadDrawingMLChartSources(part)) {
+    // source.values == "Sheet1!$B$2:$B$7" ...
+}
+```
+
 ## Colours
 
 <!-- doc-check: const tinyxml2::XMLElement* solidFill; std::map<std::string, std::string> theme; -->
@@ -31972,6 +32011,7 @@ on Windows the module needs the shared core). The table:
 | `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
 | `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
 | `MediaViewer` | `media-viewer` | `ultracanvas-widget-media-viewer` (shared core only) | UltraViewer, UltraFiler, UltraMail, EmailCleaner, ChatCube, UltraClipboard, UltraSnip, DemoApp |
+| `ProfilePicture` | `profile-picture`, `profile-picture-editor` | `ultracanvas-widget-profile-picture` | ChatCube, DemoApp |
 
 **Static or shared core.** The shipping configuration is a shared core
 (`ULTRACANVAS_BUILD_SHARED`, on by default whenever DemoApp is built): every
@@ -39705,6 +39745,7 @@ coordinate, and a longer caption widens the column instead of clipping.
 | `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
 | `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
 | `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+| `HoldFormCaptionColumn(grid)` | Holds the caption column at its widest caption, hidden rows' too, so the controls stay put as rows are shown and hidden. Call it once the grid is in a window. |
 | `DisableScrollbars(container)` | Turns a container's scrollbars off — for any container that only arranges what is in it. `CreateFormGrid` and `CreateFormCellRow` call it themselves. |
 
 The grid does not scroll, and neither does a cell row: whatever needs to, the
@@ -39729,6 +39770,20 @@ viewport onto taller content opts in with `CreateScrollableContainer` or
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
 current format's options that way — without leaving holes or empty tracks.
+The `auto` caption column then counts only the captions shown: hide the row
+with the widest one and every control moves left, to move back when it shows
+again. A form whose rows follow a choice holds the column instead, once it is
+in a window (the captions measure their text, and measure nothing before):
+
+<!-- doc-check: DialogConfig config; std::shared_ptr<UltraCanvasDropdown> kindDropdown; std::shared_ptr<UltraCanvasDropdown> alertDropdown; -->
+```cpp
+auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+auto form = CreateFormGrid("rule-form");
+AddFormRow(form, "kind", "Allow:", kindDropdown);
+AddFormRow(form, "alert", "On a wrong entry:", alertDropdown);
+dialog->AddDialogElement(form);
+HoldFormCaptionColumn(form);          // as wide as "On a wrong entry:", shown or not
+```
 
 ## Buttons
 
@@ -54317,7 +54372,7 @@ items run edge to edge and only their highlight is rounded.
 ### Its Own Window
 
 A popup menu or submenu is shown in a window of its own (`WindowType::Popup`),
-above every other window, like every popup - see
+like every popup - see
 `UltraCanvasWindowBase::SetPopupsInOwnWindows`. Composited onto the window it
 was opened in, a menu was covered by any window above that one: the menus of
 UltraDesktop's bars, whose window is kept below all others, opened under the
@@ -54334,8 +54389,24 @@ macOS and Wayland), so the rounded corners show whatever is beneath. It has no
 drop shadow of its own - macOS and a compositing window manager give a popup
 window one - and it does not fade in: `enableAnimations` shows it in full at
 once. It closes on a click outside it, as before, and also when the focus
-leaves the application, since it would otherwise float above other programs'
-windows. In the browser and on Android, and with
+goes to another window - another program's, or another window of the same
+application brought to the front - since it would otherwise float above that
+window (a dialog of the menu's own window taking the focus leaves it open). It
+closes when its window is hidden or minimised, and when its window is moved:
+on Windows a press on the frame - the title bar or a border - counts as a click
+outside (`UltraCanvasWindowBase::ClosePopupsOnFramePress`); on X11 and macOS,
+where the window manager keeps that press to itself, the move does
+(`ClosePopupsIfWindowMoved`). A popup that does not close on a click outside
+follows its window instead.
+
+That window is kept above the window the menu was opened in, not above every
+window: a window that comes over that one - another program's, put in front
+without taking the focus - covers the menu too (an owned window on Windows, a
+child window on macOS). Only the menus of a window that is not in the ordinary
+stack are above every window: a desktop's (`WindowType::Desktop`, kept below
+every other, as UltraDesktop's bars are), a notification's, an overlay's, a lock
+screen's, or one kept `alwaysOnTop` - see
+`UltraCanvasWindowBase::PopupsAboveEveryWindow`. In the browser and on Android, and with
 `SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
 described above.
 
@@ -58578,6 +58649,28 @@ categories, the title, the legend and the ranges the chart states.
 class the model has no kind for, a document without series, or XML that does
 not parse answers false and leaves `out` alone - the object's replacement
 picture is then what a reader has to show.
+
+## A spreadsheet's chart
+
+A chart on a spreadsheet takes its data from the sheets, not from its own
+table: `WriteOdfChartObject(chart, widthPt, heightPt, sources, plotArea)`
+writes each series' `chart:values-cell-range-address`, its name's
+`chart:label-cell-address` and the categories (a scatter series'
+`chart:domain`) as the `OdfChartSeriesSource` ranges give them
+(`'Sales Data'.$B$2:.$B$7`), and the plot area's `table:cell-range-address`;
+its own table stays, as the cache of the values. `ReadOdfChartSources`
+reads the ranges back, one per series. The spreadsheet's charts
+([UltraCanvasSpreadsheetExamples](UltraCanvasSpreadsheetExamples.md#charts))
+are written and read this way.
+
+<!-- doc-check: UltraCanvas::RichChart chart; -->
+```cpp
+std::vector<OdfChartSeriesSource> sources = {{"Sheet1.$B$1", "Sheet1.$A$2:.$A$7", "Sheet1.$B$2:.$B$7"}};
+const std::string xml = WriteOdfChartObject(chart, 360.0f, 216.0f, sources, "Sheet1.$A$1:.$B$7");
+for (const OdfChartSeriesSource& source : ReadOdfChartSources(xml)) {
+    // source.values == "Sheet1.$B$2:.$B$7" ...
+}
+```
 
 ## Test
 
@@ -64581,6 +64674,159 @@ deck; a document laid out as a deck, and a deck's outline laid out as its
 slides again; `UltraCanvasFileLoader::SaveTextDocument` writing a `.pptx`.
 The decks it writes open in python-pptx and LibreOffice
 (`UC_PPTX_TEST_DUMP=<dir>` keeps them).
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasProfilePicture.md
+==============================================================================
+
+# UltraCanvas Profile Picture Documentation
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> card; std::shared_ptr<UltraCanvasContainer> row; UltraCanvasWindowBase* window; std::string savedPicture; std::string dataFolder; void SavePicturePath(const std::string& path); void ShowStatus(const std::string& text); -->
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [The picture](#the-picture)
+- [Choosing and placing a picture](#choosing-and-placing-a-picture)
+- [The cropper on its own](#the-cropper-on-its-own)
+- [Writing the square yourself](#writing-the-square-yourself)
+- [Style and the theme](#style-and-the-theme)
+- [The element registry](#the-element-registry)
+
+## Overview
+
+A person's profile picture, the way the messengers show one: a square picture in a circle, or, without one, the initials of the name on a colour picked from a key (the same key always gets the same colour). Four parts, in `UltraCanvasProfilePicture.h`:
+
+| Part | What it is |
+|---|---|
+| `UltraCanvasProfilePicture` | The round picture. Editable, it wears a badge - a camera with a picture, a **+** without - and a click (or Return / Space with the focus) chooses a new picture; Delete removes it. |
+| `UltraCanvasProfilePictureEditor` | The row of a profile page: the picture, a caption, **Choose a picture** (**Change picture** once there is one), **Remove**, and a line of hint. Built from `UltraCanvasButton` and `UltraCanvasLabel`. |
+| `UltraCanvasProfilePictureCropper` | The area a picture is placed in: the whole picture under a round window, dragged to move it, the wheel (or `SetZoom`) to zoom, the arrow keys and **+** / **-** with the focus; what lies outside the circle is dimmed. |
+| `ShowProfilePictureCropDialog` | That cropper in a dialog, with a zoom slider, the picture as it will look at 40 and 28 pixels, **Cancel** and **Use this picture**. |
+
+Choosing goes through three steps: the FileLoader's Open dialog (every picture type this build reads), the crop dialog, then `CropProfilePicture`, which writes the square that was framed - 256 pixels a side by default, JPEG, or PNG when the picture has transparency - into the output folder. `onPictureChanged` reports the new file; removing reports `""`. The picture shown follows at once. The file is the application's own (a cache or profile folder of its own, `SetOutputDirectory`), so the application keeps the path and hands it back with `SetPicturePath` at the next start.
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasProfilePicture.h"
+
+auto editor = CreateProfilePictureEditor("ProfilePicture", 440);
+editor->SetName("Erin Mayer");                           // the initials and the accessible name
+editor->SetHint("A photo of you, or anything square. Your contacts see it beside your name.");
+editor->GetPicture()->SetOutputDirectory(dataFolder);    // where chosen pictures are written
+editor->SetPicturePath(savedPicture);                    // "" shows the initials
+editor->onPictureChanged = [](const std::string& path) {
+    SavePicturePath(path);                               // "" when the picture was removed
+};
+editor->onPictureError = [](const std::string& error) {
+    ShowStatus("The picture could not be written: " + error);
+};
+card->AddChild(editor);
+```
+
+An application that styles its own buttons reaches the row's two with `GetChooseButton()` and `GetRemoveButton()`. The row is at least as tall as its picture (96 pixels; `SetPictureSize`), taller when the caption, the buttons and a wrapped hint need it. `SetCaption("")` hides the caption, `SetHint("")` the hint.
+
+## The picture
+
+```cpp
+// In a list: 40 pixels, a person's id picks the colour of their initials.
+auto avatar = CreateProfilePicture("Avatar", 40);
+avatar->SetName("Mika Korhonen");
+avatar->SetColorKey("user-7c1f");
+avatar->SetPicturePath(savedPicture);      // shown in the circle; a picture that is not square shows its middle square
+row->AddChild(avatar);
+
+// Editable on its own, without the row's buttons.
+auto mine = CreateProfilePicture("MyPicture", 72);
+mine->SetName("Erin Mayer");
+mine->SetEditable(true);
+mine->onPictureChanged = [](const std::string& path) { SavePicturePath(path); };
+```
+
+- `ProfilePictureInitials(name)` gives the initials it draws: the first letters of the first and last word, upper-cased (`"Erin Mayer"` → `EM`, `"erin"` → `E`); a letter outside ASCII is taken whole.
+- `PictureRect()` is the circle: the element's largest centred square.
+- `SetPictureFrame(source, frame)` shows a square of a picture without writing a file - the crop dialog's previews use it; `SetPicturePath` clears it.
+- `SetOutputSize(pixels)` (256 by default, 64 to 1024) and `SetMaxOutputBytes(bytes)` (0, the default, for any size) say what a chosen picture is written as: a service that takes pictures up to a size - ChatCube Direct's 32 KiB in one sealed message - gets one that fits (see `CropProfilePictureWithin` below).
+- `ChoosePicture()` opens the chooser from code (the editor row's button does); `PlacePicture(path)` starts at the crop dialog with a picture the application already has (a file dropped on it, a photo taken); `RemovePicture()` goes back to the initials.
+
+## Choosing and placing a picture
+
+The crop dialog can be used without the picture element:
+
+```cpp
+ShowProfilePictureCropDialog(window, "/home/erin/Pictures/beach.jpg", ProfilePictureStyle::FromTheme(),
+    [](bool placed, const ProfilePictureFrame& frame) {
+        if (!placed) return;                             // Cancel, or the file could not be read
+        std::string error;
+        if (!CropProfilePicture("/home/erin/Pictures/beach.jpg", frame, 256, "/tmp/me.jpg", &error))
+            ShowStatus(error);
+    });
+```
+
+A `ProfilePictureFrame` says which square of the picture is shown: `centerX` and `centerY` are its centre as fractions of the picture's width and height (0.5, 0.5 is the middle), and `zoom` 1 is the largest square that fits (the picture's shorter side), 2 a square half as wide. `SquareIn(width, height)` gives that square in pixels and `Clamped(width, height)` brings a frame back inside the picture.
+
+## The cropper on its own
+
+```cpp
+auto cropper = std::make_shared<UltraCanvasProfilePictureCropper>("Cropper", 260.0f);
+cropper->SetSourcePath("/home/erin/Pictures/beach.jpg");   // false when it is no picture
+cropper->SetMaxZoom(4.0);                                  // the default
+auto preview = CreateProfilePicture("Preview", 64);
+cropper->onFrameChanged = [preview = preview.get(), cropper = cropper.get()](const ProfilePictureFrame& f) {
+    preview->SetPictureFrame(cropper->GetSourcePath(), f);
+};
+cropper->SetZoom(1.5, true);                               // true: report it as a drag would
+card->AddChild(cropper);
+card->AddChild(preview);
+```
+
+The circle is the cropper's largest centred square less `ProfilePictureStyle::cropInset` on each side (`CircleRect()`). A drag moves the picture with the pointer, and stops at the picture's edge.
+
+## Writing the square yourself
+
+```cpp
+std::string error;
+const bool written = CropProfilePicture("/home/erin/Pictures/beach.jpg",
+                                        ProfilePictureFrame{0.4, 0.5, 1.2},
+                                        512, "/tmp/me.png", &error);
+const bool keepAsPng = ProfilePictureHasTransparency("/home/erin/Pictures/logo.png");
+```
+
+The format follows the extension of the file written: `.jpg` / `.jpeg` (quality 88, transparency put over white), `.webp`, otherwise PNG with its transparency. Every output pixel averages the source pixels it covers, so a large photo shrinks sharp and a small picture is enlarged smoothly to the size asked for. The source is read at no more than 2048 pixels on its long side.
+
+To keep the file under a size, `CropProfilePictureWithin` writes it as `CropProfilePicture` does and, when it comes out larger, again as JPEG at quality 75 and 60, then at three quarters and half the size (never under 64 pixels), until it fits. The path written comes back - the one asked for, or the same with `.jpg` when a PNG had to become a JPEG; nothing is left behind when not even the smallest fits.
+
+```cpp
+std::string written, why;
+if (CropProfilePictureWithin("/home/erin/Pictures/beach.png", ProfilePictureFrame{}, 256, "/tmp/me.png",
+                             32 * 1024, &written, &why))
+    SavePicturePath(written);   // "/tmp/me.jpg" when the PNG was too large
+```
+
+## Style and the theme
+
+`ProfilePictureStyle` holds the eight initials colours (`initialsPalette`), the initials' two inks (`InkOn` picks whichever reads on the colour), the badge's colours and size, the hover shade, the focus ring, and the cropper's background, shade, ring and inset. `ProfilePictureStyle::Light()` and `Dark()` are the two looks; `FromTheme(theme)` takes the accent for the badge and the focus, the panel for the badge's border and the palette for the theme's darkness - or the theme's own `avatar.0` … `avatar.7` roles where it names them. A picture that follows the theme restyles with it; `SetStyle` by hand stops the following.
+
+```cpp
+ProfilePictureStyle style = ProfilePictureStyle::Dark();
+style.ringColor = Color(255, 255, 255, 60);              // a hairline round the circle
+const Color mine = style.ColorForKey("user-7c1f");       // the colour that key's initials get
+auto picture = CreateProfilePicture("Picture", 48);
+picture->SetStyle(style);
+```
+
+## The element registry
+
+Two type names, category Widget: `profile-picture` and `profile-picture-editor`. Both come from the selectable widget `ProfilePicture`: compiled into the core by default, or, when `ULTRACANVAS_WIDGETS` leaves it out, the runtime module `ultracanvas-widget-profile-picture` in `<build>/Plugins/Elements` (see [UltraCanvasElementPlugins.md](UltraCanvasElementPlugins.md)).
+
+```cpp
+UltraCanvas_RegisterSelectedWidgets();
+auto byName = UltraCanvasElementRegistry::Create("profile-picture", "Avatar", 0, 0, 64, 64);
+```
+
+DemoApp shows it under **Widgets > Profile Picture**; `Tests/ProfilePictureTest.cpp` covers the initials, the colours, the frame, the writing, the cropper's input and the editor row.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasProgressDialog.md
@@ -77894,8 +78140,11 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - [Sheet tab menu](#sheet-tab-menu)
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
 - [Data validation](#data-validation)
+- [Conditional formats](#conditional-formats)
+- [Comments and links](#comments-and-links)
 - [Best Practices](#best-practices)
 - [Printing and PDF](#printing-and-pdf)
+- [Charts](#charts)
 - [See Also](#see-also)
 
 ## Overview
@@ -77924,6 +78173,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references; Ctrl-drag copies instead, a double-click fills down beside the neighbouring data, Ctrl+D / Ctrl+R fill down / right (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
+- **Charts**: Columns, bars, lines, areas, pies, scatter and radar charts made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
@@ -78241,6 +78491,10 @@ workbook opened and saved again comes back as it was:
 | Print area | `_xlnm.Print_Area` | `table:print-ranges` |
 | Rows / columns repeated on every page | `_xlnm.Print_Titles` | header rows / columns |
 | Page setup, header and footer, page breaks | `printOptions`, `pageMargins`, `pageSetup`, `headerFooter`, `rowBreaks` / `colBreaks` | the page layout and master page in `styles.xml`, `fo:break-before` |
+| Conditional formats | `conditionalFormatting`, their styles as `dxfs` in `styles.xml` | `calcext:conditional-formats`, their styles as common styles in `styles.xml` |
+| Validation rules | `dataValidations` | `table:content-validations`, named by the cells |
+| Comments | the comments part, and the legacy VML drawing Excel shows them with | `office:annotation` in the cell |
+| Links | `hyperlinks` (an address through the sheet's relationships, a place as `location`) | a `text:a` in the cell's text |
 
 Header and footer texts are kept in Excel's codes (`&P` page, `&N` pages,
 `&A` sheet, `&F` file, `&D` date, `&T` time, `&&` an ampersand), which an
@@ -79087,7 +79341,25 @@ in a dialog titled with `errorTitle` that shows `errorMessage` (or a default):
 
 A refused entry leaves no undo step. A rule with `showErrorAlert = false`
 keeps whatever is typed, and blanks pass while `allowBlank` is true (the
-default). Custom (formula) rules are not evaluated yet and always pass.
+default).
+
+A `Custom` rule is a formula that must come out true. It is written for the
+rule's top-left cell and moved to each other cell as a copied formula is
+(`=K1>A1` on K1:K5 checks `=K3>A3` in K3). A bound of the other rules may be
+a formula too (`=$F$1`), worked out when the cell is checked:
+
+```cpp
+DataValidation later;
+later.type = ValidationType::Custom;
+later.formula1 = "=B2>A2";                       // the end after the start, row by row
+grid->GetActiveSheet()->SetValidation(CellRange(1, 1, 50, 1), later);      // B2:B51
+
+DataValidation upTo;
+upTo.type = ValidationType::Decimal;
+upTo.op = ValidationOperator::LessOrEqual;
+upTo.formula1 = "=$F$1";                         // no more than F1 holds
+grid->GetActiveSheet()->SetValidation(CellRange(1, 4, 50, 4), upTo);       // E2:E51
+```
 
 To ask in your own way, set `onValidationFailed`. It replaces the dialog, and
 `answer` may be called at once or later, exactly once:
@@ -79110,9 +79382,139 @@ std::vector<std::string> items = grid->GetValidationListItems(1, 3);   // {"Open
 grid->ChooseValidationListItem(1, 3, "Done");                          // false for an item not offered
 ```
 
-The list's items are the rule's own text; a list taken from a range of cells
-(`$F$1:$F$5`) is not read yet. Neither ODS nor XLSX reads or writes rules yet,
-so they are set from code.
+A list rule whose `formula1` starts with `=` names cells instead
+(`IsRangeListSource`): `"=$G$1:$G$9"`, `"='Lists'.A1:A20"` or a named range.
+Its items are the cells' values, read when the arrow opens or an entry is
+checked, so the list follows the cells:
+
+```cpp
+DataValidation region;
+region.type = ValidationType::List;
+region.formula1 = "=$G$1:$G$3";                  // North, South, East in G1:G3
+grid->GetActiveSheet()->SetValidation(CellRange(1, 0, 50, 0), region);
+std::vector<std::string> regions = grid->GetActiveSheet()->GetValidationListItems(1, 0);
+```
+
+`.xlsx` and `.ods` read and write the rules (see *What a workbook file
+keeps*), and `ShowDataValidationDialog()` edits the selection's rule:
+what is allowed, the condition and its values, blanks, the list arrow, and
+how a wrong entry is answered (`SetSelectionValidation` from code; a rule of
+type `Any` removes it).
+
+## Conditional formats
+
+A conditional format changes how the cells of a range look by what they
+hold. The sheet keeps them (`SpreadsheetSheet::AddConditionalFormat`,
+`SetConditionalFormats`), and `UltraCanvasSpreadsheet::PaintCell` draws them,
+so the grid, the printed page and the PDF all show them. A format is a range
+and its rules:
+
+| Rule (`ConditionalFormatType`) | Holds when | Settings |
+|---|---|---|
+| `CellValue` | the value compares with `formula1` (and `formula2`) by `op` | a number, `"quoted text"` or a formula (`=$B$1`) |
+| `Expression` | the formula in `formula1` is true, moved to each cell from the range's top-left one | `=E1>$F$1` |
+| `ContainsText`, `NotContainsText`, `BeginsWithText`, `EndsWithText` | the shown text, ignoring case | the text in `formula1` |
+| `ContainsBlanks`, `NotContainsBlanks`, `ContainsErrors`, `NotContainsErrors` | the cell is empty / shows an error | |
+| `Top10` | among the highest (`bottom`: lowest) `formula1` values, or percent of them (`percent`) | |
+| `AboveAverage` | above the range's average (`aboveAverage` false: below; `equalAverage`: or equal) | |
+| `DuplicateValues`, `UniqueValues` | the text occurs more than once / once in the range | |
+| `ColorScale` | a number: the cell filled with `colorScale`'s two or three colours, mixed by where the value lies | `thresholds` (default lowest, 50th percentile, highest) |
+| `DataBar` | a number: a bar of `dataBarColor` from the left edge, as long as the value is far between the lowest and the highest | `thresholds`, `showValue` |
+
+A rule's `style` lays only what it sets over the cell's own
+(`ApplyConditionalStyle`): a fill, a font colour other than black, bold,
+italic, underline, strikethrough. Rules are tried by `priority` (lower first;
+one without a priority after those with one), then in order; the first
+style that holds wins, a colour scale and a data bar draw beside it, and
+`stopIfTrue` ends the search.
+
+```cpp
+SpreadsheetSheet* sheet = grid->GetActiveSheet();
+
+ConditionalFormatRule over;
+over.type = ConditionalFormatType::CellValue;
+over.op = ValidationOperator::GreaterThan;
+over.formula1 = "1000";
+over.style.fill = CellFill::Solid(Color(255, 199, 206));
+over.style.font.color = Color(156, 0, 6);
+
+ConditionalFormat amounts;
+amounts.range = CellRange(1, 2, 99, 2);                          // C2:C100
+amounts.rules.push_back(over);
+sheet->AddConditionalFormat(amounts);
+
+ConditionalFormatRule scale;
+scale.type = ConditionalFormatType::ColorScale;
+scale.colorScale = {Color(248, 105, 107), Color(255, 235, 132), Color(99, 190, 123)};
+ConditionalFormat heat;
+heat.range = CellRange(1, 3, 99, 3);                             // D2:D100
+heat.rules.push_back(scale);
+sheet->AddConditionalFormat(heat);
+
+ConditionalCellFormat look = sheet->GetConditionalFormatting(4, 2);   // what C5 is drawn with
+if (look.style) { /* the rule's style */ }
+if (look.fill) { /* a colour scale's colour */ }
+```
+
+The figures a colour scale, a data bar, top values and duplicates need (the
+lowest, the highest, the sorted values) are worked out once per change of the
+sheet's cells, not per cell drawn. `ShowConditionalFormatDialog()` lists the
+rules over the selection, adds one (a value comparison, a formula, text,
+blanks, errors, top or bottom values, above or below the average,
+duplicates, unique values, a two- or three-colour scale, a data bar) and
+changes or deletes the one picked; `AddSelectionConditionalFormat` and
+`ClearSelectionConditionalFormats` do the same from code. `.xlsx` and `.ods`
+read and write them; an icon set or a date rule is not drawn and not kept.
+
+A change made through the grid - its calls or its dialogs - is one undo step,
+as a typed value is; the sheet's own calls above are not. On the grid, a
+format is added with `AddConditionalFormat`, and a rule of the active sheet's
+format (in `GetConditionalFormats()` order) changed or deleted by its
+position, the format going with its last rule:
+
+```cpp
+ConditionalFormatRule over;
+over.type = ConditionalFormatType::CellValue;
+over.op = ValidationOperator::GreaterThan;
+over.formula1 = "1000";
+over.style.font.bold = true;
+
+ConditionalFormat flagged;
+flagged.range = CellRange(1, 4, 99, 4);                          // E2:E100
+flagged.rules.push_back(over);
+grid->AddConditionalFormat(flagged);                             // one undo step
+over.formula1 = "5000";
+grid->SetConditionalFormatRule(0, 0, over);                      // false when there is no such rule
+grid->RemoveConditionalFormatRule(0, 0);
+grid->Undo();                                                    // the rule is back
+```
+
+`SetSelectionValidation` is an undo step in the same way, and its undo gives
+back the cells' own rules the range's replaced.
+
+## Comments and links
+
+A cell's comment (`CellComment`: text, author) is marked by a red corner
+at the cell's top right, and resting the pointer on the cell shows it. A
+link (`CellHyperlink`) draws its cell's text blue and underlined (unless the
+cell has a colour of its own); the pointer resting on it shows where it goes,
+and Ctrl+click opens it - a web or mail address through the system
+(`OpenURL`), a place in the workbook (`HyperlinkType::InternalCell`,
+`"Sheet2.B4"`) by selecting it. Setting `onOpenHyperlink` takes the opening
+over (to ask first, or in a test).
+
+```cpp
+grid->SetCellComment(0, 0, "Checked against the March statement", "Ann");   // an undo step
+grid->SetCellHyperlink(1, 0, CellHyperlink("https://example.com/report"));
+grid->SetCellHyperlink(2, 0, CellHyperlink("Summary.A1", HyperlinkType::InternalCell));
+grid->OpenHyperlink(2, 0);                       // goes to Summary!A1; false for a cell without a link
+grid->RemoveCellComment(0, 0);
+```
+
+A link set on an empty cell gives it the address as its text.
+`ShowCommentDialog()` and `ShowHyperlinkDialog()` edit the active cell's
+(each with a button that removes it); both are kept by `.xlsx` (with the VML
+drawing Excel needs to show a comment) and `.ods`.
 
 ## Best Practices
 
@@ -79123,6 +79525,7 @@ so they are set from code.
 - **Prefer the auto-detecting loaders for a quick "Open"** (`LoadFromFile`, single-arg `LoadCSV`); use the `*WithOptions` variants plus the import/export dialogs when the user needs to choose charset, separators, or quoting.
 - **Always check the return value and `GetLastError()`** after any `Load*`/`Save*` call to surface a clear reason to the user.
 - **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
+- **Rules live on the sheet, the dialogs on the grid.** Conditional formats and validation rules are `SpreadsheetSheet`'s (`AddConditionalFormat`, `SetValidation`); comments and links are a cell's. The grid's `Show...Dialog` calls edit them for the selection.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
 
 ## Printing and PDF
@@ -79168,6 +79571,98 @@ if (pages->ExportPdf(pdf, error))
     PrintDocumentWithDialog("Budget", pdf, "application/pdf", window, pages);
 ```
 
+## Charts
+
+A sheet holds charts (`UltraCanvasSpreadsheetChart.h`). A `SpreadsheetChart`
+is anchored to cells - its top-left corner some pixels into one cell, its
+bottom-right into another, as .xlsx's two-cell anchor keeps it - and holds a
+`RichChart`, the chart model documents and decks use, whose series are
+ranges of cells: each series' name, its categories (a scatter series' x
+values) and its values (`SpreadsheetChartSeries`, ranges as
+`SpreadsheetChartRange`: a sheet's name and a `CellRange`). It is drawn by
+the chart engine (`DrawRichDocumentChart`) over the cells, moves with them
+when the grid scrolls or rows and columns are inserted above or left of it,
+and prints where it stands.
+
+| Kind (`RichChart::Kind`) | Offered by *Insert chart* |
+|---|---|
+| `Column`, `Bar` (side by side or `stacked`) | Columns, Columns stacked, Bars, Bars stacked |
+| `Line`, `Area` (or stacked) | Line, Area, Area stacked |
+| `Pie`, `Doughnut` | the first series, its values as slices named by the categories |
+| `Scatter` | each series' points over the first line of numbers as x |
+| `Radar` | the categories as spokes |
+
+A file's bubble and stock charts are read and drawn too, from the values the
+file keeps with them.
+
+`InsertChartFromSelection(kind, stacked, seriesIn)` makes one from the
+selection as a spreadsheet does (`MakeSpreadsheetChart`): a first row of
+words names the series, a first column of words (or an empty corner) holds
+the categories, and the series run down the columns when the block is at
+least as tall as it is wide (`SpreadsheetChartSeriesIn::Automatic`), else
+along the rows. It returns -1, and inserts nothing, when the selection holds
+no number. A single selected cell stands for the block of cells in use
+around it.
+
+On the grid a click selects a chart, a drag moves it, its eight handles
+resize it, Delete (or Backspace) removes it and the arrow keys nudge it (ten
+pixels with Shift); a double-click opens `ShowChartPropertiesDialog` - the
+kind, the title, the legend and, for a chart made from a block, whether the
+series run along the rows - unless `onChartDoubleClick` is set. Inserting,
+changing, moving, resizing and deleting are each one undo step
+(`UndoActionType::ChartChange`).
+
+The data is read from the cells again whenever they change: the grid marks
+its charts stale when a sheet reports a change and reads them before it
+draws and before it saves (`RefreshCharts`, which also recalculates the
+formulas waiting). A chart whose ranges name a sheet reads it from any sheet;
+renaming that sheet renames the ranges.
+
+| Format | How a chart is kept |
+|---|---|
+| .xlsx | `xl/drawings/drawingN.xml` (an `xdr:twoCellAnchor` holding a `graphicFrame`), its relationships, and `xl/charts/chartN.xml` written by `WriteDrawingMLChart` with the series as `c:f` references (`'Sales Data'!$B$2:$B$7`) and their cached values; a one-cell anchor is read too |
+| .ods | a `draw:frame` in the sheet's `table:shapes` naming an object `Object N/` whose `content.xml` is a `chart:chart` (`WriteOdfChartObject`) with `chart:values-cell-range-address` and the categories' and names' ranges into the sheets; a frame LibreOffice anchors in a cell is read too |
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"
+
+// Months in A2:A7, two regions' sales in B2:C7, their names in B1:C1.
+grid->Select(CellRange(0, 0, 6, 2));
+int index = grid->InsertChartFromSelection(RichChart::Kind::Column);   // one undo step
+if (index >= 0) {
+    SpreadsheetChart chart = *grid->GetChart(index);
+    chart.chart.title = "Sales";
+    chart.chart.legend = true;
+    // Six columns wide from G2, ten pixels into it.
+    chart.anchor.from = CellAddress(1, 6);
+    chart.anchor.fromOffsetX = 10;
+    chart.anchor.to = CellAddress(16, 12);
+    grid->SetChart(index, chart);                                   // one undo step
+}
+
+grid->SetCellValue(3, 1, 120.0);   // the chart shows it the next time it is drawn
+grid->RefreshCharts();             // ...or now
+const RichChart& data = grid->GetChart(0)->chart;   // series[0].values[2] == 120
+
+grid->onChartSelectionChange = [](int selected) { /* -1: none */ };
+```
+
+A chart of any block, placed and kept by hand:
+
+<!-- doc-check: SpreadsheetSheet& sheet; std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+SpreadsheetChart pie = MakeSpreadsheetChart(sheet, CellRange(0, 0, 6, 1), RichChart::Kind::Pie);
+pie.anchor = SpreadsheetChartAnchorForBox(sheet, Rect2Di(400, 40, 360, 260));   // sheet pixels
+grid->InsertChart(pie);
+
+// The ranges' two spellings.
+SpreadsheetChartRange range;
+SpreadsheetChartRange::FromExcel("'Sales Data'!$B$2:$B$7", range);
+std::string odf = range.ToOdf();   // 'Sales Data'.$B$2:.$B$7
+```
+
 ## See Also
 
 - [`Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp`](../../Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp) - Full working demo (sample data, Open/Import/Save flows)
@@ -79179,6 +79674,7 @@ if (pages->ExportPdf(pdf, error))
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
 - [`include/UltraCanvasSpreadsheetPrint.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetPrint.h) - A sheet's pages for PDF and printers
+- [`include/UltraCanvasSpreadsheetChart.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetChart.h) - Charts on a sheet, anchored to cells, their series ranges of cells
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md
@@ -81634,6 +82130,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextAreaExamples.md
 - [Usage Example](#usage-example)
 - [Advanced Features](#advanced-features)
   - [Custom Syntax Highlighting](#custom-syntax-highlighting)
+  - [Styled Ranges of a Line](#styled-ranges-of-a-line)
   - [CSS Highlighting](#css-highlighting)
   - [Constructs Spanning Lines](#constructs-spanning-lines)
   - [Single Selection](#single-selection)
@@ -82434,6 +82931,43 @@ style.tokenStyles.keywordStyle = customKeywordStyle;
 textArea->SetStyle(style);
 ```
 
+### Styled Ranges of a Line
+A subclass can draw ranges of a plain line in a style of their own - what the
+text means to it rather than to a language: the web addresses written in a
+plain-text mail, say. It overrides the protected `GetLineSpans`, which is asked
+for each line whenever that line is laid out, and answers byte ranges of the
+line (without its line end) with a `TokenStyle`. The ranges are drawn over the
+syntax colours, in PlainText mode and on the raw line being edited in Markdown
+mode. When the answer changes for text that did not (a theme change alters the
+colour), `InvalidateLineSpans()` lays every line out again.
+
+```cpp
+class LinkTextArea : public UltraCanvasTextArea {
+public:
+    using UltraCanvasTextArea::UltraCanvasTextArea;
+    using UltraCanvasTextArea::InvalidateLineSpans;   // for a theme follower
+
+protected:
+    std::vector<TextAreaLineSpan> GetLineSpans(int /*lineIndex*/,
+                                               const std::string& lineText) override {
+        std::vector<TextAreaLineSpan> spans;
+        for (std::size_t at = lineText.find("https://"); at != std::string::npos;
+             at = lineText.find("https://", at + 1)) {
+            std::size_t end = lineText.find(' ', at);
+            if (end == std::string::npos) end = lineText.size();
+            TextAreaLineSpan span;
+            span.startByte = static_cast<int>(at);
+            span.endByte = static_cast<int>(end);
+            span.style = TokenStyle(Color(0, 102, 204), false, false, /*underline=*/true);
+            spans.push_back(span);
+        }
+        return spans;
+    }
+};
+```
+
+UltraMail's plain-text message body draws its links this way.
+
 ### CSS Highlighting
 CSS (`.css`, language name `"CSS"`) is not highlighted from keyword lists: a
 word's colour depends on where it sits, so `color` is a property before a `:`
@@ -82808,6 +83342,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.19.0** (2026-11-25): `GetLineSpans()` (protected, virtual) and `TextAreaLineSpan` - a subclass styles ranges of a plain line; `InvalidateLineSpans()`
 - **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks, with each one's name and code in a tooltip
 - **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`
 - **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
@@ -90331,6 +90866,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Colour (wheel, SV area, hue × lightness field or colour + intensity sliders; optional design selector) | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Palette rows under a colour picker - add schemes from the Palette manager (a draggable popup; up to 256-colour GIF palettes), make palettes of your own, remove rows, set an entry with a right click, flood the picker with a hovered swatch | `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md)) | `UltraCanvasColorPaletteManager.h` |
+| A person's profile picture: a square picture in a circle or the initials on a colour their id picks; editable, it chooses a picture, places it in a crop dialog (drag, zoom) and writes the square; the profile page's row with Choose / Change and Remove; the cropper on its own | `UltraCanvasProfilePicture`, `UltraCanvasProfilePictureEditor`, `UltraCanvasProfilePictureCropper` ([doc](UltraCanvasProfilePicture.md)) | `UltraCanvasProfilePicture.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
@@ -107495,6 +108031,19 @@ that is plainly not one - the phone with `+` and the country code). A new
 account's are `credentials.email` and `credentials.phoneNumber` with
 `createAccount`.
 
+Where the service takes one (`pictureSupported`, filled by
+`UltraIM_FetchAccountProfile` - ChatCube Direct does), the profile carries
+the owner's picture too: `picturePath`, a square JPEG, PNG or WebP file, ""
+for none. An update applies it only with `pictureChanged` set, so a host
+that never shows the picture cannot remove it by leaving the field empty;
+with the flag, "" removes it. The provider keeps its own copy. ChatCube
+Direct takes at most 32 KiB (one sealed message;
+`UltraCanvasProfilePictureEditor::SetMaxOutputBytes` makes one that fits)
+and sends it to every contact end to end, as it sends a message - again
+when it changes, and to a contact added later; the contacts' pictures come
+back as `avatarPath` on their conversations and contacts and
+`senderAvatarPath` on their messages.
+
 How signing in on the device is protected is `UltraIMSignInProtection`
 (the `SignInProtection` capability): `DeviceKey` (nothing to type),
 `Password`, `AuthenticatorCode` (a TOTP code from an authenticator app -
@@ -107841,6 +108390,12 @@ other over mDNS alone, which skips without a responder unless
   message (`org.matrix.msc3245.voice`, with the `org.matrix.msc1767.audio`
   block) and its length (`info.duration`, milliseconds - set for a video
   too when `UltraIMSendOptions::durationSeconds` says it).
+- **Pictures:** a room's own (`m.room.avatar`) and its members'
+  (`avatar_url` on their `m.room.member` event) are fetched once each as a
+  96 x 96 thumbnail (the authenticated media API, else the one before it)
+  into the cache: `avatarPath` on a room - its own picture, else for a
+  direct chat the other person's - and on a contact, `senderAvatarPath` on
+  their messages; the room is told (`ConversationUpdate`) when one arrives.
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
   emotes, pictures, videos, audio and files with their attachments (the
   `filename` and the body as the caption, MSC2530), edits (`m.replace` -
@@ -108121,6 +108676,12 @@ The provider turns that into chats:
   `SetRedirectUri`). The access token is kept in UltraVault, so the next
   start signs in by itself (`SignIn` with no server); `credentials.accessToken`
   signs in with a token made in the server's settings instead.
+- **Pictures:** each account a poll or a new chat meets has its
+  `avatar_static` fetched once into the media folder: `avatarPath` on its
+  one-to-one chat and its contact, `senderAvatarPath` on its statuses; the
+  chat is told (`ConversationUpdate`) when it arrives. The server's grey
+  stand-in for no picture (`.../missing.png`) is not fetched, so the
+  initials show.
 - **People:** `AddContact` takes `@user@server`, `user@server`, `@user`
   (this server) or a profile's page (`https://server/@user`): the server
   looks them up (`/api/v1/accounts/lookup`), or asks theirs

@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.1.32*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-17 *0.1.31*
 - **The settings window's pages scroll.** A page taller than the window was
   cut off at the bottom bar with no way to reach the rest: the Endpoints

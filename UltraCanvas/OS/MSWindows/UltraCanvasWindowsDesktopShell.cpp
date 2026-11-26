@@ -56,6 +56,7 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.11.1 - the loudspeaker's messages go through Tr
 // Version: 1.11.0 - GetPointerPosition (GetCursorPos)
 // Version: 1.10.0 - ShowWindowThumbnail / HideWindowThumbnail: DWM live thumbnails (DwmRegisterThumbnail)
 // Version: 1.9.0 - the exclusive global shortcut: a low-level hook that swallows the key (StartExclusive)
@@ -94,6 +95,7 @@
 #endif
 
 #include "UltraCanvasDesktopShellBackend.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasDiskCache.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasNativeFileIcons.h"
@@ -2190,14 +2192,14 @@ namespace {
         IMMDeviceEnumerator* enumerator = nullptr;
         if (FAILED(CoCreateInstance(kClsidMMDeviceEnumerator, nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
                                     reinterpret_cast<void**>(&enumerator)))) {
-            error = "Windows audio is not available.";
+            error = Tr("Windows audio is not available.");
             return nullptr;
         }
         IMMDevice* device = nullptr;
         const HRESULT found = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
         Release(enumerator);
         if (FAILED(found) || !device) {
-            error = "No loudspeaker is set as the default output.";
+            error = Tr("No loudspeaker is set as the default output.");
             return nullptr;
         }
         IPropertyStore* properties = nullptr;
@@ -2215,7 +2217,7 @@ namespace {
                                                 reinterpret_cast<void**>(&volume));
         Release(device);
         if (FAILED(opened) || !volume) {
-            error = "The output's volume control could not be opened.";
+            error = Tr("The output's volume control could not be opened.");
             return nullptr;
         }
         return volume;
@@ -2234,7 +2236,7 @@ DesktopAudioOutput ReadAudioOutput() {
         out.volumePercent = static_cast<int>(level * 100.0f + 0.5f);
         out.muted = muted != FALSE;
     } else {
-        out.error = "The output's volume could not be read.";
+        out.error = Tr("The output's volume could not be read.");
     }
     Release(volume);
     return out;
@@ -2247,7 +2249,7 @@ bool SetAudioOutputVolume(int percent, std::string& error) {
     if (!volume) return false;
     const float level = static_cast<float>(std::clamp(percent, 0, 100)) / 100.0f;
     const bool ok = SUCCEEDED(volume->SetMasterVolumeLevelScalar(level, nullptr));
-    if (!ok) error = "The output's volume could not be set.";
+    if (!ok) error = Tr("The output's volume could not be set.");
     Release(volume);
     return ok;
 }
@@ -2258,7 +2260,7 @@ bool SetAudioOutputMuted(bool muted, std::string& error) {
     IAudioEndpointVolume* volume = DefaultOutputVolume(name, error);
     if (!volume) return false;
     const bool ok = SUCCEEDED(volume->SetMute(muted ? TRUE : FALSE, nullptr));
-    if (!ok) error = "The output could not be muted.";
+    if (!ok) error = Tr("The output could not be muted.");
     Release(volume);
     return ok;
 }

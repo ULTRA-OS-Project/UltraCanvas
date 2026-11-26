@@ -1,6 +1,10 @@
 {
   "@language": "es",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} dibujo de esta ventana tiene cambios sin guardar. ¿Cerrar de todos modos?",
+    "other": "{n} dibujos de esta ventana tienen cambios sin guardar. ¿Cerrar de todos modos?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Texto añadido: haga clic en él con la herramienta texto, o doble clic, para editarlo",
   "Changed the text": "Texto modificado",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Haga clic en la página y escriba, o haga clic en un texto para editarlo; la barra de arriba establece su fuente, tamaño, estilo, alineación y espaciado. Esc, Ctrl+Intro o un clic fuera termina",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Tachado del texto",
   "Text Underline": "Subrayado del texto",
   "The text was emptied, so it was deleted": "El texto se vació, así que se eliminó",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Escribiendo un texto nuevo: Intro empieza una línea nueva; Esc, Ctrl+Intro o un clic fuera termina"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Escribiendo un texto nuevo: Intro empieza una línea nueva; Esc, Ctrl+Intro o un clic fuera termina",
+  "Untitled {0}": "Sin título {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} tiene cambios sin guardar. ¿Cerrarlo de todos modos?",
+  "{0} is open already": "{0} ya está abierto"
 }

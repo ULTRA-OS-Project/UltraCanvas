@@ -1,5 +1,15 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.16.0 - conditional formats and validation rules as undo steps (RulesChange): AddConditionalFormat,
+//                  SetConditionalFormatRule, RemoveConditionalFormatRule, the selection calls and the dialogs
+// Version: 1.15.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
+//                  shown on hover) and links (Ctrl+click opens them: OpenHyperlink, onOpenHyperlink),
+//                  SetCellComment / SetCellHyperlink as undo steps; the rules dialogs
+//                  (ShowConditionalFormatDialog, ShowDataValidationDialog, ShowCommentDialog,
+//                  ShowHyperlinkDialog); validation lists taken from cells
+// Version: 1.14.0 - charts: InsertChart / InsertChartFromSelection, SetChart, RemoveChart, SelectChart,
+//                  RefreshCharts, ShowChartPropertiesDialog; drawn over the cells, moved and resized
+//                  with handles, each change an undo step
 // Version: 1.13.0 - GetNamedRangeList: every name with its scope, for the .xlsx / .ods writers
 // Version: 1.12.0 - PaintCell: one cell drawn as the grid draws it, for printing
 // Version: 1.11.0 - the system clipboard: Copy/Cut publish text and an HTML table; Paste reads other programs' (PasteHtml, PasteText); a paste is an undo step
@@ -33,10 +43,13 @@
 #include <stack>
 #include <map>
 #include <cstdint>
+#include <optional>
+#include <utility>
 
 namespace UltraCanvas {
 class UltraCanvasTextInput;
 class UltraCanvasMenu;
+class UltraCanvasChartEngineElement;
 
 // Forward declarations
 class IRenderContext;
@@ -83,6 +96,17 @@ struct SpreadsheetUndoAction {
     // names. Undo and redo each swap them with what is there now, so the
     // step always holds the state it leads back to.
     std::map<std::string, NamedRange> workbookNames;
+    // ChartChange: the sheet's charts on the other side of the step; undo
+    // and redo each swap them with what is there now.
+    std::vector<SpreadsheetChart> chartData;
+    // RulesChange: the sheet's conditional formats and range validation
+    // rules on the other side of the step, and the cells' own validation
+    // rules it changed (no rule: none); undo and redo each swap them with
+    // what is there now.
+    struct CellRule { int row = 0; int col = 0; std::optional<DataValidation> rule; };
+    std::vector<ConditionalFormat> conditionalFormatData;
+    std::vector<std::pair<CellRange, DataValidation>> validationData;
+    std::vector<CellRule> cellRuleData;
 };
 
 // A text measurer backed by a live render context: it selects each cell's own
@@ -138,6 +162,14 @@ public:
     std::function<void(int, int, int)> onSheetTabContextMenu;
     // A header sort button reordered the selection: (range, column, order).
     std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;
+    // The selected chart changed: its index on the active sheet, -1 for none.
+    std::function<void(int)> onChartSelectionChange;
+    // A chart was inserted, changed, moved, resized or removed (an undo or
+    // redo of one too).
+    std::function<void()> onChartsChange;
+    // A chart was double-clicked: (index). Unset, the chart's properties
+    // dialog opens (ShowChartPropertiesDialog).
+    std::function<void(int)> onChartDoubleClick;
     
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
@@ -234,6 +266,10 @@ private:
     bool functionMenuEnabled_ = true;
     // The items of the active cell's list rule (ShowValidationListAt).
     std::shared_ptr<UltraCanvasMenu> validationListMenu_;
+    // The cell whose comment or link the hover tooltip shows (-1: none).
+    int tipRow_ = -1;
+    int tipCol_ = -1;
+    void UpdateCellTip(const UCEvent& event, int row, int col);
     // StopEditing runs the commit and then takes the editor down: an answer to
     // a refused entry that arrives while it runs is held until it is done, so
     // Retry's new editor is not the one taken down (see RunAfterEditEnds).
@@ -273,6 +309,30 @@ private:
     float sheetTabHeight_ = 24;
     float scrollbarSize_ = 16;
     
+    // Charts (UltraCanvasSpreadsheetChart.h): the selected one on the active
+    // sheet, a move or resize in progress, the engine's drawings by revision.
+    int selectedChart_ = -1;
+    uint64_t selectedChartSheet_ = 0;
+    int chartDrag_ = 0;                  // 0 none, 1 moving, 2 resizing
+    int chartHandle_ = 0;                // SlideHandle while resizing
+    Point2Di chartDragFrom_;
+    Rect2Di chartDragBox_;               // the chart's box in sheet pixels when the drag began
+    std::vector<SpreadsheetChart> chartsBeforeDrag_;
+    bool chartsDirty_ = true;
+    std::map<uint64_t, std::shared_ptr<UltraCanvasChartEngineElement>> chartCache_;
+    bool HandleChartEvent(const UCEvent& event);
+    void RenderCharts(IRenderContext* ctx);
+    Rect2Di ChartScreenRect(const SpreadsheetChart& chart) const;
+    int ChartAt(int x, int y) const;
+    void RecordChartStep(SpreadsheetSheet& sheet, std::vector<SpreadsheetChart> before, const std::string& description);
+    void ApplyChartStep(SpreadsheetUndoAction& action);
+    // A conditional-format or validation change about to be made to `sheet`,
+    // as one undo step (RulesChange): its rules as they are now, and the
+    // cells' own rules in `cellRules`.
+    void RecordRulesStep(SpreadsheetSheet& sheet, const std::string& description,
+                         std::vector<SpreadsheetUndoAction::CellRule> cellRules = {});
+    void ApplyRulesStep(SpreadsheetUndoAction& action);
+
     Rect2Df formulaBarBounds_;
     Rect2Df gridBounds_;
     Rect2Df sheetTabsBounds_;
@@ -422,6 +482,50 @@ public:
     // False (nothing changes) when it is not one of the cell's items.
     bool ChooseValidationListItem(int row, int col, const std::string& item);
 
+    // ===== CONDITIONAL FORMATS, VALIDATION, COMMENTS, LINKS =====
+    // The formats over a range are the sheet's (SpreadsheetSheet::
+    // AddConditionalFormat, GetConditionalFormatting); the grid draws them,
+    // as the printed page does. These act on the selection, as the dialogs do.
+    // Each call is one undo step, as the dialogs' changes are.
+    // A rule over the selection (GetFormattingRange), added after the others.
+    void AddSelectionConditionalFormat(const ConditionalFormatRule& rule);
+    // A format over its own range on the active sheet, added after the others.
+    void AddConditionalFormat(const ConditionalFormat& format);
+    // Replaces rule `rule` of the active sheet's format `format`
+    // (GetConditionalFormats() order); false when there is no such rule.
+    bool SetConditionalFormatRule(int format, int rule, const ConditionalFormatRule& value);
+    // Deletes that rule, and the format with it when it was the last.
+    bool RemoveConditionalFormatRule(int format, int rule);
+    // Removes every format that covers a cell of the selection.
+    void ClearSelectionConditionalFormats();
+    // The selection's validation rule; a rule of type Any removes it.
+    void SetSelectionValidation(const DataValidation& rule);
+
+    // A cell's note: a red corner marks it, and resting the pointer on the
+    // cell shows it. Each change is an undo step; empty text removes it.
+    void SetCellComment(int row, int col, const std::string& text, const std::string& author = "");
+    void RemoveCellComment(int row, int col);
+    // A cell's link: a web or mail address, a file, or a place in the
+    // workbook (HyperlinkType::InternalCell, "Sheet2.B4"). Its text shows
+    // blue and underlined, the pointer resting on it shows where it goes, and
+    // Ctrl+click opens it. Each change is an undo step.
+    void SetCellHyperlink(int row, int col, const CellHyperlink& link);
+    void RemoveCellHyperlink(int row, int col);
+    // Opens the cell's link: an address through the system (OpenURL), or
+    // `onOpenHyperlink` when set; a place in the workbook by selecting it.
+    // False when the cell has no link.
+    bool OpenHyperlink(int row, int col);
+    std::function<void(const CellHyperlink& link)> onOpenHyperlink;
+
+    // The dialogs that edit them for the selection, built from the
+    // framework's elements (UltraCanvasSpreadsheetRulesDialogs.cpp): the
+    // conditional formats over it (add, change, delete), its validation
+    // rule, the active cell's comment and its link.
+    void ShowConditionalFormatDialog();
+    void ShowDataValidationDialog();
+    void ShowCommentDialog();
+    void ShowHyperlinkDialog();
+
     // ===== FORMATTING =====
     // The range the SetSelection* / AdjustSelection* calls actually write to.
     // Identical to GetSelection() for an ordinary range; a whole-column or
@@ -567,6 +671,34 @@ public:
     bool HasClipboardData() const { return clipboardOp_ != ClipboardOperation::NoOperation; }
     void ClearClipboard();
     
+    // ===== CHARTS (UltraCanvasSpreadsheetChart.h) =====
+    // On the active sheet. `chart` placed as its anchor says, its data read
+    // from the cells, selected; its index. One undo step.
+    int InsertChart(const SpreadsheetChart& chart);
+    // A chart of `kind` over the selection (MakeSpreadsheetChart): -1 when
+    // the selection holds no number to plot.
+    int InsertChartFromSelection(RichChart::Kind kind, bool stacked = false,
+                                 SpreadsheetChartSeriesIn seriesIn = SpreadsheetChartSeriesIn::Automatic);
+    int GetChartCount() const;
+    const SpreadsheetChart* GetChart(int index) const;
+    // Chart `index` becomes `chart` (its kind, title, legend, anchor ...),
+    // its data read again. One undo step; false for no such chart.
+    bool SetChart(int index, const SpreadsheetChart& chart);
+    bool RemoveChart(int index);                 // one undo step
+    int GetSelectedChart() const;                // -1: none
+    void SelectChart(int index);                 // -1 selects none
+    // Reads every sheet's charts from their cells again; true when any
+    // changed. The grid does it before drawing and saving, after its cells
+    // changed.
+    bool RefreshCharts();
+    // Chart `index`'s box in the element's coordinates (it may lie outside
+    // the cells shown).
+    Rect2Di GetChartBounds(int index) const;
+    // A dialog for chart `index`: its kind, title, legend and - for a chart
+    // made from a block of cells - whether its series run along the rows.
+    // OK is one undo step.
+    void ShowChartPropertiesDialog(int index);
+
     // ===== UNDO/REDO =====
     void Undo();
     void Redo();

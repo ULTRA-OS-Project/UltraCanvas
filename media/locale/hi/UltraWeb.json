@@ -1,0 +1,8 @@
+{
+  "@language": "hi",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "{0} कुकीज़ साफ़ की गईं; ऐप्स की डिवाइस अनुमतियाँ भुला दी गईं",
+  "No cookies to clear; the apps' device permissions are forgotten": "साफ़ करने के लिए कोई कुकी नहीं; ऐप्स की डिवाइस अनुमतियाँ भुला दी गईं",
+  "{0} wants to use your camera": "{0} आपके कैमरे का उपयोग करना चाहता है",
+  "{0} wants to use your microphone": "{0} आपके माइक्रोफ़ोन का उपयोग करना चाहता है"
+}

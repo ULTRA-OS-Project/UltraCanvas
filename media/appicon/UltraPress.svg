@@ -2,6 +2,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="256" height="256" viewBox="0 0 256 256">
   <title>UltraPress</title>
   <desc>A page built of blocks - a dark header band, a red hero block, lines of text and a button - the website and shop builder that publishes WebAssembly. Flat colours only, so every SVG renderer draws it the same.</desc>
+  <!-- scaled and centred so the page fills the canvas like the other app icons -->
+  <g transform="translate(128 128) scale(1.09) translate(-125 -128)">
   <!-- the sheet, with a shadow -->
   <rect x="40" y="26" width="176" height="212" rx="18" fill="#000000" opacity="0.18"/>
   <rect x="34" y="18" width="176" height="212" rx="18" fill="#f6f6f9" stroke="#c9c9d2" stroke-width="3"/>
@@ -21,4 +23,5 @@
   <rect x="52" y="186" width="126" height="8" rx="4" fill="#9a9aa6"/>
   <!-- a button -->
   <rect x="52" y="204" width="54" height="16" rx="8" fill="#a90707"/>
+  </g>
 </svg>

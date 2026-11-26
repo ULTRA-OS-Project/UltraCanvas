@@ -29,6 +29,7 @@
 - [Usage Example](#usage-example)
 - [Advanced Features](#advanced-features)
   - [Custom Syntax Highlighting](#custom-syntax-highlighting)
+  - [Styled Ranges of a Line](#styled-ranges-of-a-line)
   - [CSS Highlighting](#css-highlighting)
   - [Constructs Spanning Lines](#constructs-spanning-lines)
   - [Single Selection](#single-selection)
@@ -829,6 +830,43 @@ style.tokenStyles.keywordStyle = customKeywordStyle;
 textArea->SetStyle(style);
 ```
 
+### Styled Ranges of a Line
+A subclass can draw ranges of a plain line in a style of their own - what the
+text means to it rather than to a language: the web addresses written in a
+plain-text mail, say. It overrides the protected `GetLineSpans`, which is asked
+for each line whenever that line is laid out, and answers byte ranges of the
+line (without its line end) with a `TokenStyle`. The ranges are drawn over the
+syntax colours, in PlainText mode and on the raw line being edited in Markdown
+mode. When the answer changes for text that did not (a theme change alters the
+colour), `InvalidateLineSpans()` lays every line out again.
+
+```cpp
+class LinkTextArea : public UltraCanvasTextArea {
+public:
+    using UltraCanvasTextArea::UltraCanvasTextArea;
+    using UltraCanvasTextArea::InvalidateLineSpans;   // for a theme follower
+
+protected:
+    std::vector<TextAreaLineSpan> GetLineSpans(int /*lineIndex*/,
+                                               const std::string& lineText) override {
+        std::vector<TextAreaLineSpan> spans;
+        for (std::size_t at = lineText.find("https://"); at != std::string::npos;
+             at = lineText.find("https://", at + 1)) {
+            std::size_t end = lineText.find(' ', at);
+            if (end == std::string::npos) end = lineText.size();
+            TextAreaLineSpan span;
+            span.startByte = static_cast<int>(at);
+            span.endByte = static_cast<int>(end);
+            span.style = TokenStyle(Color(0, 102, 204), false, false, /*underline=*/true);
+            spans.push_back(span);
+        }
+        return spans;
+    }
+};
+```
+
+UltraMail's plain-text message body draws its links this way.
+
 ### CSS Highlighting
 CSS (`.css`, language name `"CSS"`) is not highlighted from keyword lists: a
 word's colour depends on where it sits, so `color` is a property before a `:`
@@ -1203,6 +1241,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.19.0** (2026-11-25): `GetLineSpans()` (protected, virtual) and `TextAreaLineSpan` - a subclass styles ranges of a plain line; `InvalidateLineSpans()`
 - **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks, with each one's name and code in a tooltip
 - **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`
 - **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)

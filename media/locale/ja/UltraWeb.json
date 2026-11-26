@@ -1,0 +1,8 @@
+{
+  "@language": "ja",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "{0} 個の Cookie を消去しました。アプリのデバイス権限は破棄されました",
+  "No cookies to clear; the apps' device permissions are forgotten": "消去する Cookie はありません。アプリのデバイス権限は破棄されました",
+  "{0} wants to use your camera": "{0} がカメラの使用を求めています",
+  "{0} wants to use your microphone": "{0} がマイクの使用を求めています"
+}
