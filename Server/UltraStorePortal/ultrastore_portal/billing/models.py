@@ -1,6 +1,7 @@
 """A purchase: the order a store or a visitor opened, and every movement of
 money on it - the sale, a subscription's renewals, refunds, a chargeback.
 
+Version: 0.11.0 - an order's buyer: the account that bought, when it is known
 Version: 0.10.0 - a payment's boost_amount: what of the publisher's share an
                   affiliate's boost took (affiliates/services.py)
 Version: 0.9.0 - the buyer's country on an order; a payment's VAT and the
@@ -55,6 +56,10 @@ class Order(models.Model):
     provider = models.CharField(max_length=16)
     provider_transaction = models.CharField(max_length=64, blank=True)
     payer_email = models.EmailField(blank=True)
+    # The account that bought, when the buyer was signed in (the buy page) or
+    # the client sent the account's access token (POST /v1/checkout). An
+    # order without one is reached by its secret alone, as before.
+    buyer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="orders")
     paid_at = models.DateTimeField(null=True, blank=True, db_index=True)
     licence_id = models.CharField(max_length=32, blank=True, db_index=True)
     licence = models.TextField(blank=True)

@@ -39,7 +39,8 @@ is the account for every service; 0.5.0 is advertising's first phase and
 0.6.0 the first half of its second; 0.7.0 splits a sale between the store
 and the publisher; 0.8.0 lets a person close or delete the account; 0.9.0
 reckons VAT, writes invoices and makes the publishers' payouts; 0.10.0 is
-the affiliate programme's first phase; *What comes next* names the rest.
+the affiliate programme's first phase and 0.11.0 its second, the customer's
+binding; *What comes next* names the rest.
 
 ## Decisions
 
@@ -101,7 +102,7 @@ the catalog's `payment_url` is the root):
 
 | | |
 |---|---|
-| `POST /v1/checkout` | `{app, code?, language?, country?}` → the order: `order_id`, `secret`, `amount`, `currency`, `list_price`, `status`, `cycle`, `checkout_url` (`<root>/pay/<order>/`, opened in the browser). 404 `no_such_app`, 400 `free_app`, 503 `not_configured` |
+| `POST /v1/checkout` | `{app, code?, language?, country?, ref?, via?}` → the order (with `Authorization: Bearer <access token>` of the account's sign-in it is that account's; without, nobody's): `order_id`, `secret`, `amount`, `currency`, `list_price`, `status`, `cycle`, `checkout_url` (`<root>/pay/<order>/`, opened in the browser). 404 `no_such_app`, 400 `free_app`, 503 `not_configured` |
 | `GET /v1/orders/<order>?secret=` | the order's state; when paid `licence`, `licence_id`, `receipt_no`, `paid_at`, the `payments`; a subscription's `paid_until`, `valid_until`, `subscription_status`; `revoked` with `revoked_reason` after a refund or a chargeback (no `licence` then) |
 | `GET /v1/orders/<order>/receipt?secret=[&no=]` | the receipt of the sale, or of the payment with that number: a page for a browser, text for anything else |
 | `POST /v1/orders/<order>/download?secret=&file=restricted/<sha256>.<format>` | `{url, expires}`: a link to one of the app's restricted packages; 409 once the licence is taken back or the subscription ended |
@@ -254,7 +255,14 @@ catalog (the native store then sends *Buy* to the publisher's page).
 1. An order is opened - by the UltraStore app (`POST /v1/checkout`), or on
    the app's page (*Buy on the web*, which asks for an email for the
    receipt). It is priced from the listing; its id names it to the
-   provider, its secret is the buyer's.
+   provider, its secret is the buyer's. **An order knows the account that
+   bought when it is told** (`Order.buyer`, 0.11.0): whoever is signed in
+   on the buy page; the person of the access token a client sends as
+   `Authorization: Bearer` with the checkout (a token that is not good is
+   no error - the order is nobody's, as before); and a guest's order
+   becomes the account's when its owner opens it signed in with the
+   address it was bought under. The order is still reached by its secret,
+   and its JSON says nothing of who bought.
 2. The buyer's browser opens `/pay/<order>/`, a form posted at once to
    Skrill (`pay_to_email`, the order as `transaction_id`, the amount, the
    return and cancel pages, `status_url`).
@@ -561,17 +569,19 @@ ultrastore-portal accounts leaving     # who is closed or being deleted, by id, 
 ```
 
 Without it nothing is ever erased: the accounts stay closed, or usable with
-a date that has passed. The affiliate programme
-(`Docs/Research/UltraAffiliatesDesignProposal.md`) hangs its binding on
-these states - suspended while closed or deleting, restored on the way
-back, gone with the erasure - once it is built.
+a date that has passed. The affiliate programme hangs a customer's binding
+on these states (*Affiliates*): suspended while closed or deleting, restored
+on the way back, gone with the erasure.
 
 ## Affiliates
 
-UltraAffiliates, phase 1 of
-[its design](../../Docs/Research/UltraAffiliatesDesignProposal.md) (0.10.0,
-`affiliates/`): **product links**. A person the store knows advertises what
-the store sells; when their link to a product brings its sale, they earn.
+UltraAffiliates, phases 1 and 2 of
+[its design](../../Docs/Research/UltraAffiliatesDesignProposal.md)
+(`affiliates/`): **product links** (0.10.0) and **the customer's binding**
+(0.11.0). A person the store knows advertises what the store sells; when
+their link to a product brings its sale, they earn - and a new customer they
+brought stays theirs, earning them the base on whatever that customer buys
+later.
 
 **Switched off unless switched on.** `ULTRASTORE_PORTAL_AFFILIATES=1`.
 Without it none of its pages exists, `/r/...` is a 404, and no order earns
@@ -594,16 +604,51 @@ anyone anything.
   `AFFILIATE_LINK_DAYS` (**90**): the last such link the order carries. The
   web buy page keeps the link's token in the session and sends it with the
   order; a client sends it as `ref` with `POST /v1/checkout`. `/r/<handle>/`
-  leads to the shop and is counted; in this phase it earns nothing (the
-  binding of a customer to an affiliate is phase 2). `?s=<name>` tells an
-  affiliate's campaigns apart.
+  leads to the shop: it wins no product, and it is what binds a new
+  customer (below). `?s=<name>` tells an affiliate's campaigns apart.
+- **A new customer is bound to the affiliate who brought them** (0.11.0).
+  The last link a person followed, to a product or to the shop, is kept
+  with the session and sent with an order (`via`). Somebody who has never
+  paid for anything and followed one in the last `AFFILIATE_LINK_DAYS` is
+  bound to its affiliate - at **sign-up**, or at their **first paid order**
+  when they had the account already or the sign-up did not see the link.
+  From then on **every purchase and every renewal of theirs earns that
+  affiliate the base** - the 5 %, out of the store's fee - **and no
+  boost**: a boost is for the link that sold the product. One customer has
+  one affiliate; one sale has one commission.
+- **A product link by another affiliate wins that product, and moves
+  nothing.** The other affiliate earns base and boost on that sale; the
+  customer stays where they are bound, and the next purchase without a
+  link is their affiliate's again.
+- **Somebody who is buying cannot be claimed.** A link moves a binding in
+  one case only, the **win-back**: a customer who paid for nothing - no
+  order, no renewal - in `AFFILIATE_WINBACK_MONTHS` (**6**) and buys within
+  `AFFILIATE_WINBACK_DAYS` (**14**) of following an affiliate's link is
+  that affiliate's from this order on, whether they were another's or
+  nobody's. "Paid" counts the account's orders and those under its address
+  from before orders knew accounts.
+- **The binding follows the customer's account** (*Leaving an account*):
+  suspended while the account is closed or its deletion is asked for -
+  nothing is earned on it then, and nobody new is bound to an account on
+  its way out - in force again, to the same affiliate, when the person
+  comes back, and removed with the erasure. What it earned stays, with no
+  customer behind it. A renewal follows the customer: it earns whoever
+  they are bound to on its day.
+- **It ends with the affiliate's ban or erasure**; a block or a pause
+  leaves the customers theirs and earns nothing meanwhile. Nobody is their
+  own customer, and a purchase from a publisher the affiliate belongs to
+  earns nothing.
+- **A guest's purchase binds nobody**: a binding is between two accounts.
+  It counts once the order is the account's (*Buying*).
 - **Who does not earn:** the buyer themselves (the order's address is the
   affiliate's), a member of the publisher selling the app, and an affiliate
   who is not active.
 - **Only a person following a link counts.** A page fetched as a picture, a
   script or a frame (`Sec-Fetch-Dest`) records no click.
 - **The superaffiliate.** Whoever's recruiting link
-  (`/affiliate/join/<handle>/`) brought an affiliate in earns
+  (`/affiliate/join/<handle>/`) brought an affiliate in - or, before any
+  such link, **whoever the new affiliate is bound to as a customer** -
+  earns
   `AFFILIATE_SUPER_PERCENT` (**10**) of each of that affiliate's
   commissions, **on top** and at the store's cost - the affiliate's is not
   reduced, and the publisher pays none of it. One level up and no further.
@@ -628,8 +673,10 @@ anyone anything.
   what happened at once, can put a statement on the record, and is given
   the whole of it on request.
 - **Nobody sees who bought.** An affiliate sees the product, the day and
-  the commission; a publisher sees which affiliate sold how often and what
-  its boosts cost.
+  the commission, and of a bound customer a number ("your customer no. 12")
+  and how many there are; a publisher sees which affiliate sold how often
+  and what its boosts cost. The customer sees who referred them, on
+  `/account/`.
 - **The profile follows the account** (*Leaving an account*): closed with
   it, back with it, emptied when it is erased - the row stays, so what it
   earned and a ban's record still name something.
@@ -657,9 +704,13 @@ the link's days by day before removing them. `affiliates owed` and
 `affiliates cost` say what is approved and unpaid, and what the programme
 cost the store's fee and the publishers' boosts.
 
-**Not in this phase** (the design's phases 2 to 4): the binding of a new
-customer to an affiliate and the 5 % on every later purchase, which needs
-the buyer's account on an order; the win-back; the 5 % holdback for six
+**What the binding does not reach yet.** The native store neither signs in
+at the portal nor sends a link's token, so a purchase made in the app is
+nobody's and binds nobody (*What comes next*, 3). With the account on a
+host of its own (`ACCOUNT_HOST`), a sign-up there does not see the link the
+store's session holds; the binding is then made at the first order.
+
+**Not built** (the design's phases 3 and 4): the 5 % holdback for six
 months; statements and self-billed credit notes; fixed boosts for hardware;
 affiliate codes; the native store's `ultrastore://r/` links; sales made
 outside the portal.
@@ -886,7 +937,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 | `LICENCE_SEED`, `GRACE_DAYS` (7) | the licence key, a subscription's grace |
 | `SELLER_NAME`, `SELLER_ADDRESS`, `SELLER_VAT_ID`, `SELLER_COUNTRY` | the store as the seller on every invoice: its name, its address (lines separated by `\|`), its VAT id, its country (two letters). Until all four are set no tax is reckoned and no invoice written |
 | `INVOICE_PREFIX` | what stands before an invoice's year and number (`UO-` gives `UO-2026-000001`) |
-| `AFFILIATES`, `AFFILIATE_BASE_PERCENT` (5), `AFFILIATE_SUPER_PERCENT` (10), `AFFILIATE_LINK_DAYS` (90), `AFFILIATE_APPROVAL_DAYS` (30) | the affiliate programme on (`1`); the base commission in percent of the net price, out of the store's fee (so not above it); the superaffiliate's share of a commission; the days a link counts; the days a commission waits |
+| `AFFILIATES`, `AFFILIATE_BASE_PERCENT` (5), `AFFILIATE_SUPER_PERCENT` (10), `AFFILIATE_LINK_DAYS` (90), `AFFILIATE_APPROVAL_DAYS` (30), `AFFILIATE_WINBACK_MONTHS` (6), `AFFILIATE_WINBACK_DAYS` (14) | the affiliate programme on (`1`); the base commission in percent of the net price, out of the store's fee (so not above it); the superaffiliate's share of a commission; the days a link counts, for its product and for binding a new customer; the days a commission waits; the months without a payment after which a customer can be won back, and the days after a link in which they must buy |
 | `TEXT_GATEWAY_URL`, `TEXT_GATEWAY_TOKEN` | where a text message is sent (an https address taking `to` and `text`) and its bearer token; unset, the operator confirms an affiliate's phone number |
 | `PAYOUT_HOLD_DAYS` (30), `PAYOUT_MINIMUM` (0.01) | the days a sale waits before its share can be paid out, and the least a payout is made for |
 | `STORE_FEE_PERCENT` (15) | the store's fee: the percentage of what a buyer pays that the store keeps, from 0 to under 100 with at most two decimals; the rest is the publisher's share. Written on each payment, so a change applies to later sales |
@@ -910,8 +961,8 @@ ultrastore_portal/
     sessions.py    a sign-in as a record; the store's session ends with it
     sso.py         the store signing in through the account
     management/commands/oidc.py   clients, keys, cleanup
-  affiliates/      UltraAffiliates, phase 1: models.py (AffiliateProfile, Boost, Click, Attribution, Commission,
-                   AffiliatePayout, Sanction), services.py (the rules), texts.py (a text message)
+  affiliates/      UltraAffiliates, phases 1 and 2: models.py (AffiliateProfile, Boost, Click, OrderVisit, Binding,
+                   Attribution, Commission, AffiliatePayout, Sanction), services.py (the rules), texts.py (a text message)
   promote/         advertising: UltraAds, phase 1
     models.py      Placement, Campaign, Balance, LedgerEntry, TopUp, DayCount, Click, Attribution,
                    Keyword, PlacementBid, TermCount, PolicyVersion, PolicyAcceptance
@@ -959,11 +1010,13 @@ In the order the store needs it:
    in the split, paying a payout through the provider's interface, and the
    self-billed document a payout is to a publisher.
 3. **Buyer accounts** - sign-in from the native store, licences that follow
-   a person across machines, devices. Today a purchase is reached by its
-   order's secret (kept by the store's app, mailed to a web buyer). The
-   sign-in itself is there (*One sign-in for every service*); what is
-   missing is the native store and `UltraAccountCore` using it, and the
-   orders and licences hung on the person.
+   a person across machines, devices. An order knows its buyer's account
+   since 0.11.0 (*Buying*), and the sign-in is there (*One sign-in for
+   every service*); what is missing is the native store and
+   `UltraAccountCore` using it - sending the access token and an
+   affiliate's link with the checkout - a page of a person's purchases,
+   and the licences hung on the person. Until then a purchase made in the
+   app is reached by its order's secret alone.
 4. **Review of listing changes.** Today an edit to a public app's listing is
    live at once; only releases are reviewed.
 5. **Advertising, its next steps**: the native store and the web store

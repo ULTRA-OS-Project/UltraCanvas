@@ -315,6 +315,15 @@ def userinfo(access_token: str) -> dict:
     return {"sub": subject(row.grant.user, row.grant.client), **claims_for(row.grant.user, row.scope.split())}
 
 
+def person_of(access_token: str):
+    """The person an access token speaks for, or None: for the portal's own
+    JSON service, which takes the account's token to know who is buying."""
+    row = find_token(access_token, Token.ACCESS) if access_token else None
+    if row is None or not row.live or not row.grant.user.is_active:
+        return None
+    return row.grant.user
+
+
 def introspect(client: Client, value: str) -> dict:
     """Whether a token is good, for a service that is handed other
     services' tokens (RFC 7662). Only a client marked as such may ask."""

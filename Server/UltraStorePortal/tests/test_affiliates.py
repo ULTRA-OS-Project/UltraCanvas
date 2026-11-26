@@ -15,8 +15,12 @@ from django.utils import timezone
 from ultrastore_portal.accounts import closure
 from ultrastore_portal.accounts.models import User
 from ultrastore_portal.affiliates import services, texts
-from ultrastore_portal.affiliates.models import AffiliatePayout, AffiliateProfile, Attribution, Boost, Click, ClickDay, Commission, Sanction
+from ultrastore_portal.affiliates.models import (AffiliatePayout, AffiliateProfile, Attribution, Binding, Boost, Click, ClickDay, Commission,
+                                                OrderVisit, Sanction)
 from ultrastore_portal.billing import payouts
+from ultrastore_portal.billing import services as billing
+from ultrastore_portal.identity import provider
+from ultrastore_portal.identity.models import Client, Grant
 from ultrastore_portal.billing.models import Order, Payment
 from ultrastore_portal.store.models import AuditEntry, PublisherMember
 
@@ -515,3 +519,264 @@ class AccountTests(AffiliateCase):
                          ("closed", f"erased.{self.anna.pk}", "", "", "", None))
         # The name is free again, and the person is nobody the store knows.
         self.assertIsNotNone(self.affiliate("anna"))
+
+
+class BindingCase(AffiliateCase):
+    """Phase 2: orders know their buyer, and a customer is bound to the
+    affiliate who brought them."""
+
+    def setUp(self):
+        super().setUp()
+        self.other = self.make_app(self.publisher, "org.acme.notes", name="Notes", pricing_model="one-time", price="10.00", currency="EUR")
+        self.make_release(self.other)
+        self.bert = self.affiliate("bert")
+        self.carl = User.objects.create_user("carl@example.org", PASSWORD, name="Carl", email_verified=True)
+
+    def purchase(self, buyer, app=None, *, ref: AffiliateProfile | None = None, via: AffiliateProfile | None = None, clicked_days_ago: int = 0) -> Payment:
+        """An order by this account, with the link (to the product) or the
+        last link (to anything) it followed, paid."""
+        app = app or self.app
+        def click(profile, target):
+            row = services.record_click(profile, target)
+            if clicked_days_ago:
+                Click.objects.filter(pk=row.pk).update(at=timezone.now() - dt.timedelta(days=clicked_days_ago))
+            return row.token
+        order = billing.create_order(app.app_id, email=buyer.email if buyer else "guest@example.org", buyer=buyer,
+                                     ref=click(ref, app) if ref else "", via=click(via, None) if via else "")
+        self.client.post(f"/pay/{order.public_id}/test/", {"outcome": "paid"})
+        return Payment.objects.get(order=order, kind="sale")
+
+    def bound_to(self, user) -> str:
+        row = services.binding_of(user)
+        return f"{row.affiliate.handle}:{row.state}" if row else ""
+
+    def line_of(self, payment: Payment) -> tuple:
+        row = Commission.objects.filter(payment=payment).exclude(basis="super").first()
+        return (row.affiliate.handle, row.basis, row.amount) if row else ()
+
+
+class BindingTests(BindingCase):
+    def test_somebody_new_who_signs_up_through_a_link_is_that_affiliates_customer(self):
+        self.follow("anna", app_id="")                                           # a link to the shop is enough
+        self.client.post("/account/signup/", {"name": "Dora", "email": "dora@example.org", "password": PASSWORD, "password_again": PASSWORD})
+        dora = User.objects.get(email="dora@example.org")
+        row = Binding.objects.get()
+        self.assertEqual((row.customer, row.affiliate, row.through, row.state), (dora, self.anna, "signup", "active"))
+        self.boost("10")
+        first, second = self.purchase(dora), self.purchase(dora, self.other)
+        # Everything she buys earns anna the base - 5 % - and no boost: nobody promoted these.
+        self.assertEqual((self.line_of(first), self.line_of(second)), (("anna", "bound_customer", D("1.00")), ("anna", "bound_customer", D("0.50"))))
+        first.refresh_from_db()
+        self.assertEqual((first.boost_amount, first.publisher_share), (D("0"), D("16.91")))   # the publisher pays nothing for it
+        self.assertEqual(Commission.objects.get(payment=first).binding, row)
+        User.objects.filter(pk=dora.pk).update(email_verified=True)
+        self.sign_in("dora@example.org")
+        page = self.client.get("/account/")
+        self.assertContains(page, "Who referred you")
+        self.assertContains(page, "<b>anna</b>", html=True)
+        self.sign_in("anna@example.org")
+        page = self.client.get("/affiliate/")
+        self.assertContains(page, "Your customers")
+        self.assertContains(page, f"your customer no. {row.pk}")
+        self.assertNotContains(page, "dora")                                     # a number, never who
+
+    def test_somebody_new_is_bound_by_the_first_order_and_the_link_earns_its_product(self):
+        self.boost("10")
+        first = self.purchase(self.carl, ref=self.anna)                           # a link to the product
+        self.assertEqual((self.line_of(first), self.bound_to(self.carl)), (("anna", "product_link", D("2.99")), "anna:active"))
+        self.assertEqual(Binding.objects.get().through, "first_order")
+        later = self.purchase(self.carl, self.other)                             # no link: her customer
+        self.assertEqual(self.line_of(later), ("anna", "bound_customer", D("0.50")))
+
+    def test_a_link_to_a_product_wins_that_product_and_the_binding_stays(self):
+        self.purchase(self.carl, via=self.anna)                                   # carl is anna's
+        self.boost("10")
+        won = self.purchase(self.carl, ref=self.bert)                             # bert's link to this very product
+        self.assertEqual((self.line_of(won), self.bound_to(self.carl)), (("bert", "product_link", D("2.99")), "anna:active"))
+        self.assertEqual(Commission.objects.filter(payment=won).exclude(basis="super").count(), 1)   # one commission, never two
+        rest = self.purchase(self.carl, self.other, via=self.bert)                # bert's link to the shop moves nothing
+        self.assertEqual((self.line_of(rest), self.bound_to(self.carl)), (("anna", "bound_customer", D("0.50")), "anna:active"))
+
+    def test_a_customer_who_is_buying_cannot_be_claimed(self):
+        earlier = self.purchase(self.carl)                                        # no affiliate: carl is nobody's
+        self.assertEqual((self.line_of(earlier), self.bound_to(self.carl)), ((), ""))
+        again = self.purchase(self.carl, self.other, via=self.bert)
+        self.assertEqual((self.line_of(again), self.bound_to(self.carl)), ((), ""))
+        linked = self.purchase(self.carl, ref=self.bert)                          # a product link still earns its product
+        self.assertEqual((self.line_of(linked), self.bound_to(self.carl)), (("bert", "product_link", D("1.00")), ""))
+        # Somebody who bought as a guest under the same address is no new customer either.
+        self.purchase(None)
+        guest = User.objects.create_user("guest@example.org", PASSWORD, email_verified=True)
+        self.assertIsNone(services.signed_up(guest, services.record_click(self.anna, None).token))
+        self.purchase(guest, via=self.anna)
+        self.assertEqual(self.bound_to(guest), "")
+
+    def test_a_link_counts_for_ninety_days_towards_a_new_customer(self):
+        self.purchase(self.carl, via=self.anna, clicked_days_ago=91)
+        self.assertEqual(self.bound_to(self.carl), "")
+        dora = User.objects.create_user("dora@example.org", PASSWORD, email_verified=True)
+        self.purchase(dora, via=self.anna, clicked_days_ago=89)
+        self.assertEqual(self.bound_to(dora), "anna:active")
+        old = services.record_click(self.anna, None)
+        Click.objects.filter(pk=old.pk).update(at=timezone.now() - dt.timedelta(days=91))
+        self.assertIsNone(services.signed_up(User.objects.create_user("eve@example.org", PASSWORD), old.token))
+
+    def test_nobody_is_their_own_customer(self):
+        self.purchase(self.anna.user, via=self.anna)
+        self.purchase(self.anna.user, ref=self.anna)
+        self.assertEqual((Binding.objects.count(), Commission.objects.count()), (0, 0))
+        self.assertIsNone(services.signed_up(self.anna.user, services.record_click(self.anna, None).token))
+
+    def test_a_customer_who_stopped_buying_is_won_back(self):
+        first = self.purchase(self.carl, via=self.anna)
+        seven_months = timezone.now() - dt.timedelta(days=215)
+        # Five months without a purchase: still anna's, whatever link he follows.
+        Payment.objects.filter(pk=first.pk).update(at=timezone.now() - dt.timedelta(days=150))
+        kept = self.purchase(self.carl, self.other, via=self.bert)
+        self.assertEqual((self.line_of(kept), self.bound_to(self.carl)), (("anna", "bound_customer", D("0.50")), "anna:active"))
+        # Seven months, and a link followed fifteen days before the purchase: too long ago.
+        Payment.objects.update(at=seven_months)
+        late = self.purchase(self.carl, self.other, via=self.bert, clicked_days_ago=15)
+        self.assertEqual((self.line_of(late), self.bound_to(self.carl)), (("anna", "bound_customer", D("0.50")), "anna:active"))
+        # Seven months, and bought within the two weeks: bert's from this order on.
+        Payment.objects.update(at=seven_months)
+        won = self.purchase(self.carl, self.other, via=self.bert, clicked_days_ago=13)
+        self.assertEqual((self.line_of(won), self.bound_to(self.carl)), (("bert", "bound_customer", D("0.50")), "bert:active"))
+        history = [(b.affiliate.handle, b.state, b.through, b.ended_because) for b in Binding.objects.order_by("id")]
+        self.assertEqual(history, [("anna", "ended", "first_order", "won_back"), ("bert", "active", "won_back", "")])
+        self.assertEqual(AuditEntry.objects.filter(action="affiliate.bound").count(), 2)
+
+    def test_a_lapsed_customer_with_nobody_is_bound_the_same_way(self):
+        first = self.purchase(self.carl)
+        Payment.objects.filter(pk=first.pk).update(at=timezone.now() - dt.timedelta(days=215))
+        self.purchase(self.carl, self.other, via=self.bert)
+        self.assertEqual((self.bound_to(self.carl), Binding.objects.get().through), ("bert:active", "won_back"))
+
+    def test_six_months_are_months(self):
+        moment = timezone.now().replace(year=2026, month=8, day=31, hour=12)
+        self.assertEqual((services.months_before(moment, 6).month, services.months_before(moment, 6).day), (2, 28))
+        self.assertEqual(services.months_before(moment.replace(month=3, day=15), 6).strftime("%Y-%m-%d"), "2025-09-15")
+
+    def test_the_binding_follows_the_customers_account(self):
+        first = self.purchase(self.carl, via=self.anna)
+        closure.request_deletion(self.carl)                                       # suspended from the request on
+        self.assertEqual(self.bound_to(self.carl), "anna:suspended")
+        during = self.purchase(self.carl, self.other)
+        self.assertEqual(self.line_of(during), ())
+        linked = self.purchase(self.carl, ref=self.bert)                          # a product link still earns its product
+        self.assertEqual(self.line_of(linked)[:2], ("bert", "product_link"))
+        closure.cancel_deletion(self.carl)                                        # and back, to the same affiliate
+        self.assertEqual(self.bound_to(self.carl), "anna:active")
+        closure.close(self.carl)
+        self.assertEqual(self.bound_to(self.carl), "anna:suspended")
+        closure.reactivate(User.objects.get(pk=self.carl.pk))
+        self.assertEqual(self.bound_to(self.carl), "anna:active")
+        closure.request_deletion(self.carl)
+        closure.erase(User.objects.get(pk=self.carl.pk))
+        self.assertEqual(Binding.objects.count(), 0)                              # gone with the account
+        kept = Commission.objects.get(payment=first)
+        self.assertEqual((kept.amount, kept.binding), (D("1.00"), None))          # what was earned stays, with nobody behind it
+
+    def test_a_ban_and_an_erased_affiliate_end_their_bindings(self):
+        dora = User.objects.create_user("dora@example.org", PASSWORD, email_verified=True)
+        self.purchase(self.carl, via=self.anna)
+        self.purchase(dora, via=self.bert)
+        services.sanction(self.anna, self.operator, Sanction.BAN, rule="Terms 6", facts="Fraud.")
+        self.assertEqual((self.bound_to(self.carl), Binding.objects.get(customer=self.carl).ended_because), ("", "affiliate_banned"))
+        self.assertEqual(self.line_of(self.purchase(self.carl, self.other)), ())
+        closure.request_deletion(self.bert.user)
+        closure.erase(User.objects.get(pk=self.bert.user_id))
+        self.assertEqual((self.bound_to(dora), Binding.objects.get(customer=dora).ended_because), ("", "affiliate_erased"))
+        # A blocked affiliate's customers stay theirs, and earn them nothing meanwhile.
+        eve = User.objects.create_user("eve@example.org", PASSWORD, email_verified=True)
+        fred = self.affiliate("fred")
+        self.purchase(eve, via=fred)
+        services.sanction(fred, self.operator, Sanction.BLOCK, rule="Terms 4", facts="Under review.")
+        self.assertEqual((self.bound_to(eve), self.line_of(self.purchase(eve, self.other))), ("fred:active", ()))
+
+    def test_a_referred_customer_who_becomes_an_affiliate_has_their_affiliate_above(self):
+        self.purchase(self.carl, via=self.anna)
+        profile = services.apply(self.carl, handle="carl", phone="+491700000002", recruiter="bert")   # bert's recruiting link, too
+        self.assertEqual(profile.superaffiliate, self.anna)                        # whoever brought the customer brought the affiliate
+
+    def test_the_superaffiliate_shares_in_a_bound_customers_purchase(self):
+        rita = self.affiliate("rita", recruiter="anna")
+        payment = self.purchase(self.carl, via=rita)
+        lines = {(l.affiliate.handle, l.basis): l.amount for l in Commission.objects.filter(payment=payment)}
+        self.assertEqual(lines, {("rita", "bound_customer"): D("1.00"), ("anna", "super"): D("0.10")})
+
+
+class BuyerTests(BindingCase):
+    def test_an_order_knows_the_account_that_bought(self):
+        guest = self.checkout()
+        self.assertIsNone(Order.objects.get(public_id=guest["order_id"]).buyer)   # nobody said who: nobody's, reached by its secret
+        client = Client.objects.create(client_id="ultrastore-app", name="UltraStore", redirect_uris="https://store.example/cb")
+        grant = Grant.objects.create(user=self.carl, client=client, scope="openid", auth_time=timezone.now())
+        token = provider.issue_tokens(grant)["access_token"]
+        mine = self.client.post("/v1/checkout", '{"app": "org.acme.paid"}', content_type="application/json", headers={"authorization": f"Bearer {token}"})
+        self.assertEqual(Order.objects.get(public_id=mine.json()["order_id"]).buyer, self.carl)
+        wrong = self.client.post("/v1/checkout", '{"app": "org.acme.paid"}', content_type="application/json", headers={"authorization": "Bearer nonsense"})
+        self.assertEqual((wrong.status_code, Order.objects.get(public_id=wrong.json()["order_id"]).buyer), (200, None))
+        self.assertNotIn("buyer", mine.json())                                    # the order's JSON says nothing of who
+        self.assertIsNone(provider.person_of(""))
+        # The buy page: whoever is signed in.
+        self.sign_in("carl@example.org")
+        self.client.post("/apps/org.acme.paid/buy/", {"email": "carl@example.org"})
+        self.assertEqual(Order.objects.order_by("-id").first().buyer, self.carl)
+
+    def test_a_guests_purchase_becomes_the_accounts_when_its_owner_opens_it_signed_in(self):
+        self.client.post("/apps/org.acme.paid/buy/", {"email": "carl@example.org"})
+        order = Order.objects.get()
+        self.client.post(f"/pay/{order.public_id}/test/", {"outcome": "paid"})
+        self.assertIsNone(order.buyer)
+        self.sign_in("dev@example.org")                                            # somebody else with the link: not theirs
+        self.client.get(f"/orders/{order.public_id}/?secret={order.secret}")
+        self.assertIsNone(Order.objects.get(pk=order.pk).buyer)
+        self.sign_in("carl@example.org")
+        self.client.get(f"/orders/{order.public_id}/?secret={order.secret}")
+        self.assertEqual(Order.objects.get(pk=order.pk).buyer, self.carl)
+
+    def test_the_web_buy_page_carries_the_last_link_followed(self):
+        self.sign_in("carl@example.org")
+        self.follow("anna", app_id="")                                            # to the shop
+        self.client.post("/apps/org.acme.paid/buy/", {"email": "carl@example.org"})
+        order = Order.objects.get()
+        self.assertEqual(OrderVisit.objects.get(order=order).affiliate, self.anna)
+        self.client.post(f"/pay/{order.public_id}/test/", {"outcome": "paid"})
+        self.assertEqual((self.bound_to(self.carl), self.line_of(Payment.objects.get())), ("anna:active", ("anna", "bound_customer", D("1.00"))))
+
+
+@override_settings(**SKRILL, AFFILIATES=True)
+class BoundRenewalTests(BindingCase):
+    provider = SKRILL
+
+    def test_a_bound_customers_subscription_earns_the_base_at_every_renewal(self):
+        monthly = self.make_app(self.publisher, "org.acme.monthly", name="Monthly", pricing_model="monthly", price="4.00", currency="EUR")
+        self.make_release(monthly)
+        self.boost("10", app=monthly, renewals=True)
+        order = billing.create_order("org.acme.monthly", email="carl@example.org", buyer=self.carl, via=services.record_click(self.anna, None).token)
+        self.report(order.public_id, amount="4.00", rec_payment_id="REC1")
+        self.report(order.public_id, amount="4.00", url="/v1/skrill/recurring", mb_transaction_id="900101")
+        lines = [(l.payment.kind, l.basis, l.amount, l.merchant_part) for l in Commission.objects.order_by("id")]
+        self.assertEqual(lines, [("sale", "bound_customer", D("0.20"), D("0.00")), ("renewal", "bound_customer", D("0.20"), D("0.00"))])
+        self.report(order.public_id, status="-3", mb_transaction_id="900100")      # the first payment charged back
+        self.assertEqual(sum(l.amount for l in Commission.objects.filter(affiliate=self.anna)), D("0.20"))
+
+    def test_a_renewal_follows_the_customer(self):
+        monthly = self.make_app(self.publisher, "org.acme.monthly", name="Monthly", pricing_model="monthly", price="4.00", currency="EUR")
+        self.make_release(monthly)
+        order = billing.create_order("org.acme.monthly", email="carl@example.org", buyer=self.carl, via=services.record_click(self.anna, None).token)
+        self.report(order.public_id, amount="4.00", rec_payment_id="REC1")
+        closure.request_deletion(self.carl)                                        # suspended: this renewal is nobody's
+        self.report(order.public_id, amount="4.00", url="/v1/skrill/recurring", mb_transaction_id="900101")
+        self.assertEqual(Commission.objects.count(), 1)
+        # On the way out he is nobody's new customer either.
+        Binding.objects.all().delete()
+        other = billing.create_order("org.acme.notes", email="carl@example.org", buyer=self.carl, via=services.record_click(self.bert, None).token)
+        self.report(other.public_id, amount="10.00", mb_transaction_id="900200")
+        self.assertEqual((self.bound_to(self.carl), Commission.objects.count()), ("", 1))
+        closure.cancel_deletion(self.carl)
+        services._bind(self.carl, self.bert, Binding.WON_BACK)                     # won back by bert since
+        self.report(order.public_id, amount="4.00", url="/v1/skrill/recurring", mb_transaction_id="900102")
+        last = Commission.objects.order_by("-id").first()
+        self.assertEqual((last.affiliate, last.basis, last.amount, last.payment.kind), (self.bert, "bound_customer", D("0.20"), "renewal"))

@@ -34,13 +34,14 @@
 {% if profile.state == "active" or profile.state == "paused" %}
 <div><div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-3">
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Clicks, last {{ link_days }} days</span><b>{{ clicks }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Your customers</span><b>{{ customers }}</b><span class="small text-secondary">{{ base_percent }} % of everything they buy</span></div></div></div>
   {% for row in sums %}
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">To be paid, {{ row.currency }}</span><b>{{ row.balance }}</b><span class="small text-secondary">{{ row.pending }} pending, {{ row.paid }} paid</span></div></div></div>
   {% endfor %}
 </div></div>
 <div class="card"><div class="card-body">
   <h2>Your links</h2>
-  <p class="text-secondary">A link to a product earns you its commission when somebody follows it and buys that product within {{ link_days }} days. Say that it is advertising wherever you put one. Add <span class="font-monospace">?s=name</span> to tell your campaigns apart.</p>
+  <p class="text-secondary">A link to a product earns you its commission when somebody follows it and buys that product within {{ link_days }} days. Somebody new to the store who signs up or first buys after following any of your links becomes <b>your customer</b>: you earn {{ base_percent }} % of everything they buy later, in any shop. Say that it is advertising wherever you put a link. Add <span class="font-monospace">?s=name</span> to tell your campaigns apart.</p>
   <dl class="facts">
     <dt>The shop</dt><dd class="font-monospace">{{ general_link }}</dd>
     <dt>To recruit an affiliate</dt><dd><span class="font-monospace">{{ join_link }}</span><br><span class="small text-secondary">You earn {{ super_percent }} % of what they earn, on top of it - it costs them nothing.</span></dd>
@@ -74,7 +75,7 @@
     <tbody>
     {% for line in lines %}
     <tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td>
-      <td>{% if line.basis == "super" %}the share of {{ line.share_of.affiliate.handle|default:"an affiliate you brought" }}{% else %}your link{% endif %}</td><td>{{ line.label }}</td>
+      <td>{% if line.basis == "super" %}the share of {{ line.share_of.affiliate.handle|default:"an affiliate you brought" }}{% elif line.basis == "bound_customer" %}your customer{% if line.binding_id %} no. {{ line.binding_id }}{% endif %}{% else %}your link{% endif %}</td><td>{{ line.label }}</td>
       <td class="text-end">{{ line.net }}</td><td class="text-end">{{ line.percent_text }} %</td><td class="text-end">{{ line.amount }} {{ line.currency }}</td>
       <td>{% if line.payout_id %}Paid{% else %}{{ line.get_state_display }}{% if line.state == "pending" %} until {{ line.approve_after|date:"j M" }}{% endif %}{% endif %}</td></tr>
     {% endfor %}
