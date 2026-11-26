@@ -1,3 +1,114 @@
+#### 2026-11-26 *0.9.601*
+- **A word processor's navigator, in the framework.**
+  `UltraCanvasDocumentNavigator` (new, `UltraCanvasDocumentNavigator.h`) is
+  the side panel beside an `UltraCanvasRichTextEdit`: the headings as a tree
+  by level, whose selected row is the heading the caret is under and follows
+  it; the tables, pictures, charts, comments (with their authors; a
+  double-click opens the list of comments), bookmarks, footnotes and
+  endnotes and tracked changes; a click goes there and selects the picture,
+  chart, comment or change. Its search box filters every list and lists the
+  places the document says it. Buttons promote, demote and move a heading's
+  section (the heading, its text and its subheadings) up or down, and a
+  heading's row dragged onto another heading moves the section before it.
+  The lists follow the edits once the typing pauses (`SetRefreshDelay`), and
+  the tree is rebuilt only when the outline changed. UltraOffice and
+  UltraTexter show it.
+- **The outline, UI-free.** `BuildRichDocumentOutline`
+  (`UltraCanvasRichDocumentOutline.h`, new) reads a `UCRichDocument` into a
+  `RichDocumentOutline`: headings (level, words, parent, section end),
+  tables (rows, columns, caption, first cell), pictures and charts (where
+  they are, caption, alt text, title), comments (author, the range and words
+  they are on), bookmarks, notes (mark, words, reference) and tracked changes
+  (who, when, what); `HeadingAt` is the heading a block is under.
+- **Heading sections, as undo steps.** `UCRichDocumentEditor::HeadingSectionEnd`,
+  `SiblingHeading`, `MoveHeadingSection` (before any block, or to the end),
+  `MoveHeadingSectionUp` / `Down` and `ChangeHeadingSectionLevel` (promote or
+  demote a heading with every heading under it; a heading in its level's
+  style takes the new level's), each one undo step; the same on
+  `UltraCanvasRichTextEdit`, which also gains `GoToPosition`, `GoToRange` and
+  `AddDocumentObserver` / `RemoveDocumentObserver` - any number of listeners
+  to its edits and caret moves besides the host's own callbacks.
+
+  Covered in `RichDocumentOutlineTest` (no display) and
+  `DocumentNavigatorElementTest` (Xvfb).
+- **Slides: groups, alignment, picture crops, the slide sorter, notes as
+  paragraphs and a chart's data, in the deck model and the slide editor.**
+  - The deck model keeps group shapes: `PptxShape::groupPath` (the groups a
+    shape is in, outermost first) and `PptxSlide::groupNames`. The .pptx
+    reader keeps `p:grpSp` (its `chOff` / `chExt` scaling applied as before,
+    a turned group's shapes now turned with it) and the writer writes it
+    back, nested, its box the shapes'; the .odp reader and writer keep
+    `draw:g`. `PptxGroupIds`, `PptxNewGroupId`.
+  - A picture's crop is read from and written to an .odp's `fo:clip`, in
+    lengths of the picture at its own size (`PptxPictureNaturalSize`: its
+    pixels at the resolution a PNG's `pHYs` or a JPEG's JFIF states, else
+    96 to the inch, as LibreOffice measures it); the .pptx's `a:srcRect` was
+    kept already.
+  - `UCSlideDeckEditor`: groups are selected whole (`Select`,
+    `ToggleSelected`, `ShapesInside`), `GroupSelection` / `UngroupSelection`
+    (one step each), `EnterGroup` / `ExitGroup` to choose inside one,
+    `RotateSelection` turns a group as one, the z-order commands keep a
+    group together and a copy of a group is a group of its own;
+    `AlignSelection(SlideAlignment)` and `DistributeSelection` (to the
+    slide for one shape); `SetPictureCropBox`, `SetPictureCrop`,
+    `ResetPictureCrop`, `PictureFullBox`; `SetShapeChart`, `ChartDataRows`,
+    `ChartWithDataRows` (a chart's data as cells, its kind kept);
+    `SetSlideNotes(index, paragraphs)`; `MoveSlides`, `DuplicateSlides`,
+    `DeleteSlides`, `SetSlidesHidden` for several slides as one step.
+  - `UltraCanvasSlideEdit`: Ctrl+G / Ctrl+Shift+G, a group framed, resized
+    and turned with its own handles, a double-click selecting inside it and
+    Escape going back; crop mode (`SetCropMode`) with crop handles over the
+    picture's faint whole; the slide sorter (`SetView(SlideEditView::Sorter)`:
+    a grid of thumbnails, click, Ctrl and Shift choose, a drag moves them
+    together, Ctrl+D, Delete, a right-click for a host's menu);
+    `onEditChart` on a double-click on a chart, `onModeChange`.
+  - The .pptx reader no longer bullets the speaker notes by default (the
+    slide master's body style was applied to them); the .odp writer no longer
+    reads past the theme's colours for a table in a deck made in memory.
+  - `PptxSlideDrawOptions::background`: false draws a slide's shapes alone,
+    over what the context holds.
+- **Pivot tables in spreadsheets** (`UltraCanvasSpreadsheetPivot.h`). A
+  `SpreadsheetPivotTable` summarises a block of cells whose first row names
+  its fields: row and column fields (nested, each with its order, subtotals,
+  hidden items and a grouping - dates by years, quarters or months, numbers
+  by a step), filter fields above the table, and value fields summed,
+  counted, averaged, as min, max, product, count of numbers, standard
+  deviation or variance (sample or population), shown as they are or as a
+  share of the grand total, of the row or of the column; grand totals at the
+  bottom and the right on or off, several values side by side or one under
+  the other. The model is display-free: `ComputeSpreadsheetPivot` lays it
+  out as cells, `RefreshSpreadsheetPivot` writes them onto a sheet with a
+  header style (and clears where it stood), `SpreadsheetPivotDrillDownRows`
+  gives the source rows behind a value.
+- **On the grid.** A sheet keeps the pivots standing on it
+  (`SpreadsheetSheet::GetPivotTables`); `InsertPivotTable`, `SetPivotTable`,
+  `RemovePivotTable`, `RefreshPivotTable(s)`, `SetPivotTableSource`. A
+  pivot's cells are read-only (typing, pasting, cutting and clearing them is
+  refused with a message), a change to its source refreshes it before the
+  grid draws and before it saves (`RefreshChangedPivotTables`), and a
+  double-click on a value opens a sheet of the rows behind it
+  (`DrillDownPivotCell`, `onPivotDrillDown`) - on any other of its cells, its
+  field list. The field list is an element, `UltraCanvasSpreadsheetPivotPanel`
+  (fields, rows, columns, values and filters, each field's settings and
+  items), in a dialog (`ShowSpreadsheetPivotDialog`, the grid's
+  `ShowInsertPivotTableDialog` / `ShowPivotTableDialog`) or docked beside
+  the grid; `ShowPivotSourceDialog` asks for a new source.
+- **.xlsx and .ods keep them.** .xlsx: a pivot cache definition per pivot
+  (`xl/pivotCache/pivotCacheDefinitionN.xml`, its source, its fields'
+  values and groupings, `refreshOnLoad`), its records, a pivot table part
+  (`xl/pivotTables/pivotTableN.xml`) with their relationships and content
+  types, and the workbook's `<pivotCaches>`; .ods: `table:data-pilot-tables`
+  with a `table:data-pilot-table` per pivot (`table:source-cell-range`,
+  `table:data-pilot-field`s with their levels, members, sort order, groups
+  and field references). Both are read back - Excel's and LibreOffice's own
+  too; what the model cannot represent (a calculated field, a grouping that
+  adds fields, a source outside the workbook) keeps the file's cells and
+  says why (`unsupportedReason`). `SpreadsheetPivotTest` checks the sums
+  against hand-worked ones and the files through LibreOffice, including
+  pivots LibreOffice made itself.
+- `SpreadsheetSheet::NotifyCellsChanged`: cells written straight through
+  `GetOrCreateCell` reach the formula engine and the grid.
+
 #### 2026-11-26 *0.9.600*
 - **Cells, charts and text could not be pasted from one office kind into
   another, and the spreadsheet grid and the slide editor said nothing to a
