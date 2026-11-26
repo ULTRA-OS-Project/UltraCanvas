@@ -62,7 +62,7 @@ as `code`, and each numbered step of a guide is one action.
 | **1 Your computer** | What was detected, as key/value rows: OS, architecture, distribution, the package manager (a found / not-found badge and its path), the MSYS2 root on Windows (a link to install it when missing), home, the AI assistants found, git, the framework version. Under it the guide: Linux, macOS or Windows in a segmented control, preselected to the detected one, and that platform's way in as a numbered guide with the SDK archive named for this version and linked to its release. | Nothing; it is where the reader starts. |
 | **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The AI assistant: *None* first, in red, for a local IDE or the compiler alone (no instruction file, no first prompt), then Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../../Docs/GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
 | **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each on a row with a switch: an installed one is on and locked; a missing or not checkable one that a package provides can be flipped - on (the default) installs it with the rest, off leaves it out of the install, the command and the report; the row shows the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* (*N missing, M off* with switches off) or *everything installed*, and the line under the buttons says what *Install what is missing* will do - the package manager, how many and the exact command - or why it cannot run. *Install what is missing* (enabled only while something is missing) runs the package manager after a confirmation that shows the command again: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree, after `pacman -Syuu` (twice, in a login shell) brings an installed MSYS2's package lists and core up to date. On Windows without MSYS2 the rows still name MSYS2's packages and Install sets MSYS2 up first: `winget install --id MSYS2.MSYS2` into `C:\msys64`, a first login shell (pacman's keyring) running `pacman -Syuu` twice (a core update ends the first run), then its `pacman` installs the rest and MSYS2 is detected again before the checks. The output is shown in a console as it comes, line by line, and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
-| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its address on [start.ultraos.eu/pub](https://start.ultraos.eu/pub/) and the same archive on the GitHub release; *Download* fetches the archive into a folder you pick, checks it against the version's `SHA256SUMS`, unpacks it there and fills the prefix in (a build without the network library opens the address in the browser instead); *Unpack...* does the same for an archive you downloaded yourself; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
+| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its address on [start.ultraos.eu/pub](https://start.ultraos.eu/pub/) and the same archive on the GitHub release; *Download* fetches the archive into a folder you pick, checks it against the version's `SHA256SUMS`, unpacks it there and fills the prefix in (a build without the network library opens the address in the browser instead); *Unpack...* does the same for an archive you downloaded yourself; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder; *Move a project...* points an existing project at the SDK in the prefix field. *Newest SDK* says what the server's `pub/LATEST` names against the SDK in use, with *Download <version>* and the matching UltraCanvasStart when it is newer (see *Updating the SDK*). For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
 | **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then what was written. The step carries the error marker while no project exists. | The application. |
 | **6 Build** | The proof that the installation works: the two commands a programmer runs (`cmake --preset default`, `cmake --build --preset default`) shown for the project folder, *Build the project* runs them (`engine/StartBuild`: cmake with `-S` and the preset, then the preset's `build/` directory; on Windows the MSYS2 bin directories on the child's PATH), cmake's output in a console, a badge that says *not built yet*, *building...*, *built* or *failed*; the step carries the error marker after a failed build. Under it the hand-over: the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | Whether the application compiles here. |
 
@@ -75,6 +75,48 @@ v0.9.252) does not build as written: its `main.cpp` calls
 `app.CreateWindow(config)`, a method the application class does not have.
 Change that line to `auto window = CreateWindow(config);` - the framework's
 function - and it builds; projects written by 0.3.2 and later have it so.
+
+## Updating the SDK
+
+A build of UltraCanvasStart downloads the SDK of its own version. A newer
+release is found through one file on the server, written by
+`scripts/upload-sdk-website.sh` after every release it uploads:
+
+```
+https://start.ultraos.eu/pub/LATEST        one line: the newest version, e.g. 0.9.604
+https://start.ultraos.eu/pub/<version>/    that version's archives and SHA256SUMS
+```
+
+The first visit to the Framework step asks for it in the background
+(*Check again* asks again), and the *Newest SDK* row compares it with the
+SDK in use - the version in the prefix's
+`lib/cmake/UltraCanvas/UltraCanvasConfigVersion.cmake`, or the folder's name,
+or this build's version when no prefix is set:
+
+- **newer, and its `SHA256SUMS` lists this machine's archive**:
+  *Download <version>* fetches, checks and unpacks it like *Download*, into
+  a folder you pick, and fills the prefix in. The row under it links the
+  UltraCanvasStart of that release: a newer SDK can need a package this
+  build's Tools step does not know, and that one does.
+- **newer, without this machine's archive** (macOS Intel is not in every
+  release): it says so and offers nothing.
+- **not newer**: it says the SDK in use is the newest.
+
+*Move a project...* then points an existing project at the SDK in the
+prefix field: it sets every `CMAKE_PREFIX_PATH` in the project's
+`CMakePresets.json` (or adds one to the first `cacheVariables`), writes the
+file beside the old one and renames it over it, and removes
+`build/CMakeCache.txt`, because `find_package` keeps the old SDK's folder in
+`UltraCanvas_DIR`. The build folder's objects stay; the next
+`cmake --preset default` and `cmake --build --preset default` rebuild what
+the new headers change. On the command line the same is
+`--update-check`, `--update-sdk <folder>` and `--update-project <folder> --sdk <prefix>`.
+
+LATEST is written only after the version's files are all on the server, and
+never moved back by a re-run of an older release. The *SDK website check*
+workflow, run by hand with a version in `latest`, sets it to that version
+(`upload-sdk-website.sh --latest <version>`) - the way back after a bad
+release.
 
 ## Command line
 
@@ -90,6 +132,11 @@ UltraCanvasStart --plan --assistant codex   # the plan and the project for anoth
 UltraCanvasStart --plan --assistant none    # the plan without an AI assistant
 UltraCanvasStart --create ~/MyApp --name "My App" --sdk ~/UltraCanvas-SDK-Linux-0.9.240-x86_64
                                     # write the project skeleton (the Project step) and exit
+UltraCanvasStart --update-check     # the newest SDK on the server against this build's; exit 3 when newer
+UltraCanvasStart --update-check --sdk ~/UltraCanvas-SDK-Linux-0.9.580-x86_64   # ...against that SDK's
+UltraCanvasStart --update-sdk ~/SDKs   # download, check and unpack the newest SDK there, when it is newer
+UltraCanvasStart --update-project ~/MyApp --sdk ~/SDKs/UltraCanvas-SDK-Linux-0.9.604-x86_64
+                                    # point the project at that SDK (CMakePresets.json, the cache removed)
 UltraCanvasStart --version
 ```
 
@@ -114,8 +161,8 @@ static library the GUI, the CLI modes and the tests share:
 | `StartPackages` | the dependency table with the package per manager (apt, dnf, pacman, zypper, Homebrew, MSYS2), `InstallStep`, `Msys2SetupSteps` (winget, first start, update), MSYS2 architecture prefixes |
 | `StartChecks` | `CheckTool`, `CheckPkgConfigModule`, `RunChecks` |
 | `StartPlan` | `BuildPlan`, `RenderReport`, `PlatformNotes`, `DisplayCommand` |
-| `StartSdk` | artifact names matching the CI workflow, the archive's address on start.ultraos.eu and the release page, `DownloadSdk` (the archive, checked against `SHA256SUMS` with `ChecksumFor`), `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix` |
-| `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep` |
+| `StartSdk` | artifact names matching the CI workflow, the archive's address on start.ultraos.eu and the release page, `DownloadSdk` (the archive, checked against `SHA256SUMS` with `ChecksumFor`), `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix`; the update: `SdkLatestUrl`, `ParseLatestVersion`, `CheckSdkUpdate`, `SdkPrefixVersion`, `StartAppDownloadUrl` |
+| `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep`; `RepointPresets` and `RepointProjectSdk`, which move a project to another SDK |
 | `StartAi` | `DetectAi` (claude, codex, copilot, gemini), `AssistantInstallInstructions`, `AssistantGuidanceNotes`, `FirstPrompt`, `CloudChecklist` |
 | `StartGuide` | the pages' prose as Markdown: `PlatformGuide` (one action per step, the SDK named and linked), `AiGuide`; `CheckDetail` and `InstallPreview` for the Tools step's rows and what Install will do; `PlainText` for the report, `Linkify` |
 | `StartRunner` | `RunStep` through `RunProcessCaptured`, with pkexec/sudo for elevated steps |
@@ -129,8 +176,9 @@ shell ever sees a string. The dependency table mirrors step 1 of
 `Tests/UltraCanvasStart` (`-DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON`,
 target `UltraCanvasStartEngineTests`): os-release parsing, version
 comparison, the table, the install command, SDK names, the plan, the
-scaffold over a temporary folder with a non-ASCII name, and the guides (one
-action per numbered step, the SDK named for real, the report plain).
+scaffold over a temporary folder with a non-ASCII name, the update (LATEST's
+format, an SDK's version, a project moved to another SDK), and the guides
+(one action per numbered step, the SDK named for real, the report plain).
 
 ## Versioning
 

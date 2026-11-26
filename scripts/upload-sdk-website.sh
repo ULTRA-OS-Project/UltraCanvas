@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # scripts/upload-sdk-website.sh <archive-dir> <version>
+# scripts/upload-sdk-website.sh --latest <version>
 # scripts/upload-sdk-website.sh --check
 #
-# Puts the SDK archives of one release on the UltraOS website, the server
-# behind https://ultraos.eu/download-file/ (the page UltraCanvasStart's
-# Framework step opens - Apps/UltraCanvasStart/engine/StartSdk.cpp), so the
-# page can offer the version UltraCanvasStart names without anyone copying
-# the files over by hand. The publish-sdk-website job of
-# .github/workflows/build.yml runs it after the GitHub release has the same
-# archives (Docs/UltraCanvasSDK.md).
+# Puts the SDK archives of one release on the UltraOS server, which serves
+# them as https://start.ultraos.eu/pub/ - the address UltraCanvasStart's
+# Framework step downloads from (Apps/UltraCanvasStart/engine/StartSdk.cpp) -
+# so the SDK of every version is there without anyone copying the files
+# over by hand. The publish-sdk-website job of .github/workflows/build.yml
+# runs it after the GitHub release has the same archives
+# (Docs/UltraCanvasSDK.md).
 #
 # It speaks SFTP only, in batch mode: a web host that gives an SFTP account
 # with no shell and no rsync is enough. On the server:
@@ -17,6 +18,14 @@
 #     <version>/                       created on the first upload
 #       UltraCanvas-SDK-<OS>-<version>-<arch>.<ext>   the four to six archives
 #       SHA256SUMS                     `sha256sum -c SHA256SUMS` checks them
+#     LATEST                           one line, the newest version uploaded
+#
+# LATEST is how UltraCanvasStart's "Newest SDK" row and --update-check learn
+# that a newer SDK exists. It is written after the version's files are all
+# in place, and only when the version is not older than the one LATEST
+# names already (sort -V): a re-run of an old release does not move it
+# back. --latest <version> sets it by hand - to go back to a version after a
+# bad release, say - once it has checked that <version>/SHA256SUMS is there.
 #
 # Each file goes up as <name>.part and is renamed to <name> once it is
 # complete, so the page never serves half an archive under its real name. A
@@ -45,6 +54,8 @@
 # accepted on first sight: a runner that connects to whatever answers would
 # hand the archives - and the account - to an impostor.
 #
+# Version: 0.3.0 - LATEST, the newest version, for UltraCanvasStart's update
+#                  check; --latest <version> sets it by hand
 # Version: 0.2.0 - --check; the settings may be variables or secrets
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -52,13 +63,22 @@ set -euo pipefail
 
 usage() {
     echo "usage: $0 <archive-dir> <version>" >&2
+    echo "       $0 --latest <version>" >&2
     echo "       $0 --check" >&2
     exit 2
 }
 
 CHECK=0
+SET_LATEST=0
 if [ $# -eq 1 ] && [ "$1" = --check ]; then
     CHECK=1
+elif [ $# -eq 2 ] && [ "$1" = --latest ]; then
+    SET_LATEST=1
+    VERSION=$2
+    [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+        echo "error: '$VERSION' is not a version (x.y.z)" >&2
+        exit 1
+    }
 elif [ $# -eq 2 ]; then
     ARCHIVE_DIR=$1
     VERSION=$2
@@ -135,6 +155,32 @@ if [ "$CHECK" = 1 ]; then
     exit 0
 fi
 
+# Writes $VERSION into LATEST: put as LATEST.part, renamed over LATEST, the
+# way the archives go up, so a reader never sees half a line.
+write_latest() {
+    printf '%s\n' "$VERSION" > "$WORK/LATEST"
+    chmod og+r "$WORK/LATEST"
+    {
+        echo "put \"$WORK/LATEST\" \"$REMOTE_DIR/LATEST.part\""
+        echo "-rm \"$REMOTE_DIR/LATEST\""
+        echo "rename \"$REMOTE_DIR/LATEST.part\" \"$REMOTE_DIR/LATEST\""
+    } > "$WORK/batch"
+    run_sftp
+    echo "LATEST: $VERSION"
+}
+
+if [ "$SET_LATEST" = 1 ]; then
+    # Only a version whose files are there: LATEST must never send
+    # UltraCanvasStart to a folder that answers 404.
+    echo "get \"$REMOTE_DIR/$VERSION/SHA256SUMS\" \"$WORK/SHA256SUMS.there\"" > "$WORK/batch"
+    if ! run_sftp >/dev/null || [ ! -s "$WORK/SHA256SUMS.there" ]; then
+        echo "error: $REMOTE_DIR/$VERSION/SHA256SUMS is not on the server - upload $VERSION first" >&2
+        exit 1
+    fi
+    write_latest
+    exit 0
+fi
+
 # The archives: the names SdkArchiveName gives, for this version only.
 shopt -s nullglob
 archives=()
@@ -178,3 +224,18 @@ target="$REMOTE_DIR/$VERSION"
 echo "Uploading ${#archives[@]} archives and SHA256SUMS to $ULTRAOS_SFTP_USER@$ULTRAOS_SFTP_HOST:$target"
 run_sftp
 echo "Done: $target"
+
+# LATEST, once the version is complete - unless it names a newer one
+# already. A missing LATEST (the first run) is no error: '-get'.
+echo "-get \"$REMOTE_DIR/LATEST\" \"$WORK/LATEST.there\"" > "$WORK/batch"
+run_sftp >/dev/null || true
+current=""
+if [ -s "$WORK/LATEST.there" ]; then
+    current=$(sed -n '1{s/^\xEF\xBB\xBF//;s/[[:space:]]//g;p;q}' "$WORK/LATEST.there")
+fi
+if [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+   [ "$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; then
+    echo "LATEST stays $current: it is newer than $VERSION"
+else
+    write_latest
+fi

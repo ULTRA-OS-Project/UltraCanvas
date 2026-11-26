@@ -12,6 +12,8 @@
 // links that open in the browser (the pages' prose), a console (command
 // output and generated files), a key/value row, a link label and a status
 // badge for the key/value cards (step 1, step 4).
+// Version: 0.3.4 - the dark console's placeholder and caret are light (kConsoleHint):
+//                  the text area's defaults were near-invisible on its ground
 // Version: 0.3.3 - MakeChoiceSwitch (a missing row's switch: install it or not)
 // Version: 0.3.2 - kAlertText: red, for the None among the AI assistants
 // Version: 0.3.1 - the console is dark again: a text area paints the element's
@@ -78,6 +80,7 @@ inline const UltraCanvas::Color kCodeText       { 30,  64, 175};
 inline const UltraCanvas::Color kCodeTint       {238, 242, 255};
 inline const UltraCanvas::Color kConsoleBack    { 30,  35,  45};
 inline const UltraCanvas::Color kConsoleText    {226, 229, 234};
+inline const UltraCanvas::Color kConsoleHint    {156, 163, 175};   // a placeholder on kConsoleBack
 
 // ---------------------------------------------------------------------------
 // Type (UltraMail's scale)
@@ -451,6 +454,11 @@ MakeConsole(const std::string& id, float height, bool dark = true) {
     auto& style = view->GetStyle();
     style.borderColor     = dark ? UltraCanvas::Colors::Transparent : kCardBorder;
     style.fontColor       = dark ? kConsoleText : kTextPrimary;
+    // The hint ("The package manager's output appears here.") and the caret:
+    // the text area's defaults are for a light ground and all but vanish on
+    // the dark one.
+    style.placeholderColor = dark ? kConsoleHint : kTextMuted;
+    style.cursorColor      = dark ? kConsoleText : kTextPrimary;
     style.textPadding     = 6.0f;
     style.scrollbarWidth  = kScrollbarWidth;
     style.scrollbarCornerRadius = kScrollbarWidth / 2.0f;

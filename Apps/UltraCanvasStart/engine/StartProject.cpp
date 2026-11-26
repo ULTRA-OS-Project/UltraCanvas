@@ -1,4 +1,6 @@
 // Apps/UltraCanvasStart/engine/StartProject.cpp
+// Version: 0.2.0 - RepointPresets / RepointProjectSdk: an existing project moved
+//                  to another SDK; the preset's path is written as a JSON string
 // Version: 0.1.2 - main.cpp calls the framework's CreateWindow(config), not a
 //                  method of the application (which has none); the skeleton
 //                  builds against the SDK again
@@ -12,6 +14,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -33,6 +36,57 @@ namespace {
 std::string CMakePath(const std::string& utf8) {
     std::string out = utf8;
     for (auto& c : out) if (c == '\\') c = '/';
+    return out;
+}
+
+// `text` as a JSON string literal, quotes included.
+std::string JsonString(const std::string& text) {
+    std::string out = "\"";
+    for (unsigned char c : text) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    static const char* hex = "0123456789abcdef";
+                    out += "\\u00";
+                    out += hex[c >> 4];
+                    out += hex[c & 15];
+                } else {
+                    out += static_cast<char>(c);
+                }
+        }
+    }
+    out += "\"";
+    return out;
+}
+
+size_t SkipSpace(const std::string& text, size_t pos) {
+    while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos]))) ++pos;
+    return pos;
+}
+
+// The end (one past the closing quote) of the JSON string that starts at
+// `open` (its opening quote); npos when it does not end.
+size_t StringEnd(const std::string& text, size_t open) {
+    for (size_t i = open + 1; i < text.size(); ++i) {
+        if (text[i] == '\\') { ++i; continue; }
+        if (text[i] == '"') return i + 1;
+    }
+    return std::string::npos;
+}
+
+// A JSON string's contents with the escapes CMakePresets.json uses undone
+// (\" and \\); for the message that says what the prefix was.
+std::string JsonUnquote(const std::string& literal) {
+    std::string out;
+    for (size_t i = 1; i + 1 < literal.size(); ++i) {
+        if (literal[i] == '\\' && i + 2 < literal.size()) ++i;
+        out += literal[i];
+    }
     return out;
 }
 
@@ -115,7 +169,7 @@ std::string ProjectPresets(const ProjectOptions& options) {
     text += "      \"cacheVariables\": {\n";
     text += "        \"CMAKE_BUILD_TYPE\": \"Debug\"";
     if (options.useSdk && !options.sdkPrefix.empty()) {
-        text += ",\n        \"CMAKE_PREFIX_PATH\": \"" + CMakePath(options.sdkPrefix) + "\"";
+        text += ",\n        \"CMAKE_PREFIX_PATH\": " + JsonString(CMakePath(options.sdkPrefix));
     }
     text += "\n      }\n";
     text += "    }\n";
@@ -166,7 +220,10 @@ std::string ProjectReadme(const ProjectOptions& options) {
     if (options.useSdk) {
         text += "The preset points `CMAKE_PREFIX_PATH` at the UltraCanvas SDK";
         if (!options.sdkPrefix.empty()) text += " in `" + options.sdkPrefix + "`";
-        text += ". A newer SDK: unpack it and change the path in `CMakePresets.json`.\n";
+        text += ". A newer SDK: UltraCanvasStart's Framework step downloads it and "
+                "*Move a project...* points this project at it (on the command line: "
+                "`UltraCanvasStart --update-sdk <folder>`, then "
+                "`UltraCanvasStart --update-project <this folder> --sdk <its prefix>`).\n";
     } else {
         text += "`CMakeLists.txt` expects the framework checkout at `../UltraCanvas`.\n";
     }
@@ -211,6 +268,113 @@ ProjectResult ScaffoldProject(const ProjectOptions& options, bool overwrite) {
         out << file.content;
         result.written.push_back(UltraCanvas::PathToUtf8(path));
     }
+    result.ok = true;
+    return result;
+}
+
+bool RepointPresets(const std::string& presets, const std::string& sdkPrefix,
+                    std::string& out, std::string& oldPrefix, std::string& error) {
+    oldPrefix.clear();
+    if (sdkPrefix.empty()) {
+        error = "No SDK prefix to point the project at.";
+        return false;
+    }
+    const std::string value = JsonString(CMakePath(sdkPrefix));
+    const std::string key = "\"CMAKE_PREFIX_PATH\"";
+    std::string text = presets;
+    bool replaced = false;
+    size_t from = 0;
+    // Every preset that names a prefix gets the new one.
+    for (size_t at = text.find(key, from); at != std::string::npos; at = text.find(key, from)) {
+        size_t pos = SkipSpace(text, at + key.size());
+        if (pos >= text.size() || text[pos] != ':') { from = at + key.size(); continue; }
+        pos = SkipSpace(text, pos + 1);
+        if (pos >= text.size() || text[pos] != '"') {
+            error = "CMAKE_PREFIX_PATH in CMakePresets.json is not a plain string; "
+                    "set it to " + CMakePath(sdkPrefix) + " by hand.";
+            return false;
+        }
+        const size_t end = StringEnd(text, pos);
+        if (end == std::string::npos) {
+            error = "CMakePresets.json ends inside the CMAKE_PREFIX_PATH value.";
+            return false;
+        }
+        if (!replaced) oldPrefix = JsonUnquote(text.substr(pos, end - pos));
+        text.replace(pos, end - pos, value);
+        from = pos + value.size();
+        replaced = true;
+    }
+    if (!replaced) {
+        // A project written without a prefix: add it to the first preset's
+        // cache variables.
+        const size_t at = text.find("\"cacheVariables\"");
+        size_t pos = at == std::string::npos ? at : SkipSpace(text, at + 16);
+        if (pos != std::string::npos && pos < text.size() && text[pos] == ':') pos = SkipSpace(text, pos + 1);
+        if (pos == std::string::npos || pos >= text.size() || text[pos] != '{') {
+            error = "CMakePresets.json has no cacheVariables to add CMAKE_PREFIX_PATH to; "
+                    "add \"CMAKE_PREFIX_PATH\": " + value + " to its configure preset by hand.";
+            return false;
+        }
+        const size_t next = SkipSpace(text, pos + 1);
+        const bool empty = next < text.size() && text[next] == '}';
+        text.insert(pos + 1, "\n        \"CMAKE_PREFIX_PATH\": " + value + (empty ? "\n      " : ","));
+    }
+    out = text;
+    return true;
+}
+
+RepointResult RepointProjectSdk(const std::string& projectFolder, const std::string& sdkPrefix) {
+    RepointResult result;
+    std::error_code ec;
+    const fs::path folder = UltraCanvas::PathFromUtf8(projectFolder);
+    const fs::path presetsPath = folder / "CMakePresets.json";
+    result.presets = UltraCanvas::PathToUtf8(presetsPath);
+    if (projectFolder.empty() || !fs::is_regular_file(presetsPath, ec)) {
+        result.error = "There is no CMakePresets.json in " + projectFolder +
+                       ": choose the folder of a project UltraCanvasStart created.";
+        return result;
+    }
+    std::string presets;
+    {
+        std::ifstream in(presetsPath, std::ios::binary);
+        std::stringstream buffer;
+        buffer << in.rdbuf();
+        presets = buffer.str();
+    }
+    // Absolute: a relative prefix in the presets would be read against the
+    // build folder, not against where it was typed.
+    std::string prefix = sdkPrefix;
+    if (!prefix.empty()) {
+        const fs::path absolute = fs::absolute(UltraCanvas::PathFromUtf8(prefix), ec);
+        if (!ec) prefix = UltraCanvas::PathToUtf8(absolute.lexically_normal());
+        while (prefix.size() > 1 && (prefix.back() == '/' || prefix.back() == '\\')) prefix.pop_back();
+    }
+    std::string rewritten;
+    if (!RepointPresets(presets, prefix, rewritten, result.oldPrefix, result.error)) return result;
+    if (rewritten != presets) {
+        // Beside it first, then over it: a failed write leaves the old file.
+        const fs::path part = folder / "CMakePresets.json.part";
+        {
+            std::ofstream out(part, std::ios::binary);
+            out << rewritten;
+            if (!out) {
+                result.error = "Could not write " + UltraCanvas::PathToUtf8(part);
+                fs::remove(part, ec);
+                return result;
+            }
+        }
+        fs::rename(part, presetsPath, ec);
+        if (ec) {
+            result.error = "Could not replace " + result.presets + ": " + ec.message();
+            fs::remove(part, ec);
+            return result;
+        }
+        result.changed = true;
+    }
+    // find_package caches where it found the old SDK (UltraCanvas_DIR); the
+    // cache goes, the build folder's objects stay and are rebuilt as needed.
+    const fs::path cache = folder / "build" / "CMakeCache.txt";
+    if (fs::is_regular_file(cache, ec) && fs::remove(cache, ec)) result.cacheRemoved = true;
     result.ok = true;
     return result;
 }
