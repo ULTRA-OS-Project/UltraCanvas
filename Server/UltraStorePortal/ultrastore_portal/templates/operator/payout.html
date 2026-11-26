@@ -1,0 +1,30 @@
+{% extends "operator/base.html" %}
+{% block title %}Payout {{ payout.pk }} - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Payout {{ payout.pk }}</h1><span class="text-secondary">{{ payout.amount }} {{ payout.currency }}</span>{% include "_state.html" with state=payout.state label=payout.get_state_display %}</div>
+<div class="panels">
+<div class="card"><div class="card-body">
+  <dl class="facts">
+    <dt>Publisher</dt><dd><a href="{% url 'operator:publisher' payout.publisher.slug %}">{{ payout.publisher.name }}</a>{% if payout.publisher.legal_name %} - {{ payout.publisher.legal_name }}{% endif %}{% if payout.publisher.vat_id %}, VAT id {{ payout.publisher.vat_id }}{% endif %}</dd>
+    <dt>To pay</dt><dd><b>{{ payout.amount }} {{ payout.currency }}</b>, for what was due on {{ payout.until|date:"j F Y" }}</dd>
+    <dt>Where</dt><dd>{% if payout.details %}{{ payout.details|linebreaksbr }}{% else %}<span class="text-danger">The publisher had given no payout details when this was made.</span>{% if payout.publisher.payout_details %} Now: {{ payout.publisher.payout_details|linebreaksbr }}{% endif %}{% endif %}</dd>
+    <dt>Made</dt><dd>{{ payout.created|date:"j F Y, H:i" }}{% if payout.created_by %} by {{ payout.created_by.display_name }}{% endif %}</dd>
+    {% if payout.paid_at %}<dt>Paid</dt><dd>{{ payout.paid_at|date:"j F Y, H:i" }}{% if payout.paid_by %} by {{ payout.paid_by.display_name }}{% endif %}, reference <span class="font-monospace">{{ payout.reference }}</span></dd>{% endif %}
+    {% if payout.note %}<dt>Note</dt><dd>{{ payout.note }}</dd>{% endif %}
+  </dl>
+</div></div>
+<div class="card"><div class="card-body"><h2>What it holds</h2>{% include "_payout_lines.html" %}</div></div>
+{% if payout.state == "open" %}
+<div class="card form-wide"><div class="card-body">
+  <h2>Mark as paid</h2>
+  <p class="text-secondary">After the transfer is made, at the bank or the payment provider. The portal moves no money.</p>
+  <form method="post" onsubmit="return confirm('The transfer is made?')">
+    {% csrf_token %}
+    <div class="mb-3"><label class="form-label" for="reference">The transfer's reference</label><input class="form-control" id="reference" type="text" name="reference" maxlength="120" required></div>
+    <div class="mb-3"><label class="form-label" for="note">Note</label><input class="form-control" id="note" type="text" name="note" maxlength="300"></div>
+    <button class="btn btn-primary">Mark as paid</button>
+  </form>
+</div></div>
+{% endif %}
+</div>
+{% endblock %}

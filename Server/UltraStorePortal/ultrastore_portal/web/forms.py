@@ -15,7 +15,7 @@ import json
 from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model, password_validation
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordResetForm
 from django.core.exceptions import ValidationError
 
 from ..store import constants
@@ -128,6 +128,38 @@ class SignInForm(AuthenticationForm):
             raise ValidationError(self.error_messages["unverified"], code="unverified")
 
 
+class LeaveForm(forms.Form):
+    """Closing or deleting the account, with the password: a signed-in
+    browser somebody walked away from must not be enough."""
+
+    CLOSE, DELETE = "close", "delete"
+    what = forms.ChoiceField(label="What should happen", widget=forms.RadioSelect, choices=[])
+    password = forms.CharField(label="Your password", widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
+
+    def __init__(self, *args, user, closed_days: int, grace_days: int, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields["what"].choices = [
+            (self.CLOSE, f"Close the account. It is signed out everywhere and kept for {closed_days} days; signing in again in that time brings it back as it was."),
+            (self.DELETE, f"Delete the account. It stays usable for {grace_days} days, in which you can change your mind, and is then removed for good."),
+        ]
+
+    def clean_password(self):
+        if not self.user.check_password(self.cleaned_data["password"]):
+            raise ValidationError("The password is wrong.")
+        return self.cleaned_data["password"]
+
+
+class ClosedAccountResetForm(PasswordResetForm):
+    """A closed account's owner who forgot the password can still set a new
+    one and come back; an erased account has no usable password and is
+    left out as before."""
+
+    def get_users(self, email):
+        users = User._default_manager.filter(email__iexact=email, erased_at__isnull=True)
+        return (u for u in users if u.has_usable_password() and (u.is_active or u.closed_at is not None))
+
+
 class EmailForm(forms.Form):
     email = forms.EmailField()
 
@@ -158,8 +190,41 @@ class PublisherApplyForm(forms.ModelForm):
 class PublisherProfileForm(forms.ModelForm):
     class Meta:
         model = Publisher
-        fields = ["name", "website", "support_email", "description"]
-        widgets = {"description": forms.Textarea(attrs={"rows": 4})}
+        fields = ["name", "website", "support_email", "description", "legal_name", "vat_id", "payout_details"]
+        widgets = {"description": forms.Textarea(attrs={"rows": 4}), "payout_details": forms.Textarea(attrs={"rows": 3})}
+
+    PAYOUT_FIELDS = ("legal_name", "vat_id", "payout_details")
+
+    def __init__(self, *args, owner: bool = True, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Where the money goes is the owner's to say, and to see.
+        if not owner:
+            for name in self.PAYOUT_FIELDS:
+                del self.fields[name]
+
+
+class VatRateForm(forms.Form):
+    """A VAT rate as the operator enters it. A plain form, not the model's:
+    a rate for a country and a day that has one replaces it (the tax page
+    saves with update_or_create), so "already exists" is no error here."""
+
+    country = forms.CharField(help_text="ISO 3166-1, two letters (Greece is GR).")
+    percent = forms.DecimalField(max_digits=5, decimal_places=2)
+    valid_from = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    note = forms.CharField(required=False, max_length=200)
+
+    def clean_country(self):
+        country = self.cleaned_data["country"].strip().upper()
+        country = "GR" if country == "EL" else country
+        if len(country) != 2 or not country.isalpha():
+            raise ValidationError("Two letters, such as DE.")
+        return country
+
+    def clean_percent(self):
+        percent = self.cleaned_data["percent"]
+        if not 0 <= percent < 100:
+            raise ValidationError("From 0 to under 100.")
+        return percent
 
 
 PAID = ("one-time", "monthly", "yearly")

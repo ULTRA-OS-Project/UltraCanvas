@@ -1,0 +1,17 @@
+Hello {{ user.display_name }},
+
+you asked for your {{ brand }} account to be deleted. It will be removed for
+good on {{ erase_after|date:"j F Y" }}.
+
+Until then it works as before, and you can keep it - "Keep my account" on
+the account's page:
+
+{{ account }}
+
+Orders and receipts are kept for the years the law asks; they are not part of
+the account.
+
+If you did not ask for this, keep the account on that page and change the
+password.
+
+{{ brand|default:"UltraStore" }}

@@ -1,0 +1,8 @@
+{
+  "@language": "th",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "ล้างคุกกี้ {0} รายการแล้ว ระบบลืมสิทธิ์อุปกรณ์ของแอปแล้ว",
+  "No cookies to clear; the apps' device permissions are forgotten": "ไม่มีคุกกี้ให้ล้าง ระบบลืมสิทธิ์อุปกรณ์ของแอปแล้ว",
+  "{0} wants to use your camera": "{0} ต้องการใช้กล้องของคุณ",
+  "{0} wants to use your microphone": "{0} ต้องการใช้ไมโครโฟนของคุณ"
+}

@@ -880,6 +880,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # lives in OS/<Platform>/UltraCanvas*SessionLock.* and is picked up by
         # the platform glob.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSessionLock.cpp
+        # Starting a program when the user signs in. The platform backend
+        # lives in OS/<Platform>/UltraCanvas*LaunchAtLogin.* and is picked up
+        # by the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLaunchAtLogin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         # ExtractText: the words in a file (documents, PDF, spreadsheets,
         # pictures through text recognition, recordings through speech to text).
@@ -1191,6 +1195,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChartIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChartGallery.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivot.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivotIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivotDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGalleryPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetRulesDialogs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetComponent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
@@ -1269,10 +1278,14 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideDeckEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideEdit.cpp
+        # Copy and paste between cells, documents and slides (tables, text, the office clipboard's chart)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeClipboard.cpp
         # ... played as a show (transitions, timings) and the presenter view beside it
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideShowPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdpWriter.cpp
+        # ... and PowerPoint 97-2003 decks (.ppt / .pps / .pot), read into the same model
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPpt.cpp
         # ... and a slide drawn as a picture from what it reads (previews)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPptxSlideRender.cpp
         # ... and the slides as a document's pages, for the page views (UltraViewer)
@@ -1285,6 +1298,13 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        # Its document dialogs: page setup, paragraph, styles, table, picture,
+        # contents, caption, cross-reference, footnote, comments.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEditDialogs.cpp
+        # Its navigator: the document's outline (UI-free) and the side panel
+        # that lists it - headings, tables, pictures, comments, notes, changes.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentOutline.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDocumentNavigator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp
         # DrawingML charts and colours, read alike from .docx, .pptx and .xlsx
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDrawingML.cpp
@@ -1299,6 +1319,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        # OfficeArt drawings (shapes, pictures) of the binary formats, .doc and .ppt alike
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasOfficeArt.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
@@ -1477,7 +1499,7 @@ endif()
 # it calls UltraCanvas_RegisterSelectedWidgets(), so the module resolves them
 # at dlopen. ElementModulesTest loads every module into a host with nothing but
 # one plain element, so a missing anchor fails it with the undefined symbol.
-set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
+set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer ProfilePicture)
 set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
 set(UC_WIDGET_VideoTimeline_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
@@ -1555,6 +1577,23 @@ set(UC_WIDGET_MediaViewer_REGISTER "RegisterMediaViewerElement")
 # its module is built against the shared core only - the shipping
 # configuration on every desktop platform - and needs no anchors there.
 set(UC_WIDGET_MediaViewer_SHARED_CORE_ONLY ON)
+
+# The round profile picture, its editor row, the cropper and the crop dialog
+# (ChatCube's Edit profile, DemoApp). Two type names from one module.
+set(UC_WIDGET_ProfilePicture_KEBAB    "profile-picture")
+set(UC_WIDGET_ProfilePicture_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProfilePicture.cpp)
+set(UC_WIDGET_ProfilePicture_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasProfilePicturePlugin.cpp)
+set(UC_WIDGET_ProfilePicture_HEADER   "UltraCanvasProfilePicture.h")
+set(UC_WIDGET_ProfilePicture_REGISTER "RegisterProfilePictureElement")
+set(UC_WIDGET_ProfilePicture_ANCHOR_INCLUDES "UltraCanvasSlider.h" "UltraCanvasButton.h" "UltraCanvasLabel.h" "UltraCanvasModalDialog.h" "UltraCanvasFileLoader.h")
+set(UC_WIDGET_ProfilePicture_ANCHORS
+    "&typeid(UltraCanvasSlider)"
+    "&typeid(UltraCanvasButton)"
+    "&typeid(UltraCanvasLabel)"
+    "&UltraCanvasDialogManager::CreateDialog"
+    "&UltraCanvasFileLoader::OpenFileDialog")
 
 set(UC_WIDGET_SELECTED_KEYS "")
 set(UC_WIDGET_MODULE_KEYS "")
@@ -2779,6 +2818,12 @@ endif()
 # leave "Move to Trash" out where there is none.
 if(ULTRACANVAS_HAS_NATIVE_TRASH)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_TRASH)
+endif()
+# Starting at sign-in: the same arrangement for UltraCanvasLaunchAtLogin.
+# Only its core file reads the define (LaunchAtLoginAvailable() answers the
+# rest), so it stays PRIVATE.
+if(ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN)
 endif()
 # Copied dates: the same arrangement for UltraCanvasFileTimes. Only its core
 # file reads the define, so it stays PRIVATE.

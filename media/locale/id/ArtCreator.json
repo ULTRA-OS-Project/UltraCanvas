@@ -1,6 +1,9 @@
 {
   "@language": "id",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "other": "{n} gambar di jendela ini memiliki perubahan yang belum disimpan. Tutup tetap?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Teks ditambahkan: klik dengan Alat teks, atau klik ganda, untuk mengeditnya",
   "Changed the text": "Teks diubah",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Klik pada halaman lalu ketik, atau klik teks untuk mengeditnya; bilah di atas mengatur font, ukuran, gaya, perataan, dan spasinya. Escape, Ctrl+Enter, atau klik di luar untuk menyelesaikan",
@@ -18,5 +21,8 @@
   "Text Strikethrough": "Teks coret",
   "Text Underline": "Garis bawah teks",
   "The text was emptied, so it was deleted": "Teks dikosongkan, jadi teks dihapus",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Mengetik teks baru: Enter memulai baris baru; Escape, Ctrl+Enter, atau klik di luar untuk menyelesaikan"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Mengetik teks baru: Enter memulai baris baru; Escape, Ctrl+Enter, atau klik di luar untuk menyelesaikan",
+  "Untitled {0}": "Tanpa judul {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} memiliki perubahan yang belum disimpan. Tutup tetap?",
+  "{0} is open already": "{0} sudah terbuka"
 }

@@ -157,4 +157,19 @@ std::string LanguageFromLocale(const std::string& locale, const std::string& fal
 // when none says.
 std::string SystemLanguage();
 
+// The country a locale or a language tag names, two capital letters:
+// "de_AT.UTF-8" -> "AT", "pt-BR" -> "BR", "zh-Hant-TW" -> "TW"; "" when it
+// names none ("de", "C", "es-419"). The region of somebody's language is a
+// guess at where they are - the last one the store makes (Purchase.h,
+// BuyerCountry).
+std::string CountryFromLocale(const std::string& locale);
+
+// The first country any of these tags names (the system's languages, best
+// first), "" when none does.
+std::string CountryOfLanguageTags(const std::vector<std::string>& tags);
+
+// CountryFromLocale over the environment (LC_ALL, LC_MESSAGES, LANG), ""
+// when none says.
+std::string SystemCountry();
+
 } // namespace UltraStore

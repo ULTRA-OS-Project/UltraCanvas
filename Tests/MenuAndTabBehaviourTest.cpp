@@ -389,10 +389,10 @@ void PopupOpacityChecks() {
     win.SetPopupOpacity(*swatch, 0.5f);
     win.Frame();
     const uint32_t mid = win.Pixels(Rect2Di(at.x + 10, at.y + 10, 1, 1))[0];
-    auto near = [](int v, int want) { return std::abs(v - want) <= 2; };
+    auto closeTo = [](int v, int want) { return std::abs(v - want) <= 2; };
     TEST("at opacity 0.5 its opaque blue is half way to the content",
-         near((mid >> 16) & 0xFF, (30 + 0) / 2) && near((mid >> 8) & 0xFF, (160 + 0) / 2) &&
-         near(mid & 0xFF, (60 + 255) / 2));
+         closeTo((mid >> 16) & 0xFF, (30 + 0) / 2) && closeTo((mid >> 8) & 0xFF, (160 + 0) / 2) &&
+         closeTo(mid & 0xFF, (60 + 255) / 2));
     std::cerr << "  (opacity 0.5 over the content: " << std::hex << mid << std::dec << ")" << std::endl;
 
     win.SetPopupOpacity(*swatch, 1.0f);

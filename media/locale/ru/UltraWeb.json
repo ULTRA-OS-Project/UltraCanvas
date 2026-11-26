@@ -1,0 +1,8 @@
+{
+  "@language": "ru",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Удалено файлов cookie: {0}; разрешения приложений на доступ к устройствам сброшены",
+  "No cookies to clear; the apps' device permissions are forgotten": "Нет файлов cookie для удаления; разрешения приложений на доступ к устройствам сброшены",
+  "{0} wants to use your camera": "{0} запрашивает доступ к вашей камере",
+  "{0} wants to use your microphone": "{0} запрашивает доступ к вашему микрофону"
+}

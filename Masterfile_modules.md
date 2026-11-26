@@ -546,6 +546,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+- **UltraCanvasLaunchAtLogin** (`UltraCanvasLaunchAtLogin.h`) — starting a
+  program when the user signs in: `SetLaunchAtLogin(entry, enabled, error)`,
+  `IsLaunchAtLoginEnabled(id)`, `LaunchAtLoginAvailable()`,
+  `LaunchAtLoginCommand(entry)`; `LaunchAtLoginEntry` (id, name, comment, icon,
+  executable - empty for this program, the AppImage or the .app bundle -
+  and arguments). The computer's own list is the record, so an entry switched
+  off there reads as off. Backends: `OS/Linux/UltraCanvasLinuxLaunchAtLogin.cpp`
+  (an XDG autostart entry in `$XDG_CONFIG_HOME/autostart`, `Hidden=true` over a
+  system one), `OS/MSWindows/UltraCanvasWindowsLaunchAtLogin.cpp` (the HKCU
+  `Run` key, the Task Manager's `StartupApproved` on / off respected) and
+  `OS/MacOS/UltraCanvasMacOSLaunchAtLogin.cpp` (a LaunchAgent with
+  `RunAtLoad`). Not available in a Flatpak, a Snap or an MSIX package; Android,
+  iOS and WebAssembly get the fallback in `core/UltraCanvasLaunchAtLogin.cpp`
+  (`ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN` unset). ChatCube's *Settings >
+  General > Startup* uses it. See `Docs/UltraCanvas/UltraCanvasLaunchAtLogin.md`.
 - **UltraCanvasFileTimes** (`UltraCanvasFileTimes.h`) — a file's dates read,
   set, and carried to a copy. `FileTimes` (created / modified / accessed,
   nanoseconds since 1970, 0 = unknown), `GetFileTimes(path, out)`,
@@ -729,7 +744,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   storage, ASCII case-insensitive), `StreamNames`, `GetLastError`; below the
   root by '/'-separated path: `ReadStreamAt` / `HasStreamAt`,
   `StreamNamesAt` / `StorageNamesAt`. Used by the `.doc` importer, the `.xls`
-  reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
+  reader, the `.ppt` reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
   `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
   storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
   the password-protected Office files.
@@ -852,9 +867,37 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ReadXlsxSheetCharts`, `WriteXlsxCharts`, `ReadOdsCharts`,
   `WriteOdsSheetCharts`). A sheet keeps them (`SpreadsheetSheet::GetCharts`);
   the grid inserts (`InsertChartFromSelection`), draws, selects, moves,
-  resizes, deletes and undoes them and prints them. In
-  `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`.
+  resizes, deletes and undoes them and prints them. Every chart of the
+  framework a block of cells can feed is a type (`SpreadsheetChartTypes`,
+  `MakeSpreadsheetChartOfType`, `SetSpreadsheetChartType`,
+  `SpreadsheetChartFitMessage`), picked in the chart gallery
+  (`ShowSpreadsheetChartGallery`, on `UltraCanvasGalleryPicker`; the grid's
+  `ShowInsertChartDialog` / `ShowChartTypeDialog`) and drawn by
+  `CreateRichChartElement` / `DrawRichChart` (`UltraCanvasRichDocumentChart.h`);
+  a kind a file format has no form for is kept as an UltraCanvas extension
+  beside a column chart. In
+  `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`,
+  `core/UltraCanvasSpreadsheetChartGallery.cpp`.
   See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts`.
+- **UltraCanvasSpreadsheetPivot** (`UltraCanvasSpreadsheetPivot.h`) — pivot
+  tables: `SpreadsheetPivotTable` (a source block, row / column / filter
+  fields `PivotField` with order, subtotals, hidden items and `PivotGrouping`,
+  value fields `PivotValueField` with `PivotSummary` and `PivotShowAs`,
+  grand totals), `MakeSpreadsheetPivot`, `MakePivotValueField`,
+  `ComputeSpreadsheetPivot` (laid out as `PivotOutput` cells),
+  `RefreshSpreadsheetPivot` / `ClearSpreadsheetPivotCells` (written onto a
+  sheet), `SpreadsheetPivotFieldItems`, `SpreadsheetPivotDrillDownRows`, and
+  the .xlsx / .ods parts (`WriteXlsxPivots`, `ReadXlsxSheetPivots`,
+  `WriteOdsPivots`, `ReadOdsPivots`). A sheet keeps them
+  (`SpreadsheetSheet::GetPivotTables`); the grid inserts, changes, refreshes
+  and removes them (`InsertPivotTable`, `SetPivotTable`, `RefreshPivotTables`,
+  `RemovePivotTable`), keeps their cells read-only, refreshes them when the
+  source changes and drills into a value. The field list:
+  `UltraCanvasSpreadsheetPivotPanel` (`UltraCanvasSpreadsheetPivotPanel.h`),
+  `ShowSpreadsheetPivotDialog`. In `core/UltraCanvasSpreadsheetPivot.cpp`,
+  `core/UltraCanvasSpreadsheetPivotIO.cpp`,
+  `core/UltraCanvasSpreadsheetPivotDialog.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#pivot-tables`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
   presentations (`.odp`, `.otp` templates, flat `.fodp`) read into
@@ -883,6 +926,28 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   list-styled bullets and numbering, notes; no password. In
   `core/UltraCanvasPresentationOdp.cpp` and `core/UltraCanvasPresentationOdpWriter.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationOdp.md`.
+
+- **UltraCanvasPresentationPpt** (`UltraCanvasPresentationPpt.h`) — PowerPoint
+  97-2003 decks (`.ppt`, `.pps`, `.pot`; [MS-PPT]) read into
+  UltraCanvasPresentationPptx's model, so everything that draws, shows,
+  prints, edits or outlines a deck takes them: `ReadPptPresentation`,
+  `ReadPptPresentationFromMemory` (`withPictures`: the pictures' bytes),
+  `IsPptPresentationFile` (a compound file with a "PowerPoint Document"
+  stream), `IsPptExtension`. The Current User stream and the UserEditAtom /
+  persist directory chain (the last edit of an incrementally saved deck);
+  the slide size, fonts, hyperlinks, the picture store; masters (text styles
+  by type and level, colour schemes, placeholders, backgrounds; a title
+  master as a layout) and layouts from the slides' SlideAtom geom; shapes
+  through the .doc reader's OfficeArt layer
+  (`Plugins/Documents/Word/UltraCanvasOfficeArt.h`: properties, BStore,
+  BLIPs, freeforms, MSOSPT as DrawingML presets) - places in EMU, turns,
+  mirroring, fills, gradients, outlines, pictures with crops, placeholders,
+  tables (a group with tableProperties); text with paragraph and character
+  runs, master inheritance, scheme colours, bullets, numbering
+  (StyleTextProp9Atom), hyperlinks, outline text (OutlineTextRefAtom);
+  notes, hidden slides, backgrounds, transitions. Encrypted decks refused.
+  No writer (saved as .pptx / .odp). In `core/UltraCanvasPresentationPpt.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPpt.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -1922,7 +1987,9 @@ own list: `AddLoadTypes(opts, label, {categories})` (one Open filter of every
 type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 (one Save filter per type it writes, the proposed name's type first),
 `AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes` with
-`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
+`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written);
+`LoadPresentation(path, deck, error, password, withPictures)` reads any deck
+(.pptx, .odp, .ppt, by content) and `SavePresentation` writes .pptx / .odp. A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
 

@@ -1,3 +1,37 @@
+#### 2026-11-26 *1.94*
+- **Markdown: a selection over several lines shows on the rendered lines too**
+  (table cells, rules, pictures, formulas), not only on the line being edited;
+  and **the line being edited is formatted like the rest** - a heading at its
+  size, bold, code and links in their styles, a table row's cells under their
+  columns - with its markup dimmed. Both come from the framework's TextArea
+  (see the UltraCanvas changelog's entry of the same date).
+
+#### 2026-11-26 *1.93*
+- **The navigator beside a word-processing document.** *View > Navigator
+  (documents)*, or F5, shows the framework's document navigator at the left
+  of every word-processing tab: the headings as a tree that follows the
+  caret (promote, demote, move or drag a chapter), the tables, pictures,
+  charts, comments, bookmarks, notes and tracked changes, and a search box
+  that filters them. The choice is kept in the settings
+  (`documentNavigator`), as UltraOffice's is.
+
+#### 2026-11-26 *1.92*
+- **A word-processing tab's dialogs are the framework's**, the ones
+  UltraOffice has: a comment (new or edited, and resolved), a picture's
+  properties (alt text, and now its wrapping, position and size), a
+  caption (Figure, Table or Equation). The context menu adds *Paragraph...*,
+  *Page Setup...*, *Styles...* (in *Paragraph Style*), *Table
+  Properties...* (in *Table*), *All Comments...* and *Previous Change* (in
+  *Track Changes*).
+
+#### 2026-11-26 *1.91*
+- **Untranslated text in Texter.** File Statistics' Saved / Unsaved and its
+  totals line ("Total: 2 files • 1 KB • 120 words • 700 characters", with
+  each language's plural forms); Go to Line's "Go" button, which every
+  language showed in English; and 17 newer entries no language had yet (the
+  spell-check status, the dark-mode background, the zoom's page fits, two
+  save warnings). All 30 languages now have them.
+
 #### 2026-11-25 *1.90*
 - **The start-up log no longer prints a "Build Date".** It came from
   `__DATE__` / `__TIME__`, which differ on every build, so `main.cpp` missed

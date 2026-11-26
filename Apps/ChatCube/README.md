@@ -61,8 +61,15 @@ a back arrow. Building, packaging and what is not there yet:
    then works on your local network alone - the ChatCubes there find each other (mDNS) and
    talk directly. *Also find people on this network* does that next to a
    relay.
-2. **Edit profile** - the person button beside your ID - changes your name,
-   e-mail address and phone number, and how signing in is protected.
+2. **Edit profile** - the person button beside your ID - changes your
+   picture, name, e-mail address and phone number, and how signing in is
+   protected. *Choose a picture* opens a picture, the crop window places it
+   in the circle (drag it, zoom with the slider or the wheel), and *Save
+   profile* sends it to all your contacts, end to end encrypted like a
+   message - your relay never sees it. A contact you add later gets it too;
+   *Remove* takes it away again everywhere. Your contacts' pictures appear
+   in your chat list, at the head of the chat and beside their messages in
+   a group.
    Changing the protection asks for what protects it now (the current
    password, the code UltraAuthenticator shows); a new authenticator is a QR
    code - UltraAuthenticator's *Add account* scans it from the screen, a
@@ -291,6 +298,11 @@ a back arrow. Building, packaging and what is not there yet:
 9. **Settings** - the gear beside the copy button at the top of the sidebar
    - opens a window laid out as UltraFiler's: the sections on the left, the
    chosen page on the right, *Restore defaults* and *Close* at the foot.
+   *General*: the startup - *Manually* (when you open it) or *When the
+   computer starts* (minimized, as you sign in). That choice is kept in the
+   computer's own list of programs that start at sign-in (the Task Manager's
+   Startup tab, macOS Login Items, `~/.config/autostart`), not in
+   `settings.json`, so switching it off there shows here too.
    *Appearance*: the look - System, Light or Dark, shown at once - and how
    times and dates are written (`14:05` or `2:05 PM`; `31.10.2026`,
    `2026-10-31` or `10/31/2026`). *Display*: the feature icons - for each,
@@ -356,7 +368,8 @@ data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
 
 `ChatCube --minimized` starts with the window minimized, so messages
-arrive in the background - what UltraDesktop's *Start with the desktop*
+arrive in the background - what *Settings > General > Startup* puts in the
+computer's startup list, and what UltraDesktop's *Start with the desktop*
 asks for (a running copy is left alone; a second start would only bring
 its window forward).
 
@@ -387,6 +400,9 @@ CHATCUBE_RELAY_DB=/tmp/relay.sqlite3 .venv/bin/chatcube-relay &      # http://12
 # Bob, who answers everything for ten minutes
 build/chatcube-peer --relay http://127.0.0.1:8790 --data /tmp/bob --name Bob --create --print-id
 build/chatcube-peer --data /tmp/bob --add <your ChatCube ID> --echo 600
+# ... with a face: --picture sets Bob's profile picture (a square JPEG,
+# PNG or WebP of at most 32 KB) and sends it to his contacts
+build/chatcube-peer --data /tmp/bob --picture bob.jpg --echo 600
 ```
 
 Then add Bob's ID in ChatCube and write to him.

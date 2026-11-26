@@ -2,9 +2,11 @@
 // OLE2 Compound File Binary reader and writer - see UltraCanvasCompoundFile.h.
 // Moved here from the .doc importer (Plugins/Documents/Word), which was its
 // only user until the .xls reader needed the same container.
+// Version: 1.2.1 - a chain that loops ends after as many sectors as the file has: a damaged FAT
+//                  copied up to two gigabytes before (seconds per file), found fuzzing the .ppt reader
 // Version: 1.2.0 - streams and storages below the root, by path (ReadStreamAt, ...)
 // Version: 1.1.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCompoundFile.h"
@@ -166,7 +168,8 @@ bool UCCompoundFileReader::LoadFat() {
     }
     uint32_t difatSector = ReadU32(data_, 0x44);
     const uint32_t difatCount = ReadU32(data_, 0x48);
-    for (uint32_t d = 0; d < difatCount && difatSector < kEndOfChain; ++d) {
+    const size_t sectors = data_.size() / sectorSize_ + 1;
+    for (uint32_t d = 0; d < difatCount && d < sectors && difatSector < kEndOfChain; ++d) {
         const size_t offset = SectorOffset(difatSector);
         if (offset + sectorSize_ > data_.size()) break;
         const size_t entries = sectorSize_ / 4 - 1;
@@ -182,7 +185,8 @@ bool UCCompoundFileReader::LoadFat() {
 void UCCompoundFileReader::LoadMiniFat(uint32_t firstSector) {
     uint32_t sector = firstSector;
     uint32_t guard = 0;
-    while (sector < kEndOfChain && guard++ < kMaxChainLength) {
+    const size_t limit = std::min<size_t>(kMaxChainLength, data_.size() / sectorSize_ + 1);
+    while (sector < kEndOfChain && guard++ < limit) {
         const size_t offset = SectorOffset(sector);
         if (offset + sectorSize_ > data_.size()) break;
         for (size_t i = 0; i + 4 <= sectorSize_; i += 4) {
@@ -314,7 +318,9 @@ bool UCCompoundFileReader::ReadChain(uint32_t firstSector, uint64_t maxSize,
     out.clear();
     uint32_t sector = firstSector;
     uint32_t guard = 0;
-    while (sector < kEndOfChain && guard++ < kMaxChainLength) {
+    // A chain visits each sector once: one longer than the file loops.
+    const size_t limit = std::min<size_t>(kMaxChainLength, data_.size() / sectorSize_ + 1);
+    while (sector < kEndOfChain && guard++ < limit) {
         const size_t offset = SectorOffset(sector);
         if (offset + sectorSize_ > data_.size()) {
             // The last sector of a file may be cut short; take what is there.
@@ -334,7 +340,8 @@ bool UCCompoundFileReader::ReadMiniChain(uint32_t firstSector, uint64_t maxSize,
     out.clear();
     uint32_t sector = firstSector;
     uint32_t guard = 0;
-    while (sector < kEndOfChain && guard++ < kMaxChainLength) {
+    const size_t limit = std::min<size_t>(kMaxChainLength, miniStream_.size() / miniSectorSize_ + 1);
+    while (sector < kEndOfChain && guard++ < limit) {
         const size_t offset = static_cast<size_t>(sector) * miniSectorSize_;
         if (offset + miniSectorSize_ > miniStream_.size()) break;
         out.insert(out.end(), miniStream_.begin() + offset,

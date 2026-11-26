@@ -1,5 +1,10 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.15.0 - the caret's line in Markdown is formatted like the rendered lines
+//                 (StyleMarkdownCaretLine, after the tables are sized)
+// Version: 3.14.2 - a selection or a search match paints inside a Markdown table's cells, and a
+//                 selected rule, picture or display formula is tinted across its row;
+//                 the empty ApplySelectionAttributes / ClearSelectionAttributes are gone
 // Version: 3.14.1 - GetActualLineLayout: the caret's layout only for the line it was laid
 //                 out for (a press moving the caret, then the release hit-tested
 //                 before a frame, missed the line)
@@ -1221,6 +1226,7 @@ namespace UltraCanvas {
                 if (lineTop    >= viewportBottom) break;
 
                 RenderLineLayout(ctx, ll);
+                DrawBlockSelection(ctx, ll, i);
                 if (showHiddenCharacters) DrawHiddenCharacters(ctx, ll, i);
             }
             // Inside the text clip so marks never bleed over the gutter or the
@@ -2492,13 +2498,6 @@ namespace UltraCanvas {
         return out;
     }
 
-    // Step 6 (pending): wire selection-background attributes.
-    void UltraCanvasTextArea::ApplySelectionAttributes() {
-    }
-
-    void UltraCanvasTextArea::ClearSelectionAttributes(int /*logicalLine*/) {
-    }
-
     // Called at the top of UpdateLineLayouts each frame. Detects cursor-line changes
     // (so MarkdownHybrid can swap in/out raw editing) and selection-range changes (so affected
     // line layouts rebuild with fresh background-color attributes).
@@ -2543,25 +2542,59 @@ namespace UltraCanvas {
     //   selection* is in real-line codepoints (columnIndex); layout text has block prefixes
     //   and inline markup stripped, so we route through SourceCpToVisibleCp via the line's
     //   cpMap to translate before converting to layout-text bytes via utf8_cp_to_byte.
-    void UltraCanvasTextArea::ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex) {
-        if (!ll || !ll->layout) return;
-        if (selectionStart.lineIndex < 0 || selectionEnd.lineIndex < 0) return;
+    bool UltraCanvasTextArea::GetLineSelectionRange(int lineIndex, int& startCp, int& endCp) const {
+        if (selectionStart.lineIndex < 0 || selectionEnd.lineIndex < 0) return false;
 
         LineColumnIndex a = selectionStart, b = selectionEnd;
         if (a.lineIndex > b.lineIndex ||
             (a.lineIndex == b.lineIndex && a.columnIndex > b.columnIndex)) {
             std::swap(a, b);
         }
-        if (lineIndex < a.lineIndex || lineIndex > b.lineIndex) return;
-        if (a.lineIndex == b.lineIndex && a.columnIndex == b.columnIndex) return;
+        if (lineIndex < a.lineIndex || lineIndex > b.lineIndex) return false;
+        if (a.lineIndex == b.lineIndex && a.columnIndex == b.columnIndex) return false;
 
-        int startCp = (lineIndex == a.lineIndex) ? a.columnIndex : 0;
-        int endCp   = (lineIndex == b.lineIndex) ? b.columnIndex : GetLineVisibleLength(lineIndex);
+        startCp = (lineIndex == a.lineIndex) ? a.columnIndex : 0;
+        endCp   = (lineIndex == b.lineIndex) ? b.columnIndex : GetLineVisibleLength(lineIndex);
+        // A line the selection runs through (it goes on past the line's end) is
+        // selected even when it is empty or shows no text of its own.
+        return startCp < endCp || lineIndex < b.lineIndex;
+    }
+
+    // Lines whose rendered form shows none of the line's text: a rule, a table's
+    // separator, a picture, a display formula. A selection over one cannot be a
+    // text background, so it is drawn over the whole row (DrawBlockSelection).
+    static bool LineShowsNoSourceText(const LineLayoutBase* ll) {
+        switch (ll->layoutType) {
+            case LineLayoutType::HorizontalLine:
+            case LineLayoutType::TableSeparatorRow:
+            case LineLayoutType::MarkdownImage:
+            case LineLayoutType::MathBlock:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    void UltraCanvasTextArea::DrawBlockSelection(IRenderContext* ctx, LineLayoutBase* ll, int lineIndex) {
+        if (!ll || ll->bounds.height <= 0 || !LineShowsNoSourceText(ll)) return;
+        int startCp = 0, endCp = 0;
+        if (!GetLineSelectionRange(lineIndex, startCp, endCp)) return;
+        const float width = ll->bounds.width > 0 ? ll->bounds.width : visibleTextArea.width;
+        ctx->SetFillPaint(style.selectionColor);
+        ctx->FillRectangle(Rect2Dd(visibleTextArea.x + ll->bounds.x - horizontalScrollOffset,
+                                   visibleTextArea.y + ll->bounds.y - verticalScrollOffset,
+                                   width, ll->bounds.height));
+    }
+
+    void UltraCanvasTextArea::ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex) {
+        if (!ll) return;
+        int startCp = 0, endCp = 0;
+        if (!GetLineSelectionRange(lineIndex, startCp, endCp)) return;
         ApplyLineBackgroundRange(ll, lineIndex, startCp, endCp, style.selectionColor);
     }
 
     void UltraCanvasTextArea::ApplyLineSearchHighlights(LineLayoutBase* ll, int lineIndex) {
-        if (!ll || !ll->layout || searchHighlightSegments.empty()) return;
+        if (!ll || searchHighlightSegments.empty()) return;
         auto it = std::lower_bound(searchHighlightSegments.begin(), searchHighlightSegments.end(), lineIndex,
             [](const SearchHighlightSegment& seg, int line) { return seg.lineIndex < line; });
         for (; it != searchHighlightSegments.end() && it->lineIndex == lineIndex; ++it) {
@@ -2569,8 +2602,20 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTextArea::ApplyLineBackgroundRange(LineLayoutBase* ll, int /*lineIndex*/,
+    void UltraCanvasTextArea::ApplyLineBackgroundRange(LineLayoutBase* ll, int lineIndex,
                                                        int startCp, int endCp, const Color& color) {
+        if (!ll) return;
+        // A table row has no layout of its own: each cell is a layout with a map
+        // into the source line, and a range covers whatever part of each cell
+        // falls inside it.
+        if (auto* tbl = dynamic_cast<TableLineLayout*>(ll)) {
+            for (auto& cell : tbl->cellsLayouts) {
+                if (cell && cell->layout && !cell->cpMap.empty())
+                    ApplyLineBackgroundRange(cell.get(), lineIndex, startCp, endCp, color);
+            }
+            return;
+        }
+        if (!ll->layout) return;
         // Translate from real-line codepoints to layout-text codepoints. The end snaps
         // backward so a range ending at a trailing marker doesn't visually grow over
         // it; the start snaps forward so a range starting at a leading marker doesn't
@@ -3974,6 +4019,13 @@ namespace UltraCanvas {
         tablesLaidOutWidth = -1.0f;   // set again by every table sized
         for (auto [s, e] : tableSpans) {
             NormalizeTableGroupWidths(s, e);
+        }
+
+        // The caret's line is laid out as its source; formatted once the tables
+        // are sized, so a table row can put its cells under their columns.
+        if (currentLine && editingMode == TextAreaEditingMode::MarkdownHybrid &&
+            markdownStyle.styleCaretLine) {
+            StyleMarkdownCaretLine(currentLine.get(), cursorPosition.lineIndex);
         }
 
         // Pass 3: cascade cumulative Y positions. Must run after table heights are finalized.

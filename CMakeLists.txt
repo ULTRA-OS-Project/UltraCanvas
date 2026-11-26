@@ -623,6 +623,13 @@ if(NOT IOS AND (WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)))
     set(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK ON)
 endif()
 
+# And for starting a program at sign-in (UltraCanvasLaunchAtLogin: an XDG
+# autostart entry / the HKCU Run key / a LaunchAgent). Without the define the
+# core file compiles a fallback: LaunchAtLoginAvailable() is false.
+if(NOT IOS AND (WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)))
+    set(ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN ON)
+endif()
+
 # Which platforms can give a copy its original's dates (UltraCanvasFileTimes:
 # SetFileTime on Windows, setattrlist + utimensat on macOS, utimensat on Linux
 # and the BSDs). Elsewhere the core file copies the modification date through
@@ -664,7 +671,7 @@ function(ultracanvas_require_widgets build_flag app_name)
     endif()
 endfunction()
 ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
-    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
+    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer ProfilePicture)
 ultracanvas_require_widgets(BUILD_ULTRAPAINT_APP UltraPaint ColorPaletteManager)
 ultracanvas_require_widgets(BUILD_ARTCREATOR_APP ArtCreator ColorPaletteManager VectorCanvas)
 ultracanvas_require_widgets(BUILD_ULTRAFILER_APP UltraFiler MediaViewer)
@@ -890,7 +897,7 @@ endif()
 # encrypted chat with no account, groups through a relay (Server/ChatCubeRelay).
 option(BUILD_CHATCUBE "Build the ChatCube messenger" ON)
 # ChatCube shows files in UltraCanvasMediaViewer, by its classes.
-ultracanvas_require_widgets(BUILD_CHATCUBE ChatCube MediaViewer)
+ultracanvas_require_widgets(BUILD_CHATCUBE ChatCube MediaViewer ProfilePicture)
 if(BUILD_CHATCUBE)
     message(STATUS "")
     message(STATUS "── Building ChatCube ──")
@@ -1254,6 +1261,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasColorPaletteManagerExamples.cpp
+            Apps/DemoApp/UltraCanvasProfilePictureExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
@@ -2814,6 +2822,22 @@ if (BUILD_TESTS)
                      ${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/corpus/html
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     set_tests_properties(HTMLBuilderFuzzSmoke PROPERTIES TIMEOUT 600)
+
+    # Mutated PowerPoint 97-2003 streams through the .ppt reader: a crash or
+    # a hang fails it (Tests/Fuzz/README.md).
+    add_executable(PptReaderFuzzSmoke Tests/Fuzz/PptReaderFuzz.cpp Tests/Fuzz/FuzzSmokeMain.cpp)
+    target_include_directories(PptReaderFuzzSmoke PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(PptReaderFuzzSmoke PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(PptReaderFuzzSmoke PRIVATE cxx_std_20)
+    set_target_properties(PptReaderFuzzSmoke PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PptReaderFuzzSmoke
+             COMMAND PptReaderFuzzSmoke -runs=1500 -seed=7 -max_len=131072
+                     -dict=${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/ppt.dict
+                     ${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/corpus/ppt
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(PptReaderFuzzSmoke PROPERTIES TIMEOUT 600)
 
     # Every UltraCanvasUIElement constructor makes a border-box element: a
     # widget's size includes its padding and border however it was built.

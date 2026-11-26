@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Affiliate - {{ brand }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Affiliate <span class="font-monospace">{{ profile.handle }}</span></h1>{% include "_state.html" with state=profile.state label=profile.get_state_display %}</div>
+<div class="panels">
+{% for row in sanctions %}{% if forloop.first and row.kind != "lift" %}
+<div class="alert alert-danger">
+  <b>Your affiliate profile is {{ row.get_kind_display|lower }}{% if row.until %} until {{ row.until|date:"j F Y" }}{% endif %}.</b>
+  <div>The rule: {{ row.rule }}</div><div>What happened: {{ row.facts|linebreaksbr }}</div>
+  {% if row.money %}<div>The money: {{ row.money|linebreaksbr }}</div>{% endif %}
+  {% if row.statement %}<div class="mt-2">On the record from you:<br>{{ row.statement|linebreaksbr }}</div>{% endif %}
+  <form method="post" action="{% url 'affiliate:statement' row.pk %}" class="mt-2">{% csrf_token %}
+    <label class="form-label" for="statement">What you say to it goes on the record, and the store answers by mail. The whole record is yours to ask for.</label>
+    <textarea class="form-control" id="statement" name="statement" rows="2" required></textarea>
+    <button class="btn btn-outline-secondary btn-sm mt-2">Put it on the record</button>
+  </form>
+</div>
+{% endif %}{% endfor %}
+{% if profile.state == "applied" %}
+<div class="card"><div class="card-body">
+  <h2>Before your links count</h2>
+  <ol class="mb-0">
+    <li class="mb-2">{% if profile.phone_verified_at %}<b>Your phone number is proven.</b> {{ profile.phone }}{% else %}<b>Prove your phone number</b>, {{ profile.phone }}.
+      {% if can_text %}
+      <form method="post" action="{% url 'affiliate:phone' %}" class="d-inline">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">Text me the code</button></form>
+      <form method="post" action="{% url 'affiliate:phone' %}" class="d-flex gap-2 mt-2" style="max-width: 22rem">{% csrf_token %}
+        <input class="form-control" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="The six digits" aria-label="The code" required>
+        <button class="btn btn-primary">Confirm</button></form>
+      {% else %}The store cannot send text messages yet: it confirms your number when it checks your identity.{% endif %}{% endif %}</li>
+    <li><b>The store checks an identity document</b> and writes down what it says - your name, your date of birth, the document and its country; no picture of it is kept. You will hear by mail how; then your profile is active.</li>
+  </ol>
+</div></div>
+{% endif %}
+{% if profile.state == "active" or profile.state == "paused" %}
+<div><div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-3">
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Clicks, last {{ link_days }} days</span><b>{{ clicks }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Your customers</span><b>{{ customers }}</b><span class="small text-secondary">{{ base_percent }} % of everything they buy</span></div></div></div>
+  {% for row in sums %}
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">To be paid, {{ row.currency }}</span><b>{{ row.balance }}</b><span class="small text-secondary">{{ row.pending }} pending, {{ row.paid }} paid</span></div></div></div>
+  {% endfor %}
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>Your links</h2>
+  <p class="text-secondary">A link to a product earns you its commission when somebody follows it and buys that product within {{ link_days }} days. Somebody new to the store who signs up or first buys after following any of your links becomes <b>your customer</b>: you earn {{ base_percent }} % of everything they buy later, in any shop. Say that it is advertising wherever you put a link. Add <span class="font-monospace">?s=name</span> to tell your campaigns apart.</p>
+  <dl class="facts">
+    <dt>The shop</dt><dd class="font-monospace">{{ general_link }}</dd>
+    <dt>To recruit an affiliate</dt><dd><span class="font-monospace">{{ join_link }}</span><br><span class="small text-secondary">You earn {{ super_percent }} % of what they earn, on top of it - it costs them nothing.</span></dd>
+  </dl>
+  {% if profile.state == "paused" %}<div class="alert alert-warning">Your profile is paused: your links earn nothing until you take it up again.</div>{% endif %}
+  {% if products %}
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Product</th><th>Publisher</th><th class="text-end">You earn</th><th>Link</th></tr></thead>
+    <tbody>
+    {% for row in products %}
+    <tr><td><a href="{{ row.app.get_absolute_url }}">{{ row.app.name }}</a></td><td>{{ row.app.publisher.name }}</td>
+      <td class="text-end"><b>{{ row.total }} %</b>{% if row.boost %} <span class="badge">boosted</span>{% endif %}</td>
+      <td class="font-monospace small">{{ base_url }}/r/{{ profile.handle }}/{{ row.app.app_id }}/</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'affiliate:products' %}">Every product, and what it pays</a>
+  {% endif %}
+  <form method="post" action="{% url 'affiliate:pause' %}" class="mt-3">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">{% if profile.state == "paused" %}Take it up again{% else %}Pause my profile{% endif %}</button></form>
+</div></div>
+{% endif %}
+<div class="card"><div class="card-body">
+  <h2>What you earned</h2>
+  <p class="text-secondary">A commission is pending for {{ approval_days }} days, in which a sale is most often given back, and then yours. A refund takes its commission back in the same proportion. You see what was bought and when - never who bought.</p>
+  {% if lines %}
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Date</th><th>Product</th><th>For</th><th>Campaign</th><th class="text-end">Reckoned on</th><th class="text-end">Rate</th><th class="text-end">Commission</th><th>State</th></tr></thead>
+    <tbody>
+    {% for line in lines %}
+    <tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td>
+      <td>{% if line.basis == "super" %}the share of {{ line.share_of.affiliate.handle|default:"an affiliate you brought" }}{% elif line.basis == "bound_customer" %}your customer{% if line.binding_id %} no. {{ line.binding_id }}{% endif %}{% else %}your link{% endif %}</td><td>{{ line.label }}</td>
+      <td class="text-end">{{ line.net }}</td><td class="text-end">{{ line.percent_text }} %</td><td class="text-end">{{ line.amount }} {{ line.currency }}</td>
+      <td>{% if line.payout_id %}Paid{% else %}{{ line.get_state_display }}{% if line.state == "pending" %} until {{ line.approve_after|date:"j M" }}{% endif %}{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="text-secondary mb-0">Nothing yet.</p>{% endif %}
+</div></div>
+{% if by_app %}
+<div class="card"><div class="card-body"><h2>Clicks by product</h2>
+  <table class="table align-middle"><tbody>{% for row in by_app %}<tr><td>{{ row.app__name|default:"The shop" }}</td><td class="text-end">{{ row.clicks }}</td></tr>{% endfor %}</tbody></table>
+</div></div>
+{% endif %}
+{% if recruits or profile.superaffiliate %}
+<div class="card"><div class="card-body"><h2>Affiliates</h2>
+  {% if profile.superaffiliate %}<p>You were brought in by <span class="font-monospace">{{ profile.superaffiliate.handle }}</span>, who earns a share on top of your commissions; yours are not reduced.</p>{% endif %}
+  {% if recruits %}<table class="table align-middle"><thead><tr><th>You brought in</th><th>State</th><th class="text-end">Your share so far</th></tr></thead><tbody>
+    {% for recruit in recruits %}<tr><td class="font-monospace">{{ recruit.handle }}</td><td>{{ recruit.state }}</td><td class="text-end">{% for sum in recruit.earned %}{{ sum.sum }} {{ sum.currency }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</td></tr>{% endfor %}
+  </tbody></table>{% endif %}
+</div></div>
+{% endif %}
+{% if payouts %}
+<div class="card"><div class="card-body"><h2>Payouts</h2>
+  <table class="table align-middle"><thead><tr><th>Paid</th><th class="text-end">Amount</th><th>Reference</th></tr></thead><tbody>
+    {% for payout in payouts %}<tr><td>{{ payout.paid_at|date:"j M Y" }}</td><td class="text-end">{{ payout.amount }} {{ payout.currency }}</td><td class="font-monospace">{{ payout.reference }}</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+<div class="card form-wide"><div class="card-body">
+  <h2>Your details</h2>
+  <form method="post" action="{% url 'affiliate:edit' %}">{% csrf_token %}{% include "_form.html" with form=edit_form %}<button class="btn btn-primary">Save</button></form>
+</div></div>
+</div>
+{% endblock %}

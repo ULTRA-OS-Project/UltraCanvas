@@ -1,5 +1,8 @@
 // Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp
 // Spell checking and the editor context menu for UltraTexter
+// Version: 1.6.0 - comments, a picture's alt text, captions, paragraphs, styles and a table's
+//                  properties in the framework's document dialogs (UltraCanvasRichTextEditDialogs.h),
+//                  the ones UltraOffice has; Previous Change
 // Version: 1.5.1 - the "dictionary could not be loaded" message goes through TrF
 // Version: 1.5.0 - the status bar shows the spell check language of the active
 //                  document; a click on it opens the Spelling menu
@@ -21,6 +24,7 @@
 #include "UltraCanvasMarkdownSpellRanges.h"
 #include "UltraCanvasSpellChecker.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasRichTextEditDialogs.h"
 #include "UltraCanvasDebug.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -626,6 +630,12 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         items.push_back(MenuItemData::Submenu(Tr("Character Style"), [this]() {
             return BuildStyleMenuItems(static_cast<int>(RichStyle::Kind::Character));
         }));
+        items.push_back(MenuItemData::Action(Tr("Paragraph..."), [this]() {
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) ShowParagraphDialog(*edit);
+        }));
+        items.push_back(MenuItemData::Action(Tr("Page Setup..."), [this]() {
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) ShowPageSetupDialog(*edit);
+        }));
         // Notes: the reference goes at the caret and the note opens for typing.
         items.push_back(MenuItemData::Action(Tr("Insert Footnote"), [this]() {
             if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertFootnote();
@@ -679,6 +689,7 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
                 item.enabled = any;
                 review.push_back(std::move(item));
             };
+            action(Tr("Previous Change"), &UltraCanvasRichTextEdit::GoToPreviousChange);
             action(Tr("Next Change"), &UltraCanvasRichTextEdit::GoToNextChange);
             action(Tr("Accept Change"), &UltraCanvasRichTextEdit::AcceptChangeAtCaret);
             action(Tr("Reject Change"), &UltraCanvasRichTextEdit::RejectChangeAtCaret);
@@ -689,14 +700,13 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         // Comments on the selection (or the word at the caret), and on the
         // one the caret is in.
         items.push_back(MenuItemData::Action(Tr("New Comment..."), [this]() {
-            UltraCanvasDialogManager::ShowInputDialog(
-                Tr("Comment on the selected text:"), Tr("New Comment"), "", InputType::Text,
-                [this](DialogResult result, const std::string& text) {
-                    if (result != DialogResult::OK) return;
-                    if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->AddComment(text);
-                },
-                GetWindow());
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) ShowCommentDialog(*edit, -1);
         }));
+        if (!richEdit->GetDocument()->ActiveComments().empty()) {
+            items.push_back(MenuItemData::Action(Tr("All Comments..."), [this]() {
+                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) ShowCommentsDialog(*edit);
+            }));
+        }
         const std::vector<int> here = richEdit->GetCommentsAtCaret();
         if (!here.empty()) {
             const int index = here.back();
@@ -715,17 +725,11 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
     // its items apply to the picture under the pointer.
     if (richEdit && richEdit->HasSelectedImage()) {
         items.push_back(MenuItemData::Separator());
-        MenuItemData altText = MenuItemData::Action(Tr("Picture Alt Text..."), [this]() {
+        // Its alt text, how the text wraps round it and its size.
+        MenuItemData altText = MenuItemData::Action(Tr("Picture Properties..."), [this]() {
             UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
             if (!edit || !edit->HasSelectedImage()) return;
-            UltraCanvasDialogManager::ShowInputDialog(
-                Tr("Describe the picture for readers who cannot see it:"), Tr("Alt Text"),
-                edit->GetSelectedImageAltText(), InputType::Text,
-                [this](DialogResult result, const std::string& text) {
-                    if (result != DialogResult::OK) return;
-                    if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) target->SetSelectedImageAltText(text);
-                },
-                GetWindow());
+            ShowPictureDialog(*edit);
         });
         altText.enabled = editable;
         items.push_back(std::move(altText));
@@ -809,6 +813,9 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildStyleMenuItems(int kindVal
         items.push_back(MenuItemData::Action(Tr("Update Style to Match Paragraph"), [this]() {
             if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->UpdateStyleFromCaret();
         }));
+        items.push_back(MenuItemData::Action(Tr("Styles..."), [this]() {
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) ShowStylesDialog(*edit);
+        }));
     }
     return items;
 }
@@ -862,19 +869,17 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildTableMenuItems() {
            row + 1 < rows);
     action(Tr("Split Cell"), run(&UltraCanvasRichTextEdit::SplitCurrentCell),
            richEdit->CanSplitCurrentCell());
+    items.push_back(MenuItemData::Separator());
+    action(Tr("Table Properties..."), [this]() {
+        if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) ShowTablePropertiesDialog(*edit);
+    });
     return items;
 }
 
 void UltraCanvasTextEditor::EditRichComment(int index) {
     UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
     if (!edit || index < 0 || index >= static_cast<int>(edit->GetDocument()->comments.size())) return;
-    UltraCanvasDialogManager::ShowInputDialog(
-        Tr("Comment:"), Tr("Edit Comment"), edit->GetDocument()->comments[static_cast<size_t>(index)].text, InputType::Text,
-        [this, index](DialogResult result, const std::string& text) {
-            if (result != DialogResult::OK) return;
-            if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) target->SetCommentText(index, text);
-        },
-        GetWindow());
+    ShowCommentDialog(*edit, index);
 }
 
 // Contents, captions, bookmarks and cross-references for a word-processing
@@ -899,14 +904,8 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildReferenceMenuItems() {
     const bool onTable = caret.InCell() || (caret.blockIndex >= 0 && caret.blockIndex < richEdit->GetEditor().GetBlockCount()
                                             && richEdit->GetEditor().GetBlock(caret.blockIndex).type == RichBlockType::Table);
     const std::string label = onTable ? Tr("Table") : Tr("Figure");
-    items.push_back(MenuItemData::Action(TrF("Insert Caption ({0})...", label), [this, label]() {
-        UltraCanvasDialogManager::ShowInputDialog(
-            Tr("Caption text (the number is added and kept in order):"), Tr("Insert Caption"), "", InputType::Text,
-            [this, label](DialogResult result, const std::string& text) {
-                if (result != DialogResult::OK) return;
-                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertCaption(label, text);
-            },
-            GetWindow());
+    items.push_back(MenuItemData::Action(TrF("Insert Caption ({0})...", label), [this]() {
+        if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) ShowCaptionDialog(*edit);
     }));
     items.push_back(MenuItemData::Action(Tr("Add Bookmark..."), [this]() {
         UltraCanvasDialogManager::ShowInputDialog(

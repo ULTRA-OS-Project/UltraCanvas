@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.8.8*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-13 *0.8.7*
 - **Apps can make audio and video calls (element ABI version 4).** A
   WebAssembly app adds audio (Opus) and video (VP8) tracks to a peer

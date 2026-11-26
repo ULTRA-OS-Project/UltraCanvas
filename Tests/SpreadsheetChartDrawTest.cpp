@@ -6,12 +6,18 @@
 //    removes it, each an undo step that Undo and Redo take back and forth;
 //  - inserting rows above it moves it down with its cells;
 //  - printed, it is on the page (and the pages reach the cells under it);
-//  - an untitled chart's top value label stays inside its rectangle.
+//  - an untitled chart's top value label stays inside its rectangle;
+//  - every chart type (SpreadsheetChartTypes) made from its sample cells
+//    (Tests/SpreadsheetChartSamples.h) fits its type and draws something in
+//    its box, through DrawSpreadsheetChart; a selection that does not fit a
+//    type says why. With ULTRACANVAS_SCREENSHOT_DIR set, each type is
+//    written there as a PNG.
 // The grid is drawn on an off-screen raster (RasterPageTarget): no window,
 // no display.
 //
 // Usage: SpreadsheetChartDrawTest
 // Exit code is the number of failed checks.
+// Version: 1.2.0 - every chart type drawn from its sample cells
 // Version: 1.1.0 - an untitled chart's top value label is not cut off
 // Version: 1.0.0
 // Last Modified: 2026-11-25
@@ -23,6 +29,9 @@
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetChart.h"
 #include "UltraCanvasSpreadsheetPrint.h"
+#include "SpreadsheetChartSamples.h"
+
+#include <cairo/cairo.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -236,6 +245,105 @@ int main() {
         });
         Check(inBand > 5, "its top value label is drawn (" + std::to_string(inBand) + " pixels of it)");
         Check(above == 0, "and nothing above the chart's rectangle (" + std::to_string(above) + " pixels)");
+    }
+
+    // Every type, from its sample cells.
+    std::printf("\n-- every chart type --\n");
+    const auto& types = SpreadsheetChartTypes();
+    Check(types.size() >= 50, "the gallery offers " + std::to_string(types.size()) + " types");
+    const char* shots = std::getenv("ULTRACANVAS_SCREENSHOT_DIR");
+    for (size_t t = 0; t < types.size(); ++t) {
+        const std::string name = std::string(types[t].id) + " (" + SpreadsheetChartTypeName(t) + ")";
+        auto book = std::make_shared<UltraCanvasSpreadsheet>("types", 0, 0, 900, 600);
+        SpreadsheetSheet& cells = *book->GetActiveSheet();
+        const CellRange block = ChartSamples::WriteSampleCells(cells, types[t].kind, 0, 0);
+        const SpreadsheetChart made = MakeSpreadsheetChartOfType(cells, block, t);
+        const std::string problem = SpreadsheetChartFitMessage(made);
+        Check(problem.empty(), name + ": its sample cells fit" + (problem.empty() ? "" : " - " + problem));
+        Check(made.chart.kind == types[t].kind && SpreadsheetChartTypeOf(made.chart) == static_cast<int>(t),
+              name + ": made as its type (" + std::to_string(SpreadsheetChartTypeOf(made.chart)) + ")");
+        const int width = 480, height = 300;
+        auto ctx = CreateRenderContext(Size2Di(width, height), nullptr);
+        if (!ctx) {
+            Check(false, name + ": an off-screen surface");
+            continue;
+        }
+        cairo_t* cr = static_cast<cairo_t*>(ctx->GetNativeContext());
+        ctx->SetFillPaint(Color(255, 255, 255, 255));
+        ctx->FillRectangle(Rect2Dd(0, 0, width, height));
+        const bool drawn = DrawSpreadsheetChart(ctx.get(), made, Rect2Dd(0, 0, width, height));
+        Check(drawn, name + ": drawn");
+        cairo_surface_t* surface = cairo_get_target(cr);
+        cairo_surface_flush(surface);
+        const unsigned char* data = cairo_image_surface_get_data(surface);
+        const int stride = cairo_image_surface_get_stride(surface);
+        int inked = 0;
+        for (int y = 6; y < height - 6 && data; ++y) {
+            const uint32_t* row = reinterpret_cast<const uint32_t*>(data + y * stride);
+            for (int x = 6; x < width - 6; ++x) {
+                const uint32_t p = row[x];
+                const int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                if (r < 235 || g < 235 || b < 235) ++inked;
+            }
+        }
+        Check(inked > 400, name + ": something drawn in its box (" + std::to_string(inked) + " pixels)");
+        if (shots) {
+            const std::string path = std::string(shots) + "/chart-" + types[t].id + ".png";
+            cairo_surface_write_to_png(surface, path.c_str());   // path-string-ok: test output under an ASCII directory the caller chose
+        }
+    }
+    // Every type over every other type's sample, as the gallery draws them
+    // (what does not fit is skipped): nothing crashes, whatever the columns.
+    {
+        int drawnCount = 0;
+        for (size_t s = 0; s < types.size(); ++s) {
+            auto book = std::make_shared<UltraCanvasSpreadsheet>("mixed", 0, 0, 900, 600);
+            SpreadsheetSheet& cells = *book->GetActiveSheet();
+            const CellRange block = ChartSamples::WriteSampleCells(cells, types[s].kind, 0, 0);
+            for (size_t t = 0; t < types.size(); ++t) {
+                const SpreadsheetChart made = MakeSpreadsheetChartOfType(cells, block, t);
+                if (!SpreadsheetChartFitMessage(made).empty()) continue;
+                auto ctx = CreateRenderContext(Size2Di(144, 96), nullptr);
+                if (ctx && DrawSpreadsheetChart(ctx.get(), made, Rect2Dd(0, 0, 144, 96))) ++drawnCount;
+            }
+        }
+        Check(drawnCount > 1000, "every type over every sample that fits it drawn without a crash (" +
+                                     std::to_string(drawnCount) + " pictures)");
+    }
+
+    // A selection that does not fit a type says why.
+    {
+        auto book = std::make_shared<UltraCanvasSpreadsheet>("misfit", 0, 0, 900, 600);
+        SpreadsheetSheet& cells = *book->GetActiveSheet();
+        cells.SetCellValue(0, 0, std::string("Month"));
+        cells.SetCellValue(0, 1, std::string("Sales"));
+        for (int i = 0; i < 4; ++i) {
+            cells.SetCellValue(i + 1, 0, std::string("M") + std::to_string(i + 1));
+            cells.SetCellValue(i + 1, 1, 3.0 + i);
+        }
+        book->Select(CellRange(0, 0, 4, 1));
+        std::string problem;
+        const int bubble = SpreadsheetChartTypeById("bubble");
+        Check(bubble >= 0 && book->InsertChartOfTypeFromSelection(static_cast<size_t>(bubble), &problem) < 0 &&
+                  problem.find("three columns") != std::string::npos,
+              "a bubble chart of one column is refused: " + problem);
+        const int sankey = SpreadsheetChartTypeById("sankey");
+        problem.clear();
+        Check(sankey >= 0 && book->InsertChartOfTypeFromSelection(static_cast<size_t>(sankey), &problem) < 0 && !problem.empty(),
+              "a Sankey diagram without targets is refused: " + problem);
+        const int funnel = SpreadsheetChartTypeById("funnel");
+        Check(funnel >= 0 && book->InsertChartOfTypeFromSelection(static_cast<size_t>(funnel)) == 0 &&
+                  book->GetChart(0) && book->GetChart(0)->chart.kind == RichChart::Kind::Funnel,
+              "a funnel of it is inserted");
+        // Changed to a waterfall through its type: one undo step.
+        if (const SpreadsheetChart* chart = book->GetChart(0)) {
+            SpreadsheetChart changed = *chart;
+            SetSpreadsheetChartType(changed, cells, static_cast<size_t>(SpreadsheetChartTypeById("waterfall")));
+            Check(book->SetChart(0, changed) && book->GetChart(0)->chart.kind == RichChart::Kind::Waterfall,
+                  "its type changed to a waterfall");
+            book->Undo();
+            Check(book->GetChart(0) && book->GetChart(0)->chart.kind == RichChart::Kind::Funnel, "Undo makes it a funnel again");
+        }
     }
 
     std::printf("\n%d failure(s)\n", failures);

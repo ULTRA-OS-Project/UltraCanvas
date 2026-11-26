@@ -22,6 +22,8 @@
 // The checks, the install and the build run a package manager or cmake and
 // block on it, so they run on a worker thread; results come back through a queue a UI timer
 // drains, the pattern UltraCleaner and UltraSocial use.
+// Version: 0.5.0 - the Framework step asks the server for the newest SDK
+//                  (pub/LATEST), downloads it, and moves a project to it
 // Version: 0.4.0 - step 6, Build: the skeleton compiled from the window, the
 //                  first prompt and the report after it
 // Version: 0.3.0 - the stepper: five steps, Back / Next, the Guide and the
@@ -33,6 +35,7 @@
 
 #include "StartAi.h"
 #include "StartBuild.h"
+#include "StartSdk.h"
 #include "StartTypes.h"
 
 #include "UltraCanvasBadge.h"
@@ -124,11 +127,19 @@ private:
     void StartInstall();
     void ChooseProjectFolder();
     void FindSdk();
-    // Downloads this version's SDK archive for this platform from
+    // Downloads `version`'s SDK archive for this platform (this build's
+    // version, or the newer one the update check found) from
     // start.ultraos.eu into a folder the user picks, checks it against
     // SHA256SUMS and unpacks it there (StartUnpack). A build without the
     // network library opens the archive's address in the browser instead.
-    void DownloadSdkArchive();
+    void DownloadSdkArchive(const std::string& version);
+    // Asks the server for the newest SDK (CheckSdkUpdate) on a thread of its
+    // own, so the check never blocks the install or a download; the row
+    // under the SDK's addresses shows the answer.
+    void StartUpdateCheck();
+    // Points an existing project, chosen in a folder dialog, at the SDK in
+    // the prefix field (RepointProjectSdk).
+    void MoveProjectToSdk();
     // Unpacks an SDK archive the user downloaded, beside it, and fills in
     // the SDK prefix.
     void UnpackSdk();
@@ -149,6 +160,10 @@ private:
     void RefreshInstallPreview();      // from the plan; RefreshPlan calls it
     bool CanInstall() const;           // something missing, and a package manager here to install it
     void RefreshFrameworkStep();
+    void RefreshUpdateRow();           // the newest SDK against the one in use
+    // The version of the SDK in the prefix field, or this build's when the
+    // field is empty or the folder does not say.
+    std::string InstalledSdkVersion() const;
     void RefreshBuildStep();           // the folder's commands, the button, the badge
     void RefreshPlan();
     void SetBusy(bool busy);
@@ -197,6 +212,12 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> findButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> downloadButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> unpackButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> moveProjectButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> updateText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> updateCheckButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> updateDownloadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> updateStartRow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> updateStartLink_;
     std::shared_ptr<UltraCanvas::UltraCanvasBadge> frameworkBadge_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> frameworkView_;
 
@@ -232,6 +253,11 @@ private:
 
     std::atomic<bool> working_{ false };
     std::thread worker_;
+    // The update check: its own thread and flag, beside the worker's.
+    SdkUpdateCheck update_;
+    bool updateAsked_ = false;          // a check was started at least once
+    std::atomic<bool> updateChecking_{ false };
+    std::thread updateWorker_;
     std::mutex uiQueueMutex_;
     std::vector<std::function<void()>> uiQueue_;
     UltraCanvas::TimerId uiTimer_ = 0;

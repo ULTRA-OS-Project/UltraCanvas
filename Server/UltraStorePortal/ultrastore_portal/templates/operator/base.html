@@ -12,6 +12,9 @@
           <a class="nav-link{% if name == 'publishers' or name == 'publisher' %} active{% endif %}" href="{% url 'operator:publishers' %}">Publishers</a>
           <a class="nav-link{% if name == 'apps' %} active{% endif %}" href="{% url 'operator:apps' %}">Apps</a>
           <a class="nav-link{% if name == 'orders' or name == 'order' %} active{% endif %}" href="{% url 'operator:orders' %}">Orders</a>
+          <a class="nav-link{% if name == 'payouts' or name == 'payout' %} active{% endif %}" href="{% url 'operator:payouts' %}">Payouts</a>
+          <a class="nav-link{% if name == 'tax' %} active{% endif %}" href="{% url 'operator:tax' %}">Tax</a>
+          {% if affiliates_on %}<a class="nav-link{% if name == 'affiliates' or name == 'affiliate' %} active{% endif %}" href="{% url 'operator:affiliates' %}">Affiliates</a>{% endif %}
           <a class="nav-link{% if name == 'promote' %} active{% endif %}" href="{% url 'operator:promote' %}">Advertising</a>
           <a class="nav-link{% if name == 'audit' %} active{% endif %}" href="{% url 'operator:audit' %}">Audit log</a>
           <div class="sub">Records</div>

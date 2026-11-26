@@ -1,14 +1,17 @@
 // core/UltraCanvasPresentationPages.cpp
 // A presentation's slides as a document's pages - see UltraCanvasPresentationPages.h.
+// Version: 1.1.0 - read through UltraCanvasFileLoader::LoadPresentation: a PowerPoint 97-2003 deck
+//                  (.ppt, .pps, .pot) too
 // Version: 1.0.1 - an .odp deck is read with its pictures, so they show on its slides
 // Version: 1.0.0
-// Last Modified: 2026-11-22
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPresentationPages.h"
 #include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasPresentationOdp.h"
+#include "UltraCanvasFileLoader.h"           // LoadPresentation: the reader the file's content asks for
 
 #include <algorithm>
 #include <cctype>
@@ -57,9 +60,7 @@ bool UltraCanvasPresentationPages::Open(const std::string& path, const std::stri
     Close();
     path_ = path;
     std::string error;
-    bool read = false;
-    if (IsOdpExtension(path)) read = ReadOdpPresentation(path, deck_, error, password, true);
-    else read = ReadPptxPresentation(path, deck_, error, password, true);
+    const bool read = UltraCanvasFileLoader::LoadPresentation(path, deck_, error, password, true);
     return Finish(read, error, password, true);
 }
 

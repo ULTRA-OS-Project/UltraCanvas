@@ -14,6 +14,7 @@
 
 #include "StoreTheme.h"
 
+#include "UltraCanvasSystemLanguage.h"
 #include "UltraCanvasUtils.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -44,8 +45,19 @@ StoreWindow::QueueEntry* StoreWindow::FindEntry(uint64_t jobId) {
     return nullptr;
 }
 
+std::string StoreWindow::BuyerCountryNow(const std::string& setting) const {
+    // The platform's own languages first (the environment says nothing on
+    // Windows and macOS), then the environment's locale.
+    std::string system = CountryOfLanguageTags(UltraCanvas::SystemLanguageTags());
+    if (system.empty()) system = SystemCountry();
+    return BuyerCountry(setting, me_ ? me_->profile.country : std::string(), system);
+}
+
 void StoreWindow::Enqueue(Job job) {
     job.id = nextJobId_++;
+    // Read here, on the UI thread: the job runs on another, and the account
+    // it would read may be signed out meanwhile.
+    if (job.kind == JobKind::Buy) job.country = BuyerCountryNow(settings_.country);
     if (job.showInQueue) {
         QueueEntry entry;
         entry.jobId = job.id;
@@ -260,7 +272,7 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                 }
             } else {
                 progress(Tr("Asking the payment service"), -1.0);
-                const auto started = StartCheckout(catalog->paymentUrl, job.appId, settings_.CodeInForce(Today()), http);
+                const auto started = StartCheckout(catalog->paymentUrl, job.appId, settings_.CodeInForce(Today()), http, job.country);
                 if (!started) return fail(started.error);
                 order = started.Value();
                 remember({order.orderId, order.secret, job.appId, order.amount, order.currency, order.checkoutUrl, Today()});

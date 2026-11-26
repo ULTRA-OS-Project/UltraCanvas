@@ -1,5 +1,10 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.13.0 - a popup's own window with a parent is owned by it and not topmost: a window put
+//                   over its window covers the menu too
+// Version: 1.12.0 - a press on the frame (title bar, border) or a move / size loop closes the menus and
+//                   other popups that close on a click outside; WM_MOVE: the popups' own windows follow
+//                   the window (they stayed where it had been), GetConfig / onWindowMove learn the move
 // Version: 1.11.0 - the destructor releases the native half, so a window never closed
 //                   does not leave its HWND, DC and icons behind
 // Version: 1.10.0 - SetTransientParent makes the parent the window's owner, so a dialog
@@ -205,11 +210,16 @@ namespace UltraCanvas {
                 exStyle |= WS_EX_DLGMODALFRAME;
                 break;
             case WindowType::Popup:
-                // A popup's own window: above everything, out of the taskbar
-                // and Alt+Tab, and never activated - the window the popup
-                // belongs to keeps the keys. The popup draws its own border.
+                // A popup's own window: out of the taskbar and Alt+Tab, and
+                // never activated - the window the popup belongs to keeps the
+                // keys. The popup draws its own border. With a parent, owned
+                // by it (hWndParent below), which Windows keeps it just above:
+                // a window put over the parent covers the menu too, which
+                // topmost floated over it. Without one (a desktop's menus),
+                // above every window.
                 style = WS_POPUP;
-                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                exStyle = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                if (!config_.parentWindow) exStyle |= WS_EX_TOPMOST;
                 break;
             case WindowType::Tool:
                 style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME;
@@ -572,6 +582,45 @@ namespace UltraCanvas {
                 return 0;
             }
 
+            case WM_MOVE: {
+                // The window moved (dragged by its title bar, snapped, placed
+                // by the program). A popup in its own window - a menu, a
+                // dropdown's list - is a separate top-level window, which
+                // Windows leaves where it was: put it back beside this one.
+                // At once, not at the next frame: while the user drags,
+                // Windows runs its own loop and no frame is drawn until the
+                // button is released. The popups' own windows are placed by
+                // SetWindowPosition, which keeps their config itself.
+                if (config_.type != WindowType::Popup && config_.type != WindowType::Tooltip && !IsIconic(h)) {
+                    RECT r;
+                    if (GetWindowRect(h, &r)) {
+                        config_.x = r.left;
+                        config_.y = r.top;
+                    }
+                    MovePopupHostsWithWindow();
+                    if (onWindowMove) onWindowMove(config_.x, config_.y);
+                }
+                break;
+            }
+
+            // A press on the frame - the title bar, a border, the system menu
+            // button - never reaches the elements, so it was not a click
+            // outside the open menu, which stayed open while the window was
+            // dragged away from under it. It is one: the popups that close on
+            // a click outside close now, before Windows starts the move.
+            // WM_ENTERSIZEMOVE covers a move or size begun from the keyboard
+            // (Alt+Space, Move).
+            case WM_NCLBUTTONDOWN:
+            case WM_NCRBUTTONDOWN:
+            case WM_NCMBUTTONDOWN:
+            case WM_NCXBUTTONDOWN:
+            case WM_ENTERSIZEMOVE: {
+                if (config_.type != WindowType::Popup && config_.type != WindowType::Tooltip) {
+                    ClosePopupsOnFramePress();
+                }
+                break;
+            }
+
             case WM_DPICHANGED: {
                 // The window was moved to a display with a different DPI (or the
                 // display scale changed). wParam LOWORD = new DPI; lParam = the
@@ -727,8 +776,11 @@ namespace UltraCanvas {
         const bool noActivate = config_.type == WindowType::Notification || config_.type == WindowType::Tooltip ||
                                 config_.type == WindowType::Popup;
         ShowWindow(hwnd, noActivate ? SW_SHOWNOACTIVATE : SW_SHOW);
-        // A tooltip or a popup above the topmost windows shown since it last was
-        if (config_.type == WindowType::Tooltip || config_.type == WindowType::Popup) {
+        // A tooltip or a popup above the topmost windows shown since it last
+        // was - not an owned popup, which is shown above its owner and must
+        // not be lifted over a window that has come over its owner since
+        if (config_.type == WindowType::Tooltip ||
+            (config_.type == WindowType::Popup && !config_.parentWindow)) {
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
         UpdateWindow(hwnd);

@@ -582,7 +582,7 @@ int main(int argc, char** argv) {
                 if (auto d = std::dynamic_pointer_cast<VectorGroup>(g->Children[k])) out.push_back(d);
             return out;
         };
-        auto near = [](const std::shared_ptr<VectorGroup>& d, Point2Dd content, double x, double y) {
+        auto closeTo = [](const std::shared_ptr<VectorGroup>& d, Point2Dd content, double x, double y) {
             if (!d || !d->Transform) return false;
             const Point2Dd p = d->Transform->Transform(content);
             return std::fabs(p.x - x) < 1e-6 && std::fabs(p.y - y) < 1e-6;
@@ -592,24 +592,24 @@ int main(int argc, char** argv) {
         auto head = drawings(0);
         Check(arrow && arrow->Children.size() == 2 && std::dynamic_pointer_cast<VectorLine>(arrow->Children[0]) &&
               head.size() == 1, "marker-end from a CSS class: the line and its arrowhead become one group");
-        Check(!head.empty() && near(head[0], Point2Dd(9, 3.5), 10, 50) && near(head[0], Point2Dd(10, 3.5), 10, 52),
+        Check(!head.empty() && closeTo(head[0], Point2Dd(9, 3.5), 10, 50) && closeTo(head[0], Point2Dd(10, 3.5), 10, 52),
               "the arrowhead's refX/refY sits on the line's end, turned along it and scaled by stroke-width");
         const Color* hc = (!head.empty() && !head[0]->Children.empty() && head[0]->Children[0]->Style.Fill)
                 ? std::get_if<Color>(&*head[0]->Children[0]->Style.Fill) : nullptr;
         Check(hc && hc->r == 0x2c && hc->g == 0x3e && hc->b == 0x50, "the arrowhead keeps the marker's own fill");
 
         auto dot = drawings(1);
-        Check(dot.size() == 1 && near(dot[0], Point2Dd(5, 5), 60, 10) && near(dot[0], Point2Dd(10, 5), 62, 10),
+        Check(dot.size() == 1 && closeTo(dot[0], Point2Dd(5, 5), 60, 10) && closeTo(dot[0], Point2Dd(10, 5), 62, 10),
               "marker-mid on the middle vertex only, viewBox mapped, markerUnits=userSpaceOnUse unscaled");
         const Color* dc = (!dot.empty() && !dot[0]->Children.empty() && dot[0]->Children[0]->Style.Fill)
                 ? std::get_if<Color>(&*dot[0]->Children[0]->Style.Fill) : nullptr;
         Check(dc && dc->g == 255 && dc->r == 0, "fill=\"context-stroke\" takes the line's stroke");
 
         auto rev = drawings(2);
-        Check(rev.size() == 2 && near(rev[0], Point2Dd(5, 0), 95, 10) && near(rev[1], Point2Dd(5, 0), 145, 10),
+        Check(rev.size() == 2 && closeTo(rev[0], Point2Dd(5, 0), 95, 10) && closeTo(rev[1], Point2Dd(5, 0), 145, 10),
               "orient=auto-start-reverse turns the start marker round, not the end one");
         auto curve = drawings(3);
-        Check(curve.size() == 1 && near(curve[0], Point2Dd(10, 3.5), 140, 91),
+        Check(curve.size() == 1 && closeTo(curve[0], Point2Dd(10, 3.5), 140, 91),
               "an arrowhead on a curve follows the curve's tangent at its end");
         auto big = drawings(4);
         Check(big.size() == 1 && big[0]->Style.ClipPath &&

@@ -141,10 +141,10 @@ void TestDotRingFade() {
 
     const Color head = canvas.At(DotX(0), DotY(0));
     const Color behind = canvas.At(DotX(7), DotY(7));
-    const Color far = canvas.At(DotX(4), DotY(4));
+    const Color distant = canvas.At(DotX(4), DotY(4));
     Check(Near(head, kBlue), "draws the dot under the head in full arcColor");
-    Check(behind.r > head.r && behind.r < far.r, "fades the dots behind it, more the further back");
-    Check(!IsWhite(far), "keeps the far side of the ring visible");
+    Check(behind.r > head.r && behind.r < distant.r, "fades the dots behind it, more the further back");
+    Check(!IsWhite(distant), "keeps the far side of the ring visible");
     Check(IsWhite(canvas.At(DotX(1), DotY(1))), "and has faded out the dot about to fade back in");
 }
 

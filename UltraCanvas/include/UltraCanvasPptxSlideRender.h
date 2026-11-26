@@ -18,6 +18,7 @@
 //   if (ReadPptxPresentation(path, deck, error, "", true))
 //       auto first = RenderPptxSlide(deck, 0, 1280);   // 1280 x 720 for 16:9
 //
+// Version: 1.4.0 - PptxSlideDrawOptions::background: the shapes alone, over what is drawn already
 // Version: 1.3.0 - PptxBulletText: a paragraph's bullet as drawn
 // Version: 1.2.0 - DrawPptxSlide: a slide on any render context, into a rectangle, with prompt text for
 //                  empty placeholders and a shape's text left to an editor
@@ -49,6 +50,9 @@ struct PptxSlideDrawOptions {
     int hideTextOfShape = -1;
     // The same for one cell of a table: shape, row, column; -1: none.
     int hideTextOfCellShape = -1, hideTextOfCellRow = -1, hideTextOfCellColumn = -1;
+    // false: the shapes alone, over what the context holds (an editor's
+    // faint copy of a picture's cropped-away parts).
+    bool background = true;
 };
 
 // Paragraph `p`'s bullet as it is drawn, in Unicode: its character through

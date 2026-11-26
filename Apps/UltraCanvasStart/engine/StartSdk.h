@@ -2,6 +2,11 @@
 // The prebuilt SDK: the artifact CI publishes for each platform
 // (Docs/UltraCanvasSDK.md), how it is named, where it is found, and how an
 // archive of it is unpacked into a prefix an application's CMake can use.
+// Version: 0.4.0 - the update check: pub/LATEST names the newest version on the
+//                  server (SdkLatestUrl, ParseLatestVersion, CheckSdkUpdate);
+//                  SdkPrefixVersion reads an unpacked SDK's version;
+//                  StartAppArchiveName / StartAppDownloadUrl for the matching
+//                  UltraCanvasStart
 // Version: 0.3.0 - DownloadSdk: the archive from start.ultraos.eu/pub, which CI's
 //                  publish-sdk-website job fills, checked against its SHA256SUMS;
 //                  SdkDownloadPage gone
@@ -79,6 +84,59 @@ SdkDownloadResult DownloadSdk(Platform platform, const std::string& version,
                               const std::string& architecture, const std::string& folder,
                               const SdkDownloadProgress& progress = {},
                               const std::string& base = SdkDownloadBase());
+
+// ===== UPDATES =====
+// The newest version on the server: scripts/upload-sdk-website.sh writes
+//
+//   https://start.ultraos.eu/pub/LATEST
+//
+// after every release it uploads - one line, the version ("0.9.604"), and
+// never older than the version it replaces. SdkLatestUrl is its address.
+std::string SdkLatestUrl(const std::string& base = SdkDownloadBase());
+
+// The version a LATEST file names: its first line that is not blank, with
+// spaces, a UTF-8 BOM and a CR taken off, if it is x.y.z (digits and two
+// dots). Empty for anything else - an HTML error page, an empty file.
+std::string ParseLatestVersion(const std::string& text);
+
+// The version in an UltraCanvasConfigVersion.cmake
+// (`set(PACKAGE_VERSION "0.9.604")`, what write_basic_package_version_file
+// writes); empty when it has none.
+std::string ParsePackageVersion(const std::string& configVersionCmake);
+
+// The version of the SDK unpacked at `prefix` (UTF-8): ParsePackageVersion of
+// its lib/cmake/UltraCanvas/UltraCanvasConfigVersion.cmake, or failing that
+// the version in the folder's name (UltraCanvas-SDK-Linux-0.9.604-x86_64).
+// Empty when neither says.
+std::string SdkPrefixVersion(const std::string& prefix);
+
+struct SdkUpdateCheck {
+    bool ok = false;             // LATEST was read and names a version
+    std::string installed;       // the version compared against
+    std::string latest;          // the version LATEST names
+    bool newer = false;          // latest is newer than installed
+    // Whether that version's SHA256SUMS lists this platform's archive. A
+    // release can lack one (macOS Intel is not in every release): then
+    // there is nothing to download for this machine yet.
+    bool archiveListed = false;
+    std::string archive;         // the archive's name for this machine, of `latest`
+    std::string error;           // why the check failed, when !ok
+};
+
+// Reads LATEST, then the SHA256SUMS of the version it names, blocking. A build without the network library
+// answers ok false with an error that says so. `base` as for DownloadSdk.
+SdkUpdateCheck CheckSdkUpdate(Platform platform, const std::string& installed,
+                              const std::string& architecture,
+                              const std::string& base = SdkDownloadBase());
+
+// UltraCanvasStart itself, on the same GitHub release as the SDK:
+// UltraCanvasStart-<OS>-<version>-<arch> as a .tar.xz on Linux, a .zip on
+// Windows and a .dmg on macOS. A newer SDK can need a package this build's
+// checks do not know, so the update offers the matching UltraCanvasStart too.
+std::string StartAppArchiveName(Platform platform, const std::string& version,
+                                const std::string& architecture);
+std::string StartAppDownloadUrl(Platform platform, const std::string& version,
+                                const std::string& architecture);
 
 // The step that unpacks `archive` into `destination` (both UTF-8): tar on
 // Linux and macOS, tar as well on Windows 10 and later (bsdtar reads zip),

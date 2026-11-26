@@ -111,7 +111,8 @@ UltraCanvasFileLoader::ConvertAudioFile("talk.flac", "talk.mp3", audioError);
 // ... or a UCAudio you hold: UltraCanvasFileLoader::SaveAudio(audio, "take.wav", audioError)
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT;
-// a PowerPoint deck, .pptx, or an OpenDocument one, .odp / .fodp, as an outline of its slides).
+// a PowerPoint deck, .pptx or the 97-2003 .ppt, or an OpenDocument one, .odp / .fodp, as an
+// outline of its slides). A deck as its slides: LoadPresentation(path, deck, error, password, true).
 // A password-protected .docx asks for its password before it loads.
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);
@@ -139,7 +140,7 @@ indexer:
 
 | File | How it is read (`TextExtractionMethod`) |
 |---|---|
-| ODT, DOCX, LaTeX, a PowerPoint or OpenDocument deck | `Document`: `LoadTextDocument`, then its plain text |
+| ODT, DOCX, LaTeX, a PowerPoint (.pptx, .ppt) or OpenDocument deck | `Document`: `LoadTextDocument`, then its plain text |
 | PDF | `PDF`: the text of every page; a scanned PDF without any is rendered at 300 DPI and read by text recognition |
 | ODS, XLSX, XLS | `Spreadsheet`: every sheet, tab-separated, each under its name when there are several |
 | TXT, Markdown, CSV, code, any UTF-8 file | `PlainText`: as it is |
@@ -405,7 +406,29 @@ UltraCanvasFileLoader::SaveFileDialog(saveLetter, [document = letter](DialogResu
 ```
 
 `AddTextDocumentLoadTypes(opts)` is the Open side: one "Documents" filter,
-then each type under its name. A codec an application brings itself joins
+then each type under its name.
+
+An office suite has its own pair: `AddOfficeDocumentLoadTypes(opts)` (every
+document, spreadsheet and presentation type, then one filter per kind) and,
+per kind, `AddTextDocumentSaveTypes`, `AddSpreadsheetSaveTypes` and
+`AddPresentationSaveTypes`. Those leave out the templates - .ott / .dotx,
+.ots / .xltx, .otp / .potx, each its document's package under the template's
+media type - which "Save as template" offers with
+`AddOfficeTemplateSaveTypes(opts, kind)`; the writers write a template by its
+extension. A file `IsOfficeTemplate` says is one opens as a new, untitled
+document, so the template is never saved over:
+
+<!-- doc-check: std::string path; void NewUntitledFrom(const std::string& path); void Open(const std::string& path); UltraCanvasFileLoader::OfficeDocumentKind kind; -->
+```cpp
+if (UltraCanvasFileLoader::IsOfficeTemplate(path)) NewUntitledFrom(path);   // Save asks for a name
+else Open(path);
+
+FileDialogOptions saveTemplate;
+saveTemplate.SetDefaultFileName("Letter.dotx");
+UltraCanvasFileLoader::AddOfficeTemplateSaveTypes(saveTemplate, kind);   // .dotx and .ott for a document
+```
+
+A codec an application brings itself joins
 the lists once it is registered: UltraVideo registers what its FFmpeg engine
 reads and writes (`VideoFX_GetFileFormats`) with `RegisterMediaCodec`, and
 FileLoader's Video and Audio lists then hold MKV, WebM and AVI on a macOS
@@ -443,7 +466,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **3D Models** (via plugins): STL, STEP, IGES, OBJ, PLY, 3DS, COLLADA, X3D/VRML (load + save); FBX, Alembic, DirectX `.x`, MilkShape 3D, Blender (load)
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
-**Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), PPTX/ODP presentations (load, as an outline), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
+**Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), PPTX/ODP presentations (load + save, as their slides or an outline), PPT presentations - PowerPoint 97-2003 (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
 **Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
 
 **Layered images** (`MediaFormatCategory::LayeredImage`): `.ucd`, the UCD 2.1

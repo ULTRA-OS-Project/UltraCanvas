@@ -27,6 +27,13 @@
 
 namespace UltraStore {
 
+// The days an account asked to be deleted is kept, in which the person can
+// change their mind: the account service's default, said in the store's
+// texts before the service has answered with the day itself. 90 since
+// 2026-11 (decided with the affiliate programme, whose binding is suspended
+// in this time and comes back on a cancel); it was 30.
+inline constexpr int kDeletionGraceDays = 90;
+
 // An HTTP call with an Authorization header: GET, POST, PUT or DELETE; a
 // POST or PUT sends jsonBody as application/json. Purchase.h's HttpCall
 // cannot carry the header, which every signed-in request needs.
@@ -186,6 +193,10 @@ public:
     Result<AccountArchive> RequestArchive(const std::string& token) const;
     Result<std::vector<AccountArchive>> Archives(const std::string& token) const;
     Result<std::string> DownloadArchive(const std::string& token, const std::string& archiveId) const;   // the JSON, once
+    // The service carries a deletion out after its grace
+    // (ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS, 90) unless it is cancelled;
+    // the answer's deleteAfter is the day. kDeletionGraceDays is that number
+    // for the texts shown before the request is made.
     Result<Me> RequestDeletion(const std::string& token, const std::string& password) const;
     Result<Me> CancelDeletion(const std::string& token) const;
 

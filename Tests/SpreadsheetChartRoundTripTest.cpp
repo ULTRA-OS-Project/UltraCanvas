@@ -18,10 +18,18 @@
 //  - .xlsx -> .ods -> load and .ods -> .xlsx -> load keep them;
 //  - where LibreOffice is installed (soffice), its conversion of our .xlsx
 //    to .ods and of our .ods to .xlsx still holds the charts with their
-//    kinds and ranges; without it that part is skipped.
+//    kinds and ranges; without it that part is skipped;
+//  - the framework's other charts (a Sankey diagram, a Gantt chart, a
+//    bubble chart, a waterfall, a ternary plot, a histogram, a surface, a
+//    treemap) on a sheet of their sample cells keep their kind, title, every
+//    range and what they read through .xlsx and .ods: the file holds a
+//    column chart of their numbers (a surface and a bubble chart their own)
+//    with the UltraCanvas extension beside it, and reading puts the kind
+//    back. LibreOffice, which ignores the extension, shows the column chart.
 //
 // Usage: SpreadsheetChartRoundTripTest
 // Exit code is the number of failed checks.
+// Version: 1.1.0 - the framework's other charts through the UltraCanvas extension
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -29,6 +37,8 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetChart.h"
+#include "UltraCanvasZipPackage.h"
+#include "SpreadsheetChartSamples.h"
 
 #include <chrono>
 #include <cmath>
@@ -270,6 +280,109 @@ void CheckConverted(UltraCanvasSpreadsheet& book, const std::string& label) {
           label + ": the pie of the other sheet's cells");
 }
 
+// ----- the framework's other charts ---------------------------------------------
+
+const char* kKinds = "Kinds";
+const char* const kKindTypes[] = {"sankey", "gantt", "bubble", "waterfall", "ternary", "histogram", "surface", "treemap"};
+
+// A sheet of sample blocks, side by side, and a chart of each.
+std::shared_ptr<UltraCanvasSpreadsheet> BuildKindsWorkbook() {
+    auto book = std::make_shared<UltraCanvasSpreadsheet>("kinds", 0, 0, 1000, 700);
+    book->RenameSheet(0, kKinds);
+    SpreadsheetSheet* sheet = book->GetSheet(0);
+    int column = 0, row = 40;
+    for (const char* id : kKindTypes) {
+        const int type = SpreadsheetChartTypeById(id);
+        Check(type >= 0, std::string("the type ") + id);
+        if (type < 0) continue;
+        const CellRange block =
+            ChartSamples::WriteSampleCells(*sheet, SpreadsheetChartTypes()[static_cast<size_t>(type)].kind, 0, column);
+        SpreadsheetChart chart = MakeSpreadsheetChartOfType(*sheet, block, static_cast<size_t>(type));
+        chart.chart.title = std::string("A ") + id;
+        chart.anchor.from = CellAddress(row, 0);
+        chart.anchor.to = CellAddress(row + 12, 6);
+        row += 14;
+        Check(SpreadsheetChartFitMessage(chart).empty(), std::string(id) + ": its sample fits");
+        Check(book->InsertChart(chart) >= 0, std::string(id) + ": inserted");
+        column = block.end.col + 2;
+    }
+    book->RefreshCharts();
+    return book;
+}
+
+// The charts of `book` match those of `built`: kind, title, ranges and what
+// they read from the cells.
+void CheckKinds(UltraCanvasSpreadsheet& book, const UltraCanvasSpreadsheet& built, const std::string& label) {
+    std::printf("\n-- %s --\n", label.c_str());
+    book.RefreshCharts();
+    const SpreadsheetSheet* sheet = book.GetSheetByName(kKinds);
+    const SpreadsheetSheet* original = built.GetSheet(0);
+    Check(sheet && original && sheet->GetCharts().size() == original->GetCharts().size(), label + ": every chart is there");
+    if (!sheet || !original || sheet->GetCharts().size() != original->GetCharts().size()) return;
+    for (size_t i = 0; i < original->GetCharts().size(); ++i) {
+        const SpreadsheetChart& want = original->GetCharts()[i];
+        const SpreadsheetChart& have = sheet->GetCharts()[i];
+        const std::string what = label + ": " + SpreadsheetChartKindId(want.chart.kind);
+        Check(have.chart.kind == want.chart.kind,
+              what + " keeps its kind (read " + SpreadsheetChartKindId(have.chart.kind) + ")");
+        Check(have.chart.title == want.chart.title, what + " keeps its title");
+        bool sameRanges = have.sources.size() == want.sources.size();
+        for (size_t s = 0; sameRanges && s < want.sources.size(); ++s) {
+            sameRanges = have.sources[s].values == want.sources[s].values && have.sources[s].name == want.sources[s].name &&
+                         have.sources[s].categories == want.sources[s].categories &&
+                         have.sources[s].sizes == want.sources[s].sizes;
+        }
+        Check(sameRanges, what + " keeps its " + std::to_string(want.sources.size()) + " series' ranges");
+        bool sameData = have.chart.series.size() == want.chart.series.size() && have.chart.categories == want.chart.categories;
+        for (size_t s = 0; sameData && s < want.chart.series.size(); ++s) {
+            sameData = have.chart.series[s].values == want.chart.series[s].values &&
+                       have.chart.series[s].labels == want.chart.series[s].labels &&
+                       have.chart.series[s].sizes == want.chart.series[s].sizes;
+        }
+        Check(sameData, what + " reads the same data from its cells");
+    }
+}
+
+// What LibreOffice keeps of the kinds' file: a chart for each, showing
+// numbers - the kinds it has a form for as themselves, the others as the
+// column chart beside the extension.
+void CheckKindsConverted(UltraCanvasSpreadsheet& book, const UltraCanvasSpreadsheet& built, const std::string& label) {
+    std::printf("\n-- %s --\n", label.c_str());
+    book.RefreshCharts();
+    const SpreadsheetSheet* sheet = book.GetSheetByName(kKinds);
+    const SpreadsheetSheet* original = built.GetSheet(0);
+    Check(sheet && original && sheet->GetCharts().size() == original->GetCharts().size(),
+          label + ": a chart for each (" + std::to_string(sheet ? sheet->GetCharts().size() : 0) + ")");
+    if (!sheet || !original || sheet->GetCharts().size() != original->GetCharts().size()) return;
+    for (size_t i = 0; i < original->GetCharts().size(); ++i) {
+        const SpreadsheetChart& want = original->GetCharts()[i];
+        const SpreadsheetChart& have = sheet->GetCharts()[i];
+        const std::string what = label + ": " + SpreadsheetChartKindId(want.chart.kind);
+        bool numbers = false;
+        for (const RichChartSeries& one : have.chart.series) numbers = numbers || !one.values.empty();
+        Check(numbers, what + " shows as a chart of numbers (" + SpreadsheetChartKindId(have.chart.kind) + ")");
+    }
+}
+
+// The chart parts of the kinds' .xlsx: a column chart with the extension
+// for each kind .xlsx has no form for, a chart of its own kind for the rest.
+void CheckXlsxParts(const std::string& path) {
+    UCZipPackageReader package;
+    Check(package.Open(path), "the kinds' .xlsx opens as a package");
+    int fallbacks = 0, natives = 0;
+    for (int n = 1; n <= 8; ++n) {
+        std::string xml;
+        if (!package.ReadEntry("xl/charts/chart" + std::to_string(n) + ".xml", xml)) continue;
+        const bool extension = xml.find("<c:extLst><c:ext uri=") != std::string::npos &&
+                               xml.find("ucc:chart kind=") != std::string::npos;
+        if (extension && xml.find("<c:barChart>") != std::string::npos) ++fallbacks;
+        if (!extension) ++natives;
+    }
+    Check(fallbacks == 6 && natives == 2,
+          "the .xlsx holds 6 column charts with the extension and 2 of their own kind (bubble, surface): " +
+              std::to_string(fallbacks) + " and " + std::to_string(natives));
+}
+
 } // namespace
 
 int main() {
@@ -328,6 +441,27 @@ int main() {
         else Check(false, ".ods -> .xlsx loads");
     }
 
+    // The framework's other charts.
+    std::printf("\n=== The framework's other charts ===\n");
+    auto kinds = BuildKindsWorkbook();
+    CheckKinds(*kinds, *kinds, "the kinds as built");
+    const fs::path kindsXlsx = dir / "kinds.xlsx";
+    const fs::path kindsOds = dir / "kinds.ods";
+    Check(kinds->SaveToFile(PathToUtf8(kindsXlsx)), "the kinds saved as .xlsx " + kinds->GetLastError());
+    Check(kinds->SaveToFile(PathToUtf8(kindsOds)), "the kinds saved as .ods " + kinds->GetLastError());
+    CheckXlsxParts(PathToUtf8(kindsXlsx));
+    if (auto loaded = Load(PathToUtf8(kindsXlsx))) CheckKinds(*loaded, *kinds, "the kinds' .xlsx loaded");
+    else Check(false, "the kinds' .xlsx loads");
+    if (auto loaded = Load(PathToUtf8(kindsOds))) {
+        CheckKinds(*loaded, *kinds, "the kinds' .ods loaded");
+        const fs::path again = dir / "kinds-again.xlsx";
+        Check(loaded->SaveToFile(PathToUtf8(again)), "the kinds' .ods loaded, saved as .xlsx");
+        if (auto twice = Load(PathToUtf8(again))) CheckKinds(*twice, *kinds, "the kinds' .ods -> .xlsx loaded");
+        else Check(false, "the kinds' .ods -> .xlsx loads");
+    } else {
+        Check(false, "the kinds' .ods loads");
+    }
+
     std::printf("\n=== LibreOffice reads them too ===\n");
     if (!HaveSoffice()) {
         std::printf("  skipped: soffice is not installed\n");
@@ -341,6 +475,16 @@ int main() {
         if (fromOds.empty()) std::printf("  skipped: soffice did not convert the .ods\n");
         else if (auto loaded = Load(fromOds)) CheckConverted(*loaded, "our .ods as LibreOffice's .xlsx");
         else Check(false, "LibreOffice's .xlsx loads");
+        // The kinds: LibreOffice ignores the extension and shows the column
+        // chart beside it.
+        const std::string kindsFromXlsx = Convert(kindsXlsx, "ods", dir / "lo-kinds-xlsx", profile);
+        const std::string kindsFromOds = Convert(kindsOds, "xlsx", dir / "lo-kinds-ods", profile);
+        if (kindsFromXlsx.empty()) std::printf("  skipped: soffice did not convert the kinds' .xlsx\n");
+        else if (auto loaded = Load(kindsFromXlsx)) CheckKindsConverted(*loaded, *kinds, "the kinds' .xlsx as LibreOffice's .ods");
+        else Check(false, "LibreOffice's .ods of the kinds loads");
+        if (kindsFromOds.empty()) std::printf("  skipped: soffice did not convert the kinds' .ods\n");
+        else if (auto loaded = Load(kindsFromOds)) CheckKindsConverted(*loaded, *kinds, "the kinds' .ods as LibreOffice's .xlsx");
+        else Check(false, "LibreOffice's .xlsx of the kinds loads");
     }
 
     if (!GetEnvUtf8("UC_KEEP_ROUNDTRIP_FILES").empty()) {

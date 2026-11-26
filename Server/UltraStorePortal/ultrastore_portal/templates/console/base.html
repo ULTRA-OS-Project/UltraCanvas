@@ -15,6 +15,7 @@
             <a class="nav-link{% if name == 'sales' %} active{% endif %}" href="{% url 'console:sales' %}">Sales</a>
             {% endif %}
             {% if promote_on %}<a class="nav-link{% if request.resolver_match.namespace == 'promote' or name == 'promote' %} active{% endif %}" href="{% url 'promote:home' %}">Advertising</a>{% endif %}
+            {% if affiliates_on %}<a class="nav-link{% if name == 'affiliates' %} active{% endif %}" href="{% url 'console:affiliates' %}">Affiliates</a>{% endif %}
             {% if my_role == "owner" or my_role == "developer" %}<a class="nav-link{% if name == 'publisher' %} active{% endif %}" href="{% url 'console:publisher' %}">Publisher profile</a>{% endif %}
           {% endif %}
           {% if app and my_role == "owner" or app and my_role == "developer" %}

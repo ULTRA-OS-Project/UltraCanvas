@@ -18,6 +18,15 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.22.0 - what a navigator needs (UltraCanvasDocumentNavigator.h): AddDocumentObserver /
+//                   RemoveDocumentObserver, more than one listener to edits and caret moves;
+//                   GoToPosition, GoToRange; MoveHeadingSection, MoveHeadingSectionUp / Down,
+//                   ChangeHeadingSectionLevel on the body, each one undo step
+// Version: 1.21.0 - what the document dialogs (UltraCanvasRichTextEditDialogs.h) set, each one undo
+//                   step: SetParagraphFormat, SetPageSetup, SetTableProperties,
+//                   SetSelectedImageWrap; InsertNote with its text; GoToPreviousChange,
+//                   GoToNextComment / GoToPreviousComment / GoToComment
+// Version: 1.20.0 - InsertChart; Paste takes a chart copied from a spreadsheet (UltraCanvasOfficeClipboard.h)
 // Version: 1.19.0 - RichTextEditStyle::adaptDocumentColors; AdaptDocumentColorToPage
 // Version: 1.18.0 - chartCache: a frame's chart drawn by the chart engine
 // Version: 1.17.1 - layoutStatedLines
@@ -260,6 +269,10 @@ public:
     // typing; double-clicking a note (or its reference) edits it, Escape goes
     // back. The marks number themselves: footnotes 1, 2, 3, endnotes i, ii.
     bool InsertFootnote();
+    // A footnote or endnote at the caret holding `text`; with no text it
+    // opens for typing, as InsertFootnote does. Returns the note's index, or
+    // -1.
+    int InsertNote(RichNote::Kind kind, const std::string& text);
     bool InsertEndnote();
     bool EditNote(int noteIndex);
     bool IsEditingNote() const { return furnitureEdit && furnitureEdit->noteIndex >= 0; }
@@ -387,6 +400,31 @@ public:
     // Puts the caret at a bookmark and scrolls it into view. Ctrl+click on a
     // cross-reference, a table of contents entry or a link to "#name" does it.
     bool GoToBookmark(const std::string& name);
+    // Puts the caret at a body position (or selects a body range) and
+    // scrolls it into view - near the view's top when it was out of view -
+    // ending the editing of a header, footer, note or frame first. False
+    // when the position is not in the document.
+    bool GoToPosition(const RichDocPosition& position);
+    bool GoToRange(const RichDocRange& range);
+
+    // ===== HEADING SECTIONS =====
+    // A heading with the text and subheadings under it, moved or promoted
+    // in the body as a navigator does it (UCRichDocumentEditor, which
+    // defines the section): one undo step each, laid out again at once.
+    bool MoveHeadingSection(int headingBlock, int beforeBlock);
+    bool MoveHeadingSectionUp(int headingBlock);
+    bool MoveHeadingSectionDown(int headingBlock);
+    bool ChangeHeadingSectionLevel(int headingBlock, int delta);
+
+    // ===== OBSERVERS =====
+    // Besides onDocumentChanged and onSelectionChanged (the host's own), any
+    // number of listeners - a navigator, an outline, a word count - are told
+    // of every change: `documentChanged` true after an edit (undo, a new
+    // document, a header's text included), false after the caret or the
+    // selection moved. Returns an id for RemoveDocumentObserver. A listener
+    // that does not outlive the element removes itself when it goes.
+    int AddDocumentObserver(std::function<void(bool documentChanged)> observer);
+    void RemoveDocumentObserver(int id);
 
     // Structure.
     void InsertHorizontalRule();
@@ -406,6 +444,10 @@ public:
     void InsertInlineImageFromMemory(const std::string& name, const std::string& mimeType,
                                      const std::vector<uint8_t>& data,
                                      const std::string& altText = "");
+    // A chart in the line at the caret, `widthPt` x `heightPt`
+    // (UCRichDocumentEditor::InsertChart). Paste puts one there when the
+    // clipboard holds a chart copied from a spreadsheet.
+    bool InsertChart(const RichChart& chart, float widthPt, float heightPt);
 
     // ===== PICTURES =====
     // Clicking a picture selects it: a frame with eight handles is drawn round
@@ -423,6 +465,17 @@ public:
     bool SetSelectedImageSize(float widthPt, float heightPt);
     std::string GetSelectedImageAltText() const;
     bool SetSelectedImageAltText(const std::string& altText);
+    // How the text goes round the selected picture, and where a floating one
+    // sits (UCRichDocumentEditor::SetImageWrap). One undo step.
+    bool GetSelectedImageWrap(RichTextRun::ImageWrap& wrap, RichTextAlign& align) const;
+    bool SetSelectedImageWrap(RichTextRun::ImageWrap wrap, RichTextAlign align = RichTextAlign::Left);
+
+    // ===== PARAGRAPH LAYOUT =====
+    // The caret paragraph's indents, spacing, line spacing, alignment and tab
+    // stops, and the same given to every paragraph the selection touches (one
+    // undo step; see UCRichDocumentEditor::SetParagraphFormat).
+    RichParagraphFormat GetParagraphFormat() const { return editor.GetParagraphFormat(); }
+    bool SetParagraphFormat(const RichParagraphFormat& format);
 
     // ===== TABLES =====
     // Structural table editing, addressed from the caret: a menu item says
@@ -457,6 +510,10 @@ public:
     bool MergeSelectedCells();
         bool CanSplitCurrentCell() const;
     bool SplitCurrentCell();
+    // The caret's table's width, alignment, header row, borders and cell
+    // padding (RichTableProperties); false when the caret is not in a table.
+    bool GetTableProperties(RichTableProperties& out) const;
+    bool SetTableProperties(const RichTableProperties& properties);
 
     // ===== AUTOFORMAT AS YOU TYPE =====
     // On by default: typed quotes become “curly”, "--" a dash, "..." an
@@ -531,6 +588,9 @@ public:
     void EndPrintLayout();
     // The page the document is laid out on: its own, or A4 with 2 cm margins.
     RichPageSetup GetEffectivePageSetup() const { return EffectivePageSetup(); }
+    // Gives the document that page (size, margins, header and footer
+    // distance): one undo step, laid out again at once.
+    bool SetPageSetup(const RichPageSetup& page);
 
     // ===== ZOOM =====
     // 1 = 100%. Everything is drawn scaled - text, pictures, pages - and
@@ -647,6 +707,13 @@ public:
     bool RejectChangeAtCaret();
     // Selects the next tracked change after the caret (wrapping round).
     bool GoToNextChange();
+    // ...or the one before it.
+    bool GoToPreviousChange();
+    // Selects the text of the next / previous comment (wrapping round), or of
+    // comment `index`; false when there is none.
+    bool GoToNextComment();
+    bool GoToPreviousComment();
+    bool GoToComment(int index);
     // "2026-09-29T10:00:00Z": the time stamp comments and changes get.
     static std::string CurrentIsoTime();
     const std::string& GetCommentAuthor() const { return commentAuthor; }
@@ -1201,6 +1268,9 @@ private:
     bool layoutsDirty = true;
     bool visibleAreaDirty = true;
     bool caretMoved = false;
+    // GoToPosition / GoToRange: the place, when out of view, comes in at the
+    // view's top (as a navigator's jump does), not just inside its edge.
+    bool caretToTop = false;
 
     // ===== FONT REPORT AND NOTICE =====
     FontReport fontReport;
@@ -1239,6 +1309,13 @@ private:
     std::string commentAuthor;
     bool showComments = true;
     bool commentPaneShown = false;
+    // AddDocumentObserver's listeners, by id.
+    std::vector<std::pair<int, std::function<void(bool)>>> documentObservers;
+    int nextObserverId = 1;
+    void NotifyDocumentObservers(bool documentChanged);
+    // A body edit made through the editing core by one of the calls above:
+    // laid out again, the host told.
+    bool AfterBodyEdit(bool changed);
     struct CommentBox {
         int index = -1;
         Rect2Df rect{0, 0, 0, 0};             // element coordinates

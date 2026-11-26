@@ -10,6 +10,7 @@
 // LoadXLSX, delimited text to LoadCSV, and the HTML tables and Excel 2003 XML
 // that applications export under the name are read the way Excel reads them.
 // There is no .xls writer: save as .xlsx or .ods.
+// Version: 1.1.1 - a formula is read as one value (FormulaArrayMode::SingleValue): .xls has no spills
 // Version: 1.1.0
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework
@@ -320,6 +321,8 @@ private:
         if (!cell) return;
         if (c.hasFormula && !c.formula.empty() && EngineAccepts(c)) {
             cell->SetFormula(c.formula);
+            // .xls has no dynamic arrays: a formula is worth one value.
+            cell->SetFormulaArrayMode(FormulaArrayMode::SingleValue);
             // The plain setters would replace the formula: the cached result
             // goes in as the formula's result.
             switch (c.type) {

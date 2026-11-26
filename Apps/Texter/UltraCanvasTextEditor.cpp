@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.14.0 - View > Navigator (F5): the document navigator at the left of a word-processing tab
 // Version: 2.13.0 - a document saved as .odp / .otp / .fodp is laid out as a deck too
 // Version: 2.12.0 - a document saved as .pptx is laid out as a deck (a slide per first-level heading);
 //                   the deck a tab was opened from is not written over with its outline
@@ -789,6 +790,9 @@ namespace {
                         }),
                         MenuItemData::Checkbox(Tr("Page Layout (documents)"), config.documentPageLayout, [this](bool checked) {
                             OnViewTogglePageLayout(checked);
+                        }),
+                        MenuItemData::Checkbox(Tr("Navigator (documents)"), config.documentNavigator, [this](bool checked) {
+                            OnViewToggleNavigator(checked);
                         }),
                         MenuItemData::Separator(),
                         MenuItemData::Submenu(Tr("Toolbars"), {
@@ -2615,6 +2619,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->editorArea->AddChild(view);
             }
             SetupRichDocumentCallbacks(docIndex);
+            ApplyNavigator(*doc);
 
             UpdateTabTitle(docIndex);
             UpdateTabBadge(docIndex);
@@ -4385,8 +4390,38 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 sub.checked = config.wordWrap;
             } else if (sub.label == Tr("Hidden Characters")) {
                 sub.checked = config.showHiddenCharacters;
+            } else if (sub.label == Tr("Navigator (documents)")) {
+                sub.checked = config.documentNavigator;
             }
         }
+    }
+
+    void UltraCanvasTextEditor::OnViewToggleNavigator(bool checked) {
+        config.documentNavigator = checked;
+        for (auto& doc : documents) ApplyNavigator(*doc);
+        UpdateViewMenuChecks();
+        SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::ApplyNavigator(DocumentTab& doc) {
+        if (!doc.editorArea) return;
+        const bool show = config.documentNavigator && doc.IsRichDocument() && doc.richEdit;
+        if (!show) {
+            if (doc.navigator) {
+                doc.editorArea->RemoveChild(doc.navigator);
+                doc.navigator.reset();
+            }
+            return;
+        }
+        if (!doc.navigator) {
+            doc.navigator = std::make_shared<UltraCanvasDocumentNavigator>(
+                "Navigator_" + std::to_string(doc.documentId), 0, 0, 240, doc.richEdit->GetHeight());
+            doc.navigator->SetElementSize(CSSLayout::Dimension::Px(240), CSSLayout::Dimension::Auto());
+            doc.navigator->layoutItem.SetFlexShrink(0).SetFlexOrder(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            doc.editorArea->AddChild(doc.navigator);
+        }
+        // A reloaded tab has a new editor; the navigator follows it.
+        if (doc.navigator->GetEdit() != doc.richEdit) doc.navigator->SetEdit(doc.richEdit);
     }
 
     void UltraCanvasTextEditor::OnViewTogglePageLayout(bool checked) {
@@ -5616,6 +5651,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     OnViewToggleTheme();
                     return true;
                 }
+                // F5: the navigator beside word-processing documents, as in LibreOffice Writer.
+                if (!event.ctrl && !event.alt && !event.shift && event.virtualKey == UCKeys::F5) {
+                    OnViewToggleNavigator(!config.documentNavigator);
+                    return true;
+                }
                 if (event.ctrl && event.virtualKey == UCKeys::F) {
                     OnEditSearch();
                     return true;
@@ -6473,6 +6513,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.wordWrap = configFile.GetBool("wordWrap", config.wordWrap);
         config.showHiddenCharacters = configFile.GetBool("showHiddenCharacters", config.showHiddenCharacters);
         config.documentPageLayout = configFile.GetBool("documentPageLayout", config.documentPageLayout);
+        config.documentNavigator = configFile.GetBool("documentNavigator", config.documentNavigator);
         config.defaultFontSize = configFile.GetInt("defaultFontSize", config.defaultFontSize);
         config.fontZoomPercent = configFile.GetInt("fontZoomPercent", 100);
         config.pageZoomFit = configFile.GetString("pageZoomFit", "");
@@ -6493,6 +6534,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("wordWrap", config.wordWrap);
         configFile.SetBool("showHiddenCharacters", config.showHiddenCharacters);
         configFile.SetBool("documentPageLayout", config.documentPageLayout);
+        configFile.SetBool("documentNavigator", config.documentNavigator);
         configFile.SetInt("defaultFontSize", config.defaultFontSize);
         configFile.SetInt("fontZoomPercent", config.fontZoomPercent);
         configFile.SetString("pageZoomFit", config.pageZoomFit);

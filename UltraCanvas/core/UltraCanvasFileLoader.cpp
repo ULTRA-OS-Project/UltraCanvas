@@ -1,6 +1,11 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.15.0 - LoadPresentation (.pptx, .odp, and PowerPoint 97-2003 .ppt by content);
+//                  LoadTextDocument and DetectOfficeDocumentKind take a .ppt; a .pot is a template
+// Version: 1.14.0 - templates: IsOfficeTemplate, IsOfficeTemplateExtension, AddOfficeTemplateSaveTypes,
+//                  AddSpreadsheetSaveTypes; the Save types of documents and decks leave the templates to
+//                  AddOfficeTemplateSaveTypes
 // Version: 1.13.0 - DetectOfficeDocumentKind, AddOfficeDocumentLoadTypes, AddPresentationSaveTypes
 // Version: 1.12.2 - SaveContent: iOS defines its own (the document picker), as Android and WASM do
 // Version: 1.12.1 - RequestDocumentPassword's prompt shows a lock centred above the field
@@ -20,7 +25,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -34,8 +39,11 @@
 #include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
 #include "UltraCanvasPresentationPptx.h"    // .pptx, read as an outline
 #include "UltraCanvasPresentationOdp.h"     // .odp / .otp / .fodp, the same
+#include "UltraCanvasPresentationPpt.h"     // .ppt / .pps / .pot, PowerPoint 97-2003
+#include "UltraCanvasCompoundFile.h"        // DetectOfficeDocumentKind: a compound file's streams
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasZipPackage.h"          // DetectOfficeDocumentKind: a package's mimetype and parts
+#include "UltraCanvasSpreadsheet.h"          // IsSpreadsheetTemplateExtension
 #include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
 #include "UltraCanvasVectorRaster.h"    // RasterizeVectorDocument: a drawing saved as a bitmap
 #include "UltraCanvasRasterDocument.h"  // ... written through the image writer
@@ -898,6 +906,13 @@ namespace UltraCanvas {
             if (!ReadOdpPresentation(filePath, deck, outError, password)) return nullptr;
             return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
         }
+        // ... and a PowerPoint 97-2003 deck: a compound file with a
+        // "PowerPoint Document" stream.
+        if (IsPptPresentationFile(filePath)) {
+            PptxPresentation deck;
+            if (!ReadPptPresentation(filePath, deck, outError)) return nullptr;
+            return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
+        }
 
         // Package formats (and renamed/legacy files) go by content signature.
         WordDocumentFormat format = DetectWordDocumentFormat(filePath);
@@ -911,9 +926,9 @@ namespace UltraCanvas {
 
         // A deck's name on a file that is no deck (damaged, or something
         // else renamed) is not text to show.
-        if (IsPptxExtension(filePath) || IsOdpExtension(filePath)) {
+        if (IsPptxExtension(filePath) || IsOdpExtension(filePath) || IsPptExtension(filePath)) {
             outError = std::string("The file is not a valid ") +
-                       (IsPptxExtension(filePath) ? "PowerPoint" : "OpenDocument") + " presentation: " + filePath;
+                       (IsOdpExtension(filePath) ? "OpenDocument" : "PowerPoint") + " presentation: " + filePath;
             return nullptr;
         }
 
@@ -936,13 +951,26 @@ namespace UltraCanvas {
         // Markdown text path's.
         bool TextDocumentReads(const MediaFormatInfo& format) {
             if (WordDocumentFormatFromExtension(format.extension) != WordDocumentFormat::Unknown) return true;
-            if (IsPptxExtension(format.extension) || IsOdpExtension(format.extension)) return true;
+            if (IsPptxExtension(format.extension) || IsOdpExtension(format.extension) ||
+                IsPptExtension(format.extension))
+                return true;
             return format.extension == "md" || format.extension == "txt";
         }
 
+        // A template's extension, of any of the three kinds.
+        // (A .pot is a PowerPoint 97-2003 template: read, never written.)
+        bool IsDeckTemplateExtension(const std::string& ext) {
+            return ext == "potx" || ext == "potm" || ext == "otp" || ext == "pot";
+        }
+        bool IsTemplateExtension(const std::string& ext) {
+            return IsWordTemplateExtension(ext) || IsSpreadsheetTemplateExtension(ext) || IsDeckTemplateExtension(ext);
+        }
+
         // ... and the ones SaveTextDocument writes: a document, or the
-        // document laid out as a PowerPoint deck.
+        // document laid out as a PowerPoint deck. Not the templates, which a
+        // Save dialog offers apart (AddOfficeTemplateSaveTypes).
         bool TextDocumentWrites(const MediaFormatInfo& format) {
+            if (IsTemplateExtension(format.extension)) return false;
             const WordDocumentFormat type = WordDocumentFormatFromExtension(format.extension);
             return format.canSave && (type == WordDocumentFormat::Odt || type == WordDocumentFormat::Docx ||
                                       IsPptxExtension(format.extension) || IsOdpExtension(format.extension));
@@ -991,6 +1019,17 @@ namespace UltraCanvas {
         return WritePptxPresentation(deck, filePath, outError, password);
     }
 
+    bool UltraCanvasFileLoader::LoadPresentation(const std::string& filePath, PptxPresentation& deck,
+                                                 std::string& outError, const std::string& password,
+                                                 bool withPictures) {
+        outError.clear();
+        // By content first: a renamed deck still opens as what it is.
+        if (IsPptPresentationFile(filePath)) return ReadPptPresentation(filePath, deck, outError, withPictures);
+        if (IsOdpPresentationFile(filePath) || IsOdpExtension(filePath))
+            return ReadOdpPresentation(filePath, deck, outError, password, withPictures);
+        return ReadPptxPresentation(filePath, deck, outError, password, withPictures);
+    }
+
     void UltraCanvasFileLoader::AddTextDocumentSaveTypes(FileDialogOptions& opts) {
         for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document))
             if (TextDocumentWrites(format)) opts.AddFilter(format.description, ExtensionsOf(format));
@@ -1001,7 +1040,9 @@ namespace UltraCanvas {
 
     namespace {
         // (LowerExtensionOf: above, with the video helpers.)
-        bool IsDeckExtension(const std::string& ext) { return IsPptxExtension(ext) || IsOdpExtension(ext); }
+        bool IsDeckExtension(const std::string& ext) {
+            return IsPptxExtension(ext) || IsOdpExtension(ext) || IsPptExtension(ext);
+        }
 
         // What a word processor opens as a document: TextDocumentReads
         // without the decks, which an office suite opens as presentations.
@@ -1019,9 +1060,12 @@ namespace UltraCanvas {
         }
 
         // A package without a telling extension: its mimetype entry (ODF) or
-        // its main part (Office Open XML).
+        // its main part (Office Open XML); a compound file with a "PowerPoint
+        // Document" stream is a PowerPoint 97-2003 deck.
         UltraCanvasFileLoader::OfficeDocumentKind OfficeKindOfPackage(const std::string& filePath) {
             using Kind = UltraCanvasFileLoader::OfficeDocumentKind;
+            if (UCCompoundFileReader::HasSignature(filePath))
+                return IsPptPresentationFile(filePath) ? Kind::Presentation : Kind::Unknown;
             UCZipPackageReader zip;
             if (!zip.Open(filePath)) return Kind::Unknown;
             std::string mimetype;
@@ -1071,12 +1115,67 @@ namespace UltraCanvas {
     void UltraCanvasFileLoader::AddPresentationSaveTypes(FileDialogOptions& opts) {
         std::vector<MediaFormatInfo> pptx, odp;
         for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document)) {
-            if (!format.canSave) continue;
+            if (!format.canSave || IsTemplateExtension(format.extension)) continue;
             if (IsPptxExtension(format.extension)) pptx.push_back(format);
             else if (IsOdpExtension(format.extension)) odp.push_back(format);
         }
         for (const auto& format : pptx) opts.AddFilter(format.description, ExtensionsOf(format));
         for (const auto& format : odp) opts.AddFilter(format.description, ExtensionsOf(format));
+        PutDefaultTypeFirst(opts);
+    }
+
+    void UltraCanvasFileLoader::AddSpreadsheetSaveTypes(FileDialogOptions& opts) {
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Spreadsheet))
+            if (format.canSave && !IsTemplateExtension(format.extension))
+                opts.AddFilter(format.description, ExtensionsOf(format));
+        PutDefaultTypeFirst(opts);
+    }
+
+    // ===== OFFICE TEMPLATES =====
+
+    namespace {
+        // What a package says it is when its name does not: an OpenDocument
+        // "...-template" mimetype, or an Office Open XML main part whose
+        // content type is a template's.
+        bool IsTemplatePackage(const std::string& filePath) {
+            UCZipPackageReader zip;
+            if (!zip.Open(filePath)) return false;
+            std::string mimetype;
+            if (zip.ReadEntry("mimetype", mimetype))
+                return mimetype.find("opendocument.") != std::string::npos &&
+                       mimetype.find("-template") != std::string::npos;
+            std::string types;
+            if (!zip.ReadEntry("[Content_Types].xml", types)) return false;
+            return types.find("ml.template.main+xml") != std::string::npos ||            // .dotx, .xltx, .potx
+                   types.find("macroEnabledTemplate.main+xml") != std::string::npos ||   // .dotm
+                   types.find(".template.macroEnabled.main+xml") != std::string::npos;   // .xltm, .potm
+        }
+    } // namespace
+
+    bool UltraCanvasFileLoader::IsOfficeTemplate(const std::string& filePath) {
+        const std::string ext = LowerExtensionOf(filePath);
+        if (IsTemplateExtension(ext)) return true;
+        // A known type of document that is no template says so by its name;
+        // only a file without one is looked into.
+        if (IsDeckExtension(ext) || IsSpreadsheetExtension(ext) || IsDocumentExtension(ext)) return false;
+        return IsTemplatePackage(filePath);
+    }
+
+    bool UltraCanvasFileLoader::IsOfficeTemplateExtension(const std::string& extensionOrPath) {
+        return IsTemplateExtension(LowerExtensionOf(extensionOrPath));
+    }
+
+    void UltraCanvasFileLoader::AddOfficeTemplateSaveTypes(FileDialogOptions& opts, OfficeDocumentKind kind) {
+        const MediaFormatCategory category =
+            kind == OfficeDocumentKind::Spreadsheet ? MediaFormatCategory::Spreadsheet : MediaFormatCategory::Document;
+        for (const MediaFormatInfo& format : GetSupportedFormats(category)) {
+            if (!format.canSave || !IsTemplateExtension(format.extension)) continue;
+            const bool fits = kind == OfficeDocumentKind::Spreadsheet  ? IsSpreadsheetTemplateExtension(format.extension)
+                            : kind == OfficeDocumentKind::Presentation ? IsDeckTemplateExtension(format.extension)
+                            : kind == OfficeDocumentKind::Document     ? IsWordTemplateExtension(format.extension)
+                                                                       : false;
+            if (fits) opts.AddFilter(format.description, ExtensionsOf(format));
+        }
         PutDefaultTypeFirst(opts);
     }
 

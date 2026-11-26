@@ -132,12 +132,28 @@ HttpCall UltraNetHttpCall() {
     };
 }
 
-Result<Order> StartCheckout(const std::string& paymentUrl, const std::string& appId, const std::string& code, const HttpCall& http) {
+std::string BuyerCountry(const std::string& setting, const std::string& accountCountry, const std::string& systemCountry) {
+    for (const std::string* candidate : {&setting, &accountCountry, &systemCountry}) {
+        std::string country;
+        for (char c : *candidate) {
+            if (std::isspace(static_cast<unsigned char>(c))) continue;
+            country += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        }
+        if (country.size() == 2 && std::isalpha(static_cast<unsigned char>(country[0])) && std::isalpha(static_cast<unsigned char>(country[1]))) {
+            return country;
+        }
+    }
+    return {};
+}
+
+Result<Order> StartCheckout(const std::string& paymentUrl, const std::string& appId, const std::string& code, const HttpCall& http,
+                            const std::string& country) {
     using R = Result<Order>;
     if (paymentUrl.empty()) return R::Failure(ErrorCode::NotAvailable, Tr("The catalog names no payment service"));
     UltraCanvas::JSONValue body = UltraCanvas::JSONValue::MakeObject();
     body.Set("app", appId);
     if (!code.empty()) body.Set("code", code);
+    if (!country.empty()) body.Set("country", country);
     const auto answer = Answer(http("POST", TrimSlash(paymentUrl) + "/v1/checkout", UltraCanvas::JSON::Serialize(body)), TrC("payment step", "checkout"));
     if (!answer) return R::Failure(answer.error.code, answer.error.message, answer.error.detail);
     Order order = OrderOf(answer.Value());

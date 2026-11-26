@@ -98,7 +98,8 @@ names - which Office checks.
 
 The reader: the `.doc` importer
 (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`), the
-[`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
+[`.xls` reader](UltraCanvasSpreadsheetXls.md), the
+[`.ppt` reader](UltraCanvasPresentationPpt.md), and the decryptor of
 [password-protected `.xlsx` and `.docx` files](UltraCanvasOfficeEncryption.md),
 which reads their `EncryptionInfo` and `EncryptedPackage` streams, and the
 [Outlook `.msg` reader](UltraCanvasOutlookMessage.md), which reads by path below

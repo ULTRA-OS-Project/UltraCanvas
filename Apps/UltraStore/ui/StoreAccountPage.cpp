@@ -850,7 +850,7 @@ void StoreWindow::RebuildAccount() {
         accountBody_->AddChild(archive);
 
         auto del = Theme::Section("usA.v.delete", Tr("Delete the account"),
-                                  Tr("Ends the subscriptions at their period's end, keeps the invoices for the years the law asks, and removes everything else after 30 days. Bought apps keep working on the machines they are on, without updates."));
+                                  TrF("Ends the subscriptions at their period's end, keeps the invoices for the years the law asks, and removes everything else after {0} days. Bought apps keep working on the machines they are on, without updates.", kDeletionGraceDays));
         if (p.state == "deleting") {
             auto cancel = Theme::Button("usA.v.cancel", Tr("Keep my account"), 150, Theme::ButtonKind::Primary);
             cancel->onClick = [this, token]() {
@@ -863,7 +863,7 @@ void StoreWindow::RebuildAccount() {
             del->AddChild(FieldRow("usA.v.passwordRow", Tr("Your password"), apDeletePassword_));
             auto go = Theme::Button("usA.v.go", Tr("Delete my account"), 160, Theme::ButtonKind::Danger);
             go->onClick = [this, token]() {
-                UltraCanvasAlert::Confirm(Tr("Delete the account? It is kept for 30 days in case you change your mind, then removed."), "UltraStore", [this, token](bool yes) {
+                UltraCanvasAlert::Confirm(TrF("Delete the account? It is kept for {0} days in case you change your mind, then removed.", kDeletionGraceDays), "UltraStore", [this, token](bool yes) {
                     if (!yes) return;
                     AccountTask<Me>(Tr("Requesting the deletion"), [client = AccountClientNow(), token, password = apDeletePassword_->GetText()]() { return client.RequestDeletion(token, password); },
                                     [this](const Me& me) { me_ = me; RebuildAccount(); SetStatus(TrF("The account is deleted on {0}", me.profile.deleteAfter)); });
