@@ -197,7 +197,6 @@
   "In the message field": "在訊息欄位中",
   "Incoming call from {0}": "{0} 來電",
   "Incoming video call from {0}": "{0} 視訊來電",
-  "Insert": "插入",
   "Insert a location (OpenStreetMap)": "插入位置 (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "插入螢幕擷圖：選擇視窗或拖曳選取區域",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "最後一列的 IRC 會用你的暱稱連線到伺服器 - 除非位址以 irc:// 開頭，否則使用 TLS - 暱稱已註冊時用你的密碼登入。在「新增」中輸入 #頻道 即可加入。",

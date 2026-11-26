@@ -1,3 +1,9 @@
+#### 2026-11-26 *1.0.16*
+- **PowerPoint 97-2003 decks.** A `.ppt` (and a `.pps` show or a `.pot`
+  template) shows its slides, its outline with **O** and its slide show with
+  **F5**, like a `.pptx` or an `.odp`; the desktop entry offers UltraViewer
+  for them.
+
 #### 2026-11-20 *1.0.15*
 - **A presentation shows its slides, and has a slide show.** A `.pptx` or
   `.odp` opens as its slides - drawn with their fonts, pictures, tables,

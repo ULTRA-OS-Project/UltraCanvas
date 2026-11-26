@@ -1,10 +1,19 @@
 // Apps/UltraOffice/UltraOfficeDocumentHost.cpp
 // A word-processing tab: the framework's WYSIWYG element
 // (UltraCanvasRichTextEdit) over a UCRichDocument, read and written through
-// UltraCanvasFileLoader (.odt, .docx, .doc read-only, .md, .tex), with three
-// command tabs - Home, Insert, View - whose toolbars follow the caret
-// (GetFormatState), and PDF export and printing of the pages.
+// UltraCanvasFileLoader (.odt, .docx, .doc read-only, .md, .tex), with five
+// command tabs - Home, Insert, Layout, Review, View - whose toolbars follow
+// the caret (GetFormatState), the framework's document dialogs
+// (UltraCanvasRichTextEditDialogs.h), and PDF export and printing of the pages.
+// At its left, in a resizable side panel, the navigator
+// (UltraCanvasDocumentNavigator.h): View > Navigator or F5 shows and hides
+// it, and the window's settings remember the choice and its width.
 //
+// Version: 0.3.0 - the navigator: headings, tables, pictures, charts, comments, bookmarks, notes and changes in a
+//                  side panel (View > Navigator, F5), remembered in the settings
+// Version: 0.2.0 - the document dialogs: paragraph and styles (Home), contents, caption,
+//                  cross-reference and footnote (Insert), page setup, table and picture
+//                  (Layout, a new tab), comments and tracked changes (Review, a new tab)
 // Version: 0.1.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
@@ -12,12 +21,17 @@
 #include "UltraOfficeToolbar.h"
 
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"   // PrintDocumentWithDialog
+#include "UltraCanvasAppSettings.h"
+#include "UltraCanvasDocumentNavigator.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasRichTextEditDialogs.h"
 #include "UltraCanvasRichTextPrint.h"
+#include "UltraCanvasSplitPane.h"
+#include "UltraCanvasPathUtf8.h"      // GetEnvUtf8
 #include "UltraCanvasWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -45,6 +59,24 @@ std::string SizeText(float size) {
     return std::string(text, result.ptr);
 }
 
+// What the window's settings keep of the navigator: shown or not, and how wide.
+const char* kNavigatorKey = "documentNavigator";
+const char* kNavigatorWidthKey = "documentNavigatorWidth";
+constexpr int kNavigatorWidth = 260;
+constexpr int kNavigatorMinWidth = 160;
+
+// A pane of the split: a column its one element fills.
+void FillPane(const std::shared_ptr<UltraCanvasContainer>& pane, const std::shared_ptr<UltraCanvasUIElement>& element) {
+    pane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    ContainerStyle plain;
+    plain.autoShowScrollbars = false;
+    pane->SetContainerStyle(plain);
+    pane->SetFollowTheme(true);
+    pane->AddChild(element);
+    element->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    element->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+}
+
 class DocumentHost final : public OfficeHost {
 public:
     explicit DocumentHost(UltraCanvasWindowBase* window) : window_(window) {
@@ -55,14 +87,44 @@ public:
         UltraCanvasRichTextEdit* edit = editor_.get();
         edit->onSelectionChanged = [this]() { Sync(); if (onChanged) onChanged(); };
         edit->onDocumentChanged = [this]() { Sync(); if (onChanged) onChanged(); };
+        // Comments and tracked changes are signed with the login name (UTF-8,
+        // as the document stores it); a double-click on a comment edits it.
+        std::string user = GetEnvUtf8("USER");
+        if (user.empty()) user = GetEnvUtf8("USERNAME");
+        edit->SetCommentAuthor(user);
+        edit->onCommentActivated = [this, edit](int index) {
+            ShowCommentDialog(*edit, index, [this](bool) { Sync(); });
+        };
+        // The document fills a split whose left pane, when shown, is the
+        // navigator over the same element.
+        split_ = std::make_shared<UltraCanvasSplitPane>("office-document-split", SplitOrientation::Horizontal);
+        split_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        FillPane(split_->AddPane(1.0), editor_);
+        split_->onSplitterDragEnd = [this](size_t) { RememberNavigatorWidth(); };
+        navigator_ = std::make_shared<UltraCanvasDocumentNavigator>("office-navigator", 0, 0, kNavigatorWidth, 600);
+        navigator_->SetEdit(editor_);
         BuildHome();
         BuildInsert();
+        BuildLayout();
+        BuildReview();
         BuildView();
         NewBlank();
     }
 
     OfficeKind GetKind() const override { return OfficeKind::Document; }
-    std::shared_ptr<UltraCanvasUIElement> GetContent() override { return editor_; }
+    std::shared_ptr<UltraCanvasUIElement> GetContent() override { return split_; }
+
+    void AttachSettings(UltraCanvasAppSettings* settings) override {
+        settings_ = settings;
+        if (settings_) ShowNavigator(settings_->GetBool(kNavigatorKey, false), false);
+    }
+
+    // F5 shows and hides the navigator, as in LibreOffice Writer.
+    bool HandleShortcut(const UCEvent& event) override {
+        if (event.virtualKey != UCKeys::F5 || event.ctrl || event.alt || event.shift) return false;
+        ToggleNavigator();
+        return true;
+    }
     const std::vector<CommandTab>& GetCommandTabs() override { return tabs_; }
 
     void NewBlank() override {
@@ -114,7 +176,13 @@ public:
     void SetModified(bool modified) override { editor_->SetModified(modified); }
     void Undo() override { editor_->Undo(); Sync(); }
     void Redo() override { editor_->Redo(); Sync(); }
-    void Focus() override { editor_->SetFocus(true); }
+    void Focus() override {
+        // Another tab may have shown or hidden the navigator meanwhile: this
+        // one follows the choice when it comes forward.
+        if (settings_ && settings_->GetBool(kNavigatorKey, false) != navigatorShown_)
+            ShowNavigator(!navigatorShown_, false);
+        editor_->SetFocus(true);
+    }
 
     std::string GetStatusText() const override {
         const auto& editor = editor_->GetEditor();
@@ -127,6 +195,12 @@ public:
 private:
     UltraCanvasWindowBase* window_;
     std::shared_ptr<UltraCanvasRichTextEdit> editor_;
+    std::shared_ptr<UltraCanvasSplitPane> split_;
+    std::shared_ptr<UltraCanvasDocumentNavigator> navigator_;
+    std::shared_ptr<UltraCanvasContainer> navigatorPane_;     // the split's left pane while it is shown
+    UltraCanvasAppSettings* settings_ = nullptr;              // the window's
+    bool navigatorShown_ = false;
+    UltraCanvasButton* navigatorButton_ = nullptr;
     std::vector<CommandTab> tabs_;
     // Raw: the toolbars own them, and the host owns the toolbars.
     UltraCanvasButton* bold_ = nullptr;
@@ -134,6 +208,8 @@ private:
     UltraCanvasButton* underline_ = nullptr;
     UltraCanvasButton* strike_ = nullptr;
     UltraCanvasButton* pageView_ = nullptr;
+    UltraCanvasButton* trackChanges_ = nullptr;
+    UltraCanvasButton* showComments_ = nullptr;
     UltraCanvasDropdown* style_ = nullptr;
     UltraCanvasDropdown* font_ = nullptr;
     UltraCanvasDropdown* size_ = nullptr;
@@ -145,6 +221,13 @@ private:
     std::function<void()> Act(std::function<void(UltraCanvasRichTextEdit&)> action) {
         UltraCanvasRichTextEdit* edit = editor_.get();
         return [this, edit, action]() { action(*edit); Sync(); edit->SetFocus(true); };
+    }
+
+    // A tool that opens one of the framework's document dialogs; the toolbar
+    // follows what its OK changed.
+    std::function<void()> Dialog(std::function<void(UltraCanvasRichTextEdit&, RichDialogClosed)> show) {
+        UltraCanvasRichTextEdit* edit = editor_.get();
+        return [this, edit, show]() { show(*edit, [this](bool) { Sync(); }); };
     }
 
     void BuildHome() {
@@ -202,6 +285,13 @@ private:
         AddTool(*bar, "doc-centre", "", "textformat/align-centre.svg", Tr("Centre"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Center); }));
         AddTool(*bar, "doc-right", "", "textformat/align-right.svg", Tr("Align right"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Right); }));
         AddTool(*bar, "doc-justify", "", "office/justify.svg", Tr("Justify"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Justify); }));
+        bar->AddSeparator();
+        AddTool(*bar, "doc-paragraph", Tr("Paragraph"), "textformat/line-spacing.svg",
+                Tr("Indents, spacing, line spacing, alignment and tab stops"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowParagraphDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-styles", Tr("Styles"), "menu/palette.svg",
+                Tr("Apply, change or make a named style"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowStylesDialog(e, std::move(done)); }));
         tabs_.push_back({Tr("Home"), bar});
     }
 
@@ -213,14 +303,100 @@ private:
         AddTool(*bar, "doc-link", Tr("Link"), "link.svg", Tr("Make the selection a link"), [this]() { InsertLink(); });
         bar->AddSeparator();
         AddTool(*bar, "doc-pagebreak", Tr("Page break"), "", Tr("Start a new page here"), Act([](auto& e) { e.InsertPageBreak(); }));
-        AddTool(*bar, "doc-footnote", Tr("Footnote"), "", Tr("Insert a footnote at the caret"), Act([](auto& e) { e.InsertFootnote(); }));
-        AddTool(*bar, "doc-toc", Tr("Contents"), "", Tr("Insert a table of contents of the headings"),
-                Act([](auto& e) { e.InsertTableOfContents(3); }));
+        bar->AddSeparator();
+        AddTool(*bar, "doc-footnote", Tr("Footnote"), "superscript.svg", Tr("Insert a footnote or an endnote at the caret"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowNoteDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-toc", Tr("Contents"), "list-tree.svg", Tr("Insert or rebuild a table of contents of the headings"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowContentsDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-caption", Tr("Caption"), "add_text.svg", Tr("A numbered caption under the picture or table"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowCaptionDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-crossref", Tr("Cross-reference"), "menu/book.svg",
+                Tr("Refer to a caption or a bookmark by its text or its page"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowCrossReferenceDialog(e, std::move(done)); }));
         tabs_.push_back({Tr("Insert"), bar});
+    }
+
+    void BuildLayout() {
+        auto bar = MakeToolbar("office-document-layout");
+        AddTool(*bar, "doc-pagesetup", Tr("Page setup"), "document.svg", Tr("Paper, orientation, margins, header and footer"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowPageSetupDialog(e, std::move(done)); }));
+        bar->AddSeparator();
+        AddTool(*bar, "doc-tableprops", Tr("Table"), "table.svg", Tr("The width, alignment, header row and borders of the table"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowTablePropertiesDialog(e, std::move(done)); }));
+        AddTool(*bar, "doc-pictureprops", Tr("Picture"), "image.svg", Tr("The alt text, wrapping and size of the selected picture"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowPictureDialog(e, std::move(done)); }));
+        tabs_.push_back({Tr("Layout"), bar});
+    }
+
+    void BuildReview() {
+        auto bar = MakeToolbar("office-document-review");
+        AddTool(*bar, "doc-comment", Tr("Comment"), "clipboard/edit.svg", Tr("Comment on the selection"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowCommentDialog(e, -1, std::move(done)); }));
+        AddTool(*bar, "doc-prevcomment", "", "texter/angle-left.svg", Tr("Previous comment"), Act([](auto& e) { e.GoToPreviousComment(); }));
+        AddTool(*bar, "doc-nextcomment", "", "texter/angle-right.svg", Tr("Next comment"), Act([](auto& e) { e.GoToNextComment(); }));
+        AddTool(*bar, "doc-comments", Tr("All comments"), "list.svg", Tr("The comments of the document: go to, edit, resolve or delete one"),
+                Dialog([](auto& e, RichDialogClosed done) { ShowCommentsDialog(e, std::move(done)); }));
+        showComments_ = AddToggleTool(*bar, "doc-showcomments", Tr("Show comments"), "", Tr("Show the comments and their pane"),
+                                      Act([](auto& e) { e.SetShowComments(!e.IsShowingComments()); })).get();
+        bar->AddSeparator();
+        trackChanges_ = AddToggleTool(*bar, "doc-track", Tr("Track changes"), "edit.svg", Tr("Mark what is typed and deleted"),
+                                      Act([](auto& e) { e.SetTrackChanges(!e.IsTrackingChanges()); })).get();
+        AddTool(*bar, "doc-prevchange", "", "arrow-left.svg", Tr("Previous change"), Act([](auto& e) { e.GoToPreviousChange(); }));
+        AddTool(*bar, "doc-nextchange", "", "arrow-right.svg", Tr("Next change"), Act([](auto& e) { e.GoToNextChange(); }));
+        AddTool(*bar, "doc-accept", Tr("Accept"), "ultramail/check.svg", Tr("Accept the change at the caret, or those selected"),
+                Act([](auto& e) { e.AcceptChangeAtCaret(); }));
+        AddTool(*bar, "doc-reject", Tr("Reject"), "delete.svg", Tr("Reject the change at the caret, or those selected"),
+                Act([](auto& e) { e.RejectChangeAtCaret(); }));
+        AddTool(*bar, "doc-acceptall", Tr("Accept all"), "", Tr("Accept every change"), Act([](auto& e) { e.AcceptAllChanges(); }));
+        AddTool(*bar, "doc-rejectall", Tr("Reject all"), "", Tr("Reject every change"), Act([](auto& e) { e.RejectAllChanges(); }));
+        tabs_.push_back({Tr("Review"), bar});
+    }
+
+    // ===== THE NAVIGATOR =====
+    void ShowNavigator(bool show, bool remember) {
+        if (show != navigatorShown_) {
+            navigatorShown_ = show;
+            if (show) {
+                const int width = settings_ ? settings_->GetInt(kNavigatorWidthKey, kNavigatorWidth) : kNavigatorWidth;
+                navigatorPane_ = split_->InsertPane(0, 0.25);
+                FillPane(navigatorPane_, navigator_);
+                split_->SetPaneMinSize(0, kNavigatorMinWidth);
+                split_->SetPaneFixedSize(0, std::max(kNavigatorMinWidth, width));
+                navigator_->Refresh();
+            } else if (navigatorPane_) {
+                navigatorPane_->RemoveChild(navigator_);
+                split_->RemovePane(navigatorPane_.get());
+                navigatorPane_.reset();
+            }
+            split_->InvalidateLayout();
+            split_->RequestRedraw();
+        }
+        if (remember && settings_) {
+            settings_->Set(kNavigatorKey, show);
+            settings_->Save();
+        }
+        if (navigatorButton_) navigatorButton_->SetPressed(navigatorShown_);
+    }
+
+    void ToggleNavigator() {
+        ShowNavigator(!navigatorShown_, true);
+        editor_->SetFocus(true);
+    }
+
+    void RememberNavigatorWidth() {
+        if (!settings_ || !navigatorShown_) return;
+        const int width = split_->GetPaneFixedSize(0);
+        if (width <= 0) return;
+        settings_->Set(kNavigatorWidthKey, width);
+        settings_->Save();
     }
 
     void BuildView() {
         auto bar = MakeToolbar("office-document-view");
+        navigatorButton_ = AddToggleTool(*bar, "doc-navigator", Tr("Navigator"), "menu/sidebar.svg",
+                                         Tr("Show the headings, tables, pictures and comments beside the document (F5)"),
+                                         [this]() { ToggleNavigator(); }).get();
+        bar->AddSeparator();
         pageView_ = AddToggleTool(*bar, "doc-pageview", Tr("Pages"), "", Tr("Show the document as pages"),
                                   Act([](auto& e) { e.SetPageView(!e.IsPageView()); })).get();
         bar->AddSeparator();
@@ -274,6 +450,9 @@ private:
         if (underline_) underline_->SetPressed(RichCharFormatState::IsOn(state.underline));
         if (strike_) strike_->SetPressed(RichCharFormatState::IsOn(state.strikethrough));
         if (pageView_) pageView_->SetPressed(editor_->IsPageView());
+        if (navigatorButton_) navigatorButton_->SetPressed(navigatorShown_);
+        if (trackChanges_) trackChanges_->SetPressed(editor_->IsTrackingChanges());
+        if (showComments_) showComments_->SetPressed(editor_->IsShowingComments());
         if (style_) {
             const int level = editor_->GetCurrentHeadingLevel();
             style_->SetSelectedIndex(level >= 0 && level <= 4 ? level : 0, false);   // read out, not applied again

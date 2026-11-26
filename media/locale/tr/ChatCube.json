@@ -198,7 +198,6 @@
   "In the message field": "İleti alanında",
   "Incoming call from {0}": "{0} arıyor",
   "Incoming video call from {0}": "{0} görüntülü arıyor",
-  "Insert": "Ekle",
   "Insert a location (OpenStreetMap)": "Konum ekle (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Ekran görüntüsü ekle: bir pencere seçin veya bir alanı sürükleyin",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "Son satırdaki IRC, takma adınızla bir sunucuya bağlanır - adres irc:// ile başlamadıkça TLS üzerinden - ve takma ad kayıtlıysa parolanızla oturum açar. Katılmak için Ekle'ye bir #kanal yazın.",

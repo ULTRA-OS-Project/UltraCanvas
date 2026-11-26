@@ -2,6 +2,7 @@
 // PowerPoint (.pptx) writer - see UltraCanvasPresentationPptx.h: a
 // PptxPresentation written as a package PowerPoint, LibreOffice and the
 // reader open, and a word-processing document laid out as a deck.
+// Version: 1.2.0 - group shapes: p:grpSp round a groupPath's shapes, nested, chOff / chExt the group's box
 // Version: 1.1.0 - the deck's own masters and layouts (names, types, backgrounds, placeholders
 //                  with their look and prompt text), each slide on its layout; transitions
 //                  (p:transition, p14:dur in mc:AlternateContent for a length no speed names)
@@ -17,6 +18,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <locale>
@@ -392,7 +394,7 @@ public:
         xml += "<p:spTree>";
         xml += kGroupHeader;
         bodyIndex_ = 0;
-        for (const PptxShape& shape : slide.shapes) xml += WriteShape(shape);
+        xml += WriteShapes(slide);
         xml += "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>" + TransitionXml(slide.transition) +
                "</p:sld>";
         return xml;
@@ -695,6 +697,50 @@ private:
     }
 
     // ----- Shapes -----
+
+    // The slide's shapes in order, each group's (PptxShape::groupPath) inside
+    // a p:grpSp of its own: its box the shapes', its child space the same,
+    // so the shapes keep their places on the slide.
+    std::string WriteShapes(const PptxSlide& slide) {
+        std::string xml;
+        const std::vector<PptxShape>& shapes = slide.shapes;
+        std::vector<int> open;   // the groups open, outermost first
+        for (size_t i = 0; i < shapes.size(); ++i) {
+            const std::vector<int>& path = shapes[i].groupPath;
+            size_t common = 0;
+            while (common < open.size() && common < path.size() && open[common] == path[common]) ++common;
+            for (; open.size() > common; open.pop_back()) xml += "</p:grpSp>";
+            while (open.size() < path.size()) {
+                const size_t depth = open.size();
+                int64_t left = INT64_MAX, top = INT64_MAX, right = INT64_MIN, bottom = INT64_MIN;
+                for (size_t k = i; k < shapes.size(); ++k) {
+                    const std::vector<int>& other = shapes[k].groupPath;
+                    if (other.size() <= depth || !std::equal(path.begin(), path.begin() + static_cast<long>(depth) + 1, other.begin()))
+                        break;
+                    const PptxShape& member = shapes[k];
+                    if (member.width <= 0 && member.height <= 0 && member.placeInherited) continue;
+                    left = std::min(left, member.x);
+                    top = std::min(top, member.y);
+                    right = std::max(right, member.x + member.width);
+                    bottom = std::max(bottom, member.y + member.height);
+                }
+                if (left > right) left = top = right = bottom = 0;
+                const int id = path[depth];
+                const auto named = slide.groupNames.find(id);
+                const std::string name = named != slide.groupNames.end() && !named->second.empty()
+                                             ? named->second : "Group " + std::to_string(id);
+                const std::string off = "x=\"" + Num(left) + "\" y=\"" + Num(top) + "\"";
+                const std::string ext = "cx=\"" + Num(right - left) + "\" cy=\"" + Num(bottom - top) + "\"";
+                xml += "<p:grpSp><p:nvGrpSpPr><p:cNvPr id=\"" + std::to_string(nextShapeId_++) + "\" name=\"" +
+                       Escape(name) + "\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off " + off +
+                       "/><a:ext " + ext + "/><a:chOff " + off + "/><a:chExt " + ext + "/></a:xfrm></p:grpSpPr>";
+                open.push_back(id);
+            }
+            xml += WriteShape(shapes[i]);
+        }
+        for (; !open.empty(); open.pop_back()) xml += "</p:grpSp>";
+        return xml;
+    }
 
     std::string WriteShape(const PptxShape& shape) {
         switch (shape.kind) {

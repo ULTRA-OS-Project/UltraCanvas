@@ -13,6 +13,10 @@
 // written in and a range's rows and columns - comes from
 // FormulaEvaluator::GetCallArguments(); the CallArgs helper below hides the
 // difference.
+// Version: 1.1.0 - FILTER, SORT, SORTBY, UNIQUE, SEQUENCE, RANDARRAY, TRANSPOSE, XMATCH, LET, LAMBDA,
+//                  MAP, BYROW, BYCOL, REDUCE, SCAN, MAKEARRAY; XLOOKUP returns rows / columns, takes
+//                  match and search modes; NPER, RATE, IPMT, PPMT, CUMIPMT, CUMPRINC, IRR, XIRR,
+//                  XNPV, MIRR, SLN, SYD, DB, DDB, VDB, EFFECT, NOMINAL; ApplyArrayBehaviour
 // Version: 1.0.0
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
@@ -63,7 +67,7 @@ struct Grid {
 class CallArgs {
 public:
     CallArgs(const Values& values, const Ranges& ranges, FormulaEvaluator* evaluator)
-        : values_(values), ranges_(ranges) {
+        : values_(values), ranges_(ranges), evaluator_(evaluator) {
         if (evaluator && !evaluator->GetCallArguments().empty()) {
             order_ = evaluator->GetCallArguments();
         } else {
@@ -139,9 +143,17 @@ public:
         return false;
     }
 
+    // Whether argument i was left out (SEQUENCE(3,,10)) or not given at all.
+    bool Omitted(size_t i) const {
+        return i >= order_.size() || (!order_[i].isRange && Value(i).IsEmpty());
+    }
+    // The evaluator running the call (to call a LAMBDA argument); may be null.
+    FormulaEvaluator* Evaluator() const { return evaluator_; }
+
 private:
     const Values& values_;
     const Ranges& ranges_;
+    FormulaEvaluator* evaluator_ = nullptr;
     std::vector<FunctionCallArgument> order_;
 };
 
@@ -542,6 +554,38 @@ Values Row(const Grid& g, int r) {
     return out;
 }
 
+// A grid as a value: an array, or the one value it holds.
+FormulaValue GridValue(const Grid& g) {
+    if (g.Empty()) return FormulaValue::Empty();
+    return FormulaValue::Array(g.rows, g.cols, g.cells);
+}
+
+// XLOOKUP / XMATCH: the position of `lookup` in `line`. matchMode 0 exact,
+// -1 exact or the next smaller, 1 exact or the next larger, 2 wildcards;
+// searchMode 1 / 2 from the first, -1 / -2 from the last (2 and -2, a binary
+// search over sorted data in Excel, find the same item). -1 when none.
+int XFind(const FormulaValue& lookup, const Values& line, int matchMode, int searchMode) {
+    const int n = static_cast<int>(line.size());
+    const bool backwards = searchMode < 0;
+    int best = -1;
+    for (int k = 0; k < n; ++k) {
+        const int i = backwards ? n - 1 - k : k;
+        const FormulaValue& v = line[static_cast<size_t>(i)];
+        if (SameValue(lookup, v, matchMode == 2)) return i;
+        if (matchMode != 1 && matchMode != -1) continue;
+        const bool comparable = (v.IsNumber() && lookup.IsNumber()) || (v.IsText() && lookup.IsText()) ||
+                                (v.IsBoolean() && lookup.IsBoolean());
+        if (!comparable) continue;
+        const int c = CompareValues(v, lookup);
+        if ((matchMode == -1 && c > 0) || (matchMode == 1 && c < 0)) continue;
+        if (best < 0) { best = i; continue; }
+        // The closest; of equally close ones the first met.
+        const int closer = CompareValues(v, line[static_cast<size_t>(best)]);
+        if ((matchMode == -1 && closer > 0) || (matchMode == 1 && closer < 0)) best = i;
+    }
+    return best;
+}
+
 // ===== REGISTRATION =====
 
 void RegisterLookups(FormulaFunctionLibrary& lib) {
@@ -584,22 +628,68 @@ void RegisterLookups(FormulaFunctionLibrary& lib) {
             return tall ? keys.At(pos, keys.cols - 1) : keys.At(keys.rows - 1, pos);
         });
 
+    // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found],
+    // [match_mode], [search_mode]): a row of return_array for a lookup down a
+    // column, a column of it for a lookup along a row; a range of lookup
+    // values gives one result each.
     Add(lib, "XLOOKUP", 3, 6, "Lookup", "Look up a value and return the matching item",
         [](const CallArgs& a) -> FormulaValue {
-            if (!a.IsRange(0) && a.Value(0).IsError()) return a.Value(0);
-            const Values keys = a.Flat(1);
-            const Values results = a.Flat(2);
-            if (keys.size() != results.size()) return Err(CellErrorType::ValueError);
-            const int mode = a.Count() > 4 ? a.Int(4) : 0;   // 0 exact, 2 wildcard
-            const int search = a.Count() > 5 ? a.Int(5) : 1;  // 1 first, -1 last
-            const FormulaValue lookup = a.Value(0);
-            int pos = -1;
-            for (size_t k = 0; k < keys.size(); ++k) {
-                const size_t i = search < 0 ? keys.size() - 1 - k : k;
-                if (SameValue(lookup, keys[i], mode == 2)) { pos = static_cast<int>(i); break; }
+            const Grid keys = a.GetGrid(1);
+            const Grid results = a.GetGrid(2);
+            if (keys.Empty() || results.Empty() || (keys.rows != 1 && keys.cols != 1)) {
+                return Err(CellErrorType::ValueError);
             }
-            if (pos < 0) return a.Count() > 3 ? a.Value(3) : Err(CellErrorType::NAError);
-            return results[static_cast<size_t>(pos)];
+            const bool down = keys.cols == 1 && !(keys.rows == 1 && results.rows == 1);
+            const int n = down ? keys.rows : keys.cols;
+            if ((down ? results.rows : results.cols) != n) return Err(CellErrorType::ValueError);
+            const int mode = a.Omitted(4) ? 0 : a.Int(4);
+            const int search = a.Omitted(5) ? 1 : a.Int(5);
+            if (mode < -1 || mode > 2 || (search != 1 && search != -1 && search != 2 && search != -2)) {
+                return Err(CellErrorType::ValueError);
+            }
+            auto one = [&](const FormulaValue& lookup) -> FormulaValue {
+                if (lookup.IsError()) return lookup;
+                const int pos = XFind(lookup, keys.cells, mode, search);
+                if (pos < 0) {
+                    if (a.Count() > 3 && !a.Omitted(3)) return GridValue(a.GetGrid(3));
+                    return Err(CellErrorType::NAError);
+                }
+                if (down) {
+                    Values row;
+                    for (int c = 0; c < results.cols; ++c) row.push_back(results.At(pos, c));
+                    return FormulaValue::Array(1, results.cols, std::move(row));
+                }
+                Values column;
+                for (int r = 0; r < results.rows; ++r) column.push_back(results.At(r, pos));
+                return FormulaValue::Array(results.rows, 1, std::move(column));
+            };
+            const Grid lookups = a.GetGrid(0);
+            if (lookups.cells.size() <= 1) return one(a.Value(0));
+            Values out;
+            for (const FormulaValue& v : lookups.cells) out.push_back(one(v).TopLeft());
+            return FormulaValue::Array(lookups.rows, lookups.cols, std::move(out));
+        });
+
+    // XMATCH(lookup_value, lookup_array, [match_mode], [search_mode]).
+    Add(lib, "XMATCH", 2, 4, "Lookup", "Position of a value in a row or column",
+        [](const CallArgs& a) -> FormulaValue {
+            const Grid keys = a.GetGrid(1);
+            if (keys.Empty() || (keys.rows != 1 && keys.cols != 1)) return Err(CellErrorType::ValueError);
+            const int mode = a.Omitted(2) ? 0 : a.Int(2);
+            const int search = a.Omitted(3) ? 1 : a.Int(3);
+            if (mode < -1 || mode > 2 || (search != 1 && search != -1 && search != 2 && search != -2)) {
+                return Err(CellErrorType::ValueError);
+            }
+            auto one = [&](const FormulaValue& lookup) -> FormulaValue {
+                if (lookup.IsError()) return lookup;
+                const int pos = XFind(lookup, keys.cells, mode, search);
+                return pos < 0 ? Err(CellErrorType::NAError) : Num(pos + 1);
+            };
+            const Grid lookups = a.GetGrid(0);
+            if (lookups.cells.size() <= 1) return one(a.Value(0));
+            Values out;
+            for (const FormulaValue& v : lookups.cells) out.push_back(one(v));
+            return FormulaValue::Array(lookups.rows, lookups.cols, std::move(out));
         });
 
     Add(lib, "INDEX", 2, 3, "Lookup", "The value at a row and column of a range",
@@ -1433,7 +1523,763 @@ void RegisterFinance(FormulaFunctionLibrary& lib) {
     });
 }
 
+// ===== DYNAMIC ARRAYS =====
+
+// Rows (or, by column, columns) of a grid as lines of values.
+std::vector<Values> Lines(const Grid& g, bool byColumn) {
+    std::vector<Values> lines;
+    const int n = byColumn ? g.cols : g.rows;
+    for (int i = 0; i < n; ++i) lines.push_back(byColumn ? Column(g, i) : Row(g, i));
+    return lines;
+}
+
+// Lines back into an array: rows, or columns side by side.
+FormulaValue FromLines(const std::vector<Values>& lines, bool byColumn) {
+    if (lines.empty() || lines.front().empty()) return Err(CellErrorType::Calc);
+    const int count = static_cast<int>(lines.size());
+    const int length = static_cast<int>(lines.front().size());
+    Values cells;
+    if (!byColumn) {
+        for (const Values& line : lines) cells.insert(cells.end(), line.begin(), line.end());
+        return FormulaValue::Array(count, length, std::move(cells));
+    }
+    for (int r = 0; r < length; ++r) {
+        for (int c = 0; c < count; ++c) cells.push_back(lines[static_cast<size_t>(c)][static_cast<size_t>(r)]);
+    }
+    return FormulaValue::Array(length, count, std::move(cells));
+}
+
+// The order SORT and SORTBY put values in: numbers, text (without regard to
+// case), logical values, then errors; an empty cell counts as 0.
+int SortCompare(const FormulaValue& a, const FormulaValue& b) {
+    if (a.IsError() || b.IsError()) return static_cast<int>(a.IsError()) - static_cast<int>(b.IsError());
+    return CompareValues(a, b);
+}
+
+// A value as a condition: TRUE / a non-zero number keeps; text is #VALUE!.
+bool Truth(const FormulaValue& v, FormulaValue& error) {
+    if (v.IsError()) { error = v; return false; }
+    if (v.IsText()) { error = Err(CellErrorType::ValueError); return false; }
+    return v.ToNumber() != 0.0;
+}
+
+// Two values the same for UNIQUE: text without regard to case.
+bool SameForUnique(const FormulaValue& a, const FormulaValue& b) {
+    if (a.IsEmpty() && b.IsEmpty()) return true;
+    if (a.IsError() && b.IsError()) return a.GetError() == b.GetError();
+    return SameValue(a, b, false);
+}
+
+// A LAMBDA argument called with these values; #VALUE! when it is none.
+FormulaValue Call(const CallArgs& a, size_t lambdaArg, const std::vector<FormulaValue>& values) {
+    const FormulaValue fn = a.Value(lambdaArg);
+    if (!fn.IsLambda() || !a.Evaluator()) return fn.IsError() ? fn : Err(CellErrorType::ValueError);
+    return a.Evaluator()->CallLambda(fn, values);
+}
+
+constexpr double kMaxArrayCells = 1048576.0 * 16.0;   // more than any sheet shows
+
+void RegisterDynamicArrays(FormulaFunctionLibrary& lib) {
+    // FILTER(array, include, [if_empty])
+    Add(lib, "FILTER", 2, 3, "Lookup", "The rows or columns of an array that meet a condition",
+        [](const CallArgs& a) -> FormulaValue {
+            const Grid g = a.GetGrid(0);
+            const Grid include = a.GetGrid(1);
+            if (g.Empty() || include.Empty()) return Err(CellErrorType::ValueError);
+            if (g.cells.size() == 1 && g.cells.front().IsError()) return g.cells.front();
+            bool byColumn;
+            if (include.cols == 1 && include.rows == g.rows) byColumn = false;
+            else if (include.rows == 1 && include.cols == g.cols) byColumn = true;
+            else return Err(CellErrorType::ValueError);
+            std::vector<Values> kept;
+            const std::vector<Values> lines = Lines(g, byColumn);
+            for (size_t i = 0; i < lines.size(); ++i) {
+                FormulaValue error;
+                const bool keep = Truth(include.cells[i], error);
+                if (!error.IsEmpty()) return error;
+                if (keep) kept.push_back(lines[i]);
+            }
+            if (kept.empty()) {
+                if (a.Count() > 2 && !a.Omitted(2)) return GridValue(a.GetGrid(2));
+                return Err(CellErrorType::Calc);
+            }
+            return FromLines(kept, byColumn);
+        });
+
+    // SORT(array, [sort_index], [sort_order], [by_col])
+    Add(lib, "SORT", 1, 4, "Lookup", "An array sorted by one or more of its columns or rows",
+        [](const CallArgs& a) -> FormulaValue {
+            const Grid g = a.GetGrid(0);
+            if (g.Empty()) return Err(CellErrorType::ValueError);
+            const bool byColumn = !a.Omitted(3) && a.Value(3).ToNumber() != 0.0;
+            std::vector<int> keys{1};
+            std::vector<int> orders{1};
+            if (!a.Omitted(1)) {
+                keys.clear();
+                for (const FormulaValue& v : a.GetGrid(1).cells) {
+                    if (v.IsError()) return v;
+                    keys.push_back(ToInt(v.ToNumber()));
+                }
+            }
+            if (!a.Omitted(2)) {
+                orders.clear();
+                for (const FormulaValue& v : a.GetGrid(2).cells) {
+                    if (v.IsError()) return v;
+                    orders.push_back(ToInt(v.ToNumber()));
+                }
+            }
+            const int width = byColumn ? g.rows : g.cols;
+            for (int k : keys) if (k < 1 || k > width) return Err(CellErrorType::ValueError);
+            for (int o : orders) if (o != 1 && o != -1) return Err(CellErrorType::ValueError);
+            if (orders.size() != 1 && orders.size() != keys.size()) return Err(CellErrorType::ValueError);
+            std::vector<Values> lines = Lines(g, byColumn);
+            std::stable_sort(lines.begin(), lines.end(), [&](const Values& x, const Values& y) {
+                for (size_t k = 0; k < keys.size(); ++k) {
+                    const size_t at = static_cast<size_t>(keys[k] - 1);
+                    const int order = orders.size() == 1 ? orders.front() : orders[k];
+                    const int c = SortCompare(x[at], y[at]);
+                    if (c != 0) return order > 0 ? c < 0 : c > 0;
+                }
+                return false;
+            });
+            return FromLines(lines, byColumn);
+        });
+
+    // SORTBY(array, by_array1, [sort_order1], [by_array2, [sort_order2]], ...)
+    Add(lib, "SORTBY", 2, 255, "Lookup", "An array sorted by the values of other arrays",
+        [](const CallArgs& a) -> FormulaValue {
+            const Grid g = a.GetGrid(0);
+            if (g.Empty()) return Err(CellErrorType::ValueError);
+            std::vector<std::pair<Values, int>> keys;
+            int direction = 0;   // 1 sorts rows, 2 sorts columns
+            for (size_t i = 1; i < a.Count();) {
+                const Grid by = a.GetGrid(i);
+                int order = 1;
+                if (i + 1 < a.Count() && !a.IsRange(i + 1)) {
+                    order = a.Omitted(i + 1) ? 1 : a.Int(i + 1);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+                if (order != 1 && order != -1) return Err(CellErrorType::ValueError);
+                int dir = 0;
+                if (by.cols == 1 && by.rows == g.rows) dir = 1;
+                else if (by.rows == 1 && by.cols == g.cols) dir = 2;
+                if (dir == 0 || (direction != 0 && dir != direction)) return Err(CellErrorType::ValueError);
+                direction = dir;
+                keys.emplace_back(by.cells, order);
+            }
+            const bool byColumn = direction == 2;
+            const std::vector<Values> lines = Lines(g, byColumn);
+            std::vector<size_t> order(lines.size());
+            for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+            std::stable_sort(order.begin(), order.end(), [&](size_t x, size_t y) {
+                for (const auto& [values, dir] : keys) {
+                    const int c = SortCompare(values[x], values[y]);
+                    if (c != 0) return dir > 0 ? c < 0 : c > 0;
+                }
+                return false;
+            });
+            std::vector<Values> sorted;
+            for (size_t i : order) sorted.push_back(lines[i]);
+            return FromLines(sorted, byColumn);
+        });
+
+    // UNIQUE(array, [by_col], [exactly_once])
+    Add(lib, "UNIQUE", 1, 3, "Lookup", "The distinct rows or columns of an array",
+        [](const CallArgs& a) -> FormulaValue {
+            const Grid g = a.GetGrid(0);
+            if (g.Empty()) return Err(CellErrorType::ValueError);
+            const bool byColumn = !a.Omitted(1) && a.Value(1).ToNumber() != 0.0;
+            const bool exactlyOnce = !a.Omitted(2) && a.Value(2).ToNumber() != 0.0;
+            const std::vector<Values> lines = Lines(g, byColumn);
+            auto same = [](const Values& x, const Values& y) {
+                for (size_t i = 0; i < x.size(); ++i) {
+                    if (!SameForUnique(x[i], y[i])) return false;
+                }
+                return true;
+            };
+            std::vector<Values> distinct;
+            std::vector<int> counts;
+            for (const Values& line : lines) {
+                size_t found = distinct.size();
+                for (size_t i = 0; i < distinct.size(); ++i) {
+                    if (same(distinct[i], line)) { found = i; break; }
+                }
+                if (found == distinct.size()) { distinct.push_back(line); counts.push_back(1); }
+                else ++counts[found];
+            }
+            std::vector<Values> out;
+            for (size_t i = 0; i < distinct.size(); ++i) {
+                if (!exactlyOnce || counts[i] == 1) out.push_back(distinct[i]);
+            }
+            if (out.empty()) return Err(CellErrorType::Calc);
+            return FromLines(out, byColumn);
+        });
+
+    // SEQUENCE(rows, [columns], [start], [step])
+    Add(lib, "SEQUENCE", 1, 4, "Math", "A sequence of numbers in rows and columns",
+        [](const CallArgs& a) -> FormulaValue {
+            FormulaValue error;
+            if (a.ScalarError(0, error)) return error;
+            const double rows = std::trunc(a.Number(0));
+            const double cols = a.Omitted(1) ? 1.0 : std::trunc(a.Number(1));
+            const double start = a.Omitted(2) ? 1.0 : a.Number(2);
+            const double step = a.Omitted(3) ? 1.0 : a.Number(3);
+            if (rows < 0 || cols < 0) return Err(CellErrorType::ValueError);
+            if (rows == 0 || cols == 0) return Err(CellErrorType::Calc);
+            if (rows * cols > kMaxArrayCells) return Err(CellErrorType::NumError);
+            Values cells;
+            const long long total = static_cast<long long>(rows * cols);
+            cells.reserve(static_cast<size_t>(total));
+            for (long long i = 0; i < total; ++i) cells.push_back(Num(start + step * static_cast<double>(i)));
+            return FormulaValue::Array(static_cast<int>(rows), static_cast<int>(cols), std::move(cells));
+        });
+
+    // RANDARRAY([rows], [columns], [min], [max], [whole_number])
+    Add(lib, "RANDARRAY", 0, 5, "Math", "An array of random numbers",
+        [](const CallArgs& a) -> FormulaValue {
+            FormulaValue error;
+            if (a.ScalarError(0, error)) return error;
+            const double rows = a.Omitted(0) ? 1.0 : std::trunc(a.Number(0));
+            const double cols = a.Omitted(1) ? 1.0 : std::trunc(a.Number(1));
+            const double low = a.Omitted(2) ? 0.0 : a.Number(2);
+            const double high = a.Omitted(3) ? 1.0 : a.Number(3);
+            const bool whole = !a.Omitted(4) && a.Value(4).ToNumber() != 0.0;
+            if (rows < 0 || cols < 0 || low > high) return Err(CellErrorType::ValueError);
+            if (rows == 0 || cols == 0) return Err(CellErrorType::Calc);
+            if (rows * cols > kMaxArrayCells) return Err(CellErrorType::NumError);
+            if (whole && (low != std::trunc(low) || high != std::trunc(high))) return Err(CellErrorType::ValueError);
+            thread_local std::mt19937_64 engine{std::random_device{}()};
+            Values cells;
+            const long long total = static_cast<long long>(rows * cols);
+            for (long long i = 0; i < total; ++i) {
+                if (whole) {
+                    std::uniform_int_distribution<long long> d(static_cast<long long>(low), static_cast<long long>(high));
+                    cells.push_back(Num(static_cast<double>(d(engine))));
+                } else {
+                    std::uniform_real_distribution<double> d(low, high);
+                    cells.push_back(Num(d(engine)));
+                }
+            }
+            return FormulaValue::Array(static_cast<int>(rows), static_cast<int>(cols), std::move(cells));
+        }, true);
+
+    // TRANSPOSE(array)
+    Add(lib, "TRANSPOSE", 1, 1, "Lookup", "An array with its rows and columns swapped",
+        [](const CallArgs& a) -> FormulaValue {
+            const Grid g = a.GetGrid(0);
+            if (g.Empty()) return Err(CellErrorType::ValueError);
+            Values cells;
+            for (int c = 0; c < g.cols; ++c) {
+                for (int r = 0; r < g.rows; ++r) cells.push_back(g.At(r, c));
+            }
+            return FormulaValue::Array(g.cols, g.rows, std::move(cells));
+        });
+
+    // LET and LAMBDA choose themselves which arguments to evaluate, so the
+    // evaluator runs them (FormulaEvaluator::EvaluateLet / EvaluateLambda);
+    // they are listed here for the function menu, the hints and the readers.
+    Add(lib, "LET", 3, 253, "Logical", "Names values for use in a calculation",
+        [](const CallArgs&) -> FormulaValue { return Err(CellErrorType::ValueError); });
+    Add(lib, "LAMBDA", 1, 254, "Logical", "A calculation with parameters, called like a function",
+        [](const CallArgs&) -> FormulaValue { return Err(CellErrorType::Calc); });
+
+    // ===== LAMBDA HELPERS =====
+
+    // MAP(array1, [array2, ...], lambda): the lambda on each element.
+    Add(lib, "MAP", 2, 255, "Logical", "A LAMBDA applied to each value of one or more arrays",
+        [](const CallArgs& a) -> FormulaValue {
+            const size_t fn = a.Count() - 1;
+            std::vector<Grid> grids;
+            for (size_t i = 0; i < fn; ++i) grids.push_back(a.GetGrid(i));
+            for (const Grid& g : grids) {
+                if (g.rows != grids.front().rows || g.cols != grids.front().cols) return Err(CellErrorType::ValueError);
+            }
+            const Grid& shape = grids.front();
+            Values cells;
+            for (size_t k = 0; k < shape.cells.size(); ++k) {
+                std::vector<FormulaValue> values;
+                for (const Grid& g : grids) values.push_back(g.cells[k]);
+                const FormulaValue r = Call(a, fn, values);
+                cells.push_back(r.IsArray() ? Err(CellErrorType::Calc) : r);
+            }
+            return FormulaValue::Array(shape.rows, shape.cols, std::move(cells));
+        });
+
+    // BYROW(array, lambda) / BYCOL(array, lambda): one value per row / column.
+    auto byLine = [](bool byColumn) {
+        return [byColumn](const CallArgs& a) -> FormulaValue {
+            const Grid g = a.GetGrid(0);
+            if (g.Empty()) return Err(CellErrorType::ValueError);
+            Values out;
+            for (const Values& line : Lines(g, byColumn)) {
+                const int rows = byColumn ? static_cast<int>(line.size()) : 1;
+                const int cols = byColumn ? 1 : static_cast<int>(line.size());
+                const FormulaValue r = Call(a, 1, {FormulaValue::Array(rows, cols, line)});
+                out.push_back(r.IsArray() ? Err(CellErrorType::Calc) : r);
+            }
+            const int n = static_cast<int>(out.size());
+            return byColumn ? FormulaValue::Array(1, n, std::move(out)) : FormulaValue::Array(n, 1, std::move(out));
+        };
+    };
+    Add(lib, "BYROW", 2, 2, "Logical", "A LAMBDA applied to each row of an array", byLine(false));
+    Add(lib, "BYCOL", 2, 2, "Logical", "A LAMBDA applied to each column of an array", byLine(true));
+
+    // REDUCE([initial_value], array, lambda) / SCAN(...): an accumulator
+    // carried over the values; SCAN keeps every step.
+    auto fold = [](bool keepSteps) {
+        return [keepSteps](const CallArgs& a) -> FormulaValue {
+            const bool hasInitial = a.Count() == 3;
+            const size_t arrayArg = hasInitial ? 1 : 0;
+            const Grid g = a.GetGrid(arrayArg);
+            FormulaValue acc = hasInitial && !a.Omitted(0) ? a.Value(0) : FormulaValue::Empty();
+            Values steps;
+            for (const FormulaValue& v : g.cells) {
+                acc = Call(a, arrayArg + 1, {acc, v});
+                if (keepSteps) steps.push_back(acc.IsArray() ? Err(CellErrorType::Calc) : acc);
+            }
+            if (keepSteps) return FormulaValue::Array(g.rows, g.cols, std::move(steps));
+            return acc;
+        };
+    };
+    Add(lib, "REDUCE", 2, 3, "Logical", "A LAMBDA folding an array into one value", fold(false));
+    Add(lib, "SCAN", 2, 3, "Logical", "A LAMBDA folding an array, every step kept", fold(true));
+
+    // MAKEARRAY(rows, columns, lambda(row, column))
+    Add(lib, "MAKEARRAY", 3, 3, "Logical", "An array whose values a LAMBDA gives",
+        [](const CallArgs& a) -> FormulaValue {
+            const double rows = std::trunc(a.Number(0)), cols = std::trunc(a.Number(1));
+            if (rows < 1 || cols < 1) return Err(CellErrorType::ValueError);
+            if (rows * cols > kMaxArrayCells) return Err(CellErrorType::NumError);
+            Values cells;
+            for (int r = 1; r <= static_cast<int>(rows); ++r) {
+                for (int c = 1; c <= static_cast<int>(cols); ++c) {
+                    const FormulaValue v = Call(a, 2, {Num(r), Num(c)});
+                    cells.push_back(v.IsArray() ? Err(CellErrorType::Calc) : v);
+                }
+            }
+            return FormulaValue::Array(static_cast<int>(rows), static_cast<int>(cols), std::move(cells));
+        });
+}
+
+// ===== TIME VALUE OF MONEY AND DEPRECIATION =====
+// The formulas and conventions are Excel's and LibreOffice's (sc/source/core/
+// tool/interpr2.cxx): type 0 pays at the end of a period, 1 at its start;
+// money paid out is negative.
+
+double FutureValue(double r, double n, double pmt, double pv, bool atStart) {
+    if (r == 0) return -(pv + pmt * n);
+    const double g = std::pow(1 + r, n);
+    return -(pv * g + pmt * (1 + r * (atStart ? 1 : 0)) * (g - 1) / r);
+}
+
+double Payment(double r, double n, double pv, double fv, bool atStart) {
+    if (r == 0) return -(pv + fv) / n;
+    const double g = std::pow(1 + r, n);
+    return -(r * (pv * g + fv)) / ((1 + r * (atStart ? 1 : 0)) * (g - 1));
+}
+
+// The interest part of payment `per` (LibreOffice's ScGetIpmt).
+double InterestPayment(double r, double per, double n, double pv, double fv, bool atStart) {
+    const double pmt = Payment(r, n, pv, fv, atStart);
+    double ipmt;
+    if (per == 1.0) ipmt = atStart ? 0.0 : -pv;
+    else if (atStart) ipmt = FutureValue(r, per - 2.0, pmt, pv, true) - pmt;
+    else ipmt = FutureValue(r, per - 1.0, pmt, pv, false);
+    return ipmt * r;
+}
+
+// The cash flows of IRR / MIRR / XIRR: numbers only from ranges.
+bool CashFlows(const CallArgs& a, size_t i, std::vector<double>& out, FormulaValue& error) {
+    for (const FormulaValue& v : a.Flat(i)) {
+        if (v.IsError()) { error = v; return false; }
+        if (v.IsNumber()) out.push_back(v.GetNumber());
+        else if (!a.IsRange(i)) out.push_back(v.ToNumber());
+    }
+    return true;
+}
+
+bool HasBothSigns(const std::vector<double>& v) {
+    bool positive = false, negative = false;
+    for (double x : v) { positive = positive || x > 0; negative = negative || x < 0; }
+    return positive && negative;
+}
+
+// Excel's DDB step (LibreOffice's ScGetGDA): the double-declining
+// depreciation of one period.
+double DecliningStep(double cost, double salvage, double life, double period, double factor) {
+    double rate = factor / life;
+    double oldValue;
+    if (rate >= 1.0) {
+        rate = 1.0;
+        oldValue = period == 1.0 ? cost : 0.0;
+    } else {
+        oldValue = cost * std::pow(1.0 - rate, period - 1.0);
+    }
+    const double newValue = cost * std::pow(1.0 - rate, period);
+    const double step = newValue < salvage ? oldValue - salvage : oldValue - newValue;
+    return step < 0.0 ? 0.0 : step;
+}
+
+// VDB over whole periods with the switch to straight line (ScInterVDB).
+double VdbWhole(double cost, double salvage, double life, double life1, double period, double factor) {
+    double vdb = 0.0;
+    const double intEnd = std::ceil(period);
+    const long loopEnd = static_cast<long>(intEnd);
+    double term = 0.0, sln = 0.0;
+    double remaining = cost - salvage;
+    bool straight = false;
+    for (long i = 1; i <= loopEnd; ++i) {
+        if (!straight) {
+            const double ddb = DecliningStep(cost, salvage, life, static_cast<double>(i), factor);
+            sln = remaining / (life1 - static_cast<double>(i - 1));
+            if (sln > ddb) {
+                term = sln;
+                straight = true;
+            } else {
+                term = ddb;
+                remaining -= ddb;
+            }
+        } else {
+            term = sln;
+        }
+        if (i == loopEnd) term *= (period + 1.0 - intEnd);
+        vdb += term;
+    }
+    return vdb;
+}
+
+void RegisterMoreFinance(FormulaFunctionLibrary& lib) {
+    // NPER(rate, pmt, pv, [fv], [type])
+    Add(lib, "NPER", 3, 5, "Financial", "Number of periods of an investment", [](const CallArgs& a) -> FormulaValue {
+        FormulaValue error;
+        if (a.ScalarError(0, error)) return error;
+        const double r = a.Number(0), pmt = a.Number(1), pv = a.Number(2), fv = a.Number(3);
+        const double type = a.Number(4) != 0 ? 1 : 0;
+        if (r == 0) {
+            if (pmt == 0) return Err(CellErrorType::NumError);
+            return Num(-(pv + fv) / pmt);
+        }
+        const double num = pmt * (1 + r * type) - fv * r;
+        const double den = pv * r + pmt * (1 + r * type);
+        if (den == 0 || num / den <= 0 || r <= -1) return Err(CellErrorType::NumError);
+        return Num(std::log(num / den) / std::log(1 + r));
+    });
+
+    // RATE(nper, pmt, pv, [fv], [type], [guess]): Newton's method from the
+    // guess (10%), within 1E-7 in at most 20 steps, as Excel documents it;
+    // #NUM! when it does not converge.
+    Add(lib, "RATE", 3, 6, "Financial", "Interest rate per period of an annuity", [](const CallArgs& a) -> FormulaValue {
+        FormulaValue error;
+        if (a.ScalarError(0, error)) return error;
+        const double n = a.Number(0), pmt = a.Number(1), pv = a.Number(2), fv = a.Number(3);
+        const double t = a.Number(4) != 0 ? 1 : 0;
+        double r = a.Omitted(5) ? 0.1 : a.Number(5);
+        if (n <= 0) return Err(CellErrorType::NumError);
+        auto f = [&](double x) {
+            if (std::fabs(x) < 1e-12) return pv + pmt * n + fv;
+            const double g = std::pow(1 + x, n);
+            return pv * g + pmt * (1 + x * t) * (g - 1) / x + fv;
+        };
+        auto df = [&](double x) {
+            if (std::fabs(x) < 1e-12) return pv * n + pmt * (t * n + n * (n - 1) / 2.0);
+            const double g = std::pow(1 + x, n);
+            const double dg = n * std::pow(1 + x, n - 1);
+            return pv * dg + pmt * t * (g - 1) / x + pmt * (1 + x * t) * (dg * x - (g - 1)) / (x * x);
+        };
+        for (int i = 0; i < 20; ++i) {
+            const double d = df(r);
+            if (d == 0 || !std::isfinite(d)) return Err(CellErrorType::NumError);
+            const double next = r - f(r) / d;
+            if (!std::isfinite(next) || next <= -1) return Err(CellErrorType::NumError);
+            if (std::fabs(next - r) < 1e-7) return Num(next);
+            r = next;
+        }
+        return Err(CellErrorType::NumError);
+    });
+
+    // IPMT / PPMT(rate, per, nper, pv, [fv], [type])
+    auto part = [](bool principal) {
+        return [principal](const CallArgs& a) -> FormulaValue {
+            FormulaValue error;
+            if (a.ScalarError(0, error)) return error;
+            const double r = a.Number(0), per = a.Number(1), n = a.Number(2), pv = a.Number(3);
+            const double fv = a.Number(4);
+            const bool atStart = a.Number(5) != 0;
+            if (per < 1 || per > n || n <= 0) return Err(CellErrorType::NumError);
+            const double ipmt = InterestPayment(r, per, n, pv, fv, atStart);
+            return Num(principal ? Payment(r, n, pv, fv, atStart) - ipmt : ipmt);
+        };
+    };
+    Add(lib, "IPMT", 4, 6, "Financial", "Interest part of one payment", part(false));
+    Add(lib, "PPMT", 4, 6, "Financial", "Principal part of one payment", part(true));
+
+    // CUMIPMT / CUMPRINC(rate, nper, pv, start_period, end_period, type)
+    auto cumulative = [](bool principal) {
+        return [principal](const CallArgs& a) -> FormulaValue {
+            FormulaValue error;
+            if (a.ScalarError(0, error)) return error;
+            const double r = a.Number(0), n = a.Number(1), pv = a.Number(2);
+            long start = static_cast<long>(std::trunc(a.Number(3)));
+            const long end = static_cast<long>(std::trunc(a.Number(4)));
+            const double type = a.Number(5);
+            if (r <= 0 || n <= 0 || pv <= 0 || start < 1 || end < start || end > n ||
+                (type != 0 && type != 1)) {
+                return Err(CellErrorType::NumError);
+            }
+            const bool atStart = type == 1;
+            const double pmt = Payment(r, n, pv, 0.0, atStart);
+            double sum = 0.0;
+            if (start == 1) {
+                if (principal) sum = atStart ? pmt : pmt + pv * r;
+                else if (!atStart) sum = -pv;
+                ++start;
+            }
+            for (long i = start; i <= end; ++i) {
+                const double d = static_cast<double>(i);
+                const double interest = atStart ? FutureValue(r, d - 2, pmt, pv, true) - pmt
+                                                : FutureValue(r, d - 1, pmt, pv, false);
+                sum += principal ? pmt - interest * r : interest;
+            }
+            return Num(principal ? sum : sum * r);
+        };
+    };
+    Add(lib, "CUMIPMT", 6, 6, "Financial", "Interest paid between two periods", cumulative(false));
+    Add(lib, "CUMPRINC", 6, 6, "Financial", "Principal paid between two periods", cumulative(true));
+
+    // IRR(values, [guess]): Newton's method, within 1E-7 in at most 20 steps
+    // (Excel's and LibreOffice's limits); #NUM! otherwise.
+    Add(lib, "IRR", 1, 2, "Financial", "Internal rate of return of cash flows", [](const CallArgs& a) -> FormulaValue {
+        std::vector<double> flows;
+        FormulaValue error;
+        if (!CashFlows(a, 0, flows, error)) return error;
+        if (!HasBothSigns(flows)) return Err(CellErrorType::NumError);
+        double r = a.Omitted(1) ? 0.1 : a.Number(1);
+        for (int i = 0; i < 20; ++i) {
+            double value = 0.0, slope = 0.0;
+            for (size_t k = 0; k < flows.size(); ++k) {
+                const double d = std::pow(1 + r, static_cast<double>(k));
+                value += flows[k] / d;
+                slope -= static_cast<double>(k) * flows[k] / (d * (1 + r));
+            }
+            if (slope == 0 || !std::isfinite(slope)) return Err(CellErrorType::NumError);
+            const double next = r - value / slope;
+            if (!std::isfinite(next) || next <= -1) return Err(CellErrorType::NumError);
+            if (std::fabs(next - r) < 1e-7) return Num(next);
+            r = next;
+        }
+        return Err(CellErrorType::NumError);
+    });
+
+    // XNPV(rate, values, dates) and XIRR(values, dates, [guess]): years of
+    // 365 days from the first date.
+    auto datedFlows = [](const CallArgs& a, size_t valuesArg, size_t datesArg, std::vector<double>& flows,
+                         std::vector<double>& days, FormulaValue& error) {
+        const Values values = a.Flat(valuesArg), dates = a.Flat(datesArg);
+        if (values.size() != dates.size() || values.empty()) { error = Err(CellErrorType::NumError); return false; }
+        for (size_t k = 0; k < values.size(); ++k) {
+            if (values[k].IsError()) { error = values[k]; return false; }
+            if (dates[k].IsError()) { error = dates[k]; return false; }
+            if (!values[k].IsNumber() && !values[k].IsBoolean()) { error = Err(CellErrorType::ValueError); return false; }
+            const double d = std::trunc(dates[k].ToNumber());
+            if (!ValidSerial(d)) { error = Err(CellErrorType::NumError); return false; }
+            flows.push_back(values[k].ToNumber());
+            days.push_back(d);
+        }
+        for (double d : days) {
+            if (d < days.front()) { error = Err(CellErrorType::NumError); return false; }
+        }
+        return true;
+    };
+    Add(lib, "XNPV", 3, 3, "Financial", "Net present value of dated cash flows",
+        [datedFlows](const CallArgs& a) -> FormulaValue {
+            FormulaValue error;
+            if (a.ScalarError(0, error)) return error;
+            const double r = a.Number(0);
+            if (r <= -1) return Err(CellErrorType::NumError);
+            std::vector<double> flows, days;
+            if (!datedFlows(a, 1, 2, flows, days, error)) return error;
+            double sum = 0.0;
+            for (size_t k = 0; k < flows.size(); ++k) sum += flows[k] / std::pow(1 + r, (days[k] - days[0]) / 365.0);
+            return Num(sum);
+        });
+    // XIRR: Newton's method within 1E-8 (Excel's 0.000001 percent) in at
+    // most 100 steps, as Excel documents it.
+    Add(lib, "XIRR", 2, 3, "Financial", "Internal rate of return of dated cash flows",
+        [datedFlows](const CallArgs& a) -> FormulaValue {
+            std::vector<double> flows, days;
+            FormulaValue error;
+            if (!datedFlows(a, 0, 1, flows, days, error)) return error;
+            if (!HasBothSigns(flows)) return Err(CellErrorType::NumError);
+            double r = a.Omitted(2) ? 0.1 : a.Number(2);
+            if (r <= -1) return Err(CellErrorType::NumError);
+            for (int i = 0; i < 100; ++i) {
+                double value = 0.0, slope = 0.0;
+                for (size_t k = 0; k < flows.size(); ++k) {
+                    const double years = (days[k] - days[0]) / 365.0;
+                    const double d = std::pow(1 + r, years);
+                    value += flows[k] / d;
+                    slope -= years * flows[k] / (d * (1 + r));
+                }
+                if (slope == 0 || !std::isfinite(slope)) return Err(CellErrorType::NumError);
+                double next = r - value / slope;
+                if (!std::isfinite(next)) return Err(CellErrorType::NumError);
+                if (next <= -1) next = (r - 1) / 2;   // stay above -100%
+                if (std::fabs(next - r) < 1e-8) return Num(next);
+                r = next;
+            }
+            return Err(CellErrorType::NumError);
+        });
+
+    // MIRR(values, finance_rate, reinvest_rate)
+    Add(lib, "MIRR", 3, 3, "Financial", "Modified internal rate of return", [](const CallArgs& a) -> FormulaValue {
+        std::vector<double> flows;
+        FormulaValue error;
+        if (!CashFlows(a, 0, flows, error)) return error;
+        if (a.ScalarError(1, error)) return error;
+        const double finance = a.Number(1), reinvest = a.Number(2);
+        const double n = static_cast<double>(flows.size());
+        if (flows.size() < 2) return Err(CellErrorType::DivisionByZero);
+        double positive = 0.0, negative = 0.0;
+        for (size_t k = 0; k < flows.size(); ++k) {
+            const double i = static_cast<double>(k);
+            if (flows[k] > 0) positive += flows[k] * std::pow(1 + reinvest, n - 1 - i);
+            else negative += flows[k] / std::pow(1 + finance, i);
+        }
+        if (positive == 0 || negative == 0) return Err(CellErrorType::DivisionByZero);
+        return Num(std::pow(-positive / negative, 1.0 / (n - 1)) - 1);
+    });
+
+    // SLN(cost, salvage, life) and SYD(cost, salvage, life, per)
+    Add(lib, "SLN", 3, 3, "Financial", "Straight-line depreciation for one period", [](const CallArgs& a) -> FormulaValue {
+        FormulaValue error;
+        if (a.ScalarError(0, error)) return error;
+        const double life = a.Number(2);
+        if (life == 0) return Err(CellErrorType::DivisionByZero);
+        return Num((a.Number(0) - a.Number(1)) / life);
+    });
+    Add(lib, "SYD", 4, 4, "Financial", "Sum-of-years' digits depreciation for a period", [](const CallArgs& a) -> FormulaValue {
+        FormulaValue error;
+        if (a.ScalarError(0, error)) return error;
+        const double cost = a.Number(0), salvage = a.Number(1), life = a.Number(2), per = a.Number(3);
+        if (life <= 0 || per <= 0 || per > life) return Err(CellErrorType::NumError);
+        return Num((cost - salvage) * (life - per + 1) * 2 / (life * (life + 1)));
+    });
+
+    // DB(cost, salvage, life, period, [month]): fixed-declining balance, the
+    // rate rounded to three decimals.
+    Add(lib, "DB", 4, 5, "Financial", "Fixed-declining balance depreciation", [](const CallArgs& a) -> FormulaValue {
+        FormulaValue error;
+        if (a.ScalarError(0, error)) return error;
+        const double cost = a.Number(0), salvage = a.Number(1), life = a.Number(2), period = a.Number(3);
+        const double months = a.Omitted(4) ? 12.0 : a.Number(4);
+        if (months < 1 || months > 12 || life > 1200 || salvage < 0 || period > life + 1 || salvage > cost ||
+            cost <= 0 || life <= 0 || period <= 0) {
+            return Err(CellErrorType::NumError);
+        }
+        double rate = 1.0 - std::pow(salvage / cost, 1.0 / life);
+        rate = std::floor(rate * 1000.0 + 0.5) / 1000.0;
+        const double first = cost * rate * months / 12.0;
+        if (std::floor(period) == 1) return Num(first);
+        double total = first, db = 0.0;
+        const int last = static_cast<int>(std::floor(std::min(life, period)));
+        for (int i = 2; i <= last; ++i) {
+            db = (cost - total) * rate;
+            total += db;
+        }
+        if (period > life) db = (cost - total) * rate * (12.0 - months) / 12.0;
+        return Num(db);
+    });
+
+    // DDB(cost, salvage, life, period, [factor])
+    Add(lib, "DDB", 4, 5, "Financial", "Double-declining balance depreciation", [](const CallArgs& a) -> FormulaValue {
+        FormulaValue error;
+        if (a.ScalarError(0, error)) return error;
+        const double cost = a.Number(0), salvage = a.Number(1), life = a.Number(2), period = a.Number(3);
+        const double factor = a.Omitted(4) ? 2.0 : a.Number(4);
+        if (cost < 0 || salvage < 0 || factor <= 0 || salvage > cost || period < 1 || period > life || life <= 0) {
+            return Err(CellErrorType::NumError);
+        }
+        return Num(DecliningStep(cost, salvage, life, period, factor));
+    });
+
+    // VDB(cost, salvage, life, start_period, end_period, [factor], [no_switch])
+    Add(lib, "VDB", 5, 7, "Financial", "Declining balance depreciation between two periods",
+        [](const CallArgs& a) -> FormulaValue {
+            FormulaValue error;
+            if (a.ScalarError(0, error)) return error;
+            double cost = a.Number(0);
+            const double salvage = a.Number(1), life = a.Number(2), start = a.Number(3), end = a.Number(4);
+            const double factor = a.Omitted(5) ? 2.0 : a.Number(5);
+            const bool noSwitch = !a.Omitted(6) && a.Value(6).ToNumber() != 0.0;
+            if (start < 0 || end < start || end > life || cost < 0 || salvage > cost || factor <= 0 || life <= 0) {
+                return Err(CellErrorType::NumError);
+            }
+            const double intStart = std::floor(start), intEnd = std::ceil(end);
+            double vdb = 0.0;
+            if (noSwitch) {
+                const long loopStart = static_cast<long>(intStart), loopEnd = static_cast<long>(intEnd);
+                for (long i = loopStart + 1; i <= loopEnd; ++i) {
+                    double term = DecliningStep(cost, salvage, life, static_cast<double>(i), factor);
+                    if (i == loopStart + 1) term *= std::min(end, intStart + 1.0) - start;
+                    else if (i == loopEnd) term *= end + 1.0 - intEnd;
+                    vdb += term;
+                }
+                return Num(vdb);
+            }
+            double partial = 0.0;
+            if (start > intStart) {   // the part of the first period before start
+                const double left = cost - VdbWhole(cost, salvage, life, life, intStart, factor);
+                partial += (start - intStart) * VdbWhole(left, salvage, life, life - intStart, 1.0, factor);
+            }
+            if (end < intEnd) {   // the part of the last period after end
+                const double tempStart = intEnd - 1.0;
+                const double left = cost - VdbWhole(cost, salvage, life, life, tempStart, factor);
+                partial += (intEnd - end) * VdbWhole(left, salvage, life, life - tempStart, intEnd - tempStart, factor);
+            }
+            cost -= VdbWhole(cost, salvage, life, life, intStart, factor);
+            vdb = VdbWhole(cost, salvage, life, life - intStart, intEnd - intStart, factor);
+            return Num(vdb - partial);
+        });
+
+    // EFFECT(nominal_rate, npery) and NOMINAL(effect_rate, npery)
+    Add(lib, "EFFECT", 2, 2, "Financial", "Effective annual interest rate", [](const CallArgs& a) -> FormulaValue {
+        FormulaValue error;
+        if (a.ScalarError(0, error)) return error;
+        const double rate = a.Number(0), periods = std::trunc(a.Number(1));
+        if (rate <= 0 || periods < 1) return Err(CellErrorType::NumError);
+        return Num(std::pow(1 + rate / periods, periods) - 1);
+    });
+    Add(lib, "NOMINAL", 2, 2, "Financial", "Nominal annual interest rate", [](const CallArgs& a) -> FormulaValue {
+        FormulaValue error;
+        if (a.ScalarError(0, error)) return error;
+        const double rate = a.Number(0), periods = std::trunc(a.Number(1));
+        if (rate <= 0 || periods < 1) return Err(CellErrorType::NumError);
+        return Num((std::pow(1 + rate, 1.0 / periods) - 1) * periods);
+    });
+}
+
 } // namespace
+
+// The functions that take single values only: an array or a range given for
+// one of their arguments calls them once per element (=ABS(A1:A3)).
+void FormulaFunctionLibrary::ApplyArrayBehaviour() {
+    static const char* const kElementWise[] = {
+        "ABS", "ACOS", "ASIN", "ATAN", "ATAN2", "CEILING", "CHAR", "CLEAN", "CODE", "COMBIN", "COS",
+        "COSH", "DATE", "DATEDIF", "DATEVALUE", "DAY", "DAYS", "DEGREES", "EDATE", "EOMONTH", "EVEN",
+        "EXACT", "EXP", "FACT", "FIND", "FLOOR", "HOUR", "IF", "IFERROR", "IFNA", "INT", "ISBLANK",
+        "ISERR", "ISERROR", "ISEVEN", "ISLOGICAL", "ISNA", "ISNONTEXT", "ISNUMBER", "ISODD", "ISTEXT",
+        "LEFT", "LEN", "LN", "LOG", "LOG10", "LOWER", "MID", "MINUTE", "MOD", "MONTH", "MROUND", "N",
+        "NOT", "ODD", "POWER", "PROPER", "QUOTIENT", "RADIANS", "REPLACE", "REPT", "RIGHT", "ROUND",
+        "ROUNDDOWN", "ROUNDUP", "SEARCH", "SECOND", "SIGN", "SIN", "SINH", "SQRT", "SUBSTITUTE", "T",
+        "TAN", "TANH", "TEXT", "TIME", "TRIM", "TRUNC", "UPPER", "VALUE", "WEEKDAY", "YEAR",
+    };
+    for (const char* name : kElementWise) {
+        auto it = functions_.find(name);
+        if (it != functions_.end()) it->second.elementWise = true;
+    }
+}
 
 void FormulaFunctionLibrary::RegisterExcelFunctions() {
     RegisterLookups(*this);
@@ -1444,6 +2290,8 @@ void FormulaFunctionLibrary::RegisterExcelFunctions() {
     RegisterDates(*this);
     RegisterLogicAndInformation(*this);
     RegisterFinance(*this);
+    RegisterMoreFinance(*this);
+    RegisterDynamicArrays(*this);
 }
 
 
@@ -1526,6 +2374,28 @@ void FormulaFunctionLibrary::ApplyArgumentNames() {
         { "WEEKDAY", "serial_number, return_type?" },
         { "XLOOKUP", "lookup_value, lookup_array, return_array, if_not_found?, match_mode?, search_mode?" },
         { "XOR", "logical1, logical2?" }, { "YEAR", "serial_number" },
+        // Dynamic arrays and LAMBDA
+        { "FILTER", "array, include, if_empty?" },
+        { "SORT", "array, sort_index?, sort_order?, by_col?" },
+        { "SORTBY", "array, by_array1, sort_order1?" }, { "UNIQUE", "array, by_col?, exactly_once?" },
+        { "SEQUENCE", "rows, columns?, start?, step?" },
+        { "RANDARRAY", "rows?, columns?, min?, max?, whole_number?" }, { "TRANSPOSE", "array" },
+        { "XMATCH", "lookup_value, lookup_array, match_mode?, search_mode?" },
+        { "LET", "name1, name_value1, calculation_or_name2" }, { "LAMBDA", "parameter_or_calculation" },
+        { "MAP", "array1, lambda_or_array2" }, { "BYROW", "array, lambda" }, { "BYCOL", "array, lambda" },
+        { "REDUCE", "initial_value?, array, lambda" }, { "SCAN", "initial_value?, array, lambda" },
+        { "MAKEARRAY", "rows, cols, lambda" },
+        // Financial
+        { "NPER", "rate, pmt, pv, fv?, type?" }, { "RATE", "nper, pmt, pv, fv?, type?, guess?" },
+        { "IPMT", "rate, per, nper, pv, fv?, type?" }, { "PPMT", "rate, per, nper, pv, fv?, type?" },
+        { "CUMIPMT", "rate, nper, pv, start_period, end_period, type" },
+        { "CUMPRINC", "rate, nper, pv, start_period, end_period, type" },
+        { "IRR", "values, guess?" }, { "XIRR", "values, dates, guess?" },
+        { "XNPV", "rate, values, dates" }, { "MIRR", "values, finance_rate, reinvest_rate" },
+        { "SLN", "cost, salvage, life" }, { "SYD", "cost, salvage, life, per" },
+        { "DB", "cost, salvage, life, period, month?" }, { "DDB", "cost, salvage, life, period, factor?" },
+        { "VDB", "cost, salvage, life, start_period, end_period, factor?, no_switch?" },
+        { "EFFECT", "nominal_rate, npery" }, { "NOMINAL", "effect_rate, npery" },
     };
     for (const auto& [name, spec] : kArguments) {
         auto it = functions_.find(name);

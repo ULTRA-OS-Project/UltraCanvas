@@ -1,6 +1,7 @@
 // core/UltraCanvasProfilePicture.cpp
 // The round profile picture, its editor row, the cropper and the crop
 // dialog - see the header.
+// Version: 1.1.1 - no identifier named small (a <windows.h> macro: char, from the RPC headers)
 // Version: 1.1.0 - CropProfilePictureWithin: lower quality, then fewer pixels, until the file fits
 // Version: 1.0.0
 // Last Modified: 2026-11-25
@@ -833,8 +834,8 @@ void ShowProfilePictureCropDialog(UltraCanvasWindowBase* parent, const std::stri
     previewText->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     previews->AddChild(previewText);
     auto large = std::make_shared<UltraCanvasProfilePicture>("ProfilePicturePreviewList", 40.0f);
-    auto small = std::make_shared<UltraCanvasProfilePicture>("ProfilePicturePreviewMessage", 28.0f);
-    for (auto& p : {large, small}) {
+    auto compact = std::make_shared<UltraCanvasProfilePicture>("ProfilePicturePreviewMessage", 28.0f);
+    for (auto& p : {large, compact}) {
         p->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         p->SetStyle(style);
         p->SetPictureFrame(sourcePath, cropper->GetFrame());
@@ -849,7 +850,7 @@ void ShowProfilePictureCropDialog(UltraCanvasWindowBase* parent, const std::stri
     UltraCanvasProfilePictureCropper* crop = cropper.get();
     UltraCanvasSlider* slider = zoom.get();
     UltraCanvasProfilePicture* largeRaw = large.get();
-    UltraCanvasProfilePicture* smallRaw = small.get();
+    UltraCanvasProfilePicture* smallRaw = compact.get();
     auto frame = std::make_shared<ProfilePictureFrame>(cropper->GetFrame());
     cropper->onFrameChanged = [slider, largeRaw, smallRaw, sourcePath, frame, syncing](const ProfilePictureFrame& f) {
         *frame = f;

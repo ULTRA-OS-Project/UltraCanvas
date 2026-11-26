@@ -1,5 +1,8 @@
 // core/UltraCanvasPresentationPptx.cpp
 // PowerPoint (.pptx) reader - see UltraCanvasPresentationPptx.h.
+// Version: 1.5.0 - group shapes kept: each shape's groupPath and the slide's groupNames, a turned
+//                  group's shapes turned with it; PptxGroupIds, PptxNewGroupId; the speaker notes not
+//                  bulleted unless they say so
 // Version: 1.4.0 - the masters and layouts (names, types, backgrounds, placeholders with their
 //                  prompt text) into PptxPresentation::masters / layouts, each slide's layoutIndex;
 //                  p:transition (also p14 in mc:AlternateContent) into PptxSlide::transition;
@@ -317,6 +320,9 @@ private:
     std::string majorFont_, minorFont_;                  // the theme's heading and body typefaces
     std::map<std::string, std::string> externalLinks_;   // the slide's hyperlink relationships: id -> target
     std::map<std::string, std::string> slideLinks_;      // ... to another slide: id -> "#slideN"
+    std::map<int, std::string> groupNames_;   // the slide's groups being read
+    int nextGroupId_ = 1;
+    bool readingNotes_ = false;   // the notes page's text: not bulleted by default
     std::map<std::string, int> slideNumbers_;            // slide part -> its number
     tinyxml2::XMLDocument tableStyles_;                  // ppt/tableStyles.xml
     bool tableStylesRead_ = false;
@@ -719,7 +725,11 @@ private:
         if (slide.background.empty() && master_) slide.background = master_->places.background;
         slide.textColor = SchemeColour("tx1");
 
+        groupNames_.clear();
+        nextGroupId_ = 1;
         ReadTree(Child(Child(root, "cSld"), "spTree"), rels, slide.shapes, Transform{}, out);
+        slide.groupNames = std::move(groupNames_);
+        groupNames_.clear();
         for (const PptxShape& shape : slide.shapes) {
             if (shape.kind == PptxShapeKind::Title && slide.title.empty()) {
                 for (const PptxParagraph& p : shape.paragraphs) {
@@ -738,7 +748,9 @@ private:
             const Template* layout = layout_;
             master_ = nullptr;   // the notes page has its own master; its styles do not matter here
             layout_ = nullptr;
+            readingNotes_ = true;
             ReadTree(Child(Child(notesDoc.RootElement(), "cSld"), "spTree"), {}, shapes, Transform{}, out);
+            readingNotes_ = false;
             master_ = master;
             layout_ = layout;
             for (PptxShape& shape : shapes)
@@ -781,6 +793,26 @@ private:
         return combined;
     }
 
+    // A turned group (its xfrm's rot) turns its shapes about its centre on
+    // the slide: each one's centre goes round, and each turns as much.
+    static void TurnGroup(const tinyxml2::XMLElement* grpSpPr, const Transform& outer, std::vector<PptxShape>& members) {
+        const tinyxml2::XMLElement* xfrm = Child(grpSpPr, "xfrm");
+        const double degrees = AttrInt(xfrm, "rot") / 60000.0;
+        const tinyxml2::XMLElement* off = Child(xfrm, "off");
+        const tinyxml2::XMLElement* ext = Child(xfrm, "ext");
+        if (std::fabs(degrees) < 0.001 || !off || !ext) return;
+        const double cx = (AttrInt(off, "x") + AttrInt(ext, "cx") / 2.0) * outer.scaleX + outer.dx;
+        const double cy = (AttrInt(off, "y") + AttrInt(ext, "cy") / 2.0) * outer.scaleY + outer.dy;
+        const double a = degrees * 3.14159265358979323846 / 180.0;
+        for (PptxShape& shape : members) {
+            const double sx = shape.x + shape.width / 2.0 - cx, sy = shape.y + shape.height / 2.0 - cy;
+            const double nx = cx + sx * std::cos(a) - sy * std::sin(a), ny = cy + sx * std::sin(a) + sy * std::cos(a);
+            shape.x = static_cast<int64_t>(std::llround(nx - shape.width / 2.0));
+            shape.y = static_cast<int64_t>(std::llround(ny - shape.height / 2.0));
+            shape.rotationDeg = std::fmod(shape.rotationDeg + degrees + 360.0, 360.0);
+        }
+    }
+
     void ReadTree(const tinyxml2::XMLElement* tree, const std::map<std::string, std::string>& rels,
                   std::vector<PptxShape>& out, const Transform& transform, PptxPresentation& deck, int depth = 0) {
         if (depth > 16) return;
@@ -798,7 +830,20 @@ private:
                     out.push_back(std::move(shape));
                 }
             } else if (Is(e, "grpSp")) {
-                ReadTree(e, rels, out, GroupTransform(Child(e, "grpSpPr"), transform), deck, depth + 1);
+                // A group: its shapes placed on the slide, and kept together
+                // as a group (PptxShape::groupPath) an editor moves as one.
+                std::vector<PptxShape> members;
+                const tinyxml2::XMLElement* grpSpPr = Child(e, "grpSpPr");
+                ReadTree(e, rels, members, GroupTransform(grpSpPr, transform), deck, depth + 1);
+                if (members.empty()) continue;
+                TurnGroup(grpSpPr, transform, members);
+                const int id = nextGroupId_++;
+                const std::string name = Attr(Child(Child(e, "nvGrpSpPr"), "cNvPr"), "name");
+                if (!name.empty()) groupNames_[id] = name;
+                for (PptxShape& member : members) {
+                    member.groupPath.insert(member.groupPath.begin(), id);
+                    out.push_back(std::move(member));
+                }
             } else if (Is(e, "AlternateContent")) {
                 // Markup Compatibility (ECMA-376 Part 3): PowerPoint wraps
                 // what an older reader may not know - an equation, a newer
@@ -1449,7 +1494,9 @@ private:
             if (inherited.align >= 0) para.align = static_cast<PptxAlign>(inherited.align);
             inherited.font = Typeface(inherited.font.empty() ? std::string("+mn-lt") : inherited.font);
 
-            para.bullet = inherited.bullet < 0 ? bulletedByDefault : inherited.bullet > 0;
+            // The notes page's body is not bulleted unless it says so (its
+            // notes master's text style; the slide master's does not apply).
+            para.bullet = inherited.bullet < 0 ? bulletedByDefault && !readingNotes_ : inherited.bullet > 0;
             para.numbered = inherited.bullet == 2;
             if (para.bullet) {
                 para.bulletChar = inherited.bullet == 1 ? inherited.bulletChar : "";

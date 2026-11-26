@@ -197,7 +197,6 @@
   "In the message field": "入力欄の中",
   "Incoming call from {0}": "{0} からの着信",
   "Incoming video call from {0}": "{0} からのビデオ通話の着信",
-  "Insert": "挿入",
   "Insert a location (OpenStreetMap)": "場所を挿入(OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "スクリーンショットを挿入: ウィンドウを選ぶか、領域をドラッグします",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "最後の行の IRC は、ニックネームでサーバーに接続します - アドレスが irc:// で始まらない限り TLS で - ニックネームが登録済みならパスワードでサインインします。参加するには「追加」に #チャンネル を入力します。",

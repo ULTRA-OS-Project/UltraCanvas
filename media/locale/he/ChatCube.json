@@ -200,7 +200,6 @@
   "In the message field": "בשדה ההודעה",
   "Incoming call from {0}": "שיחה נכנסת מ-{0}",
   "Incoming video call from {0}": "שיחת וידאו נכנסת מ-{0}",
-  "Insert": "הוספה",
   "Insert a location (OpenStreetMap)": "הוספת מיקום (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "הוספת צילום מסך: יש לבחור חלון או לגרור אזור",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC, בשורה האחרונה, מתחבר לשרת עם הכינוי שלכם - דרך TLS אלא אם הכתובת מתחילה ב-irc:// - ומתחבר עם הסיסמה כשהכינוי רשום. הקלידו #ערוץ בהוספה כדי להצטרף.",

@@ -1,5 +1,7 @@
 // core/UltraCanvasPresentationOdp.cpp
 // OpenDocument presentation (.odp / .otp / .fodp) reader - see UltraCanvasPresentationOdp.h.
+// Version: 1.5.0 - draw:g kept as a group (PptxShape::groupPath, PptxSlide::groupNames); a picture's
+//                  crop from its style's fo:clip
 // Version: 1.4.0 - the master pages (name, background, placeholder frames) into
 //                  PptxPresentation::masters, the presentation page layouts (each with the master
 //                  its slides use; one per master page when the deck has none) into layouts, each
@@ -728,7 +730,11 @@ public:
                     slide.background =
                         Background(Look(context_).With(context_.master, "drawing-page", master->second.pageStyle));
             }
+            groupNames_.clear();
+            nextGroupId_ = 1;
             ReadShapes(page, slide.shapes);
+            slide.groupNames = std::move(groupNames_);
+            groupNames_.clear();
             for (const PptxShape& shape : slide.shapes) {
                 if (shape.kind != PptxShapeKind::Title || !slide.title.empty()) continue;
                 for (const PptxParagraph& p : shape.paragraphs) {
@@ -784,6 +790,8 @@ private:
     const OdpContext& context_;
     PptxPresentation& out_;
     int inlinePictures_ = 0;
+    std::map<int, std::string> groupNames_;   // the page's groups being read
+    int nextGroupId_ = 1;
     // The styles the shapes being read see: the content's, or (a master
     // page's) styles.xml's.
     const StyleScope* scope_ = &context_.content;
@@ -1291,8 +1299,19 @@ private:
 
     void ReadShapes(const tinyxml2::XMLElement* parent, std::vector<PptxShape>& out) {
         for (auto* e = parent ? parent->FirstChildElement() : nullptr; e; e = e->NextSiblingElement()) {
-            if (Is(e, "g") || Is(e, "a")) {
-                ReadShapes(e, out);   // a group, or shapes behind a hyperlink
+            if (Is(e, "g")) {
+                // A group: its shapes (on the page already), kept together.
+                std::vector<PptxShape> members;
+                ReadShapes(e, members);
+                if (members.empty()) continue;
+                const int id = nextGroupId_++;
+                if (const std::string name = Attr(e, "name", "draw"); !name.empty()) groupNames_[id] = name;
+                for (PptxShape& member : members) {
+                    member.groupPath.insert(member.groupPath.begin(), id);
+                    out.push_back(std::move(member));
+                }
+            } else if (Is(e, "a")) {
+                ReadShapes(e, out);   // shapes behind a hyperlink
             } else if (Is(e, "frame")) {
                 ReadFrame(e, out);
             } else if (Is(e, "line") || Is(e, "connector")) {
@@ -1460,6 +1479,39 @@ private:
         return shapeLook.With(*scope_, "paragraph", Attr(e, "text-style-name", "draw"));
     }
 
+    // A picture's crop: fo:clip="rect(top, right, bottom, left)", lengths of
+    // the picture at its own size (PptxPictureNaturalSize), as shares.
+    void ReadClip(const Look& look, PptxShape& shape) {
+        std::string clip = look.Get("graphic-properties", "clip", "fo");
+        const size_t open = clip.find('('), close = clip.rfind(')');
+        if (clip.rfind("rect", 0) != 0 || open == std::string::npos || close == std::string::npos || close < open) return;
+        clip = clip.substr(open + 1, close - open - 1);
+        std::vector<int64_t> sides;
+        std::string word;
+        for (size_t i = 0; i <= clip.size(); ++i) {
+            if (i == clip.size() || clip[i] == ',' || std::isspace(static_cast<unsigned char>(clip[i]))) {
+                if (!word.empty()) sides.push_back(word == "auto" ? 0 : LengthToEmu(word));
+                word.clear();
+            } else {
+                word += clip[i];
+            }
+        }
+        if (sides.size() != 4) return;
+        std::vector<uint8_t> bytes;
+        if (const auto kept = out_.pictures.find(shape.pictureTarget); kept != out_.pictures.end()) bytes = kept->second;
+        else if (std::string raw; context_.readEntry && context_.readEntry(shape.pictureTarget, raw))
+            bytes.assign(raw.begin(), raw.end());
+        int64_t width = 0, height = 0;
+        if (!PptxPictureNaturalSize(bytes, width, height)) return;
+        auto share = [](int64_t length, int64_t whole) {
+            return std::clamp(static_cast<double>(length) / static_cast<double>(whole), 0.0, 0.99);
+        };
+        shape.cropTop = share(sides[0], height);
+        shape.cropRight = share(sides[1], width);
+        shape.cropBottom = share(sides[2], height);
+        shape.cropLeft = share(sides[3], width);
+    }
+
     void ReadFrame(const tinyxml2::XMLElement* frame, std::vector<PptxShape>& out) {
         const std::string presentationClass = Attr(frame, "class", "presentation");
         if (masterPage_) {
@@ -1561,6 +1613,7 @@ private:
                 if (context_.readEntry(href, bytes) && !bytes.empty())
                     out_.pictures[href] = std::vector<uint8_t>(bytes.begin(), bytes.end());
             }
+            ReadClip(look, shape);
             const tinyxml2::XMLElement* desc = Child(frame, "desc");
             const tinyxml2::XMLElement* title = Child(frame, "title");
             shape.altText = desc && desc->GetText() ? desc->GetText()

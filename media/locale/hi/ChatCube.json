@@ -198,7 +198,6 @@
   "In the message field": "संदेश फ़ील्ड में",
   "Incoming call from {0}": "{0} से आने वाली कॉल",
   "Incoming video call from {0}": "{0} से आने वाली वीडियो कॉल",
-  "Insert": "डालें",
   "Insert a location (OpenStreetMap)": "स्थान डालें (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "स्क्रीनशॉट डालें: कोई विंडो चुनें या कोई क्षेत्र खींचें",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "अंतिम पंक्ति में IRC आपके निकनेम से सर्वर से जुड़ता है - TLS पर, जब तक पता irc:// से शुरू न हो - और निकनेम पंजीकृत होने पर आपके पासवर्ड से साइन इन करता है। शामिल होने के लिए जोड़ें में #चैनल लिखें।",

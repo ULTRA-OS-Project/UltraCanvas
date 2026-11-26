@@ -2816,6 +2816,22 @@ if (BUILD_TESTS)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     set_tests_properties(HTMLBuilderFuzzSmoke PROPERTIES TIMEOUT 600)
 
+    # Mutated PowerPoint 97-2003 streams through the .ppt reader: a crash or
+    # a hang fails it (Tests/Fuzz/README.md).
+    add_executable(PptReaderFuzzSmoke Tests/Fuzz/PptReaderFuzz.cpp Tests/Fuzz/FuzzSmokeMain.cpp)
+    target_include_directories(PptReaderFuzzSmoke PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(PptReaderFuzzSmoke PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(PptReaderFuzzSmoke PRIVATE cxx_std_20)
+    set_target_properties(PptReaderFuzzSmoke PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PptReaderFuzzSmoke
+             COMMAND PptReaderFuzzSmoke -runs=1500 -seed=7 -max_len=131072
+                     -dict=${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/ppt.dict
+                     ${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/corpus/ppt
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(PptReaderFuzzSmoke PROPERTIES TIMEOUT 600)
+
     # Every UltraCanvasUIElement constructor makes a border-box element: a
     # widget's size includes its padding and border however it was built.
     add_executable(UIElementBoxSizingTest Tests/UIElementBoxSizingTest.cpp)

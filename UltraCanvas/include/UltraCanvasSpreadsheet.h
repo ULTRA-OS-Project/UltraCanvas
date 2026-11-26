@@ -1,5 +1,14 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.20.0 - pivot tables: InsertPivotTable, SetPivotTable, RemovePivotTable, RefreshPivotTables,
+//                  SetPivotTableSource, DrillDownPivotCell, the field list (ShowInsertPivotTableDialog,
+//                  ShowPivotTableDialog); a pivot's cells are read-only and follow its source's changes
+// Version: 1.19.0 - every chart of the framework: ShowInsertChartDialog / ShowChartTypeDialog (the chart
+//                  gallery), InsertChartOfTypeFromSelection; the charts drawn by any chart element
+// Version: 1.18.0 - templates: LoadFromFile reads .ots, .xltx and .xltm, SaveToFile writes .ots and .xltx
+//                  with their template media types; IsSpreadsheetTemplateExtension
+// Version: 1.17.0 - a table to assistive technology (rows and cells as parts, the active cell focused and
+//                  announced); Copy / Cut a selected chart onto the office clipboard (CopyChartToClipboard)
 // Version: 1.16.0 - conditional formats and validation rules as undo steps (RulesChange): AddConditionalFormat,
 //                  SetConditionalFormatRule, RemoveConditionalFormatRule, the selection calls and the dialogs
 // Version: 1.15.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
@@ -50,6 +59,7 @@ namespace UltraCanvas {
 class UltraCanvasTextInput;
 class UltraCanvasMenu;
 class UltraCanvasChartEngineElement;
+class UltraCanvasUIElement;
 
 // Forward declarations
 class IRenderContext;
@@ -128,6 +138,13 @@ enum class SpreadsheetEditMode {
     AutoFilling
 };
 
+// True for the extensions of a spreadsheet template - "ots" (OpenDocument),
+// "xltx" and "xltm" (Excel) - given as an extension (with or without its dot)
+// or a whole path, any case. A template is its workbook's package under the
+// template's media type: LoadFromFile reads all three, SaveToFile writes
+// .ots and .xltx as templates; a .xltm is read, not written.
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath);
+
 // ============================================================================
 // SPREADSHEET COMPONENT
 // ============================================================================
@@ -170,6 +187,12 @@ public:
     // A chart was double-clicked: (index). Unset, the chart's properties
     // dialog opens (ShowChartPropertiesDialog).
     std::function<void(int)> onChartDoubleClick;
+    // A pivot table was inserted, changed, refreshed or removed.
+    std::function<void()> onPivotTablesChange;
+    // A value or total of a pivot was double-clicked: (row, col). Unset, a
+    // new sheet shows the source rows behind it (DrillDownPivotCell); any
+    // other cell of a pivot opens its field list (ShowPivotTableDialog).
+    std::function<void(int, int)> onPivotDrillDown;
     
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
@@ -218,6 +241,10 @@ private:
     std::string clipboardSheetName_;
     std::vector<std::vector<SpreadsheetCell>> clipboardData_;
     std::string clipboardText_;   // what Copy put on the system clipboard as text
+    // Assistive technology's view of the grid (made on first request).
+    class AccessibleGrid;
+    std::shared_ptr<AccessibleGrid> accessibleGrid_;
+    void AnnounceAccessibleSelection();
     bool PasteValues(const std::vector<std::vector<std::string>>& rows);
     
     std::stack<SpreadsheetUndoAction> undoStack_;
@@ -319,7 +346,21 @@ private:
     Rect2Di chartDragBox_;               // the chart's box in sheet pixels when the drag began
     std::vector<SpreadsheetChart> chartsBeforeDrag_;
     bool chartsDirty_ = true;
-    std::map<uint64_t, std::shared_ptr<UltraCanvasChartEngineElement>> chartCache_;
+    // Pivot tables (UltraCanvasSpreadsheetPivot.h): the sheets whose cells
+    // changed since the pivots last read them, and whether the pivots are
+    // writing their own cells (which is no change to a source).
+    std::vector<std::string> pivotSourcesChanged_;
+    bool writingPivots_ = false;
+    void NotePivotSourceChange(const std::string& sheetName, const CellRange& range);
+    bool WritePivotTable(SpreadsheetSheet& sheet, SpreadsheetPivotTable& pivot, std::string* problem);
+    // True, and a message on the status line, when `range` of the active
+    // sheet reaches into a pivot's cells, which only the pivot writes.
+    bool RefusePivotEdit(const CellRange& range);
+    // The active sheet's columns under `pivot` fitted to what they hold.
+    void FitPivotColumns(const SpreadsheetPivotTable& pivot);
+    // A double-click on a pivot's cell: true when it was one.
+    bool HandlePivotDoubleClick(int row, int col);
+    std::map<uint64_t, std::shared_ptr<UltraCanvasUIElement>> chartCache_;
     bool HandleChartEvent(const UCEvent& event);
     void RenderCharts(IRenderContext* ctx);
     Rect2Di ChartScreenRect(const SpreadsheetChart& chart) const;
@@ -353,6 +394,21 @@ public:
     void Arrange(const UltraCanvas::Rect2Df &newFinalRect, const CSSLayout::LayoutContext &ctx) override;
     bool AcceptsFocus() const override { return true; }
     bool SetFocus(bool focus = true) override;   // commit edit on focus loss
+
+    // ===== ACCESSIBILITY =====
+    // A table to assistive technology, named by its sheet: its rows and
+    // their cells are its parts (GetAccessibleTableInterface,
+    // GetAccessiblePartsInterface) - the used cells, and as far as the active
+    // cell and the selection reach - each cell named by its address and the
+    // value it shows ("B3 42"). The active cell is the focused part and the
+    // value text; a move of it or of the selection is announced
+    // (SelectionChanged, its `part` the active cell), a change of sheet too
+    // (NameChanged).
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Table; }
+    std::string GetAccessibleName() const override;
+    std::string GetAccessibleValueText() const override;
+    IAccessibleParts* GetAccessiblePartsInterface() override;
+    IAccessibleTable* GetAccessibleTableInterface() override;
     
     // ===== SHEET MANAGEMENT =====
     int GetSheetCount() const { return static_cast<int>(sheets_.size()); }
@@ -651,7 +707,9 @@ public:
     // Paste takes the grid's own copy while the system clipboard still holds
     // it; else what another program copied - its HTML table, or tab- or
     // comma-separated text - each value read as if typed. Every paste is one
-    // undo step.
+    // undo step. With a chart selected, Copy and Cut take the chart instead:
+    // a static copy for a document or a slide (CopyChartToClipboard,
+    // UltraCanvasOfficeClipboard.h), a picture and its data for other programs.
     void Cut();
     void Copy();
     void Paste();
@@ -698,6 +756,57 @@ public:
     // made from a block of cells - whether its series run along the rows.
     // OK is one undo step.
     void ShowChartPropertiesDialog(int index);
+    // A chart of type `type` (SpreadsheetChartTypes) over the selection: -1,
+    // and why in `problem` (in the reader's language), when the selection
+    // does not fit the type - "A bubble chart needs three columns of
+    // numbers ...".
+    int InsertChartOfTypeFromSelection(size_t type, std::string* problem = nullptr);
+    // The chart gallery (ShowSpreadsheetChartGallery) over the selection;
+    // the type picked is inserted, or a message says why it cannot be.
+    void ShowInsertChartDialog();
+    // The chart gallery for chart `index`, its own type chosen; the type
+    // picked becomes its type (one undo step).
+    void ShowChartTypeDialog(int index);
+
+    // ===== PIVOT TABLES (UltraCanvasSpreadsheetPivot.h) =====
+    // `pivot` written onto sheet `sheetIndex` - or, with -1, onto a new
+    // sheet after the active one, at A1 - computed from its source; its
+    // index on that sheet, or -1 and why in `problem`. Its cells are the
+    // pivot's: typing, pasting or clearing them is refused.
+    int InsertPivotTable(const SpreadsheetPivotTable& pivot, int sheetIndex, std::string* problem = nullptr);
+    // Pivot `index` of sheet `sheetIndex` becomes `pivot`, its cells
+    // written again (cleared where it stood before).
+    bool SetPivotTable(int sheetIndex, int index, const SpreadsheetPivotTable& pivot, std::string* problem = nullptr);
+    // Removes the pivot and clears its cells.
+    bool RemovePivotTable(int sheetIndex, int index);
+    // Computes the pivot from its source again ("Refresh").
+    bool RefreshPivotTable(int sheetIndex, int index, std::string* problem = nullptr);
+    // Every pivot of the workbook; how many were written. A pivot read from
+    // a file that the model cannot represent keeps its cells.
+    int RefreshPivotTables();
+    // Refreshes the pivots whose source cells changed since they were last
+    // written; true when any was. The grid does it before drawing, the
+    // writers before saving.
+    bool RefreshChangedPivotTables();
+    // The pivot whose cells hold the active cell of the active sheet: its
+    // index there, -1 for none.
+    int GetActivePivotTable() const;
+    // Pivot `index` of the active sheet takes its data from `range` of
+    // `sheetName`; its fields are kept where the new source has their
+    // columns (matched by name).
+    bool SetPivotTableSource(int index, const std::string& sheetName, const CellRange& range,
+                             std::string* problem = nullptr);
+    // A new sheet after the active one holding the source rows behind
+    // cell (row, col) of the active sheet - a pivot's value or total -
+    // under the source's field names; its index, -1 for any other cell.
+    int DrillDownPivotCell(int row, int col);
+    // The field list (ShowSpreadsheetPivotDialog) for a new pivot over the
+    // selection (Insert > Pivot table), or for pivot `index` of the active
+    // sheet; OK writes it.
+    void ShowInsertPivotTableDialog();
+    void ShowPivotTableDialog(int index);
+    // Asks for pivot `index`'s source range ("Sheet1.A1:D40").
+    void ShowPivotSourceDialog(int index);
 
     // ===== UNDO/REDO =====
     void Undo();
@@ -829,10 +938,13 @@ public:
     // "Save with password", decrypted by UltraCanvasOdfEncryption.h. Other
     // formats ignore it.
     bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-    // `password` saves a password-protected .xlsx (agile encryption,
+    // The type is the extension's: .ods, .xlsx (and the templates .ots,
+    // .xltx), .csv, .tsv.
+    // `password` saves a password-protected .xlsx or .xltx (agile encryption,
     // AES-256 / SHA-512, what Excel 2013 and later write). Any other format
     // with a password is refused rather than saved unprotected.
     bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
+    // .ods and .xlsx; an .ots or .xltx path is written as that template.
     bool LoadODS(const std::string& filePath, const std::string& password = std::string());
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());

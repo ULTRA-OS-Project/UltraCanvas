@@ -198,7 +198,6 @@
   "In the message field": "Im Nachrichtenfeld",
   "Incoming call from {0}": "Eingehender Anruf von {0}",
   "Incoming video call from {0}": "Eingehender Videoanruf von {0}",
-  "Insert": "Einfügen",
   "Insert a location (OpenStreetMap)": "Standort einfügen (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Screenshot einfügen: Fenster auswählen oder Bereich aufziehen",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC, in der letzten Zeile, verbindet sich mit Ihrem Spitznamen mit einem Server - über TLS, außer die Adresse beginnt mit irc:// - und meldet sich mit Ihrem Passwort an, wenn der Spitzname registriert ist. Geben Sie unter „Hinzufügen“ einen #Kanal ein, um ihm beizutreten.",

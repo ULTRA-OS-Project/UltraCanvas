@@ -2,6 +2,7 @@
 // Demonstration of the profile picture: the row of a profile page (choose,
 // crop, change, remove), pictures and initials at the sizes a messenger
 // uses, and the cropper on its own with its zoom slider.
+// Version: 1.0.1 - no identifier named small (a <windows.h> macro: char, from the RPC headers)
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -88,11 +89,11 @@ namespace UltraCanvas {
         DemoKit::AddFixed(cropCard, zoom);
         auto previews = DemoKit::AddRow(cropCard, "ProfilePictureCropPreviews");
         auto large = CreateProfilePicture("ProfilePictureCropLarge", 64.0f);
-        auto small = CreateProfilePicture("ProfilePictureCropSmall", 28.0f);
+        auto compact = CreateProfilePicture("ProfilePictureCropSmall", 28.0f);
         large->SetPictureFrame(cropper->GetSourcePath(), cropper->GetFrame());
-        small->SetPictureFrame(cropper->GetSourcePath(), cropper->GetFrame());
+        compact->SetPictureFrame(cropper->GetSourcePath(), cropper->GetFrame());
         DemoKit::AddFixed(previews, large);
-        DemoKit::AddFixed(previews, small);
+        DemoKit::AddFixed(previews, compact);
         auto open = std::make_shared<UltraCanvasButton>("ProfilePictureCropDialog", 0, 0, 170, 30,
                                                         Tr("Open the crop dialog"));
         DemoKit::AddFixed(cropCard, open);
@@ -101,10 +102,10 @@ namespace UltraCanvas {
             "zoom once it has the focus. The circles follow without writing a file."));
 
         // The slider, the cropper and the previews sit in this card: raw pointers.
-        cropper->onFrameChanged = [slider = zoom.get(), large = large.get(), small = small.get(),
+        cropper->onFrameChanged = [slider = zoom.get(), large = large.get(), compact = compact.get(),
                                    source = cropper->GetSourcePath()](const ProfilePictureFrame& f) {
             large->SetPictureFrame(source, f);
-            small->SetPictureFrame(source, f);
+            compact->SetPictureFrame(source, f);
             if (std::abs(slider->GetValue() - static_cast<float>(f.zoom)) > 0.001f)
                 slider->SetValue(static_cast<float>(f.zoom));
         };
@@ -113,14 +114,14 @@ namespace UltraCanvas {
         };
         zoom->onValueChanging = fromSlider;
         zoom->onValueChanged = fromSlider;
-        open->SetOnClick([open = open.get(), crop = cropper.get(), large = large.get(), small = small.get()]() {
+        open->SetOnClick([open = open.get(), crop = cropper.get(), large = large.get(), compact = compact.get()]() {
             const std::string source = crop->GetSourcePath();
             ShowProfilePictureCropDialog(open->GetWindow(), source, ProfilePictureStyle::FromTheme(),
-                [crop, large, small, source](bool placed, const ProfilePictureFrame& f) {
+                [crop, large, compact, source](bool placed, const ProfilePictureFrame& f) {
                     if (!placed) return;
                     crop->SetFrame(f);
                     large->SetPictureFrame(source, f);
-                    small->SetPictureFrame(source, f);
+                    compact->SetPictureFrame(source, f);
                 });
         });
 

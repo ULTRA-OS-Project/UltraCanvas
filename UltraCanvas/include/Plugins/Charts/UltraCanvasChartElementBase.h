@@ -1,5 +1,6 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
+// Version: 1.7.0 - SetEntranceAnimation: a chart shown as it is, with no growing in (a page, a thumbnail)
 // Version: 1.6.0 - SetMinimumValueSpan: a floor under the value axis's span
 // Version: 1.5.0 - an optional icon over the empty-state message (SetEmptyIcon)
 // Version: 1.4.0 - a settable empty-state message (SetEmptyMessage), centred
@@ -11,7 +12,7 @@
 //                  drags are left to the parent when nothing zooms; plot area
 //                  recomputed on every resize; the element's own background
 // Version: 1.1.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -329,6 +330,16 @@ namespace UltraCanvas {
             RequestRedraw();
         }
         const std::string& GetEmptyIcon() const { return emptyIconPath; }
+
+        // Whether the chart grows in when it gets its data (on by default).
+        // Off, it is drawn complete from the first frame - what a chart on a
+        // page, in a print or as a thumbnail needs.
+        void SetEntranceAnimation(bool on) {
+            animationEnabled = on;
+            if (!on) animationComplete = true;
+            RequestRedraw();
+        }
+        bool GetEntranceAnimation() const { return animationEnabled; }
 
         void SetShowGrid(bool show) {
             showGrid = show;

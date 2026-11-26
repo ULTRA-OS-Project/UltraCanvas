@@ -6,8 +6,9 @@
 // UltraCanvas/CMakeLists.txt builds this file in place of
 // UltraCanvasRichDocumentChart.cpp there; the engine's charts that file calls
 // are not in that core, and no program could link it.
+// Version: 1.1.0 - IsRichChartEngineKind, CreateRichChartElement and DrawRichChart: none either
 // Version: 1.0.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocumentChart.h"
@@ -22,6 +23,23 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
 
 bool DrawRichDocumentChart(IRenderContext* ctx, const RichChart& chart, const Rect2Dd& target, const Size2Di& natural,
                            std::shared_ptr<UltraCanvasChartEngineElement>* cached, const Color& ink) {
+    (void)ctx; (void)chart; (void)target; (void)natural; (void)ink;
+    if (cached) cached->reset();
+    return false;
+}
+
+bool IsRichChartEngineKind(RichChart::Kind kind) {
+    (void)kind;
+    return false;
+}
+
+std::shared_ptr<UltraCanvasUIElement> CreateRichChartElement(const RichChart& chart, int width, int height, const Color& ink) {
+    (void)chart; (void)width; (void)height; (void)ink;
+    return nullptr;
+}
+
+bool DrawRichChart(IRenderContext* ctx, const RichChart& chart, const Rect2Dd& target, const Size2Di& natural,
+                   std::shared_ptr<UltraCanvasUIElement>* cached, const Color& ink) {
     (void)ctx; (void)chart; (void)target; (void)natural; (void)ink;
     if (cached) cached->reset();
     return false;

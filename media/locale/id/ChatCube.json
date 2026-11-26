@@ -197,7 +197,6 @@
   "In the message field": "Di kolom pesan",
   "Incoming call from {0}": "Panggilan masuk dari {0}",
   "Incoming video call from {0}": "Panggilan video masuk dari {0}",
-  "Insert": "Sisipkan",
   "Insert a location (OpenStreetMap)": "Sisipkan lokasi (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Sisipkan tangkapan layar: pilih jendela atau seret sebuah area",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC, di baris terakhir, terhubung ke server dengan nama panggilan Anda - lewat TLS kecuali alamatnya diawali irc:// - dan masuk dengan kata sandi bila nama panggilan terdaftar. Ketik #kanal di Tambah untuk bergabung.",

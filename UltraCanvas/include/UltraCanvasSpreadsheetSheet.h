@@ -1,5 +1,8 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.8.0 - the sheet's pivot tables (GetPivotTables, UltraCanvasSpreadsheetPivot.h);
+//                  NotifyCellsChanged for cells written directly
+// Version: 1.7.0 - SetArrayFormula: a legacy (Ctrl+Shift+Enter) array formula over a range
 // Version: 1.6.0 - conditional formats drawn: GetConditionalFormatting (styles, colour scales, data
 //                  bars, formula rules), SetConditionalFormats; validation: Custom (formula) rules and
 //                  lists taken from cells (GetValidationListItems), GetValidations
@@ -20,6 +23,7 @@
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetMetrics.h"
 #include "UltraCanvasSpreadsheetChart.h"
+#include "UltraCanvasSpreadsheetPivot.h"
 #include <string>
 #include <optional>
 #include <vector>
@@ -227,6 +231,8 @@ private:
 
     // Charts standing on the sheet (UltraCanvasSpreadsheetChart.h).
     std::vector<SpreadsheetChart> charts_;
+    // Pivot tables standing on the sheet (UltraCanvasSpreadsheetPivot.h).
+    std::vector<SpreadsheetPivotTable> pivots_;
     // The conditional formats' figures over their ranges (lowest, highest,
     // sorted values, how often each text occurs), worked out once and kept
     // until a cell may have changed: contentRevision_ moves on every change,
@@ -320,7 +326,11 @@ public:
     void SetCellValue(int row, int col, double number);
     void SetCellValue(int row, int col, bool boolean);
     void SetCellFormula(int row, int col, const std::string& formula);
-    
+    // A legacy array formula (what Ctrl+Shift+Enter enters in Excel) over
+    // `range`: its top-left cell holds the formula, the other cells - their
+    // content replaced - its values (FormulaArrayMode::FixedRange).
+    void SetArrayFormula(const CellRange& range, const std::string& formula);
+
     std::string GetCellText(int row, int col) const;
     double GetCellNumber(int row, int col) const;
     std::string GetCellDisplayValue(int row, int col) const;
@@ -640,6 +650,25 @@ public:
     std::vector<SpreadsheetChart>& GetCharts() { return charts_; }
     const std::vector<SpreadsheetChart>& GetCharts() const { return charts_; }
     void SetCharts(std::vector<SpreadsheetChart> charts) { charts_ = std::move(charts); }
+
+    // ===== PIVOT TABLES =====
+    // The pivots whose cells stand on the sheet (their sources may be on
+    // any sheet). Changed directly, their cells are not rewritten: the
+    // grid's InsertPivotTable / SetPivotTable / RefreshPivotTables do that.
+    std::vector<SpreadsheetPivotTable>& GetPivotTables() { return pivots_; }
+    const std::vector<SpreadsheetPivotTable>& GetPivotTables() const { return pivots_; }
+    // The pivot whose cells cover (row, col); -1 for none.
+    int PivotTableAt(int row, int col) const {
+        for (size_t i = 0; i < pivots_.size(); ++i) {
+            if (pivots_[i].Covers(row, col)) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    // Tells whoever follows the sheet (the formula engine, the grid) that
+    // the cells of `range` changed, after they were written directly through
+    // GetOrCreateCell.
+    void NotifyCellsChanged(const CellRange& range) { NotifyRangeChange(range); }
     
     // Get memory usage
     size_t GetMemorySize() const;
@@ -801,6 +830,23 @@ inline void SpreadsheetSheet::SetCellValue(int row, int col, bool boolean) {
 inline void SpreadsheetSheet::SetCellFormula(int row, int col, const std::string& formula) {
     GetOrCreateCell(row, col).SetFormula(formula);
     NotifyCellChange(row, col);
+}
+
+inline void SpreadsheetSheet::SetArrayFormula(const CellRange& range, const std::string& formula) {
+    if (!range.IsValid()) return;
+    for (int row = range.start.row; row <= range.end.row; ++row) {
+        for (int col = range.start.col; col <= range.end.col; ++col) {
+            if (row == range.start.row && col == range.start.col) continue;
+            if (SpreadsheetCell* cell = GetCellIfExists(row, col)) {
+                cell->ClearContents();
+                cell->MarkSpilledFrom(row - range.start.row, col - range.start.col);
+            }
+        }
+    }
+    SpreadsheetCell& anchor = GetOrCreateCell(range.start.row, range.start.col);
+    anchor.SetFormula(formula);
+    anchor.SetFormulaArrayMode(FormulaArrayMode::FixedRange, range.RowCount(), range.ColCount());
+    NotifyRangeChange(range);
 }
 
 inline std::string SpreadsheetSheet::GetCellText(int row, int col) const {

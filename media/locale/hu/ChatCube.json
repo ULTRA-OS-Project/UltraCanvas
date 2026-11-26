@@ -198,7 +198,6 @@
   "In the message field": "Az üzenetmezőben",
   "Incoming call from {0}": "Bejövő hívás tőle: {0}",
   "Incoming video call from {0}": "Bejövő videohívás tőle: {0}",
-  "Insert": "Beszúrás",
   "Insert a location (OpenStreetMap)": "Hely beszúrása (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Képernyőkép beszúrása: válasszon ablakot, vagy húzzon ki egy területet",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "Az IRC, az utolsó sorban, a becenevével csatlakozik egy szerverhez - TLS-en, hacsak a cím nem irc://-vel kezdődik -, és a jelszavával jelentkezik be, ha a becenév regisztrált. Írjon be egy #csatornát a Hozzáadásba a csatlakozáshoz.",

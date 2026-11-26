@@ -9,9 +9,12 @@ keys and searches their text, each hit framed on its shape. UltraViewer
 
 Header: `UltraCanvasPresentationPages.h`. It reads a PowerPoint deck (`.pptx`
 and kin, [UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md), with
-its pictures) or an OpenDocument presentation (`.odp`, `.otp`, `.fodp`,
+its pictures; the 97-2003 `.ppt`, `.pps` and `.pot`,
+[UltraCanvasPresentationPpt](UltraCanvasPresentationPpt.md)) or an
+OpenDocument presentation (`.odp`, `.otp`, `.fodp`,
 [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), with its
-pictures and the look its styles give it); each slide is drawn by
+pictures and the look its styles give it), through
+`UltraCanvasFileLoader::LoadPresentation`; each slide is drawn by
 `RenderPptxSlide`.
 
 ## Showing one

@@ -1,7 +1,8 @@
 // include/Plugins/Charts/UltraCanvasTreeMapElement.h
 // Interactive treemap component with hierarchical data visualization and drill-down navigation
+// Version: 1.1.1 - made without an application (a chart drawn off screen) it keeps the default font
 // Version: 1.1.0
-// Last Modified: 2026-08-31
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -155,7 +156,8 @@ namespace UltraCanvas {
             enablePan = true;
             rootNode = std::make_shared<TreeMapNode>("Root", 0.0);
             currentNode = rootNode;
-            fontFamily = UltraCanvasApplication::GetInstance()->GetSystemFontStyle().fontFamily;
+            // (No application - a chart drawn off screen: the default font.)
+            if (auto* app = UltraCanvasApplication::GetInstance()) fontFamily = app->GetSystemFontStyle().fontFamily;
         }
 
         void SetRootNode(std::shared_ptr<TreeMapNode> root) {

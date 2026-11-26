@@ -198,7 +198,6 @@
   "In the message field": "Viestikentässä",
   "Incoming call from {0}": "Saapuva puhelu: {0}",
   "Incoming video call from {0}": "Saapuva videopuhelu: {0}",
-  "Insert": "Lisää",
   "Insert a location (OpenStreetMap)": "Lisää sijainti (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Lisää kuvakaappaus: valitse ikkuna tai vedä alue",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC, viimeisellä rivillä, yhdistää palvelimeen nimimerkilläsi - TLS:n kautta, ellei osoite ala irc:// - ja kirjautuu salasanallasi, kun nimimerkki on rekisteröity. Kirjoita #kanava Lisää-kenttään liittyäksesi.",

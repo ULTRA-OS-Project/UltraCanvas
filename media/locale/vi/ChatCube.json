@@ -197,7 +197,6 @@
   "In the message field": "Trong ô tin nhắn",
   "Incoming call from {0}": "Cuộc gọi đến từ {0}",
   "Incoming video call from {0}": "Cuộc gọi video đến từ {0}",
-  "Insert": "Chèn",
   "Insert a location (OpenStreetMap)": "Chèn vị trí (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Chèn ảnh chụp màn hình: chọn một cửa sổ hoặc kéo chọn một vùng",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC, ở hàng cuối, kết nối tới máy chủ bằng biệt danh của bạn - qua TLS trừ khi địa chỉ bắt đầu bằng irc:// - và đăng nhập bằng mật khẩu khi biệt danh đã đăng ký. Gõ #kênh vào ô Thêm để tham gia.",

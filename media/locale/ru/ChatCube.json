@@ -200,7 +200,6 @@
   "In the message field": "В поле сообщения",
   "Incoming call from {0}": "Входящий звонок от {0}",
   "Incoming video call from {0}": "Входящий видеозвонок от {0}",
-  "Insert": "Вставить",
   "Insert a location (OpenStreetMap)": "Вставить место (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Вставить снимок экрана: выберите окно или выделите область",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC, в последнем ряду, подключается к серверу под вашим ником - по TLS, если адрес не начинается с irc:// - и входит с паролем, если ник зарегистрирован. Введите #канал в поле «Добавить», чтобы войти в него.",

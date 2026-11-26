@@ -4,8 +4,14 @@
 // LoadFromFile / SaveToFile (.ods, .xlsx, .csv, .tsv; .xls read-only), the
 // file types and password prompts through UltraCanvasFileLoader. Command
 // tabs - Home, Insert, Data, Review, Page, View - and a status line with the
-// sum, average and count of the selection.
+// sum, average and count of the selection. Beside the grid, a pivot table's
+// field list (UltraCanvasSpreadsheetPivotPanel) while one of its cells is
+// active; each change in it is applied to the pivot at once.
 //
+// Version: 0.6.0 - pivot tables: Insert > Pivot table (the field list in a dialog, on a new sheet or a cell);
+//                  Data: Refresh, Change source, Field list, Delete pivot; the field list beside the grid
+// Version: 0.5.0 - Insert: Chart opens the chart gallery (every chart of the framework, by category, drawn
+//                  from the selection); Chart type changes the selected chart's through it
 // Version: 0.4.0 - Data: conditional formatting and data validation dialogs; Review: comments and links
 // Version: 0.3.0 - Insert: a chart of the selection (columns, bars, lines, areas, pies, scatter ...),
 //                  its properties and Delete chart
@@ -23,6 +29,8 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetChart.h"
+#include "UltraCanvasSpreadsheetPivot.h"
+#include "UltraCanvasSpreadsheetPivotPanel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -62,8 +70,20 @@ class SpreadsheetHost final : public OfficeHost {
 public:
     explicit SpreadsheetHost(UltraCanvasWindowBase* window) : window_(window) {
         (void)window_;
+        // The grid, and the field list of the pivot whose cell is active beside it.
+        root_ = std::make_shared<UltraCanvasContainer>("office-spreadsheet-root", 0, 0, 800, 600);
+        root_->layout.SetFlex(CSSLayout::FlexDirection::Row);
+        root_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         sheet_ = std::make_shared<UltraCanvasSpreadsheet>("office-spreadsheet", 0, 0, 800, 600);
         sheet_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        root_->AddChild(sheet_);
+        pivotPanel_ = std::make_shared<UltraCanvasSpreadsheetPivotPanel>("office-pivot-fields", 0, 0, 340, 600, false);
+        pivotPanel_->size.width = CSSLayout::Dimension::Px(340.0f);
+        pivotPanel_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        pivotPanel_->SetPadding(8, 8, 8, 8);
+        pivotPanel_->SetVisible(false);
+        root_->AddChild(pivotPanel_);
+        pivotPanel_->onPivotChanged = [this](const SpreadsheetPivotTable& changed) { ApplyPanelPivot(changed); };
         // A change anywhere marks the workbook changed; moving the selection
         // only refreshes the toolbar and the status line.
         auto changed = [this]() { modified_ = true; Sync(); if (onChanged) onChanged(); };
@@ -76,6 +96,7 @@ public:
         sheet_->onSelectionChange = [this]() { Sync(); if (onChanged) onChanged(); };
         sheet_->onChartsChange = changed;
         sheet_->onChartSelectionChange = [this](int) { Sync(); };
+        sheet_->onPivotTablesChange = changed;
         BuildHome();
         BuildInsert();
         BuildData();
@@ -85,10 +106,10 @@ public:
     }
 
     OfficeKind GetKind() const override { return OfficeKind::Spreadsheet; }
-    std::shared_ptr<UltraCanvasUIElement> GetContent() override { return sheet_; }
+    std::shared_ptr<UltraCanvasUIElement> GetContent() override { return root_; }
     const std::vector<CommandTab>& GetCommandTabs() override { return tabs_; }
 
-    void NewBlank() override { modified_ = false; Sync(); }
+    void NewBlank() override { modified_ = false; panelPivot_ = -1; Sync(); }
 
     bool Load(const std::string& path, const std::string& password, std::string& error) override {
         if (!sheet_->LoadFromFile(path, password)) {
@@ -97,6 +118,7 @@ public:
             return false;
         }
         modified_ = false;
+        panelPivot_ = -1;   // the field list shows the new workbook's pivots
         Sync();
         return true;
     }
@@ -117,7 +139,7 @@ public:
     }
 
     void AddSaveTypes(FileDialogOptions& opts) const override {
-        UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::Spreadsheet);
+        UltraCanvasFileLoader::AddSpreadsheetSaveTypes(opts);   // the templates are "Save as template"'s
     }
 
     // The sheet on show, cut into pages by its print settings (print area,
@@ -172,7 +194,19 @@ public:
 
 private:
     UltraCanvasWindowBase* window_;
+    std::shared_ptr<UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvasSpreadsheet> sheet_;
+    std::shared_ptr<UltraCanvasSpreadsheetPivotPanel> pivotPanel_;
+    // The pivot the field list shows (sheet, index), -1 for none; whether
+    // the reader closed it; whether a change of its own is being applied.
+    int panelSheet_ = -1;
+    int panelPivot_ = -1;
+    bool panelClosed_ = false;
+    bool applyingPanel_ = false;
+    UltraCanvasButton* pivotRefresh_ = nullptr;
+    UltraCanvasButton* pivotSource_ = nullptr;
+    UltraCanvasButton* pivotFields_ = nullptr;
+    UltraCanvasButton* pivotDelete_ = nullptr;
     std::vector<CommandTab> tabs_;
     bool modified_ = false;
     bool filtered_ = false;
@@ -185,6 +219,7 @@ private:
     UltraCanvasButton* gridlines_ = nullptr;
     UltraCanvasButton* headings_ = nullptr;
     UltraCanvasDropdown* format_ = nullptr;
+    UltraCanvasButton* chartType_ = nullptr;
     UltraCanvasButton* chartProperties_ = nullptr;
     UltraCanvasButton* chartDelete_ = nullptr;
 
@@ -239,38 +274,25 @@ private:
         tabs_.push_back({Tr("Home"), bar});
     }
 
-    // A chart of the selected cells, of the kind picked; the selected
-    // chart's properties, and deleting it.
+    // A chart of the selected cells, of the type picked in the chart
+    // gallery; the selected chart's type and properties, and deleting it.
     void BuildInsert() {
         auto bar = MakeToolbar("office-sheet-insert");
-        auto chart = bar->AddDropdownButton("sheet-chart", "", {}, nullptr);
-        for (size_t i = 0; i < SpreadsheetChartChoices().size(); ++i)
-            chart->AddItem(SpreadsheetChartChoiceName(i), std::to_string(i), IconPath("chart.svg"));
-        chart->SetIconsAsMask(true);
-        chart->SetPlaceholderText(Tr("Chart"));
-        chart->SetTooltip(Tr("A chart of the selected cells"));
-        chart->SetSelectedIndex(-1, false);
-        UltraCanvasSpreadsheet* sheet = sheet_.get();
-        UltraCanvasDropdown* dropdown = chart.get();
-        chart->onSelectionChanged = [this, sheet, dropdown](int index, const DropdownItem&) {
-            const auto& choices = SpreadsheetChartChoices();
-            if (index < 0 || index >= static_cast<int>(choices.size())) return;
-            dropdown->SetSelectedIndex(-1, false);
-            const SpreadsheetChartChoice choice = choices[static_cast<size_t>(index)];
-            if (sheet->InsertChartFromSelection(choice.kind, choice.stacked) < 0) {
-                UltraCanvasDialogManager::ShowInformation(Tr("Select cells holding numbers to make a chart of them."),
-                                                          Tr("Chart"), nullptr, window_);
-                return;
-            }
-            sheet->SetFocus(true);
-            Sync();
-            if (onChanged) onChanged();
-        };
+        AddTool(*bar, "sheet-chart", Tr("Chart"), "chart.svg",
+                Tr("A chart of the selected cells: every chart type, by category, drawn from them"),
+                Act([](auto& s) { s.ShowInsertChartDialog(); }));
+        chartType_ = AddTool(*bar, "sheet-chart-type", Tr("Chart type"), "chart.svg",
+                             Tr("Change the selected chart's type in the chart gallery"),
+                             Act([](auto& s) { if (s.GetSelectedChart() >= 0) s.ShowChartTypeDialog(s.GetSelectedChart()); })).get();
         chartProperties_ = AddTool(*bar, "sheet-chart-properties", Tr("Chart properties"), "chart.svg",
                                    Tr("The selected chart's type, title and legend (or double-click the chart)"),
                                    Act([](auto& s) { if (s.GetSelectedChart() >= 0) s.ShowChartPropertiesDialog(s.GetSelectedChart()); })).get();
         chartDelete_ = AddTool(*bar, "sheet-chart-delete", Tr("Delete chart"), "delete.svg", Tr("Remove the selected chart (Delete)"),
                                Act([](auto& s) { s.RemoveChart(s.GetSelectedChart()); })).get();
+        bar->AddSeparator();
+        AddTool(*bar, "sheet-pivot", Tr("Pivot table"), "table.svg",
+                Tr("Summarise the selected cells in a pivot table: their fields down the side, across the top and in the values"),
+                Act([this](auto& s) { panelClosed_ = false; s.ShowInsertPivotTableDialog(); }));
         tabs_.push_back({Tr("Insert"), bar});
     }
 
@@ -301,6 +323,20 @@ private:
         AddTool(*bar, "sheet-validation", Tr("Data validation"), "list-check.svg",
                 Tr("Limit what may be typed into the selected cells, or offer a list"),
                 Act([](auto& s) { s.ShowDataValidationDialog(); }));
+        bar->AddSeparator();
+        // The pivot table whose cell is active.
+        pivotRefresh_ = AddTool(*bar, "sheet-pivot-refresh", Tr("Refresh"), "menu/refresh.svg",
+                                Tr("Compute the pivot table from its source again (every pivot table when none is picked)"),
+                                Act([this](auto& s) { RefreshPivot(s); })).get();
+        pivotSource_ = AddTool(*bar, "sheet-pivot-source", Tr("Change source"), "menu/dataset.svg",
+                               Tr("The cells the pivot table summarises"),
+                               Act([](auto& s) { if (s.GetActivePivotTable() >= 0) s.ShowPivotSourceDialog(s.GetActivePivotTable()); })).get();
+        pivotFields_ = AddToggleTool(*bar, "sheet-pivot-fields", Tr("Field list"), "menu/sidebar.svg",
+                                     Tr("Show or hide the pivot table's fields beside the sheet"),
+                                     Act([this](auto&) { panelClosed_ = !panelClosed_; })).get();
+        pivotDelete_ = AddTool(*bar, "sheet-pivot-delete", Tr("Delete pivot"), "delete.svg",
+                               Tr("Remove the pivot table and its cells"),
+                               Act([](auto& s) { s.RemovePivotTable(s.GetActiveSheetIndex(), s.GetActivePivotTable()); })).get();
         tabs_.push_back({Tr("Data"), bar});
     }
 
@@ -355,9 +391,59 @@ private:
         tabs_.push_back({Tr("View"), bar});
     }
 
+    // Refresh: the active pivot, or every one.
+    void RefreshPivot(UltraCanvasSpreadsheet& s) {
+        std::string problem;
+        const int pivot = s.GetActivePivotTable();
+        const bool ok = pivot >= 0 ? s.RefreshPivotTable(s.GetActiveSheetIndex(), pivot, &problem) : s.RefreshPivotTables() >= 0;
+        if (!ok && !problem.empty()) UltraCanvasDialogManager::ShowInformation(problem, Tr("Pivot table"), nullptr, window_);
+    }
+
+    // A change made in the field list beside the grid.
+    void ApplyPanelPivot(const SpreadsheetPivotTable& changed) {
+        if (panelSheet_ < 0 || panelPivot_ < 0) return;
+        applyingPanel_ = true;   // the panel keeps its state; Sync must not rebuild it under its own call
+        std::string problem;
+        sheet_->SetPivotTable(panelSheet_, panelPivot_, changed, &problem);
+        applyingPanel_ = false;
+    }
+
+    // The field list follows the active cell: shown, for its pivot, while
+    // the cell is one of a pivot's (unless the reader closed it).
+    void SyncPivotPanel() {
+        const int pivot = sheet_->GetActivePivotTable();
+        const int sheetIndex = sheet_->GetActiveSheetIndex();
+        const SpreadsheetSheet* sheet = sheet_->GetActiveSheet();
+        const bool supported = pivot >= 0 && sheet &&
+                               sheet->GetPivotTables()[static_cast<size_t>(pivot)].unsupportedReason.empty();
+        if (pivotRefresh_) pivotRefresh_->SetDisabled(false);
+        if (pivotSource_) pivotSource_->SetDisabled(!supported);
+        if (pivotFields_) {
+            pivotFields_->SetDisabled(!supported);
+            pivotFields_->SetPressed(supported && !panelClosed_);
+        }
+        if (pivotDelete_) pivotDelete_->SetDisabled(pivot < 0);
+        const bool show = supported && !panelClosed_;
+        if (show && !applyingPanel_ && (pivot != panelPivot_ || sheetIndex != panelSheet_ || !pivotPanel_->IsVisible())) {
+            const SpreadsheetPivotTable& shown = sheet->GetPivotTables()[static_cast<size_t>(pivot)];
+            pivotPanel_->SetPivot(shown, sheet_->GetSheetByName(shown.sourceSheet));
+        }
+        if (show) {
+            panelSheet_ = sheetIndex;
+            panelPivot_ = pivot;
+        } else {
+            panelSheet_ = panelPivot_ = -1;
+        }
+        if (pivotPanel_->IsVisible() != show) {
+            pivotPanel_->SetVisible(show);
+            root_->InvalidateLayout();
+        }
+    }
+
     void Sync() {
         // (A file being read has taken every sheet away for a moment.)
         if (!sheet_->GetActiveSheet()) return;
+        SyncPivotPanel();
         const CellFont font = sheet_->GetActiveCellFont();
         if (bold_) bold_->SetPressed(font.bold);
         if (italic_) italic_->SetPressed(font.italic);
@@ -369,6 +455,7 @@ private:
         if (gridlines_) gridlines_->SetPressed(print.printGridlines);
         if (headings_) headings_->SetPressed(print.printRowColHeaders);
         const bool chartSelected = sheet_->GetSelectedChart() >= 0;
+        if (chartType_) chartType_->SetDisabled(!chartSelected);
         if (chartProperties_) chartProperties_->SetDisabled(!chartSelected);
         if (chartDelete_) chartDelete_->SetDisabled(!chartSelected);
         if (format_) {

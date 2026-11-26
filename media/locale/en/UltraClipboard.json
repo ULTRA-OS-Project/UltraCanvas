@@ -8,6 +8,7 @@
     "Copy",
     "Could not save {0}",
     "Delete",
+    "Deleted",
     "Display",
     "Edit",
     "Files",
@@ -44,7 +45,6 @@
     "other": "Could not move {n} files to {0}:"
   },
   "Delete the item from the clipboard?": "Delete the item from the clipboard?",
-  "Deleted": "Deleted",
   "Edit clipboard entry": "Edit clipboard entry",
   "Edit in UltraPaint": "Edit in UltraPaint",
   "Edit…": "Edit…",

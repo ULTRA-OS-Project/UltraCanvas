@@ -869,14 +869,14 @@ private:
         if (ctrlCount < 4 || (ctrlCount - 1) % 3 != 0) return false;
         size_t spans = (ctrlCount - 1) / 3;
         if (knots.size() != 3 * spans + 5) return false;
-        auto near = [](double a, double b) { return std::fabs(a - b) < 1e-9; };
+        auto closeTo = [](double a, double b) { return std::fabs(a - b) < 1e-9; };
         for (int k = 0; k < 4; ++k) {
-            if (!near(knots[k], knots[0])) return false;
-            if (!near(knots[knots.size() - 1 - k], knots.back())) return false;
+            if (!closeTo(knots[k], knots[0])) return false;
+            if (!closeTo(knots[knots.size() - 1 - k], knots.back())) return false;
         }
         for (size_t s = 1; s < spans; ++s) {
             for (int k = 0; k < 3; ++k) {
-                if (!near(knots[4 + (s - 1) * 3 + k], knots[4 + (s - 1) * 3])) {
+                if (!closeTo(knots[4 + (s - 1) * 3 + k], knots[4 + (s - 1) * 3])) {
                     return false;
                 }
             }

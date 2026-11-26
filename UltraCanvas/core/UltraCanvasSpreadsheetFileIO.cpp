@@ -1,6 +1,14 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.8.0 - .ods keeps pivot tables: table:data-pilot-tables read and written
+//                  (UltraCanvasSpreadsheetPivotIO.cpp)
+// Version: 1.7.0 - .ods array formulas: table:number-matrix-*-spanned read (a fixed array) and written
+//                  (a fixed array or a spill as it stands), A1# written as its block, inline arrays,
+//                  COM.MICROSOFT. function names; a plain formula is read as one value; numbers in
+//                  formulas are written to read back exactly
+// Version: 1.6.0 - templates: .ots read and written as an .ods (its template media type), .xltx as an
+//                  .xlsx, .xltm read
 // Version: 1.5.0 - .ods keeps conditional formats (calcext:conditional-formats, their cell styles in
 //                  styles.xml), validations (table:content-validations), comments (office:annotation)
 //                  and links (text:a); a cell with only a note or a validation is written
@@ -49,6 +57,7 @@
 #include "miniz.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasSpreadsheetChart.h"   // the sheets' charts
+#include "UltraCanvasSpreadsheetPivot.h"   // the sheets' pivot tables
 
 // For XML parsing
 #include "tinyxml2.h"
@@ -62,6 +71,7 @@ namespace UltraCanvas {
 
 namespace ODS {
     constexpr const char* MIMETYPE = "application/vnd.oasis.opendocument.spreadsheet";
+    constexpr const char* TEMPLATE_MIMETYPE = "application/vnd.oasis.opendocument.spreadsheet-template";
     constexpr const char* CONTENT_XML = "content.xml";
     constexpr const char* STYLES_XML = "styles.xml";
     constexpr const char* META_XML = "meta.xml";
@@ -940,6 +950,8 @@ public:
         }
         // The charts, each an object of the package.
         ReadOdsCharts(*spreadsheet_, contentXml, [this](const std::string& part) { return ReadFileFromZip(part); });
+        // The pivot tables (data pilots), now that every sheet is read.
+        ReadOdsPivots(*spreadsheet_, contentXml);
         return true;
     }
 
@@ -1611,8 +1623,26 @@ private:
         int colIndex = 0;
         ParseColumns(tableElem, sheet, colIndex, false);
         int rowIndex = 0;
+        matrixAnchors_.clear();
         ParseRows(tableElem, sheet, rowIndex, false);
+        // The values an array formula covers arrive as plain cells: they are
+        // its values, not cells of their own.
+        for (const CellAddress& at : matrixAnchors_) {
+            const SpreadsheetCell* anchor = sheet->GetCellIfExists(at.row, at.col);
+            if (!anchor) continue;
+            for (int r = 0; r < anchor->GetArrayRows(); ++r) {
+                for (int c = 0; c < anchor->GetArrayCols(); ++c) {
+                    if (r == 0 && c == 0) continue;
+                    if (SpreadsheetCell* cell = sheet->GetCellIfExists(at.row + r, at.col + c)) {
+                        if (!cell->HasFormula()) cell->MarkSpilledFrom(r, c);
+                    }
+                }
+            }
+        }
     }
+
+    // The array formulas (table:number-matrix-*-spanned) of the sheet being read.
+    std::vector<CellAddress> matrixAnchors_;
 
     void ParseColumns(tinyxml2::XMLElement* parent, SpreadsheetSheet* sheet, int& colIndex,
                       bool headerColumns) {
@@ -1813,6 +1843,18 @@ private:
             // A1 / A1:B2 / 'Sheet'.A1 form.
             formula = OdsFormulaToNative(formula);
             cell->SetFormula(formula);
+            // An array formula fills the block it spans (ODF has no dynamic
+            // spill); any other formula is worth one value, a range in it
+            // giving the cell on its row or column, as LibreOffice reads it.
+            const int matrixCols = GetAttrInt(cellElem, "table:number-matrix-columns-spanned", 0);
+            const int matrixRows = GetAttrInt(cellElem, "table:number-matrix-rows-spanned", 0);
+            if (matrixCols > 0 || matrixRows > 0) {
+                cell->SetFormulaArrayMode(FormulaArrayMode::FixedRange, std::max(1, matrixRows),
+                                          std::max(1, matrixCols));
+                matrixAnchors_.push_back(CellAddress(row, col));
+            } else {
+                cell->SetFormulaArrayMode(FormulaArrayMode::SingleValue);
+            }
         }
 
         // Parse value based on type. Formula cells store the cached value via
@@ -2110,14 +2152,21 @@ private:
 public:
     ODSSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
 
+private:
+    const char* mimeType_ = ODS::MIMETYPE;   // the template's for an .ots
+
+public:
+
     bool Save(const std::string& filePath) {
         spreadsheet_->RefreshCharts();   // the charts' tables as the cells are now
         if (!zip_.Open(filePath)) {
             return false;
         }
+        // A template (.ots) is the same package under its own media type.
+        mimeType_ = IsSpreadsheetTemplateExtension(filePath) ? ODS::TEMPLATE_MIMETYPE : ODS::MIMETYPE;
 
         // Write mimetype (must be first, uncompressed), then the XML parts.
-        if (!zip_.AddEntry("mimetype", std::string(ODS::MIMETYPE), false)
+        if (!zip_.AddEntry("mimetype", std::string(mimeType_), false)
             || !zip_.AddEntry(ODS::STYLES_XML, GenerateStylesXml())
             || !zip_.AddEntry(ODS::CONTENT_XML, GenerateContentXml())
             || !zip_.AddEntry(ODS::META_XML, GenerateMetaXml())
@@ -2415,6 +2464,7 @@ private:
         }
         WriteNamedRanges(ss, workbookNames, "");
         WriteDatabaseRanges(ss);
+        ss << WriteOdsPivots(*spreadsheet_);   // table:data-pilot-tables, after the database ranges
 
         ss << "</office:spreadsheet>\n";
         ss << "</office:body>\n";
@@ -2661,8 +2711,14 @@ private:
         // prefix). When the parsed AST is available we emit precise reference
         // brackets; otherwise fall back to the stored text.
         if (cell->HasFormula()) {
-            std::string odf = FormulaToODS(cell);
+            std::string odf = FormulaToODS(cell, sheet);
             ss << " table:formula=\"of:" << EscapeXml(odf) << "\"";
+            // An array formula - a fixed one, or a dynamic one as it spills
+            // now (ODF has no dynamic spill) - spans its block.
+            if (cell->CoversArray()) {
+                ss << " table:number-matrix-columns-spanned=\"" << cell->GetArrayCols() << "\""
+                   << " table:number-matrix-rows-spanned=\"" << cell->GetArrayRows() << "\"";
+            }
         }
         
         // Value type and value
@@ -3084,59 +3140,95 @@ private:
                endSheet + "." + BareCell(range.end) + "]";
     }
 
-    static std::string EmitODS(const FormulaNode* node) {
+    // `sheet` is the formula's own: an A1# on it is written as the block A1
+    // spills now, since ODF has no spill reference.
+    static std::string EmitODS(const FormulaNode* node, const SpreadsheetSheet* sheet = nullptr) {
         if (!node) return "";
         switch (node->nodeType) {
             case FormulaNodeType::Literal: {
                 const FormulaValue& v = node->literalValue;
+                if (v.IsEmpty()) return "";   // an argument left out
                 if (v.IsText()) return "\"" + v.GetText() + "\"";
                 if (v.IsBoolean()) return v.GetBoolean() ? "TRUE()" : "FALSE()";
                 if (v.IsError()) return CellErrorToString(v.GetError());
                 // An ODS formula uses the comma (or semicolon) as its
                 // argument separator, so a comma decimal point would split one
                 // literal into two arguments. The document's numbers are
-                // dot-decimal whatever the writer's locale is.
-                std::ostringstream os;
-                os.imbue(std::locale::classic());
-                os << v.GetNumber();
-                return os.str();
+                // dot-decimal whatever the writer's locale is, and keep
+                // every digit.
+                return FormatFloatRoundTrip(v.GetNumber());
             }
             case FormulaNodeType::CellRef:
                 return ODSCellRef(node->cellRef);
             case FormulaNodeType::RangeRef:
                 return ODSRangeRef(node->rangeRef);
+            case FormulaNodeType::SpillRef: {
+                const SpreadsheetSheet* on = sheet;
+                if (!node->cellRef.sheetName.empty() && sheet && sheet->GetParent()) {
+                    on = sheet->GetParent()->GetSheetByName(node->cellRef.sheetName);
+                }
+                const SpreadsheetCell* anchor = on ? on->GetCellIfExists(node->cellRef.row, node->cellRef.col) : nullptr;
+                if (!anchor || !anchor->CoversArray()) return ODSCellRef(node->cellRef);
+                CellRange range(node->cellRef.row, node->cellRef.col,
+                                node->cellRef.row + anchor->GetArrayRows() - 1,
+                                node->cellRef.col + anchor->GetArrayCols() - 1);
+                range.start.sheetName = range.end.sheetName = node->cellRef.sheetName;
+                range.start.rowRef = node->cellRef.rowRef;
+                range.start.colRef = node->cellRef.colRef;
+                return ODSRangeRef(range);
+            }
+            case FormulaNodeType::Array: {
+                // ODF's inline array: ';' between columns, '|' between rows.
+                std::string out = "{";
+                for (size_t i = 0; i < node->children.size(); ++i) {
+                    if (i) out += node->arrayCols > 0 && i % static_cast<size_t>(node->arrayCols) == 0 ? "|" : ";";
+                    out += EmitODS(node->children[i].get(), sheet);
+                }
+                return out + "}";
+            }
             case FormulaNodeType::NamedRef:
                 return node->namedRef;
             case FormulaNodeType::BinaryOp:
                 if (node->children.size() == 2) {
-                    return "(" + EmitODS(node->children[0].get()) + node->op +
-                           EmitODS(node->children[1].get()) + ")";
+                    return "(" + EmitODS(node->children[0].get(), sheet) + node->op +
+                           EmitODS(node->children[1].get(), sheet) + ")";
                 }
                 return "";
             case FormulaNodeType::UnaryOp:
                 if (node->children.size() == 1) {
-                    if (node->op == "%") return "(" + EmitODS(node->children[0].get()) + "%)";
-                    return "(" + node->op + EmitODS(node->children[0].get()) + ")";
+                    if (node->op == "%") return "(" + EmitODS(node->children[0].get(), sheet) + "%)";
+                    // LibreOffice intersects where one value is expected anyway.
+                    if (node->op == "@") return EmitODS(node->children[0].get(), sheet);
+                    return "(" + node->op + EmitODS(node->children[0].get(), sheet) + ")";
                 }
                 return "";
             case FormulaNodeType::FunctionCall: {
-                std::string out = node->functionName + "(";
+                std::string out = NativeFunctionToOds(node->functionName) + "(";
                 for (size_t i = 0; i < node->children.size(); ++i) {
                     if (i) out += ";";  // ODF uses ';' as the argument separator
-                    out += EmitODS(node->children[i].get());
+                    out += EmitODS(node->children[i].get(), sheet);
                 }
                 out += ")";
                 return out;
+            }
+            case FormulaNodeType::Invoke: {
+                if (node->children.empty()) return "";
+                std::string out = EmitODS(node->children[0].get(), sheet) + "(";
+                for (size_t i = 1; i < node->children.size(); ++i) {
+                    if (i > 1) out += ";";
+                    out += EmitODS(node->children[i].get(), sheet);
+                }
+                return out + ")";
             }
             default:
                 return "";
         }
     }
 
-    static std::string FormulaToODS(const SpreadsheetCell* cell) {
+    static std::string FormulaToODS(const SpreadsheetCell* cell, const SpreadsheetSheet* sheet = nullptr) {
         auto formula = cell->GetFormula();
         if (formula && formula->GetAST()) {
-            return "=" + EmitODS(formula->GetAST());
+            return "=" + EmitODS(formula->GetAST(), sheet);
         }
         // Fall back to the stored text when no parsed AST is available.
         return cell->GetFormulaText();
@@ -3196,7 +3288,7 @@ private:
         ss << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
         ss << "<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" "
            << "manifest:version=\"1.3\">\n";
-        ss << "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"" << ODS::MIMETYPE << "\"/>\n";
+        ss << "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"" << mimeType_ << "\"/>\n";
         ss << "<manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>\n";
         ss << "<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>\n";
         ss << "<manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>\n";
@@ -3629,6 +3721,16 @@ public:
 // ULTRACANVASSPREADSHEET FILE I/O METHODS
 // ============================================================================
 
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath) {
+    std::string ext = extensionOrPath;
+    const size_t dot = ext.find_last_of('.');
+    const size_t slash = ext.find_last_of("/\\");
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ext = ext.substr(dot + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext == "ots" || ext == "xltx" || ext == "xltm";
+}
+
 bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std::string& password) {
     lastError_.clear();
 
@@ -3648,9 +3750,9 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std
     std::string ext = filePath.substr(dot);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-    if (ext == ".ods") {
+    if (ext == ".ods" || ext == ".ots") {
         return LoadODS(filePath, password);
-    } else if (ext == ".xlsx") {
+    } else if (ext == ".xlsx" || ext == ".xltx" || ext == ".xltm") {
         return LoadXLSX(filePath, password);
     } else if (ext == ".xls") {
         return LoadXLS(filePath, password);
@@ -3661,7 +3763,8 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std
     }
 
     lastError_ = "Unsupported file type '" + ext +
-                 "'. Supported formats are .ods, .xlsx, .xls, .csv and .tsv: " + filePath;
+                 "'. Supported formats are .ods, .xlsx, .xls, .csv and .tsv (and the templates .ots, .xltx): " +
+                 filePath;
     return false;
 }
 
@@ -3678,14 +3781,20 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath, const std::
 
     // Only an .xlsx can carry a password; saving another format without it
     // would drop the protection without a word.
-    if (!password.empty() && ext != ".xlsx") {
-        lastError_ = "Only an Excel workbook (.xlsx) can be saved with a password: " + filePath;
+    if (!password.empty() && ext != ".xlsx" && ext != ".xltx") {
+        lastError_ = "Only an Excel workbook (.xlsx, .xltx) can be saved with a password: " + filePath;
         return false;
     }
-    if (ext == ".ods") {
+    // A template is written as its workbook is, under the template's media
+    // type (SaveODS / SaveXLSX read the extension).
+    if (ext == ".ods" || ext == ".ots") {
         return SaveODS(filePath);
-    } else if (ext == ".xlsx") {
+    } else if (ext == ".xlsx" || ext == ".xltx") {
         return SaveXLSX(filePath, password);
+    } else if (ext == ".xltm") {
+        lastError_ = "Excel macro-enabled templates (.xltm) are read, not written; save as .xltx instead: " +
+                     filePath;
+        return false;
     } else if (ext == ".csv") {
         return SaveCSV(filePath);
     } else if (ext == ".tsv") {
@@ -3699,7 +3808,8 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath, const std::
     }
 
     lastError_ = "Unsupported save format '" + ext +
-                 "'. Supported formats are .ods, .xlsx, .csv and .tsv: " + filePath;
+                 "'. Supported formats are .ods, .xlsx, .csv and .tsv (and the templates .ots, .xltx): " +
+                 filePath;
     return false;
 }
 
@@ -3724,6 +3834,7 @@ bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath, const std::str
 
 bool UltraCanvasSpreadsheet::SaveODS(const std::string& filePath) {
     lastError_.clear();
+    RefreshChangedPivotTables();   // the pivots' cells as their sources are now
     ODSSaver saver(this);
     if (!saver.Save(filePath)) {
         std::string writeError = DescribeFileWriteError(filePath);

@@ -19,7 +19,6 @@
     "other": "{n} tiedostoa ei voitu siirtää kohteeseen {0}:"
   },
   "Delete the item from the clipboard?": "Poistetaanko kohde leikepöydältä?",
-  "Deleted": "Poistettu",
   "Edit clipboard entry": "Muokkaa leikepöydän merkintää",
   "Edit in UltraPaint": "Muokkaa UltraPaintissa",
   "Edit…": "Muokkaa…",

@@ -197,7 +197,6 @@
   "In the message field": "ในช่องข้อความ",
   "Incoming call from {0}": "สายเรียกเข้าจาก {0}",
   "Incoming video call from {0}": "วิดีโอคอลเรียกเข้าจาก {0}",
-  "Insert": "แทรก",
   "Insert a location (OpenStreetMap)": "แทรกตำแหน่งที่ตั้ง (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "แทรกภาพหน้าจอ: เลือกหน้าต่างหรือลากเลือกพื้นที่",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC ในแถวสุดท้าย เชื่อมต่อเซิร์ฟเวอร์ด้วยชื่อเล่นของคุณ - ผ่าน TLS เว้นแต่ที่อยู่ขึ้นต้นด้วย irc:// - และลงชื่อเข้าใช้ด้วยรหัสผ่านเมื่อชื่อเล่นลงทะเบียนไว้ พิมพ์ #ช่อง ในช่องเพิ่มเพื่อเข้าร่วม",
