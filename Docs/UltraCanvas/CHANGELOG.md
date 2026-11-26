@@ -1,3 +1,219 @@
+#### 2026-11-26 *0.9.600*
+- **Cells, charts and text could not be pasted from one office kind into
+  another, and the spreadsheet grid and the slide editor said nothing to a
+  screen reader.**
+  - `UltraCanvasOfficeClipboard.h` (new): copy and paste between the grid,
+    the document editor and the slide editor through the system
+    clipboard's flavours - an HTML table or tab-separated text as cells
+    (`ClipboardTableFromHtml`, `ClipboardTableFromTabbedText`,
+    `ClipboardHtmlIsTable`), cells as a slide table's
+    (`PptxTableCellsFromHtml` keeps bold, italic, colour and alignment,
+    `PptxTableCellsFromRows`), a document's selection or plain text as a
+    text box's paragraphs (`PptxParagraphsFromClipboardHtml` / `Text`),
+    slide shapes as text and HTML for other programs; and the office
+    clipboard for what no flavour carries - a chart (`CopyChartToClipboard`,
+    `GetClipboardChart`), kept in the process beside a PNG of it (HTML) and
+    its data (text) for every other program.
+  - `UltraCanvasSlideEdit`: `Copy` / `Cut` / `Paste` (Ctrl+C / X / V) put the
+    shapes' text and HTML on the system clipboard, and Paste reads it once
+    something else was copied since - a spreadsheet's chart as a chart, cells
+    as a table, a picture as a picture, a document's selection or text as a
+    text box. `UCSlideDeckEditor::InsertTable(box, cells)`,
+    `InsertFormattedTextBox`, `InsertChart`, `CopiedShapes`.
+  - `UltraCanvasSpreadsheet`: with a chart selected, `Copy` / `Cut` take the
+    chart onto the office clipboard; another program's HTML table is read by
+    the shared `ClipboardTableFromHtml`.
+  - `UltraCanvasRichTextEdit::Paste` takes a spreadsheet's chart as a chart
+    frame in the line (`InsertChart`, `UCRichDocumentEditor::InsertChart`);
+    cells already paste as a table through their HTML.
+  - Accessibility: parts an element draws itself (`IAccessibleParts`,
+    `AccessiblePart`, `UltraCanvasUIElement::GetAccessiblePartsInterface`), a
+    grid of cells (`IAccessibleTable`, `GetAccessibleTableInterface`), the
+    roles `TableRow`, `TableCell` and `Canvas` (mapped on AT-SPI, UI
+    Automation and AppKit) and `AccessibilityEvent::part`. The grid is a
+    table named by its sheet - rows and cells as parts, a cell named by its
+    address and value ("B3 42"), the active cell focused, its value text,
+    and announced when it or the selection moves; the slide editor is a
+    canvas named by the slide shown, the strip's slides and the slide's
+    shapes (named by their first words, else their kind) as parts, the
+    selected shape focused and announced. The bridges do not yet publish
+    parts as objects of their own.
+
+  Covered in `OfficeClipboardTest` and `OfficeAccessibilityTest`.
+- **Office templates are read and written for documents and spreadsheets,
+  as they already were for decks.** A template is its document's package
+  under the template's media type, and the writers now write one by the
+  extension:
+  - `UCWordDocumentIO`: an .ott is an .odt with the
+    `application/vnd.oasis.opendocument.text-template` mimetype (and
+    manifest), a .dotx a .docx whose main part is
+    `wordprocessingml.template.main+xml`; both read back as documents. A
+    .dotm (macro-enabled) is read, its macros neither run nor kept, and
+    refused on save. `IsWordTemplateExtension`.
+  - `UltraCanvasSpreadsheet::LoadFromFile` / `SaveToFile`: .ots
+    (`...spreadsheet-template`) and .xltx (`spreadsheetml.template.main+xml`,
+    with a password too) written and read; .xltm read.
+    `IsSpreadsheetTemplateExtension`.
+  - The format inventory lists every template as a type of its own: .ott,
+    .dotx, .dotm (read), .ots, .xltx, .xltm (read), and .potx / .potm and .otp,
+    which leave the PowerPoint and OpenDocument presentation rows.
+- **`UltraCanvasFileLoader`: templates.** `DetectOfficeDocumentKind` gives a
+  template its kind; `IsOfficeTemplate(path)` says whether a file is one -
+  by its extension, or by its package (an OpenDocument `-template` mimetype,
+  an Office Open XML template content type) when the name says nothing - so
+  an office suite opens it as a new, untitled document;
+  `IsOfficeTemplateExtension` asks the name alone. `AddOfficeTemplateSaveTypes
+  (opts, kind)` is "Save as template"'s list (.ott and .dotx, .ots and .xltx,
+  .potx and .otp), and `AddSpreadsheetSaveTypes(opts)` a workbook's Save
+  list. `AddTextDocumentSaveTypes` and `AddPresentationSaveTypes` no longer
+  offer the templates, which the template list does. Covered by
+  `FileLoaderOfficeKindTest`, `WordFormatsTest` and the new
+  `OfficeTemplatesTest`, which also makes UltraOffice's shipped templates
+  (`media/templates/office/`, `--write`) and checks they load.
+- **File previews: a workbook's first printed page.** The built-in providers
+  draw the thumbnail of an .ods, .xlsx, .ots, .xltx or .xltm - the sheet on
+  show cut into pages by its print settings, as its PDF is - so the Filer's
+  tiles show it rather than the type's glyph (a workbook over 2 MB keeps the
+  glyph); the templates .ott, .dotx and .dotm preview as their documents do.
+- **PowerPoint 97-2003 decks (.ppt, and .pps / .pot) are read**
+  (`UltraCanvasPresentationPpt.h`: `ReadPptPresentation`,
+  `ReadPptPresentationFromMemory`, `IsPptPresentationFile`, `IsPptExtension`)
+  into the deck model the .pptx and .odp readers fill, so the slide editor,
+  the show, the page views, PDF export and the outline work on them, and
+  "Save as" writes .pptx or .odp. The reader follows the Current User stream
+  and the UserEditAtom chain to the last edit, then reads the slide size,
+  fonts, masters (their text styles, colour schemes and placeholders; a
+  title master as a "title" layout), each slide's shapes - places in EMU,
+  turns and mirroring, preset and freeform outlines, fills, gradients,
+  outlines, pictures with their bytes and crop, placeholders, tables (a
+  group marked as one) - and their text with bullets, numbering, levels,
+  spacing, bold, italic, underline, size, scheme colours, typefaces and
+  hyperlinks, inherited from the master where a run says nothing; notes,
+  hidden slides, transitions and backgrounds. An encrypted deck is refused
+  with a reason. Every length is checked; a damaged file never crashes it
+  (`PptReaderFuzzSmoke`).
+- `UltraCanvasFileLoader::LoadPresentation` reads any deck by its content -
+  .pptx and kin, .odp and kin, .ppt and kin - and is what the page views
+  (`UltraCanvasPresentationPages`), the file previews and UltraOffice read
+  with. `LoadTextDocument`, `ExtractText`, `DetectOfficeDocumentKind` (a
+  compound file with a "PowerPoint Document" stream, by its content too),
+  the format inventory and the media viewer take a .ppt.
+- The OfficeArt drawing layer of the .doc reader - shape properties, the
+  picture store, PNG / JPEG / EMF / WMF pictures, freeforms - is shared with
+  the .ppt reader (`Plugins/Documents/Word/UltraCanvasOfficeArt.h`), and
+  knows about 150 Office shape types by their DrawingML preset (it knew 30),
+  so a .doc, a .docx's VML shape and an .odt's `mso-spt` shape draw more of
+  them as what they are.
+- **The document dialogs of a word processor, in the framework.**
+  `UltraCanvasRichTextEditDialogs.h` puts eleven dialogs over an
+  `UltraCanvasRichTextEdit`, each a form (`UltraCanvasFormLayout`) of the
+  framework's elements in an `UltraCanvasModalDialog`: page setup (paper,
+  orientation, size, margins, header and footer distance), paragraph
+  (indents, space before and after, line spacing, alignment, tab stops),
+  named styles (apply, change, new from the selection), table properties,
+  a picture's alt text, wrapping, position and size, table of contents,
+  caption, cross-reference, footnote or endnote, a comment, and the list of
+  a document's comments (go to, edit, resolve or reopen, delete). Each is
+  `Read...DialogValues`, `Apply...DialogValues` - what OK does, testable
+  without a window (`RichTextDialogsTest`) - and `Show...Dialog`; Cancel
+  changes nothing. UltraOffice and UltraTexter both open them.
+- **What they set, as undo steps.** `SetParagraphFormat`
+  (`RichParagraphFormat`: a paragraph's whole layout, or a cell's alignment
+  and line spacing), `SetPageSetup` (the page is now part of an undo step,
+  and an undo that changes it lays the document out again),
+  `SetTableProperties` (`RichTableProperties`: width, alignment, indent,
+  header row, fitting the contents, every cell's lines, padding and vertical
+  alignment), `SetSelectedImageWrap` / the core's `SetImageWrap` (a picture
+  of its own paragraph that is made to float becomes the picture in a
+  paragraph's line, at the same position), and `InsertNote(kind, text)`, a
+  note with its text. `GoToPreviousChange`, `GoToNextComment`,
+  `GoToPreviousComment` and `GoToComment` select a change or a comment's
+  text. `RichPageSetup` and `RichTabStop` compare with `==`.
+- **Spreadsheet: array formulas and spills.** A range or an array constant
+  (`{1,2;3,4}`) is a value: arithmetic and the functions of single values
+  (`ABS`, `IF`, `LEN` ...) work element by element, and a formula whose
+  result is an array spills into the cells to its right and below, as in
+  Excel 365 - `#SPILL!` when a cell in the way is taken, the spill following
+  its source as it grows and shrinks, `A1#` for the whole spill and `@` for
+  one value. The spilled cells hold values, not formulas
+  (`SpreadsheetCell::IsSpilledValue`). Legacy array formulas fill a fixed
+  range: Ctrl+Shift+Enter in the grid enters one over the selection
+  (`SpreadsheetSheet::SetArrayFormula`). `LET`
+  and `LAMBDA` (called directly, through a LET name, or by `MAP`, `REDUCE`,
+  `SCAN`, `BYROW`, `BYCOL`, `MAKEARRAY`), and arguments left out
+  (`SEQUENCE(3,,10)`).
+- **Spreadsheet: dynamic-array functions** `FILTER`, `SORT`, `SORTBY`,
+  `UNIQUE`, `SEQUENCE`, `RANDARRAY`, `TRANSPOSE` and `XMATCH`; `XLOOKUP`
+  returns whole rows or columns and takes its match and search modes.
+- **Spreadsheet: financial functions** `NPER`, `RATE`, `IPMT`, `PPMT`,
+  `CUMIPMT`, `CUMPRINC`, `IRR`, `XIRR`, `XNPV`, `MIRR`, `SLN`, `SYD`, `DB`,
+  `DDB`, `VDB`, `EFFECT` and `NOMINAL`, with Excel's iteration limits for
+  `RATE`, `IRR` and `XIRR` (`#NUM!` when they do not converge).
+- **.xlsx and .ods keep array formulas.** .xlsx: `<f t="array" ref>`, a
+  dynamic one with the cell metadata (`cm`, `xl/metadata.xml`) that keeps it
+  a spill in Excel; `A1#`, `@`, the new functions' prefixes and LET's names
+  as Excel stores them; a formula's text, Boolean or error result is written
+  with its type. .ods: `table:number-matrix-*-spanned`, inline arrays and
+  Excel's functions in their `COM.MICROSOFT.` namespace (read too). A
+  formula read from a file without dynamic arrays is worth one value, a
+  range in it giving the cell on its row, as Excel and LibreOffice read it.
+- The spreadsheet documentation lists the common Excel functions still
+  missing, by category.
+- **Every chart of the framework in a spreadsheet.** `RichChart::Kind` names
+  every chart a table of cells can feed - waterfall, diverging bars,
+  population pyramid, dumbbell, Mekko, cumulative flow, nested areas, polar,
+  radial bars, progress rings, gauge, quadrant, importance-performance,
+  ternary, hexbin, 3D scatter, histogram, box and whisker, jitter,
+  ridgeline, funnel, pyramid, Sankey, chord, treemap, sunburst, Gantt,
+  timeline, heatmap, calendar heatmap, contour, surface, word cloud and
+  parliament, beside the office kinds - and `CreateRichChartElement` /
+  `DrawRichChart` (`UltraCanvasRichDocumentChart.h`) build the element of
+  any of them from the chart's categories and series, so documents and
+  slides draw them too (`RichChartSeries::labels` carries a column of words,
+  `RichChart::bins` a histogram's bins). `SpreadsheetChartTypes()` lists 52
+  types in nine categories with their names and descriptions;
+  `MakeSpreadsheetChartOfType` reads the columns as each type does (a
+  bubble chart's x, y and size, a Sankey diagram's sources, targets and
+  amounts, a Gantt chart's tasks, starts and ends, a first column of dates
+  as categories), and `SpreadsheetChartFitMessage` says why a selection does
+  not fit a type ("A bubble chart needs three columns of numbers: x, y and
+  size."). Kanban boards, the circular infographic, the spectrogram, the
+  image histogram, the GL surface and the parallel-coordinates module are
+  left out: no table of cells feeds them.
+- **The chart gallery.** `ShowSpreadsheetChartGallery` shows every type by
+  category, each tile a picture of the selection drawn by the chart itself
+  (a faded sample, with the reason, where it does not fit), its name and
+  description; a click or the arrow keys pick one, Enter or a double click
+  takes it, the category chips scroll to their section. The grid's
+  `ShowInsertChartDialog` and `ShowChartTypeDialog` use it, and the
+  properties dialog's *Type* is a button that opens it. The gallery is a
+  new element, `UltraCanvasGalleryPicker`: tiles of live pictures in titled
+  sections, picked with the mouse or the keys.
+- **Kept in .xlsx and .ods.** A kind the format has a form for is written
+  as itself - now also a surface (`c:surface3DChart`), a contour map
+  (`c:surfaceChart`) and a bubble chart's size references (`c:bubbleSize`,
+  `DrawingMLSeriesSource::sizes`). Every other kind is written as a column
+  chart of its numbers, which Excel and LibreOffice show, with an
+  UltraCanvas extension holding the real kind, its look and every series'
+  ranges: `c:extLst/c:ext` in the chart part, and an element of our own
+  namespace at the end of the .ods chart object. Reading puts the kind
+  back. Excel 2016's `cx:` parts are not written; those kinds take the
+  extension too.
+- `UltraCanvasChartElementBase::SetEntranceAnimation`: a chart shown
+  complete from the first frame - on a page, in print, as a thumbnail.
+- **`check_platform_names.py` knows `<windows.h>`'s object-like macros.** A
+  new `win32-macro` rule flags a lambda, variable, member, enumerator or
+  `#undef` named `near`, `far`, `NEAR`, `FAR`, `IN`, `OUT`, `OPTIONAL`,
+  `interface`, `small`, `ERROR`, `DELETE` and the rest of the hand-kept list
+  in `scripts/win32_object_macros.txt`: on Windows those names are rewritten
+  ("expected unqualified-id"), and a spreadsheet chart helper named `near`
+  broke both Windows builds that way. The A/W rule only knew function-like
+  macros. Sixteen `near` / `far` identifiers are renamed (`closeTo`,
+  `distant`) in the slide editor, the DXF reader, the requirement diagram,
+  ArtCreator and nine tests; the `small` and `interface` sites, which build
+  today because `WIN32_LEAN_AND_MEAN` keeps the COM and RPC headers out, are
+  baselined.
+
 #### 2026-11-26 *0.9.599*
 - **A menu stayed open, floating above everything, after its window had moved
   or gone behind another.** A menu opened from the menu bar (or a dropdown's
