@@ -1,3 +1,8 @@
+#### 2026-11-26 *0.8.18*
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
+
 #### 2026-11-14 *0.8.17*
 - **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
 

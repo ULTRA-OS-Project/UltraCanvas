@@ -1,3 +1,8 @@
+#### 2026-11-26 *0.1.37*
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
+
 #### 2026-11-25 *0.1.36*
 - **Your profile picture, end to end to your contacts.** Edit profile has a
   picture at its head: *Choose a picture* opens one, a crop window places it

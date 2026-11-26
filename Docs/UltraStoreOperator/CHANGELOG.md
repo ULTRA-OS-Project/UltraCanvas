@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.1.5*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-20 *0.1.4*
 - **The review pipeline's findings**: each automatic check on the review page shows the pipeline's lines under it, with when it last ran and *Run the checks again*; `ultrastoreop review show` prints the findings, `review checks <submission>` runs the pipeline again.
 

@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.2.12*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-22 *0.2.11*
 - **Recovery from a forgotten master password.** *Recovery* in the top band
   turns it on: the vault gets a second way in, a recovery key in two halves -
