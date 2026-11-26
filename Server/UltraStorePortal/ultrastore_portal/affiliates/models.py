@@ -2,6 +2,8 @@
 the affiliate, the merchant's boost, a click on an affiliate's link, the
 commission a sale earns, what was paid, and the record of a block or a ban.
 
+Version: 0.11.0 - phase 2: Binding, OrderVisit; an Attribution's and a
+                  Commission's basis may be the bound customer
 Version: 0.10.0
 """
 
@@ -137,13 +139,55 @@ class ClickDay(models.Model):
         constraints = [models.UniqueConstraint(fields=["affiliate", "app", "label", "day"], name="one_count_per_link_and_day")]
 
 
+class Binding(models.Model):
+    """A customer and the affiliate who brought them: every later purchase
+    of the customer's earns that affiliate the base. One active or
+    suspended row per customer; a binding that ended stays as its history."""
+
+    ACTIVE, SUSPENDED, ENDED = "active", "suspended", "ended"
+    STATES = [(ACTIVE, "Active"), (SUSPENDED, "Suspended"), (ENDED, "Ended")]
+    SIGNUP, FIRST_ORDER, WON_BACK = "signup", "first_order", "won_back"
+    THROUGH = [(SIGNUP, "Signed up through the affiliate's link"), (FIRST_ORDER, "First purchase through the affiliate's link"),
+               (WON_BACK, "Won back after six months without a purchase")]
+
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="affiliate_bindings")
+    affiliate = models.ForeignKey(AffiliateProfile, on_delete=models.PROTECT, related_name="bindings")
+    through = models.CharField(max_length=16, choices=THROUGH)
+    state = models.CharField(max_length=16, choices=STATES, default=ACTIVE, db_index=True)
+    ended_because = models.CharField(max_length=32, blank=True, help_text="won_back, affiliate_banned, affiliate_erased")
+    created = models.DateTimeField(auto_now_add=True)
+    ended = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+        constraints = [models.UniqueConstraint(fields=["customer"], condition=~models.Q(state="ended"), name="one_binding_in_force_per_customer")]
+
+    def __str__(self) -> str:
+        return f"customer {self.customer_id} -> {self.affiliate} ({self.state})"
+
+
+class OrderVisit(models.Model):
+    """The last affiliate's link an order's buyer followed before buying,
+    whatever it led to: what a new customer's binding and a win-back go by."""
+
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="affiliate_visit")
+    affiliate = models.ForeignKey(AffiliateProfile, on_delete=models.CASCADE, related_name="+")
+    clicked_at = models.DateTimeField()
+
+
 class Attribution(models.Model):
-    """An order that followed an affiliate's link to its product."""
+    """Who an order credits: the affiliate whose link to the product it
+    followed, or - with no such link - the affiliate its buyer is bound to.
+    A subscription's renewals credit whoever its first payment did."""
+
+    PRODUCT_LINK, BOUND_CUSTOMER = "product_link", "bound_customer"
 
     order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="affiliate_attribution")
     affiliate = models.ForeignKey(AffiliateProfile, on_delete=models.PROTECT, related_name="attributions")
+    basis = models.CharField(max_length=16, default=PRODUCT_LINK)
+    binding = models.ForeignKey(Binding, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     label = models.CharField(max_length=32, blank=True)
-    clicked_at = models.DateTimeField()
+    clicked_at = models.DateTimeField(null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
 
 
@@ -170,8 +214,8 @@ class Commission(models.Model):
     below zero). A superaffiliate's share is a line of its own, naming the
     line it is a share of."""
 
-    PRODUCT_LINK, SUPER = "product_link", "super"
-    BASES = [(PRODUCT_LINK, "Product link"), (SUPER, "Superaffiliate's share")]
+    PRODUCT_LINK, BOUND_CUSTOMER, SUPER = "product_link", "bound_customer", "super"
+    BASES = [(PRODUCT_LINK, "Product link"), (BOUND_CUSTOMER, "Your customer"), (SUPER, "Superaffiliate's share")]
     PENDING, APPROVED, REVERSAL = "pending", "approved", "reversal"
     STATES = [(PENDING, "Pending"), (APPROVED, "Approved"), (REVERSAL, "Given back")]
 
@@ -180,6 +224,9 @@ class Commission(models.Model):
     order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="commissions")
     basis = models.CharField(max_length=16, choices=BASES)
     share_of = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="shares")
+    # For a bound customer's purchase: the binding, whose number is all the
+    # affiliate learns of who bought. Gone with the customer's account.
+    binding = models.ForeignKey("Binding", null=True, blank=True, on_delete=models.SET_NULL, related_name="commissions")
     label = models.CharField(max_length=32, blank=True)
     # What it was reckoned on and with, as it stood: the net amount, the
     # programme's base and the merchant's boost in percent, and who pays what.

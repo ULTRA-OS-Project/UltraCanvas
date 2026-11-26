@@ -61,6 +61,10 @@ def signup(request):
             # not: only its owner learns which, by mail.
             if existing is None:
                 user = User.objects.create_user(email, form.cleaned_data["password"], name=form.cleaned_data["name"])
+                # Somebody an affiliate's link brought here is that affiliate's customer from now on.
+                from ..affiliates import services as affiliates
+                from .affiliates import last_click
+                affiliates.signed_up(user, last_click(request))
                 send_verification(user)
             elif existing.email_verified:
                 send_existing_account(existing)
@@ -204,8 +208,10 @@ def profile(request):
         form.save()
         messages.success(request, "Saved.")
         return redirect("account:profile")
+    from ..affiliates import services as affiliates
     return render(request, "account/profile.html", {
-        "form": form, "console_url": hosts.store_url("console:home"), "services": provider.services_of(request.user)})
+        "form": form, "console_url": hosts.store_url("console:home"), "services": provider.services_of(request.user),
+        "referred_by": affiliates.binding_of(request.user) if affiliates.enabled() else None})
 
 
 @login_required

@@ -26,6 +26,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from ..billing import services as billing
 from ..billing.models import Invoice, Payment
+from ..identity import provider
 from ..web.utils import too_many
 from .views import answer, error
 
@@ -54,8 +55,14 @@ def checkout(request):
         body = None
     if not isinstance(body, dict) or not str(body.get("app") or "").strip():
         return error(400, "bad_request", "The body is a JSON object naming the app")
+    # Who is buying, when the client says so with the account's access
+    # token: the order is then the account's. Without one it is nobody's,
+    # reached by its secret, as before.
+    header = request.headers.get("Authorization", "")
+    buyer = provider.person_of(header[7:].strip()) if header.lower().startswith("bearer ") else None
     order = billing.create_order(str(body["app"]).strip(), source="store", code=str(body.get("code") or ""), language=str(body.get("language") or ""),
-                                 promote=str(body.get("promote") or ""), country=str(body.get("country") or ""), ref=str(body.get("ref") or ""))
+                                 promote=str(body.get("promote") or ""), country=str(body.get("country") or ""), ref=str(body.get("ref") or ""),
+                                 via=str(body.get("via") or ""), buyer=buyer)
     return answer({**billing.order_public(order), "secret": order.secret, "checkout_url": billing.checkout_url(order),
                    "environment": "sandbox" if settings.PAYMENT_PROVIDER == "test" else "production"})
 

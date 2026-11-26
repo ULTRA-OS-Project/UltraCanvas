@@ -1,6 +1,7 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.11.0 - the binding's win-back (AFFILIATE_WINBACK_MONTHS, _WINBACK_DAYS)
 Version: 0.10.0 - affiliates (AFFILIATES, AFFILIATE_..., TEXT_GATEWAY_...)
 Version: 0.9.0 - tax and payouts (SELLER_..., INVOICE_PREFIX, PAYOUT_HOLD_DAYS, PAYOUT_MINIMUM)
 Version: 0.8.0 - leaving an account (ACCOUNT_CLOSED_DAYS, ACCOUNT_DELETION_GRACE_DAYS)
@@ -391,6 +392,13 @@ except InvalidOperation as error:
     raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_BASE_PERCENT and _SUPER_PERCENT are numbers of percent") from error
 AFFILIATE_LINK_DAYS = int(env("AFFILIATE_LINK_DAYS", "90"))
 AFFILIATE_APPROVAL_DAYS = int(env("AFFILIATE_APPROVAL_DAYS", "30"))
+# The binding (phase 2): a customer who has paid for nothing for more than
+# these months, and pays within these days of following another affiliate's
+# link, is won back by that affiliate.
+AFFILIATE_WINBACK_MONTHS = int(env("AFFILIATE_WINBACK_MONTHS", "6"))
+AFFILIATE_WINBACK_DAYS = int(env("AFFILIATE_WINBACK_DAYS", "14"))
+if AFFILIATE_WINBACK_MONTHS < 1 or AFFILIATE_WINBACK_DAYS < 1:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_WINBACK_MONTHS and _WINBACK_DAYS are at least 1")
 if not 0 <= AFFILIATE_BASE_PERCENT <= STORE_FEE_PERCENT:
     raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_BASE_PERCENT comes out of the store's fee: from 0 to ULTRASTORE_PORTAL_STORE_FEE_PERCENT")
 if not 0 <= AFFILIATE_SUPER_PERCENT <= 50 or AFFILIATE_LINK_DAYS < 1 or AFFILIATE_APPROVAL_DAYS < 0:

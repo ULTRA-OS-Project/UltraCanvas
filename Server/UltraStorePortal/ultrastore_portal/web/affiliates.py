@@ -1,9 +1,11 @@
-"""UltraAffiliates, phase 1: the affiliate's own pages, the links, the
+"""UltraAffiliates, phases 1 and 2: the affiliate's own pages, the links, the
 publisher's boosts and the operator's review, block, ban and payout
 (affiliates/services.py has the rules).
 
 Every page here is a 404 while ULTRASTORE_PORTAL_AFFILIATES is not 1.
 
+Version: 0.11.0 - the last link a browser followed (for the binding), and
+                  an affiliate's customers by number
 Version: 0.10.0
 """
 
@@ -25,7 +27,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from ..affiliates import services, texts
-from ..affiliates.models import AffiliatePayout, AffiliateProfile, Boost, Click, Commission, Sanction
+from ..affiliates.models import AffiliatePayout, AffiliateProfile, Binding, Boost, Click, Commission, Sanction
 from ..billing import tax
 from ..store import constants
 from ..store.models import App, PublisherMember
@@ -47,6 +49,7 @@ def _cents(rows, *names) -> list[dict]:
 
 
 CLICKS = "affiliate_clicks"       # the session's {app id or "": token}: the links this browser followed
+LAST = "affiliate_last"           # the token of the last of them, whatever it led to: what a binding goes by
 RECRUITER = "affiliate_recruiter"  # the handle whose recruiting link this browser followed
 
 
@@ -78,6 +81,7 @@ def go(request, handle: str, app_id: str = ""):
         kept = request.session.get(CLICKS) or {}
         kept[app.app_id if app else ""] = click.token
         request.session[CLICKS] = kept
+        request.session[LAST] = click.token
     return redirect(target)
 
 
@@ -85,6 +89,12 @@ def ref_for(request, app: App) -> str:
     """The token of the affiliate's link to this product that this browser
     last followed, if any (the buy page sends it with the order)."""
     return (request.session.get(CLICKS) or {}).get(app.app_id, "") if services.enabled() else ""
+
+
+def last_click(request) -> str:
+    """The token of the last affiliate's link this browser followed, to a
+    product or to the shop: a new customer is bound by it."""
+    return request.session.get(LAST, "") if services.enabled() else ""
 
 
 @require_GET
@@ -179,7 +189,9 @@ def home(request):
         "recruits": recruits, "general_link": _link(request, profile), "join_link": f"{settings.BASE_URL}/affiliate/join/{profile.handle}/",
         "products": _products(limit=12) if profile.active else [], "link_days": settings.AFFILIATE_LINK_DAYS,
         "approval_days": settings.AFFILIATE_APPROVAL_DAYS, "super_percent": format(settings.AFFILIATE_SUPER_PERCENT.normalize(), "f"),
-        "sanctions": profile.sanctions.all(), "can_text": texts.can_send(), "edit_form": ProfileEditForm(instance=profile)})
+        "sanctions": profile.sanctions.all(), "can_text": texts.can_send(), "edit_form": ProfileEditForm(instance=profile),
+        "customers": Binding.objects.filter(affiliate=profile, state=Binding.ACTIVE).count(),
+        "base_percent": format(settings.AFFILIATE_BASE_PERCENT.normalize(), "f")})
 
 
 def _own_profile(request) -> AffiliateProfile:
@@ -408,4 +420,5 @@ def operator_affiliate(request, pk: int):
         "profile": profile, "review": review, "sanction_form": sanction_form, "sums": services.sums(profile),
         "lines": profile.commissions.select_related("order__app", "share_of__affiliate")[:100], "payouts": profile.payouts.all()[:30],
         "sanctions": profile.sanctions.select_related("decided_by"), "recruits": profile.recruits.order_by("handle"),
-        "default_super": format(settings.AFFILIATE_SUPER_PERCENT.normalize(), "f"), "can_text": texts.can_send()})
+        "default_super": format(settings.AFFILIATE_SUPER_PERCENT.normalize(), "f"), "can_text": texts.can_send(),
+        "customers": Binding.objects.filter(affiliate=profile, state=Binding.ACTIVE).count()})

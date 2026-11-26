@@ -1,4 +1,4 @@
-"""UltraAffiliates, phase 1: product links.
+"""UltraAffiliates, phases 1 and 2: product links, and the customer's binding.
 
 The rules, from Docs/Research/UltraAffiliatesDesignProposal.md and the
 owner's decisions in its section 9:
@@ -26,11 +26,35 @@ owner's decisions in its section 9:
   says - one profile per person.
 - **Blocked or banned** affiliates earn nothing; each has a record.
 
-Not in phase 1 (the proposal's phases 2 and 3): the binding of a customer
-to an affiliate, which needs the buyer's account on an order; the 5 %
-holdback; statements and self-billed credit notes; fixed boosts for
-hardware; codes; the native store's links.
+Phase 2, the binding (0.11.0) - it needs the buyer's account on the order,
+so it works for a buyer who is signed in:
 
+- **A new customer is bound to the affiliate whose link brought them**: at
+  sign-up, or at the first paid order, when a link of that affiliate's - to
+  a product or to the shop - was followed in the days a link counts. New
+  means no paid order before, under the account or under its address.
+- **A bound customer's purchase earns their affiliate the base**, whatever
+  the product and whoever sells it - unless a link to that product wins it
+  (above), which earns that link's affiliate base and boost. One commission
+  per order; the binding does not move for a link.
+- **A customer is won back**: one who has paid for nothing for more than
+  AFFILIATE_WINBACK_MONTHS (6) and pays within AFFILIATE_WINBACK_DAYS (14)
+  of following another affiliate's link is bound to that affiliate from
+  that order on, whether they had one before or not. The earlier binding
+  stays as history.
+- **Nobody is bound to themselves**, and a binding credits nobody the
+  programme would not let earn on that sale.
+- **The binding follows the customer's account**: suspended while it is
+  closed or being deleted, back when it is, gone when it is erased. An
+  affiliate's ban, or the erasure of their account, ends their bindings.
+- **A referred customer who becomes an affiliate** has their affiliate as
+  superaffiliate, before any recruiting link.
+
+Not built (the proposal's phase 3): the 5 % holdback; statements and
+self-billed credit notes; fixed boosts for hardware; codes; the native
+store's links.
+
+Version: 0.11.0 - phase 2: the binding, the win-back, the bound customer's base
 Version: 0.10.0
 """
 
@@ -52,7 +76,7 @@ from ..billing.models import Payment
 from ..store.models import App, PublisherMember
 from ..store.services import audit
 from . import texts
-from .models import AffiliatePayout, AffiliateProfile, Attribution, Boost, Click, ClickDay, Commission, Sanction
+from .models import AffiliatePayout, AffiliateProfile, Attribution, Binding, Boost, Click, ClickDay, Commission, OrderVisit, Sanction
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
@@ -88,7 +112,14 @@ def apply(user, *, handle: str, phone: str, website: str = "", channels: str = "
     them is their superaffiliate, for good."""
     if profile_of(user) is not None:
         raise AffiliateError("This account has an affiliate profile already")
-    superaffiliate = AffiliateProfile.objects.filter(handle__iexact=recruiter, state=AffiliateProfile.ACTIVE).exclude(user=user).first() if recruiter else None
+    # Whoever brought the customer brought the affiliate: the binding goes
+    # before a recruiting link.
+    bound = binding_of(user)
+    if bound is not None and bound.affiliate.state == AffiliateProfile.ACTIVE:
+        superaffiliate = bound.affiliate
+    else:
+        superaffiliate = (AffiliateProfile.objects.filter(handle__iexact=recruiter, state=AffiliateProfile.ACTIVE).exclude(user=user).first()
+                          if recruiter else None)
     profile = AffiliateProfile.objects.create(
         user=user, handle=handle, phone=phone, website=website, channels=channels, legal_name=legal_name, vat_id=vat_id,
         payout_details=payout_details, terms_accepted_at=timezone.now(), superaffiliate=superaffiliate)
@@ -178,6 +209,7 @@ def sanction(profile: AffiliateProfile, operator, kind: str, *, rule: str, facts
     row = Sanction.objects.create(affiliate=profile, kind=kind, rule=rule.strip(), facts=facts.strip(), evidence=evidence.strip(),
                                   until=until if kind == Sanction.BLOCK else None, money=money.strip(), decided_by=operator)
     if kind == Sanction.BAN:
+        _end_bindings(profile, "affiliate_banned")
         AffiliateProfile.objects.filter(superaffiliate=profile).update(superaffiliate=None)
         profile.superaffiliate = None
         profile.state = AffiliateProfile.BANNED
@@ -214,6 +246,11 @@ def add_statement(row: Sanction, text: str) -> Sanction:
 # ------------------------------------------------- the account's own states
 
 def account_closed(user) -> None:
+    """The account is closed, or its deletion asked for: as a customer, its
+    binding is suspended; as an affiliate (a closed account), its profile."""
+    Binding.objects.filter(customer=user, state=Binding.ACTIVE).update(state=Binding.SUSPENDED)
+    if user.is_active:   # a deletion asked for: the account works on, and so does its profile
+        return
     profile = AffiliateProfile.objects.filter(user=user).first()
     if profile is not None and profile.state not in (AffiliateProfile.CLOSED, AffiliateProfile.BANNED):
         profile.state_before, profile.state = profile.state, AffiliateProfile.CLOSED
@@ -221,6 +258,9 @@ def account_closed(user) -> None:
 
 
 def account_reactivated(user) -> None:
+    """The account is back, or its deletion taken back: the binding is in
+    force again, to the same affiliate."""
+    Binding.objects.filter(customer=user, state=Binding.SUSPENDED).update(state=Binding.ACTIVE)
     profile = AffiliateProfile.objects.filter(user=user, state=AffiliateProfile.CLOSED).first()
     if profile is not None:
         profile.state, profile.state_before = profile.state_before or AffiliateProfile.PAUSED, ""
@@ -228,11 +268,15 @@ def account_reactivated(user) -> None:
 
 
 def account_erased(user) -> None:
-    """Nothing of the person is left on the profile; the row stays, so the
+    """Nothing of the person is left: as a customer, the bindings are
+    removed (what they earned an affiliate stays, with no customer behind
+    it); as an affiliate, the profile is emptied and its row stays, so the
     commissions it earned and a ban's record still name something."""
+    Binding.objects.filter(customer=user).delete()
     profile = AffiliateProfile.objects.filter(user=user).first()
     if profile is None:
         return
+    _end_bindings(profile, "affiliate_erased")
     AffiliateProfile.objects.filter(superaffiliate=profile).update(superaffiliate=None)
     Click.objects.filter(affiliate=profile).delete()
     banned = profile.state == AffiliateProfile.BANNED
@@ -294,34 +338,129 @@ def save_boost(publisher, actor, *, scope: str, percent: Decimal, app: App | Non
 
 # --------------------------------------------------------------- the links
 
-def may_earn(profile: AffiliateProfile, app: App, buyer_email: str = "") -> bool:
+def may_earn(profile: AffiliateProfile, app: App, buyer_email: str = "", buyer_id: int | None = None) -> bool:
     """Whether a sale of this app can credit this affiliate: active, not
     one of the seller's own people, and not the buyer."""
     if profile.state != AffiliateProfile.ACTIVE or not profile.user.is_active:
         return False
     if PublisherMember.objects.filter(publisher_id=app.publisher_id, user_id=profile.user_id).exists():
         return False
+    if buyer_id is not None and buyer_id == profile.user_id:
+        return False
     return not (buyer_email and buyer_email.strip().lower() == profile.user.email.lower())
+
+
+# ------------------------------------------------------------- the binding
+
+def binding_of(user) -> Binding | None:
+    """The customer's binding in force: active, or suspended with the account."""
+    if not getattr(user, "pk", None):
+        return None
+    return Binding.objects.select_related("affiliate__user").filter(customer=user).exclude(state=Binding.ENDED).first()
+
+
+def _end_bindings(profile: AffiliateProfile, because: str) -> None:
+    Binding.objects.filter(affiliate=profile).exclude(state=Binding.ENDED).update(state=Binding.ENDED, ended_because=because, ended=timezone.now())
+
+
+def _may_bind(profile: AffiliateProfile, user) -> bool:
+    return profile.state == AffiliateProfile.ACTIVE and profile.user.is_active and profile.user_id != user.pk
+
+
+@transaction.atomic
+def _bind(user, profile: AffiliateProfile, through: str) -> Binding:
+    # One binding in force per customer: the earlier one ends here, in the
+    # same transaction, with the customer's row held (the constraint that
+    # says so is not one MySQL keeps).
+    type(user).objects.select_for_update().filter(pk=user.pk).first()
+    Binding.objects.filter(customer=user).exclude(state=Binding.ENDED).update(state=Binding.ENDED, ended_because="won_back", ended=timezone.now())
+    row = Binding.objects.create(customer=user, affiliate=profile, through=through)
+    audit(None, "affiliate.bound", "account", str(user.pk), affiliate=profile.handle, through=through)
+    return row
+
+
+def last_paid(user, *, apart_from=None):
+    """When this person last paid for anything - under the account, or
+    under its address before the account was on its orders - or None."""
+    paid = Payment.objects.filter(kind__in=[Payment.SALE, Payment.RENEWAL]).filter(Q(order__buyer=user) | Q(order__payer_email__iexact=user.email))
+    if apart_from is not None:
+        paid = paid.exclude(order=apart_from)
+    return paid.order_by("-at").values_list("at", flat=True).first()
+
+
+def months_before(moment, months: int):
+    """The same day `months` earlier, or the month's last where it has no such day."""
+    year, month = moment.year, moment.month - months
+    while month < 1:
+        year, month = year - 1, month + 12
+    for day in range(moment.day, 27, -1):
+        try:
+            return moment.replace(year=year, month=month, day=day)
+        except ValueError:
+            continue
+    return moment.replace(year=year, month=month, day=min(moment.day, 28))
+
+
+def signed_up(user, token: str) -> Binding | None:
+    """A new account whose owner followed an affiliate's link in the days a
+    link counts: bound to that affiliate."""
+    if not enabled() or not token:
+        return None
+    click = Click.objects.select_related("affiliate__user").filter(token=token[:40]).first()
+    if click is None or click.at < timezone.now() - dt.timedelta(days=settings.AFFILIATE_LINK_DAYS):
+        return None
+    if binding_of(user) is not None or last_paid(user) is not None or not _may_bind(click.affiliate, user):
+        return None
+    return _bind(user, click.affiliate, Binding.SIGNUP)
+
+
+def _settle_binding(order) -> None:
+    """Before an order's first payment is attributed: a new customer who
+    came through an affiliate's link is bound, and a customer who stopped
+    buying is won back by the affiliate whose link brought them back."""
+    buyer = order.buyer
+    visit = OrderVisit.objects.select_related("affiliate__user").filter(order=order).first()
+    if buyer is None or visit is None or not _may_bind(visit.affiliate, buyer):
+        return
+    if buyer.state != buyer.ACTIVE:   # on the way out: nobody's new customer
+        return
+    now = timezone.now()
+    current = binding_of(buyer)
+    earlier = last_paid(buyer, apart_from=order)
+    if earlier is None:
+        if current is None and visit.clicked_at >= now - dt.timedelta(days=settings.AFFILIATE_LINK_DAYS):
+            _bind(buyer, visit.affiliate, Binding.FIRST_ORDER)
+        return
+    lapsed = earlier < months_before(now, settings.AFFILIATE_WINBACK_MONTHS)
+    in_time = visit.clicked_at >= now - dt.timedelta(days=settings.AFFILIATE_WINBACK_DAYS)
+    if lapsed and in_time and (current is None or current.affiliate_id != visit.affiliate_id):
+        _bind(buyer, visit.affiliate, Binding.WON_BACK)
 
 
 def record_click(profile: AffiliateProfile, app: App | None, label: str = "") -> Click:
     return Click.objects.create(affiliate=profile, app=app, label=(label or "")[:32])
 
 
-def order_opened(order, ref: str) -> None:
-    """An order that came with the token of an affiliate's link: kept,
-    when the link was to this product, in time, by an affiliate who may
-    earn on it."""
-    if not enabled() or not ref:
+def order_opened(order, ref: str, via: str = "") -> None:
+    """An order that came with the tokens of affiliates' links. `ref`, a
+    link to this product: kept as the order's attribution when it is in
+    time and by an affiliate who may earn on it. `via`, the last link the
+    buyer followed, whatever it led to: kept for the binding."""
+    if not enabled():
         return
-    click = Click.objects.select_related("affiliate__user").filter(token=ref[:40]).first()
-    if click is None or click.app_id != order.app_id:
+    clicks = {c.token: c for c in Click.objects.select_related("affiliate__user").filter(token__in=[t[:40] for t in (ref, via) if t])}
+    product, last = clicks.get(ref[:40]) if ref else None, clicks.get(via[:40]) if via else None
+    if last is None or (product is not None and product.at > last.at):
+        last = product
+    if last is not None and last.affiliate.state == AffiliateProfile.ACTIVE:
+        OrderVisit.objects.get_or_create(order=order, defaults={"affiliate": last.affiliate, "clicked_at": last.at})
+    if product is None or product.app_id != order.app_id:
         return
-    if click.at < timezone.now() - dt.timedelta(days=settings.AFFILIATE_LINK_DAYS):
+    if product.at < timezone.now() - dt.timedelta(days=settings.AFFILIATE_LINK_DAYS):
         return
-    if not may_earn(click.affiliate, order.app, order.payer_email):
+    if not may_earn(product.affiliate, order.app, order.payer_email, order.buyer_id):
         return
-    Attribution.objects.get_or_create(order=order, defaults={"affiliate": click.affiliate, "label": click.label, "clicked_at": click.at})
+    Attribution.objects.get_or_create(order=order, defaults={"affiliate": product.affiliate, "label": product.label, "clicked_at": product.at})
 
 
 def _line(payment: Payment, affiliate: AffiliateProfile, basis: str, **fields) -> Commission:
@@ -331,18 +470,22 @@ def _line(payment: Payment, affiliate: AffiliateProfile, basis: str, **fields) -
 def _earned(payment: Payment, row: Attribution) -> None:
     order = payment.order
     affiliate = row.affiliate
-    if not may_earn(affiliate, order.app, order.payer_email):
+    if not may_earn(affiliate, order.app, order.payer_email, order.buyer_id):
         return
     today = timezone.localdate()
     net = payment.net_amount
     base_percent = settings.AFFILIATE_BASE_PERCENT
-    boost = boost_for(order.app, today, renewal=payment.kind == Payment.RENEWAL)
+    # The merchant's boost is for the affiliate whose link to the product
+    # brought the sale; a bound customer's purchase earns the base alone.
+    linked = row.basis == Attribution.PRODUCT_LINK
+    boost = boost_for(order.app, today, renewal=payment.kind == Payment.RENEWAL) if linked else None
     boost_percent = boost.percent if boost else ZERO
     operator_part, merchant_part = part(net, base_percent), part(net, boost_percent)
     # Never more than the publisher has left of this payment.
     merchant_part = max(min(merchant_part, payment.amount - payment.vat_amount - payment.store_fee), ZERO)
     after = today + dt.timedelta(days=settings.AFFILIATE_APPROVAL_DAYS)
-    line = _line(payment, affiliate, Commission.PRODUCT_LINK, label=row.label, net=net, base_percent=base_percent, boost_percent=boost_percent,
+    line = _line(payment, affiliate, Commission.PRODUCT_LINK if linked else Commission.BOUND_CUSTOMER, binding=None if linked else row.binding,
+                 label=row.label, net=net, base_percent=base_percent, boost_percent=boost_percent,
                  operator_part=operator_part, merchant_part=merchant_part, amount=operator_part + merchant_part, approve_after=after)
     if merchant_part:
         Payment.objects.filter(pk=payment.pk).update(boost_amount=merchant_part)
@@ -378,7 +521,7 @@ def _given_back(payment: Payment) -> None:
         amount, operator_part, merchant_part = back(line.amount, "amount"), back(line.operator_part, "operator_part"), back(line.merchant_part, "merchant_part")
         if not amount:
             continue
-        made[line.pk] = _line(payment, line.affiliate, line.basis, share_of=made.get(line.share_of_id), label=line.label,
+        made[line.pk] = _line(payment, line.affiliate, line.basis, share_of=made.get(line.share_of_id), label=line.label, binding=line.binding,
                               net=-back(line.net, "net"),
                               base_percent=line.base_percent, boost_percent=line.boost_percent, operator_part=-operator_part,
                               merchant_part=-merchant_part, amount=-amount, state=Commission.REVERSAL)
@@ -395,7 +538,27 @@ def payment_recorded(payment: Payment) -> None:
     if payment.is_reversal:
         _given_back(payment)
         return
-    row = Attribution.objects.select_related("affiliate__user", "affiliate__superaffiliate__user").filter(order=payment.order).first()
+    order = payment.order
+    if payment.kind == Payment.SALE:
+        _settle_binding(order)
+    row = Attribution.objects.select_related("affiliate__user", "affiliate__superaffiliate__user", "binding").filter(order=order).first()
+    if row is None and payment.kind == Payment.SALE and order.buyer_id:
+        # No link to the product: the affiliate the buyer is bound to.
+        bound = Binding.objects.select_related("affiliate__user", "affiliate__superaffiliate__user").filter(customer_id=order.buyer_id,
+                                                                                                         state=Binding.ACTIVE).first()
+        if bound is not None and may_earn(bound.affiliate, order.app, order.payer_email, order.buyer_id):
+            row = Attribution.objects.create(order=order, affiliate=bound.affiliate, basis=Attribution.BOUND_CUSTOMER, binding=bound)
+    elif row is not None and row.basis == Attribution.BOUND_CUSTOMER and payment.kind == Payment.RENEWAL:
+        # A renewal follows the customer, not the day the subscription began:
+        # it earns whoever the customer is bound to now, and nobody while
+        # the binding is suspended or has ended.
+        bound = Binding.objects.select_related("affiliate__user", "affiliate__superaffiliate__user").filter(customer_id=order.buyer_id,
+                                                                                                         state=Binding.ACTIVE).first()
+        if bound is None:
+            return
+        if bound.pk != row.binding_id:
+            row.affiliate, row.binding = bound.affiliate, bound
+            row.save(update_fields=["affiliate", "binding"])
     if row is not None:
         _earned(payment, row)
 

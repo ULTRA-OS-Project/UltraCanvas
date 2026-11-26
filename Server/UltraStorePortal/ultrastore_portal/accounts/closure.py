@@ -123,6 +123,7 @@ def request_deletion(user) -> User:
     user.deletion_requested_at = timezone.now()
     user.erase_after = timezone.localdate() + dt.timedelta(days=settings.ACCOUNT_DELETION_GRACE_DAYS)
     user.save(update_fields=["deletion_requested_at", "erase_after"])
+    _affiliates().account_closed(user)   # the customer's binding is suspended from the request on
     _audit(user, "account.delete_requested", erase_after=user.erase_after.isoformat())
     transaction.on_commit(lambda: _mail(user, "account_deletion.txt", "your account will be deleted"))
     return user
@@ -135,6 +136,7 @@ def cancel_deletion(user) -> User:
     user.deletion_requested_at = None
     user.erase_after = None
     user.save(update_fields=["deletion_requested_at", "erase_after"])
+    _affiliates().account_reactivated(user)
     _audit(user, "account.delete_cancelled")
     return user
 

@@ -24,6 +24,8 @@ Two providers: Skrill Quick Checkout (skrill.py), and "test", which a
 developer's machine and the tests use - the hand-off page has a button in
 Skrill's place that sends the same signed report through the same code.
 
+Version: 0.11.0 - an order knows its buyer's account, and the last
+                  affiliate's link the buyer followed (`via`)
 Version: 0.10.0 - an order may carry an affiliate's link (`ref`); every
                   payment is told to the affiliate programme (_record)
 Version: 0.9.0 - an order keeps the buyer's country; a payment carries its
@@ -190,23 +192,23 @@ def _record(payment: Payment) -> Payment:
 
 
 def create_order(app_id: str, *, source: str = "store", email: str = "", language: str = "", code: str = "", promote: str = "",
-                 country: str = "", ref: str = "") -> Order:
+                 country: str = "", ref: str = "", via: str = "", buyer=None) -> Order:
     missing = missing_settings()
     if missing:
         raise BillingError(503, "not_configured", "The store is not set up to sell: " + ", ".join(missing))
     app = sellable_app(app_id)
     order = Order.objects.create(
         app=app, app_name=app.name, amount=app.price, currency=app.currency.upper(), list_price=app.price,
-        country=tax.clean_country(country),
+        country=tax.clean_country(country), buyer=buyer if getattr(buyer, "is_authenticated", False) else None,
         code=code[:40], code_applied=False,   # discount codes are not built: the code is kept, the price is the list price
         cycle=CYCLES.get(app.pricing_model, ""), provider=settings.PAYMENT_PROVIDER, source=source, payer_email=email, language=language[:8])
     audit(None, "order.open", "order", order.public_id, app=app.app_id, amount=money(order.amount), currency=order.currency, source=source)
     if promote:   # the token of the advertisement the buyer last clicked, kept by their store
         from ..promote import services as advertising
         advertising.order_opened(order, promote)
-    if ref:   # the token of an affiliate's link to this product (affiliates/)
+    if ref or via:   # the token of an affiliate's link to this product, and of the last link followed (affiliates/)
         from ..affiliates import services as affiliates
-        affiliates.order_opened(order, ref)
+        affiliates.order_opened(order, ref, via)
     return order
 
 

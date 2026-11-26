@@ -2,9 +2,10 @@
 
 **Date:** 2026-11-25
 **Status:** Proposal, **with the owner's decisions of 2026-11-26 worked in**
-(§9). **Phase 1 - product links - is built** in the store portal (0.10.0,
-its README's *Affiliates*; §8 says what of the phase is in and what is
-not); the phases after it are not. §3 says what the repository already has that
+(§9). **Phases 1 and 2 - product links and the customer's binding - are
+built** in the store portal (0.10.0 and 0.11.0, its README's *Affiliates*;
+§8 says what of each phase is in and what is not); the phases after them
+are not. §3 says what the repository already has that
 it builds on. **No question to the owner is open** (§9.1); what remains
 before building is the lawyer's and the tax adviser's (§7). **Rechecked on the same date**, claim by
 claim, against the tree and against outside sources: §12 is the record of
@@ -883,9 +884,35 @@ portal still publishes and applies none), and a superaffiliate by way of a
 referred customer (that is the binding, phase 2). A link to the shop is
 counted and earns nothing until the binding exists.
 
-Phase 1 is useful alone: every product has affiliates selling it without a
-merchant lifting a finger, and every rule of §5.6 that does not involve a
-binding is already in force.
+**Phase 2 as built** (portal 0.11.0, 2026-11-26): an order knows the
+account that bought - the signed-in buyer on the web, the person of the
+access token a client sends with the checkout, and a guest's order once its
+owner opens it signed in under the same address. The last link a person
+followed is kept with the session and sent with the order. Somebody who has
+never paid for anything is bound to that link's affiliate, at sign-up or at
+the first paid order, when the link is no older than 90 days; every later
+purchase and renewal earns the affiliate the base of 5 % and no boost
+(§5.2). Another affiliate's link to a product wins that product and
+moves nothing. The win-back (decision D5): no payment for six calendar
+months and a purchase within 14 days of an affiliate's link binds the
+customer to that affiliate, from another's or from nobody's. The binding is
+suspended with the customer's account (closed, deletion asked for),
+restored on the way back and removed with the erasure; it ends with the
+affiliate's ban or erasure. A referred customer who becomes an affiliate
+has their affiliate as superaffiliate, before any recruiting link. The
+customer's *Who referred you*; the affiliate's customers as a count and a
+number each. **Choices made in building it, for the owner to overrule:** a
+renewal earns whoever the customer is bound to on its day (not the
+affiliate of the day the subscription began); an account whose deletion is
+asked for is bound to nobody new; a blocked or paused affiliate keeps their
+customers and earns nothing meanwhile. **Left out of it, against the row
+above:** purchases made in the native store, which neither signs in at the
+portal nor sends a link (the phase-3 row's `ultrastore://r/` and `ref`,
+and the portal's next step 3); a guest's purchase binds nobody.
+
+Phases 1 and 2 together are the programme the owner described: every
+product has affiliates selling it without a merchant lifting a finger, and
+a customer an affiliate brought stays that affiliate's.
 
 ---
 

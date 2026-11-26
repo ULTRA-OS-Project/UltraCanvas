@@ -49,9 +49,10 @@ def buy(request, app_id: str):
         else:
             try:
                 from .promote import clicked_token
-                from .affiliates import ref_for
+                from .affiliates import last_click, ref_for
                 order = billing.create_order(app.app_id, source="web", email=form.cleaned_data["email"], promote=clicked_token(request, app),
-                                             country=form.cleaned_data.get("country", ""), ref=ref_for(request, app))
+                                             country=form.cleaned_data.get("country", ""), ref=ref_for(request, app), via=last_click(request),
+                                             buyer=request.user)
             except billing.BillingError as refused:
                 form.add_error(None, refused.description)
             else:
@@ -143,6 +144,11 @@ def order_page(request, public_id: str):
     """The buyer's page of a purchase, reached by the link with the
     order's secret: its state, the licence, the receipt, the downloads."""
     order = _own_order(request, public_id)
+    # Somebody signed in who opens their own purchase - the order's address
+    # is the account's - makes it the account's.
+    if order.buyer_id is None and request.user.is_authenticated and order.payer_email and order.payer_email.lower() == request.user.email.lower():
+        order.buyer = request.user
+        order.save(update_fields=["buyer"])
     release = order.app.latest_release() if order.is_paid else None
     response = render(request, "pay/order.html", {
         "order": order, "app": order.app, "amount": billing.money(order.amount), "release": release,

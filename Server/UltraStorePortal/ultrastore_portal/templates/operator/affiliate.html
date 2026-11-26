@@ -12,6 +12,7 @@
     <dt>Where they advertise</dt><dd>{% if profile.website %}{{ profile.website }}<br>{% endif %}{{ profile.channels|linebreaksbr|default:"-" }}</dd>
     <dt>Paid to</dt><dd>{{ profile.legal_name|default:"-" }}{% if profile.vat_id %}, VAT id {{ profile.vat_id }}{% endif %}<br>{{ profile.payout_details|linebreaksbr|default:"no payout details" }}</dd>
     <dt>Brought in by</dt><dd>{% if profile.superaffiliate %}<a href="{% url 'operator:affiliate' profile.superaffiliate.pk %}" class="font-monospace">{{ profile.superaffiliate.handle }}</a>, who earns {% if profile.super_percent is not None %}{{ profile.super_percent.normalize }}{% else %}{{ default_super }}{% endif %} % of this affiliate's commissions on top{% else %}nobody{% endif %}</dd>
+    <dt>Customers</dt><dd>{{ customers }} bound</dd>
     {% if recruits %}<dt>Brought in</dt><dd>{% for recruit in recruits %}<a href="{% url 'operator:affiliate' recruit.pk %}" class="font-monospace">{{ recruit.handle }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
   </dl>
 </div></div>
@@ -37,7 +38,7 @@
   <h2>Commissions</h2>
   {% if lines %}<div class="table-responsive"><table class="table align-middle">
     <thead><tr><th>Date</th><th>Product</th><th>For</th><th class="text-end">Reckoned on</th><th class="text-end">From the fee</th><th class="text-end">From the publisher</th><th class="text-end">Commission</th><th>State</th><th>Order</th></tr></thead><tbody>
-    {% for line in lines %}<tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td><td>{% if line.basis == "super" %}share of {{ line.share_of.affiliate.handle }}{% else %}link{% endif %}</td>
+    {% for line in lines %}<tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td><td>{% if line.basis == "super" %}share of {{ line.share_of.affiliate.handle }}{% elif line.basis == "bound_customer" %}customer{% else %}link{% endif %}</td>
       <td class="text-end">{{ line.net }}</td><td class="text-end">{{ line.operator_part }}</td><td class="text-end">{{ line.merchant_part }}</td><td class="text-end">{{ line.amount }} {{ line.currency }}</td>
       <td>{% if line.payout_id %}Paid{% else %}{{ line.get_state_display }}{% endif %}</td><td><a href="{% url 'operator:order' line.order_id %}">open</a></td></tr>{% endfor %}
   </tbody></table></div>{% else %}<p class="text-secondary mb-0">None.</p>{% endif %}
