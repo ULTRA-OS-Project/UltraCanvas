@@ -1,6 +1,7 @@
 // Tests/EmailCleaner/test_analytics.cpp
 // The shaping between the store and the views: the sender map hierarchy, the
 // "Other" pooling, bucket choice, the palette and the summary strings.
+// Version: 0.1.1 - a block's dates are the person's (FormatDate)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -335,7 +336,7 @@ TEST(Analytics_DescribeBlockReadsAsASentence) {
     REQUIRE(text.find("84% unwanted") != std::string::npos);
     REQUIRE(text.find("12.0 MB") != std::string::npos);
     REQUIRE(text.find("40 attachments") != std::string::npos);
-    REQUIRE(text.find("Mar 2024") != std::string::npos);
+    REQUIRE(text.find(FormatDate(block.firstSeen)) != std::string::npos);   // the person's date, local time
     REQUIRE(text.find("Product spam") != std::string::npos);
 }
 

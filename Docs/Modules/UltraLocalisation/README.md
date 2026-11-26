@@ -211,6 +211,16 @@ setting exports. `Formats()` is what the calls use:
 2. else `FormatsFor` the language, its regional tag kept: a desktop in
    `en-GB` loads the `en` catalogue and writes British dates.
 
+A settings page previews a language before it is chosen with
+`ExamplesFor`: a number, a percentage, a size, a date in full and short
+and a time, in that language's standard-set words and the conventions it
+would get, without loading it (UOS-Settings' Language page does):
+
+```cpp
+LocaleFormatExamples preview = UltraLocalisation::ExamplesFor("de", now);   // preview.fullDate: "Mittwoch, 21. Oktober 2026"
+bool region = preview.fromPlatform;                                         // the platform's regional settings, not the built-in ones
+```
+
 ```cpp
 LocaleFormats current = UltraLocalisation::Formats();          // current.shortDate: "dd.MM.y"
 LocaleFormats swiss = UltraLocalisation::FormatsFor("de-CH");  // swiss.groupSeparator: "’"

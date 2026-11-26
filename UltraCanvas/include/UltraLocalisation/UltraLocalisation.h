@@ -204,6 +204,19 @@ namespace UltraCanvas {
         int second = 0;
     };
 
+    // One language setting's numbers and dates, written out: what a
+    // settings page shows as a preview before the setting is used.
+    struct LocaleFormatExamples {
+        std::string formats;       // the tag of the conventions used: "de-DE"
+        bool fromPlatform = false; // the platform's regional settings, not the built-in ones
+        std::string number;        // 1234567.891 with two decimals: "1.234.567,89"
+        std::string percent;       // 0.125: "12,5 %"
+        std::string fileSize;      // 1258291 bytes: "1,2 MB"
+        std::string shortDate;     // "26.11.2026"
+        std::string fullDate;      // "Donnerstag, 26. November 2026"
+        std::string shortTime;     // "14:05"
+    };
+
     // ===== THE MODULE =====
 
     class UltraLocalisation {
@@ -337,6 +350,12 @@ namespace UltraCanvas {
         // a platform's short date where DateStyle::Short writes the year in
         // full. Pure.
         static std::string PatternWithFullYear(const std::string& pattern);
+        // The examples a language would show at `when` (local time): in its
+        // standard set's words and the conventions it would get - the
+        // platform's regional settings when they are for that language, or
+        // when `fromDesktop` (the setting is "System"), else FormatsFor it.
+        // The loaded language is left as it is.
+        static LocaleFormatExamples ExamplesFor(const std::string& language, std::time_t when, bool fromDesktop = false);
 
         // Everything back to the start: no folders, no sets, English. For
         // tests.

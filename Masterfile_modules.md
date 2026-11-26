@@ -3320,6 +3320,7 @@ and L6 are implemented. Public surface:
   `FormatDate` / `FormatTime` / `FormatDateTime` (`DateStyle` Short, Long,
   Full; `TimeStyle` Short, Medium; a `std::time_t` or a `CalendarTime`),
   `FormatPattern` (a CLDR pattern), `DecimalSeparator` / `GroupSeparator`,
+  `ExamplesFor` (a language's examples for a settings page's preview),
   over a `LocaleFormats` - `Formats`, `FormatsFor` (the built-in CLDR
   conventions, pure), `SetRegionalFormats` / `RegionalFormats` (the
   platform's, from `SystemRegionalFormats()` in `UltraCanvasSystemLanguage.h`)

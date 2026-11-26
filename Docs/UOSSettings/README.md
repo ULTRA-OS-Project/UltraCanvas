@@ -71,7 +71,13 @@ folder with a `Standard.json`). The choice is written to `Language.conf`
 in the UltraCanvas settings folder and read by every application when it
 starts; the command line (`--lang`) and the `ULTRACANVAS_LANG` variable
 override it for one start. The *Translator* field is the name the
-translation editor writes into the catalogues it saves. **Translate
+translation editor writes into the catalogues it saves. *Formats*
+previews the language chosen: a number, a percentage, a file size,
+today's date in full and short and the time, in that language's words and
+the region's conventions - this computer's regional settings when they are
+for that language or the choice is *System*, else the language's usual
+ones - with whose conventions they are under them
+(`UltraLocalisation::ExamplesFor`). **Translate
 applications...** starts that editor, UOS-Localisation
 ([`Docs/UOSLocalisation/README.md`](../UOSLocalisation/README.md)), in the
 language chosen here; until 0.28 it was this program's *Language >

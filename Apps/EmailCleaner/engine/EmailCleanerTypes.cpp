@@ -1,6 +1,7 @@
 // Apps/EmailCleaner/engine/EmailCleanerTypes.cpp
 // Enum conversions, address/date parsing and the UTC calendar arithmetic the
 // timetable and timeline bucketing are built on.
+// Version: 0.1.2 - FormatDate is UltraLocalisation::FormatDate (DateStyle::Short, local time): "26.11.2026" in German
 // Version: 0.1.1 - FormatBytes is UltraLocalisation::FormatFileSize: "1,2 MB" in German, "512 bytes" below a kilobyte
 // Version: 0.1.0 (Phase 1)
 // Last Modified: 2026-11-26
@@ -16,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>   // std::atoi
 #include <cstring>
+#include <ctime>
 
 namespace EmailCleaner {
 
@@ -467,10 +469,8 @@ std::string FormatBytes(int64_t bytes) {
 
 std::string FormatDate(int64_t epochSeconds) {
     if (epochSeconds <= 0) return "-";
-    const UtcParts p = BreakUtcTime(epochSeconds);
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%d %s %d", p.day, kMonthNames[p.month - 1], p.year);
-    return buf;
+    // The person's date, in their region's shape and local time: "26.11.2026"
+    return UltraCanvas::UltraLocalisation::FormatDate(static_cast<std::time_t>(epochSeconds), UltraCanvas::DateStyle::Short);
 }
 
 } // namespace EmailCleaner

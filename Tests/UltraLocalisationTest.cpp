@@ -332,6 +332,27 @@ int main() {
         UltraLocalisation::SetRegionalFormats(LocaleFormats{"", "", "", 0, 0, 0, "", "", "", "", "", "", "", ""});
         Check(UltraLocalisation::RegionalFormats().language.empty(), "an empty language drops them");
 
+        // A preview of another language, the loaded one left alone
+        {
+            UltraLocalisation::Load("fr", "");
+            const std::time_t noon = 1792584000;   // 2026-10-21 12:00 UTC: the 21st in every time zone within 11 hours
+            const LocaleFormatExamples de = UltraLocalisation::ExamplesFor("de", noon);
+            Check(de.formats == "de" && !de.fromPlatform, "ExamplesFor: the built-in conventions of the language");
+            Check(de.number == "1.234.567,89" && de.percent == "12,5" + nbsp + "%" && de.fileSize == "1,2 MB",
+                  "ExamplesFor: the numbers");
+            Check(de.shortDate == "21.10.2026" && de.fullDate == "Mittwoch, 21. Oktober 2026",
+                  "ExamplesFor: the dates in the language's own words");
+            Check(UltraLocalisation::CurrentLanguage() == "fr" && UltraLocalisation::DecimalSeparator() == ",",
+                  "ExamplesFor leaves the loaded language as it is");
+            LocaleFormats region = UltraLocalisation::FormatsFor("en-GB");
+            UltraLocalisation::SetRegionalFormats(region);
+            Check(UltraLocalisation::ExamplesFor("de", noon, true).shortDate == "21/10/2026" &&
+                  UltraLocalisation::ExamplesFor("de", noon, true).fromPlatform,
+                  "ExamplesFor from the desktop: the region's conventions");
+            Check(!UltraLocalisation::ExamplesFor("de", noon).fromPlatform, "... but not for a language chosen here");
+            UltraLocalisation::SetRegionalFormats(LocaleFormats{"", "", "", 0, 0, 0, "", "", "", "", "", "", "", ""});
+        }
+
         // The pattern converters
         Check(UltraLocalisation::PatternFromStrftime("%d.%m.%Y") == "dd.MM.y", "strftime: de_DE");
         Check(UltraLocalisation::PatternFromStrftime("%I:%M:%S %p") == "hh:mm:ss a", "strftime: en_US time");

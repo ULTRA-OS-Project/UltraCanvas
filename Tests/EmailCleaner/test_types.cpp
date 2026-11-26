@@ -1,10 +1,14 @@
 // Tests/EmailCleaner/test_types.cpp
 // Address parsing, RFC 5322 dates, UTC bucketing and the timetable grid.
+// Version: 0.1.1 - FormatDate and FormatBytes are UltraLocalisation's
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include "EmailCleanerTypes.h"
+#include "UltraLocalisation/UltraLocalisation.h"
+
+#include <ctime>
 
 using namespace EmailCleaner;
 
@@ -140,6 +144,15 @@ TEST(MetricValuePicksTheRightField) {
     REQUIRE_EQ(MetricValue(block, SenderMetric::TotalBytes), 1024.0);
     REQUIRE_EQ(MetricValue(block, SenderMetric::AttachmentBytes), 512.0);
     REQUIRE_EQ(MetricValue(block, SenderMetric::UnwantedCount), 3.0);
+}
+
+TEST(FormatDateIsThePersonsDate) {
+    REQUIRE_EQ(FormatDate(0), std::string("-"));
+    // UltraLocalisation's short date, in local time: English here, no catalogue loaded
+    const int64_t noon = MakeUtcTime(2026, 8, 14, 12, 0, 0);
+    REQUIRE_EQ(FormatDate(noon),
+               UltraCanvas::UltraLocalisation::FormatDate(static_cast<std::time_t>(noon), UltraCanvas::DateStyle::Short));
+    REQUIRE(FormatDate(noon).find("2026") != std::string::npos);
 }
 
 TEST(FormatBytesIsHumanReadable) {

@@ -31,6 +31,7 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.16.0 - the Language page's Formats preview (RefreshFormatsPreview)
 // Version: 0.15.0 - Language > Translations moved out: the localisation editor is
 //                  UOS-Localisation, started from the Language page
 // Version: 0.14.0 - Appearance > Look: the look, accent, font, size, scale and contrast every application
@@ -49,7 +50,7 @@
 //                  beside Explorer, or UltraDesktop instead of Explorer
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -123,6 +124,8 @@ private:
     void BuildEmojiPage();
     // Re-reads Emoji.conf into the page's switch.
     void RefreshLanguagePage();
+    // The Formats preview for a Language.conf setting ("system" or a tag).
+    void RefreshFormatsPreview(const std::string& setting);
     void RefreshEmojiPage();
     // Appearance > Look: Appearance.conf, the look every application takes.
     void BuildLookPage();
@@ -185,6 +188,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> translator_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> languageStatus_;
     std::vector<std::string> languageTags_;   // the dropdown's rows: "system", then the tags
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> formatsNumbers_;   // the Formats preview: a number, a percentage, a size
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> formatsDates_;     // today, in full and short, and the time
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> formatsOrigin_;    // whose conventions they are
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> emojiStyle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> emojiStatus_;
 

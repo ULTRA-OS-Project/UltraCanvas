@@ -32,6 +32,10 @@
     standard set, `512 bytes` rather than `512 B`.
   - `scripts/check_locale_numbers.py` points a person-read number at these
     functions.
+  - `ExamplesFor(language, when, fromDesktop)` writes a language's examples
+    (a number, a percentage, a size, a date in full and short, a time) in
+    its own words and the conventions it would get, without loading it: a
+    settings page's preview.
   - DemoApp, *ULTRA OS modules > Localisation*: the numbers, dates and
     times in the language picked, and whose conventions they are.
 

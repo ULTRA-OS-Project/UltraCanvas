@@ -322,9 +322,12 @@ int64_t  BucketStart(int64_t epochSeconds, TimeBucket bucket);
 // Human label for a bucket start ("14 Aug 2026", "Aug 2026", "2026").
 std::string BucketLabel(int64_t bucketStart, TimeBucket bucket);
 
-// Compact size string ("1.4 MB") for tooltips and labels.
+// Compact size string for tooltips and labels, in the person's language and
+// conventions (UltraLocalisation::FormatFileSize): "1.4 MB", "1,4 MB".
 std::string FormatBytes(int64_t bytes);
-// "14 Aug 2026" — the date format used across the app's labels.
+// The date used across the app's labels, in local time and the person's
+// conventions (UltraLocalisation::FormatDate, DateStyle::Short): "8/14/2026",
+// "14.08.2026"; "-" for none.
 std::string FormatDate(int64_t epochSeconds);
 
 } // namespace EmailCleaner

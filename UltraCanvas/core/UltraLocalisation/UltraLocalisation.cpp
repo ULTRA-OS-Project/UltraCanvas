@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <initializer_list>
 #include <locale>
 #include <mutex>
@@ -986,9 +987,16 @@ const char* const kWeekdayShort[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
 
 bool IsPatternLetter(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 
+// Where a formatted date takes its words: the loaded language (TrC), or
+// one language's standard set read for a preview (ExamplesFor).
+using WordLookup = std::function<std::string(const char* context, const char* key)>;
+
+std::string LoadedWord(const char* context, const char* key) { return TrC(context, key); }
+
 // A CLDR pattern written out with the formats' digits and the standard
 // set's words.
-std::string FormatPatternWith(const CalendarTime& when, const std::string& pattern, const LocaleFormats& f) {
+std::string FormatPatternWith(const CalendarTime& when, const std::string& pattern, const LocaleFormats& f,
+                              const WordLookup& word = LoadedWord) {
     const int month = std::clamp(when.month, 1, 12);
     const int weekday = when.weekday >= 0 && when.weekday <= 6 ? when.weekday : WeekdayOf(when.year, when.month, when.day);
     std::string out;
@@ -1019,14 +1027,14 @@ std::string FormatPatternWith(const CalendarTime& when, const std::string& patte
                 break;
             case 'M': case 'L':
                 if (n <= 2) number(month, n);
-                else if (n == 3) out += TrC("month-short", kMonthShort[month - 1]);
-                else out += TrC(c == 'M' ? "date-month" : "month", kMonthNames[month - 1]);
+                else if (n == 3) out += word("month-short", kMonthShort[month - 1]);
+                else out += word(c == 'M' ? "date-month" : "month", kMonthNames[month - 1]);
                 break;
             case 'd': number(when.day, std::min<size_t>(n, 2)); break;
             case 'E': case 'c': case 'e':
                 if (n <= 2 && c != 'E') break;   // the numeric weekday: not written
-                if (n <= 3) out += TrC("weekday", kWeekdayShort[weekday]);
-                else out += TrC("date-weekday", kWeekdayNames[weekday]);
+                if (n <= 3) out += word("weekday", kWeekdayShort[weekday]);
+                else out += word("date-weekday", kWeekdayNames[weekday]);
                 break;
             case 'H': number(when.hour, std::min<size_t>(n, 2)); break;
             case 'k': number(when.hour == 0 ? 24 : when.hour, std::min<size_t>(n, 2)); break;
@@ -1034,7 +1042,7 @@ std::string FormatPatternWith(const CalendarTime& when, const std::string& patte
             case 'K': number(when.hour % 12, std::min<size_t>(n, 2)); break;
             case 'm': number(when.minute, std::min<size_t>(n, 2)); break;
             case 's': number(when.second, std::min<size_t>(n, 2)); break;
-            case 'a': case 'b': case 'B': out += TrC("time", when.hour < 12 ? "AM" : "PM"); break;
+            case 'a': case 'b': case 'B': out += word("time", when.hour < 12 ? "AM" : "PM"); break;
             default: break;   // the era, the time zone, the quarter, fractions: not written
         }
     }
@@ -1283,6 +1291,49 @@ std::string UltraLocalisation::PatternWithFullYear(const std::string& pattern) {
         out += c;
     }
     return out;
+}
+
+LocaleFormatExamples UltraLocalisation::ExamplesFor(const std::string& language, std::time_t when, bool fromDesktop) {
+    const std::string tag = CanonicalTag(language.empty() ? std::string("en") : language);
+    LocaleFormatExamples examples;
+    LocaleFormats f;
+    std::vector<std::string> files;
+    {
+        State& st = S();
+        std::shared_lock lock(st.mutex);
+        examples.fromPlatform = st.regionalGiven && !st.regional.language.empty() &&
+                                (fromDesktop || BaseOf(st.regional.language) == BaseOf(tag));
+        f = examples.fromPlatform ? st.regional : FormatsFor(tag);
+        files = SetFiles(st, tag, "Standard", false);
+    }
+    examples.formats = f.language;
+
+    // The language's own standard set, the more specific file first, as Load reads it
+    std::unordered_map<std::string, std::string> words;
+    for (const std::string& path : files) {
+        LocalisationCatalogue catalogue;
+        std::string error;
+        if (!ReadCatalogue(path, catalogue, error)) continue;
+        for (const auto& [key, text] : catalogue.entries) words.emplace(key, text);
+    }
+    const WordLookup word = [&words](const char* context, const char* key) {
+        auto it = words.find(std::string(context) + "|" + key);
+        return it != words.end() ? it->second : std::string(key);
+    };
+    auto plain = [&words](const char* key) {
+        auto it = words.find(key);
+        return it != words.end() ? it->second : std::string(key);
+    };
+
+    const CalendarTime local = LocalTime(when);
+    examples.number = FormatNumberWith(1234567.891, 2, f, true);
+    examples.percent = LocalisationDetail::Substitute(f.percentPattern.empty() ? std::string("{0}%") : f.percentPattern,
+                                                      {FormatNumberWith(12.5, 1, f, true)});
+    examples.fileSize = FormatNumberWith(1258291.0 / (1024.0 * 1024.0), 1, f, true) + " " + plain("MB");
+    examples.shortDate = FormatPatternWith(local, f.shortDate, f, word);
+    examples.fullDate = FormatPatternWith(local, f.fullDate, f, word);
+    examples.shortTime = FormatPatternWith(local, f.shortTime, f, word);
+    return examples;
 }
 
 #undef UC_NBSP

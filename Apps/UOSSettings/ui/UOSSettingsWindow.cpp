@@ -1,6 +1,8 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.21.0 - the Language page previews the numbers and dates of the language chosen
+//                  (UltraLocalisation::ExamplesFor): its words, the region's conventions
 // Version: 0.20.0 - Language > Translations is gone: the localisation editor is
 //                  UOS-Localisation, a program of its own, which the Language
 //                  page's "Translate applications..." button starts
@@ -35,7 +37,7 @@
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -57,6 +59,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasFileDialogSettings.h"
 #include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasSystemLanguage.h"   // SystemLanguageTags, for the "System" preview
 #include "UltraCanvasUtils.h"   // NormalizePath
 #include "UltraCanvasConfig.h"  // GetResourcesDir
 #include "UltraLocalisation/UltraLocalisation.h"
@@ -73,6 +76,7 @@
 #include <cstdio>
 #include <iterator>
 #include <cstdlib>
+#include <ctime>
 #include <set>
 #include <utility>
 #include <vector>
@@ -1602,6 +1606,7 @@ void UOSSettingsWindow::BuildLanguagePage() {
                     ? Tr("Saved. Applications started from now on use this language.")
                     : TrF("Could not write {0}.", LanguageSettings::FilePath(PathToUtf8(UltraCanvasSettingsFolder()))));
         }
+        RefreshFormatsPreview(settings.language);
     };
     row->AddChild(language_);
     page->AddChild(row);
@@ -1614,7 +1619,6 @@ void UOSSettingsWindow::BuildLanguagePage() {
     translatorRow->SetMargin(10, 0, 0, 0);
     auto translatorCaption = MakeLabel("uos-lang-translator-label", Tr("Translator:"));
     translatorRow->AddChild(translatorCaption);
-    FitCaptionColumn({languageCaption, translatorCaption});
     translator_ = std::make_shared<UltraCanvasTextInput>("uos-lang-translator", 0, 0, 300, 28);
     translator_->SetPlaceholder(Tr("Your name, for the catalogues you edit"));
     translator_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -1631,6 +1635,30 @@ void UOSSettingsWindow::BuildLanguagePage() {
     };
     translatorRow->AddChild(translator_);
     page->AddChild(translatorRow);
+
+    // How the language chosen writes numbers and dates: its words, and the
+    // region's conventions (this computer's regional settings where they
+    // are for it), as an application started with it will.
+    auto formatsRow = std::make_shared<UltraCanvasContainer>("uos-lang-formats-row");
+    formatsRow->layout.SetFlexRow().SetFlexGap(12)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    formatsRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    formatsRow->SetMargin(12, 0, 0, 0);
+    auto formatsCaption = MakeLabel("uos-lang-formats-label", Tr("Formats:"));
+    formatsRow->AddChild(formatsCaption);
+    auto formatsColumn = std::make_shared<UltraCanvasContainer>("uos-lang-formats-column");
+    formatsColumn->layout.SetFlexColumn().SetFlexGap(4)
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    formatsColumn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    formatsNumbers_ = MakeLabel("uos-lang-formats-numbers", "");
+    formatsDates_ = MakeLabel("uos-lang-formats-dates", "");
+    formatsOrigin_ = MakeLabel("uos-lang-formats-origin", "", TextFontSize(), MutedTextColor());
+    formatsColumn->AddChild(formatsNumbers_);
+    formatsColumn->AddChild(formatsDates_);
+    formatsColumn->AddChild(formatsOrigin_);
+    formatsRow->AddChild(formatsColumn);
+    page->AddChild(formatsRow);
+    FitCaptionColumn({languageCaption, translatorCaption, formatsCaption});
 
     // The translations themselves are edited in UOS-Localisation, a program
     // of its own (until 0.20 the Translations page here): started in the
@@ -1662,6 +1690,9 @@ void UOSSettingsWindow::BuildLanguagePage() {
             Tr("The languages come from media/locale/ in the applications' resources "
                "and from locale/ in the UltraCanvas settings folder, where a translator "
                "puts a draft to see it in the real window."),
+            Tr("Numbers and dates follow the region: this computer's regional settings "
+               "when they are for the language chosen, or when it is \"System\"; else the "
+               "usual conventions of the language."),
             Tr("An application uses a change the next time it starts. The command line "
                "(--lang) and the ULTRACANVAS_LANG variable override this setting for "
                "one start."),
@@ -1708,6 +1739,21 @@ void UOSSettingsWindow::RefreshLanguagePage() {
     language_->SetSelectedIndex(selected, false);
     if (translator_) translator_->SetText(settings.translator);
     refreshing_ = false;
+    RefreshFormatsPreview(settings.language);
+}
+
+void UOSSettingsWindow::RefreshFormatsPreview(const std::string& setting) {
+    if (!formatsNumbers_ || !formatsDates_ || !formatsOrigin_) return;
+    // "System" is the language an application would take from the desktop
+    const bool system = setting.empty() || setting == "system";
+    const std::string language = system ? UltraLocalisation::ChooseLanguage(SystemLanguageTags()) : setting;
+    const LocaleFormatExamples examples = UltraLocalisation::ExamplesFor(language, std::time(nullptr), system);
+    const std::string dot = "   \xC2\xB7   ";   // a middle dot between the examples
+    formatsNumbers_->SetText(examples.number + dot + examples.percent + dot + examples.fileSize);
+    formatsDates_->SetText(examples.fullDate + dot + examples.shortDate + dot + examples.shortTime);
+    formatsOrigin_->SetText(examples.fromPlatform
+            ? TrF("The conventions of {0}, from this computer's regional settings.", examples.formats)
+            : TrF("The usual conventions of {0}.", examples.formats));
 }
 
 // ===== DEVICES > TRUSTED CERTIFICATES =====
