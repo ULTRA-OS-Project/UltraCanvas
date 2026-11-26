@@ -7431,7 +7431,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} không có ở đó: việc tra cứu chuyển sang lớp tiếp theo.",
   "{0} is on the Free plan": "{0} đang dùng gói Free",
   "{0} is on the Pro plan": "{0} đang dùng gói Pro",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} lớp, {1} đối tượng vẽ, trang {2} x {3} pt, giải mã trong {4} ms",
   "{0} MB/s decode": "giải mã {0} MB/s",
   "{0} ms": "{0} ms",

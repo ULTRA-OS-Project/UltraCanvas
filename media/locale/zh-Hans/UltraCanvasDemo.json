@@ -7431,7 +7431,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} 不存在：继续在下一层中查找。",
   "{0} is on the Free plan": "{0} 使用的是免费版计划",
   "{0} is on the Pro plan": "{0} 使用的是专业版计划",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} 个图层，{1} 个可绘制对象，页面 {2} x {3} pt，解码耗时 {4} ms",
   "{0} MB/s decode": "解码 {0} MB/s",
   "{0} ms": "{0} ms",

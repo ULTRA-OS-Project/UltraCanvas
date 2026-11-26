@@ -1,4 +1,5 @@
 // Apps/UltraStore/core/StoreQuery.cpp
+// Version: 0.4.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 0.4.0 - PlanLaunch: the runtime layer on the library path
 // Version: 0.3.0 - categories from the fixed list, named in the person's language
 // Version: 0.2.1 - the code, price and size texts through Tr
@@ -255,19 +256,8 @@ std::string PeriodPrice(const Pricing& pricing, const std::string& amount) {
 }
 
 std::string FormatBytes(uint64_t bytes) {
-    // The units in the person's language (the standard set's "{0} MB" ...);
-    // the number dot-decimal until the locale's number formatting exists.
-    char buffer[32];
-    if (bytes >= (uint64_t(1) << 30)) {
-        std::snprintf(buffer, sizeof(buffer), "%.1f", bytes / double(uint64_t(1) << 30));   // locale-ok: a size shown to the user, in the classic form every store uses
-        return TrF("{0} GB", std::string(buffer));
-    }
-    if (bytes >= (uint64_t(1) << 20)) {
-        std::snprintf(buffer, sizeof(buffer), "%.1f", bytes / double(uint64_t(1) << 20));   // locale-ok: as above
-        return TrF("{0} MB", std::string(buffer));
-    }
-    if (bytes >= 1024) return TrF("{0} KB", static_cast<unsigned long long>(bytes / 1024));
-    return TrF("{0} bytes", static_cast<unsigned long long>(bytes));
+    // In the person's language and conventions: "12,3 MB", "12 Bytes"
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes);
 }
 
 std::string LaunchPath(const InstalledRecord& record) {

@@ -7511,7 +7511,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} nu există: căutarea continuă la stratul următor.",
   "{0} is on the Free plan": "{0} este pe planul Free",
   "{0} is on the Pro plan": "{0} este pe planul Pro",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} straturi, {1} obiecte desenabile, pagină {2} x {3} pt, decodat în {4} ms",
   "{0} MB/s decode": "{0} MB/s decodare",
   "{0} ms": "{0} ms",

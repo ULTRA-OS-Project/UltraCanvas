@@ -7431,7 +7431,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} はありません: 検索は次の層に進みます。",
   "{0} is on the Free plan": "{0} は Free プランです",
   "{0} is on the Pro plan": "{0} は Pro プランです",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} レイヤー、{1} 個の描画要素、ページ {2} x {3} pt、{4} ms でデコード",
   "{0} MB/s decode": "デコード {0} MB/s",
   "{0} ms": "{0} ms",

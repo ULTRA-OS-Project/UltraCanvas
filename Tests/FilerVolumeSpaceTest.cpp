@@ -74,8 +74,8 @@ int main() {
     // ===== SIZE WORDING =====
     {
         CheckEq(FormatVolumeBytes(0), "0 bytes", "0 bytes");
-        CheckEq(FormatVolumeBytes(1023), "1023 bytes", "below a kilobyte in bytes");
-        CheckEq(FormatVolumeBytes(1536), "2 KB", "kilobytes rounded whole");
+        CheckEq(FormatVolumeBytes(1023), "1,023 bytes", "below a kilobyte in bytes, grouped");
+        CheckEq(FormatVolumeBytes(1536), "1.5 KB", "kilobytes with one decimal");
         CheckEq(FormatVolumeBytes(512ull * 1024ull * 1024ull), "512.0 MB", "megabytes with one decimal");
         CheckEq(FormatVolumeBytes(476ull * kGiB + kGiB / 5), "476.2 GB", "gigabytes with one decimal");
         CheckEq(FormatVolumeBytes(1843ull * kGiB), "1.8 TB", "terabytes with one decimal");

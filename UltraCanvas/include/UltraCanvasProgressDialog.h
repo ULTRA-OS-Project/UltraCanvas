@@ -28,6 +28,7 @@
 // graphic, and an icon column to its left would push it off centre. Pass
 // showIcon = true to get the classic Information badge back.
 //
+// Version: 2.1.1 - FormatBytes in the person's language and conventions
 // Version: 2.1.0 - ProgressDialogOptions::onBackground: a "Run in background" button that closes the
 //                  window without cancelling (IsInBackground); startPaused, for a window opened again
 //                  on paused work
@@ -36,7 +37,7 @@
 // Version: 1.1.0 - the ring, its track and the percentage take the theme's colours, and again on a
 //                  theme change while the window is open (the percentage was dark grey on a dark dialog)
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -148,7 +149,8 @@ namespace UltraCanvas {
 
         // "9 s", "2 min", "1 h 5 min" - a span of time as the window shows it.
         static std::string FormatDuration(double seconds);
-        // "742 MB", "1.2 GB" - a byte count as the window shows it.
+        // "742 MB", "1.23 GB" - a byte count as the window shows it, three
+        // significant digits in the person's conventions.
         static std::string FormatBytes(uint64_t bytes);
 
     private:

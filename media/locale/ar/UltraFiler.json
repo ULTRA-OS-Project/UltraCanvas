@@ -303,6 +303,7 @@
   "No size of its own": "ليس له حجم خاص",
   "None - the tiles show the name only": "بلا - تُظهر المربعات الاسم فقط",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "لم يُعرض بعد: {0} في الانتظار، و{1} قيد الإنشاء، و{2} تعذّر إنشاؤه (يحتفظ المربع بأيقونة نوعه).",
+  "nothing": "لا شيء",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "لا يُنقل شيء ولا يُحذف: الملف المتجاهَل يُستبعد من العرض فقط. العرض > الملفات > إظهار الملفات المخفية - وزر «إظهار الملفات المخفية» على الشريط - يعيدانه، ولا يزال البحث يعثر عليه، ولا يزال المسار المكتوب في شريط العنوان يفتحه.",
   "nothing yet": "لا شيء بعد",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "إيقاف، لا يُسأل عن شيء: كل ملف معروض يكلّف عملية فتح واحدة، وهو أمر يستحسن تجنبه على وحدة تخزين شبكية بطيئة.",

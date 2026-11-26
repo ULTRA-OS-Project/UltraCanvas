@@ -7,6 +7,7 @@
 // them for each style - over the built-in conventions of the region.
 // NSLocale has the person's own changes (the 24-hour clock, the date
 // format) in it.
+// Version: 1.2.0 - the medium date, month-and-year and day-and-month patterns, from NSDateFormatter's templates
 // Version: 1.1.0 - SystemRegionalFormatsNative from NSLocale and NSDateFormatter
 // Version: 1.0.0
 // Last Modified: 2026-11-26
@@ -47,6 +48,12 @@ std::string PatternOf(NSDateFormatterStyle date, NSDateFormatterStyle time) {
     return Utf8Of(formatter.dateFormat);
 }
 
+// The pattern the locale has for a CLDR skeleton: "yMMM" is "MMM y" in
+// English, "LLL y" in German.
+std::string PatternFor(NSString* skeleton, NSLocale* locale) {
+    return Utf8Of([NSDateFormatter dateFormatFromTemplate:skeleton options:0 locale:locale]);
+}
+
 }  // namespace
 
 bool SystemRegionalFormatsNative(LocaleFormats& formats) {
@@ -77,6 +84,12 @@ bool SystemRegionalFormatsNative(LocaleFormats& formats) {
         if (!longDate.empty()) formats.longDate = longDate;
         const std::string fullDate = PatternOf(NSDateFormatterFullStyle, NSDateFormatterNoStyle);
         if (!fullDate.empty()) formats.fullDate = fullDate;
+        const std::string mediumDate = PatternFor(@"yMMMd", locale);
+        if (!mediumDate.empty()) formats.mediumDate = mediumDate;
+        const std::string monthYear = PatternFor(@"yMMM", locale);
+        if (!monthYear.empty()) formats.monthYear = monthYear;
+        const std::string monthDay = PatternFor(@"MMMd", locale);
+        if (!monthDay.empty()) formats.monthDay = monthDay;
         const std::string shortTime = PatternOf(NSDateFormatterNoStyle, NSDateFormatterShortStyle);
         if (!shortTime.empty()) formats.shortTime = shortTime;
         const std::string mediumTime = PatternOf(NSDateFormatterNoStyle, NSDateFormatterMediumStyle);

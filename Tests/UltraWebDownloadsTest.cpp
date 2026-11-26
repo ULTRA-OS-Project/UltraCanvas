@@ -112,7 +112,7 @@ void TestSaveBytesAndCopy(const std::filesystem::path& dir) {
     Check(ok && ReadAll(PathFromUtf8(copy)) == "local file", "a file:// download copies the file");
 
     Check(ByteSize(12) == "12 bytes" && ByteSize(1) == "1 byte", "bytes");
-    Check(ByteSize(2048) == "2 KB", "kilobytes");
+    Check(ByteSize(2048) == "2.0 KB", "kilobytes, one decimal");
     Check(ByteSize(int64_t(1536) * 1024) == "1.5 MB", "megabytes, dot-decimal");
     Check(ByteSize(int64_t(3) * 1024 * 1024 * 1024) == "3.0 GB", "gigabytes");
 }

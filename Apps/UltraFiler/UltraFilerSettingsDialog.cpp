@@ -46,6 +46,7 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.24.1 - the cache's usage through UltraLocalisation::FormatFileSize; "nothing" through Tr
 // Version: 1.24.0 - Display > Favorite folders: a solid background, a border or a shade in one
 //                  colour, the heart on or off, and a preview of sample folders
 // Version: 1.23.0 - Display > Path bar: the colours of the parent folders and of the current folder
@@ -66,7 +67,7 @@
 //                   preview forgets Unlock's passwords (0: never)
 // Version: 1.16.1 - the colour popup's picker is the framework's ColorPickerStyle::Light
 // Version: 1.16.0
-// Last Modified: 2026-11-19
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -2366,20 +2367,15 @@ namespace {
 
     // A size in the unit a person reads it in. 0 is "nothing", not "0 bytes".
     std::string FormatBytes(uint64_t bytes) {
-        if (bytes == 0) return "nothing";
-        const char* units[] = { "bytes", "KB", "MB", "GB" };
+        if (bytes == 0) return Tr("nothing");
+        // One decimal from MB up, because "1.4 MB" says more than "1 MB" -
+        // but not on a round number: a ceiling of exactly 96 MB should read
+        // as "96 MB", not as "96.0 MB". In the person's conventions: "12,4 MB".
         double value = static_cast<double>(bytes);
         size_t unit = 0;
         while (value >= 1024.0 && unit + 1 < 4) { value /= 1024.0; ++unit; }
-        char buffer[64];
-        // One decimal from MB up, because "1.4 MB" says more than "1 MB" -
-        // but not on a round number: a ceiling of exactly 96 MB should read
-        // as "96 MB", not as "96.0 MB".
         const bool round = value == static_cast<double>(static_cast<long long>(value));
-        std::snprintf(buffer, sizeof buffer,
-                      (unit >= 2 && !round) ? "%.1f %s" : "%.0f %s",
-                      value, units[unit]);
-        return buffer;
+        return UltraCanvas::UltraLocalisation::FormatFileSize(bytes, (unit >= 2 && !round) ? 1 : 0);
     }
 
     // "231 thumbnails, 12.4 MB of 96 MB" - how many, and what that leaves of

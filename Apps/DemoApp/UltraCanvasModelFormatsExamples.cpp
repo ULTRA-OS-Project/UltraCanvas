@@ -24,12 +24,13 @@
 // the page names the large ones it skips rather than pretending they are
 // unsupported. See kSamples below.
 //
+// Version: 1.2.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the viewer
 //                  and the two report panels as cards that wrap under each
 //                  other, panels that grow with their text instead of
 //                  scrolling, buttons as wide as their text
 // Version: 1.1.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -47,6 +48,7 @@
 #include "Models/STL/UltraCanvasSTLElement.h"
 #include "Models/UltraCanvasModelFormatsPlugin.h"
 #include "Models/UltraCanvasModelMesh3D.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 #include <chrono>
 #include <cstdio>
@@ -242,16 +244,7 @@ namespace {
     // ===== REPORTING =====
 
     std::string HumanSize(std::uintmax_t bytes) {
-        char buf[48];
-        if (bytes >= 1024ull * 1024ull) {
-            std::snprintf(buf, sizeof(buf), "%.1f MB",
-                          static_cast<double>(bytes) / (1024.0 * 1024.0));
-        } else if (bytes >= 1024ull) {
-            std::snprintf(buf, sizeof(buf), "%.1f kB", static_cast<double>(bytes) / 1024.0);
-        } else {
-            return TrN("{n} byte", "{n} bytes", static_cast<long long>(bytes));
-        }
-        return buf;
+        return UltraCanvas::UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));
     }
 
     std::string UpAxisName(ModelStorage::UpAxis axis) {

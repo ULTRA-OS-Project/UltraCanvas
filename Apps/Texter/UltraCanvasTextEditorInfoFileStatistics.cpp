@@ -1,11 +1,12 @@
 // Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
 // File statistics dialog for the text editor.
+// Version: 1.3.3 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 1.3.2 - Android (MobilePC) builds: no statx there, the creation time is "Not available"
 // Version: 1.3.2 - the status and the totals go through Tr / TrN
 // Version: 1.3.1 - a column is as wide as its translated header; the cells fill their columns
 // Version: 1.3.0 - the dialog's texts go through Tr / TrF / TrN
 // Version: 1.2.0
-// Last Modified: 2026-11-24
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 // V1.2.0: Migrated from the removed legacy layout-manager API (CreateVBoxLayout /
 //   CreateGridLayout / GridRowColumnDefinition) to the CSS layout API — the dialog
@@ -33,24 +34,7 @@
 namespace UltraCanvas {
 // Helper: format file size into human-readable string
 std::string UltraCanvasTextEditor::FormatFileSize(uintmax_t bytes) {
-    if (bytes == 0) return "0 B";
-
-    const char *units[] = {"B", "KB", "MB", "GB", "TB"};
-    int unitIndex = 0;
-    double size = static_cast<double>(bytes);
-
-    while (size >= 1024.0 && unitIndex < 4) {
-        size /= 1024.0;
-        unitIndex++;
-    }
-
-    std::ostringstream oss;
-    if (unitIndex == 0) {
-        oss << bytes << " B";
-    } else {
-        oss << std::fixed << std::setprecision(1) << size << " " << units[unitIndex];
-    }
-    return oss.str();
+    return UltraCanvas::UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));   // "1,2 MB" in German
 }
 
 // Helper: format time_point to readable string

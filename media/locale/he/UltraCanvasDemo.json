@@ -7551,7 +7551,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} אינו קיים: החיפוש ממשיך לשכבה הבאה.",
   "{0} is on the Free plan": "{0} בתוכנית Free",
   "{0} is on the Pro plan": "{0} בתוכנית Pro",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} שכבות, {1} אובייקטים לשרטוט, עמוד {2} x {3} pt, פוענח תוך {4} ms",
   "{0} MB/s decode": "פענוח {0} MB/s",
   "{0} ms": "{0} ms",

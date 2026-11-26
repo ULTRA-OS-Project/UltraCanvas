@@ -4,9 +4,10 @@
 // clean name, removed when nothing needs them, and every reference a page
 // makes to one checked against the folder. Headless; the editor's library
 // dialog and `ultrapress media` are two faces of it.
+// Version: 0.7.2 - HumanSize documented as UltraLocalisation's
 // Version: 0.7.1 - ImageDimensions from the file's header; PruneMedia; a clean name for an imported file
 // Version: 0.6.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -84,7 +85,8 @@ bool ImportMedia(const std::string& siteDirectory, const std::string& sourcePath
 bool RemoveMedia(const std::string& siteDirectory, const std::string& mediaPath, std::string& error,
                  const Site* site = nullptr, const BlockRegistry& registry = BlockRegistry::BuiltIn());
 
-// A size for people: "12 KB", "3.4 MB".
+// A size for people, in their language and conventions: "12.0 KB", "3.4 MB"
+// (UltraLocalisation::FormatFileSize).
 std::string HumanSize(int64_t bytes);
 
 } // namespace UltraPress

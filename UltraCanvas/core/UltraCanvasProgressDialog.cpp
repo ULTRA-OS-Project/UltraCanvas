@@ -1,13 +1,14 @@
 // core/UltraCanvasProgressDialog.cpp
 // Implementation of the modal progress window.
 // See UltraCanvasProgressDialog.h for the contract.
+// Version: 2.1.1 - FormatBytes through UltraLocalisation::FormatFileSize, three significant digits
 // Version: 2.1.0 - Run in background (ProgressDialogOptions::onBackground)
 // Version: 2.0.0 - the transfer layout: route chips, the strip of figures, the percentage alone in
 //                  the ring, Pause / Resume; plain labels refreshed at most four times a second
 // Version: 1.2.0 - the ring's colours are the theme's (accent, line, ink), again on a theme change
 // Version: 1.1.0 - the Cancel button goes through Tr
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasProgressDialog.h"
@@ -453,15 +454,9 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasProgressDialog::FormatBytes(uint64_t bytes) {
-        static const char* const kUnits[] = {"B", "KB", "MB", "GB", "TB"};
-        double value = static_cast<double>(bytes);
-        int unit = 0;
-        while (value >= 1024.0 && unit < 4) { value /= 1024.0; ++unit; }
-        char buf[32];
-        // One decimal below ten, none above: "1.2 GB", "742 MB".
-        if (unit == 0 || value >= 10.0) std::snprintf(buf, sizeof buf, "%.0f %s", value, kUnits[unit]);
-        else                            std::snprintf(buf, sizeof buf, "%.1f %s", value, kUnits[unit]);
-        return buf;
+        // Three significant digits, in the person's language and conventions:
+        // "1,23 GB", "742 MB"
+        return UltraCanvas::UltraLocalisation::FormatFileSize(bytes, -1);
     }
 
     void UltraCanvasProgressDialog::ApplyThemeColors() {

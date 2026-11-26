@@ -1,21 +1,16 @@
 // Apps/UltraDBAdmin/engine/DbAdminFormat.cpp
+// Version: 0.1.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminFormat.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 #include <cstdio>
 
 namespace UltraDBAdmin {
 
 std::string HumanSize(int64_t bytes) {
-    if (bytes < 1024) return std::to_string(bytes) + " B";
-    const char* units[] = {"KB", "MB", "GB", "TB"};
-    double size = static_cast<double>(bytes);
-    int unit = -1;
-    while (size >= 1024.0 && unit < 3) { size /= 1024.0; ++unit; }
-    char text[32];
-    std::snprintf(text, sizeof(text), "%.1f %s", size, units[unit]);   // locale-ok: shown to the user
-    return text;
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes > 0 ? static_cast<unsigned long long>(bytes) : 0ULL);   // "1,2 MB" in German
 }
 
 std::string CellText(const UltraDbValue& value, size_t maxChars) {

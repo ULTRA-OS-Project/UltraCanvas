@@ -291,6 +291,7 @@
   "No size of its own": "Brak własnego rozmiaru",
   "None - the tiles show the name only": "Brak – kafelki pokazują tylko nazwę",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Jeszcze niepokazane: {0} oczekuje, {1} w trakcie tworzenia, {2} nie udało się utworzyć (kafelek zachowuje ikonę typu).",
+  "nothing": "nic",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Nic nie jest przenoszone ani usuwane: ignorowany plik jest jedynie pomijany w widoku. „Widok > Pliki > Pokaż ukryte pliki” – oraz przycisk „Pokaż ukryte pliki” na pasku – przywracają go, wyszukiwanie nadal go znajduje, a ścieżka wpisana w pasku adresu nadal go otwiera.",
   "nothing yet": "jeszcze nic",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Wyłączone – o nic nie pyta: każdy pokazany plik kosztuje jedno otwarcie, czego warto unikać na wolnym woluminie sieciowym.",

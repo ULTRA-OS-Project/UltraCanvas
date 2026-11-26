@@ -4,6 +4,7 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.8 - FormatSize documented as UltraLocalisation's
 // Version: 0.2.7 - the conversation list says who is typing (SetTyping), in place of the last message
 // Version: 0.2.6 - a file on its way shows its progress (SetTransfer); a sound file is played as audio
 //                  (IsAudioMessage), with a note; the file name measured as drawn (bold)
@@ -17,7 +18,7 @@
 //                  a sender's avatar beside their bubble in a group, files as their name and size
 // Version: 0.2.0 - avatars, a rounded selection, the theme's colours
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -42,7 +43,8 @@ std::string FormatDate(int64_t timestampMs);
 void SetDateTimeStyle(bool clock24, DateStyle dateStyle);
 // "0:12" / "1:05:09" for a video's or a voice message's length.
 std::string FormatDuration(double seconds);
-// "840 bytes" / "12 KB" / "1.2 MB" for a file's size.
+// "840 bytes" / "12.0 KB" / "1.2 MB" for a file's size, in the person's
+// language and conventions (UltraLocalisation::FormatFileSize): "1,2 MB" in German.
 std::string FormatSize(int64_t bytes);
 // A photo, a video or a sticker: shown as a picture in its bubble.
 bool HasPicture(const UltraIMMessage& message);

@@ -6,11 +6,12 @@
 // mouse-orbited 3D view on GL builds, a mesh info placeholder otherwise. The stats
 // panel reports what the parser found - triangles, vertices, bounds, encoding and
 // parse time - and the sample can be opened in the media viewer window.
+// Version: 1.3.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 1.3.0 - the shared page look (UltraCanvasDemoPageKit): viewer and
 //                  report cards that wrap, the reports as tall as their text,
 //                  buttons as wide as their text
 // Version: 1.2.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -34,6 +35,7 @@
 #include <utility>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 namespace UltraCanvas {
 
@@ -97,12 +99,7 @@ namespace {
     }
 
     std::string HumanSize(std::uintmax_t bytes) {
-        if (bytes >= 1024ull * 1024ull) {
-            return TrF("{0} MB", Fixed(static_cast<double>(bytes) / (1024.0 * 1024.0), 1));
-        } else if (bytes >= 1024ull) {
-            return TrF("{0} kB", Fixed(static_cast<double>(bytes) / 1024.0, 1));
-        }
-        return TrN("{n} byte", "{n} bytes", static_cast<long long>(bytes));
+        return UltraCanvas::UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));
     }
 
     // Multi-line mesh report for the stats panel.

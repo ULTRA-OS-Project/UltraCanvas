@@ -7431,7 +7431,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0}이(가) 없습니다: 다음 계층으로 조회를 계속합니다.",
   "{0} is on the Free plan": "{0}은(는) Free 요금제입니다",
   "{0} is on the Pro plan": "{0}은(는) Pro 요금제입니다",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "레이어 {0}개, 그리기 개체 {1}개, 페이지 {2} x {3} pt, {4} ms에 디코딩",
   "{0} MB/s decode": "디코딩 {0} MB/s",
   "{0} ms": "{0} ms",

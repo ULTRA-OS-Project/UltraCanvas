@@ -221,7 +221,7 @@ TEST(labels) {
     p.model = PricingModel::Yearly; p.trialDays = 0;
     REQUIRE_EQ(PriceLabel(p), std::string("4.90 EUR / year"));
     REQUIRE_EQ(FormatBytes(12), std::string("12 bytes"));
-    REQUIRE_EQ(FormatBytes(640 * 1024), std::string("640 KB"));
+    REQUIRE_EQ(FormatBytes(640 * 1024), std::string("640.0 KB"));
     REQUIRE_EQ(FormatBytes(uint64_t(12.3 * 1024 * 1024)), std::string("12.3 MB"));
     REQUIRE_EQ(FormatBytes(uint64_t(1.5 * 1024 * 1024 * 1024)), std::string("1.5 GB"));
     InstalledRecord r = Rec("x", "1");

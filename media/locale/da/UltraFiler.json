@@ -287,6 +287,7 @@
   "No size of its own": "Ingen egen størrelse",
   "None - the tiles show the name only": "Ingen – felterne viser kun navnet",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Endnu ikke vist: {0} venter, {1} under oprettelse, {2} kunne ikke oprettes (feltet beholder sit typeikon).",
+  "nothing": "intet",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Intet flyttes eller slettes: En ignoreret fil udelades blot af visningen. Visning > Filer > Vis skjulte filer – og knappen »Vis skjulte filer« på striben – bringer den tilbage, en søgning finder den stadig, og en sti, der skrives i adresselinjen, åbner den stadig.",
   "nothing yet": "intet endnu",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Fra: Der spørges ikke om noget – hver vist fil koster én åbning, hvilket er værd at undgå på en langsom netværksdiskenhed.",

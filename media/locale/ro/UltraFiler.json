@@ -291,6 +291,7 @@
   "No size of its own": "Fără dimensiune proprie",
   "None - the tiles show the name only": "Niciuna - dalele afișează doar numele",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Încă neafișate: {0} în așteptare, {1} în curs de creare, {2} nu au putut fi create (dala își păstrează pictograma de tip).",
+  "nothing": "nimic",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Nimic nu este mutat sau șters: un fișier ignorat este doar omis din afișaj. Afișare > Fișiere > Afișare fișiere ascunse - și butonul „Afișare fișiere ascunse” din bandă - îl readuc, o căutare îl găsește în continuare, iar o cale tastată în bara de adrese îl deschide în continuare.",
   "nothing yet": "nimic încă",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Dezactivat, nu se întreabă nimic: fiecare fișier afișat costă o deschidere, lucru care merită evitat pe un volum de rețea lent.",

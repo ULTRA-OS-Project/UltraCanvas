@@ -7,6 +7,7 @@
 // Everything here is pure: no database, no network, no UI. The UTC calendar
 // helpers at the bottom exist so bucketing is deterministic across machines
 // (a timetable must not change because the reader moved timezone).
+// Version: 0.2.1 - BucketLabel, FormatBytes and FormatDate documented as UltraLocalisation's
 // Version: 0.2.0 - outgoing mail and its recipients; Correspondence
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -319,7 +320,9 @@ UtcParts BreakUtcTime(int64_t epochSeconds);
 
 // Start of the bucket containing `epochSeconds`, in UTC. Weeks start Monday.
 int64_t  BucketStart(int64_t epochSeconds, TimeBucket bucket);
-// Human label for a bucket start ("14 Aug 2026", "Aug 2026", "2026").
+// Human label for a bucket start, the bucket's UTC day in the person's
+// language and conventions: a day "Aug 14, 2026", a week "Aug 14", a month
+// "Aug 2026", a year "2026" (German: "14. Aug. 2026", "14. Aug.").
 std::string BucketLabel(int64_t bucketStart, TimeBucket bucket);
 
 // Compact size string for tooltips and labels, in the person's language and

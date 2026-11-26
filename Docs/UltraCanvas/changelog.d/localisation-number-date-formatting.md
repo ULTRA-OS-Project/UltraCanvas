@@ -27,6 +27,20 @@
     separator (`2,5` in German, Arabic-Indic digits in Arabic) but does not
     group it, since an argument is as often a year or a port as a quantity;
     `TrN` groups its count (`1.234 Dateien`).
+  - `DateStyle::Medium` abbreviates the month (`Oct 21, 2026`,
+    `21. Okt. 2026`); `FormatMonthYear` and `FormatMonthDay` write a month on
+    its own and a day without its year, as a chart's or a calendar's heading
+    does (`Okt 2026`, `21. Okt.`). The abbreviated month inside a date is the
+    standard set's new `date-month-short|Jan` ... `|Dec` in every language
+    (`окт.` in Russian, `d’oct.` in Catalan); a CLDR `LLL` keeps the date
+    picker's `month-short|`.
+  - `FormatFileSize(bytes, decimals)`: fixed decimals, or `-1` for three
+    significant digits.
+  - Every hand-written size in the framework is `FormatFileSize`: the
+    hardware information (whole units whole: `16 GB`, `48 KB`), the progress
+    window (three significant digits), the media viewer, the image export
+    dialog, the clipboard history, the Gource tree, the filer's bar-size
+    view, and the DemoApp's pages.
   - `FormatFileSize` (`UltraCanvasUtils.h`) and the filer widget's sizes are
     `UltraLocalisation::FormatFileSize`: one decimal, the unit names of the
     standard set, `512 bytes` rather than `512 B`.

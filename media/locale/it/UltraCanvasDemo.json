@@ -7471,7 +7471,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} non c'è: la ricerca passa al livello successivo.",
   "{0} is on the Free plan": "{0} ha il piano Free",
   "{0} is on the Pro plan": "{0} ha il piano Pro",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} livelli, {1} oggetti disegnabili, pagina {2} x {3} pt, decodificato in {4} ms",
   "{0} MB/s decode": "{0} MB/s in decodifica",
   "{0} ms": "{0} ms",

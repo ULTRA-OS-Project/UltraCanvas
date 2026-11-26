@@ -291,6 +291,7 @@
   "No size of its own": "Без собственного размера",
   "None - the tiles show the name only": "Нет — на плитках только имя",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Ещё не показано: {0} в очереди, {1} создаётся, {2} не удалось создать (плитка сохраняет значок типа).",
+  "nothing": "ничего",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Ничего не перемещается и не удаляется: игнорируемый файл лишь не показывается. «Отображение > Файлы > Показывать скрытые файлы» — и кнопка «Показывать скрытые файлы» на полосе — возвращают его, поиск по-прежнему его находит, а путь, введённый в адресную строку, по-прежнему его открывает.",
   "nothing yet": "пока ничего",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Выключено — ничего не запрашивается: каждый показанный файл стоит одного открытия, а этого лучше избегать на медленном сетевом томе.",

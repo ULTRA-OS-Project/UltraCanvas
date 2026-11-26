@@ -2,8 +2,9 @@
 // Read-only hardware inventory and sensor readings: CPU (caches, temperature),
 // GPU, NPU, memory, storage (temperature, connector), network (Ethernet/Wi-Fi),
 // USB controllers and attached devices, Bluetooth adapters and connections.
+// Version: 0.1.1 - FormatBytes in the person's language and conventions
 // Version: 0.1.0
-// Last Modified: 2026-08-29
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASHARDWAREINFO_H
@@ -466,7 +467,7 @@ public:
     static std::string ToJSON(const HardwareSnapshot& snapshot);
 
     // ----- Formatting helpers (shared with the panel) -----
-    static std::string FormatBytes(uint64_t bytes);            // "16.0 GB", "512 KB"
+    static std::string FormatBytes(uint64_t bytes);            // "16 GB", "1.50 GB" - whole units whole, else three significant digits, the person's conventions
     static std::string FormatFrequencyMHz(double megahertz);   // "3.60 GHz"
     static std::string FormatTemperature(double celsius);      // "48.5 °C"
     static std::string FormatBitrateMbps(double megabitsPerSecond); // "2.5 Gb/s"

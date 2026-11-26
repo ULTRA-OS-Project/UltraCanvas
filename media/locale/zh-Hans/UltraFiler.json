@@ -283,6 +283,7 @@
   "No size of its own": "没有自己的大小",
   "None - the tiles show the name only": "无 - 图块仅显示名称",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "尚未显示：{0} 个等待中，{1} 个正在生成，{2} 个无法生成（图块保留其类型图标）。",
+  "nothing": "无",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "不会移动或删除任何内容：被忽略的文件只是不在显示区中列出。“显示 > 文件 > 显示隐藏文件”以及栏上的“显示隐藏文件”按钮可以让它重新显示，搜索仍能找到它，在地址栏中输入路径仍能打开它。",
   "nothing yet": "暂无",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "关闭时不进行任何查询：每显示一个文件就要打开一次，在慢速网络卷上最好避免。",

@@ -19,9 +19,10 @@
 // a worker thread at start-up (UltraFilerWindow::StartRamDiskProbe), and
 // until that answer is in uses BuiltIn(), which costs nothing, to decide
 // what the "+ Drive" menu offers.
+// Version: 1.2.1 - FormatSize documented as UltraLocalisation's
 // Version: 1.2.0 - HasOwnSize; Create takes 0 for a disc without a size (the Windows fallback)
 // Version: 1.1.0 - BuiltIn; the probe is paid for once
-// Last Modified: 2026-11-19
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -99,7 +100,8 @@ bool Create(const std::string& name, uint64_t sizeBytes, RamDisc& outDisc,
 // Unmounts the disc mounted at `mountPath`. Everything on it is gone.
 bool Eject(const std::string& mountPath, std::string& outError);
 
-// "512 MB", "2 GB", "1.5 GB" - binary units, which is what memory is sold in.
+// "512.0 MB", "2.0 GB", "1.5 GB" - binary units, which is what memory is sold in,
+// in the person's language and conventions (UltraLocalisation::FormatFileSize).
 std::string FormatSize(uint64_t bytes);
 
 } // namespace UltraFilerRamDisks

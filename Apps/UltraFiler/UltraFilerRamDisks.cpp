@@ -1,5 +1,6 @@
 // Apps/UltraFiler/UltraFilerRamDisks.cpp
 // The RAM discs behind "+ Drive > RAM disc...". See UltraFilerRamDisks.h.
+// Version: 1.2.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 1.2.0 - HasOwnSize; 0 to Create for a disc without a size
 // Version: 1.1.0 - BuiltIn
 // Author: UltraCanvas Framework
@@ -12,6 +13,7 @@
 #ifdef ULTRAFILER_HAS_RAMDISK
 #include "VirtualFS/VirtualFSRamDisk.h"
 #endif
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 #include <algorithm>
 #include <filesystem>
@@ -220,17 +222,7 @@ bool Eject(const std::string& mountPath, std::string& outError) {
 }
 
 std::string FormatSize(uint64_t bytes) {
-    constexpr uint64_t kMiB = 1024ull * 1024;
-    constexpr uint64_t kGiB = kMiB * 1024;
-    // Whole numbers and tenths by integer arithmetic: this is shown, never
-    // parsed, and needs no locale or floating point to get "1.5 GB".
-    if (bytes >= kGiB) {
-        const uint64_t tenths = (bytes * 10 + kGiB / 2) / kGiB;
-        std::string text = std::to_string(tenths / 10);
-        if (tenths % 10) text += "." + std::to_string(tenths % 10);
-        return text + " GB";
-    }
-    return std::to_string((bytes + kMiB / 2) / kMiB) + " MB";
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes);   // "1,5 GB" in German
 }
 
 } // namespace UltraFilerRamDisks

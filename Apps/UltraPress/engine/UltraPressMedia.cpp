@@ -1,13 +1,15 @@
 // Apps/UltraPress/engine/UltraPressMedia.cpp
 // See UltraPressMedia.h.
+// Version: 0.8.3 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 0.8.2 - site paths through SitePathText: '\' kept in a name off Windows
 // Version: 0.7.1 - dimensions, prune, clean names
 // Version: 0.6.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressMedia.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 #include <algorithm>
 #include <cctype>
@@ -176,12 +178,7 @@ std::string CleanMediaName(const std::string& fileName, const std::function<bool
 }
 
 std::string HumanSize(int64_t bytes) {
-    char out[32];
-    if (bytes < 1024) std::snprintf(out, sizeof out, "%lld B", static_cast<long long>(bytes));
-    else if (bytes < 1024 * 1024) std::snprintf(out, sizeof out, "%lld KB", static_cast<long long>((bytes + 512) / 1024));
-    else if (bytes < 100LL * 1024 * 1024) std::snprintf(out, sizeof out, "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));   // locale-ok: "%.1f" is formatted by snprintf in the C locale UltraCanvas keeps
-    else std::snprintf(out, sizeof out, "%lld MB", static_cast<long long>(bytes / (1024 * 1024)));
-    return out;
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes > 0 ? static_cast<unsigned long long>(bytes) : 0ULL);   // "3,4 MB" in German
 }
 
 std::vector<MediaReference> MediaReferences(const Site& site, const BlockRegistry& registry) {

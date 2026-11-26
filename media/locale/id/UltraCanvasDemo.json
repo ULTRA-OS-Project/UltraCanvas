@@ -7431,7 +7431,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} tidak ada: pencarian berlanjut ke lapisan berikutnya.",
   "{0} is on the Free plan": "{0} menggunakan paket Free",
   "{0} is on the Pro plan": "{0} menggunakan paket Pro",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} lapisan, {1} objek gambar, halaman {2} x {3} pt, didekode dalam {4} ms",
   "{0} MB/s decode": "Dekode {0} MB/s",
   "{0} ms": "{0} ms",

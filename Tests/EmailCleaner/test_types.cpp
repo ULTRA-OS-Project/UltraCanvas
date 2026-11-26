@@ -1,6 +1,6 @@
 // Tests/EmailCleaner/test_types.cpp
 // Address parsing, RFC 5322 dates, UTC bucketing and the timetable grid.
-// Version: 0.1.1 - FormatDate and FormatBytes are UltraLocalisation's
+// Version: 0.1.1 - FormatDate, FormatBytes and BucketLabel are UltraLocalisation's
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -97,6 +97,10 @@ TEST(BucketStart_SnapsToDayWeekMonthYear) {
     REQUIRE_EQ(BucketStart(when, TimeBucket::Year),  MakeUtcTime(2026, 1, 1, 0, 0, 0));
     REQUIRE_EQ(BucketLabel(BucketStart(when, TimeBucket::Month), TimeBucket::Month),
                std::string("Aug 2026"));
+    // The other buckets in UltraLocalisation's English shapes, the bucket's UTC day
+    REQUIRE_EQ(BucketLabel(MakeUtcTime(2026, 8, 14, 0, 0, 0), TimeBucket::Day), std::string("Aug 14, 2026"));
+    REQUIRE_EQ(BucketLabel(MakeUtcTime(2026, 8, 10, 0, 0, 0), TimeBucket::Week), std::string("Aug 10"));
+    REQUIRE_EQ(BucketLabel(MakeUtcTime(2026, 1, 1, 0, 0, 0), TimeBucket::Year), std::string("2026"));
 }
 
 TEST(Timetable_TracksTotalAndPeak) {

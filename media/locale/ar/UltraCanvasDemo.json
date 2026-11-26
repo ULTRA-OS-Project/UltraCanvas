@@ -7631,7 +7631,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} غير موجود: يستمر البحث إلى الطبقة التالية.",
   "{0} is on the Free plan": "{0} على الخطة المجانية",
   "{0} is on the Pro plan": "{0} على خطة Pro",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} طبقات، {1} عنصرًا قابلًا للرسم، الصفحة {2} x {3} pt، فُك ترميزها في {4} ms",
   "{0} MB/s decode": "{0} MB/s لفك الترميز",
   "{0} ms": "{0} ms",

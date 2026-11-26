@@ -287,6 +287,7 @@
   "No size of its own": "Geen eigen grootte",
   "None - the tiles show the name only": "Geen - de tegels tonen alleen de naam",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Nog niet getoond: {0} wachtend, {1} in de maak, {2} konden niet worden gemaakt (de tegel behoudt het typepictogram).",
+  "nothing": "niets",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Er wordt niets verplaatst of verwijderd: een genegeerd bestand wordt alleen uit de weergave weggelaten. Weergave > Bestanden > Verborgen bestanden tonen – en de knop 'Verborgen bestanden tonen' op de strook – halen het terug, een zoekopdracht vindt het nog steeds, en een pad dat in de adresbalk wordt getypt, opent het nog steeds.",
   "nothing yet": "nog niets",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Uit, er wordt niets gevraagd: elk getoond bestand kost één keer openen, wat de moeite waard is om te vermijden op een traag netwerkvolume.",

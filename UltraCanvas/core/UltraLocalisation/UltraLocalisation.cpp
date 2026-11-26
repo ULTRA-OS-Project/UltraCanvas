@@ -780,7 +780,7 @@ const char* const kArabicIndicDigits = "\xD9\xA0\xD9\xA1\xD9\xA2\xD9\xA3\xD9\xA4
 
 // One region's conventions, from CLDR: the decimal and group separators,
 // the group sizes and the fewest digits worth grouping, the percent
-// pattern, the three date patterns, the two time patterns, how a date and a
+// pattern, the date patterns, the two time patterns, how a date and a
 // time are joined, the digits.
 struct FormatRow {
     const char* tag;
@@ -795,66 +795,125 @@ struct FormatRow {
     const char* mediumTime;
     const char* join;
     const char* digits;
+    const char* mediumDate;   // the month abbreviated
+    const char* monthYear;
+    const char* monthDay;
 };
 
 const FormatRow kFormatRows[] = {
-    {"en", ".", ",", 3, 3, 1, "{0}%", "M/d/y", "MMMM d, y", "EEEE, MMMM d, y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
-    {"en-GB", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"en-IE", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"en-AU", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
-    {"en-NZ", ".", ",", 3, 3, 1, "{0}%", "d/MM/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
-    {"en-CA", ".", ",", 3, 3, 1, "{0}%", "y-MM-dd", "MMMM d, y", "EEEE, MMMM d, y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
-    {"en-IN", ".", ",", 3, 2, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
-    {"en-ZA", ",", UC_NBSP, 3, 3, 1, "{0}%", "y/MM/dd", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"de", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"de-AT", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"de-CH", ".", UC_RSQUO, 3, 3, 1, "{0}%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"fr", ",", UC_NNBSP, 3, 3, 1, "{0}" UC_NNBSP "%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"fr-CA", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "y-MM-dd", "d MMMM y", "EEEE d MMMM y", "HH 'h' mm", "HH 'h' mm 'min' ss 's'", "{1} {0}", ""},
-    {"fr-CH", ",", UC_NNBSP, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"es", ",", ".", 3, 3, 2, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", ""},
-    {"es-MX", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", ""},
-    {"es-US", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
-    {"es-419", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"it", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"it-CH", ".", UC_RSQUO, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"nl", ",", ".", 3, 3, 1, "{0}%", "dd-MM-y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"nl-BE", ",", ".", 3, 3, 1, "{0}%", "d/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"pt", ",", UC_NBSP, 3, 3, 2, "{0}%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"pt-BR", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"ja", ".", ",", 3, 3, 1, "{0}%", "y/MM/dd", "y年M月d日", "y年M月d日EEEE", "H:mm", "H:mm:ss", "{1} {0}", ""},
-    {"zh", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日EEEE", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"zh-Hant", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日 EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", ""},
-    {"zh-TW", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日 EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", ""},
-    {"zh-Hant-HK", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "y年M月d日", "y年M月d日EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", ""},
-    {"zh-HK", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "y年M月d日", "y年M月d日EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", ""},
-    {"ko", ".", ",", 3, 3, 1, "{0}%", "y. M. d.", "y년 M월 d일", "y년 M월 d일 EEEE", "a h:mm", "a h:mm:ss", "{1} {0}", ""},
-    {"ru", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d MMMM y 'г'.", "EEEE, d MMMM y 'г'.", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"uk", ",", UC_NBSP, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y 'р'.", "EEEE, d MMMM y 'р'.", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"pl", ",", UC_NBSP, 3, 3, 2, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"cs", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d. M. y", "d. MMMM y", "EEEE d. MMMM y", "H:mm", "H:mm:ss", "{1} {0}", ""},
-    {"sk", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d. M. y", "d. MMMM y", "EEEE d. MMMM y", "H:mm", "H:mm:ss", "{1} {0}", ""},
-    {"sv", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "y-MM-dd", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"da", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE 'den' d. MMMM y", "HH.mm", "HH.mm.ss", "{1} {0}", ""},
-    {"nb", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"no", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"nn", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"fi", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d.M.y", "d. MMMM y", "EEEE d. MMMM y", "H.mm", "H.mm.ss", "{1} {0}", ""},
-    {"tr", ",", ".", 3, 3, 1, "%{0}", "dd.MM.y", "d MMMM y", "d MMMM y EEEE", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"el", ",", ".", 3, 3, 1, "{0}%", "d/M/y", "d MMMM y", "EEEE d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"en", ".", ",", 3, 3, 1, "{0}%", "M/d/y", "MMMM d, y", "EEEE, MMMM d, y", "h:mm a", "h:mm:ss a", "{1}, {0}", "",
+     "MMM d, y", "LLL y", "MMM d"},
+    {"en-GB", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"en-IE", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"en-AU", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"en-NZ", ".", ",", 3, 3, 1, "{0}%", "d/MM/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"en-CA", ".", ",", 3, 3, 1, "{0}%", "y-MM-dd", "MMMM d, y", "EEEE, MMMM d, y", "h:mm a", "h:mm:ss a", "{1}, {0}", "",
+     "MMM d, y", "LLL y", "MMM d"},
+    {"en-IN", ".", ",", 3, 2, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"en-ZA", ",", UC_NBSP, 3, 3, 1, "{0}%", "y/MM/dd", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"de", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d. MMM y", "LLL y", "d. MMM"},
+    {"de-AT", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d. MMM y", "LLL y", "d. MMM"},
+    {"de-CH", ".", UC_RSQUO, 3, 3, 1, "{0}%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d. MMM y", "LLL y", "d. MMM"},
+    {"fr", ",", UC_NNBSP, 3, 3, 1, "{0}" UC_NNBSP "%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"fr-CA", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "y-MM-dd", "d MMMM y", "EEEE d MMMM y", "HH 'h' mm", "HH 'h' mm 'min' ss 's'", "{1} {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"fr-CH", ",", UC_NNBSP, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"es", ",", ".", 3, 3, 2, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"es-MX", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"es-US", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "h:mm a", "h:mm:ss a", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"es-419", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"it", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"it-CH", ".", UC_RSQUO, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"nl", ",", ".", 3, 3, 1, "{0}%", "dd-MM-y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"nl-BE", ",", ".", 3, 3, 1, "{0}%", "d/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"pt", ",", UC_NBSP, 3, 3, 2, "{0}%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d 'de' MMM 'de' y", "LLL 'de' y", "d 'de' MMM"},
+    {"pt-BR", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d 'de' MMM 'de' y", "LLL 'de' y", "d 'de' MMM"},
+    {"ja", ".", ",", 3, 3, 1, "{0}%", "y/MM/dd", "y年M月d日", "y年M月d日EEEE", "H:mm", "H:mm:ss", "{1} {0}", "",
+     "y年M月d日", "y年M月", "M月d日"},
+    {"zh", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日EEEE", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "y年M月d日", "y年M月", "M月d日"},
+    {"zh-Hant", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日 EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", "",
+     "y年M月d日", "y年M月", "M月d日"},
+    {"zh-TW", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日 EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", "",
+     "y年M月d日", "y年M月", "M月d日"},
+    {"zh-Hant-HK", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "y年M月d日", "y年M月d日EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", "",
+     "y年M月d日", "y年M月", "M月d日"},
+    {"zh-HK", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "y年M月d日", "y年M月d日EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", "",
+     "y年M月d日", "y年M月", "M月d日"},
+    {"ko", ".", ",", 3, 3, 1, "{0}%", "y. M. d.", "y년 M월 d일", "y년 M월 d일 EEEE", "a h:mm", "a h:mm:ss", "{1} {0}", "",
+     "y년 M월 d일", "y년 M월", "M월 d일"},
+    {"ru", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d MMMM y 'г'.", "EEEE, d MMMM y 'г'.", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y 'г'.", "LLL y 'г'.", "d MMM"},
+    {"uk", ",", UC_NBSP, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y 'р'.", "EEEE, d MMMM y 'р'.", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y 'р'.", "LLL y 'р'.", "d MMM"},
+    {"pl", ",", UC_NBSP, 3, 3, 2, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"cs", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d. M. y", "d. MMMM y", "EEEE d. MMMM y", "H:mm", "H:mm:ss", "{1} {0}", "",
+     "d. M. y", "LLLL y", "d. M."},
+    {"sk", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d. M. y", "d. MMMM y", "EEEE d. MMMM y", "H:mm", "H:mm:ss", "{1} {0}", "",
+     "d. M. y", "LLLL y", "d. M."},
+    {"sv", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "y-MM-dd", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"da", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE 'den' d. MMMM y", "HH.mm", "HH.mm.ss", "{1} {0}", "",
+     "d. MMM y", "LLL y", "d. MMM"},
+    {"nb", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d. MMM y", "LLL y", "d. MMM"},
+    {"no", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d. MMM y", "LLL y", "d. MMM"},
+    {"nn", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d. MMM y", "LLL y", "d. MMM"},
+    {"fi", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d.M.y", "d. MMMM y", "EEEE d. MMMM y", "H.mm", "H.mm.ss", "{1} {0}", "",
+     "d. MMM y", "LLL y", "d. MMM"},
+    {"tr", ",", ".", 3, 3, 1, "%{0}", "dd.MM.y", "d MMMM y", "d MMMM y EEEE", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d MMM y", "MMM y", "d MMM"},
+    {"el", ",", ".", 3, 3, 1, "{0}%", "d/M/y", "d MMMM y", "EEEE d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
     {"ar", "\xD9\xAB", "\xD9\xAC", 3, 3, 1, "{0}\xD9\xAA\xD8\x9C", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y",
-     "h:mm a", "h:mm:ss a", "{1} {0}", kArabicIndicDigits},
-    {"ar-MA", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"ar-DZ", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "h:mm a", "h:mm:ss a", "{1} {0}", ""},
-    {"ar-TN", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "h:mm a", "h:mm:ss a", "{1} {0}", ""},
-    {"he", ".", ",", 3, 3, 1, "{0}%", "d.M.y", "d בMMMM y", "EEEE, d בMMMM y", "H:mm", "H:mm:ss", "{1}, {0}", ""},
-    {"hu", ",", UC_NBSP, 3, 3, 1, "{0}%", "y. MM. dd.", "y. MMMM d.", "y. MMMM d., EEEE", "H:mm", "H:mm:ss", "{1} {0}", ""},
-    {"ro", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
-    {"hi", ".", ",", 3, 2, 1, "{0}%", "d/M/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
-    {"id", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE, d MMMM y", "HH.mm", "HH.mm.ss", "{1} {0}", ""},
-    {"vi", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM, y", "EEEE, d MMMM, y", "HH:mm", "HH:mm:ss", "{0} {1}", ""},
-    {"th", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "d MMMM y", "EEEEที่ d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
-    {"ca", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d MMMM 'de' y", "EEEE, d MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", ""},
+     "h:mm a", "h:mm:ss a", "{1} {0}", kArabicIndicDigits,
+     "d MMM y", "MMM y", "d MMM"},
+    {"ar-MA", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d MMM y", "MMM y", "d MMM"},
+    {"ar-DZ", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "h:mm a", "h:mm:ss a", "{1} {0}", "",
+     "d MMM y", "MMM y", "d MMM"},
+    {"ar-TN", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "h:mm a", "h:mm:ss a", "{1} {0}", "",
+     "d MMM y", "MMM y", "d MMM"},
+    {"he", ".", ",", 3, 3, 1, "{0}%", "d.M.y", "d בMMMM y", "EEEE, d בMMMM y", "H:mm", "H:mm:ss", "{1}, {0}", "",
+     "d בMMM y", "MMM y", "d בMMM"},
+    {"hu", ",", UC_NBSP, 3, 3, 1, "{0}%", "y. MM. dd.", "y. MMMM d.", "y. MMMM d., EEEE", "H:mm", "H:mm:ss", "{1} {0}", "",
+     "y. MMM d.", "y. LLL", "MMM d."},
+    {"ro", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"hi", ".", ",", 3, 2, 1, "{0}%", "d/M/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", "",
+     "d MMM y", "MMM y", "d MMM"},
+    {"id", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE, d MMMM y", "HH.mm", "HH.mm.ss", "{1} {0}", "",
+     "d MMM y", "MMM y", "d MMM"},
+    {"vi", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM, y", "EEEE, d MMMM, y", "HH:mm", "HH:mm:ss", "{0} {1}", "",
+     "d MMM, y", "LLL, y", "d MMM"},
+    {"th", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "d MMMM y", "EEEEที่ d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", "",
+     "d MMM y", "LLL y", "d MMM"},
+    {"ca", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d MMMM 'de' y", "EEEE, d MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", "",
+     "d MMM y", "LLL 'de' y", "d MMM"},
 };
 
 LocaleFormats FormatsOfRow(const FormatRow& r) {
@@ -872,6 +931,9 @@ LocaleFormats FormatsOfRow(const FormatRow& r) {
     f.shortTime = r.shortTime;
     f.mediumTime = r.mediumTime;
     f.dateTimePattern = r.join;
+    f.mediumDate = r.mediumDate;
+    f.monthYear = r.monthYear;
+    f.monthDay = r.monthDay;
     return f;
 }
 
@@ -1027,7 +1089,8 @@ std::string FormatPatternWith(const CalendarTime& when, const std::string& patte
                 break;
             case 'M': case 'L':
                 if (n <= 2) number(month, n);
-                else if (n == 3) out += word("month-short", kMonthShort[month - 1]);
+                // MMM is the month abbreviated inside a date, LLL on its own (a heading, "Okt 2026")
+                else if (n == 3) out += word(c == 'M' ? "date-month-short" : "month-short", kMonthShort[month - 1]);
                 else out += word(c == 'M' ? "date-month" : "month", kMonthNames[month - 1]);
                 break;
             case 'd': number(when.day, std::min<size_t>(n, 2)); break;
@@ -1123,14 +1186,27 @@ std::string UltraLocalisation::FormatPercent(double fraction, int decimals) {
     return LocalisationDetail::Substitute(f.percentPattern.empty() ? std::string("{0}%") : f.percentPattern, {number});
 }
 
-std::string UltraLocalisation::FormatFileSize(unsigned long long bytes) {
+std::string UltraLocalisation::FormatFileSize(unsigned long long bytes) { return FormatFileSize(bytes, 1); }
+
+std::string UltraLocalisation::FormatFileSize(unsigned long long bytes, int decimals) {
     if (bytes < 1024) return TrN("{n} byte", "{n} bytes", static_cast<long long>(bytes));
     static const char* const units[] = {"KB", "MB", "GB", "TB"};
+    const LocaleFormats f = CurrentFormats();
+    // -1: three significant digits - 1,23 GB, 12,3 GB, 123 GB
+    auto places = [decimals](double v) { return decimals >= 0 ? std::min(decimals, 6) : v < 10.0 ? 2 : v < 100.0 ? 1 : 0; };
     double value = static_cast<double>(bytes) / 1024.0;
     size_t unit = 0;
-    // 1023,96 KB rounds to "1024,0 KB": the next unit says it better
-    while (unit + 1 < sizeof units / sizeof units[0] && value >= 1023.95) { value /= 1024.0; ++unit; }
-    return FormatNumberWith(value, 1, CurrentFormats(), true) + " " + Tr(units[unit]);
+    for (;;) {
+        const int d = places(value);
+        const double scale = std::pow(10.0, d);
+        // 1023,96 KB rounds to "1024,0 KB": the next unit says it better
+        if (std::round(value * scale) / scale >= 1024.0 && unit + 1 < sizeof units / sizeof units[0]) {
+            value /= 1024.0;
+            ++unit;
+            continue;
+        }
+        return FormatNumberWith(value, d, f, true) + " " + Tr(units[unit]);
+    }
 }
 
 CalendarTime UltraLocalisation::LocalTime(std::time_t when) {
@@ -1157,7 +1233,8 @@ std::string UltraLocalisation::FormatPattern(const CalendarTime& when, const std
 
 std::string UltraLocalisation::FormatDate(const CalendarTime& when, DateStyle style) {
     const LocaleFormats f = CurrentFormats();
-    const std::string& pattern = style == DateStyle::Short ? f.shortDate : style == DateStyle::Long ? f.longDate : f.fullDate;
+    const std::string& pattern = style == DateStyle::Short ? f.shortDate : style == DateStyle::Medium ? f.mediumDate
+                               : style == DateStyle::Long ? f.longDate : f.fullDate;
     return FormatPatternWith(when, pattern, f);
 }
 
@@ -1171,7 +1248,19 @@ std::string UltraLocalisation::FormatDateTime(const CalendarTime& when, DateStyl
     return JoinDateTime(FormatDate(when, date), FormatTime(when, time), f);
 }
 
+std::string UltraLocalisation::FormatMonthYear(const CalendarTime& when) {
+    const LocaleFormats f = CurrentFormats();
+    return FormatPatternWith(when, f.monthYear, f);
+}
+
+std::string UltraLocalisation::FormatMonthDay(const CalendarTime& when) {
+    const LocaleFormats f = CurrentFormats();
+    return FormatPatternWith(when, f.monthDay, f);
+}
+
 std::string UltraLocalisation::FormatDate(std::time_t when, DateStyle style) { return FormatDate(LocalTime(when), style); }
+std::string UltraLocalisation::FormatMonthYear(std::time_t when) { return FormatMonthYear(LocalTime(when)); }
+std::string UltraLocalisation::FormatMonthDay(std::time_t when) { return FormatMonthDay(LocalTime(when)); }
 std::string UltraLocalisation::FormatTime(std::time_t when, TimeStyle style) { return FormatTime(LocalTime(when), style); }
 std::string UltraLocalisation::FormatDateTime(std::time_t when, DateStyle date, TimeStyle time) {
     return FormatDateTime(LocalTime(when), date, time);

@@ -1,13 +1,14 @@
 // core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp
 // The list model and row painter for a clipboard history. See
 // include/UltraCanvasClipboardHistoryView.h.
+// Version: 1.5.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 1.5.0 - the age at the right end of the meta line; a text's lines, characters and size
 //                  gone from it; the selected (and previewed) row's actions left of a cover (SetCoveredFrom)
 // Version: 1.4.0 - the Link tile from the style; a dark theme's selected row in the soft accent with ink
 // Version: 1.3.0 - every text through Tr (UltraLocalisation): sections, sizes, ages, the
 //                  description line, the action tooltips, an image's and files' titles
 // Version: 1.2.0 - the Save as action (ClipboardRowStyle::saveAction)
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistoryView.h"
@@ -232,12 +233,7 @@ ClipboardRowStyle ClipboardRowStyle::Dark() {
 
 // ===== DESCRIPTIONS =====
 std::string FormatClipboardSize(uint64_t bytes) {
-    if (bytes < 1024) return TrF("{0} bytes", bytes);
-    if (bytes < 1024 * 1024) return TrF("{0} KB", (bytes + 512) / 1024);
-    const uint64_t tenths = (bytes * 10 + 524288) / 1048576;
-    if (tenths >= 100) return TrF("{0} MB", tenths / 10);
-    // locale-ok: the decimal point is the English one; the size's number formatting is phase L6
-    return TrF("{0} MB", std::to_string(tenths / 10) + "." + std::to_string(tenths % 10));
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes);   // "1,2 MB" in German
 }
 
 std::string FormatClipboardAge(int64_t whenMs, int64_t nowMs) {

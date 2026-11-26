@@ -727,7 +727,7 @@ static void TestMedia() {
     Check(MediaKind("Launch.PNG") == "image" && MediaKind("a.pdf") == "document" && MediaKind("clip.mp4") == "video" &&
               MediaKind("song.ogg") == "audio" && MediaKind("setup.zip") == "archive" && MediaKind("noext") == "other",
           "kinds from the extension, whatever its case");
-    Check(HumanSize(512) == "512 B" && HumanSize(12 * 1024) == "12 KB" && HumanSize(3 * 1024 * 1024 + 400 * 1024) == "3.4 MB",
+    Check(HumanSize(512) == "512 bytes" && HumanSize(12 * 1024) == "12.0 KB" && HumanSize(3 * 1024 * 1024 + 400 * 1024) == "3.4 MB",
           "sizes for people");
 
     const fs::path dir = TempDir("media-site");

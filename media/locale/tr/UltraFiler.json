@@ -287,6 +287,7 @@
   "No size of its own": "Kendi boyutu yok",
   "None - the tiles show the name only": "Hiçbiri - kutucuklar yalnızca adı gösterir",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Henüz gösterilmeyenler: {0} bekliyor, {1} oluşturuluyor, {2} oluşturulamadı (kutucuk tür simgesini korur).",
+  "nothing": "hiç",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Hiçbir şey taşınmaz veya silinmez: yok sayılan bir dosya yalnızca görünümün dışında bırakılır. Görünüm > Dosyalar > Gizli dosyaları göster - ve şeritteki “Gizli dosyaları göster” düğmesi - onu geri getirir, bir arama onu yine bulur ve adres çubuğuna yazılan bir yol onu yine açar.",
   "nothing yet": "henüz hiçbir şey yok",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Kapalı, hiçbir şey sorulmaz: gösterilen her dosya bir açma işlemine mal olur; yavaş bir ağ biriminde bundan kaçınmaya değer.",

@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.13 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 0.2.12 - a location (an openstreetmap.org link with a marker) as a map card: the map
 //                   with its pin (UltraCanvas DrawMap), the place's name under it
 // Version: 0.2.11 - a wrapped message drawn whole: its text no longer cut to one line with an ellipsis
@@ -23,7 +24,7 @@
 //                  rounded selection, bubbles without borders in the theme's colours, senders in
 //                  their avatar's colour
 // Version: 0.1.0
-// Last Modified: 2026-11-21
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeViews.h"
@@ -265,23 +266,7 @@ std::string FormatDuration(double seconds) {
 }
 
 std::string FormatSize(int64_t bytes) {
-    if (bytes < 1000) return TrN("{n} byte", "{n} bytes", bytes);
-    // One decimal, in tenths, so no float is formatted.
-    int unit = 0;               // 0 KB, 1 MB, 2 GB
-    int64_t tenths = bytes * 10 / 1000;
-    if (tenths >= 10000) {
-        unit = 1;
-        tenths = bytes * 10 / (1000 * 1000);
-    }
-    if (tenths >= 10000) {
-        unit = 2;
-        tenths = bytes * 10 / (1000LL * 1000 * 1000);
-    }
-    std::string out = std::to_string(tenths / 10);
-    if (tenths < 100) out += "." + std::to_string(tenths % 10);
-    if (unit == 0) return TrF("{0} KB", out);
-    if (unit == 1) return TrF("{0} MB", out);
-    return TrF("{0} GB", out);
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes > 0 ? static_cast<unsigned long long>(bytes) : 0ULL);   // "1,2 MB" in German
 }
 
 long long MemberCount(const UltraIMConversation& conversation) {

@@ -295,6 +295,7 @@
   "No size of its own": "אין לו גודל משלו",
   "None - the tiles show the name only": "ללא - האריחים מציגים את השם בלבד",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "עדיין לא מוצגות: {0} ממתינות, {1} בהכנה, {2} לא ניתן היה ליצור (האריח שומר על סמל הסוג שלו).",
+  "nothing": "כלום",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "דבר אינו מועבר או נמחק: קובץ מוחרג רק מושמט מהתצוגה. תצוגה > קבצים > הצגת קבצים מוסתרים - והלחצן \"הצגת קבצים מוסתרים\" בפס - מחזירים אותו, חיפוש עדיין מוצא אותו, ונתיב שמוקלד בשורת הכתובת עדיין פותח אותו.",
   "nothing yet": "עדיין כלום",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "כשהאפשרות כבויה, לא נשאלת שום שאלה: כל קובץ מוצג עולה פתיחה אחת, ועדיף להימנע מכך באמצעי אחסון רשת איטי.",

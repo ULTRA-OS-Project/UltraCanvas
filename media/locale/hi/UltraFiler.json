@@ -287,6 +287,7 @@
   "No size of its own": "अपना कोई आकार नहीं",
   "None - the tiles show the name only": "कोई नहीं - टाइलें केवल नाम दिखाती हैं",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "अभी तक नहीं दिखाए गए: {0} प्रतीक्षा में, {1} बन रहे हैं, {2} नहीं बन सके (टाइल अपना प्रकार आइकन रखती है)।",
+  "nothing": "कुछ नहीं",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "कुछ भी ले जाया या हटाया नहीं जाता: अनदेखी फ़ाइल केवल डिस्प्ले से बाहर रखी जाती है। दृश्य > फ़ाइलें > छिपी हुई फ़ाइलें दिखाएँ - और पट्टी पर “छिपी हुई फ़ाइलें दिखाएँ” बटन - उसे वापस लाते हैं, खोज उसे फिर भी ढूँढ लेती है, और पता बार में टाइप किया गया पथ उसे फिर भी खोलता है।",
   "nothing yet": "अभी कुछ नहीं",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "बंद, कुछ नहीं पूछा जाता: दिखाई गई हर फ़ाइल के लिए एक बार खोलना पड़ता है, जिससे धीमे नेटवर्क वॉल्यूम पर बचना बेहतर है।",

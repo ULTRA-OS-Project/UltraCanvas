@@ -287,6 +287,7 @@
   "No size of its own": "Χωρίς δικό του μέγεθος",
   "None - the tiles show the name only": "Κανένα - τα πλακίδια δείχνουν μόνο το όνομα",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Δεν εμφανίζονται ακόμη: {0} σε αναμονή, {1} υπό δημιουργία, {2} δεν ήταν δυνατό να δημιουργηθούν (το πλακίδιο διατηρεί το εικονίδιο τύπου του).",
+  "nothing": "τίποτα",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Τίποτα δεν μετακινείται ή διαγράφεται: ένα αγνοημένο αρχείο απλώς παραλείπεται από την προβολή. Το Προβολή > Αρχεία > Εμφάνιση κρυφών αρχείων - και το κουμπί «Εμφάνιση κρυφών αρχείων» στη λωρίδα - το επαναφέρουν, μια αναζήτηση εξακολουθεί να το βρίσκει, και μια διαδρομή που πληκτρολογείται στη γραμμή διευθύνσεων εξακολουθεί να το ανοίγει.",
   "nothing yet": "τίποτα ακόμη",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Ανενεργό, δεν ρωτιέται τίποτα: κάθε εμφανιζόμενο αρχείο κοστίζει ένα άνοιγμα, κάτι που αξίζει να αποφεύγεται σε αργό τόμο δικτύου.",

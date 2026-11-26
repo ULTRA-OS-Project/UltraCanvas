@@ -6039,13 +6039,19 @@ message(STATUS "")
 # ===== FILER VOLUME SPACE TEST =====
 # The Computer page's drive cards: the used share the pie chart is cut by
 # and the "free of" line under it (Apps/UltraFiler/UltraFilerVolumeSpace.h).
-# Header-only, so the test needs no library - it runs on any build.
+# Header-only but for FormatVolumeBytes, which is UltraLocalisation's
+# FormatFileSize: the module is UI-free and built in, so the test needs no
+# library - it runs on any build.
 message(STATUS "  Building FilerVolumeSpaceTest...")
 add_executable(FilerVolumeSpaceTest
     ${CMAKE_CURRENT_SOURCE_DIR}/FilerVolumeSpaceTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraLocalisation/UltraLocalisation.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
 target_include_directories(FilerVolumeSpaceTest PRIVATE
     ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+    ${ULTRACANVAS_ROOT}/UltraCanvas/include
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
 )
 target_compile_features(FilerVolumeSpaceTest PRIVATE cxx_std_20)
 set_target_properties(FilerVolumeSpaceTest PROPERTIES

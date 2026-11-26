@@ -1,6 +1,7 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.31.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 1.31.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) is a presentation too
 // Version: 1.30.0 - a word-processing document (.odt, .docx, .doc) opens in the document view as its
 //                   pages: read by UCWordDocumentIO, laid out by UltraCanvasRichTextEdit as its print
@@ -76,7 +77,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-26
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -295,14 +296,7 @@ static std::string DecodeFailureReason(const std::string& error) {
 }
 
 static std::string HumanSize(uintmax_t bytes) {
-    const char* units[] = { "B", "KB", "MB", "GB", "TB" };
-    double v = static_cast<double>(bytes);
-    int u = 0;
-    while (v >= 1024.0 && u < 4) { v /= 1024.0; ++u; }
-    char buf[48];
-    if (u == 0) snprintf(buf, sizeof(buf), "%llu %s", (unsigned long long)bytes, units[u]);
-    else        snprintf(buf, sizeof(buf), "%.1f %s", v, units[u]);
-    return std::string(buf);
+    return UltraCanvas::UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));   // "1,2 MB" in German
 }
 
 // "95.9866" -> "95.99", "300.0" -> "300".

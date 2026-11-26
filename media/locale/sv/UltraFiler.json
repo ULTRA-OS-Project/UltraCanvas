@@ -287,6 +287,7 @@
   "No size of its own": "Ingen egen storlek",
   "None - the tiles show the name only": "Inget - rutorna visar endast namnet",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Visas inte än: {0} väntar, {1} skapas, {2} kunde inte skapas (rutan behåller sin typikon).",
+  "nothing": "inget",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Inget flyttas eller tas bort: en ignorerad fil utelämnas bara från visningen. Visning > Filer > Visa dolda filer – och knappen ”Visa dolda filer” på remsan – tar tillbaka den, en sökning hittar den fortfarande och en sökväg som skrivs i adressfältet öppnar den fortfarande.",
   "nothing yet": "inget än",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Av, inget frågas: varje visad fil kostar en öppning, vilket är värt att undvika på en långsam nätverksvolym.",

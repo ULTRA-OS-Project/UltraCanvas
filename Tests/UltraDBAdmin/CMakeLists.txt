@@ -41,6 +41,8 @@ set(_dbadmin_engine
     ${_dbadmin}/engine/DbAdminStructureEdit.cpp
     ${_dbadmin}/engine/DbAdminTablePager.cpp
     ${_dbadmin}/engine/DbAdminValueTypes.cpp
+    # HumanSize is UltraLocalisation's FormatFileSize (UI-free, on yyjson below).
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/core/UltraLocalisation/UltraLocalisation.cpp
     # The connection list is JSON; the wrapper and the parser it wraps.
     ${CMAKE_SOURCE_DIR}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
     ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson/yyjson.c

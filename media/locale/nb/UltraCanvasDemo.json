@@ -7471,7 +7471,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} finnes ikke: oppslaget fortsetter til neste lag.",
   "{0} is on the Free plan": "{0} har Free-abonnementet",
   "{0} is on the Pro plan": "{0} har Pro-abonnementet",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} lag, {1} tegnbare objekter, side {2} x {3} pt, dekodet på {4} ms",
   "{0} MB/s decode": "{0} MB/s dekoding",
   "{0} ms": "{0} ms",

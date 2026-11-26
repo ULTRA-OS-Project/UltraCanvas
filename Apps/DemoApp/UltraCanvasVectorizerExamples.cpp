@@ -6,13 +6,14 @@
 // per-parameter dropdowns and sliders); the resulting SVG is written to a
 // temp file, rendered through the existing image element (which understands
 // SVG) and can be saved anywhere, as any type FileLoader writes.
+// Version: 0.4.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 0.4.0 - the shared page look (UltraCanvasDemoPageKit): input,
 //                  parameters and output as cards that wrap, every text sized
 //                  to fit, buttons as wide as their text
 // Version: 0.3.0 - Save offers every vector and bitmap type FileLoader writes
 //                  (a bitmap drawn at any size); Open its picture types
 // Version: 0.2.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -32,6 +33,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasVectorizerPlugin.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 #include <algorithm>
 #include <cctype>
@@ -117,9 +119,7 @@ std::string FormatNumber(float value, int decimals) {
 }
 
 std::string FormatBytes(size_t bytes) {
-    if (bytes < 1024) return TrN("{n} byte", "{n} bytes", static_cast<long long>(bytes));
-    if (bytes < 1024 * 1024) return TrF("{0} KB", FormatNumber(bytes / 1024.0f, 1));
-    return TrF("{0} MB", FormatNumber(bytes / (1024.0f * 1024.0f), 1));
+    return UltraCanvas::UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));
 }
 
 // ===== QUALITY PRESETS =====

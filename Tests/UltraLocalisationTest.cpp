@@ -30,6 +30,13 @@ static void Check(bool ok, const char* what) {
     if (!ok) { ++failCount; std::printf("FAIL: %s\n", what); }
 }
 
+// A LocaleFormats with no language: SetRegionalFormats drops the platform's.
+static LocaleFormats NoRegion() {
+    LocaleFormats none;
+    none.language.clear();
+    return none;
+}
+
 static void Write(const fs::path& path, const std::string& text) {
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
@@ -250,13 +257,14 @@ int main() {
         // The calendar words come from the standard set, as the shipped catalogues carry them
         Write(shipped / "de" / "Standard.json",
               "{ \"@language\": \"de\", \"@name\": \"Deutsch\", \"Cancel\": \"Abbrechen\", \"Save\": \"Speichern\",\n"
-              "  \"date-month|October\": \"Oktober\", \"date-weekday|Wednesday\": \"Mittwoch\", \"month-short|Oct\": \"Okt.\",\n"
+              "  \"date-month|October\": \"Oktober\", \"date-weekday|Wednesday\": \"Mittwoch\", \"month-short|Oct\": \"Okt\",\n"
+              "  \"date-month-short|Oct\": \"Okt.\",\n"
               "  \"weekday|We\": \"Mi\", \"MB\": \"MB\", \"KB\": \"KB\",\n"
               "  \"{n} byte\": { \"one\": \"{n} Byte\", \"other\": \"{n} Bytes\" } }");
         Write(shipped / "ru" / "Standard.json",
               "{ \"@language\": \"ru\", \"date-month|October\": \"октября\", \"date-weekday|Wednesday\": \"среда\" }");
         Write(shipped / "ar" / "Standard.json", "{ \"@language\": \"ar\", \"time|PM\": \"م\" }");
-        UltraLocalisation::SetRegionalFormats(LocaleFormats{"", "", "", 0, 0, 0, "", "", "", "", "", "", "", ""});
+        UltraLocalisation::SetRegionalFormats(NoRegion());
         CalendarTime when;
         when.year = 2026; when.month = 10; when.day = 21; when.hour = 14; when.minute = 5; when.second = 9;
 
@@ -267,11 +275,19 @@ int main() {
         Check(UltraLocalisation::FormatPercent(0.125, 1) == "12.5%", "en: 12.5%");
         Check(UltraLocalisation::FormatDate(when, DateStyle::Short) == "10/21/2026", "en: short date");
         Check(UltraLocalisation::FormatDate(when, DateStyle::Full) == "Wednesday, October 21, 2026", "en: full date, the weekday worked out");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Medium) == "Oct 21, 2026", "en: medium date");
+        Check(UltraLocalisation::FormatMonthYear(when) == "Oct 2026" && UltraLocalisation::FormatMonthDay(when) == "Oct 21",
+              "en: month and year, month and day");
         Check(UltraLocalisation::FormatTime(when, TimeStyle::Short) == "2:05 PM", "en: 12-hour clock");
         Check(UltraLocalisation::FormatDateTime(when, DateStyle::Short, TimeStyle::Medium) == "10/21/2026, 2:05:09 PM", "en: date and time joined");
         Check(UltraLocalisation::FormatFileSize(512) == "512 bytes" && UltraLocalisation::FormatFileSize(1) == "1 byte", "en: bytes, plural");
         Check(UltraLocalisation::FormatFileSize(1536) == "1.5 KB" && UltraLocalisation::FormatFileSize(1258291) == "1.2 MB", "en: KB and MB");
         Check(UltraLocalisation::FormatFileSize(1024ULL * 1024 - 1) == "1.0 MB", "a size that rounds to 1024 takes the next unit");
+        Check(UltraLocalisation::FormatFileSize(96ULL * 1024 * 1024, 0) == "96 MB", "a size with no decimals");
+        Check(UltraLocalisation::FormatFileSize(1536ULL * 1024 * 1024, -1) == "1.50 GB" &&
+              UltraLocalisation::FormatFileSize(16ULL * 1024 * 1024 * 1024, -1) == "16.0 GB" &&
+              UltraLocalisation::FormatFileSize(742ULL * 1024 * 1024, -1) == "742 MB", "three significant digits");
+        Check(UltraLocalisation::FormatFileSize(1024ULL * 1024 - 100, -1) == "1.00 MB", "... rounding up to the next unit");
         Check(TrN("{n} file", "{n} files", 12345) == "12,345 files", "TrN groups its count");
         Check(TrF("Port {0}", 8080) == "Port 8080", "TrF does not group an integer");
 
@@ -284,7 +300,11 @@ int main() {
         Check(UltraLocalisation::FormatDate(when, DateStyle::Long) == "21. Oktober 2026", "de: the month from the standard set");
         Check(UltraLocalisation::FormatDate(when, DateStyle::Full) == "Mittwoch, 21. Oktober 2026", "de: the weekday from the standard set");
         Check(UltraLocalisation::FormatTime(when, TimeStyle::Short) == "14:05", "de: 24-hour clock");
-        Check(UltraLocalisation::FormatPattern(when, "EEE, d. MMM") == "Mi, 21. Okt.", "de: the short names");
+        Check(UltraLocalisation::FormatPattern(when, "EEE, d. MMM") == "Mi, 21. Okt.", "de: the short names, the month as in a date");
+        Check(UltraLocalisation::FormatPattern(when, "LLL y") == "Okt 2026", "de: LLL is the month on its own");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Medium) == "21. Okt. 2026", "de: the medium date");
+        Check(UltraLocalisation::FormatMonthYear(when) == "Okt 2026" && UltraLocalisation::FormatMonthDay(when) == "21. Okt.",
+              "de: a month on its own, a day without its year");
         Check(UltraLocalisation::FormatFileSize(1258291) == "1,2 MB" && UltraLocalisation::FormatFileSize(1023) == "1.023 Bytes",
               "de: 1,2 MB and 1.023 Bytes");
         Check(TrF("{0} of {1}", 1.5, 1234) == "1,5 of 1234", "de: TrF's double with a comma, its integer whole");
@@ -329,7 +349,7 @@ int main() {
         Check(UltraLocalisation::CurrentLanguage() == "en" && UltraLocalisation::FormatNumber(1.5, 1) == "1,5",
               "a language from the desktop: the region's numbers");
         Check(UltraLocalisation::RegionalFormats().shortDate == "yyyy-MM-dd", "RegionalFormats gives back what was set");
-        UltraLocalisation::SetRegionalFormats(LocaleFormats{"", "", "", 0, 0, 0, "", "", "", "", "", "", "", ""});
+        UltraLocalisation::SetRegionalFormats(NoRegion());
         Check(UltraLocalisation::RegionalFormats().language.empty(), "an empty language drops them");
 
         // A preview of another language, the loaded one left alone
@@ -350,7 +370,7 @@ int main() {
                   UltraLocalisation::ExamplesFor("de", noon, true).fromPlatform,
                   "ExamplesFor from the desktop: the region's conventions");
             Check(!UltraLocalisation::ExamplesFor("de", noon).fromPlatform, "... but not for a language chosen here");
-            UltraLocalisation::SetRegionalFormats(LocaleFormats{"", "", "", 0, 0, 0, "", "", "", "", "", "", "", ""});
+            UltraLocalisation::SetRegionalFormats(NoRegion());
         }
 
         // The pattern converters

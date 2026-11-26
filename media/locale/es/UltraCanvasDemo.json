@@ -7471,7 +7471,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} no existe: la búsqueda pasa a la siguiente capa.",
   "{0} is on the Free plan": "{0} está en el plan Free",
   "{0} is on the Pro plan": "{0} está en el plan Pro",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} capas, {1} elementos dibujables, página de {2} x {3} pt, decodificado en {4} ms",
   "{0} MB/s decode": "{0} MB/s de decodificación",
   "{0} ms": "{0} ms",

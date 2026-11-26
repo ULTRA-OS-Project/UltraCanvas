@@ -1,7 +1,10 @@
 // Apps/EmailCleaner/ui/EmailCleanerContactsView.cpp
+// Version: 0.1.1 - a contact's sent and received counts and their "last" / "never" go through Tr
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerContactsView.h"
+
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <string>
 #include <utility>
@@ -174,17 +177,17 @@ void ContactsView::RebuildRows() {
         row.container->AddChild(subLabel);
 
         row.container->AddChild(CreateLabel(id + ".sent", sentX, 2, 140, 19,
-            "Sent " + std::to_string(review.sent)));
+            TrF("Sent {0}", review.sent)));
         row.container->AddChild(CreateLabel(id + ".lastSent", sentX, 21, 140, 18,
-            review.lastSent > 0 ? "last " + FormatDate(review.lastSent) : "never"));
+            review.lastSent > 0 ? TrF("last {0}", FormatDate(review.lastSent)) : Tr("never")));
 
         auto received = CreateLabel(id + ".recv", receivedX, 2, 140, 19,
-            "Received " + std::to_string(review.received));
+            TrF("Received {0}", review.received));
         received->SetTextColor(kQuietColor);
         row.container->AddChild(received);
         if (review.lastReceived > 0) {
             auto lastReceived = CreateLabel(id + ".lastRecv", receivedX, 21, 140, 18,
-                "last " + FormatDate(review.lastReceived));
+                TrF("last {0}", FormatDate(review.lastReceived)));
             lastReceived->SetTextColor(kQuietColor);
             row.container->AddChild(lastReceived);
         }

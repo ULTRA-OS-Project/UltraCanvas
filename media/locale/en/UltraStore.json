@@ -47,10 +47,7 @@
     "Save",
     "Send",
     "Settings",
-    "Version",
-    "{0} bytes",
-    "{0} KB",
-    "{0} MB"
+    "Version"
   ],
   "\"{0}\" is not one of the store's categories": "\"{0}\" is not one of the store's categories",
   "\"{0}\" is still running. Cancel it and close UltraStore?\nA download continues where it stopped the next time; nothing is left half installed.": "\"{0}\" is still running. Cancel it and close UltraStore?\nA download continues where it stopped the next time; nothing is left half installed.",
@@ -722,7 +719,6 @@
   "{0} / month": "{0} / month",
   "{0} / year": "{0} / year",
   "{0} available": "{0} available",
-  "{0} GB": "{0} GB",
   "{0} has no release for your system any more": "{0} has no release for your system any more",
   "{0} is a paid app: buy it first, then install": "{0} is a paid app: buy it first, then install",
   "{0} is not available for your system": "{0} is not available for your system",

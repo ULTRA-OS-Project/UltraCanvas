@@ -1,6 +1,7 @@
 // Apps/EmailCleaner/engine/EmailCleanerTypes.cpp
 // Enum conversions, address/date parsing and the UTC calendar arithmetic the
 // timetable and timeline bucketing are built on.
+// Version: 0.1.3 - BucketLabel in the person's language and conventions (UltraLocalisation), from the bucket's UTC day
 // Version: 0.1.2 - FormatDate is UltraLocalisation::FormatDate (DateStyle::Short, local time): "26.11.2026" in German
 // Version: 0.1.1 - FormatBytes is UltraLocalisation::FormatFileSize: "1,2 MB" in German, "512 bytes" below a kilobyte
 // Version: 0.1.0 (Phase 1)
@@ -443,23 +444,21 @@ int64_t BucketStart(int64_t epochSeconds, TimeBucket bucket) {
 }
 
 std::string BucketLabel(int64_t bucketStart, TimeBucket bucket) {
+    // The bucket's own UTC day, in the person's language and conventions:
+    // "Aug 14, 2026" / "14. Aug. 2026", "Aug 14" / "14. Aug.", "Aug 2026" / "Aug 2026"
     const UtcParts p = BreakUtcTime(bucketStart);
-    char buf[64];
+    UltraCanvas::CalendarTime day;
+    day.year = p.year;
+    day.month = p.month;
+    day.day = p.day;
+    using UltraCanvas::UltraLocalisation;
     switch (bucket) {
-        case TimeBucket::Day:
-            std::snprintf(buf, sizeof(buf), "%d %s %d", p.day, kMonthNames[p.month - 1], p.year);
-            break;
-        case TimeBucket::Week:
-            std::snprintf(buf, sizeof(buf), "%d %s", p.day, kMonthNames[p.month - 1]);
-            break;
-        case TimeBucket::Month:
-            std::snprintf(buf, sizeof(buf), "%s %d", kMonthNames[p.month - 1], p.year);
-            break;
-        case TimeBucket::Year:
-            std::snprintf(buf, sizeof(buf), "%d", p.year);
-            break;
+        case TimeBucket::Day:   return UltraLocalisation::FormatDate(day, UltraCanvas::DateStyle::Medium);
+        case TimeBucket::Week:  return UltraLocalisation::FormatMonthDay(day);
+        case TimeBucket::Month: return UltraLocalisation::FormatMonthYear(day);
+        case TimeBucket::Year:  return UltraLocalisation::FormatPattern(day, "y");
     }
-    return buf;
+    return {};
 }
 
 std::string FormatBytes(int64_t bytes) {

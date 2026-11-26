@@ -39,10 +39,7 @@
     "Unlock",
     "Unpin",
     "Video",
-    "Videos",
-    "{0} KB",
-    "{0} MB",
-    "{n} byte"
+    "Videos"
   ],
   "\"typing…\" shows under the name in the conversation's header, for a few seconds after the other side's last key.": "\"typing…\" shows under the name in the conversation's header, for a few seconds after the other side's last key.",
   "(muted)": "(muted)",
@@ -578,7 +575,6 @@
   "{0} and {1} are typing…": "{0} and {1} are typing…",
   "{0} declined the call": "{0} declined the call",
   "{0} did not answer": "{0} did not answer",
-  "{0} GB": "{0} GB",
   "{0} is blocked.": "{0} is blocked.",
   "{0} is in another call": "{0} is in another call",
   "{0} is no longer blocked.": "{0} is no longer blocked.",

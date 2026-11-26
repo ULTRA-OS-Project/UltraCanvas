@@ -1,6 +1,7 @@
 // dialogs/UltraCanvasImageExportDialog.cpp
 // The bitmap save dialog: format list, the knobs each format exposes, the
 // size estimate, and the metadata the image carries.
+// Version: 3.2.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 3.2.0 - lists only the formats this build can encode (VipsCanEncode:
 //                 no AVIF / HEIC without libheif's encoder; ICO and QOI through
 //                 the framework's own savers)
@@ -8,7 +9,7 @@
 //                 on Save (UltraCanvasFileLoader); the file name picks the
 //                 format; the colour depth list applies; SetOptions moves the
 //                 controls
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 //
 // Every captioned row is a row of one two-column grid (see the header), so
@@ -24,6 +25,7 @@
 #include "UltraCanvasMetadataDialog.h"
 #include "UltraCanvasFileLoader.h"   // the save settings per format
 #include "PixelFX/PixelFX.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
@@ -1452,20 +1454,7 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasImageExportDialog::FormatFileSize(size_t bytes) {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(1);
-
-        if (bytes >= 1024 * 1024 * 1024) {
-            oss << (bytes / (1024.0 * 1024.0 * 1024.0)) << " GB";
-        } else if (bytes >= 1024 * 1024) {
-            oss << (bytes / (1024.0 * 1024.0)) << " MB";
-        } else if (bytes >= 1024) {
-            oss << (bytes / 1024.0) << " KB";
-        } else {
-            oss << bytes << " B";
-        }
-
-        return oss.str();
+        return UltraCanvas::UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));   // "1,2 MB" in German
     }
 
 // ============================================================================

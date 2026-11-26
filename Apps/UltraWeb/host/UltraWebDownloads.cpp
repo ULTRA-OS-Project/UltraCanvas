@@ -1,8 +1,9 @@
 // Apps/UltraWeb/host/UltraWebDownloads.cpp
 // Saving downloads (UltraWebDownloads.h).
+// Version: 0.3.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 0.3.0 - a Cookie header with the request
 // Version: 0.2.0
-// Last Modified: 2026-10-22
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebDownloads.h"
@@ -11,6 +12,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 #include <atomic>
 #include <cctype>
@@ -183,15 +185,7 @@ void SetDownloadStallTimeout(int milliseconds) {
 }
 
 std::string ByteSize(int64_t bytes) {
-    // Dot-decimal whatever the locale: tenths counted, not printed with %f.
-    auto tenths = [](int64_t value, int64_t unit, const char* name) {
-        const int64_t t = (value * 10 + unit / 2) / unit;
-        return std::to_string(t / 10) + "." + std::to_string(t % 10) + " " + name;
-    };
-    if (bytes >= 1024LL * 1024 * 1024) return tenths(bytes, 1024LL * 1024 * 1024, "GB");
-    if (bytes >= 1024 * 1024) return tenths(bytes, 1024 * 1024, "MB");
-    if (bytes >= 1024) return std::to_string(bytes / 1024) + " KB";
-    return std::to_string(bytes) + (bytes == 1 ? " byte" : " bytes");
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes > 0 ? static_cast<unsigned long long>(bytes) : 0ULL);   // "1,5 MB" in German
 }
 
 std::string DefaultDownloadFolder() {

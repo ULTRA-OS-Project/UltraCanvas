@@ -51,7 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.61.2 - a file's size in the person's language and conventions (UltraLocalisation::FormatFileSize): "1,2 MB"
+// Version: 1.61.2 - a file's size, the bar-size view's too, in the person's language and conventions (UltraLocalisation::FormatFileSize): "1,2 MB"
 // Version: 1.61.1 - the Details headings and the type names go through Tr
 // Version: 1.61.0 - openMenuProvider: the host's entries after "Open with"
 // Version: 1.60.0 - a favorite can stand out by a solid fill, a border or a shade in a colour of the
@@ -941,19 +941,12 @@ namespace UltraCanvas {
             return UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));
         }
 
-        // Uniform size string for the "Bar size" view: always a mantissa with
-        // exactly one decimal place plus a unit chosen so the value stays below
-        // 1024 (e.g. "100.9 KB", "23.2 MB", "1.5 TB").  Keeping every value in
-        // the same "NNN.N UU" shape lets the number column line up and every bar
-        // share the same width.
+        // The size string for the "Bar size" view: from a kilobyte up a
+        // mantissa with exactly one decimal plus a unit chosen so the value
+        // stays below 1024 ("100,9 KB", "23,2 MB", "1,5 TB" in German), so
+        // the number column lines up; below it the bytes in words.
         std::string FormatSizeFixed(uint64_t bytes) {
-            static const char* kUnits[] = { "B", "KB", "MB", "GB", "TB", "PB" };
-            double v = static_cast<double>(bytes);
-            int u = 0;
-            while (v >= 1024.0 && u < 5) { v /= 1024.0; ++u; }
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%.1f %s", v, kUnits[u]);
-            return buf;
+            return UltraCanvas::UltraLocalisation::FormatFileSize(bytes);   // one decimal from a kilobyte up: "100,9 KB"
         }
 
         std::string FormatTime(std::time_t t) {

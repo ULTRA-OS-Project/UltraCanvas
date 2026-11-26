@@ -2910,6 +2910,8 @@ if (BUILD_TESTS)
         UltraCanvas/core/UltraCanvasHardwareInfo.cpp
         ${_uc_hardwareinfo_backend}
         UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+        # FormatBytes is UltraLocalisation's FormatFileSize; UI-free, built in
+        UltraCanvas/core/UltraLocalisation/UltraLocalisation.cpp
         UltraCanvas/third_party/yyjson/yyjson.c
     )
     target_include_directories(HardwareInfoTests PRIVATE

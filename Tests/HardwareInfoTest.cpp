@@ -32,13 +32,16 @@ static int g_failures = 0;
 
 static void TestFormatters() {
     std::printf("Value formatting\n");
-    CHECK(UltraCanvasHardwareInfo::FormatBytes(0) == "0 B", "zero bytes");
-    CHECK(UltraCanvasHardwareInfo::FormatBytes(512) == "512 B", "bytes below a kilobyte");
-    CHECK(UltraCanvasHardwareInfo::FormatBytes(32ull * 1024) == "32 KB", "kilobytes are whole");
+    // UltraLocalisation::FormatFileSize, English: whole units whole, else three significant digits
+    CHECK(UltraCanvasHardwareInfo::FormatBytes(0) == "0 bytes", "zero bytes");
+    CHECK(UltraCanvasHardwareInfo::FormatBytes(512) == "512 bytes", "bytes below a kilobyte");
+    CHECK(UltraCanvasHardwareInfo::FormatBytes(32ull * 1024) == "32 KB", "a whole number of kilobytes is whole");
     CHECK(UltraCanvasHardwareInfo::FormatBytes(1536ull * 1024 * 1024) == "1.50 GB",
           "gigabytes keep two decimals below ten");
-    CHECK(UltraCanvasHardwareInfo::FormatBytes(16ull * 1024 * 1024 * 1024) == "16.0 GB",
-          "and one decimal below a hundred");
+    CHECK(UltraCanvasHardwareInfo::FormatBytes(16ull * 1024 * 1024 * 1024) == "16 GB",
+          "a whole number of gigabytes is whole");
+    CHECK(UltraCanvasHardwareInfo::FormatBytes(16ull * 1024 * 1024 * 1024 + 300ull * 1024 * 1024) == "16.3 GB",
+          "else one decimal below a hundred");
 
     CHECK(UltraCanvasHardwareInfo::FormatFrequencyMHz(0) == "-", "an unknown clock is a dash");
     CHECK(UltraCanvasHardwareInfo::FormatFrequencyMHz(800) == "800 MHz", "megahertz stay megahertz");

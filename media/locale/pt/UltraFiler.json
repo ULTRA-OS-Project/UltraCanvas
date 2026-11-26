@@ -287,6 +287,7 @@
   "No size of its own": "Sem tamanho próprio",
   "None - the tiles show the name only": "Nenhuma - os mosaicos mostram apenas o nome",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Ainda não mostradas: {0} em espera, {1} em preparação, {2} não puderam ser criadas (o mosaico mantém o ícone do seu tipo).",
+  "nothing": "nada",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Nada é movido nem eliminado: um ficheiro ignorado é apenas deixado fora da vista. Visualização > Ficheiros > Mostrar ficheiros ocultos (e o botão \"Mostrar ficheiros ocultos\" da faixa) voltam a mostrá-lo, uma pesquisa continua a encontrá-lo e um caminho escrito na barra de endereço continua a abri-lo.",
   "nothing yet": "ainda nada",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Desligado, nada é perguntado: cada ficheiro mostrado custa uma abertura, o que convém evitar num volume de rede lento.",

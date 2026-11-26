@@ -283,6 +283,7 @@
   "No size of its own": "固有のサイズなし",
   "None - the tiles show the name only": "なし - タイルには名前のみを表示",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "未表示: 待機中 {0}、作成中 {1}、作成できなかったもの {2} (タイルは種類のアイコンのまま)。",
+  "nothing": "なし",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "何も移動・削除されません。無視するファイルは表示から除外されるだけです。「表示 > ファイル > 隠しファイルを表示」とバーの「隠しファイルを表示」ボタンで再び表示でき、検索では引き続き見つかり、アドレスバーにパスを入力すれば開くこともできます。",
   "nothing yet": "まだありません",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "オフにすると何も問い合わせません: 表示するファイルごとに 1 回ファイルを開く必要があり、低速なネットワークボリュームでは避けたほうがよい処理です。",

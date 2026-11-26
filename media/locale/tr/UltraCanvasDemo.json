@@ -7471,7 +7471,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} yok: arama bir sonraki katmana geçer.",
   "{0} is on the Free plan": "{0} Ücretsiz planda",
   "{0} is on the Pro plan": "{0} Pro planda",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} katman, {1} çizilebilir öğe, sayfa {2} x {3} pt, {4} ms içinde çözüldü",
   "{0} MB/s decode": "{0} MB/sn çözme",
   "{0} ms": "{0} ms",

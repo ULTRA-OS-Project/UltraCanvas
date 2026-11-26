@@ -285,7 +285,7 @@ void TestCellText() {
     Check(CellText(UltraDbValue("first line\nsecond")) == "first line…", "text up to its first line break");
     Check(CellText(UltraDbValue("abcdef"), 3) == "abc…", "and at most maxChars characters");
     Check(CellText(UltraDbValue("ÄÖÜß"), 2) == "ÄÖ…", "counted in characters, not bytes");
-    Check(HumanSize(0) == "0 B" && HumanSize(1023) == "1023 B", "sizes under a KB in bytes");
+    Check(HumanSize(0) == "0 bytes" && HumanSize(1023) == "1,023 bytes", "sizes under a KB in bytes");
 }
 
 void TestPager() {

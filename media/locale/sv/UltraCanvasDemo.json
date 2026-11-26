@@ -7471,7 +7471,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} finns inte: uppslagningen fortsätter till nästa lager.",
   "{0} is on the Free plan": "{0} har Free-planen",
   "{0} is on the Pro plan": "{0} har Pro-planen",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} lager, {1} ritbara objekt, sida {2} x {3} pt, avkodad på {4} ms",
   "{0} MB/s decode": "{0} MB/s avkodning",
   "{0} ms": "{0} ms",

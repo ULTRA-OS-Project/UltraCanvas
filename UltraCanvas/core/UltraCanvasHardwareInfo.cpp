@@ -3,12 +3,14 @@
 // snapshot caching, identifier masking, the display report and its text/JSON
 // renderings. Every value shown here is read by a platform backend under
 // OS/<Platform>/ - this file never touches the machine directly.
+// Version: 0.1.1 - FormatBytes through UltraLocalisation::FormatFileSize: whole units whole, else three significant digits
 // Version: 0.1.0
-// Last Modified: 2026-08-29
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasHardwareInfoBackend.h"
 #include "DataFormats/UltraCanvasJSON.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 #include <algorithm>
 #include <chrono>
@@ -405,15 +407,14 @@ std::vector<BluetoothAdapterInfo> UltraCanvasHardwareInfo::ListBluetoothAdapters
 // ===== FORMATTING =====
 
 std::string UltraCanvasHardwareInfo::FormatBytes(uint64_t bytes) {
-    // Binary multiples with the decimal names users read on a spec sheet, which
-    // is what every OS information panel shows.
-    static const char* units[] = { "B", "KB", "MB", "GB", "TB", "PB" };
-    if (bytes < 1024ull) return std::to_string(bytes) + " B";
-    double value = static_cast<double>(bytes);
-    int unit = 0;
-    while (value >= 1024.0 && unit < 5) { value /= 1024.0; ++unit; }
-    const int decimals = (value >= 100.0 || unit <= 1) ? 0 : (value >= 10.0 ? 1 : 2);
-    return FormatDouble(value, decimals) + " " + units[unit];
+    // Binary multiples with the decimal names users read on a spec sheet, in
+    // the person's language and conventions: whole when the size is a whole
+    // number of its unit, as memory and caches are ("16 GB", "48 KB"), else
+    // three significant digits ("1,50 GB")
+    uint64_t unit = 1;
+    while (unit < (1ull << 40) && bytes / unit >= 1024) unit *= 1024;
+    const bool whole = unit > 1 && bytes % unit == 0;
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes, whole ? 0 : -1);
 }
 
 std::string UltraCanvasHardwareInfo::FormatFrequencyMHz(double megahertz) {

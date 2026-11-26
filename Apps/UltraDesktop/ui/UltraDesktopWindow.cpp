@@ -2,6 +2,7 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.6 - a drive's size through UltraLocalisation::FormatFileSize, binary units, the person's conventions
 // Version: 0.8.5 - the Sticker board open on another virtual desktop comes to this one on a
 //                  click on its button (it was hidden there instead), and when files are dropped
 // Version: 0.8.4 - the wallpaper's JPEG beside an AVIF where the AVIF cannot be read (Android); builds without the message centre
@@ -1034,16 +1035,7 @@ std::string UsbTitle(const USBDeviceInfo& device) {
 // decimal point standing in for a dot it never needed.
 std::string SizeText(uint64_t bytes) {
     if (bytes == 0) return "";
-    const char* units[] = {"KB", "MB", "GB", "TB"};
-    uint64_t scaled = bytes / 100;   // tenths of a kilobyte
-    int unit = 0;
-    while (scaled >= 10000 && unit < 3) {
-        scaled /= 1000;
-        ++unit;
-    }
-    const uint64_t whole = scaled / 10;
-    const uint64_t tenth = scaled % 10;
-    return std::to_string(whole) + (whole < 100 && tenth ? "." + std::to_string(tenth) : "") + " " + units[unit];
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes);   // "1,2 MB" in German
 }
 
 DevicePanelContent ReadUsbPanel() {

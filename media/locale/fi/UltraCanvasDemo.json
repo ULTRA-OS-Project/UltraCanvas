@@ -7471,7 +7471,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} puuttuu: haku jatkuu seuraavaan kerrokseen.",
   "{0} is on the Free plan": "{0} käyttää Free-tilausta",
   "{0} is on the Pro plan": "{0} käyttää Pro-tilausta",
-  "{0} kB": "{0} kt",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} tasoa, {1} piirrettävää, sivu {2} x {3} pt, dekoodattu {4} ms:ssa",
   "{0} MB/s decode": "{0} Mt/s dekoodaus",
   "{0} ms": "{0} ms",

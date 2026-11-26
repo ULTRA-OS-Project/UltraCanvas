@@ -10,8 +10,9 @@
 // a worker thread: a network share that stopped answering makes
 // std::filesystem::space wait out a timeout, which must never happen on the
 // UI thread.
+// Version: 1.0.1 - FormatVolumeBytes is UltraLocalisation::FormatFileSize
 // Version: 1.0.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,6 +22,7 @@
 #include <string>
 #include <system_error>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
+#include "../../UltraCanvas/include/UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 namespace UltraCanvas {
 
@@ -75,30 +77,12 @@ inline double VolumeUsedPercent(const VolumeSpace& space) {
     return percent < 0.0 ? 0.0 : (percent > 100.0 ? 100.0 : percent);
 }
 
-// A size the way a drive is talked about: one decimal from a megabyte up
-// ("476.2 GB", "1.8 TB", "512.0 MB"), whole numbers below it. Binary units,
-// like the sizes the file display shows, so the two never disagree about the
-// same folder.
+// A size the way a drive is talked about, in the person's language and
+// conventions: one decimal from a kilobyte up ("476,2 GB" in German). It is
+// UltraLocalisation::FormatFileSize, like the sizes the file display shows,
+// so the two never disagree about the same folder.
 inline std::string FormatVolumeBytes(uint64_t bytes) {
-    constexpr double kKilo = 1024.0;
-    constexpr double kMega = kKilo * 1024.0;
-    constexpr double kGiga = kMega * 1024.0;
-    constexpr double kTera = kGiga * 1024.0;
-    const double value = static_cast<double>(bytes);
-    char buffer[48];
-    if (value >= kTera) {
-        std::snprintf(buffer, sizeof buffer, "%.1f TB", value / kTera);
-    } else if (value >= kGiga) {
-        std::snprintf(buffer, sizeof buffer, "%.1f GB", value / kGiga);
-    } else if (value >= kMega) {
-        std::snprintf(buffer, sizeof buffer, "%.1f MB", value / kMega);
-    } else if (value >= kKilo) {
-        std::snprintf(buffer, sizeof buffer, "%.0f KB", value / kKilo);
-    } else {
-        std::snprintf(buffer, sizeof buffer, "%llu bytes",
-                      static_cast<unsigned long long>(bytes));
-    }
-    return buffer;
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes);
 }
 
 // The line under a drive's pie chart: "232.9 GB free of 476.2 GB", or what

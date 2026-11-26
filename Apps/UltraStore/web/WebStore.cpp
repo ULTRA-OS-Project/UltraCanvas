@@ -1,6 +1,7 @@
 // Apps/UltraStore/web/WebStore.cpp
 // The web store's pages: Discover, Categories, an app's page, and the
 // catalog behind them (WebStore.h).
+// Version: 0.1.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "WebStore.h"
@@ -99,11 +100,7 @@ std::string OsLabel(OS os) {
 }
 
 std::string FormatBytes(uint64_t bytes) {
-    char buffer[32];
-    if (bytes >= (uint64_t(1) << 30)) { std::snprintf(buffer, sizeof(buffer), "%.1f", bytes / double(uint64_t(1) << 30)); return TrF("{0} GB", std::string(buffer)); }   // locale-ok: a size shown in the classic form
-    if (bytes >= (uint64_t(1) << 20)) { std::snprintf(buffer, sizeof(buffer), "%.1f", bytes / double(uint64_t(1) << 20)); return TrF("{0} MB", std::string(buffer)); }   // locale-ok: as above
-    if (bytes >= 1024) return TrF("{0} KB", static_cast<unsigned long long>(bytes / 1024));
-    return TrF("{0} bytes", static_cast<unsigned long long>(bytes));
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes);   // "12,3 MB" in German
 }
 
 std::string Lower(std::string s) {

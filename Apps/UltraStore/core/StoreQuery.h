@@ -12,6 +12,7 @@
 // for updates); a *withdrawn* one only when it is installed (no new
 // installs, existing ones keep updating).
 //
+// Version: 0.4.1 - FormatBytes documented as UltraLocalisation's
 // Version: 0.4.0 - PlanLaunch: the runtime layer on the library path, LibraryPathVariable
 // Version: 0.3.0 - categories from the fixed list: CategoryName, PrimaryCategory; search finds the name
 // Version: 0.2.1 - PeriodPrice; the texts through Tr
@@ -114,7 +115,8 @@ std::string PeriodPrice(const Pricing& pricing, const std::string& amount);
 // What a code takes off, for the buyer: "20% off", "5.00 EUR off"; "" when nothing.
 std::string DiscountLabel(const PromoCode& code);
 
-// "1.5 GB", "12.3 MB", "640 KB", "12 bytes".
+// "1.5 GB", "12.3 MB", "640.0 KB", "12 bytes" - in the person's language and
+// conventions (UltraLocalisation::FormatFileSize).
 std::string FormatBytes(uint64_t bytes);
 
 // The file to start for an installed app: its folder joined with its entry

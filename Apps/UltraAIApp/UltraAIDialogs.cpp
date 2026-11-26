@@ -2,8 +2,9 @@
 // Implementation of the ten per-capability service dialogs. Each one
 // builds its own input form (headed by the shared provider picker) and
 // runs the selected — or default-routed — UltraAI provider on "Run".
+// Version: 0.2.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 0.2.0
-// Last Modified: 2026-08-21
+// Last Modified: 2026-11-26
 
 #include "UltraAIDialogs.h"
 
@@ -19,6 +20,7 @@
 #include <string>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 namespace UltraAIApp {
 
@@ -35,11 +37,7 @@ constexpr long kFormWidth   = UltraAIServiceDialog::kDialogWidth -
 
 // Helper: format byte count compactly.
 std::string FormatBytes(size_t bytes) {
-    std::ostringstream os;
-    if (bytes < 1024)            os << bytes << " B";
-    else if (bytes < 1024 * 1024) os << (bytes / 1024.0) << " KiB";
-    else                          os << (bytes / (1024.0 * 1024.0)) << " MiB";
-    return os.str();
+    return UltraCanvas::UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));   // "1,2 MB" in German
 }
 
 // Helper: split a multi-line input into one entry per non-empty line.

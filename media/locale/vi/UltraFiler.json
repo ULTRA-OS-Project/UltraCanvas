@@ -283,6 +283,7 @@
   "No size of its own": "Không có kích thước riêng",
   "None - the tiles show the name only": "Không có - các ô chỉ hiện tên",
   "Not shown yet: {0} waiting, {1} being made, {2} could not be made (the tile keeps its type icon).": "Chưa hiển thị: {0} đang chờ, {1} đang được tạo, {2} không thể tạo (ô giữ biểu tượng loại tệp).",
+  "nothing": "không có gì",
   "Nothing is moved or deleted: an ignored file is only left out of the display. Display > Files > Show hidden files - and the \"Show hidden files\" button on the strip - bring it back, a search still finds it, and a path typed into the address bar still opens it.": "Không có gì bị di chuyển hay xóa: tệp bị bỏ qua chỉ được loại khỏi vùng hiển thị. Hiển thị > Tệp > Hiện tệp ẩn - và nút “Hiện tệp ẩn” trên dải - sẽ đưa nó trở lại, tìm kiếm vẫn tìm thấy nó, và đường dẫn nhập vào thanh địa chỉ vẫn mở được nó.",
   "nothing yet": "chưa có gì",
   "Off, nothing is asked: each shown file costs one open, which is worth avoiding on a slow network volume.": "Tắt, không hỏi gì: mỗi tệp được hiển thị tốn một lần mở, điều nên tránh trên ổ đĩa mạng chậm.",

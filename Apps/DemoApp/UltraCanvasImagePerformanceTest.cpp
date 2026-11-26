@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Bitmap codec comparison benchmark: file size / encode time / decode time per format
+// Version: 2.7.1 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 2.7.0 - the shared page look (UltraCanvasDemoPageKit): the page fills the
 //                  area, toolbar, chart and status in one card, every label sized
 //                  to its text, the toolbar wraps
@@ -13,7 +14,7 @@
 // Version: 2.9.1 - the format choice is kept between runs, in the demo's
 //                  settings file (UltraCanvasAppSettings "UltraCanvasDemo")
 // Version: 2.9.2 - JXL sits with JPG and JP2K, on the chart and in the settings
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 //
 // ================================================================================
@@ -303,6 +304,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasAppSettings.h"   // the format choice, kept between runs
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 #ifdef HAS_LIBVIPS
 #include <vips/vips8>
@@ -370,18 +372,7 @@ namespace UltraCanvas {
         }
 
         std::string FormatBytes(size_t bytes) {
-            std::ostringstream oss;
-            oss << std::fixed << std::setprecision(1);
-            if (bytes >= 1024ULL * 1024ULL * 1024ULL) {
-                oss << (bytes / (1024.0 * 1024.0 * 1024.0)) << " GB";
-            } else if (bytes >= 1024ULL * 1024ULL) {
-                oss << (bytes / (1024.0 * 1024.0)) << " MB";
-            } else if (bytes >= 1024ULL) {
-                oss << (bytes / 1024.0) << " KB";
-            } else {
-                oss << bytes << " B";
-            }
-            return oss.str();
+            return UltraCanvas::UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));
         }
 
         std::string FormatMs(double ms) {

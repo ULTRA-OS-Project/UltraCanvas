@@ -7511,7 +7511,6 @@
   "{0} is not there: the lookup goes on to the next layer.": "{0} neexistuje: vyhledávání pokračuje další vrstvou.",
   "{0} is on the Free plan": "{0} má tarif Free",
   "{0} is on the Pro plan": "{0} má tarif Pro",
-  "{0} kB": "{0} kB",
   "{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms": "{0} vrstev, {1} vykreslitelných objektů, stránka {2} x {3} pt, dekódováno za {4} ms",
   "{0} MB/s decode": "{0} MB/s dekódování",
   "{0} ms": "{0} ms",

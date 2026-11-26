@@ -5,9 +5,10 @@
 // is written to "<name>.part" and renamed when it is complete, so a broken
 // download never leaves a file that looks whole. A download is as long as
 // the file is large: it has no time limit, only a stall limit.
+// Version: 0.3.1 - ByteSize documented as UltraLocalisation's
 // Version: 0.3.0 - StartDownload sends a Cookie header
 // Version: 0.2.0
-// Last Modified: 2026-10-22
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -44,7 +45,8 @@ std::shared_ptr<Download> StartDownload(const std::string& url, const std::strin
 // default; tests shorten it). A whole-transfer limit there is none.
 void SetDownloadStallTimeout(int milliseconds);
 
-// "1.4 MB", "830 KB", "12 bytes".
+// "1.4 MB", "830.0 KB", "12 bytes" - in the person's language and conventions
+// (UltraLocalisation::FormatFileSize).
 std::string ByteSize(int64_t bytes);
 
 // The folder downloads are offered in: the user's Downloads folder, else

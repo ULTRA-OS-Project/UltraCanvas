@@ -164,20 +164,27 @@ std::string amount = UltraLocalisation::FormatNumber(1234.5, 2);        // "1.23
 std::string files = UltraLocalisation::FormatInteger(1234567);          // "1.234.567"
 std::string share = UltraLocalisation::FormatPercent(0.125, 1);         // "12,5 %"
 std::string size = UltraLocalisation::FormatFileSize(1536);             // "1,5 KB"; "512 Bytes" below a kilobyte
+std::string memory = UltraLocalisation::FormatFileSize(1610612736, -1); // "1,50 GB": three significant digits
+std::string ceiling = UltraLocalisation::FormatFileSize(100663296, 0);  // "96 MB": no decimals
 std::time_t now = std::time(nullptr);
 std::string shortDate = UltraLocalisation::FormatDate(now, DateStyle::Short);    // "21.10.2026"
+std::string mediumDate = UltraLocalisation::FormatDate(now, DateStyle::Medium);  // "21. Okt. 2026"
 std::string fullDate = UltraLocalisation::FormatDate(now, DateStyle::Full);      // "Mittwoch, 21. Oktober 2026"
+std::string month = UltraLocalisation::FormatMonthYear(now);                     // "Okt 2026": a chart's or a calendar's heading
+std::string day = UltraLocalisation::FormatMonthDay(now);                        // "21. Okt.": a day without its year
 std::string clock = UltraLocalisation::FormatTime(now, TimeStyle::Short);        // "14:05"; "2:05 PM" in the US
 std::string stamp = UltraLocalisation::FormatDateTime(now, DateStyle::Short, TimeStyle::Medium);   // "21.10.2026, 14:05:09"
 std::string separator = UltraLocalisation::DecimalSeparator();          // ",": what a numeric field accepts
 ```
 
-`DateStyle::Short` is all digits with the year in full, `Long` names the
-month, `Full` adds the weekday; `TimeStyle::Short` is the clock without its
+`DateStyle::Short` is all digits with the year in full, `Medium`
+abbreviates the month, `Long` names it, `Full` adds the weekday; `TimeStyle::Short` is the clock without its
 seconds and `Medium` with them. A `CalendarTime` - a date and a wall-clock
 time as a calendar shows them, the weekday worked out when it is `-1` -
 takes the same calls, and `FormatPattern` writes any CLDR pattern with the
-person's names and digits:
+person's names and digits. `FormatFileSize` takes the decimals a size is
+written with from a kilobyte up, or `-1` for three significant digits, as
+an information panel or a progress line writes them:
 
 ```cpp
 CalendarTime when;
@@ -231,9 +238,11 @@ UltraLocalisation::SetRegionalFormats(swiss);                  // what the appli
 standard set's, in the person's language: a month inside a date is
 `"date-month|October"` - "Oktober", the genitive "октября" in Russian,
 "d’octubre" in Catalan, lower case in French - a weekday in a full date
-`"date-weekday|Wednesday"`, the short names the date picker's
-`"month-short|Oct"` and `"weekday|We"`, and the day periods `"time|AM"` and
-`"time|PM"`. A file size's units are the standard set's `"KB"` ... `"TB"`
+`"date-weekday|Wednesday"`, the month abbreviated inside a date
+`"date-month-short|Oct"` ("Okt.", "окт.", "d’oct."), a month abbreviated
+on its own - a CLDR `LLL`, as in "Okt 2026" - the date picker's
+`"month-short|Oct"`, the short weekday its `"weekday|We"`, and the day
+periods `"time|AM"` and `"time|PM"`. A file size's units are the standard set's `"KB"` ... `"TB"`
 ("Ko" in French) and its bytes the plural `"{n} byte"`.
 
 These are for text a person reads. A number in a file format or a

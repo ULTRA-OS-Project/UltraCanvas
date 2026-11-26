@@ -1,11 +1,12 @@
 // Plugins/Diagrams/UltraCanvasGourceTree.cpp
 // Gource-style radial tree diagram for storage/filesystem visualization
+// Version: 1.0.5 - sizes through UltraLocalisation::FormatFileSize, in the person's language and conventions
 // Version: 1.0.4 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.0.3 - the F / Ctrl+E / Ctrl+Shift+C shortcuts match UCKeys letters
 //                  (the lowercase cases beside them were dead and warned)
 // Version: 1.0.2 - a press on empty space (deselect) is the tree's
 // Version: 1.0.1
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasGourceTree.h"
@@ -18,6 +19,7 @@
 #include <queue>
 #include <limits>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 
 namespace UltraCanvas {
 
@@ -1037,22 +1039,7 @@ std::string UltraCanvasGourceTree::GetExtension(const std::string& filename) con
 }
 
 std::string UltraCanvasGourceTree::FormatFileSize(int64_t bytes) const {
-    const char* units[] = {"B", "KB", "MB", "GB", "TB"};
-    int unitIndex = 0;
-    double size = static_cast<double>(bytes);
-    
-    while (size >= 1024.0 && unitIndex < 4) {
-        size /= 1024.0;
-        unitIndex++;
-    }
-    
-    std::ostringstream oss;
-    if (unitIndex == 0) {
-        oss << bytes << " B";
-    } else {
-        oss << std::fixed << std::setprecision(1) << size << " " << units[unitIndex];
-    }
-    return oss.str();
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes > 0 ? static_cast<unsigned long long>(bytes) : 0ULL);   // "1,2 MB" in German
 }
 
 std::string UltraCanvasGourceTree::FormatTimestamp(time_t timestamp) const {
