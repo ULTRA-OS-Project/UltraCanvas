@@ -134,6 +134,8 @@ operator_patterns = ([
     path("payouts/<int:pk>/", operator.payout_page, name="payout"),
     path("affiliates/", affiliates.operator_affiliates, name="affiliates"),
     path("affiliates/<int:pk>/", affiliates.operator_affiliate, name="affiliate"),
+    path("affiliates/payouts/", affiliates.operator_payouts, name="affiliate_payouts"),
+    path("affiliates/payouts/<int:pk>/", affiliates.operator_payout, name="affiliate_payout"),
     path("publish/", operator.publish, name="publish"),
     path("promote/", promote.operator_home, name="promote"),
     path("audit/", operator.audit, name="audit"),
@@ -199,6 +201,7 @@ affiliate_patterns = ([
     path("edit/", affiliates.edit, name="edit"),
     path("pause/", affiliates.pause, name="pause"),
     path("statement/<int:pk>/", affiliates.statement, name="statement"),
+    path("payouts/<int:pk>/", affiliates.payout, name="payout"),
     path("join/<str:handle>/", affiliates.join, name="join"),
 ], "affiliate")
 

@@ -2,10 +2,11 @@
 
 **Date:** 2026-11-25
 **Status:** Proposal, **with the owner's decisions of 2026-11-26 worked in**
-(§9). **Phases 1 and 2 - product links and the customer's binding - are
-built** in the store portal (0.10.0 and 0.11.0, its README's *Affiliates*;
-§8 says what of each phase is in and what is not); the phases after them
-are not. §3 says what the repository already has that
+(§9). **Phases 1 and 2 - product links and the customer's binding - and
+the first part of phase 3 - the holdback and the monthly payouts - are
+built** in the store portal (0.10.0, 0.11.0 and 0.12.0, its README's
+*Affiliates*; §8 says what of each phase is in and what is not); the rest
+is not. §3 says what the repository already has that
 it builds on. **No question to the owner is open** (§9.1); what remains
 before building is the lawyer's and the tax adviser's (§7). **Rechecked on the same date**, claim by
 claim, against the tree and against outside sources: §12 is the record of
@@ -913,6 +914,32 @@ and the portal's next step 3); a guest's purchase binds nobody.
 Phases 1 and 2 together are the programme the owner described: every
 product has affiliates selling it without a merchant lifting a finger, and
 a customer an affiliate brought stays that affiliate's.
+
+**Phase 3 as built, its first part** (portal 0.12.0, 2026-11-26): **the
+holdback** - 5 % of what is left of a commission when it is approved, held
+until six calendar months after the sale was paid, taken first by whatever
+is given back in that time, and released into the balance on its day
+(decision N5); the superaffiliate's share is held the same way. **The
+affiliate's statistics** show the amount held per currency and the next
+release with its day, beside pending, balance, what is on its way and what
+was paid, and what is held of each line. **The monthly payout** - per
+affiliate and currency, for everything due on a day, from 25.00 (decision
+D10); a smaller balance is carried; an affiliate whose account is closed or
+being deleted is paid whatever is owed, and the holdback as it is released
+(§5.9). The operator pays it and marks it paid with the transfer's
+reference; the payout is the affiliate's **statement**, line by line. A
+blocked or banned affiliate's money waits. **Choices made in building it,
+for the owner to overrule:** the holdback is reckoned on what is left of a
+commission at its approval, so a sale half refunded before then holds half
+as much; a refund of a commission still pending shows as less pending, not
+as a debt; an account already erased is paid nothing more - the 90 days
+before it are the time to pay it. **Left of the phase:** the self-billed
+credit note (question T1), Skrill's payout interface (the sandbox run), a
+ban's settlement in the portal - which commissions it takes back and what
+it leaves to pay (§5.16; the record says it, the operator does it by hand),
+fixed boosts for hardware and the approval counted from delivery (no shop
+sells goods yet), baskets with several sellers, the native store's links
+and UltraAccount's *Affiliate* section.
 
 ---
 

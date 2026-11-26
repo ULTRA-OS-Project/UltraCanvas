@@ -1,4 +1,4 @@
-"""UltraAffiliates, phases 1 and 2: product links, and the customer's binding.
+"""UltraAffiliates, phases 1 to 3: product links, the customer's binding, the money.
 
 The rules, from Docs/Research/UltraAffiliatesDesignProposal.md and the
 owner's decisions in its section 9:
@@ -50,10 +50,18 @@ so it works for a buyer who is signed in:
 - **A referred customer who becomes an affiliate** has their affiliate as
   superaffiliate, before any recruiting link.
 
-Not built (the proposal's phase 3): the 5 % holdback; statements and
-self-billed credit notes; fixed boosts for hardware; codes; the native
-store's links.
+- **Held back** (phase 3): of every approved commission
+  AFFILIATE_HOLDBACK_PERCENT (5) for AFFILIATE_HOLDBACK_MONTHS (6) from the
+  sale; what is taken back in that time comes out of it first.
+- **Paid monthly**, per currency, from AFFILIATE_PAYOUT_MINIMUM (25.00); a
+  balance under it is carried, and paid whatever it is when the account is
+  being left.
 
+Not built: self-billed credit notes; paying through the provider's
+interface; fixed boosts for hardware; codes; the native store's links.
+
+Version: 0.12.0 - phase 3, the money: the holdback and its release, payouts
+                  made for a day and marked paid, the statement
 Version: 0.11.0 - phase 2: the binding, the win-back, the bound customer's base
 Version: 0.10.0
 """
@@ -76,7 +84,8 @@ from ..billing.models import Payment
 from ..store.models import App, PublisherMember
 from ..store.services import audit
 from . import texts
-from .models import AffiliatePayout, AffiliateProfile, Attribution, Binding, Boost, Click, ClickDay, Commission, OrderVisit, Sanction
+from .models import (AffiliatePayout, AffiliateProfile, Attribution, Binding, Boost, Click, ClickDay, Commission, Holdback, OrderVisit,
+                     Sanction)
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
@@ -388,11 +397,16 @@ def last_paid(user, *, apart_from=None):
     return paid.order_by("-at").values_list("at", flat=True).first()
 
 
+def months_after(moment, months: int):
+    """The same day `months` later (a date or a time), or the month's last
+    where it has no such day."""
+    return months_before(moment, -months)
+
+
 def months_before(moment, months: int):
     """The same day `months` earlier, or the month's last where it has no such day."""
-    year, month = moment.year, moment.month - months
-    while month < 1:
-        year, month = year - 1, month + 12
+    count = moment.year * 12 + (moment.month - 1) - months
+    year, month = count // 12, count % 12 + 1
     for day in range(moment.day, 27, -1):
         try:
             return moment.replace(year=year, month=month, day=day)
@@ -499,6 +513,7 @@ def _earned(payment: Payment, row: Attribution) -> None:
                   amount=share, approve_after=after)
 
 
+@transaction.atomic
 def _given_back(payment: Payment) -> None:
     """A refund or a chargeback: every line of the payment it takes back,
     again below zero, in the proportion of the money - and the last cent of
@@ -521,8 +536,16 @@ def _given_back(payment: Payment) -> None:
         amount, operator_part, merchant_part = back(line.amount, "amount"), back(line.operator_part, "operator_part"), back(line.merchant_part, "merchant_part")
         if not amount:
             continue
+        # Out of the line's holdback first, while it is held; the rest
+        # comes off the balance.
+        covered = ZERO
+        held = Holdback.objects.select_for_update().filter(commission=line, released_on__isnull=True).first()
+        if held is not None and held.left > 0:
+            covered = min(held.left, amount)
+            held.taken += covered
+            held.save(update_fields=["taken"])
         made[line.pk] = _line(payment, line.affiliate, line.basis, share_of=made.get(line.share_of_id), label=line.label, binding=line.binding,
-                              net=-back(line.net, "net"),
+                              reverses=line, from_holdback=covered, net=-back(line.net, "net"),
                               base_percent=line.base_percent, boost_percent=line.boost_percent, operator_part=-operator_part,
                               merchant_part=-merchant_part, amount=-amount, state=Commission.REVERSAL)
         boost_back += merchant_part
@@ -565,12 +588,37 @@ def payment_recorded(payment: Payment) -> None:
 
 # ------------------------------------------------- approval, sums, payouts
 
+HELD = [AffiliateProfile.BLOCKED, AffiliateProfile.BANNED]   # whose money waits: nothing is approved, released or paid
+
+
 def approve_due(today: dt.date | None = None) -> int:
-    """Pending lines whose days are over become approved. A blocked
+    """Pending lines whose days are over become approved, and the holdback
+    is set aside: AFFILIATE_HOLDBACK_PERCENT of what is left of the line -
+    what a refund took in the meantime is off it - until
+    AFFILIATE_HOLDBACK_MONTHS after the sale was paid. A blocked
     affiliate's wait: a block holds what it earned."""
     today = today or timezone.localdate()
-    return Commission.objects.filter(state=Commission.PENDING, approve_after__lte=today).exclude(
-        affiliate__state__in=[AffiliateProfile.BLOCKED, AffiliateProfile.BANNED]).update(state=Commission.APPROVED)
+    due = Commission.objects.select_related("payment").filter(state=Commission.PENDING, approve_after__lte=today).exclude(affiliate__state__in=HELD)
+    count = 0
+    for line in due:
+        with transaction.atomic():
+            if not Commission.objects.filter(pk=line.pk, state=Commission.PENDING).update(state=Commission.APPROVED, approved_on=today):
+                continue
+            left = line.amount + sum((r.amount for r in line.reversals.all()), ZERO)
+            held = part(left, settings.AFFILIATE_HOLDBACK_PERCENT) if left > 0 else ZERO
+            if held > 0:
+                Holdback.objects.create(commission=line, affiliate_id=line.affiliate_id, currency=line.currency,
+                                        percent=settings.AFFILIATE_HOLDBACK_PERCENT, amount=held,
+                                        release_on=months_after(timezone.localtime(line.payment.at).date(), settings.AFFILIATE_HOLDBACK_MONTHS))
+            count += 1
+    return count
+
+
+def release_due(today: dt.date | None = None) -> int:
+    """Holdbacks whose day has come: what is left of each is in the
+    affiliate's balance from now on."""
+    today = today or timezone.localdate()
+    return Holdback.objects.filter(released_on__isnull=True, release_on__lte=today).exclude(affiliate__state__in=HELD).update(released_on=today)
 
 
 def end_blocks(today: dt.date | None = None) -> int:
@@ -600,43 +648,158 @@ def tidy_clicks(today: dt.date | None = None) -> int:
 
 
 def maintain(today: dt.date | None = None) -> dict:
-    return {"approved": approve_due(today), "blocks_ended": end_blocks(today), "clicks_counted": tidy_clicks(today)}
+    return {"blocks_ended": end_blocks(today), "approved": approve_due(today), "released": release_due(today), "clicks_counted": tidy_clicks(today)}
 
 
-def sums(profile: AffiliateProfile) -> list[dict]:
-    """Per currency: pending, the balance (approved, less what was given
-    back, not yet paid) and paid."""
+# The balance is made of three things no payout has taken yet:
+# - an approved line, less its holdback;
+# - a line that takes back, less what the holdback covered of it - once the
+#   line it takes from is approved (before, both are pending together);
+# - a holdback that was released, with what is left of it.
+
+def _due(until: dt.date, profile: AffiliateProfile | None = None) -> dict[tuple[int, str], dict]:
+    """Per affiliate and currency: what is due on `until` and in no payout."""
+    def of(queryset):
+        return queryset.filter(affiliate=profile) if profile is not None else queryset
+    groups: dict[tuple[int, str], dict] = {}
+    def group(affiliate_id: int, currency: str) -> dict:
+        return groups.setdefault((affiliate_id, currency), {"lines": [], "releases": [], "amount": ZERO})
+    approved = Q(approved_on__isnull=True) | Q(approved_on__lte=until)
+    for line in of(Commission.objects.filter(approved, state=Commission.APPROVED, payout__isnull=True)).select_related("holdback"):
+        row = group(line.affiliate_id, line.currency)
+        row["lines"].append(line)
+        row["amount"] += line.payable
+    taken_from = Q(reverses__isnull=True) | (Q(reverses__state=Commission.APPROVED) & (Q(reverses__approved_on__isnull=True) | Q(reverses__approved_on__lte=until)))
+    for line in of(Commission.objects.filter(taken_from, state=Commission.REVERSAL, payout__isnull=True, created__date__lte=until)):
+        row = group(line.affiliate_id, line.currency)
+        row["lines"].append(line)
+        row["amount"] += line.payable
+    for held in of(Holdback.objects.filter(payout__isnull=True, released_on__lte=until)):
+        if held.left > 0:
+            row = group(held.affiliate_id, held.currency)
+            row["releases"].append(held)
+            row["amount"] += held.left
+    return groups
+
+
+def leaving(profile: AffiliateProfile) -> bool:
+    """The account behind the profile is closed or being deleted: what is
+    owed is paid whatever the minimum."""
+    return profile.state == AffiliateProfile.CLOSED or profile.user.state in (profile.user.CLOSED, profile.user.DELETING)
+
+
+def sums(profile: AffiliateProfile, today: dt.date | None = None) -> list[dict]:
+    """Per currency, what the affiliate's statistics show: pending; held
+    back, with the next release; the balance - due and in no payout yet -
+    and whether the next payout takes it; what is in a payout to be paid;
+    and what was paid."""
+    today = today or timezone.localdate()
     rows: dict[str, dict] = {}
-    for line in Commission.objects.filter(affiliate=profile):
-        row = rows.setdefault(line.currency, {"currency": line.currency, "pending": ZERO, "balance": ZERO, "paid": ZERO})
-        if line.payout_id:
-            row["paid"] += line.amount
-        elif line.state == Commission.PENDING:
-            row["pending"] += line.amount
-        else:
-            row["balance"] += line.amount
+    def row(currency: str) -> dict:
+        return rows.setdefault(currency, {"currency": currency, "pending": ZERO, "held": ZERO, "next_release": None, "next_release_amount": ZERO,
+                                          "balance": ZERO, "to_pay": ZERO, "paid": ZERO})
+    for line in Commission.objects.filter(affiliate=profile, state=Commission.PENDING).prefetch_related("reversals"):
+        row(line.currency)["pending"] += line.amount + sum((r.amount for r in line.reversals.all()), ZERO)
+    for held in Holdback.objects.filter(affiliate=profile, released_on__isnull=True):
+        if held.left > 0:
+            entry = row(held.currency)
+            entry["held"] += held.left
+            if entry["next_release"] is None or held.release_on < entry["next_release"]:
+                entry["next_release"], entry["next_release_amount"] = held.release_on, ZERO
+            if held.release_on == entry["next_release"]:
+                entry["next_release_amount"] += held.left
+    for (_, currency), due in _due(today, profile).items():
+        row(currency)["balance"] += due["amount"]
+    for payout in AffiliatePayout.objects.filter(affiliate=profile):
+        row(payout.currency)["paid" if payout.state == AffiliatePayout.PAID else "to_pay"] += payout.amount
+    regardless = leaving(profile)
+    for entry in rows.values():
+        entry["payable"] = entry["balance"] >= settings.AFFILIATE_PAYOUT_MINIMUM or (regardless and entry["balance"] > 0)
     return [rows[currency] for currency in sorted(rows)]
 
 
+def owed(today: dt.date | None = None) -> dict[int, list[dict]]:
+    """Per affiliate: the balances above nothing, per currency, and whether
+    the next payout takes each."""
+    out: dict[int, list[dict]] = {}
+    profiles = {p.pk: p for p in AffiliateProfile.objects.select_related("user")}
+    for (affiliate_id, currency), due in sorted(_due(today or timezone.localdate()).items()):
+        if due["amount"] > 0:
+            profile = profiles[affiliate_id]
+            out.setdefault(affiliate_id, []).append({
+                "currency": currency, "sum": due["amount"],
+                "payable": profile.state not in HELD and (due["amount"] >= settings.AFFILIATE_PAYOUT_MINIMUM or leaving(profile))})
+    return out
+
+
+def default_until(today: dt.date | None = None) -> dt.date:
+    """The last day of the month before this one: payouts are monthly."""
+    today = today or timezone.localdate()
+    return today.replace(day=1) - dt.timedelta(days=1)
+
+
 @transaction.atomic
-def pay(profile: AffiliateProfile, currency: str, operator, reference: str, note: str = "") -> AffiliatePayout:
-    """The operator has paid the affiliate's balance in a currency: written
-    down with the transfer's reference. The portal moves no money."""
-    if profile.state in (AffiliateProfile.BLOCKED, AffiliateProfile.BANNED):
-        raise AffiliateError("A blocked or banned affiliate's money is held; the ban's record says what is paid")
+def build(until: dt.date | None = None, actor=None, profile: AffiliateProfile | None = None) -> list[AffiliatePayout]:
+    """The payouts for everything due on `until`, per affiliate and
+    currency. A balance under AFFILIATE_PAYOUT_MINIMUM makes none and is
+    carried - unless the affiliate's account is being left, when whatever is
+    owed is paid. A blocked or banned affiliate's money waits. Safe to run
+    again: what a payout took is taken."""
+    until = until or default_until()
+    if until > timezone.localdate():
+        raise AffiliateError("A payout cannot be made for days that have not come")
+    profiles = {p.pk: p for p in AffiliateProfile.objects.select_related("user")}
+    made = []
+    for (affiliate_id, currency), due in sorted(_due(until, profile).items()):
+        owner = profiles[affiliate_id]
+        if owner.state in HELD or owner.user.state == owner.user.ERASED:
+            continue
+        amount, regardless = due["amount"], False
+        if amount < settings.AFFILIATE_PAYOUT_MINIMUM:
+            if amount <= 0 or not leaving(owner):
+                continue   # carried: it counts the next time
+            regardless = True
+        payout = AffiliatePayout.objects.create(affiliate=owner, currency=currency, until=until, amount=amount, regardless=regardless,
+                                                details=owner.payout_details, created_by=actor if getattr(actor, "pk", None) else None)
+        Commission.objects.filter(pk__in=[line.pk for line in due["lines"]]).update(payout=payout)
+        Holdback.objects.filter(pk__in=[held.pk for held in due["releases"]]).update(payout=payout)
+        audit(actor, "affiliate.payout_made", "affiliate", owner.handle, payout=payout.pk, amount=str(amount), currency=currency,
+              until=until.isoformat())
+        made.append(payout)
+    return made
+
+
+@transaction.atomic
+def mark_paid(payout: AffiliatePayout, operator, reference: str, note: str = "") -> AffiliatePayout:
+    """The operator has paid it: written down with the transfer's
+    reference. The portal moves no money."""
+    payout = AffiliatePayout.objects.select_for_update().select_related("affiliate").get(pk=payout.pk)
+    if payout.state == AffiliatePayout.PAID:
+        raise AffiliateError("This payout is marked paid already")
+    if payout.affiliate.state in HELD:
+        raise AffiliateError("A blocked or banned affiliate's money is held; the record says what is paid")
     reference = (reference or "").strip()
     if not reference:
         raise AffiliateError("Give the transfer's reference: it is what proves the payout was paid")
-    lines = list(Commission.objects.select_for_update().filter(affiliate=profile, currency=currency, payout__isnull=True)
-                 .exclude(state=Commission.PENDING))
-    amount = sum((line.amount for line in lines), ZERO)
-    if amount <= 0:
-        raise AffiliateError(f"Nothing is owed in {currency}")
-    payout = AffiliatePayout.objects.create(affiliate=profile, currency=currency, amount=amount, details=profile.payout_details,
-                                            reference=reference[:120], note=(note or "").strip()[:300], paid_by=operator)
-    Commission.objects.filter(pk__in=[line.pk for line in lines]).update(payout=payout)
-    audit(operator, "affiliate.paid", "affiliate", profile.handle, amount=str(amount), currency=currency, reference=payout.reference)
+    payout.state, payout.reference, payout.note = AffiliatePayout.PAID, reference[:120], (note or "").strip()[:300]
+    payout.paid_at, payout.paid_by = timezone.now(), operator if getattr(operator, "pk", None) else None
+    payout.save()
+    audit(operator, "affiliate.paid", "affiliate", payout.affiliate.handle, payout=payout.pk, amount=str(payout.amount), currency=payout.currency,
+          reference=payout.reference)
     return payout
+
+
+def statement(payout: AffiliatePayout) -> dict:
+    """A payout as its statement shows it: the commissions with what was
+    held back of each, what was taken back, the holdbacks released, and the
+    sums."""
+    lines = list(payout.lines.select_related("order", "share_of__affiliate", "holdback", "reverses").order_by("id"))
+    earned = [line for line in lines if line.state != Commission.REVERSAL]
+    back = [line for line in lines if line.state == Commission.REVERSAL]
+    releases = list(payout.releases.select_related("commission__order", "commission__payment").order_by("id"))
+    return {"earned": earned, "back": back, "releases": releases,
+            "commissions": sum((line.amount for line in earned), ZERO), "held": sum((line.held for line in earned), ZERO),
+            "taken_back": sum((line.payable for line in back), ZERO), "released": sum((held.left for held in releases), ZERO)}
 
 
 def cost(since: dt.date | None = None) -> list[dict]:

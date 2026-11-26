@@ -1,8 +1,11 @@
-"""UltraAffiliates, phases 1 and 2: the affiliate's own pages, the links, the
-publisher's boosts and the operator's review, block, ban and payout
+"""UltraAffiliates: the affiliate's own pages, the links, the publisher's
+boosts and the operator's review, block, ban and payouts
 (affiliates/services.py has the rules).
 
 Every page here is a 404 while ULTRASTORE_PORTAL_AFFILIATES is not 1.
+
+Version: 0.12.0 - the holdback in the statistics; the payouts, made for a
+                  day and marked paid, and an affiliate's statement
 
 Version: 0.11.0 - the last link a browser followed (for the binding), and
                   an affiliate's customers by number
@@ -20,6 +23,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -183,8 +187,11 @@ def home(request):
         recruits.append({"handle": recruit.handle, "state": recruit.get_state_display(), "earned": _cents(earned, "sum")})
     since = timezone.now() - dt.timedelta(days=settings.AFFILIATE_LINK_DAYS)
     return render(request, "affiliate/home.html", {
-        "profile": profile, "sums": services.sums(profile), "lines": profile.commissions.select_related("order__app", "share_of__affiliate")[:100],
-        "payouts": profile.payouts.all()[:30], "clicks": Click.objects.filter(affiliate=profile, at__gte=since).count(),
+        "profile": profile, "sums": services.sums(profile),
+        "lines": profile.commissions.select_related("order__app", "share_of__affiliate", "holdback", "payout")[:100],
+        "payouts": profile.payouts.all()[:30], "minimum": settings.AFFILIATE_PAYOUT_MINIMUM, "leaving": services.leaving(profile),
+        "holdback_percent": format(settings.AFFILIATE_HOLDBACK_PERCENT.normalize(), "f"), "holdback_months": settings.AFFILIATE_HOLDBACK_MONTHS,
+        "clicks": Click.objects.filter(affiliate=profile, at__gte=since).count(),
         "by_app": (Click.objects.filter(affiliate=profile, at__gte=since).values("app__name", "app__app_id").annotate(clicks=Count("id")).order_by("-clicks")[:20]),
         "recruits": recruits, "general_link": _link(request, profile), "join_link": f"{settings.BASE_URL}/affiliate/join/{profile.handle}/",
         "products": _products(limit=12) if profile.active else [], "link_days": settings.AFFILIATE_LINK_DAYS,
@@ -266,6 +273,15 @@ def statement(request, pk: int):
         services.add_statement(row, text[:4000])
         messages.success(request, "Your statement is on the record; the store answers by mail.")
     return redirect("affiliate:home")
+
+
+@login_required
+@affiliates_on
+def payout(request, pk: int):
+    """A payout as the affiliate's statement: what it holds, and whether it
+    was paid."""
+    subject = get_object_or_404(AffiliatePayout, pk=pk, affiliate=_own_profile(request))
+    return render(request, "affiliate/payout.html", {"payout": subject, **services.statement(subject)})
 
 
 @login_required
@@ -365,15 +381,50 @@ def operator_affiliates(request):
     found = AffiliateProfile.objects.select_related("user", "superaffiliate")
     if state in dict(AffiliateProfile.STATES):
         found = found.filter(state=state)
-    owed = {}
-    for line in _cents(Commission.objects.filter(payout__isnull=True).exclude(state=Commission.PENDING).values("affiliate_id", "currency")
-                       .annotate(sum=Sum("amount")), "sum"):
-        if line["sum"] > 0:
-            owed.setdefault(line["affiliate_id"], []).append(line)
+    owed = services.owed()
     rows = [{"profile": profile, "owed": owed.get(profile.pk, [])} for profile in found[:300]]
     return render(request, "operator/affiliates.html", {
         "rows": rows, "state": state, "states": AffiliateProfile.STATES, "cost": services.cost(),
-        "to_pay": sum(1 for lines in owed.values() if lines), "can_text": texts.can_send()})
+        "open_payouts": AffiliatePayout.objects.filter(state=AffiliatePayout.OPEN).count(), "can_text": texts.can_send()})
+
+
+@operator_required
+@affiliates_on
+def operator_payouts(request):
+    """The affiliates' payouts: make them for everything due, and see what
+    is to pay."""
+    until = services.default_until()
+    if request.method == "POST":
+        try:
+            until = dt.date.fromisoformat(request.POST.get("until", ""))
+            made = services.build(until, request.user)
+            messages.success(request, f"{len(made)} payout(s) made for what was due on {until}." if made else f"Nothing was due on {until}.")
+            return redirect("operator:affiliate_payouts")
+        except (ValueError, services.AffiliateError) as refused:
+            messages.error(request, str(refused) if isinstance(refused, services.AffiliateError) else "Give the day as YYYY-MM-DD.")
+    state = request.GET.get("state", AffiliatePayout.OPEN)
+    found = AffiliatePayout.objects.select_related("affiliate")
+    if state in dict(AffiliatePayout.STATES):
+        found = found.filter(state=state)
+    page = Paginator(found, 50).get_page(request.GET.get("page"))
+    return render(request, "operator/affiliate_payouts.html", {
+        "page": page, "state": state, "states": AffiliatePayout.STATES, "until": until, "minimum": settings.AFFILIATE_PAYOUT_MINIMUM,
+        "approval_days": settings.AFFILIATE_APPROVAL_DAYS})
+
+
+@operator_required
+@affiliates_on
+def operator_payout(request, pk: int):
+    """One payout: what it holds, where it goes, and marking it paid."""
+    subject = get_object_or_404(AffiliatePayout.objects.select_related("affiliate__user", "created_by", "paid_by"), pk=pk)
+    if request.method == "POST":
+        try:
+            services.mark_paid(subject, request.user, request.POST.get("reference", ""), request.POST.get("note", ""))
+            messages.success(request, "The payout is marked paid.")
+            return redirect("operator:affiliate_payout", pk)
+        except services.AffiliateError as refused:
+            messages.error(request, str(refused))
+    return render(request, "operator/affiliate_payout.html", {"payout": subject, **services.statement(subject)})
 
 
 @operator_required
@@ -409,16 +460,18 @@ def operator_affiliate(request, pk: int):
                 services.audit(request.user, "affiliate.super_percent", "affiliate", profile.handle, percent=text or "default")
                 messages.success(request, "The superaffiliate's share is set.")
                 return redirect("operator:affiliate", pk)
-            elif action == "pay":
-                services.pay(profile, request.POST.get("currency", ""), request.user, request.POST.get("reference", ""), request.POST.get("note", ""))
-                messages.success(request, "The payout is written down.")
+            elif action == "payout":
+                made = services.build(timezone.localdate(), request.user, profile)
+                messages.success(request, f"{len(made)} payout(s) made: pay each and mark it paid." if made
+                                 else f"Nothing to pay: a balance under {settings.AFFILIATE_PAYOUT_MINIMUM} is carried.")
                 return redirect("operator:affiliate", pk)
         except (services.AffiliateError, ValidationError) as refused:
             messages.error(request, refused.messages[0] if isinstance(refused, ValidationError) else str(refused))
         profile.refresh_from_db()
     return render(request, "operator/affiliate.html", {
         "profile": profile, "review": review, "sanction_form": sanction_form, "sums": services.sums(profile),
-        "lines": profile.commissions.select_related("order__app", "share_of__affiliate")[:100], "payouts": profile.payouts.all()[:30],
+        "lines": profile.commissions.select_related("order__app", "share_of__affiliate", "holdback", "payout")[:100],
+        "payouts": profile.payouts.all()[:30], "minimum": settings.AFFILIATE_PAYOUT_MINIMUM, "leaving": services.leaving(profile),
         "sanctions": profile.sanctions.select_related("decided_by"), "recruits": profile.recruits.order_by("handle"),
         "default_super": format(settings.AFFILIATE_SUPER_PERCENT.normalize(), "f"), "can_text": texts.can_send(),
         "customers": Binding.objects.filter(affiliate=profile, state=Binding.ACTIVE).count()})
