@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.16 - UltraIMAccountProfile::picturePath, pictureSupported, pictureChanged: the owner's profile picture
 // Version: 0.1.15 - UltraIMConversation::description, UltraIMPublicGroup::description
 // Version: 0.1.14 - UltraIMConversation::isPublic, UltraIMPublicGroup: public groups found and joined
 // Version: 0.1.13 - UltraIMAuthStep::Browser: a sign-in page to open in the browser (Mastodon)
@@ -357,6 +358,17 @@ struct UltraIMAccountProfile {
     bool recoveryAvailable = false;
     bool phoneCodesAvailable = false;
     bool recoveryEnabled = false;
+    // The owner's profile picture: a square picture file (UTF-8 path, JPEG,
+    // PNG or WebP) that the contacts see beside the name, "" for none.
+    // FetchAccountProfile fills it and says whether the service takes one at
+    // all (pictureSupported; ChatCube Direct does, end to end to the
+    // contacts). An update applies it only with pictureChanged set - an
+    // update without the flag leaves the picture as it is, so a host that
+    // never shows it cannot remove it - and then "" removes it. The provider
+    // keeps a copy: the file handed over may go once the update is done.
+    std::string picturePath;
+    bool pictureSupported = false;
+    bool pictureChanged = false;
 };
 
 // The two ways the service reaches the owner: a link by e-mail, a code by SMS.

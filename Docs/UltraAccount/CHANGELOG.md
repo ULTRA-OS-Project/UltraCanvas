@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.1.1*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-22 *0.1.0*
 - **UltraAccount: the one ULTRA OS account, in its own window.** Create an
   account (the address verified with a mailed code), sign in (with the

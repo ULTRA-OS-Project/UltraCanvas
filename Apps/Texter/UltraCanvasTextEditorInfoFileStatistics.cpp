@@ -1,6 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
 // File statistics dialog for the text editor.
 // Version: 1.3.2 - Android (MobilePC) builds: no statx there, the creation time is "Not available"
+// Version: 1.3.2 - the status and the totals go through Tr / TrN
 // Version: 1.3.1 - a column is as wide as its translated header; the cells fill their columns
 // Version: 1.3.0 - the dialog's texts go through Tr / TrF / TrN
 // Version: 1.2.0
@@ -175,7 +176,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         row.isActive = (doc.get() == activeDoc);
         row.isModified = doc->isModified;
         row.charset = doc->encoding.empty() ? "UTF-8" : doc->encoding;
-        row.statusStr = doc->isModified ? "Unsaved" : "Saved";
+        row.statusStr = doc->isModified ? Tr("Unsaved") : Tr("Saved");
         row.sizeStr = "—";
         row.createdStr = "—";
         row.modifiedStr = "—";
@@ -434,11 +435,10 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
     // ===== SUMMARY FOOTER =====
     std::ostringstream summary;
-    summary << "Total: " << rowCount
-            << (rowCount == 1 ? " file" : " files")
+    summary << TrF("Total: {0}", TrN("{n} file", "{n} files", rowCount))
             << "   •   " << FormatFileSize(totalBytes)
-            << "   •   " << totalWords << " words"
-            << "   •   " << totalChars << " chars";
+            << "   •   " << TrN("{n} word", "{n} words", static_cast<long long>(totalWords))
+            << "   •   " << TrN("{n} character", "{n} characters", static_cast<long long>(totalChars));
 
     auto summaryLabel = std::make_shared<UltraCanvasLabel>(
             "StatsSummary", 0, 0, gridWidth, summaryHeight);

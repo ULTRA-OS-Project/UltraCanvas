@@ -1677,6 +1677,28 @@ else()
     message(STATUS "  ColorPickerDragTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== PROFILE PICTURE TEST =====
+# The profile picture without a display: initials and their colour, the
+# frame's square, CropProfilePicture as JPEG and PNG, the cropper's drag,
+# wheel and keys, the editor row's buttons, the two registry names.
+# Uses the widget's typed API: only with it compiled into the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "ProfilePicture" IN_LIST uc_widgets_in)
+    message(STATUS "  Building ProfilePictureTest...")
+    add_executable(ProfilePictureTest ${CMAKE_CURRENT_SOURCE_DIR}/ProfilePictureTest.cpp)
+    target_include_directories(ProfilePictureTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ProfilePictureTest PRIVATE cxx_std_20)
+    target_link_libraries(ProfilePictureTest PRIVATE UltraCanvas)
+    set_target_properties(ProfilePictureTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ProfilePictureTest COMMAND ProfilePictureTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ProfilePictureTest")
+else()
+    message(STATUS "  ProfilePictureTest skipped (UltraCanvas target not present, or its widget not compiled in)")
+endif()
+
 # ===== COLOUR PALETTE MANAGER TEST =====
 # The palette rows under a colour picker: a wrapping swatch bar, the settings
 # line, "+" on the last row and "-" on every row once there are several, the
@@ -2265,6 +2287,8 @@ if(TARGET UltraCanvas)
         color-palette-manager:Widget:ColorPaletteManager:ultracanvas-widget-color-palette-manager
         vector-canvas:Widget:VectorCanvas:ultracanvas-widget-vector-canvas
         media-viewer:Widget:MediaViewer:ultracanvas-widget-media-viewer
+        profile-picture:Widget:ProfilePicture:ultracanvas-widget-profile-picture
+        profile-picture-editor:Widget:ProfilePicture:ultracanvas-widget-profile-picture
         parallel-coordinate-chart:Chart:ParallelCoordinate:ultracanvas-chart-parallel-coordinate)
     get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
     set(uc_compiled_in ${uc_widgets_in})

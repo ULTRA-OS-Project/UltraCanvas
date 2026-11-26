@@ -1,3 +1,8 @@
+#### 2026-11-26 *1.107.31*
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
+
 #### 2026-11-25 *1.107.30*
 - **Edit in UltraPaint and Edit in ArtCreator.** Right-clicking a picture -
   or a selection of pictures - offers *Edit in UltraPaint*, right after

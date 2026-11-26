@@ -1488,7 +1488,7 @@ endif()
 # it calls UltraCanvas_RegisterSelectedWidgets(), so the module resolves them
 # at dlopen. ElementModulesTest loads every module into a host with nothing but
 # one plain element, so a missing anchor fails it with the undefined symbol.
-set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
+set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer ProfilePicture)
 set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
 set(UC_WIDGET_VideoTimeline_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
@@ -1566,6 +1566,23 @@ set(UC_WIDGET_MediaViewer_REGISTER "RegisterMediaViewerElement")
 # its module is built against the shared core only - the shipping
 # configuration on every desktop platform - and needs no anchors there.
 set(UC_WIDGET_MediaViewer_SHARED_CORE_ONLY ON)
+
+# The round profile picture, its editor row, the cropper and the crop dialog
+# (ChatCube's Edit profile, DemoApp). Two type names from one module.
+set(UC_WIDGET_ProfilePicture_KEBAB    "profile-picture")
+set(UC_WIDGET_ProfilePicture_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProfilePicture.cpp)
+set(UC_WIDGET_ProfilePicture_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasProfilePicturePlugin.cpp)
+set(UC_WIDGET_ProfilePicture_HEADER   "UltraCanvasProfilePicture.h")
+set(UC_WIDGET_ProfilePicture_REGISTER "RegisterProfilePictureElement")
+set(UC_WIDGET_ProfilePicture_ANCHOR_INCLUDES "UltraCanvasSlider.h" "UltraCanvasButton.h" "UltraCanvasLabel.h" "UltraCanvasModalDialog.h" "UltraCanvasFileLoader.h")
+set(UC_WIDGET_ProfilePicture_ANCHORS
+    "&typeid(UltraCanvasSlider)"
+    "&typeid(UltraCanvasButton)"
+    "&typeid(UltraCanvasLabel)"
+    "&UltraCanvasDialogManager::CreateDialog"
+    "&UltraCanvasFileLoader::OpenFileDialog")
 
 set(UC_WIDGET_SELECTED_KEYS "")
 set(UC_WIDGET_MODULE_KEYS "")

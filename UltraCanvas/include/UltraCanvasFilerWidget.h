@@ -104,6 +104,7 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.61.1 - DetailsColumnTitle: the Details headings in the language shown
 // Version: 1.61.0 - openMenuProvider: a host's entries right after "Open with" in a file's
 //                  context menu (UltraFiler's "Edit in UltraPaint" / "Edit in ArtCreator")
 // Version: 1.60.0 - SetFavoriteHighlight (FilerFavoriteHighlight: Fill, Border, Shade) and
@@ -2448,6 +2449,7 @@ namespace UltraCanvas {
             bool sortable;
         };
         static const DetailsColumnSpec kDetailsColumnSpecs[kFilerDetailsColumnCount];
+        static std::string DetailsColumnTitle(FilerDetailsColumn id);
         // Current width of every Details column, indexed by FilerDetailsColumn
         // — the widths the splitters edit, kept across rescans, sorting and
         // view switches. Index 0 (Name) is derived at layout time from what

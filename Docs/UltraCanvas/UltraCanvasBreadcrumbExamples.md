@@ -156,7 +156,7 @@ std::vector<std::string> ListDriveRoots();
 
 struct FolderBreadcrumbOptions {
     bool showComputerItem = true;            // leading node listing all drives
-    std::string computerLabel = "Computer";
+    std::string computerLabel;               // empty: "Computer" in the language shown
     bool subFolderDropdowns = true;          // per-segment dropdown of that folder's sub-folders
     // What a click on the "Computer" node itself does. Unset, it navigates to
     // the drive root of the shown path; a host with a page of its own for the

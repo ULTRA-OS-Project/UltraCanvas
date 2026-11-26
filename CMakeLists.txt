@@ -664,7 +664,7 @@ function(ultracanvas_require_widgets build_flag app_name)
     endif()
 endfunction()
 ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
-    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
+    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer ProfilePicture)
 ultracanvas_require_widgets(BUILD_ULTRAPAINT_APP UltraPaint ColorPaletteManager)
 ultracanvas_require_widgets(BUILD_ARTCREATOR_APP ArtCreator ColorPaletteManager VectorCanvas)
 ultracanvas_require_widgets(BUILD_ULTRAFILER_APP UltraFiler MediaViewer)
@@ -890,7 +890,7 @@ endif()
 # encrypted chat with no account, groups through a relay (Server/ChatCubeRelay).
 option(BUILD_CHATCUBE "Build the ChatCube messenger" ON)
 # ChatCube shows files in UltraCanvasMediaViewer, by its classes.
-ultracanvas_require_widgets(BUILD_CHATCUBE ChatCube MediaViewer)
+ultracanvas_require_widgets(BUILD_CHATCUBE ChatCube MediaViewer ProfilePicture)
 if(BUILD_CHATCUBE)
     message(STATUS "")
     message(STATUS "── Building ChatCube ──")
@@ -1254,6 +1254,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasColorPaletteManagerExamples.cpp
+            Apps/DemoApp/UltraCanvasProfilePictureExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp

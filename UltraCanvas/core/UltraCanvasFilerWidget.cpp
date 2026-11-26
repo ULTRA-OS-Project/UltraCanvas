@@ -51,6 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.61.1 - the Details headings and the type names go through Tr
 // Version: 1.61.0 - openMenuProvider: the host's entries after "Open with"
 // Version: 1.60.0 - a favorite can stand out by a solid fill, a border or a shade in a colour of the
 //                  host's (SetFavoriteHighlight), and the heart can be switched off
@@ -854,22 +855,25 @@ namespace UltraCanvas {
             return FilerFileCategory::Other;
         }
 
-        const char* CategoryNoun(FilerFileCategory c) {
+        // The type a listing shows: the format's or language's name with the
+        // kind of file ("PNG Image", "Swift Text"), one entry per kind so a
+        // language can put the name where its grammar wants it ("Image PNG").
+        std::string CategoryTypeName(FilerFileCategory c, const std::string& what) {
             switch (c) {
-                case FilerFileCategory::Folder:      return "Folder";
-                case FilerFileCategory::Image:       return "Image";
-                case FilerFileCategory::Vector:      return "Vector";
-                case FilerFileCategory::Model3D:     return "Model";
-                case FilerFileCategory::Audio:       return "Audio";
-                case FilerFileCategory::Video:       return "Video";
-                case FilerFileCategory::Document:    return "Document";
-                case FilerFileCategory::Text:        return "Text";
-                case FilerFileCategory::Spreadsheet: return "Spreadsheet";
-                case FilerFileCategory::Archive:     return "Archive";
-                case FilerFileCategory::Executable:  return "Program";
-                case FilerFileCategory::Library:     return "Library";
-                case FilerFileCategory::Font:        return "Font";
-                default:                             return "File";
+                case FilerFileCategory::Folder:      return Tr("Folder");
+                case FilerFileCategory::Image:       return TrF("{0} Image", what);
+                case FilerFileCategory::Vector:      return TrF("{0} Vector", what);
+                case FilerFileCategory::Model3D:     return TrF("{0} Model", what);
+                case FilerFileCategory::Audio:       return TrF("{0} Audio", what);
+                case FilerFileCategory::Video:       return TrF("{0} Video", what);
+                case FilerFileCategory::Document:    return TrF("{0} Document", what);
+                case FilerFileCategory::Text:        return TrF("{0} Text", what);
+                case FilerFileCategory::Spreadsheet: return TrF("{0} Spreadsheet", what);
+                case FilerFileCategory::Archive:     return TrF("{0} Archive", what);
+                case FilerFileCategory::Executable:  return TrF("{0} Program", what);
+                case FilerFileCategory::Library:     return TrF("{0} Library", what);
+                case FilerFileCategory::Font:        return TrF("{0} Font", what);
+                default:                             return TrF("{0} File", what);
             }
         }
 
@@ -3215,12 +3219,12 @@ namespace UltraCanvas {
             // Info.plist has been read) refines this.
             if (IsBundlePath(e.name)) {
                 e.category = FilerFileCategory::Executable;
-                e.typeName = IsApplicationBundlePath(e.name) ? "Application"
-                                                             : "Bundle";
+                e.typeName = IsApplicationBundlePath(e.name) ? Tr("Application")
+                                                             : Tr("Bundle");
                 return;
             }
             e.category = FilerFileCategory::Folder;
-            e.typeName = "Folder";
+            e.typeName = Tr("Folder");
             return;
         }
         if (e.extension == "lnk" || e.extension == "desktop" ||
@@ -3231,15 +3235,14 @@ namespace UltraCanvas {
             // (ResolveShortcutEntry, once the file has actually been read)
             // says the rest.
             e.category = FilerFileCategory::Other;
-            e.typeName = "Shortcut";
+            e.typeName = Tr("Shortcut");
             return;
         }
         const auto& m = ExtensionTypeMap();
         auto it = m.find(e.extension);
         if (it != m.end()) {
             e.category = it->second.category;
-            e.typeName = std::string(it->second.label) + " "
-                         + CategoryNoun(it->second.category);
+            e.typeName = CategoryTypeName(it->second.category, it->second.label);
         } else {
             // Not in the table: a format one of the registered plugins knows
             // still gets its real category (and with it its colour, its
@@ -3253,11 +3256,9 @@ namespace UltraCanvas {
             const auto& source = SourceTextExtensions();
             const auto language = source.find(e.extension);
             if (e.category == FilerFileCategory::Text && language != source.end())
-                e.typeName = language->second + " " + CategoryNoun(e.category);
+                e.typeName = CategoryTypeName(e.category, language->second);
             else
-                e.typeName = upper.empty()
-                                     ? "File"
-                                     : upper + " " + CategoryNoun(e.category);
+                e.typeName = upper.empty() ? Tr("File") : CategoryTypeName(e.category, upper);
         }
         if (e.category == FilerFileCategory::Archive) e.isArchive = true;
     }
@@ -3487,7 +3488,7 @@ namespace UltraCanvas {
         // Until the Info.plist says otherwise this is a plain folder that
         // happens to be named like a package.
         cached.category = FilerFileCategory::Folder;
-        cached.typeName = "Folder";
+        cached.typeName = Tr("Folder");
         UCAppBundle bundle;
         if (ReadApplicationBundle(e.path, bundle)) {
             cached.isBundle = true;
@@ -3500,7 +3501,7 @@ namespace UltraCanvas {
                                                     : bundle.identifier;
             cached.category = bundle.isApplication ? FilerFileCategory::Executable
                                                    : FilerFileCategory::Other;
-            cached.typeName = bundle.isApplication ? "Application" : "Bundle";
+            cached.typeName = bundle.isApplication ? Tr("Application") : Tr("Bundle");
         }
         {
             std::lock_guard<std::mutex> lk(ShortcutCacheMutex());
@@ -3568,7 +3569,7 @@ namespace UltraCanvas {
             !(isRemotePath && isRemotePath(e.path))) {
             const std::string language = SharedExtensionLanguage(e);
             if (!language.empty())
-                e.typeName = language + " " + CategoryNoun(e.category);
+                e.typeName = CategoryTypeName(e.category, language);
         }
 
         std::string attr;
@@ -11653,6 +11654,22 @@ namespace UltraCanvas {
         {FilerDetailsColumn::Info,         FilerSortField::Name,         "Info",     120, false, false},
     };
 
+    // A Details column's heading in the language shown (the table above
+    // keeps the English, read before any language is loaded).
+    std::string UltraCanvasFilerWidget::DetailsColumnTitle(FilerDetailsColumn id) {
+        switch (id) {
+            case FilerDetailsColumn::Name:         return Tr("Name");
+            case FilerDetailsColumn::Path:         return Tr("Path");
+            case FilerDetailsColumn::Size:         return Tr("Size");
+            case FilerDetailsColumn::Type:         return Tr("Type");
+            case FilerDetailsColumn::ModifiedDate: return Tr("Modified");
+            case FilerDetailsColumn::CreatedDate:  return Tr("Created");
+            case FilerDetailsColumn::Attributes:   return TrC("column", "Attr");
+            case FilerDetailsColumn::Info:         return TrC("column", "Info");
+        }
+        return std::string();
+    }
+
     void UltraCanvasFilerWidget::EnsureDetailsColumnWidths() {
         if (detailsColumnWidths.size() == kFilerDetailsColumnCount) return;
         detailsColumnWidths.assign(kFilerDetailsColumnCount, 0);
@@ -11694,7 +11711,7 @@ namespace UltraCanvas {
             DetailsColumn c;
             c.id = spec.id;
             c.field = spec.field;
-            c.title = spec.title;
+            c.title = DetailsColumnTitle(spec.id);
             c.x = x;
             c.width = detailsColumnWidths[vis[k]];
             c.rightAligned = spec.rightAligned;

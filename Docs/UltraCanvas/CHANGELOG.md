@@ -1,3 +1,67 @@
+#### 2026-11-26 *0.9.598*
+- **Text the framework showed in English whatever the language.** The file
+  dialog's "File name", "File type" and "Show" captions, its Home folder, its
+  "not found" messages and its settings-button tooltips; the file list's
+  column headings (Name, Size, Type, Modified ...) and type names ("PNG
+  Image", "Folder", "Shortcut"); the path strip's "Computer" node; and the
+  loudspeaker's messages on Linux and Windows ("No sound server is
+  running."). They now go through Tr, with translations in all 30 languages.
+  A type name is one entry per kind of file ("{0} Image"), so a language puts
+  the format's name where its grammar wants it ("Image PNG", "PNG-Bild").
+  `FolderBreadcrumbOptions::computerLabel` is empty by default, meaning
+  "Computer" in the language shown.
+
+#### 2026-11-25 *0.9.597*
+- **A profile picture element.** `UltraCanvasProfilePicture` shows a
+  person's picture in a circle, or their initials on one of eight colours
+  that a key (their id) picks, the same one every time. Editable, it wears a
+  badge, and a click, Return or Space chooses a new picture: the FileLoader's
+  Open dialog, then a crop dialog that places the picture in the circle
+  (drag to move it, the wheel or a slider to zoom, previews at 40 and 28
+  pixels), then the framed square written at 256 pixels - JPEG, or PNG for a
+  picture with transparency - into a folder of the application's own, and
+  reported through `onPictureChanged`. Delete, or **Remove**, goes back to
+  the initials. The parts are there on their own too:
+  - `UltraCanvasProfilePictureEditor`, the row of a profile page: the
+    picture, **Choose a picture** (**Change picture** once there is one),
+    **Remove** and a line of hint;
+  - `UltraCanvasProfilePictureCropper`, the placing area, and
+    `ShowProfilePictureCropDialog`, the dialog around it;
+  - `CropProfilePicture`, which writes the square a `ProfilePictureFrame`
+    frames, and `ProfilePictureInitials`.
+
+  A selectable widget, `ProfilePicture`, registered as `profile-picture` and
+  `profile-picture-editor`: compiled in by default, the
+  `ultracanvas-widget-profile-picture` module in a lean build. DemoApp shows
+  it under *Widgets > Profile Picture*. Covered by `ProfilePictureTest`.
+- **UltraIM: the owner's profile picture.** `UltraIMAccountProfile` gains
+  `picturePath` (a square JPEG, PNG or WebP, "" for none), `pictureSupported`
+  (filled by `FetchAccountProfile`) and `pictureChanged`: an update applies
+  the picture only with the flag, so a host that never shows it cannot
+  remove it by accident. The provider module ABI is 13. ChatCube Direct
+  keeps a copy, at most 32 KiB, and sends it to each contact as a sealed
+  `picture` body through its outbox - over the data channel, else the
+  relay's queue - again when it changes and to a contact added later (each
+  contact remembers the version it was sent); a contact's picture comes
+  back as `avatarPath` and `senderAvatarPath`. Covered in
+  `DirectProviderTests` (`TestProfilePicture`).
+- **The profile picture keeps under a size.** `CropProfilePictureWithin`
+  writes the framed square and, when the file comes out larger than asked,
+  again as JPEG at a lower quality, then smaller, until it fits;
+  `UltraCanvasProfilePicture::SetMaxOutputBytes` uses it for a chosen
+  picture. The editor row's buttons are reachable
+  (`GetChooseButton`, `GetRemoveButton`) for an application that styles its
+  own. Covered in `ProfilePictureTest`.
+- **Matrix and Mastodon: people's pictures.** Matrix fetches a room's
+  picture (`m.room.avatar`) and its members' (`avatar_url`) once each as a
+  96-pixel thumbnail - the authenticated media API, else the older one - and
+  Mastodon each account's `avatar_static` (not the server's grey
+  `missing.png`): `avatarPath` on the chats and contacts, `senderAvatarPath`
+  on their messages, with a `ConversationUpdate` when a picture arrives.
+  Covered in `MatrixProviderTests` (against Synapse: a picture set as
+  `avatar_url` shown at the other side) and `MastodonProviderTests` (the
+  fake server serves the avatars, and the grey stand-in for Carol).
+
 #### 2026-11-25 *0.9.596*
 - **Charts in spreadsheets.** A sheet holds charts
   (`UltraCanvasSpreadsheetChart.h`): a `SpreadsheetChart` anchored to two

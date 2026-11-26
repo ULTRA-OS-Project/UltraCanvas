@@ -1,3 +1,11 @@
+#### 2026-11-26 *1.91*
+- **Untranslated text in Texter.** File Statistics' Saved / Unsaved and its
+  totals line ("Total: 2 files • 1 KB • 120 words • 700 characters", with
+  each language's plural forms); Go to Line's "Go" button, which every
+  language showed in English; and 17 newer entries no language had yet (the
+  spell-check status, the dark-mode background, the zoom's page fits, two
+  save warnings). All 30 languages now have them.
+
 #### 2026-11-25 *1.90*
 - **The start-up log no longer prints a "Build Date".** It came from
   `__DATE__` / `__TIME__`, which differ on every build, so `main.cpp` missed
