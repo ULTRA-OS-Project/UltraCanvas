@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Close or delete the account - {{ brand }}{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Close or delete the account</h1>
+  <p class="text-secondary">Signed in as {{ user.email }}.</p>
+  {% if refused %}
+  <div class="alert alert-warning" role="alert">{{ refused }}</div>
+  <a class="btn btn-outline-secondary" href="{% url 'account:profile' %}">Back to the account</a>
+  {% elif state == "deleting" %}
+  <div class="alert alert-warning" role="alert">This account will be deleted on <b>{{ erase_after|date:"j F Y" }}</b>.</div>
+  <form method="post" action="{% url 'account:keep' %}">{% csrf_token %}<button class="btn btn-primary">Keep my account</button></form>
+  {% else %}
+  <p>Either way, every service this account is signed in to is signed out, and what you bought keeps working on the machines it is on. Orders and receipts are kept for the years the law asks; they are not part of the account.</p>
+  <form method="post" class="mt-4" onsubmit="return confirm('Are you sure?')">
+    {% csrf_token %}{% include "_form.html" %}
+    <button class="btn btn-danger">Go on</button>
+    <a class="btn btn-outline-secondary ms-2" href="{% url 'account:profile' %}">Cancel</a>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

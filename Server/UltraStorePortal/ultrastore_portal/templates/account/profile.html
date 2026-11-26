@@ -4,6 +4,12 @@
 <div class="narrow">
   <h1>Your account</h1>
   <p class="text-secondary">Signed in as {{ user.email }}.</p>
+  {% if user.state == "deleting" %}
+  <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2" role="alert">
+    <div class="me-auto">This account will be deleted on <b>{{ user.erase_after|date:"j F Y" }}</b>. Until then it works as before.</div>
+    <form method="post" action="{% url 'account:keep' %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Keep my account</button></form>
+  </div>
+  {% endif %}
   <form method="post" class="mt-4">
     {% csrf_token %}{% include "_form.html" %}
     <button class="btn btn-primary">Save</button>
@@ -11,6 +17,7 @@
   <div class="mt-4 d-grid gap-1 small">
     <div><a href="{% url 'account:password_change' %}">Change the password</a></div>
     <div><a href="{{ console_url }}">Developer console</a></div>
+    {% if user.state != "deleting" %}<div><a href="{% url 'account:leave' %}">Close or delete the account</a></div>{% endif %}
   </div>
   {% if services %}
   <h2 class="h5 mt-5">Services you signed in to with this account</h2>

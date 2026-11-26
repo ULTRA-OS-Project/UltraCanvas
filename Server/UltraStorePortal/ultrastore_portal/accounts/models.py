@@ -3,6 +3,7 @@ link before the first sign-in. A publisher's people and the operator's
 staff are the same kind of account; what one may do comes from the
 publisher memberships (store.PublisherMember) and from is_staff.
 
+Version: 0.8.0 - closed, deleting and erased (closure.py)
 Version: 0.4.0 - a new password ends every grant and sign-in (save)
 Version: 0.1.0
 """
@@ -51,6 +52,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField("operator", default=False, help_text="May open the operator's pages and the admin site.")
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(default=timezone.now)
+    # Leaving (closure.py): closed by the person and kept to be reactivated;
+    # a deletion asked for and its grace; the day either is erased; erased.
+    closed_at = models.DateTimeField(null=True, blank=True)
+    deletion_requested_at = models.DateTimeField(null=True, blank=True)
+    erase_after = models.DateField(null=True, blank=True, db_index=True)
+    erased_at = models.DateTimeField(null=True, blank=True)
+
+    ACTIVE, CLOSED, DELETING, ERASED = "active", "closed", "deleting", "erased"
 
     objects = UserManager()
 
@@ -74,6 +83,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         if changed:
             from ..identity import provider   # the identity app's models name this one
             provider.password_changed(self, keep_sid=getattr(self, "keep_sign_in", ""))
+
+    @property
+    def state(self) -> str:
+        if self.erased_at:
+            return self.ERASED
+        if self.closed_at:
+            return self.CLOSED
+        if self.deletion_requested_at:
+            return self.DELETING
+        return self.ACTIVE
 
     @property
     def display_name(self) -> str:

@@ -37,7 +37,8 @@ It is built to replace the store's small services (`Server/UltraStoreMarket`,
 a publisher, publish an app, show and serve the catalog; 0.2.0 sells; 0.4.0
 is the account for every service; 0.5.0 is advertising's first phase and
 0.6.0 the first half of its second; 0.7.0 splits a sale between the store
-and the publisher; *What comes next* names the rest.
+and the publisher; 0.8.0 lets a person close or delete the account;
+*What comes next* names the rest.
 
 ## Decisions
 
@@ -63,7 +64,7 @@ and the publisher; *What comes next* names the rest.
 | `/pay/<order>/` | the hand-off to the payment provider; `.../return/`, `.../cancel/` where it sends the buyer back |
 | `/orders/<order>/?secret=` | a buyer's purchase: its state, the licence, the receipt, the downloads |
 | `/publisher/<id>/` | a publisher's page |
-| `/account/…` | sign up, the mailed confirmation link, sign in, password reset, the profile. With the account at its own address these are that host's root (`https://account.ultraos.eu/signin/`), and the store's `/account/…` leads there |
+| `/account/…` | sign up, the mailed confirmation link, sign in, password reset, the profile, closing or deleting the account (`leave/`) and coming back (`reactivate/`). With the account at its own address these are that host's root (`https://account.ultraos.eu/signin/`), and the store's `/account/…` leads there |
 | `/.well-known/openid-configuration`, `/oauth/…` | the OpenID Connect provider, at the account's host (*One sign-in for every service*) |
 | `/sso/callback` | where the account sends a person back to the store, with two hosts |
 | `/promote/…`, `/console/apps/<app id>/promote/`, `/operator/promote/` | advertising: a publisher's campaigns and balance, the *Promote* page of a listing, the operator's prices and stops; `/promote/go/<token>/` a click on an advertisement, `/promote/why/<token>/` who paid for it and why it was shown (*Advertising*) |
@@ -456,6 +457,42 @@ store's host) still takes a password directly. Also not built: a second
 factor at the sign-in, passkeys, telling a service's server that a person
 signed out (back-channel logout), a service registering itself.
 
+## Leaving an account
+
+Two ways to leave (0.8.0, `accounts/closure.py`), because they mean
+different things, and one end:
+
+| | What the person does | What happens | Coming back |
+|---|---|---|---|
+| **Closed** | *Close the account* on `/account/leave/`, with the password | Signed out everywhere, every service's access ended, nothing signs in to it. Kept whole for `ULTRASTORE_PORTAL_ACCOUNT_CLOSED_DAYS` (**365**) | Signing in with the right password in that time shows *This account is closed* with **Reactivate my account**; it is then as it was left, and the services need signing in again. A forgotten password can still be reset |
+| **Deleting** | *Delete the account* on the same page, with the password | It stays usable for `ULTRASTORE_PORTAL_ACCOUNT_DELETION_GRACE_DAYS` (**90**); the account's page says the day it goes | **Keep my account** on the account's page takes the request back |
+| **Erased** | nothing: the end of both, when the days are over | The row stays under its id with the address replaced (`erased-<id>@erased.invalid`, so the address is free again), the name and the password gone, every grant, token, sign-in and consent removed, the memberships removed, and the audit rows it acted in naming `account <id>` in place of the address | None. The same person signing up again is somebody new |
+
+A mail goes out when an account is closed and when a deletion is asked for,
+with the day and the way back - which is also how the owner learns of it if
+it was not their doing. A wrong password on a closed account says what it
+always says: only the owner, with the password, is told it is closed.
+
+**Who cannot leave this way:** an operator (another operator removes the
+account) and the owner of a publisher (the publisher is handed over first:
+an app must not be left with nobody behind it). The page says which.
+
+**What is not the account's:** orders and receipts. A purchase is reached by
+its order's secret, not by the account, and stays as the law asks.
+
+**The daily maintenance** erases what is due and is safe to run again:
+
+```
+ultrastore-portal accounts maintain    # e.g. from a systemd timer, once a day
+ultrastore-portal accounts leaving     # who is closed or being deleted, by id, with the day
+```
+
+Without it nothing is ever erased: the accounts stay closed, or usable with
+a date that has passed. The affiliate programme
+(`Docs/Research/UltraAffiliatesDesignProposal.md`) hangs its binding on
+these states - suspended while closed or deleting, restored on the way
+back, gone with the erasure - once it is built.
+
 ## Advertising
 
 UltraAds, phase 1 of
@@ -662,6 +699,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 |---|---|
 | `BASE_URL` | the one root; `https://store.ultraos.eu` unless set |
 | `ACCOUNT_URL`, `ACCOUNT_NAME` | the account's own root and the issuer (`https://account.ultraos.eu`); unset, the account lives under the store's root. What the account calls itself there (`ULTRA OS account`) |
+| `ACCOUNT_CLOSED_DAYS` (365), `ACCOUNT_DELETION_GRACE_DAYS` (90) | the days a closed account is kept to be reactivated, and the days a deletion that was asked for waits; then the account is erased (*Leaving an account*) |
 | `OIDC_KEY_FILE`, `OIDC_SUBJECT_SECRET` | the identity tokens' key as a PEM file, and the secret the subjects are derived with; unset, each is made once and kept in the database |
 | `PROMOTE`, `PROMOTE_TOPUPS`, `PROMOTE_CURRENCY` (EUR) | advertising on (`1`); paying into a balance on (`1` - not before tax invoices); the one currency of balances |
 | `OIDC_CODE_TTL` (120), `OIDC_ACCESS_TOKEN_TTL` (3600), `OIDC_ID_TOKEN_TTL` (3600), `OIDC_REFRESH_TOKEN_TTL` (90 days) | how long each lasts, in seconds |
@@ -686,7 +724,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 ultrastore_portal/
   settings.py, urls.py, wsgi.py
   urls_account.py  the addresses of the account's own host
-  accounts/        the person: email as the sign-in name, the mailed proof
+  accounts/        the person: email as the sign-in name, the mailed proof; closure.py: closed, deleting, erased
   identity/        signing in for other services: OpenID Connect
     models.py      Client, SignIn, Consent, Grant, Code, Token, SigningKey
     provider.py    what a request may ask, what a code and a token are worth

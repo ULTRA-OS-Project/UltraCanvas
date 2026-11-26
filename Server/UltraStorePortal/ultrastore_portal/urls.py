@@ -62,6 +62,9 @@ account_patterns = ([
     path("password/reset/<uidb64>/<token>/", account_page(account.PasswordResetConfirm.as_view()), name="password_reset_confirm"),
     path("password/", account_page(account.PasswordChange.as_view()), name="password_change"),
     path("services/<slug:client_id>/forget/", account_page(account.forget_service), name="forget_service"),
+    path("leave/", account_page(account.leave), name="leave"),
+    path("leave/keep/", account_page(account.keep), name="keep"),
+    path("reactivate/", account_page(account.reactivate), name="reactivate"),
     path("", account_page(account.profile), name="profile"),
 ], "account")
 

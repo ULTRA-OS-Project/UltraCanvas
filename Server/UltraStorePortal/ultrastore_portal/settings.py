@@ -1,6 +1,7 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.8.0 - leaving an account (ACCOUNT_CLOSED_DAYS, ACCOUNT_DELETION_GRACE_DAYS)
 Version: 0.7.0 - the store's fee (STORE_FEE_PERCENT)
 Version: 0.5.0 - advertising (PROMOTE, PROMOTE_TOPUPS, PROMOTE_CURRENCY)
 Version: 0.4.0 - the account's own address (ACCOUNT_URL) and the OpenID
@@ -174,6 +175,13 @@ if DATABASES["default"]["ENGINE"].endswith("sqlite3") and DATABASES["default"]["
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "accounts.User"
+# Leaving an account (accounts/closure.py): the days a closed account is
+# kept, in which its owner can reactivate it, and the days a deletion that
+# was asked for waits, in which its owner can take it back. Then it is erased.
+ACCOUNT_CLOSED_DAYS = int(env("ACCOUNT_CLOSED_DAYS", "365"))
+ACCOUNT_DELETION_GRACE_DAYS = int(env("ACCOUNT_DELETION_GRACE_DAYS", "90"))
+if ACCOUNT_CLOSED_DAYS < 1 or ACCOUNT_DELETION_GRACE_DAYS < 1:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_ACCOUNT_CLOSED_DAYS and ULTRASTORE_PORTAL_ACCOUNT_DELETION_GRACE_DAYS are at least one day")
 LOGIN_URL = "account:signin"
 LOGIN_REDIRECT_URL = "console:home"
 LOGOUT_REDIRECT_URL = "store:home"

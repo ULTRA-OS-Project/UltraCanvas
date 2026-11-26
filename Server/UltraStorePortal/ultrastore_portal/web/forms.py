@@ -15,7 +15,7 @@ import json
 from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model, password_validation
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordResetForm
 from django.core.exceptions import ValidationError
 
 from ..store import constants
@@ -126,6 +126,38 @@ class SignInForm(AuthenticationForm):
         super().confirm_login_allowed(user)
         if not user.email_verified:
             raise ValidationError(self.error_messages["unverified"], code="unverified")
+
+
+class LeaveForm(forms.Form):
+    """Closing or deleting the account, with the password: a signed-in
+    browser somebody walked away from must not be enough."""
+
+    CLOSE, DELETE = "close", "delete"
+    what = forms.ChoiceField(label="What should happen", widget=forms.RadioSelect, choices=[])
+    password = forms.CharField(label="Your password", widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
+
+    def __init__(self, *args, user, closed_days: int, grace_days: int, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields["what"].choices = [
+            (self.CLOSE, f"Close the account. It is signed out everywhere and kept for {closed_days} days; signing in again in that time brings it back as it was."),
+            (self.DELETE, f"Delete the account. It stays usable for {grace_days} days, in which you can change your mind, and is then removed for good."),
+        ]
+
+    def clean_password(self):
+        if not self.user.check_password(self.cleaned_data["password"]):
+            raise ValidationError("The password is wrong.")
+        return self.cleaned_data["password"]
+
+
+class ClosedAccountResetForm(PasswordResetForm):
+    """A closed account's owner who forgot the password can still set a new
+    one and come back; an erased account has no usable password and is
+    left out as before."""
+
+    def get_users(self, email):
+        users = User._default_manager.filter(email__iexact=email, erased_at__isnull=True)
+        return (u for u in users if u.has_usable_password() and (u.is_active or u.closed_at is not None))
 
 
 class EmailForm(forms.Form):
