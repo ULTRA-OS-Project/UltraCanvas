@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartSdk.cpp
+// Version: 0.4.0 - CheckSdkUpdate (pub/LATEST), SdkPrefixVersion, StartAppDownloadUrl
 // Version: 0.3.0 - DownloadSdk from start.ultraos.eu/pub, checked against SHA256SUMS
 // Version: 0.2.0 - SdkDownloadPage is the UltraOS download page; no download here
 // Version: 0.1.0
@@ -15,6 +16,8 @@
 
 #include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <regex>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -198,6 +201,143 @@ SdkDownloadResult DownloadSdk(Platform platform, const std::string& version,
                 " in the browser and unpack it with Unpack...";
     return out;
 #endif
+}
+
+// ===== UPDATES =====
+
+namespace {
+bool IsVersionTriple(const std::string& text) {
+    static const std::regex kTriple("^[0-9]+\\.[0-9]+\\.[0-9]+$");
+    return std::regex_match(text, kTriple);
+}
+
+std::string Trim(std::string text) {
+    const char* space = " \t\r\n";
+    const size_t first = text.find_first_not_of(space);
+    if (first == std::string::npos) return {};
+    const size_t last = text.find_last_not_of(space);
+    return text.substr(first, last - first + 1);
+}
+
+std::string ReadSmallFile(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return {};
+    std::string text;
+    char buffer[4096];
+    while (in && text.size() < 64 * 1024) {
+        in.read(buffer, sizeof buffer);
+        text.append(buffer, static_cast<size_t>(in.gcount()));
+    }
+    return text;
+}
+} // namespace
+
+std::string SdkLatestUrl(const std::string& base) {
+    return base + "LATEST";
+}
+
+std::string ParseLatestVersion(const std::string& text) {
+    std::string body = text;
+    if (body.rfind("\xEF\xBB\xBF", 0) == 0) body.erase(0, 3);
+    std::istringstream lines(body);
+    std::string line;
+    while (std::getline(lines, line)) {
+        line = Trim(line);
+        if (line.empty()) continue;
+        return IsVersionTriple(line) ? line : std::string();
+    }
+    return {};
+}
+
+std::string ParsePackageVersion(const std::string& configVersionCmake) {
+    static const std::regex kSet("set\\s*\\(\\s*PACKAGE_VERSION\\s+\"([0-9]+(\\.[0-9]+)*)\"\\s*\\)");
+    std::smatch match;
+    if (std::regex_search(configVersionCmake, match, kSet)) return match[1].str();
+    return {};
+}
+
+std::string SdkPrefixVersion(const std::string& prefix) {
+    if (prefix.empty()) return {};
+    const fs::path root = UltraCanvas::PathFromUtf8(prefix);
+    const std::string fromCmake = ParsePackageVersion(ReadSmallFile(
+        root / UltraCanvas::PathFromUtf8("lib/cmake/UltraCanvas/UltraCanvasConfigVersion.cmake")));
+    if (!fromCmake.empty()) return fromCmake;
+    // UltraCanvas-SDK-<OS>-<version>-<arch>, as the archive unpacks.
+    static const std::regex kName("^UltraCanvas-SDK-[A-Za-z]+-([0-9]+\\.[0-9]+\\.[0-9]+)-[A-Za-z0-9_]+$");
+    std::string name = UltraCanvas::PathToUtf8(root.filename());
+    if (name.empty()) name = UltraCanvas::PathToUtf8(root.parent_path().filename());
+    std::smatch match;
+    if (std::regex_match(name, match, kName)) return match[1].str();
+    return {};
+}
+
+SdkUpdateCheck CheckSdkUpdate(Platform platform, const std::string& installed,
+                              const std::string& architecture, const std::string& base) {
+    SdkUpdateCheck out;
+    out.installed = installed;
+    const std::string latestUrl = SdkLatestUrl(base);
+#if defined(ULTRACANVAS_HAS_NET) && ULTRACANVAS_HAS_NET
+    if (!UltraNet_IsInitialized()) {
+        const UltraNetResult init = UltraNet_Initialize();
+        if (!init.success) {
+            out.error = "The network library could not start: " + init.message;
+            return out;
+        }
+    }
+    const bool https = base.rfind("https://", 0) == 0;
+    UltraNetHttpOptions options;
+    options.httpsOnlyRedirects = https;
+    options.maxReceiveSize = 64 * 1024;
+
+    // 1. LATEST: the newest version the server has.
+    UltraNetResponse latestResponse;
+    const UltraNetResult latest = UltraNet_HttpGet(latestUrl, latestResponse, options);
+    if (!latest.success) {
+        out.error = latest.httpStatus == 404
+            ? latestUrl + " answered 404: the server names no newest version yet."
+            : "Could not reach " + latestUrl + ": " + latest.message;
+        return out;
+    }
+    out.latest = ParseLatestVersion(latestResponse.GetBodyAsString());
+    if (out.latest.empty()) {
+        out.error = latestUrl + " does not name a version (x.y.z on its first line).";
+        return out;
+    }
+    out.ok = true;
+    out.archive = SdkArchiveName(platform, out.latest, architecture);
+    out.newer = installed.empty() || CompareVersions(out.latest, installed) > 0;
+
+    // 2. Its SHA256SUMS: is there an archive for this machine? Asked even
+    // when it is not newer, so a caller that later compares it with another
+    // installed version (the window, after a Find...) still knows.
+    UltraNetResponse sumsResponse;
+    const UltraNetResult sums = UltraNet_HttpGet(SdkChecksumsUrl(out.latest, base), sumsResponse, options);
+    out.archiveListed = sums.success &&
+                        !ChecksumFor(sumsResponse.GetBodyAsString(), out.archive).empty();
+    return out;
+#else
+    (void)platform;
+    (void)architecture;
+    out.error = "This build of UltraCanvasStart has no network library: the newest version is named in " +
+                latestUrl + ".";
+    return out;
+#endif
+}
+
+std::string StartAppArchiveName(Platform platform, const std::string& version,
+                                const std::string& architecture) {
+    const std::string name = "UltraCanvasStart-" + SdkOsName(platform) + "-" + version + "-" + architecture;
+    switch (platform) {
+        case Platform::Windows: return name + ".zip";
+        case Platform::Linux:   return name + ".tar.xz";
+        default:                return name + ".dmg";
+    }
+}
+
+std::string StartAppDownloadUrl(Platform platform, const std::string& version,
+                                const std::string& architecture) {
+    return std::string("https://github.com/") + kRepository + "/releases/download/v" + version + "/" +
+           StartAppArchiveName(platform, version, architecture);
 }
 
 std::string SdkReleasePage(const std::string& version) {

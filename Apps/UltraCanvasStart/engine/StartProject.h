@@ -3,6 +3,7 @@
 // framework (SDK prefix or a sibling checkout), a main.cpp with one window,
 // CMakePresets.json pointing at the prefix, the assistant's instruction file and
 // a README. The files are the ones Docs/GettingStarted.md walks through.
+// Version: 0.2.0 - RepointPresets / RepointProjectSdk: move a project to another SDK
 // Version: 0.1.1 - the instruction file is the chosen assistant's (CLAUDE.md, AGENTS.md, GEMINI.md)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -43,6 +44,32 @@ std::string ProjectReadme(const ProjectOptions& options);
 // Writes the files. Refuses to overwrite a folder that already has a
 // CMakeLists.txt unless `overwrite` is true.
 ProjectResult ScaffoldProject(const ProjectOptions& options, bool overwrite = false);
+
+// ===== MOVING A PROJECT TO ANOTHER SDK =====
+// `presets` (a CMakePresets.json) with every "CMAKE_PREFIX_PATH" string set
+// to `sdkPrefix` (forward slashes), or, when it names none, the key added to
+// the first "cacheVariables". The rest of the file is kept as it is. False,
+// with `error` saying why, for an empty prefix, a prefix that is not a
+// string, or a file with no cacheVariables; `oldPrefix` is the first value
+// it replaced, or empty.
+bool RepointPresets(const std::string& presets, const std::string& sdkPrefix,
+                    std::string& out, std::string& oldPrefix, std::string& error);
+
+struct RepointResult {
+    bool ok = false;
+    std::string presets;         // the CMakePresets.json (UTF-8)
+    std::string oldPrefix;       // the SDK it named before, or empty
+    bool changed = false;        // false when it named this SDK already
+    bool cacheRemoved = false;   // build/CMakeCache.txt was removed
+    std::string error;
+};
+
+// Points the project in `projectFolder` at the SDK in `sdkPrefix` (both
+// UTF-8; a relative prefix is made absolute first): RepointPresets over its CMakePresets.json, written beside it and
+// renamed over it, then build/CMakeCache.txt removed, because find_package
+// keeps the old SDK's folder in UltraCanvas_DIR. The next
+// `cmake --preset default` configures against the new SDK.
+RepointResult RepointProjectSdk(const std::string& projectFolder, const std::string& sdkPrefix);
 
 // The step that clones the framework repository into `destination` (UTF-8).
 PlanStep CloneStep(const std::string& destination);

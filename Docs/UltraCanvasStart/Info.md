@@ -1,6 +1,6 @@
 # UltraCanvas Start and the SDK packages
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Last Modified:** 2026-11-26
 **Author:** UltraCanvas Framework
 
@@ -42,7 +42,17 @@ steps:
    and hands over the first prompt for your assistant.
 
 Every step can be revisited at any time, and a report of the whole setup can
-be copied for support. UltraCanvas Start also runs without a window -
+be copied for support.
+
+### Updating to a newer SDK
+
+Each UltraCanvas Start downloads the SDK of its own release, and also asks
+the server for the newest one. When a newer SDK is out, the Framework step
+says so and offers **Download** for it, with a link to the UltraCanvas Start
+of that release, whose checks know what the new SDK needs. **Move a
+project...** then points an existing application at the new SDK, so its next
+build uses it. From a terminal: `UltraCanvasStart --update-check`,
+`--update-sdk <folder>` and `--update-project <folder> --sdk <prefix>`. UltraCanvas Start also runs without a window -
 `UltraCanvasStart --check`, `--plan` and `--create` work over ssh and in
 scripts.
 
@@ -104,6 +114,7 @@ to verify the download, and on the GitHub release:
 ```
 https://start.ultraos.eu/pub/<version>/<archive>
 https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/LATEST          (the newest version, one line)
 https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/<archive>
 ```
 
