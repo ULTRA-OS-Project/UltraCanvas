@@ -1,7 +1,8 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
 // Version: 3.14.2 - a selection or a search match paints inside a Markdown table's cells, and a
-//                 selected rule, picture or display formula is tinted across its row
+//                 selected rule, picture or display formula is tinted across its row;
+//                 the empty ApplySelectionAttributes / ClearSelectionAttributes are gone
 // Version: 3.14.1 - GetActualLineLayout: the caret's layout only for the line it was laid
 //                 out for (a press moving the caret, then the release hit-tested
 //                 before a frame, missed the line)
@@ -2493,13 +2494,6 @@ namespace UltraCanvas {
             else out.push_back(c);
         }
         return out;
-    }
-
-    // Step 6 (pending): wire selection-background attributes.
-    void UltraCanvasTextArea::ApplySelectionAttributes() {
-    }
-
-    void UltraCanvasTextArea::ClearSelectionAttributes(int /*logicalLine*/) {
     }
 
     // Called at the top of UpdateLineLayouts each frame. Detects cursor-line changes

@@ -1,7 +1,8 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
 // Version: 3.19.2 - a selection shows over rendered Markdown: in table cells (GetLineSelectionRange)
-//                 and as a tint over a rule, a picture or a formula (DrawBlockSelection)
+//                 and as a tint over a rule, a picture or a formula (DrawBlockSelection);
+//                 the empty ApplySelectionAttributes / ClearSelectionAttributes are removed
 // Version: 3.19.1 - a click is hit-tested against the line it lands on when the caret
 //                 moved there before the next frame (currentLineIndex)
 // Version: 3.19.0 - GetLineSpans: a subclass styles ranges of a plain line (colour,
@@ -1422,9 +1423,6 @@ namespace UltraCanvas {
         // Paints [startCp, endCp) of a real line (codepoints) in color.
         void ApplyLineBackgroundRange(LineLayoutBase* ll, int lineIndex,
                                       int startCp, int endCp, const Color& color);
-        // Kept as no-op stubs — attribute application happens during rebuild, not in-place patching.
-        void ApplySelectionAttributes();
-        void ClearSelectionAttributes(int logicalLine);
 
         // Called at the top of UpdateLineLayouts each frame. Detects cursor-line
         // changes (to swap in/out MarkdownHybrid raw-editing mode) and selection-range changes
