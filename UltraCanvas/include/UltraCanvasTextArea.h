@@ -1,5 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.19.2 - a selection shows over rendered Markdown: in table cells (GetLineSelectionRange)
+//                 and as a tint over a rule, a picture or a formula (DrawBlockSelection)
 // Version: 3.19.1 - a click is hit-tested against the line it lands on when the caret
 //                 moved there before the next frame (currentLineIndex)
 // Version: 3.19.0 - GetLineSpans: a subclass styles ranges of a plain line (colour,
@@ -1407,6 +1409,13 @@ namespace UltraCanvas {
         // inside the current selection. When selection changes, ReconcileLayoutState
         // invalidates the union of old+new selected line ranges so MakeLineLayout runs again.
         void ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex);
+        // The part of line `lineIndex` (codepoints) the selection covers; false
+        // when none of it is selected. A line the selection runs through is
+        // selected even when empty (startCp == endCp).
+        bool GetLineSelectionRange(int lineIndex, int& startCp, int& endCp) const;
+        // Tints the whole row of a line that shows none of its own text (a rule,
+        // a table's separator, a picture, a display formula) while it is selected.
+        void DrawBlockSelection(IRenderContext* ctx, LineLayoutBase* ll, int lineIndex);
         // Search-match backgrounds of one line, applied before the selection so
         // the current match (the selection) shows over them.
         void ApplyLineSearchHighlights(LineLayoutBase* ll, int lineIndex);

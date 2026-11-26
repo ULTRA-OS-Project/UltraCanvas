@@ -1,6 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.8.5 - each table cell maps its text back to the source line (cpMap), so a
+//                  selection or a search match can be painted inside it
 // Version: 2.8.4 - a table is sized to the visible width once it is known: without word wrap the
 //                  first layout ran before the visible area was measured, so tables kept their
 //                  100 px floor and broke header words ("Quar-ter") with room to spare
@@ -1743,9 +1745,31 @@ namespace UltraCanvas {
 
                 if (thisIsSep || nextIsSep || prevIsTable) {
                     // Split by `|`, honoring `\|` escapes and dropping leading/trailing empty cells.
+                    // Each cell also keeps, per byte of its text, the byte of `trimmed` it came
+                    // from (plus one past its last byte), so its layout can be mapped back to
+                    // the source line: a selection or a search hit then paints inside the cell.
+                    struct TableCellText {
+                        std::string text;
+                        std::vector<int> sourceByte;
+                    };
                     auto splitCells = [](const std::string& line) {
-                        std::vector<std::string> cells;
-                        std::string cur;
+                        std::vector<TableCellText> cells;
+                        TableCellText cur;
+                        auto finishCell = [&](bool keepEmpty) {
+                            auto from = cur.text.find_first_not_of(" \t");
+                            auto to   = cur.text.find_last_not_of(" \t");
+                            if (from == std::string::npos) {
+                                if (keepEmpty) cells.push_back({});
+                            } else {
+                                TableCellText cell;
+                                cell.text = cur.text.substr(from, to - from + 1);
+                                cell.sourceByte.assign(cur.sourceByte.begin() + from,
+                                                       cur.sourceByte.begin() + to + 1);
+                                cell.sourceByte.push_back(cur.sourceByte[to] + 1);
+                                cells.push_back(std::move(cell));
+                            }
+                            cur = {};
+                        };
                         size_t i = 0;
                         if (!line.empty() && line[0] == '|') i = 1;
                         for (; i < line.size(); i++) {
@@ -1753,28 +1777,54 @@ namespace UltraCanvas {
                             // other backslash stays for the inline parser, which owns the
                             // escapes and the LaTeX inside $...$.
                             if (line[i] == '\\' && i + 1 < line.size()) {
-                                if (line[i + 1] != '|') cur.push_back(line[i]);
-                                cur.push_back(line[i + 1]);
+                                if (line[i + 1] != '|') {
+                                    cur.text.push_back(line[i]);
+                                    cur.sourceByte.push_back(static_cast<int>(i));
+                                }
+                                cur.text.push_back(line[i + 1]);
+                                cur.sourceByte.push_back(static_cast<int>(i + 1));
                                 i++;
                                 continue;
                             }
                             if (line[i] == '|') {
-                                auto from = cur.find_first_not_of(" \t");
-                                auto to   = cur.find_last_not_of(" \t");
-                                cells.push_back(from == std::string::npos ? ""
-                                                                          : cur.substr(from, to - from + 1));
-                                cur.clear();
+                                finishCell(/*keepEmpty=*/true);
                             } else {
-                                cur.push_back(line[i]);
+                                cur.text.push_back(line[i]);
+                                cur.sourceByte.push_back(static_cast<int>(i));
                             }
                         }
-                        if (!cur.empty()) {
-                            auto from = cur.find_first_not_of(" \t");
-                            auto to   = cur.find_last_not_of(" \t");
-                            if (from != std::string::npos)
-                                cells.push_back(cur.substr(from, to - from + 1));
-                        }
+                        if (!cur.text.empty()) finishCell(/*keepEmpty=*/false);
                         return cells;
+                    };
+
+                    // A cell's visible-cp -> source-line-cp map: the inline parser's map
+                    // (visible -> cell text) composed with where each byte of the cell text
+                    // sits in the raw line. Built cp by cp, so a `\|` the splitter consumed
+                    // starts a new run instead of shifting the rest of the cell by one.
+                    const size_t tableLead = rawLine.find_first_not_of(" \t\r\n");
+                    auto cellCpMap = [&](const TableCellText& cell, const std::string& visibleText,
+                                         const std::vector<CpRun>& inlineMap) {
+                        std::vector<int> textCpToSourceCp;
+                        for (size_t b = 0; b < cell.text.size(); b++) {
+                            if ((static_cast<unsigned char>(cell.text[b]) & 0xC0) == 0x80) continue;
+                            textCpToSourceCp.push_back(
+                                utf8_byte_to_cp(rawLine, tableLead + cell.sourceByte[b]));
+                        }
+                        textCpToSourceCp.push_back(cell.sourceByte.empty() ? 0
+                            : utf8_byte_to_cp(rawLine, tableLead + cell.sourceByte.back()));
+                        const int textCps = static_cast<int>(textCpToSourceCp.size()) - 1;
+                        const int visibleCps = utf8_length(visibleText);
+                        std::vector<CpRun> map;
+                        for (int v = 0; v <= visibleCps; v++) {
+                            const int t = std::clamp(VisibleCpToSourceCp(inlineMap, v), 0, textCps);
+                            const int src = textCpToSourceCp[t];
+                            if (map.empty() || v == visibleCps ||
+                                src != map.back().sourceCp + (v - map.back().visibleCp)) {
+                                if (!map.empty() && map.back().visibleCp == v) map.back().sourceCp = src;
+                                else map.push_back({v, src});
+                            }
+                        }
+                        return map;
                     };
 
                     auto tl = std::make_unique<TableLineLayout>();
@@ -1786,7 +1836,9 @@ namespace UltraCanvas {
                     tl->lastTableRow = !nextIsTable;
                     tl->layout = nullptr;  // rendered via cellsLayouts
                     // Sentinel-only cpMap: rows are not cursor-addressable today (clicks
-                    // resolve to {row, 0} via PosToLineColumn's null-layout branch).
+                    // resolve to {row, 0} via PosToLineColumn's null-layout branch). Each
+                    // cell carries its own map into the source line, which is what paints
+                    // a selection or a search hit inside it (ApplyLineBackgroundRange).
                     tl->cpMap = {{0, 0}, {0, 0}};
 
                     // On a separator row, parse per-cell alignment markers.
@@ -1795,7 +1847,7 @@ namespace UltraCanvas {
                         tl->columnAlignments.reserve(cells.size());
                         for (const auto& raw : cells) {
                             std::string t;
-                            for (char c : raw) if (c != ' ' && c != '\t') t.push_back(c);
+                            for (char c : raw.text) if (c != ' ' && c != '\t') t.push_back(c);
                             bool lColon = !t.empty() && t.front() == ':';
                             bool rColon = !t.empty() && t.back() == ':';
                             if (lColon && rColon)      tl->columnAlignments.push_back(TextAlignment::Center);
@@ -1813,7 +1865,12 @@ namespace UltraCanvas {
                             cell->layout = ctx->CreateTextLayout("", false);
                             cell->layout->SetFontStyle(style.fontStyle);
                         } else {
-                            cell->layout = buildInlineStyledLayout(cells[ci], 0, cell->hitRects, &cell->inlineMath);
+                            std::string visibleText;
+                            std::vector<CpRun> inlineMap;
+                            cell->layout = buildInlineStyledLayout(cells[ci].text, 0, cell->hitRects,
+                                                                   &cell->inlineMath, &visibleText, &inlineMap);
+                            if (tableLead != std::string::npos)
+                                cell->cpMap = cellCpMap(cells[ci], visibleText, inlineMap);
                         }
                         tl->cellsLayouts.push_back(std::move(cell));
                     }

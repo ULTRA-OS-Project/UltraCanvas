@@ -6558,6 +6558,27 @@ else()
     message(STATUS "  TextAreaSearchHighlightTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXTAREA MARKDOWN SELECTION TEST =====
+# A selection over rendered Markdown (table cells, a rule) and a search match in
+# a table cell, read back from the window. Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaMarkdownSelectionTest...")
+    add_executable(TextAreaMarkdownSelectionTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaMarkdownSelectionTest.cpp
+    )
+    target_include_directories(TextAreaMarkdownSelectionTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaMarkdownSelectionTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaMarkdownSelectionTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaMarkdownSelectionTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaMarkdownSelectionTest COMMAND TextAreaMarkdownSelectionTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaMarkdownSelectionTest")
+else()
+    message(STATUS "  TextAreaMarkdownSelectionTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXTAREA AUTO-COMPLETE TEST =====
 # ShowAutoComplete's list at the caret: keys move in it and take a
 # suggestion in place of the word before the caret. Skips without DISPLAY.
