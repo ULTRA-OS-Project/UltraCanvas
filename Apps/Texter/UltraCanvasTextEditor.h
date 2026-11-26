@@ -1,5 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.9.0 - the navigator beside a word-processing document (View > Navigator, F5):
+//                  TextEditorConfig::documentNavigator, DocumentTab::navigator, ApplyNavigator
 // Version: 2.8.0 - OpenDocumentFromPath asks for a protected document's password; DocumentTab::password
 // Version: 2.7.0 - darkDocumentBackground, SetDarkDocumentBackground, ApplyDocumentLook
 // Version: 2.6.0 - the status bar's spelling indicator: UpdateSpellLanguageIndicator, ShowSpellLanguageMenu
@@ -32,6 +34,7 @@
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasSearchBar.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasDocumentNavigator.h"
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #include <memory>
 #include <string>
@@ -91,6 +94,9 @@ namespace UltraCanvas {
         // Word-processing documents shown on their pages (headers, footers,
         // page breaks) rather than as one column.
         bool documentPageLayout = true;
+        // The navigator (headings, tables, pictures, comments) at the left of
+        // a word-processing document (View > Navigator, F5).
+        bool documentNavigator = false;
         // The text tabs' background while the look is dark (View > Dark Mode:
         // Document Background): "dark", "white" or "lightgray". Light text on
         // black is not for everyone, and the window around it can still be dark.
@@ -184,6 +190,8 @@ namespace UltraCanvas {
         // size and colour survive a round trip instead of being flattened to
         // whatever Markdown can spell.
         std::shared_ptr<UltraCanvasRichTextEdit> richEdit;
+        // Its navigator, at the editor area's left while View > Navigator is on.
+        std::shared_ptr<UltraCanvas::UltraCanvasDocumentNavigator> navigator;
         DocumentKind kind = DocumentKind::Text;
         std::string language;              // Syntax highlighting language
         // Set once the language is settled by more than a guess - picked from
@@ -536,6 +544,9 @@ namespace UltraCanvas {
         // to match the config after the editor's context menu changed one.
         void UpdateViewMenuChecks();
         void OnViewTogglePageLayout(bool checked);
+        void OnViewToggleNavigator(bool checked);
+        // Shows or hides a word-processing tab's navigator as the setting says.
+        void ApplyNavigator(DocumentTab& doc);
         void OnViewToggleToolbar(bool checked);
         void OnViewToggleMarkdownToolbar(bool checked);
         void UpdateToolbarsSubmenu();

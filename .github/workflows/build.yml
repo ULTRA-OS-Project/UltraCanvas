@@ -2661,7 +2661,8 @@ jobs:
             ColorPaletteManagerTest ColorPickerAutoHeightTest
             ColorPickerDesignSelectorTest ColorPickerDragTest
             ColorPickerModelDropdownTest DialogCloseAllTest DialogEscapeTest
-            DialogStackingTest ElementPressTakenTest ExitDuringWarmUpTest FilerPaneDragTest
+            DialogStackingTest DocumentNavigatorElementTest ElementPressTakenTest
+            ExitDuringWarmUpTest FilerPaneDragTest
             FilerRescanKeepsThumbnailsTest
             ImageFileWatchDisplayTest LabelNaturalTextWidthTest
             LabelSelectionTest MediaViewerLoadingTest

@@ -2,6 +2,7 @@
 // What the deck model does beside reading and writing
 // (include/UltraCanvasPresentationPptx.h): a new slide from a layout.
 //
+// Version: 1.2.0 - PptxGroupIds, PptxNewGroupId, PptxPictureNaturalSize
 // Version: 1.1.0 - a shape's text to a rich document and back
 // Version: 1.0.1 - a layout's placeholder with no place of its own takes its master's
 // Version: 1.0.0
@@ -10,7 +11,11 @@
 #include "UltraCanvasPresentationPptx.h"
 #include "UltraCanvasPptxSlideRender.h"   // PptxBulletText
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstring>
+#include <set>
 
 namespace UltraCanvas {
 
@@ -37,6 +42,7 @@ PptxShape Emptied(const PptxShape& placeholder) {
     }
     shape.paragraphs = {paragraph};
     shape.placeInherited = false;
+    shape.groupPath.clear();   // a new slide's placeholders stand on their own
     return shape;
 }
 
@@ -292,6 +298,58 @@ PptxSlide PptxSlideFromLayout(const PptxPresentation& deck, int layoutIndex) {
     slide.shapes.push_back(Placeholder(PptxShapeKind::Body, "body", "Content Placeholder 2", margin, h * 13 / 48,
                                        w - 2 * margin, h * 31 / 48, 28));
     return slide;
+}
+
+std::vector<int> PptxGroupIds(const PptxSlide& slide) {
+    std::set<int> ids;
+    for (const PptxShape& shape : slide.shapes) ids.insert(shape.groupPath.begin(), shape.groupPath.end());
+    return std::vector<int>(ids.begin(), ids.end());
+}
+
+int PptxNewGroupId(const PptxSlide& slide) {
+    int next = 1;
+    for (int id : PptxGroupIds(slide)) next = std::max(next, id + 1);
+    if (!slide.groupNames.empty()) next = std::max(next, slide.groupNames.rbegin()->first + 1);
+    return next;
+}
+
+bool PptxPictureNaturalSize(const std::vector<uint8_t>& bytes, int64_t& width, int64_t& height) {
+    int pixelsX = 0, pixelsY = 0;
+    if (!UCRichDocument::SniffImagePixelSize(bytes, pixelsX, pixelsY) || pixelsX <= 0 || pixelsY <= 0) return false;
+    double dpiX = 96, dpiY = 96;
+    auto be32 = [&](size_t at) {
+        return (static_cast<uint32_t>(bytes[at]) << 24) | (static_cast<uint32_t>(bytes[at + 1]) << 16) |
+               (static_cast<uint32_t>(bytes[at + 2]) << 8) | static_cast<uint32_t>(bytes[at + 3]);
+    };
+    if (bytes.size() > 8 && bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G') {
+        // The chunks before the pixels: pHYs gives pixels per metre.
+        for (size_t at = 8; at + 12 <= bytes.size();) {
+            const uint32_t length = be32(at);
+            const std::string type(reinterpret_cast<const char*>(&bytes[at + 4]), 4);
+            if (type == "IDAT" || type == "IEND") break;
+            if (type == "pHYs" && length >= 9 && at + 17 <= bytes.size() && bytes[at + 16] == 1) {
+                const uint32_t perMetreX = be32(at + 8), perMetreY = be32(at + 12);
+                if (perMetreX > 0 && perMetreY > 0) {
+                    dpiX = perMetreX * 0.0254;
+                    dpiY = perMetreY * 0.0254;
+                }
+                break;
+            }
+            at += 12 + static_cast<size_t>(length);
+        }
+    } else if (bytes.size() > 18 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF && bytes[3] == 0xE0 &&
+               std::memcmp(&bytes[6], "JFIF", 4) == 0) {
+        // JFIF: the units (1 per inch, 2 per centimetre) and the densities.
+        const int units = bytes[13];
+        const double x = (bytes[14] << 8) | bytes[15], y = (bytes[16] << 8) | bytes[17];
+        if (x > 0 && y > 0 && (units == 1 || units == 2)) {
+            dpiX = units == 1 ? x : x * 2.54;
+            dpiY = units == 1 ? y : y * 2.54;
+        }
+    }
+    width = static_cast<int64_t>(std::llround(pixelsX / dpiX * 914400.0));
+    height = static_cast<int64_t>(std::llround(pixelsY / dpiY * 914400.0));
+    return true;
 }
 
 } // namespace UltraCanvas

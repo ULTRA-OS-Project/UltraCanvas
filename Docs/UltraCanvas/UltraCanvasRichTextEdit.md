@@ -34,6 +34,7 @@ state of the selection** rather than two asterisks in a buffer.
   - [Charts](#charts)
   - [Structure](#structure)
 - [Document dialogs](#document-dialogs)
+- [Navigator](#navigator)
 - [Following the theme](#following-the-theme)
   - [A document's colours on a dark page](#a-documents-colours-on-a-dark-page)
 - [Keyboard](#keyboard)
@@ -988,6 +989,40 @@ RichPageSetupDialogValues page = ReadPageSetupDialogValues(*editor);
 page.paper = 4;                    // RichPaperSizes()[4]: Letter
 page.landscape = true;
 ApplyPageSetupDialogValues(*editor, page);       // what the dialog's OK does
+```
+
+## Navigator
+
+`UltraCanvasDocumentNavigator` ([doc](UltraCanvasDocumentNavigator.md)) is
+the side panel a word processor puts beside this element: the headings as a
+tree by level (the caret's heading selected, following it), the tables,
+pictures, charts, comments, bookmarks, notes and tracked changes, a search
+box that filters them and lists the finds, and buttons that promote, demote
+and move a heading's section. It reads the model through
+`BuildRichDocumentOutline` (`UltraCanvasRichDocumentOutline.h`, UI-free) and
+uses what this element offers any such panel:
+
+| Call | What it does |
+|---|---|
+| `AddDocumentObserver(fn)` / `RemoveDocumentObserver(id)` | Any number of listeners besides the host's `onDocumentChanged` / `onSelectionChanged`: `fn(true)` after every edit (undo and a new document included), `fn(false)` after the caret or the selection moved |
+| `GoToPosition(pos)`, `GoToRange(range)` | The caret at a body position, or a body range selected, scrolled into view (a header or note being edited is finished first) |
+| `MoveHeadingSection(heading, beforeBlock)` | A heading with its text and subheadings moved before another block (`GetBlockCount()` = to the end), one undo step |
+| `MoveHeadingSectionUp(heading)` / `MoveHeadingSectionDown(heading)` | ...past the sibling heading of its level before or after it |
+| `ChangeHeadingSectionLevel(heading, delta)` | The heading and every heading in its section one level up (-1) or down (+1); a heading in its level's style takes the new level's style |
+
+The section rules are the editing core's, so they are tested without a
+display: `UCRichDocumentEditor::HeadingSectionEnd` (a heading's section ends
+at the next heading of its level or above) and `SiblingHeading`.
+
+```cpp
+#include "UltraCanvasDocumentNavigator.h"
+
+auto navigator = std::make_shared<UltraCanvasDocumentNavigator>("navigator", 0, 0, 260, 600);
+navigator->SetEdit(editor);                       // follows its document from now on
+const int id = editor->AddDocumentObserver([](bool documentChanged) { (void)documentChanged; /* a word count */ });
+editor->ChangeHeadingSectionLevel(0, +1);         // the first heading's chapter one level down
+editor->Undo();                                   // ...and back, in one step
+editor->RemoveDocumentObserver(id);
 ```
 
 UltraOffice's document tab opens them from its Home, Insert, Layout and

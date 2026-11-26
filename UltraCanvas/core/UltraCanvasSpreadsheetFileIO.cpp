@@ -1,6 +1,8 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.8.0 - .ods keeps pivot tables: table:data-pilot-tables read and written
+//                  (UltraCanvasSpreadsheetPivotIO.cpp)
 // Version: 1.7.0 - .ods array formulas: table:number-matrix-*-spanned read (a fixed array) and written
 //                  (a fixed array or a spill as it stands), A1# written as its block, inline arrays,
 //                  COM.MICROSOFT. function names; a plain formula is read as one value; numbers in
@@ -55,6 +57,7 @@
 #include "miniz.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasSpreadsheetChart.h"   // the sheets' charts
+#include "UltraCanvasSpreadsheetPivot.h"   // the sheets' pivot tables
 
 // For XML parsing
 #include "tinyxml2.h"
@@ -947,6 +950,8 @@ public:
         }
         // The charts, each an object of the package.
         ReadOdsCharts(*spreadsheet_, contentXml, [this](const std::string& part) { return ReadFileFromZip(part); });
+        // The pivot tables (data pilots), now that every sheet is read.
+        ReadOdsPivots(*spreadsheet_, contentXml);
         return true;
     }
 
@@ -2459,6 +2464,7 @@ private:
         }
         WriteNamedRanges(ss, workbookNames, "");
         WriteDatabaseRanges(ss);
+        ss << WriteOdsPivots(*spreadsheet_);   // table:data-pilot-tables, after the database ranges
 
         ss << "</office:spreadsheet>\n";
         ss << "</office:body>\n";
@@ -3828,6 +3834,7 @@ bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath, const std::str
 
 bool UltraCanvasSpreadsheet::SaveODS(const std::string& filePath) {
     lastError_.clear();
+    RefreshChangedPivotTables();   // the pivots' cells as their sources are now
     ODSSaver saver(this);
     if (!saver.Save(filePath)) {
         std::string writeError = DescribeFileWriteError(filePath);

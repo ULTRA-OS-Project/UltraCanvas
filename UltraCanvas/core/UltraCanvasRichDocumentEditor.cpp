@@ -7,6 +7,8 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
+// Version: 1.7.0 - heading sections: HeadingSectionEnd, SiblingHeading, MoveHeadingSection (up / down),
+//                  ChangeHeadingSectionLevel
 // Version: 1.6.0 - SetParagraphFormat, SetPageSetup (the page in the undo step), SetTableProperties,
 //                  SetImageWrap / GetImageWrap, PreviousChange, NextComment
 // Version: 1.5.0 - InsertChart: a chart frame in the line at the caret
@@ -4851,6 +4853,119 @@ void UCRichDocumentEditor::InsertBlocksInternal(const std::vector<RichDocBlock>&
             }
         }
     }
+}
+
+// ===== HEADING SECTIONS =====
+
+namespace {
+
+// The level of the heading at `index` (1..6), or 0 for any other block.
+int HeadingLevelOf(const std::vector<RichDocBlock>& blocks, int index) {
+    if (index < 0 || index >= static_cast<int>(blocks.size())) return 0;
+    const RichDocBlock& block = blocks[static_cast<size_t>(index)];
+    if (block.type != RichBlockType::Heading) return 0;
+    return block.headingLevel >= 1 && block.headingLevel <= 6 ? block.headingLevel : 0;
+}
+
+} // namespace
+
+int UCRichDocumentEditor::HeadingSectionEnd(const std::vector<RichDocBlock>& blocks, int headingBlock) {
+    const int level = HeadingLevelOf(blocks, headingBlock);
+    if (level == 0) return -1;
+    const int count = static_cast<int>(blocks.size());
+    for (int i = headingBlock + 1; i < count; ++i) {
+        const int other = HeadingLevelOf(blocks, i);
+        if (other != 0 && other <= level) return i;
+    }
+    return count;
+}
+
+int UCRichDocumentEditor::SiblingHeading(const std::vector<RichDocBlock>& blocks, int headingBlock, bool forward) {
+    const int level = HeadingLevelOf(blocks, headingBlock);
+    if (level == 0) return -1;
+    if (forward) {
+        // The section ends at the next heading of its level or above: a
+        // sibling when it is of the same level, the parent's next otherwise.
+        const int end = HeadingSectionEnd(blocks, headingBlock);
+        return HeadingLevelOf(blocks, end) == level ? end : -1;
+    }
+    for (int i = headingBlock - 1; i >= 0; --i) {
+        const int other = HeadingLevelOf(blocks, i);
+        if (other == 0 || other > level) continue;     // text, or a subheading of the sibling
+        return other == level ? i : -1;                // a higher heading is the parent
+    }
+    return -1;
+}
+
+bool UCRichDocumentEditor::MoveHeadingSection(int headingBlock, int beforeBlock) {
+    const int end = HeadingSectionEnd(headingBlock);
+    if (end < 0) return false;
+    const int count = GetBlockCount();
+    beforeBlock = std::clamp(beforeBlock, 0, count);
+    if (beforeBlock >= headingBlock && beforeBlock <= end) return false;   // into itself, or where it is
+    {
+        const int first = std::min(beforeBlock, headingBlock);
+        const int last = std::max(beforeBlock, end);
+        EditScope scope(*this, first, last - first);
+        auto blocks = doc->blocks.begin();
+        int moved = beforeBlock;
+        if (beforeBlock < headingBlock) {
+            std::rotate(blocks + beforeBlock, blocks + headingBlock, blocks + end);
+        } else {
+            std::rotate(blocks + headingBlock, blocks + end, blocks + beforeBlock);
+            moved = beforeBlock - (end - headingBlock);
+        }
+        caret = anchor = RichDocPosition(moved, 0);
+        pendingFormatValid = false;
+        coalescing = false;
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::MoveHeadingSectionUp(int headingBlock) {
+    const int sibling = SiblingHeading(doc->blocks, headingBlock, false);
+    return sibling >= 0 && MoveHeadingSection(headingBlock, sibling);
+}
+
+bool UCRichDocumentEditor::MoveHeadingSectionDown(int headingBlock) {
+    const int sibling = SiblingHeading(doc->blocks, headingBlock, true);
+    return sibling >= 0 && MoveHeadingSection(headingBlock, HeadingSectionEnd(sibling));
+}
+
+bool UCRichDocumentEditor::ChangeHeadingSectionLevel(int headingBlock, int delta) {
+    const int end = HeadingSectionEnd(headingBlock);
+    if (end < 0 || delta == 0) return false;
+    for (int b = headingBlock; b < end; ++b) {
+        const int level = HeadingLevelOf(doc->blocks, b);
+        if (level != 0 && (level + delta < 1 || level + delta > 6)) return false;
+    }
+    {
+        EditScope scope(*this, headingBlock, end - headingBlock);
+        coalescing = false;
+        for (int b = headingBlock; b < end; ++b) {
+            const int level = HeadingLevelOf(doc->blocks, b);
+            if (level == 0) continue;
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            const int newLevel = level + delta;
+            const std::string oldId = "Heading" + std::to_string(level);
+            const std::string newId = "Heading" + std::to_string(newLevel);
+            // A heading in its level's style follows the style of its new
+            // level where its text still looks as the old one made it (a
+            // document's own sizes), as a changed style is followed - not
+            // where it was formatted by hand; one in a style of its own
+            // keeps it and changes level only.
+            if ((block.styleId.empty() || block.styleId == oldId) && doc->FindStyle(newId)) {
+                RestyleBlock(block, doc->ResolveStyle(EffectiveStyleId(block)), doc->ResolveStyle(newId), false);
+                if (!block.styleId.empty()) block.styleId = newId;
+            }
+            block.type = RichBlockType::Heading;
+            block.headingLevel = newLevel;
+        }
+    }
+    NotifyChanged();
+    return true;
 }
 
 } // namespace UltraCanvas

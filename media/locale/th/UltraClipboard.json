@@ -17,7 +17,6 @@
     "other": "ย้าย {n} ไฟล์ไปยัง {0} ไม่ได้:"
   },
   "Delete the item from the clipboard?": "ลบรายการนี้ออกจากคลิปบอร์ดหรือไม่",
-  "Deleted": "ลบแล้ว",
   "Edit clipboard entry": "แก้ไขรายการคลิปบอร์ด",
   "Edit in UltraPaint": "แก้ไขใน UltraPaint",
   "Edit…": "แก้ไข…",
