@@ -2,17 +2,19 @@
 
 **The languages the person's desktop is set to, best first, as BCP 47
 tags.** One detector for every caller: the spell checker picks a
-dictionary by it today; the localisation module of
-[`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md)
-will pick a catalogue by it, and a date or number format follows the same
-answer, so a German desktop is German in every window.
+dictionary by it, the localisation module
+([`UltraLocalisation`](../Modules/UltraLocalisation/README.md)) picks a
+catalogue by it, and its numbers and dates follow the region the platform's
+settings name ([`SystemRegionalFormats`](#the-regions-formats)), so a German
+desktop is German in every window.
 
 - Header: `UltraCanvas/include/UltraCanvasSystemLanguage.h`
 - Implementation: `UltraCanvas/core/UltraCanvasSystemLanguage.cpp`, the
   platform's own answer in `OS/<Platform>/UltraCanvas<Platform>SystemLanguage.*`
 - Tests: `Tests/SystemLanguageTest.cpp` (target `SystemLanguageTest`, no display)
 - Used by: `UltraCanvasSpellChecker::DetectPreferredLanguage`
-  ([`UltraCanvasSpellChecker.md`](UltraCanvasSpellChecker.md))
+  ([`UltraCanvasSpellChecker.md`](UltraCanvasSpellChecker.md)) and the
+  application base's start-up, which hands both answers to UltraLocalisation
 
 ```cpp
 // Best first, each once: {"de-AT", "de", "en"} on a desktop with LANGUAGE=de_AT:de:en
@@ -64,8 +66,36 @@ bool same = LanguageTagsEqual("de_AT", "de-at");                               /
 bool region = LanguageTagsEqual("de", "de-AT");                                // false: a language is not its region
 ```
 
+## The region's formats
+
+`SystemRegionalFormats()` is the region's conventions for numbers, dates
+and times - an `UltraLocalisation` `LocaleFormats`: the separators, the
+group sizes, the date and time patterns - over the built-in CLDR
+conventions of the region (`UltraLocalisation::FormatsFor`), with the
+person's own changes where the platform keeps them. Its `language` is the
+region's tag, empty where the platform has nothing beyond its language.
+The application base hands it to `UltraLocalisation::SetRegionalFormats`
+before the language is chosen.
+
+```cpp
+LocaleFormats region = SystemRegionalFormats();   // region.language "de-DE", region.decimalSeparator ","
+if (!region.language.empty()) UltraLocalisation::SetRegionalFormats(region);
+```
+
+| Platform | `SystemRegionalFormatsNative()` |
+|---|---|
+| Windows | `GetLocaleInfoEx` for the user default locale (Settings > Time & language > Region): the decimal and thousands separators, the grouping, the short and long date and the short and long time - the long date is the full one when it has the weekday. Windows' pictures (`dddd, d. MMMM yyyy`, `h:mm tt`) become CLDR patterns through `UltraLocalisation::PatternFromWindows` |
+| macOS, iOS | `NSLocale.currentLocale` (Language & Region): its separators, `NSNumberFormatter`'s group sizes, and `NSDateFormatter`'s pattern for each date and time style, the 24-hour switch included |
+| Linux, BSD | `LC_TIME` and `LC_NUMERIC`, each under `LC_ALL`, over `LANG` - what the desktops' Formats setting exports - with the CLDR conventions of the regions they name: a person reading English with German dates has `LANG=en_US.UTF-8` and `LC_TIME=de_DE.UTF-8`. glibc's own `nl_langinfo` patterns are not used, being coarser than CLDR's (en_US's 12-hour clock pads the hour, en_GB's date has a two-digit year) and missing where the locale is not installed. `C` and `POSIX` name no region |
+| WebAssembly, Android | Nothing: `navigator.language` and the device configuration, which `SystemLanguageTagsNative` gives already, name the region, and UltraLocalisation keeps that tag for its conventions |
+
+A platform's short date with a two-digit year is given the year in full
+(`UltraLocalisation::PatternWithFullYear`), since `DateStyle::Short`
+writes it so.
+
 ## Related
 
 - [`UltraCanvasSpellChecker.md`](UltraCanvasSpellChecker.md) - the first caller; its backend's `GetPreferredLanguageHint` is a tie-breaker after this
-- [`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md) - the language a catalogue is chosen by
+- [`UltraLocalisation`](../Modules/UltraLocalisation/README.md) - the language a catalogue is chosen by, and the numbers and dates written in the region's conventions
+- [`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md) - the design
 - [`UltraCanvasDesktopEntry.md`](UltraCanvasDesktopEntry.md) - reads the raw POSIX locale itself, because a `.desktop` file's `Name[de_DE@euro]` keys want the modifier the tag drops

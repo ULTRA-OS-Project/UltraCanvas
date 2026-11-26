@@ -244,14 +244,6 @@ Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `GetStageCounts(
 # signature Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md: 10e4a210764842df452b2a847c405a9fbc18908ab9b5340e6b3ab156c4e6e602
 Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::prose names `FT_Load_Glyph(`, which no header declares
 # signature Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md: f2cb62dd1ac33db3c1172e0f9c4a6763d1068137970fc5279acd347353ed27d6
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'DecimalSeparator' is not a member of UltraLocalisation
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatDate' is not a member of UltraLocalisation
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatFileSize' is not a member of UltraLocalisation
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatInteger' is not a member of UltraLocalisation
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatNumber' is not a member of UltraLocalisation
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatPercent' is not a member of UltraLocalisation
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatTime' is not a member of UltraLocalisation
-# signature Docs/UltraCanvas/UltraCanvasLocalisationProposal.md: 77bfa5dd3832311b32392eed7735ea4ddb56effadcc5f96fd1198558988b56a4
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::signature differs: `bool ImportMatrixCsv(const std::string& csv, MatrixModel& out)` - the header has: bool ImportMatrixCsv(const std::string& csv, MatrixModel& model, int panel = 0);

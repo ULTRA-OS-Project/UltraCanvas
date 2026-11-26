@@ -23,7 +23,7 @@ zh-Hans (machine drafts, marked so until reviewed), and the UOS-Settings
 Language page with the translator's name; on 2026-11-03 twenty-two more
 drafts followed (ru, uk, pl, cs, sv, da, nb, fi, tr, el, ko, zh-Hant, ar,
 he, hu, ro, hi, id, vi, th, ca, and pt-BR as a variant of pt holding only
-what differs). **L4 implemented 2026-11-03**: `UltraCanvasLocalisationEditor` ([`UltraCanvasLocalisationEditor.md`](UltraCanvasLocalisationEditor.md)) - the merged grid over the columns tree view with a column per set, the Sets picker, the four merge operations, the two save paths, the compare column, the drafting button (through a drafter the host wires), `ShowLocalisationEditorDialog`, the UOS-Settings Translations page, the DemoApp page, `LocalisationEditorTest`; the one departure from §5 is that a cell is edited in the row under the grid rather than in place, since the columns tree view has no in-place editing. **L5 in progress** (one pull request per application, paired with the host theme proposal's T6 review of its surfaces): UltraFiler, UltraTexter, UltraMail, UltraPassword and UOS-Settings have their texts through `Tr`, their own set and the Translate entry; the rest follow in the order below. L6 is still to do. Revised 2026-11-02: the module is
+what differs). **L4 implemented 2026-11-03**: `UltraCanvasLocalisationEditor` ([`UltraCanvasLocalisationEditor.md`](UltraCanvasLocalisationEditor.md)) - the merged grid over the columns tree view with a column per set, the Sets picker, the four merge operations, the two save paths, the compare column, the drafting button (through a drafter the host wires), `ShowLocalisationEditorDialog`, the UOS-Settings Translations page, the DemoApp page, `LocalisationEditorTest`; the one departure from §5 is that a cell is edited in the row under the grid rather than in place, since the columns tree view has no in-place editing. **L5 in progress** (one pull request per application, paired with the host theme proposal's T6 review of its surfaces): UltraFiler, UltraTexter, UltraMail, UltraPassword and UOS-Settings have their texts through `Tr`, their own set and the Translate entry; the rest follow in the order below. **L6 implemented 2026-11-26** (§6, [`Docs/Modules/UltraLocalisation/README.md`](../Modules/UltraLocalisation/README.md#numbers-dates-and-times)): `FormatNumber`, `FormatInteger`, `FormatPercent`, `FormatFileSize`, `FormatDate`, `FormatTime`, `FormatDateTime`, `FormatPattern` and `DecimalSeparator` over a `LocaleFormats` - the platform's regional settings (`SystemRegionalFormats`) or the built-in CLDR conventions of the language - with the standard set's `date-month|`, `date-weekday|` and `time|` entries in every language; the core's, the filer widget's, UltraMail's and EmailCleaner's size formatters are `FormatFileSize`. Its departures from §6 are listed there. Revised 2026-11-02: the module is
 `UltraLocalisation`, it loads a **standard set** UltraCanvas ships for every
 application, the **base sets** of the application's type (video editing,
 banking, shopping, ...) and the application's **own set** over them, and a
@@ -606,16 +606,14 @@ German desktop. The same header gives the formatting the locale wants,
 and `TrF` uses it for every numeric argument:
 
 ```cpp
-class UltraLocalisation {
-public:
-    static std::string FormatNumber(double value, int decimals);      // 1.234,5
-    static std::string FormatInteger(long long value);                // 1.234
-    static std::string FormatPercent(double fraction, int decimals);  // 12,5 %
-    static std::string FormatFileSize(unsigned long long bytes);      // 1,2 MB - the one every filer rewrites
-    static std::string FormatDate(std::time_t when, DateStyle style); // 21.10.2026, 21. Oktober 2026
-    static std::string FormatTime(std::time_t when, TimeStyle style); // 14:05, 2:05 PM
-    static std::string DecimalSeparator();                            // for a numeric field's input
-};
+std::string amount = UltraLocalisation::FormatNumber(1234.5, 1);      // 1.234,5
+std::string count = UltraLocalisation::FormatInteger(1234);           // 1.234
+std::string share = UltraLocalisation::FormatPercent(0.125, 1);       // 12,5 %
+std::string size = UltraLocalisation::FormatFileSize(1258291);        // 1,2 MB - the one every filer rewrites
+std::time_t when = std::time(nullptr);
+std::string day = UltraLocalisation::FormatDate(when, DateStyle::Long);     // 21. Oktober 2026
+std::string clock = UltraLocalisation::FormatTime(when, TimeStyle::Short);  // 14:05, 2:05 PM
+std::string separator = UltraLocalisation::DecimalSeparator();       // for a numeric field's input
 ```
 
 Sources: `GetLocaleInfoEx` / `GetDateFormatEx` on Windows, `NSNumberFormatter`
@@ -634,6 +632,29 @@ for L6; they are what L6 formats with. File formats keep
 `FormatFloatClassic` / `TryParseFloat`, as the rule in `AGENTS.md` says.
 `UltraCanvasMoney`'s formatting is untouched: an invoice amount's style is
 the document's, not the desktop's.
+
+**As implemented (L6)**, three departures from the above:
+
+- **Linux reads the region, not glibc's patterns.** The region is what
+  `LC_TIME` and `LC_NUMERIC` name (each under `LC_ALL`, over `LANG`), and
+  its conventions are the built-in CLDR ones for that region rather than
+  `localeconv()` / `nl_langinfo`, which are coarser (en_US's `%r` pads the
+  hour, en_GB's date has a two-digit year) and absent where the locale is not
+  installed. The same CLDR table answers wherever the platform has nothing
+  beyond its language - Android, and the browser, where an `Intl` bridge
+  would only repeat what `navigator.language` already names - and for a
+  language chosen here that is not the region's, so `--lang=ru` on an
+  American desktop writes Russian dates, not American ones in Russian.
+- **`TrF` does not group.** It writes a number argument in the language's
+  digits and decimal separator but ungrouped, since an argument is as often
+  a year, a port or a line number as a quantity; `TrN`'s count, always a
+  quantity, is grouped, and `FormatInteger` / `FormatNumber` group.
+- **The calendar words are the standard set's own entries for dates:**
+  `date-month|October` (the month as written inside a date - genitive in
+  Russian, Polish, Czech, Ukrainian and Greek, partitive in Finnish, with
+  its preposition in Catalan, lower case where the language writes it so)
+  and `date-weekday|Wednesday`, beside the date picker's headings, and
+  `time|AM` / `time|PM`.
 
 ## 7. The setting, UOS-Settings and running applications
 
@@ -723,7 +744,7 @@ run in CI:
 | **L3** | `translate_catalogue.py`; the standard set and the base sets drafted in de, fr, es, it, nl, pt, ja, zh-Hans, the standard set reviewed; UOS-Settings Language page | scripts, UOSSettings | 3 days |
 | **L4** | The editor element: the merged grid over the columns tree view with a column per set, the Sets picker, the four merge operations, the two save paths, the compare column, the drafting button; its dialog opener; the UOS-Settings Translations page; the DemoApp page; `UltraCanvasLocalisationEditor.md`. **Implemented 2026-11-03.** | core, UOSSettings, DemoApp | 7 days |
 | **L5** | The applications, one PR each so a reviewer sees one app's diff: wrap, extract, name the bases, draft, build, run; the Help menu item. Order by use: UltraFiler, Texter, UltraMail, UltraPassword, UOSSettings, UltraDesktop, then the rest; DemoApp last, or its demo pages left English (they are the catalogue of the elements, read by developers) | Apps | ½ day per application - most of an application's strings are standard or base after L2 - ~15 days for 29 |
-| **L6** | §6 formatting with its four backends; `FormatFileSize` replacing the filer's, the cleaner's and the mail client's own; `check_locale_numbers.py` learns the new functions are `locale-ok` | module, Apps | 3 days |
+| **L6** | §6 formatting with its four backends; `FormatFileSize` replacing the filer's, the cleaner's and the mail client's own; `check_locale_numbers.py` learns the new functions are `locale-ok`. **Implemented 2026-11-26**, with the departures listed in §6. | module, Apps | 3 days |
 
 L1-L4 are the deliverable that makes the rest routine; L5 is parallel
 work for several sessions once L2 is merged.

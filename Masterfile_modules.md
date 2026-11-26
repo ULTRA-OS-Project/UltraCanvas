@@ -3295,8 +3295,8 @@ helpers only), built as the `uc-localisation` archive and absorbed whole
 into the shared core; linked by the public name `UltraLocalisation`.
 Sources `UltraCanvas/{include,core}/UltraLocalisation/`; wired into
 `UltraCanvasApplicationBase::Initialize`. The design is
-`Docs/UltraCanvas/UltraCanvasLocalisationProposal.md`; this is its phase
-L1. Public surface:
+`Docs/UltraCanvas/UltraCanvasLocalisationProposal.md`; phases L1 to L4
+and L6 are implemented. Public surface:
 
 - `Tr`, `TrC` (a context: `"button|Open"`), `TrN` (plural by the
   language's CLDR rule, `{n}` the count), `TrF` (`{0}`, `{1}`, ... filled).
@@ -3315,6 +3315,17 @@ L1. Public surface:
   `UseBaseSets` / `BaseSets`, `AddSet` / `LibrarySets` (a plugin's own set),
   `OriginOf` / `StandardKeys` / `EntryCount` (which layer answered),
   `PluralCategory` (pure), `ReadCatalogue`, `Reset` (for tests).
+- Numbers, dates and times in the person's conventions (phase L6):
+  `FormatNumber`, `FormatInteger`, `FormatPercent`, `FormatFileSize`,
+  `FormatDate` / `FormatTime` / `FormatDateTime` (`DateStyle` Short, Long,
+  Full; `TimeStyle` Short, Medium; a `std::time_t` or a `CalendarTime`),
+  `FormatPattern` (a CLDR pattern), `DecimalSeparator` / `GroupSeparator`,
+  over a `LocaleFormats` - `Formats`, `FormatsFor` (the built-in CLDR
+  conventions, pure), `SetRegionalFormats` / `RegionalFormats` (the
+  platform's, from `SystemRegionalFormats()` in `UltraCanvasSystemLanguage.h`)
+  - with the standard set's `date-month|`, `date-weekday|` and `time|`
+  words; `LocalTime`, and the pure pattern helpers `PatternFromStrftime`,
+  `PatternFromWindows`, `PatternWithoutSeconds`, `PatternWithFullYear`.
 
 The English catalogues are `media/locale/en/Standard.json` (the
 framework's `Tr` keys and the curated application vocabulary) and

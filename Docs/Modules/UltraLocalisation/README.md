@@ -2,10 +2,10 @@
 
 <!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
 
-**Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3); the localisation editor - every set in one grid, the merge operations, the two save paths, the compare column, the drafting button - as an element, a dialog, the UOS-Settings Translations page and a DemoApp page (L4, [`UltraCanvasLocalisationEditor.md`](../../UltraCanvas/UltraCanvasLocalisationEditor.md)). The applications (L5) and locale formatting (L6) follow.
-**Version:** 1.2.1
+**Status:** Phases L1 to L4 and L6 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3); the localisation editor - every set in one grid, the merge operations, the two save paths, the compare column, the drafting button - as an element, a dialog, the UOS-Settings Translations page and a DemoApp page (L4, [`UltraCanvasLocalisationEditor.md`](../../UltraCanvas/UltraCanvasLocalisationEditor.md)). Numbers, dates and times in the person's conventions, from the platform's regional settings or the built-in CLDR conventions, with the standard set's month and weekday names (L6, [below](#numbers-dates-and-times)). The applications (L5) follow.
+**Version:** 1.3.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-11-04
+**Last Modified:** 2026-11-26
 
 `Tr("Save")` gives the translation of the English text written at the
 site, in the language the person's desktop is set to, from three layers of
@@ -27,6 +27,8 @@ std::string save = Tr("Save");                                    // "Speichern"
 std::string open = TrC("button", "Open");                         // the "button|Open" entry: "Öffnen"
 std::string files = TrN("{n} file", "{n} files", count);          // "3 Dateien": the language's plural rule
 std::string progress = TrF("Deleted {0} of {1}", done, count);    // "1 von 3 gelöscht"
+std::string size = UltraLocalisation::FormatFileSize(1258291);    // "1,2 MB"
+std::string day = UltraLocalisation::FormatDate(std::time(nullptr), DateStyle::Long);   // "21. Oktober 2026"
 ```
 
 ## Contents
@@ -34,6 +36,7 @@ std::string progress = TrF("Deleted {0} of {1}", done, count);    // "1 von 3 ge
 - [The three layers](#the-three-layers)
 - [The catalogue file](#the-catalogue-file)
 - [The language](#the-language)
+- [Numbers, dates and times](#numbers-dates-and-times)
 - [The catalogues and the scripts](#the-catalogues-and-the-scripts)
 - [Drafting a language](#drafting-a-language)
 - [Related](#related)
@@ -105,9 +108,12 @@ languages, French's zero-as-singular, the Slavic three and four forms,
 Arabic's six, Irish, Welsh, Maltese, Latvian, Lithuanian, Romanian,
 Slovenian, Hebrew). A language with one form keeps a plain string entry.
 Placeholders are `{0}`, `{1}`, ... and `{n}`; a translation may reorder
-them or leave one out. `TrF` formats integers as digits and floating
-point dot-decimal; the locale's own number and date formatting is phase
-L6.
+them or leave one out. `TrF` writes a number argument in the language's
+digits and decimal separator but does not group it - an argument is as
+often a year, a port or a line number as a quantity, and "Port 8.080" is
+wrong where "1.234 Dateien" is right - while `TrN` groups its count, which
+is always a quantity. A number to group is `FormatInteger` or
+`FormatNumber` ([below](#numbers-dates-and-times)).
 
 ## The language
 
@@ -145,6 +151,86 @@ settings.Save("/home/erika/.config/UltraCanvas");
 A language change reaches applications started after it; a running one
 that wants to follow rebuilds what it built from strings in a change
 handler, as the proposal's §7 says, since elements store text, not keys.
+
+## Numbers, dates and times
+
+What a person reads as a number, a size, a date or a time is written in
+the conventions of their region - `1.234,5` and `21.10.2026` on a German
+desktop, `1 234,5` and `21/10/2026` on a French one - with the month and
+weekday names of the language they chose:
+
+```cpp
+std::string amount = UltraLocalisation::FormatNumber(1234.5, 2);        // "1.234,50": exactly two decimals
+std::string files = UltraLocalisation::FormatInteger(1234567);          // "1.234.567"
+std::string share = UltraLocalisation::FormatPercent(0.125, 1);         // "12,5 %"
+std::string size = UltraLocalisation::FormatFileSize(1536);             // "1,5 KB"; "512 Bytes" below a kilobyte
+std::time_t now = std::time(nullptr);
+std::string shortDate = UltraLocalisation::FormatDate(now, DateStyle::Short);    // "21.10.2026"
+std::string fullDate = UltraLocalisation::FormatDate(now, DateStyle::Full);      // "Mittwoch, 21. Oktober 2026"
+std::string clock = UltraLocalisation::FormatTime(now, TimeStyle::Short);        // "14:05"; "2:05 PM" in the US
+std::string stamp = UltraLocalisation::FormatDateTime(now, DateStyle::Short, TimeStyle::Medium);   // "21.10.2026, 14:05:09"
+std::string separator = UltraLocalisation::DecimalSeparator();          // ",": what a numeric field accepts
+```
+
+`DateStyle::Short` is all digits with the year in full, `Long` names the
+month, `Full` adds the weekday; `TimeStyle::Short` is the clock without its
+seconds and `Medium` with them. A `CalendarTime` - a date and a wall-clock
+time as a calendar shows them, the weekday worked out when it is `-1` -
+takes the same calls, and `FormatPattern` writes any CLDR pattern with the
+person's names and digits:
+
+```cpp
+CalendarTime when;
+when.year = 2026; when.month = 10; when.day = 21; when.hour = 14; when.minute = 5;
+std::string heading = UltraLocalisation::FormatPattern(when, "EEEE, d. MMMM");   // "Mittwoch, 21. Oktober"
+CalendarTime local = UltraLocalisation::LocalTime(now);
+```
+
+**Where the conventions come from.** A `LocaleFormats` holds one region's:
+the decimal and group separators, the group sizes (`3` then `2` in India)
+and the fewest digits worth grouping (`2` in Spanish, Polish and European
+Portuguese, so `1234` stays whole), the digits themselves (Arabic-Indic for
+`ar`), the percent pattern and the date and time patterns, as CLDR (LDML)
+patterns. `FormatsFor(tag)` has the CLDR conventions of every language
+UltraCanvas ships and of the common regional variants (`en-GB`, `en-IN`,
+`de-CH`, `de-AT`, `fr-CA`, `es-MX`, `pt-BR`, `zh-TW` ...), walking a tag
+down to the one it knows. The application base hands the platform's own
+settings in at start-up, before the language is chosen -
+`SetRegionalFormats(SystemRegionalFormats())`
+([`UltraCanvasSystemLanguage.md`](../../UltraCanvas/UltraCanvasSystemLanguage.md)):
+Windows' Region settings through `GetLocaleInfoEx`, macOS's and iOS's
+Language & Region through `NSLocale` and `NSDateFormatter`, the person's
+own changes to either included, and on Linux and the BSDs the region
+`LC_TIME` and `LC_NUMERIC` name, which is what the desktops' Formats
+setting exports. `Formats()` is what the calls use:
+
+1. the platform's settings when they are for the language shown, or when
+   the language came from the desktop - the person chose nothing here, so
+   the region is theirs as much as the language is (English text with
+   German dates, for a person who set both that way);
+2. else `FormatsFor` the language, its regional tag kept: a desktop in
+   `en-GB` loads the `en` catalogue and writes British dates.
+
+```cpp
+LocaleFormats current = UltraLocalisation::Formats();          // current.shortDate: "dd.MM.y"
+LocaleFormats swiss = UltraLocalisation::FormatsFor("de-CH");  // swiss.groupSeparator: "’"
+UltraLocalisation::SetRegionalFormats(swiss);                  // what the application base does with the platform's
+```
+
+**The words.** The region gives a date its shape; its words are the
+standard set's, in the person's language: a month inside a date is
+`"date-month|October"` - "Oktober", the genitive "октября" in Russian,
+"d’octubre" in Catalan, lower case in French - a weekday in a full date
+`"date-weekday|Wednesday"`, the short names the date picker's
+`"month-short|Oct"` and `"weekday|We"`, and the day periods `"time|AM"` and
+`"time|PM"`. A file size's units are the standard set's `"KB"` ... `"TB"`
+("Ko" in French) and its bytes the plural `"{n} byte"`.
+
+These are for text a person reads. A number in a file format or a
+protocol is written with `FormatFloatClassic` and read with
+`TryParseFloat`, whatever the language (*Core conventions* in
+`AGENTS.md`); `UltraCanvasMoney` formats an amount in the document's style,
+not the desktop's.
 
 ## The catalogues and the scripts
 
@@ -203,9 +289,10 @@ menu, the media viewer - are wrapped, so they show in the person's
 language as soon as a translation of `Standard.json` exists. The date
 picker's weekday and month names are the standard set's context entries
 (`"weekday|Mo"`, `"month|May"`, `"month-short|May"`), re-read when the
-language changes while a picker is open, and they are what phase L6's
-date formatting will take the names from: the platform gives a date's
-shape, the chosen language its words.
+language changes while a picker is open; a formatted date takes its
+names from the standard set too (`"date-month|October"`,
+`"date-weekday|Monday"`, [below](#numbers-dates-and-times)): the region
+gives a date's shape, the chosen language its words.
 
 ## Related
 

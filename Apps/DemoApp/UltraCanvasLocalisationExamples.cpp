@@ -2,13 +2,14 @@
 // The UltraLocalisation module: the four calls a program makes at the site
 // (Tr, TrC, TrN, TrF), live in the language picked on the page, with which
 // of the three layers answered each one; the catalogue files of the three
-// layers for that language, shown as they ship; and the scripts around
-// them. The language picked here is the demo's own language (SetLanguage,
+// layers for that language, shown as they ship; the scripts around
+// them; and numbers, dates and times in its conventions. The language picked here is the demo's own language (SetLanguage,
 // as UOS-Settings' Language page would set it) until it is picked again:
 // the demo's pages are built in English, so what changes is what Tr gives
 // from then on.
+// Version: 1.1.0 - numbers, dates and times: FormatNumber, FormatPercent, FormatFileSize, FormatDate, FormatTime
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasDemoPageKit.h"
@@ -21,6 +22,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
+#include <ctime>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -149,6 +151,30 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     auto trfResult = result(trfCard, "LocalisationTrFResult");
     auto trfOrigin = DemoKit::AddCaption(trfCard, "LocalisationTrFOrigin", "");
 
+    // ===== NUMBERS, DATES AND TIMES =====
+    auto formatsRow = DemoKit::AddRow(page, "LocalisationFormatsRow");
+    auto numbersCard = DemoKit::AddCard(formatsRow, "LocalisationNumbersCard", Tr("Numbers"),
+        Tr("Written in the conventions of the region - the platform's regional settings for the language "
+        "shown, else the built-in CLDR conventions of the language. Pick another language above and "
+        "they follow."));
+    code(numbersCard, "LocalisationFormatNumberCode", "UltraLocalisation::FormatNumber(1234567.891, 2)");
+    auto numberResult = result(numbersCard, "LocalisationFormatNumberResult");
+    code(numbersCard, "LocalisationFormatPercentCode", "UltraLocalisation::FormatPercent(0.125, 1)");
+    auto percentResult = result(numbersCard, "LocalisationFormatPercentResult");
+    code(numbersCard, "LocalisationFormatSizeCode", "UltraLocalisation::FormatFileSize(1258291)");
+    auto sizeResult = result(numbersCard, "LocalisationFormatSizeResult");
+    auto formatsOrigin = DemoKit::AddCaption(numbersCard, "LocalisationFormatsOrigin", "");
+
+    auto datesCard = DemoKit::AddCard(formatsRow, "LocalisationDatesCard", Tr("Dates and times"),
+        Tr("The region gives a date its shape; the month and weekday names are the standard set's "
+        "\"date-month|October\" and \"date-weekday|Wednesday\" in the language shown."));
+    code(datesCard, "LocalisationFormatShortCode", "UltraLocalisation::FormatDate(now, DateStyle::Short)");
+    auto shortDateResult = result(datesCard, "LocalisationFormatShortResult");
+    code(datesCard, "LocalisationFormatFullCode", "UltraLocalisation::FormatDate(now, DateStyle::Full)");
+    auto fullDateResult = result(datesCard, "LocalisationFormatFullResult");
+    code(datesCard, "LocalisationFormatTimeCode", "UltraLocalisation::FormatTime(now, TimeStyle::Short)");
+    auto timeResult = result(datesCard, "LocalisationFormatTimeResult");
+
     // ===== THE FILES =====
     auto filesCard = DemoKit::AddCard(page, "LocalisationFilesCard", Tr("The files"),
         TrF("The three layers of {0} in the language picked above, looked up in "
@@ -227,7 +253,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
 
     // ----- the calls, answered again -----
     auto refresh = [state, trResult, trOrigin, trResult2, trOrigin2, trcResult, trcOrigin,
-                    trnResult, trnOrigin, trfResult, trfOrigin, loadedText]() {
+                    trnResult, trnOrigin, trfResult, trfOrigin, loadedText, numberResult, percentResult,
+                    sizeResult, shortDateResult, fullDateResult, timeResult, formatsOrigin]() {
         const std::string language = UltraLocalisation::CurrentLanguage();
         auto origin = [&language](std::string_view key) { return OriginText(UltraLocalisation::OriginOf(key), language); };
 
@@ -253,6 +280,19 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
             UltraLocalisation::EntryCount(LocalisationOrigin::Base),
             UltraLocalisation::EntryCount(LocalisationOrigin::Standard));
         loadedText->SetText(loaded);
+
+        const std::time_t now = std::time(nullptr);
+        numberResult->SetText(UltraLocalisation::FormatNumber(1234567.891, 2));
+        percentResult->SetText(UltraLocalisation::FormatPercent(0.125, 1));
+        sizeResult->SetText(UltraLocalisation::FormatFileSize(1258291));
+        shortDateResult->SetText(UltraLocalisation::FormatDate(now, DateStyle::Short));
+        fullDateResult->SetText(UltraLocalisation::FormatDate(now, DateStyle::Full));
+        timeResult->SetText(UltraLocalisation::FormatTime(now, TimeStyle::Short));
+        const LocaleFormats formats = UltraLocalisation::Formats();
+        const bool platform = !UltraLocalisation::RegionalFormats().language.empty() &&
+                              UltraLocalisation::RegionalFormats() == formats;
+        formatsOrigin->SetText(platform ? TrF("The conventions of {0}, from the platform's regional settings.", formats.language)
+                                        : TrF("The conventions of {0}, built in.", formats.language));
     };
 
     // ----- the pickers -----

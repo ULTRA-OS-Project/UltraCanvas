@@ -25,7 +25,12 @@ and `FormatFloatClassic` to write them (`UltraCanvasTextUtils.h`).
 **Text a person typed or reads is the opposite case** and this check must not
 push anyone to "fix" it: a German user types `1,5` into a spinner and expects
 `12,5 %` on a chart label. Those sites say so where they are, with a
-`// locale-ok: <why>` comment, and never reach the baseline.
+`// locale-ok: <why>` comment, and never reach the baseline. A number written
+for a person to read is best not formatted by hand at all: UltraLocalisation's
+`FormatNumber`, `FormatInteger`, `FormatPercent`, `FormatFileSize`,
+`FormatDate` and `FormatTime` write it in the person's conventions whatever
+LC_NUMERIC says (they are not printf, so nothing here reports them), and
+`UltraLocalisation::DecimalSeparator()` is the separator a typed number uses.
 
 `scripts/locale_numbers_baseline.txt` is the other thing: format and protocol
 sites that really are wrong and are not fixed yet, recorded so CI can block
@@ -306,8 +311,9 @@ def check_file(path: Path) -> list[Finding]:
                 path, number, "locale-parse",
                 f"{fn}() reads through LC_NUMERIC, so \"1.5\" is 1 on a "
                 f"comma-decimal desktop — use TryParseFloat / ParseFloatClassic "
-                f"(UltraCanvasTextUtils.h), or say why this one follows the "
-                f"reader's locale with `// locale-ok: …`",
+                f"(UltraCanvasTextUtils.h) - for a number a person typed, after "
+                f"turning UltraLocalisation::DecimalSeparator() into '.' - or say "
+                f"why this one follows the reader's locale with `// locale-ok: …`",
                 symbol=fn))
 
         if not writer:
