@@ -6,15 +6,20 @@
 //   UltraOffice                          the Start tab
 //   UltraOffice report.docx budget.ods   each file in a tab of its kind
 //
+// Version: 0.2.0 - the language of the settings (UltraOfficeSettings.h), unless ULTRACANVAS_LANG names one
 // Version: 0.1.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
+#include "UltraOfficeSettings.h"
 #include "UltraOfficeWindow.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasAppSettings.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasPathUtf8.h"   // GetEnvUtf8
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -58,6 +63,16 @@ int main(int argc, char** argv) {
     UltraCanvasSingleInstance instance("org.ultraos.ultraoffice", "UltraOffice");
     const UltraCanvasSingleInstance::Start start = instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(paths));
     if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+
+    // The language the Settings window chose for UltraOffice, before the
+    // catalogues are read; a language named for the run (ULTRACANVAS_LANG)
+    // still wins.
+    {
+        UltraCanvasAppSettings stored("UltraOffice");
+        stored.Load();
+        const std::string language = UltraOffice::OfficeSettings(stored).GetLanguage();
+        if (language != "system" && GetEnvUtf8("ULTRACANVAS_LANG").empty()) UltraLocalisation::SetLanguageOverride(language);
+    }
 
     UltraCanvasApplication app;
     if (!app.Initialize("UltraOffice")) {

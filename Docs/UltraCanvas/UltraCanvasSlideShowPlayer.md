@@ -149,10 +149,12 @@ std::shared_ptr<SlideShowWindows> show = StartSlideShow(deck, 0);
 show->onEnd = []() { /* the windows are closed: drop `show`, focus the editor */ };
 ```
 
-`StartSlideShow(deck, fromSlide, presenterView)` lists the monitors with
-`UltraCanvasDesktopShell::ListScreens()` (the primary first). With two or
-more it opens the show full screen on the second and, with `presenterView`,
-the presenter view full screen on the first; with one, the show alone, full
+`StartSlideShow(deck, fromSlide, presenterView, showOnSecondScreen)` lists
+the monitors with `UltraCanvasDesktopShell::ListScreens()` (the primary
+first). With two or more it opens the show full screen on the second and,
+with `presenterView`, the presenter view full screen on the first - with
+`showOnSecondScreen` false (it is true unless given), the show on the first
+and the presenter view on the second; with one monitor, the show alone, full
 screen. Each window is moved onto its monitor (`SetWindowPosition`, in the
 screen pixels `ListScreens` gives) before it goes full screen, so full screen
 fills that monitor. The windows close when the show ends - Escape, on from

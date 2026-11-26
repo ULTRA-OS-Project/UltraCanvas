@@ -1,6 +1,7 @@
 // Apps/UltraOffice/UltraOfficeHost.cpp
 // Helpers every kind of tab shares.
 //
+// Version: 0.2.0 - the view group's bar, the percent boxes
 // Version: 0.1.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
@@ -9,7 +10,12 @@
 
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTheme.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
+
+#include <algorithm>
+#include <charconv>
 
 namespace UltraOffice {
 
@@ -45,6 +51,62 @@ std::shared_ptr<UltraCanvasButton> AddToggleTool(UltraCanvasToolbar& toolbar, co
     button->SetTooltip(tip);
     button->SetAcceptsFocus(false);
     return button;
+}
+
+std::shared_ptr<UltraCanvasToolbar> MakeViewToolbar(const std::string& id) {
+    auto toolbar = std::make_shared<UltraCanvasToolbar>(id, 0, 0, 0, kToolbarHeight);
+    toolbar->SetAppearance(ToolbarAppearance::FromTheme(UltraCanvasTheme::Current(), ToolbarAppearance::Flat()));
+    toolbar->SetOverflowMode(ToolbarOverflowMode::OverflowNone);
+    toolbar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(kToolbarHeight));
+    toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    return toolbar;
+}
+
+std::string PercentText(int percent) { return TrF("{0} %", percent); }
+
+void ShowPercent(UltraCanvasDropdown& box, const std::vector<int>& choices, int percent) {
+    const auto it = std::find(choices.begin(), choices.end(), percent);
+    if (it != choices.end()) {
+        box.SetSelectedIndex(static_cast<int>(it - choices.begin()), false);
+    } else {
+        box.SetSelectedIndex(-1, false);
+        box.SetPlaceholderText(PercentText(percent));
+    }
+}
+
+std::shared_ptr<UltraCanvasDropdown> AddPercentBox(UltraCanvasToolbar& toolbar, const std::string& id,
+                                                   const std::vector<int>& choices, int minimum, int maximum,
+                                                   const std::string& tip, const std::string& askTitle,
+                                                   UltraCanvasWindowBase* window, std::function<void(int)> onPick) {
+    std::vector<std::string> items;
+    for (int percent : choices) items.push_back(PercentText(percent));
+    items.push_back(Tr("Other..."));
+    auto box = toolbar.AddDropdownButton(id, "", items, nullptr);
+    box->SetTooltip(tip);
+    box->SetAcceptsFocus(false);
+    box->size.width = CSSLayout::Dimension::Px(84);
+    UltraCanvasDropdown* raw = box.get();
+    box->onSelectionChanged = [raw, choices, minimum, maximum, askTitle, window, onPick](int index, const DropdownItem&) {
+        if (index >= 0 && index < static_cast<int>(choices.size())) {
+            if (onPick) onPick(choices[static_cast<size_t>(index)]);
+            return;
+        }
+        if (index != static_cast<int>(choices.size())) return;
+        // "Other...": a whole number typed in, kept within the range.
+        raw->SetSelectedIndex(-1, false);
+        UltraCanvasDialogManager::ShowInputDialog(
+            TrF("A percentage from {0} to {1}:", minimum, maximum), askTitle, "", InputType::Number,
+            [minimum, maximum, onPick](DialogResult result, const std::string& typed) {
+                if (result != DialogResult::OK) return;
+                int percent = 0;
+                const char* begin = typed.data();
+                while (*begin == ' ') ++begin;
+                const auto parsed = std::from_chars(begin, typed.data() + typed.size(), percent);
+                if (parsed.ec != std::errc() || percent <= 0) return;
+                if (onPick) onPick(std::clamp(percent, minimum, maximum));
+            }, window);
+    };
+    return box;
 }
 
 } // namespace UltraOffice

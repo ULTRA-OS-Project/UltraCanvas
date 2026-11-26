@@ -1655,6 +1655,8 @@ editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
 editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
 editor->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);   // or PageWidth
+editor->ZoomToWidthShare(0.6f);   // the page is 60 % of the view's width, centred
+float share = editor->GetZoomWidthShare();   // 0.6
 ```
 
 `SetZoomFit` makes the zoom follow the element's size in page view, like a
@@ -1663,6 +1665,16 @@ width) and "Whole page" (all of the page is in view). It is worked out again
 whenever the element is resized; `SetZoom`, Ctrl+wheel and `ZoomFit::Off`
 end it, and printing and PDF export stay at 100 %. Outside page view there is
 no page to fit and the zoom stays as it is.
+
+`ZoomToWidthShare(share)` is the third fit, `ZoomFit::WidthShare`: the page
+itself - not the desk beside it - is `share` of the view's width (0.1 to 1;
+0.6 until another is chosen), centred on the desk, so a page on a wide
+screen keeps a comfortable reading width instead of filling it. Like the
+other two it keeps fitting as the element is resized, and
+`SetZoomFit(ZoomFit::WidthShare)` returns to it with the share last chosen
+(`GetZoomWidthShare`). The view's width is the element's less its padding,
+the vertical scrollbar (always kept, so the fit does not jump as the
+scrollbar comes and goes) and the comment pane while it shows.
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
 rewraps to the zoomed width; in page view the page is simply larger, and when

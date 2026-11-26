@@ -2,6 +2,7 @@
 // The slide show player, the presenter view and StartSlideShow
 // (include/UltraCanvasSlideShowPlayer.h).
 //
+// Version: 1.1.0 - StartSlideShow: showOnSecondScreen
 // Version: 1.0.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
@@ -745,11 +746,12 @@ std::shared_ptr<UltraCanvasWindow> OpenFullScreenWindow(const std::string& title
 } // namespace
 
 std::shared_ptr<SlideShowWindows> StartSlideShow(std::shared_ptr<PptxPresentation> deck, int fromSlide,
-                                                 bool presenterView) {
+                                                 bool presenterView, bool showOnSecondScreen) {
     const std::vector<DesktopScreenInfo> screens = UltraCanvasDesktopShell::ListScreens();   // the primary first
     const bool twoScreens = screens.size() >= 2;
+    const size_t showScreen = showOnSecondScreen ? 1 : 0;
     auto show = std::make_shared<SlideShowWindows>();
-    show->showWindow = OpenFullScreenWindow(Tr("Slide show"), twoScreens ? &screens[1] : nullptr);
+    show->showWindow = OpenFullScreenWindow(Tr("Slide show"), twoScreens ? &screens[showScreen] : nullptr);
     if (!show->showWindow) return nullptr;
     show->player = CreateSlideShowPlayer("SlideShowPlayer", 0, 0, 1280, 720);
     show->player->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Pct(100));
@@ -757,7 +759,7 @@ std::shared_ptr<SlideShowWindows> StartSlideShow(std::shared_ptr<PptxPresentatio
     show->showWindow->AddChild(show->player);
 
     if (twoScreens && presenterView) {
-        show->presenterWindow = OpenFullScreenWindow(Tr("Presenter view"), &screens[0]);
+        show->presenterWindow = OpenFullScreenWindow(Tr("Presenter view"), &screens[1 - showScreen]);
         if (show->presenterWindow) {
             show->presenter = CreatePresenterView("PresenterView", 0, 0, 1280, 720);
             show->presenter->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Pct(100));

@@ -1354,6 +1354,32 @@ int main() {
         const float pageWidth = edit->GetZoom();
         TEST("Page width fills the width: " + std::to_string(pageWidth), pageWidth > wholePage && pageWidth < 1.0f);
         TEST("...with no sideways scrolling", edit->GetHorizontalScrollOffset() == 0.0f);
+
+        // A share of the width: the page itself (not the desk) is that share
+        // of the view's width, and stays so when the element is resized.
+        const auto pageOnScreen = [&]() { return edit->GetEffectivePageSetup().widthPt * (96.0f / 72.0f) * edit->GetZoom(); };
+        const auto viewWidth = [&]() {
+            return edit->GetWidth() - 2.0f * edit->GetStyle().padding - edit->GetStyle().scrollbarWidth;
+        };
+        edit->ZoomToWidthShare(0.6f);
+        window->UpdateAndRender();
+        TEST("Width share is a fitting zoom of its own",
+             edit->GetZoomFit() == UltraCanvasRichTextEdit::ZoomFit::WidthShare && std::abs(edit->GetZoomWidthShare() - 0.6f) < 1e-4f);
+        TEST("...the page is 60% of the view's width: " + std::to_string(pageOnScreen()) + " of " + std::to_string(viewWidth()),
+             std::abs(pageOnScreen() - 0.6f * viewWidth()) < 1.5f);
+        TEST("...narrower than page width", edit->GetZoom() < pageWidth);
+        const float atWide = edit->GetZoom();
+        edit->SetSize(600.0f, 560.0f);
+        window->UpdateAndRender();
+        TEST("...and still 60% once the element is narrower: " + std::to_string(pageOnScreen()) + " of " + std::to_string(viewWidth()),
+             std::abs(pageOnScreen() - 0.6f * viewWidth()) < 1.5f && edit->GetZoom() < atWide);
+        edit->ZoomToWidthShare(0.4f);
+        window->UpdateAndRender();
+        TEST("Another share refits at once", std::abs(pageOnScreen() - 0.4f * viewWidth()) < 1.5f);
+        edit->ZoomToWidthShare(7.0f);
+        TEST("A share is at most the whole width", std::abs(edit->GetZoomWidthShare() - 1.0f) < 1e-4f);
+        edit->SetSize(780.0f, 560.0f);
+        window->UpdateAndRender();
         edit->SetZoom(1.0f);
         TEST("A chosen zoom ends the fitting one", edit->GetZoomFit() == UltraCanvasRichTextEdit::ZoomFit::Off);
         edit->SetPageView(false);

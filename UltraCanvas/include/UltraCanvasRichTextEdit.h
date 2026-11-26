@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.24.0 - ZoomFit::WidthShare, ZoomToWidthShare: the page fills a share of the view's width,
+//                   centred, and keeps fitting as the element is resized
 // Version: 1.23.0 - page view: a white page on a grey desk in the light theme (FromTheme: the paper
 //                   the lighter of well and panel, the desk a shade darker; role "rich-text.desk")
 // Version: 1.22.0 - what a navigator needs (UltraCanvasDocumentNavigator.h): AddDocumentObserver /
@@ -608,12 +610,20 @@ public:
     void SetZoomRange(float minimum, float maximum);
     // Zoom that follows the element's size, as a word processor's "Page
     // width" and "Whole page": the page (with the desk either side) fills the
-    // width, or the whole page fits in the view. It is worked out again
+    // width, or the whole page fits in the view. WidthShare makes the page
+    // itself a share of the view's width (GetZoomWidthShare, 0.6 unless
+    // ZoomToWidthShare chose another), centred on the desk - a page of
+    // comfortable reading width on a wide screen. It is worked out again
     // whenever the element is resized; SetZoom, Ctrl+wheel and Off end it.
     // Only page view has a page to fit; outside it the zoom stays as it is.
-    enum class ZoomFit { Off, PageWidth, WholePage };
+    // The view's width is the element's less its padding, the vertical
+    // scrollbar and the comment pane while it is shown.
+    enum class ZoomFit { Off, PageWidth, WholePage, WidthShare };
     void SetZoomFit(ZoomFit fit);
     ZoomFit GetZoomFit() const { return zoomFit; }
+    // ZoomFit::WidthShare with `share` of the view's width (0.1 to 1).
+    void ZoomToWidthShare(float share);
+    float GetZoomWidthShare() const { return zoomWidthShare; }
     std::function<void(float zoom)> onZoomChanged;
 
     // ===== SCROLLING =====
@@ -1255,6 +1265,7 @@ private:
     float hScrollOffset = 0.0f;       // document pixels, page view only
     float zoom = 1.0f;
     ZoomFit zoomFit = ZoomFit::Off;
+    float zoomWidthShare = 0.6f;      // ZoomFit::WidthShare's share of the view's width
     // The zoom zoomFit asks for at the element's present size (0 = none).
     float FitZoom() const;
     float minZoom = 0.25f;

@@ -3,11 +3,14 @@
 // bar, sheet tabs, its own format menu - read and written through its
 // LoadFromFile / SaveToFile (.ods, .xlsx, .csv, .tsv; .xls read-only), the
 // file types and password prompts through UltraCanvasFileLoader. Command
-// tabs - Home, Insert, Data, Review, Page, View - and a status line with the
-// sum, average and count of the selection. Beside the grid, a pivot table's
+// tabs - Home, Insert, Data, Review, Page - with the view group at the
+// toolbar's right end (freeze panes, unfreeze, gridlines, the zoom), and a
+// status line with the sum, average and count of the selection. Beside the grid, a pivot table's
 // field list (UltraCanvasSpreadsheetPivotPanel) while one of its cells is
 // active; each change in it is applied to the pivot at once.
 //
+// Version: 0.7.0 - the view group (freeze panes, unfreeze, gridlines, zoom out, the zoom level, zoom in)
+//                  replaces the View tab; the gridlines from the settings
 // Version: 0.6.0 - pivot tables: Insert > Pivot table (the field list in a dialog, on a new sheet or a cell);
 //                  Data: Refresh, Change source, Field list, Delete pivot; the field list beside the grid
 // Version: 0.5.0 - Insert: Chart opens the chart gallery (every chart of the framework, by category, drawn
@@ -20,6 +23,7 @@
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeHost.h"
+#include "UltraOfficeSettings.h"
 #include "UltraOfficeToolbar.h"
 
 #include "UltraCanvasDropdown.h"
@@ -102,12 +106,29 @@ public:
         BuildData();
         BuildReview();
         BuildPage();
-        BuildView();
+        BuildViewGroup();
     }
 
     OfficeKind GetKind() const override { return OfficeKind::Spreadsheet; }
     std::shared_ptr<UltraCanvasUIElement> GetContent() override { return root_; }
     const std::vector<CommandTab>& GetCommandTabs() override { return tabs_; }
+    std::shared_ptr<UltraCanvasToolbar> GetViewToolbar() override { return viewBar_; }
+
+    void AttachSettings(UltraCanvasAppSettings* settings) override {
+        settings_ = settings;
+        ApplySettings();
+    }
+    // The gridlines on screen follow the settings at once (printing them is
+    // the Page tab's, and the file's).
+    void ApplySettings() override {
+        if (!settings_) return;
+        sheet_->SetShowGridlines(OfficeSettings(*settings_).GetShowGridlines());
+        SyncView();
+    }
+
+    void ZoomIn() override { SetZoom(sheet_->GetZoomLevel() + 10); }
+    void ZoomOut() override { SetZoom(sheet_->GetZoomLevel() - 10); }
+    void ZoomToActualSize() override { SetZoom(100); }
 
     void NewBlank() override { modified_ = false; panelPivot_ = -1; Sync(); }
 
@@ -222,6 +243,10 @@ private:
     UltraCanvasButton* chartType_ = nullptr;
     UltraCanvasButton* chartProperties_ = nullptr;
     UltraCanvasButton* chartDelete_ = nullptr;
+    UltraCanvas::UltraCanvasAppSettings* settings_ = nullptr;   // the window's
+    std::shared_ptr<UltraCanvasToolbar> viewBar_;
+    UltraCanvasButton* gridlinesView_ = nullptr;
+    UltraCanvasDropdown* zoomBox_ = nullptr;
 
     std::function<void()> Act(std::function<void(UltraCanvasSpreadsheet&)> action) {
         UltraCanvasSpreadsheet* sheet = sheet_.get();
@@ -382,13 +407,36 @@ private:
         tabs_.push_back({Tr("Page"), bar});
     }
 
-    void BuildView() {
-        auto bar = MakeToolbar("office-sheet-view");
-        AddTool(*bar, "sheet-freeze", Tr("Freeze panes"), "", Tr("Keep the rows above and the columns left of the selection in view"),
+    // ===== THE VIEW GROUP =====
+    // freeze panes | unfreeze | gridlines | zoom out | [zoom] | zoom in
+    void BuildViewGroup() {
+        viewBar_ = MakeViewToolbar("office-sheet-view");
+        viewBar_->AddSeparator();
+        AddTool(*viewBar_, "sheet-freeze", "", "office/freeze-panes.svg",
+                Tr("Freeze panes: keep the rows above and the columns left of the selection in view"),
                 Act([](auto& s) { s.FreezePanesAtSelection(); }));
-        AddTool(*bar, "sheet-unfreeze", Tr("Unfreeze"), "", Tr("Let every row and column scroll"),
+        AddTool(*viewBar_, "sheet-unfreeze", "", "office/unfreeze-panes.svg", Tr("Unfreeze: let every row and column scroll"),
                 Act([](auto& s) { s.UnfreezePanes(); }));
-        tabs_.push_back({Tr("View"), bar});
+        gridlinesView_ = AddToggleTool(*viewBar_, "sheet-gridlines", "", "office/gridlines.svg",
+                                       Tr("Gridlines: show the lines between the cells"),
+                                       Act([](auto& s) { s.SetShowGridlines(!s.GetShowGridlines()); })).get();
+        viewBar_->AddSeparator();
+        AddTool(*viewBar_, "sheet-zoomout", "", "menu/zoom-out.svg", Tr("Zoom out (Ctrl+-)"), [this]() { ZoomOut(); });
+        zoomBox_ = AddPercentBox(*viewBar_, "sheet-zoom", ZoomLevelChoices(), 10, 400, Tr("Zoom level (Ctrl+0: 100 %)"),
+                                 Tr("Zoom"), window_, [this](int percent) { SetZoom(percent); }).get();
+        AddTool(*viewBar_, "sheet-zoomin", "", "menu/zoom-in.svg", Tr("Zoom in (Ctrl++)"), [this]() { ZoomIn(); });
+    }
+
+    // The sheet's zoom: a view of it, which leaves the workbook unchanged.
+    void SetZoom(int percent) {
+        sheet_->SetZoomLevel(std::clamp(percent, 10, 400));
+        SyncView();
+        sheet_->SetFocus(true);
+    }
+
+    void SyncView() {
+        if (gridlinesView_) gridlinesView_->SetPressed(sheet_->GetShowGridlines());
+        if (zoomBox_) ShowPercent(*zoomBox_, ZoomLevelChoices(), sheet_->GetZoomLevel());
     }
 
     // Refresh: the active pivot, or every one.
@@ -444,6 +492,7 @@ private:
         // (A file being read has taken every sheet away for a moment.)
         if (!sheet_->GetActiveSheet()) return;
         SyncPivotPanel();
+        SyncView();
         const CellFont font = sheet_->GetActiveCellFont();
         if (bold_) bold_->SetPressed(font.bold);
         if (italic_) italic_->SetPressed(font.italic);

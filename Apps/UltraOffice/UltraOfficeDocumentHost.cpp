@@ -1,14 +1,21 @@
 // Apps/UltraOffice/UltraOfficeDocumentHost.cpp
 // A word-processing tab: the framework's WYSIWYG element
 // (UltraCanvasRichTextEdit) over a UCRichDocument, read and written through
-// UltraCanvasFileLoader (.odt, .docx, .doc read-only, .md, .tex), with five
-// command tabs - Home, Insert, Layout, Review, View - whose toolbars follow
-// the caret (GetFormatState), the framework's document dialogs
+// UltraCanvasFileLoader (.odt, .docx, .doc read-only, .md, .tex), with four
+// command tabs - Home, Insert, Layout, Review - whose toolbars follow the
+// caret (GetFormatState), the framework's document dialogs
 // (UltraCanvasRichTextEditDialogs.h), and PDF export and printing of the pages.
-// At its left, in a resizable side panel, the navigator
-// (UltraCanvasDocumentNavigator.h): View > Navigator or F5 shows and hides
-// it, and the window's settings remember the choice and its width.
+// At the toolbar's right end the view group: the navigator, pages on or off,
+// the three fits (page width, whole page, a share of the width with its list)
+// and the zoom. At its left, in a resizable side panel, the navigator
+// (UltraCanvasDocumentNavigator.h): its tool or F5 shows and hides it, and
+// the window's settings remember the choice and its width, the fit last
+// chosen and the share. A new document starts with the Settings window's
+// font, size and page.
 //
+// Version: 0.4.0 - the view group (navigator, pages, page width, whole page, width share with its list,
+//                  zoom out, the zoom level, zoom in) replaces the View tab; the fit and the share are
+//                  remembered; a new document's font, size and page from the settings; the author name
 // Version: 0.3.0 - the navigator: headings, tables, pictures, charts, comments, bookmarks, notes and changes in a
 //                  side panel (View > Navigator, F5), remembered in the settings
 // Version: 0.2.0 - the document dialogs: paragraph and styles (Home), contents, caption,
@@ -18,10 +25,12 @@
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeHost.h"
+#include "UltraOfficeSettings.h"
 #include "UltraOfficeToolbar.h"
 
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"   // PrintDocumentWithDialog
 #include "UltraCanvasAppSettings.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasDocumentNavigator.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileLoader.h"
@@ -31,13 +40,13 @@
 #include "UltraCanvasRichTextEditDialogs.h"
 #include "UltraCanvasRichTextPrint.h"
 #include "UltraCanvasSplitPane.h"
-#include "UltraCanvasPathUtf8.h"      // GetEnvUtf8
 #include "UltraCanvasWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 
 namespace UltraOffice {
 
@@ -48,8 +57,8 @@ namespace {
 // The lists a new tab starts with; a font or size a document uses that is
 // not here joins its tab's list when the caret first reaches it. The empty
 // family is "Default font": text with no font of its own.
-const std::vector<std::string> kFonts = {"", "Ubuntu", "Arial", "Georgia", "Times New Roman", "Courier New", "Verdana"};
-const std::vector<float> kSizes = {8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72};
+const std::vector<std::string> kFonts = OfficeSettings::FontChoices();
+const std::vector<float> kSizes = OfficeSettings::FontSizeChoices();
 
 // "10.5", whatever the locale: the list reads the same as the size boxes
 // of the documents it came from.
@@ -59,8 +68,8 @@ std::string SizeText(float size) {
     return std::string(text, result.ptr);
 }
 
-// What the window's settings keep of the navigator: shown or not, and how wide.
-const char* kNavigatorKey = "documentNavigator";
+// What the window's settings keep of the navigator's width (whether it is
+// shown is OfficeSettings::GetShowNavigator).
 const char* kNavigatorWidthKey = "documentNavigatorWidth";
 constexpr int kNavigatorWidth = 260;
 constexpr int kNavigatorMinWidth = 160;
@@ -87,11 +96,24 @@ public:
         UltraCanvasRichTextEdit* edit = editor_.get();
         edit->onSelectionChanged = [this]() { Sync(); if (onChanged) onChanged(); };
         edit->onDocumentChanged = [this]() { Sync(); if (onChanged) onChanged(); };
-        // Comments and tracked changes are signed with the login name (UTF-8,
-        // as the document stores it); a double-click on a comment edits it.
-        std::string user = GetEnvUtf8("USER");
-        if (user.empty()) user = GetEnvUtf8("USERNAME");
-        edit->SetCommentAuthor(user);
+        // The zoom box follows a fit worked out again, Ctrl+wheel, the keys -
+        // once the frame that changed it is drawn: a fit is worked out while
+        // the editor is laid out, and a redraw asked for then is lost.
+        edit->onZoomChanged = [this, alive = std::weak_ptr<bool>(alive_)](float) {
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (!app) { SyncView(); return; }
+            if (zoomSyncPending_) return;
+            zoomSyncPending_ = true;
+            app->PostToUIThread([this, alive]() {
+                if (alive.expired()) return;
+                zoomSyncPending_ = false;
+                SyncView();
+            });
+        };
+        // Comments and tracked changes are signed with the author name of
+        // the settings, the login name until one is given (UTF-8, as the
+        // document stores it); a double-click on a comment edits it.
+        edit->SetCommentAuthor(OfficeSettings::LoginName());
         edit->onCommentActivated = [this, edit](int index) {
             ShowCommentDialog(*edit, index, [this](bool) { Sync(); });
         };
@@ -107,7 +129,7 @@ public:
         BuildInsert();
         BuildLayout();
         BuildReview();
-        BuildView();
+        BuildViewGroup();
         NewBlank();
     }
 
@@ -116,8 +138,29 @@ public:
 
     void AttachSettings(UltraCanvasAppSettings* settings) override {
         settings_ = settings;
-        if (settings_) ShowNavigator(settings_->GetBool(kNavigatorKey, false), false);
+        if (!settings_) return;
+        const OfficeSettings prefs(*settings_);
+        ShowNavigator(prefs.GetShowNavigator(), false);
+        ApplyFit(prefs.GetDocumentFit(), prefs.GetWidthShare());
+        ApplySettings();
     }
+
+    void ApplySettings() override {
+        if (!settings_) return;
+        const OfficeSettings prefs(*settings_);
+        editor_->SetCommentAuthor(prefs.EffectiveAuthorName());
+        if (prefs.GetShowNavigator() != navigatorShown_) ShowNavigator(!navigatorShown_, false);
+        // A fit or share the Settings window changed (not one this tab
+        // already shows: a zoom of its own stays).
+        if (prefs.GetDocumentFit() != appliedFit_ || std::abs(prefs.GetWidthShare() - share_) > 0.001f)
+            ApplyFit(prefs.GetDocumentFit(), prefs.GetWidthShare());
+        SyncView();
+    }
+
+    std::shared_ptr<UltraCanvasToolbar> GetViewToolbar() override { return viewBar_; }
+    void ZoomIn() override { editor_->SetZoom(std::min(5.0f, editor_->GetZoom() * 1.1f)); SyncView(); }
+    void ZoomOut() override { editor_->SetZoom(std::max(0.25f, editor_->GetZoom() / 1.1f)); SyncView(); }
+    void ZoomToActualSize() override { editor_->SetZoom(1.0f); SyncView(); }
 
     // F5 shows and hides the navigator, as in LibreOffice Writer.
     bool HandleShortcut(const UCEvent& event) override {
@@ -127,8 +170,41 @@ public:
     }
     const std::vector<CommandTab>& GetCommandTabs() override { return tabs_; }
 
+    // A new document: the page, the font and the size of the settings,
+    // stated in the document (its page and its Normal style), so another
+    // program opens it the same.
     void NewBlank() override {
-        editor_->SetDocument(std::make_shared<UCRichDocument>());
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextEditStyle style = editor_->GetStyle();
+        style.baseFont.fontFamily = "";
+        style.baseFont.fontSize = kEditorBaseSize;
+        if (settings_) {
+            const OfficeSettings prefs(*settings_);
+            RichPageSetup& page = document->page;
+            if (prefs.GetPageSize() == PageSizeChoice::Letter) {
+                page.widthPt = 612.0f;    // 8.5 x 11 inches, one-inch margins
+                page.heightPt = 792.0f;
+                page.marginTopPt = page.marginBottomPt = page.marginLeftPt = page.marginRightPt = 72.0f;
+                page.headerTopPt = page.footerBottomPt = 36.0f;
+            } else {
+                page.widthPt = 595.28f;   // A4, 2 cm margins
+                page.heightPt = 841.89f;
+                page.marginTopPt = page.marginBottomPt = page.marginLeftPt = page.marginRightPt = 56.69f;
+                page.headerTopPt = page.footerBottomPt = 35.43f;
+            }
+            const std::string family = prefs.GetDocumentFont();
+            const float size = prefs.GetDocumentFontSize();
+            document->styles = UCRichDocument::DefaultStyles();
+            for (RichStyle& named : document->styles) {
+                if (named.id != "Normal") continue;
+                if (!family.empty()) named.character.fontFamily = family;
+                named.character.fontSizePt = size;
+            }
+            style.baseFont.fontFamily = family;
+            style.baseFont.fontSize = size;
+        }
+        SetBaseStyle(style);
+        editor_->SetDocument(document);
         editor_->SetModified(false);
         Sync();
     }
@@ -136,6 +212,12 @@ public:
     bool Load(const std::string& path, const std::string& password, std::string& error) override {
         auto document = UltraCanvasFileLoader::LoadTextDocument(path, error, password);
         if (!document) return false;
+        // A file's text with no font of its own keeps the editor's, not the
+        // one the settings give a new document.
+        RichTextEditStyle style = editor_->GetStyle();
+        style.baseFont.fontFamily = "";
+        style.baseFont.fontSize = kEditorBaseSize;
+        SetBaseStyle(style);
         editor_->SetDocument(std::move(document));
         editor_->SetModified(false);
         Sync();
@@ -179,7 +261,7 @@ public:
     void Focus() override {
         // Another tab may have shown or hidden the navigator meanwhile: this
         // one follows the choice when it comes forward.
-        if (settings_ && settings_->GetBool(kNavigatorKey, false) != navigatorShown_)
+        if (settings_ && OfficeSettings(*settings_).GetShowNavigator() != navigatorShown_)
             ShowNavigator(!navigatorShown_, false);
         editor_->SetFocus(true);
     }
@@ -208,6 +290,27 @@ private:
     UltraCanvasButton* underline_ = nullptr;
     UltraCanvasButton* strike_ = nullptr;
     UltraCanvasButton* pageView_ = nullptr;
+    // The view group, at the toolbar's right end.
+    std::shared_ptr<UltraCanvasToolbar> viewBar_;
+    UltraCanvasButton* fitWidth_ = nullptr;
+    UltraCanvasButton* fitPage_ = nullptr;
+    UltraCanvasButton* fitShare_ = nullptr;
+    UltraCanvasDropdown* shareBox_ = nullptr;
+    UltraCanvasDropdown* zoomBox_ = nullptr;
+    std::vector<int> shareChoices_;
+    std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);   // a task posted to the UI thread checks it
+    bool zoomSyncPending_ = false;
+    float share_ = 0.6f;   // the width share's, until the settings give theirs
+    DocumentFit appliedFit_ = DocumentFit::PageWidth;   // the settings' fit this tab took last
+    static constexpr double kEditorBaseSize = 14.0;   // the editor's own base size
+
+    // The editor's base font, its colours still the theme's.
+    void SetBaseStyle(const RichTextEditStyle& style) {
+        const RichTextEditStyle& now = editor_->GetStyle();
+        if (now.baseFont.fontFamily == style.baseFont.fontFamily && now.baseFont.fontSize == style.baseFont.fontSize) return;
+        editor_->SetStyle(style);
+        editor_->SetFollowTheme(true);
+    }
     UltraCanvasButton* trackChanges_ = nullptr;
     UltraCanvasButton* showComments_ = nullptr;
     UltraCanvasDropdown* style_ = nullptr;
@@ -372,7 +475,7 @@ private:
             split_->RequestRedraw();
         }
         if (remember && settings_) {
-            settings_->Set(kNavigatorKey, show);
+            OfficeSettings(*settings_).SetShowNavigator(show);
             settings_->Save();
         }
         if (navigatorButton_) navigatorButton_->SetPressed(navigatorShown_);
@@ -391,24 +494,91 @@ private:
         settings_->Save();
     }
 
-    void BuildView() {
-        auto bar = MakeToolbar("office-document-view");
-        navigatorButton_ = AddToggleTool(*bar, "doc-navigator", Tr("Navigator"), "menu/sidebar.svg",
-                                         Tr("Show the headings, tables, pictures and comments beside the document (F5)"),
+    // ===== THE VIEW GROUP =====
+    // navigator | pages | page width | whole page | text width [share] |
+    // zoom out | [zoom] | zoom in
+    void BuildViewGroup() {
+        viewBar_ = MakeViewToolbar("office-document-view");
+        viewBar_->AddSeparator();
+        navigatorButton_ = AddToggleTool(*viewBar_, "doc-navigator", "", "menu/sidebar.svg",
+                                         Tr("Navigator: show the headings, tables, pictures and comments beside the document (F5)"),
                                          [this]() { ToggleNavigator(); }).get();
-        bar->AddSeparator();
-        pageView_ = AddToggleTool(*bar, "doc-pageview", Tr("Pages"), "", Tr("Show the document as pages"),
+        pageView_ = AddToggleTool(*viewBar_, "doc-pageview", "", "office/view-pages.svg",
+                                  Tr("Pages: show the document as pages"),
                                   Act([](auto& e) { e.SetPageView(!e.IsPageView()); })).get();
-        bar->AddSeparator();
-        AddTool(*bar, "doc-fitwidth", Tr("Page width"), "zoom-fit.svg", Tr("Zoom to the width of the page"),
-                Act([](auto& e) { e.SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::PageWidth); }));
-        AddTool(*bar, "doc-fitpage", Tr("Whole page"), "", Tr("Zoom to show the whole page"),
-                Act([](auto& e) { e.SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage); }));
-        AddTool(*bar, "doc-zoomin", "", "zoom-in.svg", Tr("Zoom in"),
-                Act([](auto& e) { e.SetZoom(std::min(5.0f, e.GetZoom() * 1.1f)); }));
-        AddTool(*bar, "doc-zoomout", "", "zoom-out.svg", Tr("Zoom out"),
-                Act([](auto& e) { e.SetZoom(std::max(0.25f, e.GetZoom() / 1.1f)); }));
-        tabs_.push_back({Tr("View"), bar});
+        viewBar_->AddSeparator();
+        fitWidth_ = AddToggleTool(*viewBar_, "doc-fitwidth", "", "office/fit-page-width.svg",
+                                  Tr("Page width: zoom to the width of the page"),
+                                  [this]() { ChooseFit(DocumentFit::PageWidth); }).get();
+        fitPage_ = AddToggleTool(*viewBar_, "doc-fitpage", "", "office/fit-whole-page.svg",
+                                 Tr("Whole page: zoom to show the whole page"),
+                                 [this]() { ChooseFit(DocumentFit::WholePage); }).get();
+        fitShare_ = AddToggleTool(*viewBar_, "doc-fitshare", "", "office/fit-width-share.svg",
+                                  Tr("Text width: the page fills the share of the width chosen beside it"),
+                                  [this]() { ChooseFit(DocumentFit::WidthShare); }).get();
+        for (float share : OfficeSettings::WidthShareChoices()) shareChoices_.push_back(static_cast<int>(std::lround(share * 100.0f)));
+        shareBox_ = AddPercentBox(*viewBar_, "doc-share", shareChoices_, 10, 100,
+                                  Tr("Share of the width for Text width"), Tr("Text width"), window_,
+                                  [this](int percent) { ChooseShare(static_cast<float>(percent) / 100.0f); }).get();
+        viewBar_->AddSeparator();
+        AddTool(*viewBar_, "doc-zoomout", "", "menu/zoom-out.svg", Tr("Zoom out (Ctrl+-)"), [this]() { ZoomOut(); Refocus(); });
+        zoomBox_ = AddPercentBox(*viewBar_, "doc-zoom", ZoomLevelChoices(), 25, 500,
+                                 Tr("Zoom level (Ctrl+0: 100 %)"), Tr("Zoom"), window_, [this](int percent) {
+                                     editor_->SetZoom(static_cast<float>(percent) / 100.0f);
+                                     SyncView();
+                                     Refocus();
+                                 }).get();
+        AddTool(*viewBar_, "doc-zoomin", "", "menu/zoom-in.svg", Tr("Zoom in (Ctrl++)"), [this]() { ZoomIn(); Refocus(); });
+        SyncView();
+    }
+
+    void Refocus() { editor_->SetFocus(true); }
+
+    // A fit the editor keeps as the window is resized; 100 % is none.
+    void ApplyFit(DocumentFit fit, float share) {
+        share_ = share;
+        appliedFit_ = fit;
+        switch (fit) {
+            case DocumentFit::Actual: editor_->SetZoom(1.0f); break;
+            case DocumentFit::WholePage: editor_->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage); break;
+            case DocumentFit::WidthShare: editor_->ZoomToWidthShare(share); break;
+            default: editor_->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::PageWidth); break;
+        }
+        SyncView();
+    }
+
+    // A fit chosen in the view group: this tab's, and every tab's opened
+    // after it, the next run's too.
+    void ChooseFit(DocumentFit fit) {
+        ApplyFit(fit, share_);
+        if (settings_) {
+            OfficeSettings(*settings_).SetDocumentFit(fit);
+            settings_->Save();
+        }
+        Refocus();
+    }
+
+    void ChooseShare(float share) {
+        if (settings_) {
+            OfficeSettings prefs(*settings_);
+            prefs.SetWidthShare(share);
+            share = prefs.GetWidthShare();
+        }
+        share_ = share;
+        ChooseFit(DocumentFit::WidthShare);
+    }
+
+    // The view group as the editor is.
+    void SyncView() {
+        using Fit = UltraCanvasRichTextEdit::ZoomFit;
+        const Fit fit = editor_->GetZoomFit();
+        if (pageView_) pageView_->SetPressed(editor_->IsPageView());
+        if (navigatorButton_) navigatorButton_->SetPressed(navigatorShown_);
+        if (fitWidth_) fitWidth_->SetPressed(fit == Fit::PageWidth);
+        if (fitPage_) fitPage_->SetPressed(fit == Fit::WholePage);
+        if (fitShare_) fitShare_->SetPressed(fit == Fit::WidthShare);
+        if (shareBox_) ShowPercent(*shareBox_, shareChoices_, static_cast<int>(std::lround(share_ * 100.0f)));
+        if (zoomBox_) ShowPercent(*zoomBox_, ZoomLevelChoices(), static_cast<int>(std::lround(editor_->GetZoom() * 100.0f)));
     }
 
     void InsertPicture() {
@@ -449,8 +619,7 @@ private:
         if (italic_) italic_->SetPressed(RichCharFormatState::IsOn(state.italic));
         if (underline_) underline_->SetPressed(RichCharFormatState::IsOn(state.underline));
         if (strike_) strike_->SetPressed(RichCharFormatState::IsOn(state.strikethrough));
-        if (pageView_) pageView_->SetPressed(editor_->IsPageView());
-        if (navigatorButton_) navigatorButton_->SetPressed(navigatorShown_);
+        SyncView();
         if (trackChanges_) trackChanges_->SetPressed(editor_->IsTrackingChanges());
         if (showComments_) showComments_->SetPressed(editor_->IsShowingComments());
         if (style_) {
