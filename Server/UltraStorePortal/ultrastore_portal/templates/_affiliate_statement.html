@@ -1,0 +1,28 @@
+{% comment %}An affiliate's payout as a statement: `earned`, `back`, `releases` and the sums (affiliates/services.py statement()).{% endcomment %}
+<div class="table-responsive">
+<table class="table align-middle">
+  <thead><tr><th>Date</th><th>Product</th><th>For</th><th class="text-end">Commission</th><th class="text-end">Held back</th><th class="text-end">In this payout</th></tr></thead>
+  <tbody>
+  {% for line in earned %}
+  <tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td>
+    <td>{% if line.basis == "super" %}the share of {{ line.share_of.affiliate.handle|default:"an affiliate" }}{% elif line.basis == "bound_customer" %}customer{% if line.binding_id %} no. {{ line.binding_id }}{% endif %}{% else %}link{% endif %}</td>
+    <td class="text-end">{{ line.amount }}</td><td class="text-end">{% if line.held %}-{{ line.held }} <span class="small text-secondary">until {{ line.holdback.release_on|date:"j M Y" }}</span>{% endif %}</td><td class="text-end">{{ line.payable }}</td></tr>
+  {% endfor %}
+  {% for line in back %}
+  <tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td><td>given back{% if line.from_holdback %} <span class="small text-secondary">({{ line.from_holdback }} of it out of what was held back)</span>{% endif %}</td>
+    <td class="text-end">{{ line.amount }}</td><td class="text-end">{% if line.from_holdback %}{{ line.from_holdback }}{% endif %}</td><td class="text-end">{{ line.payable }}</td></tr>
+  {% endfor %}
+  {% for held in releases %}
+  <tr><td>{{ held.released_on|date:"j M Y" }}</td><td>{{ held.commission.order.app_name }}</td><td>held back from the sale of {{ held.commission.payment.at|date:"j M Y" }}, released</td>
+    <td></td><td class="text-end">{{ held.left }}</td><td class="text-end">{{ held.left }}</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr><th colspan="5" class="text-end">Commissions</th><td class="text-end">{{ commissions }}</td></tr>
+    <tr><th colspan="5" class="text-end">Held back of them</th><td class="text-end">-{{ held }}</td></tr>
+    <tr><th colspan="5" class="text-end">Given back</th><td class="text-end">{{ taken_back }}</td></tr>
+    <tr><th colspan="5" class="text-end">Released from what was held back</th><td class="text-end">{{ released }}</td></tr>
+    <tr><th colspan="5" class="text-end">The payout</th><td class="text-end"><b>{{ payout.amount }} {{ payout.currency }}</b></td></tr>
+  </tfoot>
+</table>
+</div>

@@ -13,7 +13,7 @@
     {% for row in products %}
     <tr><td><a href="{{ row.app.get_absolute_url }}">{{ row.app.name }}</a><div class="small text-secondary">{{ row.app.summary }}</div></td><td>{{ row.app.publisher.name }}</td><td>{{ row.app.price_label }}</td>
       <td class="text-end"><b>{{ row.total }} %</b>{% if row.boost %}<div class="small text-secondary">{{ row.base.normalize }} + {{ row.boost.normalize }} from the publisher</div>{% endif %}</td>
-      <td class="font-monospace small">{% if profile.active %}{{ base_url }}/r/{{ profile.handle }}/{{ row.app.app_id }}/{% else %}<span class="text-secondary">when your profile is active</span>{% endif %}</td></tr>
+      <td class="font-monospace small">{% if profile.active %}{{ base_url }}/r/{{ profile.handle }}/{{ row.app.app_id }}/ <a class="ms-1" href="{% url 'affiliate:links' %}?to={{ row.app.app_id }}">Campaign and QR code</a>{% else %}<span class="text-secondary">when your profile is active</span>{% endif %}</td></tr>
     {% empty %}<tr><td colspan="5" class="text-secondary">Nothing found.</td></tr>
     {% endfor %}
     </tbody>

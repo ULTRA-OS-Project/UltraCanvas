@@ -36,7 +36,10 @@
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Clicks, last {{ link_days }} days</span><b>{{ clicks }}</b></div></div></div>
   <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Your customers</span><b>{{ customers }}</b><span class="small text-secondary">{{ base_percent }} % of everything they buy</span></div></div></div>
   {% for row in sums %}
-  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">To be paid, {{ row.currency }}</span><b>{{ row.balance }}</b><span class="small text-secondary">{{ row.pending }} pending, {{ row.paid }} paid</span></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Balance, {{ row.currency }}</span><b>{{ row.balance }}</b>
+    <span class="small text-secondary">{% if row.payable %}In the next payout.{% elif row.balance > 0 %}Paid from {{ minimum }}; carried until then.{% endif %} {{ row.pending }} pending{% if row.to_pay %}, {{ row.to_pay }} on its way{% endif %}, {{ row.paid }} paid</span></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Held back, {{ row.currency }}</span><b>{{ row.held }}</b>
+    <span class="small text-secondary">{% if row.next_release %}{{ row.next_release_amount }} released on {{ row.next_release|date:"j F Y" }}{% else %}Nothing is held.{% endif %}</span></div></div></div>
   {% endfor %}
 </div></div>
 <div class="card"><div class="card-body">
@@ -55,29 +58,31 @@
     {% for row in products %}
     <tr><td><a href="{{ row.app.get_absolute_url }}">{{ row.app.name }}</a></td><td>{{ row.app.publisher.name }}</td>
       <td class="text-end"><b>{{ row.total }} %</b>{% if row.boost %} <span class="badge">boosted</span>{% endif %}</td>
-      <td class="font-monospace small">{{ base_url }}/r/{{ profile.handle }}/{{ row.app.app_id }}/</td></tr>
+      <td class="font-monospace small">{{ base_url }}/r/{{ profile.handle }}/{{ row.app.app_id }}/ <a class="ms-1" href="{% url 'affiliate:links' %}?to={{ row.app.app_id }}">QR</a></td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
   <a class="btn btn-outline-secondary" href="{% url 'affiliate:products' %}">Every product, and what it pays</a>
   {% endif %}
+  {% if profile.active %}<a class="btn btn-primary" href="{% url 'affiliate:links' %}">Make a link and its QR code</a>{% endif %}
   <form method="post" action="{% url 'affiliate:pause' %}" class="mt-3">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">{% if profile.state == "paused" %}Take it up again{% else %}Pause my profile{% endif %}</button></form>
 </div></div>
 {% endif %}
 <div class="card"><div class="card-body">
   <h2>What you earned</h2>
-  <p class="text-secondary">A commission is pending for {{ approval_days }} days, in which a sale is most often given back, and then yours. A refund takes its commission back in the same proportion. You see what was bought and when - never who bought.</p>
+  <p class="text-secondary">A commission is pending for {{ approval_days }} days, in which a sale is most often given back, and then yours. Of each, {{ holdback_percent }} % are held back for {{ holdback_months }} months from the sale, against a refund or a chargeback that comes late, and released to your balance on that day. A refund takes its commission back in the same proportion - out of what is held back first. Your balance is paid monthly, per currency, from {{ minimum }}; a smaller one is carried to the next month{% if leaving %} - and because your account is being closed, whatever is owed is paid{% endif %}. You see what was bought and when - never who bought.</p>
   {% if lines %}
   <div class="table-responsive">
   <table class="table align-middle">
-    <thead><tr><th>Date</th><th>Product</th><th>For</th><th>Campaign</th><th class="text-end">Reckoned on</th><th class="text-end">Rate</th><th class="text-end">Commission</th><th>State</th></tr></thead>
+    <thead><tr><th>Date</th><th>Product</th><th>For</th><th>Campaign</th><th class="text-end">Reckoned on</th><th class="text-end">Rate</th><th class="text-end">Commission</th><th class="text-end">Held back</th><th>State</th></tr></thead>
     <tbody>
     {% for line in lines %}
     <tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td>
       <td>{% if line.basis == "super" %}the share of {{ line.share_of.affiliate.handle|default:"an affiliate you brought" }}{% elif line.basis == "bound_customer" %}your customer{% if line.binding_id %} no. {{ line.binding_id }}{% endif %}{% else %}your link{% endif %}</td><td>{{ line.label }}</td>
       <td class="text-end">{{ line.net }}</td><td class="text-end">{{ line.percent_text }} %</td><td class="text-end">{{ line.amount }} {{ line.currency }}</td>
-      <td>{% if line.payout_id %}Paid{% else %}{{ line.get_state_display }}{% if line.state == "pending" %} until {{ line.approve_after|date:"j M" }}{% endif %}{% endif %}</td></tr>
+      <td class="text-end">{% if line.state == "approved" and line.held %}{{ line.held }}{% if line.holdback.released_on %} <span class="small text-secondary">released</span>{% else %} <span class="small text-secondary">until {{ line.holdback.release_on|date:"j M Y" }}</span>{% endif %}{% elif line.from_holdback %}-{{ line.from_holdback }}{% endif %}</td>
+      <td>{% if line.payout_id %}{% if line.payout.state == "paid" %}Paid{% else %}In payout {{ line.payout_id }}{% endif %}{% else %}{{ line.get_state_display }}{% if line.state == "pending" %} until {{ line.approve_after|date:"j M" }}{% endif %}{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -99,9 +104,11 @@
 {% endif %}
 {% if payouts %}
 <div class="card"><div class="card-body"><h2>Payouts</h2>
-  <table class="table align-middle"><thead><tr><th>Paid</th><th class="text-end">Amount</th><th>Reference</th></tr></thead><tbody>
-    {% for payout in payouts %}<tr><td>{{ payout.paid_at|date:"j M Y" }}</td><td class="text-end">{{ payout.amount }} {{ payout.currency }}</td><td class="font-monospace">{{ payout.reference }}</td></tr>{% endfor %}
-  </tbody></table>
+  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>No.</th><th>Up to</th><th class="text-end">Amount</th><th>State</th><th>Reference</th><th></th></tr></thead><tbody>
+    {% for payout in payouts %}<tr><td>{{ payout.pk }}</td><td>{{ payout.until|date:"j M Y" }}</td><td class="text-end">{{ payout.amount }} {{ payout.currency }}</td>
+      <td>{{ payout.get_state_display }}{% if payout.paid_at %} on {{ payout.paid_at|date:"j M Y" }}{% endif %}</td><td class="font-monospace">{{ payout.reference }}</td>
+      <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'affiliate:payout' payout.pk %}">Statement</a></td></tr>{% endfor %}
+  </tbody></table></div>
 </div></div>
 {% endif %}
 <div class="card form-wide"><div class="card-body">

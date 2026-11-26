@@ -26,21 +26,30 @@
 {% if sums %}
 <div class="card"><div class="card-body">
   <h2>Money</h2>
-  <table class="table align-middle"><thead><tr><th>Currency</th><th class="text-end">Pending</th><th class="text-end">To pay</th><th class="text-end">Paid</th><th></th></tr></thead><tbody>
-  {% for row in sums %}<tr><td>{{ row.currency }}</td><td class="text-end">{{ row.pending }}</td><td class="text-end"><b>{{ row.balance }}</b></td><td class="text-end">{{ row.paid }}</td>
-    <td>{% if row.balance > 0 %}<form method="post" class="d-flex flex-wrap gap-2" onsubmit="return confirm('The transfer is made?')">{% csrf_token %}<input type="hidden" name="action" value="pay"><input type="hidden" name="currency" value="{{ row.currency }}">
-      <input class="form-control form-control-sm" style="max-width: 16rem" name="reference" placeholder="The transfer's reference" aria-label="The transfer's reference" required><button class="btn btn-primary btn-sm">Mark as paid</button></form>{% endif %}</td></tr>{% endfor %}
-  </tbody></table>
-  <p class="small text-secondary mb-0">The portal moves no money: pay at the bank or the provider, then write the reference here.</p>
+  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Currency</th><th class="text-end">Pending</th><th class="text-end">Held back</th><th class="text-end">Balance</th><th class="text-end">In a payout to pay</th><th class="text-end">Paid</th></tr></thead><tbody>
+  {% for row in sums %}<tr><td>{{ row.currency }}</td><td class="text-end">{{ row.pending }}</td>
+    <td class="text-end">{{ row.held }}{% if row.next_release %}<br><span class="small text-secondary">{{ row.next_release_amount }} on {{ row.next_release|date:"j M Y" }}</span>{% endif %}</td>
+    <td class="text-end"><b>{{ row.balance }}</b>{% if row.balance > 0 and not row.payable %}<br><span class="small text-secondary">under {{ minimum }}: carried</span>{% endif %}</td>
+    <td class="text-end">{{ row.to_pay }}</td><td class="text-end">{{ row.paid }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if payouts %}<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Payout</th><th>Up to</th><th class="text-end">Amount</th><th>State</th><th>Reference</th><th></th></tr></thead><tbody>
+  {% for payout in payouts %}<tr><td>{{ payout.pk }}</td><td>{{ payout.until|date:"j M Y" }}</td><td class="text-end">{{ payout.amount }} {{ payout.currency }}</td><td>{{ payout.get_state_display }}</td><td class="font-monospace">{{ payout.reference }}</td>
+    <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'operator:affiliate_payout' payout.pk %}">Open</a></td></tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+  {% if profile.state != "blocked" and profile.state != "banned" %}
+  <form method="post" class="mb-2">{% csrf_token %}<input type="hidden" name="action" value="payout"><button class="btn btn-outline-secondary btn-sm">Make this affiliate's payout for what is due today</button></form>
+  {% endif %}
+  <p class="small text-secondary mb-0">Payouts are made monthly for every affiliate (<a href="{% url 'operator:affiliate_payouts' %}">Payouts</a>); a balance under {{ minimum }} is carried{% if leaving %} - not this one: the account is being left, and whatever is owed is paid{% endif %}. The portal moves no money: pay at the bank or the provider, then mark the payout paid with the reference.</p>
 </div></div>
 {% endif %}
 <div class="card"><div class="card-body">
   <h2>Commissions</h2>
   {% if lines %}<div class="table-responsive"><table class="table align-middle">
-    <thead><tr><th>Date</th><th>Product</th><th>For</th><th class="text-end">Reckoned on</th><th class="text-end">From the fee</th><th class="text-end">From the publisher</th><th class="text-end">Commission</th><th>State</th><th>Order</th></tr></thead><tbody>
+    <thead><tr><th>Date</th><th>Product</th><th>For</th><th class="text-end">Reckoned on</th><th class="text-end">From the fee</th><th class="text-end">From the publisher</th><th class="text-end">Commission</th><th class="text-end">Held back</th><th>State</th><th>Order</th></tr></thead><tbody>
     {% for line in lines %}<tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td><td>{% if line.basis == "super" %}share of {{ line.share_of.affiliate.handle }}{% elif line.basis == "bound_customer" %}customer{% else %}link{% endif %}</td>
       <td class="text-end">{{ line.net }}</td><td class="text-end">{{ line.operator_part }}</td><td class="text-end">{{ line.merchant_part }}</td><td class="text-end">{{ line.amount }} {{ line.currency }}</td>
-      <td>{% if line.payout_id %}Paid{% else %}{{ line.get_state_display }}{% endif %}</td><td><a href="{% url 'operator:order' line.order_id %}">open</a></td></tr>{% endfor %}
+      <td class="text-end">{% if line.state == "approved" and line.held %}{{ line.held }}{% if line.holdback.released_on %} <span class="small text-secondary">released</span>{% else %} <span class="small text-secondary">until {{ line.holdback.release_on|date:"j M Y" }}</span>{% endif %}{% elif line.from_holdback %}-{{ line.from_holdback }}{% endif %}</td>
+      <td>{% if line.payout_id %}{% if line.payout.state == "paid" %}Paid{% else %}In payout {{ line.payout_id }}{% endif %}{% else %}{{ line.get_state_display }}{% endif %}</td><td><a href="{% url 'operator:order' line.order_id %}">open</a></td></tr>{% endfor %}
   </tbody></table></div>{% else %}<p class="text-secondary mb-0">None.</p>{% endif %}
 </div></div>
 <div class="card"><div class="card-body">

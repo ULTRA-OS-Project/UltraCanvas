@@ -1,8 +1,13 @@
-"""UltraAffiliates, phases 1 and 2: the affiliate's own pages, the links, the
-publisher's boosts and the operator's review, block, ban and payout
+"""UltraAffiliates: the affiliate's own pages, the links, the publisher's
+boosts and the operator's review, block, ban and payouts
 (affiliates/services.py has the rules).
 
 Every page here is a 404 while ULTRASTORE_PORTAL_AFFILIATES is not 1.
+
+Version: 0.12.0 - the holdback in the statistics; the payouts, made for a
+                  day and marked paid, and an affiliate's statement; a
+                  link's QR code as a picture, and the page that makes a
+                  link with its campaign and its code
 
 Version: 0.11.0 - the last link a browser followed (for the binding), and
                   an affiliate's customers by number
@@ -12,20 +17,24 @@ Version: 0.10.0
 from __future__ import annotations
 
 import datetime as dt
+import re
 from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
+from urllib.parse import quote, urlencode
 
 from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
+from .. import qr
 from ..affiliates import services, texts
 from ..affiliates.models import AffiliatePayout, AffiliateProfile, Binding, Boost, Click, Commission, Sanction
 from ..billing import tax
@@ -140,8 +149,80 @@ class ProfileEditForm(forms.ModelForm):
         widgets = {"channels": forms.Textarea(attrs={"rows": 3}), "payout_details": forms.Textarea(attrs={"rows": 3})}
 
 
-def _link(request, profile: AffiliateProfile, app: App | None = None) -> str:
-    return f"{settings.BASE_URL}/r/{profile.handle}/" + (f"{app.app_id}/" if app else "")
+LABEL = re.compile(r"[^A-Za-z0-9._-]+")   # a campaign's name in a link: what needs no escaping
+
+
+def clean_label(text: str) -> str:
+    """A campaign's name as a link carries it: letters, digits, dots,
+    dashes and underscores, 32 at most; anything else becomes a dash."""
+    return LABEL.sub("-", (text or "").strip()).strip("-")[:32]
+
+
+def _link(request, profile: AffiliateProfile, app: App | None = None, label: str = "") -> str:
+    label = clean_label(label)
+    return f"{settings.BASE_URL}/r/{profile.handle}/" + (f"{app.app_id}/" if app else "") + (f"?s={quote(label)}" if label else "")
+
+
+def _join_link(profile: AffiliateProfile) -> str:
+    return f"{settings.BASE_URL}/affiliate/join/{profile.handle}/"
+
+
+# A link's QR code: the same picture for a web page, a poster and the
+# native store, from one address beside the link's own. Asking for the
+# picture is not following the link: nothing is counted.
+
+QR_SIZES = (120, 2000)   # a PNG's width in pixels, about: a module is a whole number of pixels, two at least
+
+
+def _qr_response(request, link: str, name: str, kind: str):
+    if too_many(request, "affiliate-qr", 600, 3600):
+        return HttpResponse("Too many pictures asked for; try again later.", status=429, content_type="text/plain")
+    level = request.GET.get("level", "Q").upper()
+    try:
+        modules = qr.encode(link, level if level in qr.LEVELS else "Q")
+    except qr.TooLong as error:   # a link is far too short for this
+        raise Http404 from error
+    if kind == "svg":
+        body, content_type = qr.svg(modules, title=link).encode("utf-8"), "image/svg+xml"
+    else:
+        try:
+            wanted = int(request.GET.get("size", "600"))
+        except ValueError:
+            wanted = 600
+        side = len(modules) + qr.QUIET_ZONE * 2
+        body, content_type = qr.png(modules, scale=max(2, round(min(max(wanted, QR_SIZES[0]), QR_SIZES[1]) / side))), "image/png"
+    response = HttpResponse(body, content_type=content_type)
+    response["Cache-Control"] = "public, max-age=86400"
+    response["X-Content-Type-Options"] = "nosniff"
+    if request.GET.get("download"):
+        response["Content-Disposition"] = f'attachment; filename="{name}.{kind}"'
+    return response
+
+
+@require_GET
+@affiliates_on
+def link_qr(request, handle: str, kind: str, app_id: str = ""):
+    """/r/<handle>/qr.svg, /r/<handle>/<app>/qr.png: the QR code of an
+    active affiliate's link, with its campaign (`?s=`). `level` is the
+    error correction (L, M, Q, H; Q unless said), `size` a PNG's width in
+    pixels, `download` makes it a file to save."""
+    profile = AffiliateProfile.objects.filter(handle__iexact=handle, state=AffiliateProfile.ACTIVE).first()
+    app = App.objects.public().filter(app_id=app_id).first() if app_id else None
+    if profile is None or (app_id and app is None):
+        raise Http404
+    label = clean_label(request.GET.get("s", ""))
+    name = "-".join(part for part in (profile.handle, app.app_id if app else "shop", label) if part)
+    return _qr_response(request, _link(request, profile, app, label), name, kind)
+
+
+@require_GET
+@affiliates_on
+def join_qr(request, handle: str, kind: str):
+    """/affiliate/join/<handle>/qr.svg: the QR code of a recruiting link."""
+    profile = AffiliateProfile.objects.filter(handle__iexact=handle, state=AffiliateProfile.ACTIVE).first()
+    if profile is None:
+        raise Http404
+    return _qr_response(request, _join_link(profile), f"{profile.handle}-join", kind)
 
 
 def _products(q: str = "", limit: int = 200) -> list[dict]:
@@ -183,10 +264,13 @@ def home(request):
         recruits.append({"handle": recruit.handle, "state": recruit.get_state_display(), "earned": _cents(earned, "sum")})
     since = timezone.now() - dt.timedelta(days=settings.AFFILIATE_LINK_DAYS)
     return render(request, "affiliate/home.html", {
-        "profile": profile, "sums": services.sums(profile), "lines": profile.commissions.select_related("order__app", "share_of__affiliate")[:100],
-        "payouts": profile.payouts.all()[:30], "clicks": Click.objects.filter(affiliate=profile, at__gte=since).count(),
+        "profile": profile, "sums": services.sums(profile),
+        "lines": profile.commissions.select_related("order__app", "share_of__affiliate", "holdback", "payout")[:100],
+        "payouts": profile.payouts.all()[:30], "minimum": settings.AFFILIATE_PAYOUT_MINIMUM, "leaving": services.leaving(profile),
+        "holdback_percent": format(settings.AFFILIATE_HOLDBACK_PERCENT.normalize(), "f"), "holdback_months": settings.AFFILIATE_HOLDBACK_MONTHS,
+        "clicks": Click.objects.filter(affiliate=profile, at__gte=since).count(),
         "by_app": (Click.objects.filter(affiliate=profile, at__gte=since).values("app__name", "app__app_id").annotate(clicks=Count("id")).order_by("-clicks")[:20]),
-        "recruits": recruits, "general_link": _link(request, profile), "join_link": f"{settings.BASE_URL}/affiliate/join/{profile.handle}/",
+        "recruits": recruits, "general_link": _link(request, profile), "join_link": _join_link(profile),
         "products": _products(limit=12) if profile.active else [], "link_days": settings.AFFILIATE_LINK_DAYS,
         "approval_days": settings.AFFILIATE_APPROVAL_DAYS, "super_percent": format(settings.AFFILIATE_SUPER_PERCENT.normalize(), "f"),
         "sanctions": profile.sanctions.all(), "can_text": texts.can_send(), "edit_form": ProfileEditForm(instance=profile),
@@ -266,6 +350,45 @@ def statement(request, pk: int):
         services.add_statement(row, text[:4000])
         messages.success(request, "Your statement is on the record; the store answers by mail.")
     return redirect("affiliate:home")
+
+
+@login_required
+@affiliates_on
+def payout(request, pk: int):
+    """A payout as the affiliate's statement: what it holds, and whether it
+    was paid."""
+    subject = get_object_or_404(AffiliatePayout, pk=pk, affiliate=_own_profile(request))
+    return render(request, "affiliate/payout.html", {"payout": subject, **services.statement(subject)})
+
+
+@login_required
+@affiliates_on
+def links(request):
+    """The link maker: where it leads - the shop, a product, or the
+    application to become an affiliate - and the campaign it belongs to
+    give the link and its QR code, to copy and to save."""
+    profile = _own_profile(request)
+    if not profile.active:
+        return redirect("affiliate:home")
+    target, label = request.GET.get("to", ""), clean_label(request.GET.get("s", ""))
+    apps = App.objects.listed().exclude(pricing_model="free").select_related("publisher").order_by("name")
+    app = apps.filter(app_id=target).first() if target not in ("", "join") else None
+    if target == "join":
+        link, qr_path, earns = _join_link(profile), f"/affiliate/join/{profile.handle}/qr", None
+    else:
+        link = _link(request, profile, app, label)
+        qr_path, earns = f"/r/{profile.handle}/" + (f"{app.app_id}/" if app else "") + "qr", None
+        if app is not None:
+            base, boost = services.percent_for(app)
+            earns = {"total": format((base + boost).normalize(), "f"), "base": format(base.normalize(), "f"),
+                     "boost": format(boost.normalize(), "f") if boost else ""}
+    query = urlencode({"s": label}) if label and target != "join" else ""
+    return render(request, "affiliate/links.html", {
+        "profile": profile, "apps": apps[:500], "app": app, "target": "join" if target == "join" else (app.app_id if app else ""), "label": label,
+        "link": link, "earns": earns, "qr_svg": f"{qr_path}.svg" + (f"?{query}" if query else ""),
+        "qr_png": f"{qr_path}.png?" + (f"{query}&" if query else ""), "link_days": settings.AFFILIATE_LINK_DAYS,
+        "base_percent": format(settings.AFFILIATE_BASE_PERCENT.normalize(), "f"),
+        "super_percent": format(settings.AFFILIATE_SUPER_PERCENT.normalize(), "f")})
 
 
 @login_required
@@ -365,15 +488,50 @@ def operator_affiliates(request):
     found = AffiliateProfile.objects.select_related("user", "superaffiliate")
     if state in dict(AffiliateProfile.STATES):
         found = found.filter(state=state)
-    owed = {}
-    for line in _cents(Commission.objects.filter(payout__isnull=True).exclude(state=Commission.PENDING).values("affiliate_id", "currency")
-                       .annotate(sum=Sum("amount")), "sum"):
-        if line["sum"] > 0:
-            owed.setdefault(line["affiliate_id"], []).append(line)
+    owed = services.owed()
     rows = [{"profile": profile, "owed": owed.get(profile.pk, [])} for profile in found[:300]]
     return render(request, "operator/affiliates.html", {
         "rows": rows, "state": state, "states": AffiliateProfile.STATES, "cost": services.cost(),
-        "to_pay": sum(1 for lines in owed.values() if lines), "can_text": texts.can_send()})
+        "open_payouts": AffiliatePayout.objects.filter(state=AffiliatePayout.OPEN).count(), "can_text": texts.can_send()})
+
+
+@operator_required
+@affiliates_on
+def operator_payouts(request):
+    """The affiliates' payouts: make them for everything due, and see what
+    is to pay."""
+    until = services.default_until()
+    if request.method == "POST":
+        try:
+            until = dt.date.fromisoformat(request.POST.get("until", ""))
+            made = services.build(until, request.user)
+            messages.success(request, f"{len(made)} payout(s) made for what was due on {until}." if made else f"Nothing was due on {until}.")
+            return redirect("operator:affiliate_payouts")
+        except (ValueError, services.AffiliateError) as refused:
+            messages.error(request, str(refused) if isinstance(refused, services.AffiliateError) else "Give the day as YYYY-MM-DD.")
+    state = request.GET.get("state", AffiliatePayout.OPEN)
+    found = AffiliatePayout.objects.select_related("affiliate")
+    if state in dict(AffiliatePayout.STATES):
+        found = found.filter(state=state)
+    page = Paginator(found, 50).get_page(request.GET.get("page"))
+    return render(request, "operator/affiliate_payouts.html", {
+        "page": page, "state": state, "states": AffiliatePayout.STATES, "until": until, "minimum": settings.AFFILIATE_PAYOUT_MINIMUM,
+        "approval_days": settings.AFFILIATE_APPROVAL_DAYS})
+
+
+@operator_required
+@affiliates_on
+def operator_payout(request, pk: int):
+    """One payout: what it holds, where it goes, and marking it paid."""
+    subject = get_object_or_404(AffiliatePayout.objects.select_related("affiliate__user", "created_by", "paid_by"), pk=pk)
+    if request.method == "POST":
+        try:
+            services.mark_paid(subject, request.user, request.POST.get("reference", ""), request.POST.get("note", ""))
+            messages.success(request, "The payout is marked paid.")
+            return redirect("operator:affiliate_payout", pk)
+        except services.AffiliateError as refused:
+            messages.error(request, str(refused))
+    return render(request, "operator/affiliate_payout.html", {"payout": subject, **services.statement(subject)})
 
 
 @operator_required
@@ -409,16 +567,18 @@ def operator_affiliate(request, pk: int):
                 services.audit(request.user, "affiliate.super_percent", "affiliate", profile.handle, percent=text or "default")
                 messages.success(request, "The superaffiliate's share is set.")
                 return redirect("operator:affiliate", pk)
-            elif action == "pay":
-                services.pay(profile, request.POST.get("currency", ""), request.user, request.POST.get("reference", ""), request.POST.get("note", ""))
-                messages.success(request, "The payout is written down.")
+            elif action == "payout":
+                made = services.build(timezone.localdate(), request.user, profile)
+                messages.success(request, f"{len(made)} payout(s) made: pay each and mark it paid." if made
+                                 else f"Nothing to pay: a balance under {settings.AFFILIATE_PAYOUT_MINIMUM} is carried.")
                 return redirect("operator:affiliate", pk)
         except (services.AffiliateError, ValidationError) as refused:
             messages.error(request, refused.messages[0] if isinstance(refused, ValidationError) else str(refused))
         profile.refresh_from_db()
     return render(request, "operator/affiliate.html", {
         "profile": profile, "review": review, "sanction_form": sanction_form, "sums": services.sums(profile),
-        "lines": profile.commissions.select_related("order__app", "share_of__affiliate")[:100], "payouts": profile.payouts.all()[:30],
+        "lines": profile.commissions.select_related("order__app", "share_of__affiliate", "holdback", "payout")[:100],
+        "payouts": profile.payouts.all()[:30], "minimum": settings.AFFILIATE_PAYOUT_MINIMUM, "leaving": services.leaving(profile),
         "sanctions": profile.sanctions.select_related("decided_by"), "recruits": profile.recruits.order_by("handle"),
         "default_super": format(settings.AFFILIATE_SUPER_PERCENT.normalize(), "f"), "can_text": texts.can_send(),
         "customers": Binding.objects.filter(affiliate=profile, state=Binding.ACTIVE).count()})

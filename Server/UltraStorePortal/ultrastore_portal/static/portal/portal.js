@@ -329,7 +329,30 @@
     });
   }
 
+  // "Copy" beside a field: data-copy names the field, data-copied what the
+  // button says for a moment afterwards.
+  function setUpCopy() {
+    document.querySelectorAll("[data-copy]").forEach(function (button) {
+      var field = document.querySelector(button.getAttribute("data-copy"));
+      if (!field) return;
+      button.addEventListener("click", function () {
+        var said = button.textContent;
+        function done() {
+          button.textContent = button.getAttribute("data-copied") || said;
+          window.setTimeout(function () { button.textContent = said; }, 1500);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(field.value).then(done, function () { field.select(); });
+        } else {
+          field.select();
+          try { if (document.execCommand("copy")) done(); } catch (error) { /* the field stays selected: Ctrl+C */ }
+        }
+      });
+    });
+  }
+
   setUpFields(document);
   setUpUploads();
   setUpAds();
+  setUpCopy();
 })();

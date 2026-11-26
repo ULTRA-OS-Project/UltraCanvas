@@ -1,5 +1,8 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.0.20 - the list of live contexts (g_Instances) is locked: contexts are made and destroyed
+//                   on any thread, and two threads growing and shrinking the vector at once corrupted
+//                   the heap (TextRenderThreadsTest aborted in malloc now and then)
 // Version: 1.0.19 - the text-layout cache is per thread: a Pango layout is never used by a thread other
 //                   than the one that made it (UltraFiler's crash in cairo's glyph lookup while
 //                   thumbnail workers drew document pages)
@@ -37,6 +40,7 @@
 #include <cstring>
 #include <cmath>
 #include <thread>
+#include <mutex>
 #include <sstream>
 #include <algorithm>
 #include <iostream>
@@ -104,6 +108,17 @@ namespace UltraCanvas {
     static double g_PangoResolution = 96.0;
 
     std::vector<RenderContextCairo*> RenderContextCairo::g_Instances;
+
+    // Guards g_Instances. A context is made and destroyed on whatever thread
+    // draws with it - the UI thread's windows, a thumbnail worker's page - and
+    // each adds itself to the list and takes itself off again. Unlocked, two
+    // threads grew and shrank the vector at once: an element written past its
+    // end, a buffer freed twice. Never destroyed, so a context that goes with
+    // the process's last statics still finds it.
+    static std::mutex& InstancesMutex() {
+        static std::mutex* const mutex = new std::mutex;
+        return *mutex;
+    }
 
     // Font options as words, for the text-render diagnostic: the enum numbers
     // mean nothing in a log without the cairo headers open beside it.
@@ -193,6 +208,9 @@ namespace UltraCanvas {
     void RenderContextCairo::InvalidateAllFontMetricsCaches() {
         // The first-surface diagnostic logged the options text started with;
         // this line keeps the log true after a runtime change to them.
+        // The list is held for the whole walk: no context is made or
+        // destroyed under it (ApplyPangoFontOptions makes none).
+        std::lock_guard<std::mutex> lock(InstancesMutex());
         {
             cairo_font_options_t* opts = CreateTextFontOptions();
             debugOutput << "UC text-render diag: font options changed, contexts=" << g_Instances.size()
@@ -524,7 +542,10 @@ namespace UltraCanvas {
             }
         }
 
-        g_Instances.push_back(this);
+        {
+            std::lock_guard<std::mutex> lock(InstancesMutex());
+            g_Instances.push_back(this);
+        }
 
         // Initialize default state
         debugOutput << "RenderContextCairo: Initialization complete" << std::endl;
@@ -534,7 +555,10 @@ namespace UltraCanvas {
     RenderContextCairo::~RenderContextCairo() {
         debugOutput << "RenderContextCairo: Destroying..." << std::endl;
 
-        g_Instances.erase(std::remove(g_Instances.begin(), g_Instances.end(), this), g_Instances.end());
+        {
+            std::lock_guard<std::mutex> lock(InstancesMutex());
+            g_Instances.erase(std::remove(g_Instances.begin(), g_Instances.end(), this), g_Instances.end());
+        }
 
         // Clear the state stack to prevent any pending cairo operations
         stateStack.clear();

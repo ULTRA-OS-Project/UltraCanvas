@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Payout {{ payout.pk }} - Affiliate - {{ brand }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Payout {{ payout.pk }}</h1><span class="text-secondary">{{ payout.amount }} {{ payout.currency }}</span>{% include "_state.html" with state=payout.state label=payout.get_state_display %}</div>
+<div class="panels">
+<div class="card"><div class="card-body">
+  <dl class="facts">
+    <dt>Amount</dt><dd><b>{{ payout.amount }} {{ payout.currency }}</b>, for what was due on {{ payout.until|date:"j F Y" }}{% if payout.regardless %} - paid under the minimum because your account is being closed{% endif %}</dd>
+    <dt>State</dt><dd>{{ payout.get_state_display }}{% if payout.paid_at %} on {{ payout.paid_at|date:"j F Y" }}, reference <span class="font-monospace">{{ payout.reference }}</span>{% endif %}</dd>
+    <dt>Paid to</dt><dd>{{ payout.details|linebreaksbr|default:"You had given no payout details when this was made: add them under Your details, and write to the store." }}</dd>
+  </dl>
+  <p class="small text-secondary mb-0">A statement of what the store pays you, not a tax document.</p>
+</div></div>
+<div class="card"><div class="card-body"><h2>What it holds</h2>{% include "_affiliate_statement.html" %}</div></div>
+<p><a href="{% url 'affiliate:home' %}">Back to your affiliate page</a></p>
+</div>
+{% endblock %}
