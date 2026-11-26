@@ -25,7 +25,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from ..billing import services as billing
-from ..billing.models import Payment
+from ..billing.models import Invoice, Payment
 from ..web.utils import too_many
 from .views import answer, error
 
@@ -55,7 +55,7 @@ def checkout(request):
     if not isinstance(body, dict) or not str(body.get("app") or "").strip():
         return error(400, "bad_request", "The body is a JSON object naming the app")
     order = billing.create_order(str(body["app"]).strip(), source="store", code=str(body.get("code") or ""), language=str(body.get("language") or ""),
-                                 promote=str(body.get("promote") or ""))
+                                 promote=str(body.get("promote") or ""), country=str(body.get("country") or ""), ref=str(body.get("ref") or ""))
     return answer({**billing.order_public(order), "secret": order.secret, "checkout_url": billing.checkout_url(order),
                    "environment": "sandbox" if settings.PAYMENT_PROVIDER == "test" else "production"})
 
@@ -77,10 +77,14 @@ def receipt(request, public_id: str):
     payment = next((p for p in payments if str(p.receipt_no) == number), None) if number else (payments[0] if payments else None)
     if payment is None:
         return error(404, "no_such_receipt", "The order has no receipt with that number")
-    context = {"order": found, "payment": payment, "is_reversal": payment.kind in (Payment.REFUND, Payment.CHARGEBACK)}
+    context = {"order": found, "payment": payment, "is_reversal": payment.kind in (Payment.REFUND, Payment.CHARGEBACK),
+               "invoice": Invoice.objects.filter(payment=payment).first()}
+    # With the store's tax details configured the payment has a tax invoice
+    # (billing/tax.py), and that is what its receipt is.
+    name = "pay/invoice" if context["invoice"] else "pay/receipt"
     if "text/html" in request.headers.get("Accept", ""):
-        return render(request, "pay/receipt.html", context)
-    return render(request, "pay/receipt.txt", context, content_type="text/plain; charset=utf-8")
+        return render(request, name + ".html", context)
+    return render(request, name + ".txt", context, content_type="text/plain; charset=utf-8")
 
 
 @csrf_exempt

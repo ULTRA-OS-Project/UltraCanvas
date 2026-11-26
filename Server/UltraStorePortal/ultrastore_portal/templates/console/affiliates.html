@@ -1,0 +1,51 @@
+{% extends "console/base.html" %}
+{% block title %}Affiliates - Developer console{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Affiliates</h1></div>
+<div class="panels">
+<div class="card"><div class="card-body">
+  <p>Affiliates advertise what the store sells and are paid when their link brings a sale. <b>It costs you nothing, and there is nothing to switch on</b>: every paid app is in it, and the store pays an affiliate {{ base_percent }} % of the net price out of its own fee.</p>
+  <p class="mb-0">To have something sold, add a <b>boost</b>: more commission on your apps, from 1 to 45 % of the net price. A boost comes out of your proceeds, and only of a sale an affiliate's link to that app brought.</p>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>What a link to your apps earns today</h2>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>App</th><th class="text-end">From the store</th><th class="text-end">Your boost</th></tr></thead>
+    <tbody>{% for row in apps %}<tr><td>{{ row.app.name }}</td><td class="text-end">{{ row.base.normalize }} %</td><td class="text-end">{% if row.boost %}<b>+{{ row.boost.normalize }} %</b>{% else %}-{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="3" class="text-secondary">You sell no paid app yet.</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>Boosts</h2>
+  {% if boosts %}
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>On</th><th class="text-end">Boost</th><th>Renewals</th><th>From</th><th>Until</th><th></th></tr></thead>
+    <tbody>
+    {% for boost in boosts %}
+    <tr><td>{% if boost.scope == "app" %}{{ boost.app.name }}{% elif boost.scope == "category" %}{{ boost.get_category_display }}{% else %}Everything{% endif %}</td>
+      <td class="text-end">+{{ boost.percent.normalize }} %</td><td>{{ boost.renewals|yesno:"yes,no" }}</td><td>{{ boost.valid_from|date:"j M Y"|default:"" }}</td><td>{{ boost.valid_until|date:"j M Y"|default:"" }}</td>
+      <td class="text-end">{% if owner %}<form method="post">{% csrf_token %}<button class="btn btn-outline-danger btn-sm" name="delete" value="{{ boost.pk }}">Remove</button></form>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="small text-secondary">An app's own boost counts before its category's, and that before the one for everything.</p>
+  {% else %}<p class="text-secondary">None. Affiliates earn the store's {{ base_percent }} % on your apps.</p>{% endif %}
+  {% if owner %}
+  <h3 class="h5 mt-4">Add a boost</h3>
+  <form method="post" style="max-width: 36rem">{% csrf_token %}{% include "_form.html" %}<button class="btn btn-primary">Save the boost</button></form>
+  {% else %}<p class="text-secondary mb-0">A boost is the publisher's owner's to set.</p>{% endif %}
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>What affiliates sold</h2>
+  {% if sold %}
+  <table class="table align-middle"><thead><tr><th>Affiliate</th><th class="text-end">Sales</th><th class="text-end">What your boosts cost</th></tr></thead><tbody>
+    {% for row in sold %}<tr><td class="font-monospace">{{ row.affiliate__handle }}</td><td class="text-end">{{ row.lines }}</td><td class="text-end">{{ row.boost }} {{ row.currency }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="text-secondary mb-0">Nothing yet. Who bought is not shown, here or to the affiliate.</p>{% endif %}
+</div></div>
+</div>
+{% endblock %}

@@ -70,6 +70,7 @@
     <span>UltraStore - ULTRA OS Project</span>
     <a href="{% url 'store:terms' %}">Publisher terms</a>
     <a href="{% url 'console:home' %}">Developer console</a>
+    {% if affiliates_on %}<a href="{% url 'affiliate:home' %}">Affiliates</a>{% endif %}
     <a href="{% url 'api:catalog' %}">catalog.json</a>
     {% if promote_on %}<a href="{% url 'promote:library' %}">Advertisements in the store</a>{% endif %}
     {% if store_download_url %}<a href="{{ store_download_url }}">Get the UltraStore app</a>{% endif %}

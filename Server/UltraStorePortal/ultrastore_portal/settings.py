@@ -1,6 +1,10 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.10.0 - affiliates (AFFILIATES, AFFILIATE_..., TEXT_GATEWAY_...)
+Version: 0.9.0 - tax and payouts (SELLER_..., INVOICE_PREFIX, PAYOUT_HOLD_DAYS, PAYOUT_MINIMUM)
+Version: 0.8.0 - leaving an account (ACCOUNT_CLOSED_DAYS, ACCOUNT_DELETION_GRACE_DAYS)
+Version: 0.7.0 - the store's fee (STORE_FEE_PERCENT)
 Version: 0.5.0 - advertising (PROMOTE, PROMOTE_TOPUPS, PROMOTE_CURRENCY)
 Version: 0.4.0 - the account's own address (ACCOUNT_URL) and the OpenID
                  Connect provider's settings (OIDC_...)
@@ -13,6 +17,7 @@ from __future__ import annotations
 
 import os
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -129,6 +134,7 @@ INSTALLED_APPS = [
     "ultrastore_portal.store",
     "ultrastore_portal.billing",
     "ultrastore_portal.promote",
+    "ultrastore_portal.affiliates",
 ]
 
 MIDDLEWARE = [
@@ -172,6 +178,13 @@ if DATABASES["default"]["ENGINE"].endswith("sqlite3") and DATABASES["default"]["
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "accounts.User"
+# Leaving an account (accounts/closure.py): the days a closed account is
+# kept, in which its owner can reactivate it, and the days a deletion that
+# was asked for waits, in which its owner can take it back. Then it is erased.
+ACCOUNT_CLOSED_DAYS = int(env("ACCOUNT_CLOSED_DAYS", "365"))
+ACCOUNT_DELETION_GRACE_DAYS = int(env("ACCOUNT_DELETION_GRACE_DAYS", "90"))
+if ACCOUNT_CLOSED_DAYS < 1 or ACCOUNT_DELETION_GRACE_DAYS < 1:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_ACCOUNT_CLOSED_DAYS and ULTRASTORE_PORTAL_ACCOUNT_DELETION_GRACE_DAYS are at least one day")
 LOGIN_URL = "account:signin"
 LOGIN_REDIRECT_URL = "console:home"
 LOGOUT_REDIRECT_URL = "store:home"
@@ -289,6 +302,36 @@ LICENCE_SEED = env("LICENCE_SEED")
 GRACE_DAYS = int(env("GRACE_DAYS", "7"))
 RESTRICTED_SECRET = env("RESTRICTED_SECRET") or ("development-only-link-secret" if (DEBUG or RUNNING_TESTS) else "")
 RESTRICTED_TTL = int(env("RESTRICTED_TTL", "600"))
+# The store's fee: the percentage of what a buyer pays that the store keeps;
+# the rest is the publisher's share (billing/split.py). Written on each
+# payment when the money moves, so changing it here changes later sales only.
+try:
+    STORE_FEE_PERCENT = Decimal(env("STORE_FEE_PERCENT", "15"))
+except InvalidOperation as error:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_STORE_FEE_PERCENT is a number of percent, such as 15") from error
+if not STORE_FEE_PERCENT.is_finite() or not 0 <= STORE_FEE_PERCENT < 100 or STORE_FEE_PERCENT != STORE_FEE_PERCENT.quantize(Decimal("0.01")):
+    raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_STORE_FEE_PERCENT is from 0 to under 100, with at most two decimals: {STORE_FEE_PERCENT}")
+# Tax (billing/tax.py). The store is the seller: its name, its address
+# (lines separated by "|"), its VAT id and its country (ISO 3166-1) stand on
+# every invoice. Until all four are set no tax is reckoned and no invoice
+# written. INVOICE_PREFIX goes before the year and the running number.
+SELLER_NAME = env("SELLER_NAME")
+SELLER_ADDRESS = env("SELLER_ADDRESS").replace("|", "\n")
+SELLER_VAT_ID = env("SELLER_VAT_ID")
+SELLER_COUNTRY = env("SELLER_COUNTRY").upper()
+if SELLER_COUNTRY and (len(SELLER_COUNTRY) != 2 or not SELLER_COUNTRY.isalpha()):
+    raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_SELLER_COUNTRY is a two-letter country code, such as DE: {SELLER_COUNTRY}")
+INVOICE_PREFIX = env("INVOICE_PREFIX", "")
+# Payouts (billing/payouts.py): the days a sale waits before its share can
+# be paid out - the time in which it is most likely given back - and the
+# least a payout is made for; a smaller sum is carried to the next.
+PAYOUT_HOLD_DAYS = int(env("PAYOUT_HOLD_DAYS", "30"))
+try:
+    PAYOUT_MINIMUM = Decimal(env("PAYOUT_MINIMUM", "0.01"))
+except InvalidOperation as error:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_PAYOUT_MINIMUM is an amount, such as 25.00") from error
+if PAYOUT_HOLD_DAYS < 0 or not PAYOUT_MINIMUM.is_finite() or PAYOUT_MINIMUM < Decimal("0.01"):
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_PAYOUT_HOLD_DAYS is zero or more, ULTRASTORE_PORTAL_PAYOUT_MINIMUM at least 0.01")
 # Where a visitor without the native store gets it (the app page's link): a
 # path under the root as well.
 STORE_DOWNLOAD_URL = _under_root("STORE_DOWNLOAD_PATH")
@@ -333,3 +376,26 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
 }
+
+# Affiliates (affiliates/, UltraAffiliates phase 1): off unless switched on.
+# The base commission in percent of the net price, out of the store's fee;
+# the superaffiliate's share of an affiliate's commission; the days a link
+# counts; the days a commission waits before it is approved. A text message
+# (the code that proves an affiliate's phone number) is one POST to the
+# gateway; without one the operator confirms the number at the review.
+AFFILIATES = env("AFFILIATES", "0") == "1"
+try:
+    AFFILIATE_BASE_PERCENT = Decimal(env("AFFILIATE_BASE_PERCENT", "5"))
+    AFFILIATE_SUPER_PERCENT = Decimal(env("AFFILIATE_SUPER_PERCENT", "10"))
+except InvalidOperation as error:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_BASE_PERCENT and _SUPER_PERCENT are numbers of percent") from error
+AFFILIATE_LINK_DAYS = int(env("AFFILIATE_LINK_DAYS", "90"))
+AFFILIATE_APPROVAL_DAYS = int(env("AFFILIATE_APPROVAL_DAYS", "30"))
+if not 0 <= AFFILIATE_BASE_PERCENT <= STORE_FEE_PERCENT:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_BASE_PERCENT comes out of the store's fee: from 0 to ULTRASTORE_PORTAL_STORE_FEE_PERCENT")
+if not 0 <= AFFILIATE_SUPER_PERCENT <= 50 or AFFILIATE_LINK_DAYS < 1 or AFFILIATE_APPROVAL_DAYS < 0:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_SUPER_PERCENT is from 0 to 50, _LINK_DAYS at least 1, _APPROVAL_DAYS zero or more")
+TEXT_GATEWAY_URL = env("TEXT_GATEWAY_URL")
+TEXT_GATEWAY_TOKEN = env("TEXT_GATEWAY_TOKEN")
+if TEXT_GATEWAY_URL and not TEXT_GATEWAY_URL.startswith("https://"):
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_TEXT_GATEWAY_URL is an https address")

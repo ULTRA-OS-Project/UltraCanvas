@@ -156,6 +156,10 @@ private:
     std::string Lang() const { return lang_; }
     std::string ServerNote() const;         // why nothing can be fetched, or empty
     std::string Today() const;              // "YYYY-MM-DD", UTC
+    // Where the buyer is, for the checkout: `setting` (the settings'
+    // country; "" asks what an empty setting gives), else the signed-in
+    // account's, else the region of the system's language. UI thread.
+    std::string BuyerCountryNow(const std::string& setting) const;
     const PromoCode* CodeInForce() const;   // the settings' code when the catalog knows it and it is valid today
     const PromoCode* CodeFor(const Component& app) const;   // CodeInForce() when it applies to the app
     // The apps of the catalog this machine lists, with the filter.
@@ -236,6 +240,7 @@ private:
         std::string title;
         bool showInQueue = true;
         bool resume = false;   // Buy: the settings' open order, not a new one
+        std::string country;   // Buy: where the buyer is (BuyerCountryNow), set when the job is queued
     };
     struct JobResult {
         bool ok = true;
@@ -422,6 +427,7 @@ private:
     // Settings
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> channelDropdown_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> languageInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> countryInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> serversArea_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> keysArea_;
     std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> refreshOnStartBox_;

@@ -357,4 +357,42 @@ std::string SystemLanguage() {
     return "en";
 }
 
+std::string CountryFromLocale(const std::string& locale) {
+    // The subtags up to the encoding or the modifier: de_AT.UTF-8@euro -> de, AT.
+    std::vector<std::string> parts(1);
+    for (char c : locale) {
+        if (c == '.' || c == '@') break;
+        if (c == '_' || c == '-') { parts.emplace_back(); continue; }
+        parts.back() += c;
+    }
+    // The region is the first two-letter subtag after the language; a
+    // four-letter one before it is the script (zh-Hant-TW), three digits a
+    // region of the world and no country (es-419).
+    for (size_t i = 1; i < parts.size(); ++i) {
+        const std::string& part = parts[i];
+        if (part.size() != 2 || !std::isalpha(static_cast<unsigned char>(part[0])) || !std::isalpha(static_cast<unsigned char>(part[1]))) continue;
+        std::string country;
+        for (char c : part) country += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return country;
+    }
+    return {};
+}
+
+std::string CountryOfLanguageTags(const std::vector<std::string>& tags) {
+    for (const std::string& tag : tags) {
+        const std::string country = CountryFromLocale(tag);
+        if (!country.empty()) return country;
+    }
+    return {};
+}
+
+std::string SystemCountry() {
+    for (const char* name : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
+        const std::string value = UltraCanvas::GetEnvUtf8(name);   // path-string-ok: GetEnvUtf8 is the UTF-8 read
+        if (value.empty()) continue;
+        return CountryFromLocale(value);
+    }
+    return {};
+}
+
 } // namespace UltraStore

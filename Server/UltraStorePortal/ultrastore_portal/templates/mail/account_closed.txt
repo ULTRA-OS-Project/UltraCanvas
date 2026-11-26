@@ -1,0 +1,17 @@
+Hello {{ user.display_name }},
+
+your {{ brand }} account is closed. It is signed out everywhere, and no
+service can sign in with it.
+
+It is kept until {{ erase_after|date:"j F Y" }}. Signing in before then, with
+your password, offers to reactivate it - it is then as you left it:
+
+{{ signin }}
+
+After that day the account is removed for good. Orders and receipts are kept
+for the years the law asks; they are not part of the account.
+
+If you did not close the account, sign in now, reactivate it and change the
+password.
+
+{{ brand|default:"UltraStore" }}

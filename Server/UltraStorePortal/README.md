@@ -36,7 +36,10 @@ It is built to replace the store's small services (`Server/UltraStoreMarket`,
 (`ultrastoreadmin`, `ultrastoreop`). 0.1.0 was the essential path - register
 a publisher, publish an app, show and serve the catalog; 0.2.0 sells; 0.4.0
 is the account for every service; 0.5.0 is advertising's first phase and
-0.6.0 the first half of its second; *What comes next* names the rest.
+0.6.0 the first half of its second; 0.7.0 splits a sale between the store
+and the publisher; 0.8.0 lets a person close or delete the account; 0.9.0
+reckons VAT, writes invoices and makes the publishers' payouts; 0.10.0 is
+the affiliate programme's first phase; *What comes next* names the rest.
 
 ## Decisions
 
@@ -62,7 +65,7 @@ is the account for every service; 0.5.0 is advertising's first phase and
 | `/pay/<order>/` | the hand-off to the payment provider; `.../return/`, `.../cancel/` where it sends the buyer back |
 | `/orders/<order>/?secret=` | a buyer's purchase: its state, the licence, the receipt, the downloads |
 | `/publisher/<id>/` | a publisher's page |
-| `/account/…` | sign up, the mailed confirmation link, sign in, password reset, the profile. With the account at its own address these are that host's root (`https://account.ultraos.eu/signin/`), and the store's `/account/…` leads there |
+| `/account/…` | sign up, the mailed confirmation link, sign in, password reset, the profile, closing or deleting the account (`leave/`) and coming back (`reactivate/`). With the account at its own address these are that host's root (`https://account.ultraos.eu/signin/`), and the store's `/account/…` leads there |
 | `/.well-known/openid-configuration`, `/oauth/…` | the OpenID Connect provider, at the account's host (*One sign-in for every service*) |
 | `/sso/callback` | where the account sends a person back to the store, with two hosts |
 | `/promote/…`, `/console/apps/<app id>/promote/`, `/operator/promote/` | advertising: a publisher's campaigns and balance, the *Promote* page of a listing, the operator's prices and stops; `/promote/go/<token>/` a click on an advertisement, `/promote/why/<token>/` who paid for it and why it was shown (*Advertising*) |
@@ -98,7 +101,7 @@ the catalog's `payment_url` is the root):
 
 | | |
 |---|---|
-| `POST /v1/checkout` | `{app, code?, language?}` → the order: `order_id`, `secret`, `amount`, `currency`, `list_price`, `status`, `cycle`, `checkout_url` (`<root>/pay/<order>/`, opened in the browser). 404 `no_such_app`, 400 `free_app`, 503 `not_configured` |
+| `POST /v1/checkout` | `{app, code?, language?, country?}` → the order: `order_id`, `secret`, `amount`, `currency`, `list_price`, `status`, `cycle`, `checkout_url` (`<root>/pay/<order>/`, opened in the browser). 404 `no_such_app`, 400 `free_app`, 503 `not_configured` |
 | `GET /v1/orders/<order>?secret=` | the order's state; when paid `licence`, `licence_id`, `receipt_no`, `paid_at`, the `payments`; a subscription's `paid_until`, `valid_until`, `subscription_status`; `revoked` with `revoked_reason` after a refund or a chargeback (no `licence` then) |
 | `GET /v1/orders/<order>/receipt?secret=[&no=]` | the receipt of the sale, or of the payment with that number: a page for a browser, text for anything else |
 | `POST /v1/orders/<order>/download?secret=&file=restricted/<sha256>.<format>` | `{url, expires}`: a link to one of the app's restricted packages; 409 once the licence is taken back or the subscription ended |
@@ -301,9 +304,100 @@ so; a partial refund leaves it. A chargeback comes as Skrill's report
 longer handed out, its downloads are refused, and `GET /v1/licences/<id>`
 answers `revoked`.
 
+**The store's fee and the publisher's share** (0.7.0). The store keeps a
+fee of every payment - **15 %** of what the buyer paid
+(`ULTRASTORE_PORTAL_STORE_FEE_PERCENT`), to the cent, half up - and the rest
+is the publisher's share. The split is written on the payment when the money
+moves (`Payment.fee_percent`, `store_fee`; `billing/split.py`) and never
+reckoned again: a fee changed in the settings changes later sales only. A
+refund or a chargeback gives the fee back in the proportion of the money
+given back - half of a payment refunded returns half of its fee, and the
+last cent of a payment returns whatever of its fee is left, so a payment
+refunded in parts nets to nothing for the store and for the publisher. A
+renewal is split like a sale. `/console/sales/` shows each payment with the
+fee and the share and, per currency, *Your share*; the operator's order page
+shows the same with the percentage each payment was sold under. Payments
+recorded before 0.7.0 get the split when the database is migrated, at the
+fee configured then. Since 0.9.0 the tax comes out first and the fee is
+reckoned on the net (below). **Not in the split:** the payment provider's
+fee.
+
+**Tax and invoices** (0.9.0, `billing/tax.py`). The store is the seller, so
+it owes the VAT and writes the invoice. **Off until the seller's details are
+configured** - `ULTRASTORE_PORTAL_SELLER_NAME`, `SELLER_ADDRESS` (lines
+separated by `|`), `SELLER_VAT_ID` and `SELLER_COUNTRY`: without all four a
+payment carries no tax and no invoice, as before, and `/operator/tax/` says
+what is missing.
+
+- **The price includes the tax.** A buyer pays the listed price wherever
+  they are; the tax is taken out of it. Of 19.90 at 19 %, 3.18 is tax
+  (19.90 x 19 / 119) and 16.72 is net; the store's fee is 15 % of the net,
+  2.51, and the publisher's share 14.21.
+- **The rate is the buyer's country's on the day the money moves** - the
+  rule for digital services sold to consumers in the EU. The country comes
+  with the order: the buy page asks for it, a client sends `country` with
+  `POST /v1/checkout` (the native store does: its Settings' country, else
+  the signed-in account's, else the region of the system's language); with
+  none, it is the seller's. A country outside the
+  EU is charged no EU tax and the payment says so.
+- **The rates are the operator's data** (`VatRate`: a country, a
+  percentage, the day it counts from), kept on `/operator/tax/`, where a
+  rate for the same country and day replaces the one there and a rate for a
+  later day is a change to come. `ultrastore-portal money seed-rates` loads
+  a starting table of the 27 standard rates, each marked *to be checked* -
+  **check them against the European Commission's table before selling**;
+  the sources consulted when it was written disagreed on two countries. An
+  EU country with no rate is charged the seller's and the payment says so;
+  the tax page counts such payments and lists the countries without a rate.
+- **An invoice for every payment, a credit note for every refund and
+  chargeback**, in one series without gaps: `<INVOICE_PREFIX><year>-000001`,
+  counted per year under a lock. Each is a copy of what it says as it stood -
+  the seller, the buyer's address and country, the net, the rate, the tax,
+  the total - so what the seller is called next year changes no invoice. A
+  credit note names the invoice it takes back and returns the tax in the
+  proportion of the money. The buyer's *Receipt* link shows the invoice
+  where there is one (`GET /v1/orders/<id>/receipt`, as a page or as text);
+  the order's JSON names it (`payments[].invoice_no`).
+- **A quarter's figures** by the buyer's country and the rate - net, tax and
+  total, from the invoices and credit notes written in it - are on
+  `/operator/tax/` and from `ultrastore-portal money quarter <year> <1-4>`:
+  what the one-stop-shop return asks for.
+
+**For the tax adviser before the first sale, and not built:** a business
+buyer's VAT id and the reverse charge; the two pieces of evidence the
+one-stop shop asks for a buyer's country (the portal keeps the one the buyer
+gave); the taxes of countries outside the EU; reduced rates; and whether the
+invoice's wording is enough where the store is established.
+
+**Payouts** (0.9.0, `billing/payouts.py`). A payout gathers what the store
+owes a publisher in one currency:
+
+- a sale's or a renewal's share is due `ULTRASTORE_PORTAL_PAYOUT_HOLD_DAYS`
+  (30) after it was paid - the time in which it is most likely given back;
+  a refund's or a chargeback's comes off at once;
+- a sum under `ULTRASTORE_PORTAL_PAYOUT_MINIMUM` (0.01), or under nothing,
+  makes no payout and is carried: what is given back after a payout comes
+  off the next one, and nobody is asked for money;
+- a payment is in one payout and no more.
+
+**The portal moves no money.** *Make the payouts* on `/operator/payouts/`
+(or `ultrastore-portal money payouts [--until YYYY-MM-DD]`, by default for
+the last day of last month) writes them; each says what to pay and where -
+the publisher's payout details as they stood. The operator pays it at the
+bank or the provider and marks it paid with the transfer's reference, which
+is refused empty. The publisher's owner says where the share goes on the
+publisher profile (the account holder and IBAN, or a Skrill address, with
+the legal name and a VAT id) - the owner alone: another member neither sees
+nor changes it. `/console/sales/` shows what is not paid out yet and every
+payout; `/console/payouts/<n>/` is its statement, payment by payment.
+**Not built:** paying through the provider's own interface, and the tax
+document a payout is to the publisher (a self-billed credit note) - the
+statement says it is not one.
+
 **Who sees what.** The operator sees the orders with the buyer's address;
 a publisher sees what its apps sold (`/console/sales/`: every payment and
-reversal, the net per currency), never who bought.
+reversal with its split, the net and its share per currency), never who
+bought.
 
 **The test provider.** `ULTRASTORE_PORTAL_PAYMENT_PROVIDER=test` (refused
 without `ULTRASTORE_PORTAL_DEBUG=1`) puts a page with *Pay*, *Let the
@@ -435,6 +529,140 @@ In two-host mode the admin site's own sign-in (`/admin/login/` on the
 store's host) still takes a password directly. Also not built: a second
 factor at the sign-in, passkeys, telling a service's server that a person
 signed out (back-channel logout), a service registering itself.
+
+## Leaving an account
+
+Two ways to leave (0.8.0, `accounts/closure.py`), because they mean
+different things, and one end:
+
+| | What the person does | What happens | Coming back |
+|---|---|---|---|
+| **Closed** | *Close the account* on `/account/leave/`, with the password | Signed out everywhere, every service's access ended, nothing signs in to it. Kept whole for `ULTRASTORE_PORTAL_ACCOUNT_CLOSED_DAYS` (**365**) | Signing in with the right password in that time shows *This account is closed* with **Reactivate my account**; it is then as it was left, and the services need signing in again. A forgotten password can still be reset |
+| **Deleting** | *Delete the account* on the same page, with the password | It stays usable for `ULTRASTORE_PORTAL_ACCOUNT_DELETION_GRACE_DAYS` (**90**); the account's page says the day it goes | **Keep my account** on the account's page takes the request back |
+| **Erased** | nothing: the end of both, when the days are over | The row stays under its id with the address replaced (`erased-<id>@erased.invalid`, so the address is free again), the name and the password gone, every grant, token, sign-in and consent removed, the memberships removed, and the audit rows it acted in naming `account <id>` in place of the address | None. The same person signing up again is somebody new |
+
+A mail goes out when an account is closed and when a deletion is asked for,
+with the day and the way back - which is also how the owner learns of it if
+it was not their doing. A wrong password on a closed account says what it
+always says: only the owner, with the password, is told it is closed.
+
+**Who cannot leave this way:** an operator (another operator removes the
+account) and the owner of a publisher (the publisher is handed over first:
+an app must not be left with nobody behind it). The page says which.
+
+**What is not the account's:** orders and receipts. A purchase is reached by
+its order's secret, not by the account, and stays as the law asks.
+
+**The daily maintenance** erases what is due and is safe to run again:
+
+```
+ultrastore-portal accounts maintain    # e.g. from a systemd timer, once a day
+ultrastore-portal accounts leaving     # who is closed or being deleted, by id, with the day
+```
+
+Without it nothing is ever erased: the accounts stay closed, or usable with
+a date that has passed. The affiliate programme
+(`Docs/Research/UltraAffiliatesDesignProposal.md`) hangs its binding on
+these states - suspended while closed or deleting, restored on the way
+back, gone with the erasure - once it is built.
+
+## Affiliates
+
+UltraAffiliates, phase 1 of
+[its design](../../Docs/Research/UltraAffiliatesDesignProposal.md) (0.10.0,
+`affiliates/`): **product links**. A person the store knows advertises what
+the store sells; when their link to a product brings its sale, they earn.
+
+**Switched off unless switched on.** `ULTRASTORE_PORTAL_AFFILIATES=1`.
+Without it none of its pages exists, `/r/...` is a 404, and no order earns
+anyone anything.
+
+**The rules, which the code holds to and the tests check:**
+
+- **Free for the publisher, and every paid app is in it.** There is
+  nothing to join, switch on or opt out of. Any active affiliate may take a
+  link to any app.
+- **A base and a boost.** The store pays an affiliate
+  `AFFILIATE_BASE_PERCENT` (**5**) of the net price out of its own fee -
+  the publisher's share is untouched. A publisher's **owner** may add a
+  **boost of 1 to 45 %** of the net on an app, a category or everything
+  (`/console/affiliates/`); the most specific one in force counts, and it
+  comes out of the publisher's proceeds of that sale: the payment's
+  `boost_amount`, which *Your share* and the payout leave out. A boost
+  changed later does not change a sale already made.
+- **A link to a product wins that product** - `/r/<handle>/<app>/` - for
+  `AFFILIATE_LINK_DAYS` (**90**): the last such link the order carries. The
+  web buy page keeps the link's token in the session and sends it with the
+  order; a client sends it as `ref` with `POST /v1/checkout`. `/r/<handle>/`
+  leads to the shop and is counted; in this phase it earns nothing (the
+  binding of a customer to an affiliate is phase 2). `?s=<name>` tells an
+  affiliate's campaigns apart.
+- **Who does not earn:** the buyer themselves (the order's address is the
+  affiliate's), a member of the publisher selling the app, and an affiliate
+  who is not active.
+- **Only a person following a link counts.** A page fetched as a picture, a
+  script or a frame (`Sec-Fetch-Dest`) records no click.
+- **The superaffiliate.** Whoever's recruiting link
+  (`/affiliate/join/<handle>/`) brought an affiliate in earns
+  `AFFILIATE_SUPER_PERCENT` (**10**) of each of that affiliate's
+  commissions, **on top** and at the store's cost - the affiliate's is not
+  reduced, and the publisher pays none of it. One level up and no further.
+  The operator may set another share, or none, for one affiliate.
+- **Pending, then approved** after `AFFILIATE_APPROVAL_DAYS` (**30**). A
+  refund or a chargeback takes the commission back in the proportion of the
+  money, as a line below zero - the affiliate's, the superaffiliate's and
+  the publisher's boost alike - so a sale refunded in parts nets to nothing
+  for everybody. Given back after a payout, it leaves the affiliate owing,
+  and the next sale makes it up.
+- **Identified, not anonymous.** A profile is active once its phone number
+  is proven - a six-digit code by text, good for ten minutes and five
+  tries - and the operator has looked at an identity document and written
+  down what it says: the name, the date of birth, the document and its
+  country. **No picture of a document is kept.** One person has one
+  profile, and an affiliate is eighteen or older.
+- **Blocked or banned.** A blocked affiliate's links count nothing and what
+  they earned is held, until a day or until lifted; a banned one's
+  relations to other affiliates end, for good. Each has a **record** that
+  is added to and never edited: the rule, what happened, the evidence, the
+  money, and what the affiliate said to it. The affiliate sees the rule and
+  what happened at once, can put a statement on the record, and is given
+  the whole of it on request.
+- **Nobody sees who bought.** An affiliate sees the product, the day and
+  the commission; a publisher sees which affiliate sold how often and what
+  its boosts cost.
+- **The profile follows the account** (*Leaving an account*): closed with
+  it, back with it, emptied when it is erased - the row stays, so what it
+  earned and a ban's record still name something.
+
+**The pages.** `/affiliate/` - apply, prove the phone number, then the
+links, what was earned and paid, the affiliates brought in;
+`/affiliate/products/` - every paid app with what a link to it pays.
+`/console/affiliates/` - what a link to each of the publisher's apps earns
+today, the boosts, what affiliates sold. `/operator/affiliates/` - the
+applications, the review, block and ban with their record, an affiliate's
+share and the payout.
+
+**The portal moves no money.** *Mark as paid* on an affiliate's page writes
+the payout down with the transfer's reference; the operator pays at the bank
+or the provider.
+
+**A text message** is one POST to `ULTRASTORE_PORTAL_TEXT_GATEWAY_URL`
+(`to`, `text`; the bearer token `TEXT_GATEWAY_TOKEN`). Without it the store
+cannot send one: the affiliate's page says so, and the operator confirms the
+number at the review.
+
+**The daily maintenance:** `ultrastore-portal affiliates maintain` approves
+what is due, lifts blocks whose time is over, and counts clicks older than
+the link's days by day before removing them. `affiliates owed` and
+`affiliates cost` say what is approved and unpaid, and what the programme
+cost the store's fee and the publishers' boosts.
+
+**Not in this phase** (the design's phases 2 to 4): the binding of a new
+customer to an affiliate and the 5 % on every later purchase, which needs
+the buyer's account on an order; the win-back; the 5 % holdback for six
+months; statements and self-billed credit notes; fixed boosts for hardware;
+affiliate codes; the native store's `ultrastore://r/` links; sales made
+outside the portal.
 
 ## Advertising
 
@@ -642,6 +870,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 |---|---|
 | `BASE_URL` | the one root; `https://store.ultraos.eu` unless set |
 | `ACCOUNT_URL`, `ACCOUNT_NAME` | the account's own root and the issuer (`https://account.ultraos.eu`); unset, the account lives under the store's root. What the account calls itself there (`ULTRA OS account`) |
+| `ACCOUNT_CLOSED_DAYS` (365), `ACCOUNT_DELETION_GRACE_DAYS` (90) | the days a closed account is kept to be reactivated, and the days a deletion that was asked for waits; then the account is erased (*Leaving an account*) |
 | `OIDC_KEY_FILE`, `OIDC_SUBJECT_SECRET` | the identity tokens' key as a PEM file, and the secret the subjects are derived with; unset, each is made once and kept in the database |
 | `PROMOTE`, `PROMOTE_TOPUPS`, `PROMOTE_CURRENCY` (EUR) | advertising on (`1`); paying into a balance on (`1` - not before tax invoices); the one currency of balances |
 | `OIDC_CODE_TTL` (120), `OIDC_ACCESS_TOKEN_TTL` (3600), `OIDC_ID_TOKEN_TTL` (3600), `OIDC_REFRESH_TOKEN_TTL` (90 days) | how long each lasts, in seconds |
@@ -655,6 +884,12 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 | `SKRILL_PAY_TO_EMAIL`, `SKRILL_SECRET_WORD`, `SKRILL_MERCHANT_ID`, `SKRILL_API_PASSWORD` | the Skrill merchant account; the API password for refunds and ending a recurring payment |
 | `SKRILL_PAY_URL`, `SKRILL_API_URL` | `https://pay.skrill.com`, `https://www.skrill.com/app`; another host when Skrill gives a test endpoint |
 | `LICENCE_SEED`, `GRACE_DAYS` (7) | the licence key, a subscription's grace |
+| `SELLER_NAME`, `SELLER_ADDRESS`, `SELLER_VAT_ID`, `SELLER_COUNTRY` | the store as the seller on every invoice: its name, its address (lines separated by `\|`), its VAT id, its country (two letters). Until all four are set no tax is reckoned and no invoice written |
+| `INVOICE_PREFIX` | what stands before an invoice's year and number (`UO-` gives `UO-2026-000001`) |
+| `AFFILIATES`, `AFFILIATE_BASE_PERCENT` (5), `AFFILIATE_SUPER_PERCENT` (10), `AFFILIATE_LINK_DAYS` (90), `AFFILIATE_APPROVAL_DAYS` (30) | the affiliate programme on (`1`); the base commission in percent of the net price, out of the store's fee (so not above it); the superaffiliate's share of a commission; the days a link counts; the days a commission waits |
+| `TEXT_GATEWAY_URL`, `TEXT_GATEWAY_TOKEN` | where a text message is sent (an https address taking `to` and `text`) and its bearer token; unset, the operator confirms an affiliate's phone number |
+| `PAYOUT_HOLD_DAYS` (30), `PAYOUT_MINIMUM` (0.01) | the days a sale waits before its share can be paid out, and the least a payout is made for |
+| `STORE_FEE_PERCENT` (15) | the store's fee: the percentage of what a buyer pays that the store keeps, from 0 to under 100 with at most two decimals; the rest is the publisher's share. Written on each payment, so a change applies to later sales |
 | `RESTRICTED_SECRET`, `RESTRICTED_TTL` (600) | a buyer's download link: nginx's secret and its seconds |
 | `STORE_DOWNLOAD_PATH` | a path under the root where the UltraStore app is downloaded |
 | `ALLOWED_HOSTS`, `LOG_LEVEL`, `DEBUG` | |
@@ -665,7 +900,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 ultrastore_portal/
   settings.py, urls.py, wsgi.py
   urls_account.py  the addresses of the account's own host
-  accounts/        the person: email as the sign-in name, the mailed proof
+  accounts/        the person: email as the sign-in name, the mailed proof; closure.py: closed, deleting, erased
   identity/        signing in for other services: OpenID Connect
     models.py      Client, SignIn, Consent, Grant, Code, Token, SigningKey
     provider.py    what a request may ask, what a code and a token are worth
@@ -675,6 +910,8 @@ ultrastore_portal/
     sessions.py    a sign-in as a record; the store's session ends with it
     sso.py         the store signing in through the account
     management/commands/oidc.py   clients, keys, cleanup
+  affiliates/      UltraAffiliates, phase 1: models.py (AffiliateProfile, Boost, Click, Attribution, Commission,
+                   AffiliatePayout, Sanction), services.py (the rules), texts.py (a text message)
   promote/         advertising: UltraAds, phase 1
     models.py      Placement, Campaign, Balance, LedgerEntry, TopUp, DayCount, Click, Attribution,
                    Keyword, PlacementBid, TermCount, PolicyVersion, PolicyAcceptance
@@ -691,8 +928,11 @@ ultrastore_portal/
     constants.py   the fixed lists the catalog is written from (categories, systems, formats)
     admin.py       the admin site
   billing/         buying
-    models.py      Order, Payment
+    models.py      Order, Payment, VatRate, Invoice, Payout
     services.py    an order opened, the provider's report believed or not, the licence, renewals, refunds, the signed link
+    split.py       the store's fee and the publisher's share of a payment, and of what a reversal gives back
+    tax.py         VAT by the buyer's country, the rates, invoices and credit notes, a quarter's figures
+    payouts.py     what a publisher is owed, the payouts, marking one paid
     licence.py     the ULIC1 token
     skrill.py      Quick Checkout's form and signature, the refund and recurring API
   web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, promote.py, forms.py,
@@ -711,10 +951,13 @@ In the order the store needs it:
 
 1. **The Skrill sandbox run** - a merchant account in test mode, one
    purchase, one renewal, one refund (*Buying*, the last paragraph).
-2. **Tax and payouts.** A receipt is not a tax invoice: VAT by the buyer's
-   country, invoices, and the split of a sale between the publisher, the
-   store and the provider's fee are not built. `/console/sales/` shows what
-   buyers paid, nothing about what a publisher is owed.
+2. **Tax and payouts, what is left of them.** VAT by the buyer's country,
+   invoices and credit notes, a quarter's figures and the publishers'
+   payouts are built (*Buying*, 0.9.0). Left: a business buyer's VAT id and
+   the reverse charge, the evidence of a buyer's country beyond what they
+   said, the taxes of countries outside the EU, the payment provider's fee
+   in the split, paying a payout through the provider's interface, and the
+   self-billed document a payout is to a publisher.
 3. **Buyer accounts** - sign-in from the native store, licences that follow
    a person across machines, devices. Today a purchase is reached by its
    order's secret (kept by the store's app, mailed to a web buyer). The

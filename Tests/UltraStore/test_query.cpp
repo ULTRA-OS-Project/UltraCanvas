@@ -313,6 +313,24 @@ TEST(language_from_locale) {
     REQUIRE(!SystemLanguage().empty());
 }
 
+TEST(country_from_locale) {
+    REQUIRE_EQ(CountryFromLocale("de_AT.UTF-8"), std::string("AT"));
+    REQUIRE_EQ(CountryFromLocale("de_DE@euro"), std::string("DE"));
+    REQUIRE_EQ(CountryFromLocale("pt-BR"), std::string("BR"));
+    REQUIRE_EQ(CountryFromLocale("en-gb"), std::string("GB"));
+    REQUIRE_EQ(CountryFromLocale("zh-Hant-TW"), std::string("TW"));      // the script is not the country
+    REQUIRE_EQ(CountryFromLocale("sr_Latn_RS.UTF-8"), std::string("RS"));
+    REQUIRE(CountryFromLocale("de").empty());
+    REQUIRE(CountryFromLocale("es-419").empty());                         // Latin America is no country
+    REQUIRE(CountryFromLocale("C").empty());
+    REQUIRE(CountryFromLocale("C.UTF-8").empty());
+    REQUIRE(CountryFromLocale("POSIX").empty());
+    REQUIRE(CountryFromLocale("").empty());
+    REQUIRE_EQ(CountryOfLanguageTags({"de", "fr-CH", "en-US"}), std::string("CH"));   // the first that names one
+    REQUIRE(CountryOfLanguageTags({"de", "en"}).empty());
+    REQUIRE(CountryOfLanguageTags({}).empty());
+}
+
 TEST(codes_check_and_discount_the_price) {
     Catalog c = FixtureCatalog();
     PromoCode anna;

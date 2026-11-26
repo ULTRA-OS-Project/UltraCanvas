@@ -1,0 +1,1 @@
+- **The two texts about deleting an account carry the 90 days in all 29 languages** (`media/locale/*/UltraStore.json`). Reworded to take the number from one constant, they became new keys, which every language would have shown in English. Each language keeps the wording its catalogue already had for the text, with the number as the placeholder.

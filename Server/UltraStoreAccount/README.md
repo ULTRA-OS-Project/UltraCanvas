@@ -85,7 +85,7 @@ of the machine it runs on.
 | `POST /v1/me/licences/{id}/install`, `/uninstall` | a seat taken or freed for this machine; 409 `no_seat` when every seat (`seats`, else `ULTRASTORE_ACCOUNT_DEFAULT_SEATS`) is taken |
 | `GET /v1/me/notices` | the unread first; `POST /v1/me/notices/{id}/read` |
 | `POST /v1/me/archive` | the data archive requested and built at once → `{archive: {id, state, due}}`; `GET /v1/me/archive` the archives; `GET /v1/me/archive/{id}/download` the JSON, once, after the operator released it |
-| `POST /v1/me/delete` | `{password}`: the account marked `deleting`, carried out after `ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS` (30); `POST /v1/me/delete/cancel` before then |
+| `POST /v1/me/delete` | `{password}`: the account marked `deleting`, carried out after `ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS` (90; 30 until 0.3.1); `POST /v1/me/delete/cancel` before then |
 
 **UltraAccount** (0.3.0)
 
@@ -152,7 +152,8 @@ mails do. A text costs money, so only an account on a paid plan is sent one.
 ## What a deletion does
 
 The person asks, with the password; the account is `deleting` for the grace
-days, signed in still, and a cancel brings it back. Then - by the timer, or
+days (90, `ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS`), signed in still, and a
+cancel brings it back. Then - by the timer, or
 by the operator on the person's request - every machine is signed out, every
 licence released (the apps keep working on the machines they are on, without
 updates: the licence file is the machine's), the subscriptions cancelled, the
