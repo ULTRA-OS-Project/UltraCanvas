@@ -454,8 +454,8 @@ int main() {
         snapped = canvas->Snap(Point2Dd(101.5, 126.0), &sr);
         Check(Near(snapped.x, 100, 1e-9) && Near(snapped.y, 125, 1e-9) && sr.x == VectorSnapResult::Kind::Object,
               "Snap to an object's edge and centre");
-        Point2Dd far = canvas->Snap(Point2Dd(60, 60), &sr);
-        Check(Near(far.x, 60, 1e-9) && !sr.Snapped(), "nothing within the radius: no snap");
+        Point2Dd distant = canvas->Snap(Point2Dd(60, 60), &sr);
+        Check(Near(distant.x, 60, 1e-9) && !sr.Snapped(), "nothing within the radius: no snap");
 
         canvas->GetSelection()->Set(box);
         Check(NearRect(canvas->SelectionBounds(), 100, 100, 100, 50), "SelectionBounds follows the selection");
@@ -558,8 +558,8 @@ int main() {
         Check(PolygonSetContains(u, VectorStorage::FillRule::NonZero, Point2Dd(75, 50)) && !PolygonSetContains(u, VectorStorage::FillRule::NonZero, Point2Dd(-1, 50)),
               "containment follows the union");
         // Disjoint squares: the union keeps both.
-        const PolygonSet far = PolygonBoolean(a, VectorStorage::FillRule::NonZero, square(200, 0, 100), VectorStorage::FillRule::NonZero, PathBooleanOp::Union);
-        Check(far.size() == 2 && Near(area(far), 20000, 1e-6), "union of disjoint squares keeps both rings");
+        const PolygonSet distant = PolygonBoolean(a, VectorStorage::FillRule::NonZero, square(200, 0, 100), VectorStorage::FillRule::NonZero, PathBooleanOp::Union);
+        Check(distant.size() == 2 && Near(area(distant), 20000, 1e-6), "union of disjoint squares keeps both rings");
         // A square with a hole, both rings wound the same way, read even-odd:
         // normalising makes the winding consistent (the hole counts negative).
         PolygonSet holed = square(0, 0, 100);

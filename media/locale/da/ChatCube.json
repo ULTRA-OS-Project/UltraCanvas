@@ -198,7 +198,6 @@
   "In the message field": "I beskedfeltet",
   "Incoming call from {0}": "Indgående opkald fra {0}",
   "Incoming video call from {0}": "Indgående videoopkald fra {0}",
-  "Insert": "Indsæt",
   "Insert a location (OpenStreetMap)": "Indsæt en placering (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Indsæt et skærmbillede: vælg et vindue, eller træk et område",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC, i den sidste række, forbinder til en server med dit kaldenavn - over TLS, medmindre adressen starter med irc:// - og logger ind med din adgangskode, når kaldenavnet er registreret. Skriv en #kanal i Tilføj for at deltage.",

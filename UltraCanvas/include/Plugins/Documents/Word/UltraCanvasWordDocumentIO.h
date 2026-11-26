@@ -1,16 +1,21 @@
 // include/Plugins/Documents/Word/UltraCanvasWordDocumentIO.h
 // Readers/writers between word-processing file formats and UCRichDocument:
 //   .odt  — OpenDocument Text (ODF package)            read + write
+//   .ott  — OpenDocument Text template                 read + write
 //   .docx — Word 2007+ (OOXML/OPC package)             read + write
+//   .dotx — Word template                              read + write
+//   .dotm — Word macro-enabled template                read only (macros neither run nor kept)
 //   .doc  — legacy Word 97-2003 (OLE2/CFB binary)      read (with formatting)
 //   .tex  — LaTeX document subset (article class)      read only
 // Format detection is signature-based (ZIP magic + mimetype /
 // [Content_Types].xml probe, CFB magic, \documentclass head) so renamed
 // files are classified correctly. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md
 // and Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md.
+// Version: 1.6.0 - templates: .ott reads and writes as an .odt, .dotx as a .docx, each with its
+//                  template media type; .dotm reads; IsWordTemplateExtension
 // Version: 1.5.0 - Load / LoadOdt open a password-protected .odt with its password
 // Version: 1.4.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -32,7 +37,13 @@ enum class WordDocumentFormat {
 // the extension when the file cannot be read.
 WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath);
 // Classifies by extension only ("odt", "docx", "doc", "tex"; leading dot allowed).
+// A template is its package's format: "ott" is Odt, "dotx" and "dotm" Docx.
 WordDocumentFormat WordDocumentFormatFromExtension(const std::string& extension);
+// True for the extensions of a word-processing template - "ott", "dotx",
+// "dotm" - given as an extension (with or without its dot) or a whole path,
+// any case. Save writes .ott and .dotx with the template's media type (the
+// package is the same); a .dotm is read, not written.
+bool IsWordTemplateExtension(const std::string& extensionOrPath);
 
 class UCWordDocumentIO {
 public:
@@ -76,7 +87,8 @@ public:
     static bool LoadLaTeX(const std::string& filePath, UCRichDocument& outDocument,
                           std::string& outError);
 
-    // Picks the writer from the target extension (.odt/.docx).
+    // Picks the writer from the target extension (.odt/.docx, and the
+    // templates .ott/.dotx, written as templates).
     // `password` saves a password-protected .docx (agile encryption,
     // AES-256 / SHA-512, what Word 2013 and later write); any other format
     // with a password is refused rather than saved unprotected.

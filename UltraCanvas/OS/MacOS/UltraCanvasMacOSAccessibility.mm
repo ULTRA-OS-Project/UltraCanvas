@@ -12,8 +12,9 @@
 // NSString (UTF-16) ranges here and code points in UltraCanvas; the helpers
 // below convert. Element objects only hold an id: one whose element is gone
 // answers as an empty, ignored element.
+// Version: 1.1.0 - the roles TableRow, TableCell and Canvas
 // Version: 1.0.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSAccessibility.h"
@@ -287,7 +288,10 @@ void CollectChildren(UltraCanvasUIElement* element, NSMutableArray* out) {
         case AccessibleRole::Toolbar:     return NSAccessibilityToolbarRole;
         case AccessibleRole::TabList:     return NSAccessibilityTabGroupRole;
         case AccessibleRole::Tree:        return NSAccessibilityOutlineRole;
+        case AccessibleRole::TableRow:    return NSAccessibilityRowRole;
+        case AccessibleRole::TableCell:   return NSAccessibilityCellRole;
         case AccessibleRole::Window:
+        case AccessibleRole::Canvas:
         case AccessibleRole::Group:       return NSAccessibilityGroupRole;
         case AccessibleRole::Unknown:     break;
     }

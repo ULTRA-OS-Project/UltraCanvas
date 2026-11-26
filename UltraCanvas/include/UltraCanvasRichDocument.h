@@ -6,6 +6,10 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.21.0 - RichPageSetup and RichTabStop compare (operator==), for the page setup and
+//                   paragraph dialogs' undo steps
+// Version: 1.20.0 - RichChart: every chart of the framework a table can feed (Waterfall, Histogram, Funnel,
+//                   Sankey, Gantt, Heatmap, Ternary ... - RichChart::Kind); RichChartSeries::labels, RichChart::bins
 // Version: 1.19.0 - UCRichDocument::keptParts: package parts written back unchanged (a .docx theme and font table)
 // Version: 1.18.0 - RichShape::ApplyPreset: connectors, double and notched arrows, more stars and polygons,
 //                   snipped and rounded rectangles, callouts, more flowchart shapes
@@ -32,7 +36,7 @@
 // Version: 1.4.0 - RichTextRun::letterSpacingPt: a run's own room between its letters;
 //                  RichStyleCharacter::letterSpacingPt: a character style's
 // Version: 1.3.3
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -273,6 +277,7 @@ enum class RichTabKind {
 struct RichTabStop {
     float positionPt = 0.0f;   // from the text column's left edge (not the indent)
     RichTabKind kind = RichTabKind::Left;
+    bool operator==(const RichTabStop& other) const = default;
 };
 
 // A section of a document: its text in `columns` columns, `columnGapPt`
@@ -735,6 +740,10 @@ struct RichChartSeries {
     std::vector<double> values;           // one per category (a scatter point's y)
     std::vector<double> xValues;          // Scatter / Bubble: each point's x
     std::vector<double> sizes;            // Bubble: each point's size
+    // Words in place of numbers, one per point, for a kind that reads a
+    // column of words as a series: a Sankey diagram's targets, a sunburst's
+    // or treemap's deeper levels. Empty for every other kind.
+    std::vector<std::string> labels;
     bool smooth = false;                  // Line / Scatter: a curve through its points, not straight lines
     bool joined = true;                   // Line / Scatter: its points are joined by a line
     bool marked = false;                  // Line / Scatter: ...and marked
@@ -745,12 +754,35 @@ struct RichChart {
     // Radar: the series round the categories' spokes. Bubble: a Scatter
     // whose points have sizes. Stock: per category a high, a low and a
     // close - series in that order, an open before them where there are four.
-    enum class Kind { NoChart, Column, Bar, Line, Area, Pie, Doughnut, Scatter, Radar, Bubble, Stock };
+    //
+    // The kinds after Stock are the framework's other charts, each drawn by
+    // its own element (CreateRichChartElement, UltraCanvasRichDocumentChart.h);
+    // what each reads from the categories and series is listed there. Office
+    // formats keep them as an extension beside a column chart of the same
+    // data.
+    enum class Kind { NoChart, Column, Bar, Line, Area, Pie, Doughnut, Scatter, Radar, Bubble, Stock,
+                      // Column and bar
+                      Waterfall, DivergingBar, PopulationPyramid, Dumbbell, Mekko,
+                      // Line and area
+                      CumulativeFlow, NestedArea,
+                      // Pie and circular
+                      Polar, RadialBar, CircularProgress, Gauge,
+                      // Scatter and bubble
+                      Quadrant, ImportancePerformance, Ternary, Hexbin, Scatter3D,
+                      // Statistical
+                      Histogram, BoxWhisker, Jitter, Ridgeline,
+                      // Flow and hierarchy
+                      Funnel, Pyramid, Sankey, Chord, Treemap, Sunburst, Gantt, Timeline,
+                      // Matrix and maps
+                      Heatmap, CalendarHeatmap, Contour, Surface,
+                      // Other
+                      WordCloud, Parliament };
     Kind kind = Kind::NoChart;
     bool stacked = false;                 // Column / Bar / Area: one on the other
     bool percent = false;                 // ...as shares of 100%
     bool legend = false;
     bool filled = false;                  // Radar: the series' shapes are filled
+    int bins = 0;                         // Histogram: how many bins (0 = from the data)
     std::string title;
     std::vector<std::string> categories;
     std::vector<std::string> pointColors; // Pie / Doughnut: a slice's own colour ("" = from the palette)
@@ -885,6 +917,7 @@ struct RichPageSetup {
     float footerBottomPt = 0.0f;
 
     bool HasPage() const { return widthPt > 0.0f && heightPt > 0.0f; }
+    bool operator==(const RichPageSetup& other) const = default;
 };
 
 // What a page carries besides the body: its header and footer. A letterhead

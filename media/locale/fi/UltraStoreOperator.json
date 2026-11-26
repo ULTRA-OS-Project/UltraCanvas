@@ -152,7 +152,6 @@
   "information request": "tietopyyntö",
   "Key": "Avain",
   "Key {0}": "Avain {0}",
-  "Kind": "Laji",
   "Last publish: sequence {0}. {1} go into the next one, from merchants in good standing and apps not suspended.": "Viimeisin julkaisu: sarja {0}. {1} menee seuraavaan, hyvässä asemassa olevilta kauppiailta ja keskeyttämättömistä sovelluksista.",
   "last seen {0}": "nähty viimeksi {0}",
   "Left out: {0}": "Jätetty pois: {0}",

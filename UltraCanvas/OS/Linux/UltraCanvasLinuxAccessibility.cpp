@@ -15,8 +15,9 @@
 // select() loop services through an fd watch on that context's wake-up fd, so
 // every call is answered on the UI thread, between events, with no thread of
 // our own and no GLib main loop in the application.
+// Version: 1.2.0 - the roles TableRow, TableCell and Canvas
 // Version: 1.1.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxAccessibility.h"
@@ -52,11 +53,11 @@ constexpr const char* kNullPath = "/org/a11y/atspi/null";
 constexpr const char* kObjectPrefix = "/org/a11y/atspi/accessible";
 
 enum Role : uint32_t {
-    RoleCheckBox = 7, RoleComboBox = 11, RoleFiller = 20, RoleFrame = 23, RoleImage = 27, RoleLabel = 29,
+    RoleCanvas = 6, RoleCheckBox = 7, RoleComboBox = 11, RoleFiller = 20, RoleFrame = 23, RoleImage = 27, RoleLabel = 29,
     RoleList = 31, RoleListItem = 32, RoleMenu = 33, RoleMenuItem = 35, RolePageTab = 37, RolePageTabList = 38,
     RolePanel = 39, RolePasswordText = 40, RoleProgressBar = 42, RolePushButton = 43, RoleRadioButton = 44,
-    RoleSlider = 51, RoleSpinButton = 52, RoleTable = 55, RoleText = 61, RoleToggleButton = 62, RoleToolBar = 63,
-    RoleTree = 65, RoleUnknown = 67, RoleApplication = 75, RoleEntry = 79, RoleLink = 88, RoleTreeItem = 91,
+    RoleSlider = 51, RoleSpinButton = 52, RoleTable = 55, RoleTableCell = 56, RoleText = 61, RoleToggleButton = 62, RoleToolBar = 63,
+    RoleTree = 65, RoleUnknown = 67, RoleApplication = 75, RoleEntry = 79, RoleLink = 88, RoleTableRow = 90, RoleTreeItem = 91,
     RoleDocumentText = 94, RoleGrouping = 99
 };
 
@@ -304,6 +305,9 @@ uint32_t RoleOf(const Node& node) {
         case AccessibleRole::TabList:     return RolePageTabList;
         case AccessibleRole::Tree:        return RoleTree;
         case AccessibleRole::Group:       return RoleGrouping;
+        case AccessibleRole::TableRow:    return RoleTableRow;
+        case AccessibleRole::TableCell:   return RoleTableCell;
+        case AccessibleRole::Canvas:      return RoleCanvas;
         case AccessibleRole::Unknown:   break;
     }
     // An element that has not described itself: a panel when it holds
@@ -325,6 +329,9 @@ const char* RoleName(uint32_t role) {
         case RoleList:         return "list";
         case RoleListItem:     return "list item";
         case RoleTable:        return "table";
+        case RoleTableRow:     return "table row";
+        case RoleTableCell:    return "table cell";
+        case RoleCanvas:       return "canvas";
         case RoleImage:        return "image";
         case RoleLink:         return "link";
         case RoleMenu:         return "menu";

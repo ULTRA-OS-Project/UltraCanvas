@@ -1,5 +1,11 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.19.0 - every chart of the framework: ShowInsertChartDialog / ShowChartTypeDialog (the chart
+//                  gallery), InsertChartOfTypeFromSelection; the charts drawn by any chart element
+// Version: 1.18.0 - templates: LoadFromFile reads .ots, .xltx and .xltm, SaveToFile writes .ots and .xltx
+//                  with their template media types; IsSpreadsheetTemplateExtension
+// Version: 1.17.0 - a table to assistive technology (rows and cells as parts, the active cell focused and
+//                  announced); Copy / Cut a selected chart onto the office clipboard (CopyChartToClipboard)
 // Version: 1.16.0 - conditional formats and validation rules as undo steps (RulesChange): AddConditionalFormat,
 //                  SetConditionalFormatRule, RemoveConditionalFormatRule, the selection calls and the dialogs
 // Version: 1.15.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
@@ -50,6 +56,7 @@ namespace UltraCanvas {
 class UltraCanvasTextInput;
 class UltraCanvasMenu;
 class UltraCanvasChartEngineElement;
+class UltraCanvasUIElement;
 
 // Forward declarations
 class IRenderContext;
@@ -127,6 +134,13 @@ enum class SpreadsheetEditMode {
     Resizing,
     AutoFilling
 };
+
+// True for the extensions of a spreadsheet template - "ots" (OpenDocument),
+// "xltx" and "xltm" (Excel) - given as an extension (with or without its dot)
+// or a whole path, any case. A template is its workbook's package under the
+// template's media type: LoadFromFile reads all three, SaveToFile writes
+// .ots and .xltx as templates; a .xltm is read, not written.
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath);
 
 // ============================================================================
 // SPREADSHEET COMPONENT
@@ -218,6 +232,10 @@ private:
     std::string clipboardSheetName_;
     std::vector<std::vector<SpreadsheetCell>> clipboardData_;
     std::string clipboardText_;   // what Copy put on the system clipboard as text
+    // Assistive technology's view of the grid (made on first request).
+    class AccessibleGrid;
+    std::shared_ptr<AccessibleGrid> accessibleGrid_;
+    void AnnounceAccessibleSelection();
     bool PasteValues(const std::vector<std::vector<std::string>>& rows);
     
     std::stack<SpreadsheetUndoAction> undoStack_;
@@ -319,7 +337,7 @@ private:
     Rect2Di chartDragBox_;               // the chart's box in sheet pixels when the drag began
     std::vector<SpreadsheetChart> chartsBeforeDrag_;
     bool chartsDirty_ = true;
-    std::map<uint64_t, std::shared_ptr<UltraCanvasChartEngineElement>> chartCache_;
+    std::map<uint64_t, std::shared_ptr<UltraCanvasUIElement>> chartCache_;
     bool HandleChartEvent(const UCEvent& event);
     void RenderCharts(IRenderContext* ctx);
     Rect2Di ChartScreenRect(const SpreadsheetChart& chart) const;
@@ -353,6 +371,21 @@ public:
     void Arrange(const UltraCanvas::Rect2Df &newFinalRect, const CSSLayout::LayoutContext &ctx) override;
     bool AcceptsFocus() const override { return true; }
     bool SetFocus(bool focus = true) override;   // commit edit on focus loss
+
+    // ===== ACCESSIBILITY =====
+    // A table to assistive technology, named by its sheet: its rows and
+    // their cells are its parts (GetAccessibleTableInterface,
+    // GetAccessiblePartsInterface) - the used cells, and as far as the active
+    // cell and the selection reach - each cell named by its address and the
+    // value it shows ("B3 42"). The active cell is the focused part and the
+    // value text; a move of it or of the selection is announced
+    // (SelectionChanged, its `part` the active cell), a change of sheet too
+    // (NameChanged).
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Table; }
+    std::string GetAccessibleName() const override;
+    std::string GetAccessibleValueText() const override;
+    IAccessibleParts* GetAccessiblePartsInterface() override;
+    IAccessibleTable* GetAccessibleTableInterface() override;
     
     // ===== SHEET MANAGEMENT =====
     int GetSheetCount() const { return static_cast<int>(sheets_.size()); }
@@ -651,7 +684,9 @@ public:
     // Paste takes the grid's own copy while the system clipboard still holds
     // it; else what another program copied - its HTML table, or tab- or
     // comma-separated text - each value read as if typed. Every paste is one
-    // undo step.
+    // undo step. With a chart selected, Copy and Cut take the chart instead:
+    // a static copy for a document or a slide (CopyChartToClipboard,
+    // UltraCanvasOfficeClipboard.h), a picture and its data for other programs.
     void Cut();
     void Copy();
     void Paste();
@@ -698,6 +733,17 @@ public:
     // made from a block of cells - whether its series run along the rows.
     // OK is one undo step.
     void ShowChartPropertiesDialog(int index);
+    // A chart of type `type` (SpreadsheetChartTypes) over the selection: -1,
+    // and why in `problem` (in the reader's language), when the selection
+    // does not fit the type - "A bubble chart needs three columns of
+    // numbers ...".
+    int InsertChartOfTypeFromSelection(size_t type, std::string* problem = nullptr);
+    // The chart gallery (ShowSpreadsheetChartGallery) over the selection;
+    // the type picked is inserted, or a message says why it cannot be.
+    void ShowInsertChartDialog();
+    // The chart gallery for chart `index`, its own type chosen; the type
+    // picked becomes its type (one undo step).
+    void ShowChartTypeDialog(int index);
 
     // ===== UNDO/REDO =====
     void Undo();
@@ -829,10 +875,13 @@ public:
     // "Save with password", decrypted by UltraCanvasOdfEncryption.h. Other
     // formats ignore it.
     bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-    // `password` saves a password-protected .xlsx (agile encryption,
+    // The type is the extension's: .ods, .xlsx (and the templates .ots,
+    // .xltx), .csv, .tsv.
+    // `password` saves a password-protected .xlsx or .xltx (agile encryption,
     // AES-256 / SHA-512, what Excel 2013 and later write). Any other format
     // with a password is refused rather than saved unprotected.
     bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
+    // .ods and .xlsx; an .ots or .xltx path is written as that template.
     bool LoadODS(const std::string& filePath, const std::string& password = std::string());
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());

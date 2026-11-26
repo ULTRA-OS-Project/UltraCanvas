@@ -197,7 +197,6 @@
   "In the message field": "메시지 입력란",
   "Incoming call from {0}": "{0}님의 전화",
   "Incoming video call from {0}": "{0}님의 영상 통화",
-  "Insert": "삽입",
   "Insert a location (OpenStreetMap)": "위치 삽입 (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "스크린샷 삽입: 창을 선택하거나 영역을 드래그하세요",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "마지막 줄의 IRC는 닉네임으로 서버에 연결합니다 - 주소가 irc://로 시작하지 않으면 TLS로 - 닉네임이 등록되어 있으면 비밀번호로 로그인합니다. 참여하려면 추가에 #채널을 입력하세요.",

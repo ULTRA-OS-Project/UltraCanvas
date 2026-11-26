@@ -1,6 +1,6 @@
 # UltraCanvasAccessibility
 
-<!-- doc-check: UltraCanvasUIElement* element; -->
+<!-- doc-check: UltraCanvasUIElement* element; void Say(const std::string& words); -->
 
 What assistive technology — screen readers, magnifiers, braille displays —
 needs to know about an element, in a form that does not depend on the
@@ -59,6 +59,8 @@ beyond the tooltip.
 | `UltraCanvasImageElement` | `Image` | `SetAccessibleName` (its alt text) | |
 | `UltraCanvasMenu` | `Menu` | | items are drawn, not elements |
 | `UltraCanvasRichTextEdit` | `Document` | the document's title | the full text interface |
+| `UltraCanvasSpreadsheet` | `Table` | the sheet's name | rows and cells as parts and as a table ([Parts](#parts-an-element-draws-itself)); value text = the active cell ("B3 42") |
+| `UltraCanvasSlideEdit` | `Canvas` | the slide shown ("Slide 2 of 5: Results") | the strip's slides and the slide's shapes as parts |
 
 A changed name, toggle state or value is announced (`NameChanged`,
 `StateChanged`, `ValueChanged`), so a screen reader hears it without the
@@ -71,6 +73,44 @@ is revealed. The bridges report it as a password field (UI Automation's
 "password" and echoes stars instead of the characters typed, and other
 assistive tools leave the content alone. An element that answers true must not
 hand out its text through `GetAccessibleTextInterface()`.
+
+## Parts an element draws itself
+
+A spreadsheet's cells and a slide editor's slides and shapes are drawn, not
+child elements. Such an element describes them as **parts**
+(`IAccessibleParts`, from `GetAccessiblePartsInterface()`), each named by its
+path of indices from the element - `{}` the element, `{2}` its third part,
+`{2, 5}` the sixth part of that - with a role (`TableRow`, `TableCell`,
+`ListItem`, `Label`, `Image` ...), a name, a description, its box in window
+coordinates, and whether it is selected or has the focus. A grid of cells
+answers as a table too (`IAccessibleTable`, from
+`GetAccessibleTableInterface()`): its size, row and column headers, a cell by
+row and column, the focused cell and the selected block.
+
+```cpp
+if (IAccessibleTable* table = element->GetAccessibleTableInterface()) {
+    int row = 0, column = 0;
+    if (table->GetFocusedCell(row, column)) Say(table->GetCell(row, column).name);   // "B3 42"
+}
+if (IAccessibleParts* parts = element->GetAccessiblePartsInterface()) {
+    for (int i = 0; i < parts->GetPartCount({1}); ++i) Say(parts->GetPart({1, i}).name);   // a slide's shapes
+    std::vector<int> focused = parts->GetFocusedPart();                                    // {1, 3}: the fourth shape
+}
+```
+
+| Element | Parts | Focused part | Announced |
+|---|---|---|---|
+| `UltraCanvasSpreadsheet` | `{row}` a `TableRow` named by its number, `{row, column}` a `TableCell` named by its address and shown value ("B3 42", an empty one "A2"), its formula as description; as many as the used cells, the active cell and the selection reach | the active cell | `SelectionChanged` with the cell as `part` (and `ValueChanged`: the value text is the active cell) when it or the selection moves; `NameChanged` on another sheet |
+| `UltraCanvasSlideEdit` | `{0}` the strip, a `List` of `{0, i}` slides (`ListItem` "Slide 1 of 3: Title", hidden ones described so); `{1}` the slide shown, a `Group` of `{1, i}` shapes - a table a `Table`, a picture or chart an `Image`, the rest `Label`s - named by their text's first words, else by their kind ("Title", "Content", "Image", "Chart" ...), the kind as description | the first selected shape; the slide, after a click in the strip | `SelectionChanged` with the focused part; `NameChanged` when another slide is shown |
+
+An `AccessibilityEvent` about a part carries its path in `part`.
+
+**Not yet on the platforms.** The bridges map the roles `TableRow`,
+`TableCell` and `Canvas`, and an element's own name, value text and events
+reach the screen reader as before - the grid's active cell is its value text.
+They do not yet publish the parts as objects of their own (AT-SPI's `Table`
+and child objects, UI Automation's Grid pattern and fragments, AppKit's rows
+and cells), so a screen reader cannot yet walk from cell to cell by itself.
 
 ## Text
 
@@ -99,7 +139,7 @@ headings, list items, links, tracked insertions and deletions and comments.
 ```cpp
 int id = UltraCanvasAccessibility::AddListener([](const AccessibilityEvent& e) {
     // e.type: FocusChanged, TextChanged, CaretMoved, SelectionChanged, NameChanged
-    // e.element, e.offset (caret for CaretMoved), e.length
+    // e.element, e.offset (caret for CaretMoved), e.length, e.part (a part's path)
 });
 UltraCanvasAccessibility::RemoveListener(id);
 ```

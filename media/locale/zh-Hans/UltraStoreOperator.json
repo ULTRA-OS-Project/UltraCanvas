@@ -152,7 +152,6 @@
   "information request": "信息请求",
   "Key": "密钥",
   "Key {0}": "密钥 {0}",
-  "Kind": "类型",
   "Last publish: sequence {0}. {1} go into the next one, from merchants in good standing and apps not suspended.": "上次发布：序列 {0}。下一次将包含 {1}，来自信誉良好的商户和未被暂停的应用。",
   "last seen {0}": "上次出现 {0}",
   "Left out: {0}": "遗漏：{0}",

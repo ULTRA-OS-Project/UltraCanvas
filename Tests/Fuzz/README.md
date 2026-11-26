@@ -9,9 +9,16 @@ purpose and look for crashes, hangs, sanitizer reports and memory blow-ups.
 | `HTMLParserFuzz.cpp` | HTML | `HTML::Parser`, the DOM, the cascade over the document's own `<style>`, `DecodeEntities`, `ExtractPlainText` | `HTMLParserFuzzer` | `HTMLParserFuzzSmoke` |
 | `CSSFuzz.cpp` | CSS | `StyleSheet::ParseAppend`, `ParseDeclarationList`, `MediaMatches`, colours and lengths, every property handler of the resolver (as a sheet and as a `style=""`) | `CSSFuzzer` | `CSSFuzzSmoke` |
 | `HTMLBuilderFuzz.cpp` | HTML | all of the above, then `ElementBuilder` and the CSSLayout engine at 360 and 1024 px (flex, grid, tables, floats) | - (needs the UI library) | `HTMLBuilderFuzzSmoke` |
+| `PptReaderFuzz.cpp` | a .ppt's "PowerPoint Document" stream (or a whole compound file) | the PowerPoint 97-2003 reader (`UltraCanvasPresentationPpt.h`): the edit chain, records, OfficeArt shapes, text runs, master styles, tables; the compound-file reader under it | - (needs the library) | `PptReaderFuzzSmoke` |
 
 `corpus/html` and `corpus/css` are the seeds, and `html.dict` / `css.dict` are
 libFuzzer dictionaries (tags, attributes, entities, properties, values).
+`corpus/ppt` holds the stream of `Tests/fixtures/ppt-features.ppt`, the deck
+`PresentationPptTest` builds record by record (`built-deck.bin`), and a
+compound file whose FAT loops (`cfb-looping-chain.bin`: the first smoke runs
+found the compound-file reader copying two gigabytes of it, seconds a file,
+until a chain was bounded by the file's sector count); `ppt.dict` holds
+record types and edge lengths.
 
 ## The smoke runs (every build)
 

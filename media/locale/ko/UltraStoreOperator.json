@@ -152,7 +152,6 @@
   "information request": "정보 요청",
   "Key": "키",
   "Key {0}": "키 {0}",
-  "Kind": "종류",
   "Last publish: sequence {0}. {1} go into the next one, from merchants in good standing and apps not suspended.": "마지막 게시: 시퀀스 {0}. 다음 게시에는 양호한 상태의 판매자의 앱과 정지되지 않은 앱 {1}개가 포함됩니다.",
   "last seen {0}": "마지막 접속 {0}",
   "Left out: {0}": "제외됨: {0}",

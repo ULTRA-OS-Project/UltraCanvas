@@ -202,7 +202,6 @@
   "In the message field": "في حقل الرسالة",
   "Incoming call from {0}": "مكالمة واردة من {0}",
   "Incoming video call from {0}": "مكالمة فيديو واردة من {0}",
-  "Insert": "إدراج",
   "Insert a location (OpenStreetMap)": "إدراج موقع (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "إدراج لقطة شاشة: اختر نافذة أو اسحب لتحديد منطقة",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "يتصل IRC، في الصف الأخير، بخادم باسمك المستعار - عبر TLS ما لم يبدأ العنوان بـ irc:// - ويسجّل الدخول بكلمة المرور إن كان الاسم مسجّلًا. اكتب #قناة في الإضافة للانضمام إليها.",

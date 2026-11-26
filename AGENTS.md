@@ -247,6 +247,20 @@ before adding cross-module code.
   `scripts/win32_aw_macros.txt`; `scripts/platform_names_baseline.txt` holds
   the sites that predate the check and only shrinks. A site that is correct as it
   stands says so with `// win32-name-ok: <why>`.
+- **Nor like a Win32 object-like macro.** `<windows.h>` also `#define`s
+  ordinary-looking words: `near`, `far`, `NEAR` and `FAR` to nothing
+  (`<minwindef.h>`, so every file that sees windows.h), `IN`, `OUT` and
+  `OPTIONAL` to nothing, `interface` to `struct`, `small` to `char` (the
+  COM and RPC headers), and `ERROR`, `DELETE`, `TRANSPARENT`, `ABSOLUTE`
+  and more to numbers. A lambda, variable, member or enumerator of that name
+  compiles on Linux and macOS and fails on Windows ("expected
+  unqualified-id"): `auto near = [&](...)` in the spreadsheet charts broke
+  both Windows builds. Say what it is instead - `closeTo`, `distant`,
+  `onHandle`. `scripts/check_platform_names.py` enforces this in CI (its
+  `win32-macro` rule) from the hand-kept list in
+  `scripts/win32_object_macros.txt`; the `small` and `interface` sites that
+  predate it are in `scripts/platform_names_baseline.txt` and only shrink.
+  A site that is correct as it stands says so with `// win32-name-ok: <why>`.
 - **No identifier is named like an X11 macro.** On Linux and BSD the window
   headers reach `<X11/Xlib.h>`, which `#define`s `None`, `Success`, `Status`,
   `Bool`, `Always`, `NoValue`, `Above`, `Below`, `True`, `False` and a few
@@ -946,7 +960,8 @@ and never introduce a new literal copy of one:
    one document in two locales and compares the bytes, and a new writer
    belongs in whichever of the two fits (`Tests/LocaleTestSupport.h` is the
    shared half). Naming a function? Not after a Win32 A/W macro (`CreateFile`,
-   `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
+   `LoadImage`, `SendMessage`), nor a Win32 object-like one (`near`, `far`,
+   `interface`, `small`, `IN`, `ERROR`), nor after an X11 macro (`None`, `Success`,
    `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
    `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI
    runs that too. Changing UltraIM's provider interface

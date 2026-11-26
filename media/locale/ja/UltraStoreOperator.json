@@ -152,7 +152,6 @@
   "information request": "情報提供の依頼",
   "Key": "キー",
   "Key {0}": "キー {0}",
-  "Kind": "種類",
   "Last publish: sequence {0}. {1} go into the next one, from merchants in good standing and apps not suspended.": "最後の公開: シーケンス {0}。次回には、{1} が含まれます(良好な状態の販売者のもので、停止されていないアプリ)。",
   "last seen {0}": "最終確認 {0}",
   "Left out: {0}": "除外: {0}",

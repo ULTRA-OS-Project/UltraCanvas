@@ -198,7 +198,6 @@
   "In the message field": "Al camp de missatge",
   "Incoming call from {0}": "Trucada entrant de {0}",
   "Incoming video call from {0}": "Videotrucada entrant de {0}",
-  "Insert": "Insereix",
   "Insert a location (OpenStreetMap)": "Insereix una ubicació (OpenStreetMap)",
   "Insert a screenshot: choose a window or drag an area": "Insereix una captura de pantalla: trieu una finestra o arrossegueu una àrea",
   "IRC, in the last row, connects to a server with your nickname - over TLS unless the address starts with irc:// - and signs in with your password when the nickname is registered. Type a #channel in Add to join it.": "IRC, a l'última fila, es connecta a un servidor amb el vostre sobrenom - per TLS tret que l'adreça comenci per irc:// - i inicia la sessió amb la contrasenya si el sobrenom està registrat. Escriviu un #canal a Afegeix per unir-vos-hi.",

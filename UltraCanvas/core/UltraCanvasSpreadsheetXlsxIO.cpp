@@ -9,6 +9,9 @@
 // borders, alignment, wrap). Number formats are classified by
 // ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
 // .xls reader.
+// Version: 1.7.0 - array formulas: <f t="array" ref>, dynamic ones with cm and xl/metadata.xml (XLDAPR)
+//                  read and written; a plain formula is read as one value; a formula's text,
+//                  Boolean or error result is written with its type
 // Version: 1.6.0 - conditional formats (conditionalFormatting, dxfs), data validations (dataValidations),
 //                  hyperlinks (with their relationships) and comments (the comments part and the legacy
 //                  VML drawing Excel shows them with) read and written; one relationships part per sheet
@@ -596,6 +599,7 @@ public:
         }
         LoadRelationships();
         LoadSharedStrings();
+        LoadCellMetadata();
         LoadStyles();
 
         tinyxml2::XMLDocument workbook;
@@ -654,6 +658,62 @@ private:
     std::vector<std::string> sharedStrings_;
     std::vector<CellStyle> cellStyles_;                  // per cellXfs index
     std::vector<NumberFormatCategory> xfCategories_;
+    // Per <cellMetadata> block (a cell's cm, 1-based): whether it marks a
+    // dynamic array (XLDAPR with fDynamic="1"). Empty without xl/metadata.xml.
+    std::vector<bool> dynamicCellMetadata_;
+    // The array formulas of the sheet being read.
+    std::vector<CellAddress> arrayAnchors_;
+
+    // xl/metadata.xml: which cell metadata blocks say "dynamic array".
+    void LoadCellMetadata() {
+        std::string xml;
+        if (!zip_.ReadEntry("xl/metadata.xml", xml)) return;
+        tinyxml2::XMLDocument doc;
+        if (doc.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        auto* root = doc.FirstChildElement("metadata");
+        if (!root) return;
+        std::vector<std::string> typeNames;   // metadataTypes, 1-based in <rc t>
+        if (auto* types = root->FirstChildElement("metadataTypes")) {
+            for (auto* t = types->FirstChildElement("metadataType"); t; t = t->NextSiblingElement("metadataType")) {
+                typeNames.push_back(Attr(t, "name"));
+            }
+        }
+        std::vector<bool> dynamicBlocks;      // futureMetadata name="XLDAPR", 0-based in <rc v>
+        for (auto* future = root->FirstChildElement("futureMetadata"); future;
+             future = future->NextSiblingElement("futureMetadata")) {
+            if (std::string(Attr(future, "name")) != "XLDAPR") continue;
+            for (auto* bk = future->FirstChildElement("bk"); bk; bk = bk->NextSiblingElement("bk")) {
+                bool isDynamic = false;
+                auto* extLst = bk->FirstChildElement("extLst");
+                for (auto* ext = extLst ? extLst->FirstChildElement("ext") : nullptr; ext;
+                     ext = ext->NextSiblingElement("ext")) {
+                    for (auto* p = ext->FirstChildElement(); p; p = p->NextSiblingElement()) {
+                        const std::string name = p->Name() ? p->Name() : "";
+                        if (name.size() >= 22 && name.compare(name.size() - 22, 22, "dynamicArrayProperties") == 0) {
+                            const std::string flag = Attr(p, "fDynamic");
+                            isDynamic = flag == "1" || flag == "true";
+                        }
+                    }
+                }
+                dynamicBlocks.push_back(isDynamic);
+            }
+        }
+        if (auto* cells = root->FirstChildElement("cellMetadata")) {
+            for (auto* bk = cells->FirstChildElement("bk"); bk; bk = bk->NextSiblingElement("bk")) {
+                bool isDynamic = false;
+                for (auto* rc = bk->FirstChildElement("rc"); rc; rc = rc->NextSiblingElement("rc")) {
+                    const int t = rc->IntAttribute("t", 0);
+                    const int v = rc->IntAttribute("v", -1);
+                    if (t >= 1 && static_cast<size_t>(t) <= typeNames.size() &&
+                        typeNames[static_cast<size_t>(t) - 1] == "XLDAPR" && v >= 0 &&
+                        static_cast<size_t>(v) < dynamicBlocks.size() && dynamicBlocks[static_cast<size_t>(v)]) {
+                        isDynamic = true;
+                    }
+                }
+                dynamicCellMetadata_.push_back(isDynamic);
+            }
+        }
+    }
 
     // Named ranges (scoped to a sheet by localSheetId), and the built-in names
     // that carry a sheet's print area and print titles. _xlnm._FilterDatabase
@@ -951,6 +1011,7 @@ private:
         }
 
         if (auto* sheetData = root->FirstChildElement("sheetData")) {
+            arrayAnchors_.clear();
             int rowIndex = 0;
             for (auto* row = sheetData->FirstChildElement("row"); row;
                  row = row->NextSiblingElement("row")) {
@@ -974,6 +1035,20 @@ private:
                     }
                     ParseCell(c, sheet, cellRow, cellCol);
                     colIndex = cellCol + 1;
+                }
+            }
+            // The cells an array formula covers hold its values as plain
+            // values: they are its values, not cells of their own.
+            for (const CellAddress& at : arrayAnchors_) {
+                const SpreadsheetCell* anchor = sheet->GetCellIfExists(at.row, at.col);
+                if (!anchor) continue;
+                for (int r = 0; r < anchor->GetArrayRows(); ++r) {
+                    for (int c = 0; c < anchor->GetArrayCols(); ++c) {
+                        if (r == 0 && c == 0) continue;
+                        if (SpreadsheetCell* cell = sheet->GetCellIfExists(at.row + r, at.col + c)) {
+                            if (!cell->HasFormula()) cell->MarkSpilledFrom(r, c);
+                        }
+                    }
                 }
             }
         }
@@ -1114,6 +1189,32 @@ private:
             if (!formula.empty() && formula[0] != '=') formula = "=" + formula;
             cell->SetFormula(formula);
             hasFormula = true;
+            // <f t="array" ref="B1:B3">: an array formula over that block -
+            // a dynamic one that spills when the cell carries dynamic-array
+            // metadata (cm), a legacy Ctrl+Shift+Enter one otherwise. Any
+            // other formula is worth one value, a range in it giving the
+            // cell on its row or column, as Excel reads a file's formula.
+            if (std::string(Attr(f, "t")) == "array") {
+                CellRange ref = CellRange::FromString(Attr(f, "ref"));
+                int rows = 1, cols = 1;
+                if (ref.IsValid() && ref.start.row == row && ref.start.col == col) {
+                    rows = ref.RowCount();
+                    cols = ref.ColCount();
+                }
+                const int cm = c->IntAttribute("cm", 0);
+                const bool dynamic = cm > 0 && (dynamicCellMetadata_.empty() ||
+                                                (static_cast<size_t>(cm) <= dynamicCellMetadata_.size() &&
+                                                 dynamicCellMetadata_[static_cast<size_t>(cm) - 1]));
+                if (dynamic) {
+                    cell->SetFormulaArrayMode(FormulaArrayMode::Spilling);
+                    cell->SetArrayExtent(rows, cols, false, true);
+                } else {
+                    cell->SetFormulaArrayMode(FormulaArrayMode::FixedRange, rows, cols);
+                }
+                arrayAnchors_.push_back(CellAddress(row, col));
+            } else {
+                cell->SetFormulaArrayMode(FormulaArrayMode::SingleValue);
+            }
         }
 
         NumberFormatCategory category = NumberFormatCategory::General;
@@ -1500,16 +1601,20 @@ public:
         // The sheets' charts: their parts, each sheet's <drawing>, their types.
         // A worksheet's relationships to its drawing join those to its links
         // and comments in one part (MergeSheetRelationships).
-        std::string contentTypes = BuildContentTypesXml(sheetXmls.size(), ExtraContentTypes());
+        // A template (.xltx) is the same package with its main part's
+        // content type saying so.
+        std::string contentTypes = BuildContentTypesXml(sheetXmls.size(), ExtraContentTypes(),
+                                                        IsSpreadsheetTemplateExtension(filePath));
         auto chartParts = WriteXlsxCharts(*spreadsheet_, sheetXmls, contentTypes);
         MergeSheetRelationships(chartParts);
         bool ok = zip_.AddEntry("[Content_Types].xml", contentTypes)
                   && zip_.AddEntry("_rels/.rels", BuildRootRelsXml())
                   && zip_.AddEntry("xl/workbook.xml", BuildWorkbookXml())
                   && zip_.AddEntry("xl/_rels/workbook.xml.rels",
-                                   BuildWorkbookRelsXml(sheetXmls.size()))
+                                   BuildWorkbookRelsXml(sheetXmls.size(), wroteDynamicArray_))
                   && zip_.AddEntry("xl/styles.xml", BuildStylesXml())
-                  && zip_.AddEntry("xl/sharedStrings.xml", BuildSharedStringsXml());
+                  && zip_.AddEntry("xl/sharedStrings.xml", BuildSharedStringsXml())
+                  && (!wroteDynamicArray_ || zip_.AddEntry("xl/metadata.xml", BuildMetadataXml()));
         for (size_t i = 0; ok && i < sheetXmls.size(); ++i) {
             ok = zip_.AddEntry("xl/worksheets/sheet" + std::to_string(i + 1) + ".xml",
                                sheetXmls[i]);
@@ -1858,6 +1963,28 @@ private:
             formula = NativeFormulaToExcel(cell.GetFormulaText());
             if (!formula.empty() && formula[0] == '=') formula = formula.substr(1);
         }
+        // An array formula is <f t="array" ref="its block">; a dynamic one
+        // (it spills, or gave an array) also carries the dynamic-array cell
+        // metadata (cm, xl/metadata.xml) so Excel keeps it a spill rather
+        // than a Ctrl+Shift+Enter array.
+        std::string formulaXml;
+        if (!formula.empty()) {
+            const FormulaArrayMode mode = cell.GetFormulaArrayMode();
+            const bool dynamic = mode == FormulaArrayMode::Spilling && cell.HasArrayResult();
+            if (mode == FormulaArrayMode::FixedRange || dynamic) {
+                int rows = 1, cols = 1;
+                if (cell.CoversArray()) { rows = cell.GetArrayRows(); cols = cell.GetArrayCols(); }
+                std::string ref = CellRef(row, col);
+                if (rows > 1 || cols > 1) ref += ":" + CellRef(row + rows - 1, col + cols - 1);
+                formulaXml = "<f t=\"array\" ref=\"" + ref + "\">" + XmlEscape(formula) + "</f>";
+                if (dynamic) {
+                    xml << " cm=\"1\"";
+                    wroteDynamicArray_ = true;
+                }
+            } else {
+                formulaXml = "<f>" + XmlEscape(formula) + "</f>";
+            }
+        }
 
         switch (cell.GetValueType()) {
             case CellValueType::Text: {
@@ -1865,25 +1992,35 @@ private:
                 return;
             }
             case CellValueType::Boolean:
-                xml << " t=\"b\">";
-                if (!formula.empty()) xml << "<f>" << XmlEscape(formula) << "</f>";
+                xml << " t=\"b\">" << formulaXml;
                 xml << "<v>" << (cell.GetBoolean() ? 1 : 0) << "</v></c>";
                 return;
             case CellValueType::Error:
-                xml << " t=\"e\">";
-                if (!formula.empty()) xml << "<f>" << XmlEscape(formula) << "</f>";
+                xml << " t=\"e\">" << formulaXml;
                 xml << "<v>" << XmlEscape(CellErrorToString(cell.GetError())) << "</v></c>";
                 return;
             case CellValueType::Currency: {
-                xml << ">";
-                if (!formula.empty()) xml << "<f>" << XmlEscape(formula) << "</f>";
+                xml << ">" << formulaXml;
                 xml << "<v>" << FormatFloatRoundTrip(cell.GetCurrency().amount) << "</v></c>";
                 return;
             }
             case CellValueType::Empty:
             case CellValueType::Formula: {
-                xml << ">";
-                if (!formula.empty()) xml << "<f>" << XmlEscape(formula) << "</f>";
+                // The result as it was calculated, with its type.
+                const CellValueVariant& result = cell.GetRawValue();
+                if (const auto* text = std::get_if<std::string>(&result)) {
+                    xml << " t=\"str\">" << formulaXml << "<v>" << XmlEscape(*text) << "</v></c>";
+                    return;
+                }
+                if (const auto* boolean = std::get_if<bool>(&result)) {
+                    xml << " t=\"b\">" << formulaXml << "<v>" << (*boolean ? 1 : 0) << "</v></c>";
+                    return;
+                }
+                if (const auto* error = std::get_if<CellErrorType>(&result); error && formula.size()) {
+                    xml << " t=\"e\">" << formulaXml << "<v>" << XmlEscape(CellErrorToString(*error)) << "</v></c>";
+                    return;
+                }
+                xml << ">" << formulaXml;
                 auto number = cell.TryGetNumber();
                 if (number) xml << "<v>" << FormatFloatRoundTrip(*number) << "</v>";
                 xml << "</c>";
@@ -1892,11 +2029,30 @@ private:
             default:
                 // Number, Date, Time, DateTime, Percentage: serial value; the
                 // xf's numFmt communicates the presentation.
-                xml << ">";
-                if (!formula.empty()) xml << "<f>" << XmlEscape(formula) << "</f>";
+                xml << ">" << formulaXml;
                 xml << "<v>" << FormatFloatRoundTrip(cell.GetNumber()) << "</v></c>";
                 return;
         }
+    }
+
+    // A dynamic array formula was written: the workbook carries Excel's
+    // dynamic-array metadata, which its cells' cm="1" points at.
+    bool wroteDynamicArray_ = false;
+
+    static std::string BuildMetadataXml() {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+               "<metadata xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+               "xmlns:xda=\"http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray\">"
+               "<metadataTypes count=\"1\"><metadataType name=\"XLDAPR\" minSupportedVersion=\"120000\" "
+               "copy=\"1\" pasteAll=\"1\" pasteValues=\"1\" merge=\"1\" splitFirst=\"1\" rowColShift=\"1\" "
+               "clearFormats=\"1\" clearComments=\"1\" assign=\"1\" coerce=\"1\" cellMeta=\"1\"/>"
+               "</metadataTypes>"
+               "<futureMetadata name=\"XLDAPR\" count=\"1\"><bk><extLst>"
+               "<ext uri=\"{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}\">"
+               "<xda:dynamicArrayProperties fDynamic=\"1\" fCollapsed=\"0\"/></ext>"
+               "</extLst></bk></futureMetadata>"
+               "<cellMetadata count=\"1\"><bk><rc t=\"1\" v=\"0\"/></bk></cellMetadata>"
+               "</metadata>\n";
     }
 
     std::string BuildStylesXml() {
@@ -2137,7 +2293,7 @@ private:
         return xml.str();
     }
 
-    static std::string BuildWorkbookRelsXml(size_t sheetCount) {
+    static std::string BuildWorkbookRelsXml(size_t sheetCount, bool withMetadata) {
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n";
@@ -2152,12 +2308,17 @@ private:
                "Target=\"styles.xml\"/>\n"
             << "<Relationship Id=\"rIdSst\" "
                "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" "
-               "Target=\"sharedStrings.xml\"/>\n"
-            << "</Relationships>\n";
+               "Target=\"sharedStrings.xml\"/>\n";
+        if (withMetadata) {
+            xml << "<Relationship Id=\"rIdMetadata\" "
+                   "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata\" "
+                   "Target=\"metadata.xml\"/>\n";
+        }
+        xml << "</Relationships>\n";
         return xml.str();
     }
 
-    static std::string BuildContentTypesXml(size_t sheetCount, const std::string& extraTypes) {
+    static std::string BuildContentTypesXml(size_t sheetCount, const std::string& extraTypes, bool isTemplate) {
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
@@ -2166,7 +2327,7 @@ private:
             << "<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
             << "<Override PartName=\"/xl/workbook.xml\" "
                "ContentType=\"application/vnd.openxmlformats-officedocument."
-               "spreadsheetml.sheet.main+xml\"/>\n";
+            << (isTemplate ? "spreadsheetml.template.main+xml" : "spreadsheetml.sheet.main+xml") << "\"/>\n";
         for (size_t i = 0; i < sheetCount; ++i) {
             xml << "<Override PartName=\"/xl/worksheets/sheet" << (i + 1)
                 << ".xml\" ContentType=\"application/vnd.openxmlformats-officedocument."
@@ -2628,6 +2789,10 @@ private:
         if (anyVml) {
             types += "<Default Extension=\"vml\" "
                      "ContentType=\"application/vnd.openxmlformats-officedocument.vmlDrawing\"/>\n";
+        }
+        if (wroteDynamicArray_) {
+            types += "<Override PartName=\"/xl/metadata.xml\" ContentType=\"application/"
+                     "vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml\"/>\n";
         }
         return types;
     }

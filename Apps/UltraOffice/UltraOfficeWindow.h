@@ -6,8 +6,11 @@
 // itself and a status line - so the toolbar follows the tab that is open.
 // Every minute a copy of each document with unsaved changes goes to the
 // recovery folder; a run that ends without closing leaves them there, and
-// the next start offers them back.
+// the next start offers them back. A template opens as a new, untitled
+// document (UltraOfficeTemplates.h).
 //
+// Version: 0.4.0 - new from template (the Start tab's gallery, File > New from template) and
+//                  Save as template
 // Version: 0.3.0 - recovered documents offered on the Start tab, not in a dialog
 // Version: 0.2.0 - autosave and crash recovery
 // Version: 0.1.0
@@ -47,6 +50,21 @@ public:
 
     // New, empty documents.
     void NewDocument(OfficeKind kind);
+    // A new, untitled document with the content of the template at `path`
+    // (UTF-8): the template itself is never written to.
+    void NewFromTemplate(const std::string& path);
+
+    // The open documents, in tab order: their file (empty: never saved -
+    // Save asks for a name), tab title, kind and unsaved state. For tests.
+    struct DocumentSummary {
+        std::string path;
+        std::string name;
+        OfficeKind kind = OfficeKind::Unknown;
+        bool modified = false;
+    };
+    std::vector<DocumentSummary> GetDocuments() const;
+    // The user's templates folder (<settings folder>/UltraOffice/templates).
+    std::filesystem::path OwnTemplatesFolder() const;
 
 
 private:
@@ -84,6 +102,12 @@ private:
     void OpenPath(const std::string& path);
     void ShowOpenDialog();
     void ShowFileMenu(UltraCanvas::UltraCanvasUIElement* anchor);
+
+    // ===== TEMPLATES =====
+    // OwnTemplatesFolder (public): where "Save as template" puts the user's
+    // own, which the gallery offers beside the shipped ones.
+    void ShowTemplateOpenDialog();
+    void SaveAsTemplate(OpenDocument& doc);
 
     // Saves `doc`: in place when it has a path it can be written to, else (or
     // with `askForName`) through the Save dialog. `done(true)` once written.

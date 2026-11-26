@@ -1,5 +1,10 @@
 // include/UltraCanvasSpreadsheetFormula.h
 // Formula parser and evaluation engine (OpenFormula compatible)
+// Version: 1.5.0 - arrays: FormulaValue::Array, array constants {1,2;3,4}, ranges and element-wise
+//                  arithmetic as arrays, A1# spill references, the @ operator, LET and LAMBDA,
+//                  omitted arguments; the engine spills a dynamic array result (#SPILL! when
+//                  blocked) and fills a fixed (Ctrl+Shift+Enter) array formula's range;
+//                  FunctionDefinition::elementWise, EvaluateArrayFormula, ResolveSpillRange
 // Version: 1.4.0 - NamedRangeError: a name whose sheet was deleted is #REF!, not #NAME?
 // Version: 1.3.0 - AdjustReferences / GetAdjustedText removed (unused; shifted every reference by a
 //                  fixed offset whatever was inserted, and rebuilt the text in parentheses)
@@ -55,7 +60,10 @@ enum class FormulaTokenType {
     Semicolon,      // ; (alternative argument separator in ODS)
     Colon,          // : (range operator)
     Space,          // (intersection operator in some contexts)
-    EndOfFormula
+    EndOfFormula,
+    LeftBrace,      // { - an array constant {1,2;3,4}: ',' between columns, ';' between rows
+    RightBrace,     // }
+    SpillRef        // A1# - the whole array spilled from A1
 };
 
 // ============================================================================
@@ -115,11 +123,33 @@ struct FormulaToken {
 // FORMULA VALUE (Result of evaluation)
 // ============================================================================
 
+struct FormulaArray;
+struct FormulaLambda;
+
+// One value, or - with `array` set - a block of values (a range read as a
+// value, an array constant {1,2;3,4}, the result of FILTER, SEQUENCE or of
+// arithmetic on ranges), or - with `lambda` set - a LAMBDA not yet called.
+// An array or a lambda has type Empty and no scalar value of its own:
+// IsArray() / IsLambda() say which it is, and IsEmpty() is false for both.
 struct FormulaValue {
     CellValueType type = CellValueType::Empty;
     CellValueVariant value;
-    
+    std::shared_ptr<const FormulaArray> array;
+    std::shared_ptr<const FormulaLambda> lambda;
+
     FormulaValue() = default;
+
+    // rows x columns values, row by row. A 1 x 1 array is that one value;
+    // no value at all is #CALC!, as Excel shows an empty array.
+    static FormulaValue Array(int rows, int cols, std::vector<FormulaValue> cells);
+    bool IsArray() const { return array != nullptr; }
+    bool IsLambda() const { return lambda != nullptr; }
+    int ArrayRows() const;
+    int ArrayCols() const;
+    // Element (r, c) of an array; a single value is itself at every position.
+    const FormulaValue& ArrayAt(int r, int c) const;
+    // The value a single cell shows: an array's top-left element.
+    FormulaValue TopLeft() const;
     
     // Constructors for different types
     static FormulaValue Empty() { return FormulaValue(); }
@@ -153,7 +183,7 @@ struct FormulaValue {
     }
     
     // Type checks
-    bool IsEmpty() const { return type == CellValueType::Empty; }
+    bool IsEmpty() const { return type == CellValueType::Empty && !array && !lambda; }
     bool IsNumber() const { return type == CellValueType::Number; }
     bool IsText() const { return type == CellValueType::Text; }
     bool IsBoolean() const { return type == CellValueType::Boolean; }
@@ -212,6 +242,56 @@ struct FormulaValue {
     }
 };
 
+// The values of an array, row by row.
+struct FormulaArray {
+    int rows = 0;
+    int cols = 0;
+    std::vector<FormulaValue> cells;
+    const FormulaValue& At(int r, int c) const {
+        return cells[static_cast<size_t>(r) * static_cast<size_t>(cols) + static_cast<size_t>(c)];
+    }
+};
+
+class FormulaNode;
+
+// A LAMBDA(x, y, body) as a value: its parameter names (upper case), its
+// body - which stays owned by the formula it was written in - and the LET
+// names in force where it was written.
+struct FormulaLambda {
+    std::vector<std::string> parameters;
+    const FormulaNode* body = nullptr;
+    std::vector<std::pair<std::string, FormulaValue>> captured;
+};
+
+inline FormulaValue FormulaValue::Array(int rows, int cols, std::vector<FormulaValue> cells) {
+    if (rows <= 0 || cols <= 0 ||
+        cells.size() != static_cast<size_t>(rows) * static_cast<size_t>(cols)) {
+        return Error(CellErrorType::Calc);
+    }
+    if (rows == 1 && cols == 1) return cells.front();
+    auto block = std::make_shared<FormulaArray>();
+    block->rows = rows;
+    block->cols = cols;
+    block->cells = std::move(cells);
+    FormulaValue fv;
+    fv.array = std::move(block);
+    return fv;
+}
+
+inline int FormulaValue::ArrayRows() const { return array ? array->rows : 1; }
+inline int FormulaValue::ArrayCols() const { return array ? array->cols : 1; }
+
+inline const FormulaValue& FormulaValue::ArrayAt(int r, int c) const {
+    if (!array) return *this;
+    return array->At(r, c);
+}
+
+inline FormulaValue FormulaValue::TopLeft() const {
+    if (array && !array->cells.empty()) return array->cells.front().TopLeft();
+    if (lambda) return Error(CellErrorType::Calc);
+    return *this;
+}
+
 // ============================================================================
 // FORMULA TOKENIZER
 // ============================================================================
@@ -261,7 +341,9 @@ enum class FormulaNodeType {
     BinaryOp,       // Binary operation (+, -, *, /, etc.)
     UnaryOp,        // Unary operation (-, +, %)
     FunctionCall,   // Function call with arguments
-    Array           // Array literal {1,2,3;4,5,6}
+    Array,          // Array literal {1,2,3;4,5,6}: children row by row, arrayRows x arrayCols
+    SpillRef,       // A1#: the array spilled from cellRef
+    Invoke          // children[0] called with children[1..]: LAMBDA(x, x*2)(5)
 };
 
 class FormulaNode {
@@ -281,7 +363,11 @@ public:
     
     // For functions
     std::string functionName;
-    
+
+    // For array literals
+    int arrayRows = 0;
+    int arrayCols = 0;
+
     // Children (for operators and functions)
     std::vector<std::unique_ptr<FormulaNode>> children;
     
@@ -334,7 +420,12 @@ private:
     std::unique_ptr<FormulaNode> ParsePercent();
     std::unique_ptr<FormulaNode> ParsePrimary();
     std::unique_ptr<FormulaNode> ParseFunctionCall(const std::string& name);
-    
+    // {1,2;3,4}: constants (a sign allowed), ',' between columns, ';' between rows.
+    std::unique_ptr<FormulaNode> ParseArrayLiteral();
+    // The arguments of a call after its '(' up to and with its ')'; an
+    // argument left out (SEQUENCE(3,,10)) is an empty literal.
+    bool ParseArguments(std::vector<std::unique_ptr<FormulaNode>>& args);
+
     void Error(const std::string& message);
 };
 
@@ -426,6 +517,12 @@ struct FunctionDefinition {
     FormulaFunctionImpl implementation;
     std::string description;
     std::string category;
+    // Takes single values only, so a range or an array given for one of its
+    // arguments calls it once per element and gives an array of the results
+    // (=ABS(A1:A3), =IF(B1:B5>0, "+", "-")), as Excel does. Set for the
+    // functions in ApplyArrayBehaviour's table. Last, so the brace-initialised
+    // definitions keep their order.
+    bool elementWise = false;
 };
 
 // ============================================================================
@@ -476,6 +573,9 @@ private:
     // Gives every built-in function its argument names (one table, in
     // UltraCanvasSpreadsheetFormulaFunctions.cpp); run after registration.
     void ApplyArgumentNames();
+    // Marks the functions that take single values only (elementWise); run
+    // after registration.
+    void ApplyArrayBehaviour();
 };
 
 // The function call the caret of a formula being typed is in: its name (upper
@@ -527,9 +627,22 @@ public:
     using FormulaCellResolver = std::function<void(SpreadsheetCell*, SpreadsheetSheet*)>;
     void SetFormulaCellResolver(FormulaCellResolver resolver) { resolveFormulaCell_ = std::move(resolver); }
     
-    // Evaluate formula
+    // Evaluate formula. The result is one value: an array result gives its
+    // top-left element (what conditional formats and validations compare).
     FormulaValue Evaluate(const SpreadsheetFormula& formula);
+    // A node's value - an array where the expression gives one.
     FormulaValue Evaluate(const FormulaNode* node);
+    // The formula of the cell `at` (on the current sheet), an array where it
+    // gives one - what the engine spills. With `implicitIntersection` (a
+    // formula read from a file that has no dynamic arrays) a range where one
+    // value is expected gives the cell on the formula's row or column, as
+    // Excel before dynamic arrays and LibreOffice read it.
+    FormulaValue EvaluateArrayFormula(const SpreadsheetFormula& formula, const CellAddress& at,
+                                      bool implicitIntersection);
+
+    // The cells spilled from `anchor` (A1#): the anchor and its spill. Not
+    // valid when the cell spills nothing (A1# is then #REF!).
+    CellRange ResolveSpillRange(const CellAddress& anchor) const;
     
     // Get cell value
     FormulaValue GetCellValue(const CellAddress& addr) const;
@@ -550,9 +663,21 @@ public:
     // in the order written (empty outside a call).
     const std::vector<FunctionCallArgument>& GetCallArguments() const { return callArguments_; }
     
+    // Calls a LAMBDA value with these arguments (the lambda functions use it).
+    FormulaValue CallLambda(const FormulaValue& lambda, const std::vector<FormulaValue>& arguments);
+
 private:
     std::vector<FunctionCallArgument> callArguments_;
     FormulaCellResolver resolveFormulaCell_;
+
+    // The cell whose formula is evaluated, for implicit intersection.
+    CellAddress formulaCell_{-1, -1};
+    bool implicitIntersection_ = false;
+    // Inside an argument of a function that takes ranges and arrays, where a
+    // range stays a range even with implicit intersection.
+    bool arrayContext_ = false;
+    // The names LET (and a called LAMBDA) give, innermost last, upper case.
+    std::vector<std::pair<std::string, FormulaValue>> localNames_;
 
     FormulaValue EvaluateLiteral(const FormulaNode* node);
     FormulaValue EvaluateCellRef(const FormulaNode* node);
@@ -560,6 +685,22 @@ private:
     FormulaValue EvaluateBinaryOp(const FormulaNode* node);
     FormulaValue EvaluateUnaryOp(const FormulaNode* node);
     FormulaValue EvaluateFunction(const FormulaNode* node);
+    FormulaValue EvaluateArrayLiteral(const FormulaNode* node);
+    FormulaValue EvaluateInvoke(const FormulaNode* node);
+    // LET(name1, value1, ..., calculation) and LAMBDA(param..., body), which
+    // decide themselves what of their arguments to evaluate.
+    FormulaValue EvaluateLet(const FormulaNode* node);
+    FormulaValue EvaluateLambda(const FormulaNode* node);
+    // A range's cells as a value: an array, or one value for one cell (or the
+    // cell where the formula's row or column crosses it, when intersecting).
+    FormulaValue RangeValue(const CellRange& range);
+    const FormulaValue* FindLocalName(const std::string& name) const;
+    // `fn` applied element by element over operands broadcast to one shape:
+    // a single row or column stretches over the other's rows or columns;
+    // positions one operand does not reach are #N/A.
+    static FormulaValue ElementWise(const std::vector<FormulaValue>& operands,
+                                    const std::function<FormulaValue(const std::vector<FormulaValue>&)>& fn);
+    FormulaValue ApplyBinary(const std::string& op, const FormulaValue& left, const FormulaValue& right);
     
     // Binary operations
     FormulaValue Add(const FormulaValue& left, const FormulaValue& right);
@@ -666,6 +807,21 @@ private:
     std::string MakeCellKey(const CellAddress& cell, const std::string& sheetName) const;
     void PropagateChange(const std::string& cellKey);
     std::vector<std::string> GetCalculationOrder() const;
+
+    // Puts a formula's result into its cell - and an array result into the
+    // cells it covers: a fixed array formula (Ctrl+Shift+Enter, t="array"
+    // without dynamic-array metadata) fills its range, a dynamic one spills
+    // right and down, or shows #SPILL! where a cell in the way is not empty.
+    void StoreResult(SpreadsheetCell* cell, SpreadsheetSheet* sheet, const FormulaValue& result);
+    // The cells `anchor` filled last time and fills no more are emptied.
+    void ClearSpill(SpreadsheetSheet* sheet, SpreadsheetCell* anchor, const CellRange& keep);
+    // The spilled values whose formula no longer covers them (it was edited,
+    // deleted, or now spills less) are emptied; returns where.
+    std::vector<std::pair<const SpreadsheetSheet*, CellRange>> ClearOrphanedSpills();
+    // Spills that moved, grew or were blocked or freed in a calculation:
+    // RecalculateAll runs again while this changes.
+    int spillLayoutChanges_ = 0;
+    int recalculateDepth_ = 0;
 };
 
 // ============================================================================
@@ -804,7 +960,12 @@ inline FormulaToken FormulaTokenizer::ReadIdentifier() {
         
         CellAddress addr = CellAddress::FromString(ident);
         if (addr.IsValid()) {
-            return FormulaToken::CellReference(addr, startPos);
+            FormulaToken ref = FormulaToken::CellReference(addr, startPos);
+            if (Peek() == '#') {   // A1#: the array spilled from A1
+                Advance();
+                ref.type = FormulaTokenType::SpillRef;
+            }
+            return ref;
         }
     }
     
@@ -870,7 +1031,12 @@ inline FormulaToken FormulaTokenizer::ReadQuotedSheetReference() {
         return FormulaToken::RangeReference(CellRange(start, end), startPos);
     }
 
-    return FormulaToken::CellReference(CellAddress::FromString(startStr), startPos);
+    FormulaToken ref = FormulaToken::CellReference(CellAddress::FromString(startStr), startPos);
+    if (Peek() == '#') {   // 'Sheet'.A1#
+        Advance();
+        ref.type = FormulaTokenType::SpillRef;
+    }
+    return ref;
 }
 
 inline FormulaToken FormulaTokenizer::ReadErrorLiteral() {
@@ -952,8 +1118,16 @@ inline std::vector<FormulaToken> FormulaTokenizer::Tokenize() {
             tokens.push_back(FormulaToken(FormulaTokenType::Colon, ":", startPos));
             ++pos_;
         }
-        else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '^' || 
-                 c == '&' || c == '%' || c == '=' || c == '<' || c == '>') {
+        else if (c == '{') {
+            tokens.push_back(FormulaToken(FormulaTokenType::LeftBrace, "{", startPos));
+            ++pos_;
+        }
+        else if (c == '}') {
+            tokens.push_back(FormulaToken(FormulaTokenType::RightBrace, "}", startPos));
+            ++pos_;
+        }
+        else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '^' ||
+                 c == '&' || c == '%' || c == '=' || c == '<' || c == '>' || c == '@') {
             std::string op(1, c);
             ++pos_;
             // Check for compound operators
@@ -1075,6 +1249,7 @@ inline void SpreadsheetFormula::CollectDependencies(const FormulaNode* node) {
     
     switch (node->nodeType) {
         case FormulaNodeType::CellRef:
+        case FormulaNodeType::SpillRef:   // A1# reads A1's whole spill, which changes with A1
             dependencies_.push_back(node->cellRef);
             break;
         case FormulaNodeType::RangeRef:

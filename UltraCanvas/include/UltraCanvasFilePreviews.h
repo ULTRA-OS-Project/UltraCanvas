@@ -29,8 +29,9 @@
 // registry's lock, so it must itself be safe to run concurrently (each call
 // opening its own document, as all the built-in ones do).
 //
+// Version: 1.1.0 - the built-in providers draw a workbook's first printed page (.ods, .xlsx and their templates)
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,7 +92,7 @@ void RegisterFilePreviewProvider(FilePreviewProvider provider);
 
 // Registers the providers of the formats compiled into the framework: the
 // PDF page (with the PDF plugin), e-book covers, video poster frames, Word
-// documents and PowerPoint decks. Called once by the queries below, so no
+// documents, PowerPoint decks and spreadsheets (their first printed page). Called once by the queries below, so no
 // application has to; calling it again does nothing.
 void RegisterBuiltinFilePreviewProviders();
 
