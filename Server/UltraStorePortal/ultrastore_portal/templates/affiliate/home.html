@@ -58,13 +58,14 @@
     {% for row in products %}
     <tr><td><a href="{{ row.app.get_absolute_url }}">{{ row.app.name }}</a></td><td>{{ row.app.publisher.name }}</td>
       <td class="text-end"><b>{{ row.total }} %</b>{% if row.boost %} <span class="badge">boosted</span>{% endif %}</td>
-      <td class="font-monospace small">{{ base_url }}/r/{{ profile.handle }}/{{ row.app.app_id }}/</td></tr>
+      <td class="font-monospace small">{{ base_url }}/r/{{ profile.handle }}/{{ row.app.app_id }}/ <a class="ms-1" href="{% url 'affiliate:links' %}?to={{ row.app.app_id }}">QR</a></td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
   <a class="btn btn-outline-secondary" href="{% url 'affiliate:products' %}">Every product, and what it pays</a>
   {% endif %}
+  {% if profile.active %}<a class="btn btn-primary" href="{% url 'affiliate:links' %}">Make a link and its QR code</a>{% endif %}
   <form method="post" action="{% url 'affiliate:pause' %}" class="mt-3">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">{% if profile.state == "paused" %}Take it up again{% else %}Pause my profile{% endif %}</button></form>
 </div></div>
 {% endif %}

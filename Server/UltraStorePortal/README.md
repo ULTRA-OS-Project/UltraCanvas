@@ -647,6 +647,22 @@ anyone anything.
   who is not active.
 - **Only a person following a link counts.** A page fetched as a picture, a
   script or a frame (`Sec-Fetch-Dest`) records no click.
+- **Every link has its QR code, as a picture beside it** (0.12.0):
+  `/r/<handle>/qr.svg` and `qr.png`, `/r/<handle>/<app>/qr.svg` and
+  `qr.png`, `/affiliate/join/<handle>/qr.svg` and `qr.png`. `?s=<campaign>`
+  is carried into the link the code holds; `size` is a PNG's width in
+  pixels (about 120 to 2000), `level` the error correction (`L`, `M`, `Q`,
+  `H`; `Q` unless said, which survives a quarter of the code being
+  damaged), `download=1` makes it a file to save. A picture asked for is
+  no link followed: nothing is counted. It exists for an active affiliate
+  and a public app, and is a 404 otherwise. **One address, whoever asks** -
+  a web page, a poster's designer, the native store. The portal draws the
+  code itself (`qr.py`, a port of the generator the framework bundles for
+  its own QR plugin; the PNG is written with Pillow), so the three
+  dependencies stay three; it was compared module for module with a second
+  generator and read back by a decoder when it was written.
+- **A campaign's name** in a link (`?s=`) is letters, digits, dots, dashes
+  and underscores, 32 at most; anything else becomes a dash.
 - **The superaffiliate.** Whoever's recruiting link
   (`/affiliate/join/<handle>/`) brought an affiliate in - or, before any
   such link, **whoever the new affiliate is bound to as a customer** -
@@ -706,7 +722,10 @@ anyone anything.
 
 **The pages.** `/affiliate/` - apply, prove the phone number, then the
 links, what was earned, held back and paid, the payouts, the affiliates
-brought in; `/affiliate/payouts/<no>/` - a payout's statement;
+brought in; `/affiliate/links/` - the link maker: where a link leads (the
+shop, a product, the application to become an affiliate) and the campaign
+it belongs to give the link, to copy, and its QR code, to save as SVG or
+PNG; `/affiliate/payouts/<no>/` - a payout's statement;
 `/affiliate/products/` - every paid app with what a link to it pays.
 `/console/affiliates/` - what a link to each of the publisher's apps earns
 today, the boosts, what affiliates sold. `/operator/affiliates/` - the
@@ -991,6 +1010,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 ```
 ultrastore_portal/
   settings.py, urls.py, wsgi.py
+  qr.py            a QR code from a text: the modules, and a picture of them as SVG or PNG
   urls_account.py  the addresses of the account's own host
   accounts/        the person: email as the sign-in name, the mailed proof; closure.py: closed, deleting, erased
   identity/        signing in for other services: OpenID Connect

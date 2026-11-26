@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Links and QR codes - Affiliate - {{ brand }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Links and QR codes</h1></div>
+<div class="panels">
+<div class="card"><div class="card-body">
+  <h2>Make a link</h2>
+  <p class="text-secondary">Say where the link leads and, if you like, which of your campaigns it belongs to - a newsletter, a video, a poster - so that your statistics tell them apart. The link and its QR code are yours at once; nothing has to be saved. Say that it is advertising wherever you put either.</p>
+  <form method="get" class="row g-3 align-items-end">
+    <div class="col-12 col-md-6"><label class="form-label" for="to">Where it leads</label>
+      <select class="form-select" id="to" name="to">
+        <option value=""{% if not target %} selected{% endif %}>The shop</option>
+        <option value="join"{% if target == "join" %} selected{% endif %}>Becoming an affiliate (your recruiting link)</option>
+        <optgroup label="A product">
+        {% for row in apps %}<option value="{{ row.app_id }}"{% if target == row.app_id %} selected{% endif %}>{{ row.name }} - {{ row.publisher.name }}</option>{% endfor %}
+        </optgroup>
+      </select></div>
+    <div class="col-12 col-md-4"><label class="form-label" for="s">Campaign</label>
+      <input class="form-control" id="s" name="s" value="{{ label }}" maxlength="32" placeholder="newsletter-may" aria-describedby="s-help">
+      <div class="form-text" id="s-help">Letters, digits, dots and dashes. Not for a recruiting link.</div></div>
+    <div class="col-12 col-md-2"><button class="btn btn-primary w-100">Make it</button></div>
+  </form>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>{% if target == "join" %}Your recruiting link{% elif app %}Your link to {{ app.name }}{% else %}Your link to the shop{% endif %}</h2>
+  <div class="row g-4">
+    <div class="col-12 col-lg-7">
+      <label class="form-label" for="link">The link</label>
+      <div class="d-flex flex-wrap gap-2 mb-2">
+        <input class="form-control font-monospace" style="flex: 1 1 18rem" id="link" value="{{ link }}" readonly>
+        <button class="btn btn-outline-secondary" type="button" data-copy="#link" data-copied="Copied">Copy</button>
+      </div>
+      <p class="text-secondary">{% if target == "join" %}Whoever follows it and becomes an affiliate has you above them: you earn {{ super_percent }} % of what they earn, on top of it - it costs them nothing.
+        {% elif app %}You earn <b>{{ earns.total }} %</b> of the net price when somebody follows it and buys {{ app.name }} within {{ link_days }} days{% if earns.boost %} - {{ earns.base }} % from the store and {{ earns.boost }} % the publisher adds{% endif %}. Somebody new to the store who comes through it becomes your customer.
+        {% else %}It wins no product; somebody new to the store who signs up or first buys after following it becomes <b>your customer</b>, and you earn {{ base_percent }} % of everything they buy later.{% endif %}</p>
+      <a class="btn btn-outline-secondary" href="{% url 'affiliate:products' %}">Every product, and what it pays</a>
+    </div>
+    <div class="col-12 col-lg-5">
+      <div class="d-flex flex-wrap gap-3 align-items-start">
+        <img src="{{ qr_svg }}" width="200" height="200" alt="The QR code of the link" class="border rounded p-1 bg-white">
+        <div class="d-flex flex-column gap-2">
+          <a class="btn btn-outline-secondary" href="{{ qr_svg }}{% if '?' in qr_svg %}&amp;{% else %}?{% endif %}download=1">Save as SVG <span class="small text-secondary">for print</span></a>
+          <a class="btn btn-outline-secondary" href="{{ qr_png }}size=600&amp;download=1">Save as PNG, 600 px</a>
+          <a class="btn btn-outline-secondary" href="{{ qr_png }}size=1200&amp;download=1">Save as PNG, 1200 px</a>
+        </div>
+      </div>
+      <p class="small text-secondary mt-2 mb-0">The code holds the link above and nothing else. Leave the white border around it when you place it, and print it no smaller than 2 cm.</p>
+    </div>
+  </div>
+</div></div>
+<p><a href="{% url 'affiliate:home' %}">Back to your affiliate page</a></p>
+</div>
+{% endblock %}

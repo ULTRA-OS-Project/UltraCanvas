@@ -12,7 +12,7 @@ Version: 0.1.0
 
 from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path, register_converter
+from django.urls import include, path, re_path, register_converter
 from django.views.static import serve
 
 from .api import billing as buying
@@ -193,9 +193,11 @@ promote_patterns = ([
 ], "promote")
 
 # UltraAffiliates (web/affiliates.py): the affiliate's own pages, and the
-# links - /r/<handle>/ to the shop, /r/<handle>/<app>/ to a product.
+# links - /r/<handle>/ to the shop, /r/<handle>/<app>/ to a product - each
+# with its QR code as a picture beside it (qr.svg, qr.png).
 affiliate_patterns = ([
     path("", affiliates.home, name="home"),
+    path("links/", affiliates.links, name="links"),
     path("products/", affiliates.products, name="products"),
     path("phone/", affiliates.phone, name="phone"),
     path("edit/", affiliates.edit, name="edit"),
@@ -203,9 +205,13 @@ affiliate_patterns = ([
     path("statement/<int:pk>/", affiliates.statement, name="statement"),
     path("payouts/<int:pk>/", affiliates.payout, name="payout"),
     path("join/<str:handle>/", affiliates.join, name="join"),
+    re_path(r"^join/(?P<handle>[^/]+)/qr\.(?P<kind>svg|png)$", affiliates.join_qr, name="join_qr"),
 ], "affiliate")
 
 urlpatterns = [
+    # Before the links themselves: "qr.svg" has the shape of an app's id.
+    re_path(r"^r/(?P<handle>[^/]+)/qr\.(?P<kind>svg|png)$", affiliates.link_qr, name="affiliate_link_qr"),
+    re_path(r"^r/(?P<handle>[^/]+)/(?P<app_id>[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)+)/qr\.(?P<kind>svg|png)$", affiliates.link_qr, name="affiliate_product_link_qr"),
     path("r/<str:handle>/", affiliates.go, name="affiliate_link"),
     path("r/<str:handle>/<appid:app_id>/", affiliates.go, name="affiliate_product_link"),
     path("affiliate/", include(affiliate_patterns)),

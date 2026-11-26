@@ -6,13 +6,16 @@ customer's binding; the holdback, the monthly payout and its statement."""
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import io
+import re
 from decimal import Decimal
 
 from django.core.management import call_command
 from django.test import override_settings
 from django.utils import timezone
 
+from ultrastore_portal import qr
 from ultrastore_portal.accounts import closure
 from ultrastore_portal.accounts.models import User
 from ultrastore_portal.affiliates import services, texts
@@ -1009,3 +1012,104 @@ class MoneyRulesTests(AffiliateCase):
         page = self.client.get(f"/operator/affiliates/{self.anna.pk}/")
         self.assertContains(page, "In a payout to pay")
         self.assertContains(page, f"In payout {payout.pk}")
+
+
+class QrTests(AffiliateCase):
+    """A QR code drawn by the portal itself (qr.py), and a link's code as a
+    picture beside the link."""
+
+    @staticmethod
+    def print_of(modules) -> str:
+        return hashlib.sha256("".join("1" if cell else "0" for row in modules for cell in row).encode()).hexdigest()
+
+    def test_the_code_is_the_one_every_reader_knows(self):
+        # Compared module for module with a second generator, for every mask, version 1 to 40 and all four
+        # levels, and read back by a decoder, when qr.py was written; these two are from that run.
+        shop = qr.encode("https://store.ultraos.eu/r/anna/", "M")
+        self.assertEqual((len(shop), self.print_of(shop)), (29, "157c09e7a753563ef18bac49cf635001a64be8cc7ab926fac2e08d30d257418a"))
+        product = qr.encode("https://store.ultraos.eu/r/anna/org.acme.paid/?s=newsletter", "Q")
+        self.assertEqual((len(product), self.print_of(product)), (37, "8b39f05284262677eb326159f5e3a51512b749a8b4db4ee3fa6c6ad861fba148"))
+
+    def test_what_every_code_has(self):
+        for text, level in (("", "L"), ("a", "H"), ("x" * 300, "M"), ("Grüße, 世界", "Q"), ("y" * 1500, "L")):
+            modules = qr.encode(text, level)
+            size = len(modules)
+            self.assertEqual(((size - 17) % 4, {len(row) for row in modules}), (0, {size}))
+            for x, y in ((0, 0), (size - 7, 0), (0, size - 7)):                  # the three finders: dark ring, light ring, dark core
+                self.assertEqual([modules[y + 3][x + i] for i in range(7)], [True, False, True, True, True, False, True])
+                self.assertEqual([modules[y][x + i] for i in range(7)], [True] * 7)
+            self.assertEqual([modules[6][i] for i in range(8, size - 8)], [i % 2 == 0 for i in range(8, size - 8)])   # the timing pattern
+            self.assertTrue(modules[size - 8][8])                                # the module that is always dark
+        self.assertEqual(len(qr.encode("x" * qr.capacity("L"), "L")), 177)        # version 40, the largest there is
+        with self.assertRaises(qr.TooLong):
+            qr.encode("x" * (qr.capacity("L") + 1), "L")
+        with self.assertRaises(ValueError):
+            qr.encode("a", "X")
+        self.assertNotEqual(qr.encode("a", "M", mask=0), qr.encode("a", "M", mask=1))
+        self.assertIn(qr.encode("a", "M"), [qr.encode("a", "M", mask=mask) for mask in range(8)])
+
+    def test_the_pictures_hold_the_modules(self):
+        modules = qr.encode("https://store.example/r/anna/", "Q")
+        size, border = len(modules), qr.QUIET_ZONE
+        drawn = qr.svg(modules, size=300, title='The link of "anna" <b>')
+        self.assertIn(f'viewBox="0 0 {size + 8} {size + 8}" width="300" height="300"', drawn)
+        self.assertIn("The link of &quot;anna&quot; &lt;b&gt;", drawn)
+        back = [[False] * size for _ in range(size)]
+        for x, y, run in re.findall(r"M(\d+),(\d+)h(\d+)v1", drawn):
+            for i in range(int(run)):
+                back[int(y) - border][int(x) - border + i] = True
+        self.assertEqual(back, modules)
+        self.assertIn('fill="#000000"', qr.svg(modules, dark="red; drop"))           # a colour is six hex digits or the default
+        self.assertIn('fill="#1d4ed8"', qr.svg(modules, dark="#1D4ED8"))
+        from PIL import Image
+        picture = Image.open(io.BytesIO(qr.png(modules, scale=5))).convert("L")
+        self.assertEqual(picture.size, ((size + 8) * 5, (size + 8) * 5))
+        seen = [[picture.getpixel(((x + border) * 5 + 2, (y + border) * 5 + 2)) < 128 for x in range(size)] for y in range(size)]
+        self.assertEqual(seen, modules)
+        self.assertEqual(picture.getpixel((2, 2)), 255)                           # the light border
+
+    def test_a_links_code_is_a_picture_beside_the_link(self):
+        clicks = Click.objects.count()
+        shop = self.client.get("/r/anna/qr.svg")
+        self.assertEqual((shop.status_code, shop["Content-Type"], shop["Cache-Control"]), (200, "image/svg+xml", "public, max-age=86400"))
+        self.assertIn("http://testserver/r/anna/".replace("http://testserver", services.settings.BASE_URL), shop.content.decode())
+        product = self.client.get("/r/anna/org.acme.paid/qr.svg?s=news letter!")
+        self.assertIn(f"{services.settings.BASE_URL}/r/anna/org.acme.paid/?s=news-letter", product.content.decode())   # the campaign, made safe
+        saved = self.client.get("/r/anna/org.acme.paid/qr.png?size=1200&download=1&s=may")
+        self.assertEqual((saved["Content-Type"], saved["Content-Disposition"]), ("image/png", 'attachment; filename="anna-org.acme.paid-may.png"'))
+        from PIL import Image
+        wide = Image.open(io.BytesIO(saved.content)).size[0]
+        self.assertTrue(1000 <= wide <= 1400, wide)
+        small = Image.open(io.BytesIO(self.client.get("/r/anna/qr.png?size=5").content)).size[0]
+        self.assertTrue(80 <= small <= 200, small)                                # never a picture too small to read
+        self.assertEqual(self.client.get("/affiliate/join/anna/qr.svg").status_code, 200)
+        self.assertEqual(Click.objects.count(), clicks)                           # a picture asked for is no link followed
+        for gone in ("/r/nobody/qr.svg", "/r/anna/org.acme.nothere/qr.svg", "/affiliate/join/nobody/qr.png"):
+            self.assertEqual(self.client.get(gone).status_code, 404, gone)
+        services.sanction(self.anna, self.operator, Sanction.BLOCK, rule="Terms 4", facts="Under review.")
+        self.assertEqual(self.client.get("/r/anna/qr.svg").status_code, 404)      # a blocked affiliate's links are no links
+        with override_settings(AFFILIATES=False):
+            self.assertEqual(self.client.get("/r/anna/qr.svg").status_code, 404)
+        self.assertEqual(self.client.get("/r/anna/").status_code, 302)            # and the link itself still goes on
+
+    def test_the_link_maker(self):
+        self.sign_in("anna@example.org")
+        page = self.client.get("/affiliate/links/")
+        self.assertContains(page, f'value="{services.settings.BASE_URL}/r/anna/"')
+        self.assertContains(page, 'src="/r/anna/qr.svg"')
+        page = self.client.get("/affiliate/links/?to=org.acme.paid&s=news letter")
+        self.assertContains(page, f'value="{services.settings.BASE_URL}/r/anna/org.acme.paid/?s=news-letter"')
+        self.assertContains(page, 'src="/r/anna/org.acme.paid/qr.svg?s=news-letter"')
+        self.assertContains(page, "/r/anna/org.acme.paid/qr.png?s=news-letter&amp;size=600&amp;download=1")
+        self.assertContains(page, "<b>5 %</b>", html=True)
+        self.boost("10")
+        self.assertContains(self.client.get("/affiliate/links/?to=org.acme.paid"), "5 % from the store and 10 % the publisher adds")
+        page = self.client.get("/affiliate/links/?to=join&s=ignored")
+        self.assertContains(page, f'value="{services.settings.BASE_URL}/affiliate/join/anna/"')
+        self.assertContains(page, 'src="/affiliate/join/anna/qr.svg"')
+        self.assertContains(self.client.get("/affiliate/"), "Make a link and its QR code")
+        self.assertContains(self.client.get("/affiliate/products/"), "/affiliate/links/?to=org.acme.paid")
+        new = self.affiliate("newbie", active=False)
+        self.sign_in("newbie@example.org")
+        self.assertRedirects(self.client.get("/affiliate/links/"), "/affiliate/", fetch_redirect_response=False)   # links come with the active profile
+        self.assertEqual(new.state, "applied")

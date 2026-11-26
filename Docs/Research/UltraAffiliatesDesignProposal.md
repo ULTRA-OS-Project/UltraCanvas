@@ -928,7 +928,10 @@ D10); a smaller balance is carried; an affiliate whose account is closed or
 being deleted is paid whatever is owed, and the holdback as it is released
 (§5.9). The operator pays it and marks it paid with the transfer's
 reference; the payout is the affiliate's **statement**, line by line. A
-blocked or banned affiliate's money waits. **Choices made in building it,
+blocked or banned affiliate's money waits. **A link's QR code** as a
+picture beside every link, drawn by the portal itself, and a first **link
+maker** (where it leads, the campaign, the link to copy, the code to save)
+- the part of §5.4 the native store will use too. **Choices made in building it,
 for the owner to overrule:** the holdback is reckoned on what is left of a
 commission at its approval, so a sale half refunded before then holds half
 as much; a refund of a commission still pending shows as less pending, not
