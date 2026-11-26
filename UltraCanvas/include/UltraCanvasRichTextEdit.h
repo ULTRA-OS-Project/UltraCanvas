@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.23.0 - page view: a white page on a grey desk in the light theme (FromTheme: the paper
+//                   the lighter of well and panel, the desk a shade darker; role "rich-text.desk")
 // Version: 1.22.0 - what a navigator needs (UltraCanvasDocumentNavigator.h): AddDocumentObserver /
 //                   RemoveDocumentObserver, more than one listener to edits and caret moves;
 //                   GoToPosition, GoToRange; MoveHeadingSection, MoveHeadingSectionUp / Down,
@@ -168,8 +170,9 @@ struct RichTextEditStyle {
     Color fontNoticeTextColor = Color(110, 70, 0);
 
     // The theme's roles over a base's own typography and metrics: the well
-    // for the text and the page (the element role "rich-text.page" where a
-    // theme wants paper of another colour), the panel for the desk, ink and
+    // for the text; in page view the lighter of the well and the panel for the
+    // page and the panel a shade darker for the desk (the element roles
+    // "rich-text.page" and "rich-text.desk" where a theme wants others), ink and
     // the caret in ink, the soft accent for the selection, the accent for
     // links, muted ink for quotes and list markers, the panel with hairlines
     // for code, control-border rules and table grids, hairline guides; the

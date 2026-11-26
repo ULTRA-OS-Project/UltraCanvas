@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.21.0 - FromTheme: the page the lighter of well and panel, the desk a shade darker
 // Version: 1.20.0 - document observers; GoToPosition, GoToRange; heading sections moved and promoted
 // Version: 1.19.0 - SetPageSetup, SetParagraphFormat, Get/SetTableProperties, Get/SetSelectedImageWrap,
 //                   InsertNote with its text, GoToPreviousChange, GoToNextComment / GoToPreviousComment /
@@ -7822,9 +7823,20 @@ RichTextEditStyle RichTextEditStyle::FromTheme(const UltraCanvasTheme& theme, co
     s.tableGuideColor = r.line;
     s.imagePlaceholderColor = r.inkFaint;
     s.borderColor = r.lineStrong;
-    s.deskColor = r.panel;
-    // the element's own role: paper of another colour than the well
-    s.pageColor = theme.Role("rich-text.page", r.well);
+    // Page view: the paper is the lighter of the well and the panel (white in
+    // the light theme, as on paper), the desk a shade darker than the panel so
+    // the page stands out on it - in the light theme a mid-light grey, in a
+    // dark one darker still. A theme may set either through the element's own
+    // roles ("rich-text.page", "rich-text.desk").
+    const bool wellLighter = UltraCanvasTheme::Luminance(r.well) > UltraCanvasTheme::Luminance(r.panel);
+    const Color paper = wellLighter ? r.well : r.panel;
+    const bool darkTheme = UltraCanvasTheme::Luminance(r.panel) < 0.18;
+    auto shade = [](const Color& c, float by) {
+        return Color(static_cast<uint8_t>(c.r * (1.0f - by)), static_cast<uint8_t>(c.g * (1.0f - by)),
+                     static_cast<uint8_t>(c.b * (1.0f - by)), c.a);
+    };
+    s.pageColor = theme.Role("rich-text.page", paper);
+    s.deskColor = theme.Role("rich-text.desk", shade(r.panel, darkTheme ? 0.35f : 0.12f));
     s.pageMarginGuideColor = r.line;
     return s;
 }

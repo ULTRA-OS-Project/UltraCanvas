@@ -1032,9 +1032,10 @@ Review tabs, and UltraTexter's word-processing tab from its context menu.
 
 `RichTextEditStyle::FromTheme` puts the framework theme's roles
 (`UltraCanvasTheme.md`) over a base style's typography and metrics: the
-well for the text and the page (the element role `rich-text.page` where a
-theme wants paper of another colour, white on a dark window say), the
-panel for the desk, ink and the caret in ink, the soft accent for the
+well for the text; in page view the paper is the lighter of the well and the
+panel (white in the light theme) and the desk a shade darker than the panel,
+so the page stands out on it (the element roles `rich-text.page` and
+`rich-text.desk` where a theme wants other colours); ink and the caret in ink, the soft accent for the
 selection, the accent for links, muted ink for quotes and list markers,
 the panel with hairlines for code, control-border rules and table grids,
 hairline guides. The comment, tracked-change and font-notice colours keep
