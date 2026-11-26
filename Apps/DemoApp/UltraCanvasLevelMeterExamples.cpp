@@ -161,70 +161,7 @@ namespace UltraCanvas {
 
         auto st = std::make_shared<LevelMeterDemoState>();
 
-        // The two meter cards side by side; they wrap under each other in a
-        // narrow window.
-        auto cardsRow = DemoKit::AddRow(root, "LvlCards");
-
-        // ----- Card A: three-zone VU meters in four themes -----
-        auto vuCard = DemoKit::AddCard(cardsRow, "LvlVuCard", Tr("Three-zone VU meter"));
-        {
-            struct VuTheme {
-                std::string name;
-                float height;
-                bool custom;
-                Color bg, low, mid, high;
-            };
-            const VuTheme themes[] = {
-                {Tr("Classic (default colours)"), 18, false, {}, {}, {}, {}},
-                {Tr("Modern accent"), 18, true, Color(235, 238, 243), Color(34, 197, 94),
-                        Color(250, 204, 21), Color(239, 68, 68)},
-                {Tr("Ocean on dark"), 18, true, Color(15, 30, 48), Color(56, 189, 248),
-                        Color(99, 102, 241), Color(244, 63, 94)},
-                {Tr("Large broadcast bar"), 30, true, Color(24, 24, 32), Color(74, 222, 128),
-                        Color(253, 224, 71), Color(248, 113, 113)},
-            };
-            int idx = 0;
-            for (const auto& theme : themes) {
-                DemoKit::AddCaption(vuCard, "LvlVuCap" + std::to_string(idx), theme.name);
-
-                auto meter = std::make_shared<UltraCanvasLevelMeter>(
-                        "LvlVu" + std::to_string(idx), 500, theme.height);
-                if (theme.custom)
-                    meter->SetColors(theme.bg, theme.low, theme.mid, theme.high);
-                // A bar as wide as the card; its height is the theme's.
-                DemoKit::AddStretched(vuCard, meter);
-                st->meters.push_back(meter);
-                ++idx;
-            }
-
-            DemoKit::AddCaption(vuCard, "LvlVuNote",
-                    Tr("Fill = peak level across the green / yellow / red zones "
-                    "(60% / 85% thresholds); the dark tick marks the RMS level."));
-        }
-
-        // ----- Card B: scrolling waveform strips in two themes -----
-        auto stripCard = DemoKit::AddCard(cardsRow, "LvlStripCard", Tr("Scrolling waveform strip"));
-        {
-            DemoKit::AddCaption(stripCard, "LvlStripCap0", Tr("Classic (default colours)"));
-            auto strip1 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip0", 500, 66);
-            strip1->SetWaveformMode(true);
-            DemoKit::AddStretched(stripCard, strip1);
-            st->strips.push_back(strip1);
-
-            DemoKit::AddCaption(stripCard, "LvlStripCap1", Tr("Violet on dark"));
-            auto strip2 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip1", 500, 66);
-            strip2->SetWaveformMode(true);
-            strip2->SetColors(Color(24, 24, 32), Color(167, 139, 250),
-                              Color(196, 181, 253), Color(233, 213, 255));
-            DemoKit::AddStretched(stripCard, strip2);
-            st->strips.push_back(strip2);
-
-            DemoKit::AddCaption(stripCard, "LvlStripNote",
-                    Tr("Each tick pushes the current peak into a 200-sample history "
-                    "(PushWaveformSample), drawn as mirrored bars around the centre line."));
-        }
-
-        // ----- Source / control card -----
+        // ----- Source / control card (on top, above the meters) -----
         auto srcCard = DemoKit::AddCard(root, "LvlSrcCard", Tr("Signal source"));
         {
             // One row: source dropdown | manual sliders | reset. It wraps when
@@ -333,6 +270,69 @@ namespace UltraCanvas {
                                 "synthetic and manual sources still drive the meters."));
                 status->SetTextColor(Color(180, 60, 60, 255));
             }
+        }
+
+        // The two meter cards side by side; they wrap under each other in a
+        // narrow window.
+        auto cardsRow = DemoKit::AddRow(root, "LvlCards");
+
+        // ----- Card A: three-zone VU meters in four themes -----
+        auto vuCard = DemoKit::AddCard(cardsRow, "LvlVuCard", Tr("Three-zone VU meter"));
+        {
+            struct VuTheme {
+                std::string name;
+                float height;
+                bool custom;
+                Color bg, low, mid, high;
+            };
+            const VuTheme themes[] = {
+                {Tr("Classic (default colours)"), 18, false, {}, {}, {}, {}},
+                {Tr("Modern accent"), 18, true, Color(235, 238, 243), Color(34, 197, 94),
+                        Color(250, 204, 21), Color(239, 68, 68)},
+                {Tr("Ocean on dark"), 18, true, Color(15, 30, 48), Color(56, 189, 248),
+                        Color(99, 102, 241), Color(244, 63, 94)},
+                {Tr("Large broadcast bar"), 30, true, Color(24, 24, 32), Color(74, 222, 128),
+                        Color(253, 224, 71), Color(248, 113, 113)},
+            };
+            int idx = 0;
+            for (const auto& theme : themes) {
+                DemoKit::AddCaption(vuCard, "LvlVuCap" + std::to_string(idx), theme.name);
+
+                auto meter = std::make_shared<UltraCanvasLevelMeter>(
+                        "LvlVu" + std::to_string(idx), 500, theme.height);
+                if (theme.custom)
+                    meter->SetColors(theme.bg, theme.low, theme.mid, theme.high);
+                // A bar as wide as the card; its height is the theme's.
+                DemoKit::AddStretched(vuCard, meter);
+                st->meters.push_back(meter);
+                ++idx;
+            }
+
+            DemoKit::AddCaption(vuCard, "LvlVuNote",
+                    Tr("Fill = peak level across the green / yellow / red zones "
+                    "(60% / 85% thresholds); the dark tick marks the RMS level."));
+        }
+
+        // ----- Card B: scrolling waveform strips in two themes -----
+        auto stripCard = DemoKit::AddCard(cardsRow, "LvlStripCard", Tr("Scrolling waveform strip"));
+        {
+            DemoKit::AddCaption(stripCard, "LvlStripCap0", Tr("Classic (default colours)"));
+            auto strip1 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip0", 500, 66);
+            strip1->SetWaveformMode(true);
+            DemoKit::AddStretched(stripCard, strip1);
+            st->strips.push_back(strip1);
+
+            DemoKit::AddCaption(stripCard, "LvlStripCap1", Tr("Violet on dark"));
+            auto strip2 = std::make_shared<UltraCanvasLevelMeter>("LvlStrip1", 500, 66);
+            strip2->SetWaveformMode(true);
+            strip2->SetColors(Color(24, 24, 32), Color(167, 139, 250),
+                              Color(196, 181, 253), Color(233, 213, 255));
+            DemoKit::AddStretched(stripCard, strip2);
+            st->strips.push_back(strip2);
+
+            DemoKit::AddCaption(stripCard, "LvlStripNote",
+                    Tr("Each tick pushes the current peak into a 200-sample history "
+                    "(PushWaveformSample), drawn as mirrored bars around the centre line."));
         }
 
         // ----- Animation timer (~30 fps). Stops itself once the page is gone. -----
