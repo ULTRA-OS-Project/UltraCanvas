@@ -45,6 +45,7 @@ service's sign-in names the person and the role - a support role reads and sends
 
 Errors are {"error", "error_description"} with a 4xx status.
 
+Version: 0.3.1 - a deletion's grace is 90 days by default (config.py; it was 30)
 Version: 0.3.0 - UltraAccount: the phone verified by a texted code, the subscription, the recovery-key escrow
 Version: 0.2.0 - the operator sessions with their roles, verified with the shared secret
 Version: 0.1.0

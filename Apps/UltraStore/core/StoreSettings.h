@@ -44,10 +44,12 @@ struct StoreSettings {
     // (ultrastore://code/<CODE>), and the day it was entered: it stays in
     // force for kCodeDays, so a partner whose link brought the person is
     // credited by a purchase made within that time, and the price shows the
-    // discount until then.
+    // discount until then. 90 days: the one window a link and a code share in
+    // the affiliate programme (Docs/Research/UltraAffiliatesDesignProposal.md,
+    // decided 2026-11-26); it was 30.
     std::string code;
     std::string codeEnteredAt;   // "YYYY-MM-DD"
-    static constexpr int kCodeDays = 30;
+    static constexpr int kCodeDays = 90;
     // The code when it was entered within kCodeDays of today, else "".
     std::string CodeInForce(const std::string& today) const;
 

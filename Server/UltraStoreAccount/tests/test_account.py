@@ -322,7 +322,7 @@ def test_archive_deletion_and_the_operator(service):
     assert service.post(f"/v1/users/{uid}/delete", json={}, headers=OP).json()["error"] == "not_requested"
     assert service.post("/v1/me/delete", json={"password": "wrong wrong wrong"}, headers=h).status_code == 401
     r = service.post("/v1/me/delete", json={"password": PASSWORD}, headers=h)
-    assert r.json()["state"] == "deleting" and r.json()["delete_after"] == add_days(today(), 30)
+    assert r.json()["state"] == "deleting" and r.json()["delete_after"] == add_days(today(), 90)   # the grace: 90 days
     assert service.get("/v1/users?state=deleting", headers=OP).json()["users"][0]["request"] == "deletion"
     assert service.post("/v1/me/delete/cancel", headers=h).json()["state"] == "active"
     service.post("/v1/me/delete", json={"password": PASSWORD}, headers=h)

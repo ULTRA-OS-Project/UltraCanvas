@@ -111,7 +111,7 @@ int UltraStore::Cli::Usage(FILE* to) {
         "  ultrastore licences [--root <dir>]  the apps bought here\n"        "  ultrastore licence <app-id> [--root <dir>] [--key <hex>]\n"
         "                                     one purchase: its terms, and the licence file checked against the key\n"
         "  ultrastore code [<CODE> | clear] [--cache <dir>]\n"
-        "                                     the discount or partner code in force (30 days), checked against the cached catalog\n"
+        "                                     the discount or partner code in force (90 days), checked against the cached catalog\n"
         "  ultrastore ultrastore://code/<CODE>  the same, from a QR code or a page: opens the window with it\n"
         "  ultrastore account signup <email> [--country DE] [--year 1990] [--marketing] [--url <service>] [--root <dir>]\n"
         "                                     an account at the catalog's account service: the password from ULTRASTORE_PASSWORD or a line on stdin, a code mailed\n"
@@ -795,7 +795,8 @@ int CmdAccount(const std::vector<std::string>& args) {
 }
 
 // code [<CODE> | clear]: the code in force, checked against the cached
-// catalog with the settings' keys, kept in the settings file for 30 days.
+// catalog with the settings' keys, kept in the settings file for
+// StoreSettings::kCodeDays (90).
 int CmdCode(const std::vector<std::string>& args) {
     const auto pos = Positional(args);
     StoreSettings settings = StoreSettings::Load();
