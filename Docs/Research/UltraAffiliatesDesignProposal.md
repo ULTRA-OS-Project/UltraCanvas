@@ -3,7 +3,8 @@
 **Date:** 2026-11-25
 **Status:** Proposal, **with the owner's decisions of 2026-11-26 worked in**
 (§9). Nothing of it is built; §3 says what the repository already has that
-it builds on, and §9.1 lists the three points still open. **Rechecked on the same date**, claim by
+it builds on. **No question to the owner is open** (§9.1); what remains
+before building is the lawyer's and the tax adviser's (§7). **Rechecked on the same date**, claim by
 claim, against the tree and against outside sources: §12 is the record of
 what was confirmed, what was corrected and what is still unverified.
 **Scope:** one affiliate programme for every shop and marketplace of ULTRA OS:
@@ -58,9 +59,9 @@ it is reactivated.**
 | The operator is the network (§5.12) | The affiliate contracts with the operator, not with each merchant: one set of terms, one self-billed credit note a month, one payout, one tax relationship. The operator pays the base and the superaffiliate's share out of its own fee and passes the merchant's boost through. It is the only model in which a customer bound in the games shop can earn their affiliate money in the book shop. |
 | Two ways in, from one programme (§5.2, §5.4) | **Affiliates browse** every shop's products with what each pays - 5 %, or more where the merchant boosts - and take links. **Merchants raise the boost** on what they want sold. |
 | The binding is first-touch, and moves in one case only (§5.5) | The owner's rule. The first affiliate whose link brings a **new** customer - one who has never paid for anything in any shop - is that customer's referrer. Customers who are buying cannot be claimed by sending them a link. Decided 2026-11-26: a customer who has bought nothing for more than six months and then buys within two weeks of an affiliate's link is bound to that affiliate, whether they had a referrer before or not. |
-| A product link wins its product, last click, 30 days (§5.6) | The owner's override. A link to a product credits its affiliate for that product, bought within the window, and nothing else in the basket; the binding does not move. A code entered in the store stays in force **90 days** (decided 2026-11-26; 30 today, `StoreSettings::kCodeDays`); §9.1 asks whether links should have the same window. |
+| A product link wins its product, last click, 90 days (§5.6) | The owner's override. A link to a product credits its affiliate for that product, bought within the window, and nothing else in the basket; the binding does not move. **A link and a code count for the same 90 days** (decided 2026-11-26; the store keeps a code for 30 today, `StoreSettings::kCodeDays`). |
 | One commission per sale, plus the superaffiliate's share (§5.15) | Decided 2026-11-26. An affiliate who brings in another affiliate - by a recruiting link, or because their referred customer becomes an affiliate - earns a percentage (10 % unless set otherwise) of that affiliate's commissions, on top, paid by the operator. One level up and no further, as the store's earlier scheme had it. |
-| A bound customer's purchase pays the base (§5.2) | "Every later purchase" pays the 5 % everywhere, because the operator pays it. The merchant's boost is for the affiliate who promoted the product with a link (§9.1 asks the owner to confirm). |
+| A bound customer's purchase pays the base (§5.2) | "Every later purchase" pays the 5 % everywhere, because the operator pays it. The merchant's boost is for the affiliate who promoted the product with a link, and for no one else (decided 2026-11-26). |
 | Commissions are pending, then approved, then paid, with 5 % held back (§5.8) | A sale can be refunded, returned or charged back. A commission is approved 30 days after the sale, is taken back in proportion to a refund (as `Apps/UltraStoreAdmin` already does), and is paid monthly above a threshold. Decided 2026-11-26: 5 % of each commission is held back for six months against late refunds and chargebacks, and the affiliate's statistics show the amount held. |
 | The binding follows the account (§5.9) | Closed: suspended, nothing accrues. Reactivated: restored, to the same affiliate. Erased: gone, and a new account is a new person. The portal's accounts cannot be closed at all today (§3), so closing and reactivating are built with the binding. |
 | Blocked and banned, with a record (§5.16) | Decided 2026-11-26. An affiliate who breaks the rules is blocked (for a time) or banned (for good). Each case has a record - the rule, the facts, who decided - which the operator keeps and the affiliate gets on request. |
@@ -84,7 +85,7 @@ where the words leave a choice:
 | "Merchants set rules for their products to be advertised" | Decided 2026-11-26: the merchant sets one thing, a **boost** of 1 to 45 % on top of the 5 % the operator pays - for one product, a category, a shop or everything it sells (§5.2). There is no opt-in and no opt-out. |
 | "Percentage of the sales price or fixed commission per product" | The base is 5 % of the line's net price. The boost is a percentage; for hardware it may instead be a fixed amount per unit, in the product's currency. Software takes a percentage only (decided 2026-11-26, §5.2). |
 | "A referred customer remains assigned to an affiliate for all subsequent purchases" | A **binding** from the customer's account to the affiliate, made once, when a new customer arrives through an affiliate's link or code (§5.5). |
-| "Unless that customer uses an affiliate link to a specific product and buys that product" | A **product link** for product P, clicked within 30 days, credits its affiliate for P alone - per line, last click wins (§5.6). |
+| "Unless that customer uses an affiliate link to a specific product and buys that product" | A **product link** for product P, clicked within 90 days, credits its affiliate for P alone - per line, last click wins (§5.6). |
 | "The referred customer will not shift his common reference to the new affiliate" | The binding does not move for a link or a code. One exception, decided 2026-11-26: a customer who has bought nothing for more than six months and buys within two weeks of another affiliate's link moves to that affiliate (§5.5). |
 | "If the customer closes his UltraOS account the affiliate connection is lost, unless he reactivates that account again" | The binding is **suspended** while the account is closed and **restored** on reactivation; only the account's erasure ends it (§5.9). |
 
@@ -101,7 +102,7 @@ anything.
 | 2 | C buys a game and an e-book a month later, no links | A, the base on each | A |
 | 3 | C clicks B's link to album Y, buys Y the same week | **B**, the base plus Y's boost | A |
 | 4 | C's basket: Y (B's link, clicked 3 days ago) and Z (no link) | B for Y, **A for Z** (the base) | A |
-| 5 | C buys Y again 40 days after B's click | A, the base (the 30-day window has passed) | A |
+| 5 | C buys Y again 100 days after B's click | A, the base (the 90-day window has passed) | A |
 | 6 | C clicks B's link to Y, then D's link to Y, buys Y | **D** (last click on the product) | A |
 | 7 | C clicks B's link to Y, buys W instead | A, the base (B's link was for Y only) | A |
 | 8 | C, who bought last month, clicks B's *general* link (no product), buys V | A, the base (only a product link overrides) | A |
@@ -278,8 +279,7 @@ code: that affiliate promoted that product. A bound customer's purchase with
 no link earns the **base alone** - the merchant pays for promotion, not for
 every later purchase of a customer someone once referred. Digistore24
 advises its vendors the same way: the lifetime rate below the product's
-(§4). This is the proposal's reading of the decision, and §9.1 asks the
-owner to confirm it.
+(§4). Decided 2026-11-26: "the bound affiliate gets only the 5 % base".
 
 **What a merchant cannot do.** Approve or refuse affiliates, give a named
 affiliate a better rate, forbid a channel for its own products, or decline a
@@ -320,8 +320,8 @@ of the three affiliate rows.
   decided ("a percentage of the affiliate's commission"), so it grows with
   the merchant's boost while the operator alone pays it: at the largest
   boost the operator keeps 5.00 of its 15.00, before the provider's fee.
-  Reckoned on the base alone it would be 0.50 on every sale, whatever the
-  boost. §9.1 asks which is meant.
+  Confirmed 2026-11-26: the whole commission of the affiliate, not taken
+  from the affiliate but out of the operator's fee.
 - **15 % is the general shop fee** (decided 2026-11-26), the same in every
   shop, so the table holds for apps, games, books and hardware alike. If a
   shop were ever given a lower fee, the base would need looking at again
@@ -354,10 +354,12 @@ today. A general code does **not** take the commission from the bound
 affiliate (decided 2026-11-26, D5): it gives its discount and changes
 nothing else, unless the customer is won back with it (§5.5).
 
-**A code entered in the store stays in force 90 days** (decided 2026-11-26;
-`StoreSettings::kCodeDays` is 30 today), while a link counts for 30 (D9).
-An affiliate's code would then work three times as long as their link; §9.1
-asks whether that is meant.
+**One window for links and codes: 90 days** (decided 2026-11-26). A click
+on a link and a code entered in the store both count for 90 days - for the
+product they name, and towards binding a new customer who signs up or first
+buys in that time. `StoreSettings::kCodeDays` is 30 today and becomes 90.
+The win-back's two weeks (§5.5) and the approval period's 30 days (§5.8)
+are different waits and stay as they are.
 
 **A click** is recorded by the shop's server when the `/r/` page is opened as
 a top-level navigation by a person (`Sec-Fetch-Dest: document`,
@@ -372,7 +374,7 @@ visitor is signed in - the account. It is kept server-side:
   keep the click across sessions in a cookie needs consent (§7, question
   L2); without it, the click lasts the session.
 
-Clicks are aggregated after 30 days into counts per affiliate, label,
+Clicks are aggregated after 90 days into counts per affiliate, label,
 product and day; no row of a click outlives its window.
 
 ### 5.5 The binding
@@ -382,9 +384,9 @@ what (sign-up, first purchase, code), and its state (`active`, `suspended`,
 `ended`). One per customer at a time:
 
 1. **When.** At **sign-up**, when the person clicked an affiliate's link or
-   entered an affiliate code in the 30 days before; or at the **first paid
+   entered an affiliate code in the 90 days before; or at the **first paid
    order** of an account with no binding, when that order carries a click or
-   code from the 30 days before. The last click before that moment decides
+   code from the 90 days before. The last click before that moment decides
    who.
 2. **Only new customers - and lapsed ones** (decided 2026-11-26, D2 and
    D5). An account that has a paid order in any shop is not bound by a later
@@ -411,7 +413,7 @@ what (sign-up, first purchase, code), and its state (`active`, `suspended`,
    operator (§5.16).
 5. **Guests.** A purchase by e-mail without an account is credited for a
    product link and bound to no one. A guest who makes an account from the
-   order's page within 30 days is bound to the affiliate that order carried,
+   order's page within 90 days is bound to the affiliate that order carried,
    if it is their first paid order.
 
 The customer sees their binding in the account's *Privacy and data*:
@@ -428,7 +430,7 @@ share is added to each commission:
 ```
 for each line (product P, quantity, net price):
     link = the last product-link click (or product code) for P
-           by this customer or this session, within 30 days,
+           by this customer or this session, within 90 days,
            whose affiliate is active,             # not blocked or banned
            not the buyer, and not a member of the seller
     if link:
@@ -546,7 +548,7 @@ sold to it, kept for **twelve months** and then erased unless reactivated.
 A deletion the person asks for outright has **90 days** of grace in which a
 cancel restores the account; the earlier service had 30, and the store's
 account page says 30 in two of its texts (`StoreAccountPage.cpp`), which
-change with it. §9.1 asks the owner to confirm this reading of the 90 days.
+change with it.
 The binding rules above apply to both.
 
 **The affiliate's account.**
@@ -688,7 +690,7 @@ moment a person's affiliate profile is created:
    to affiliate A - then **A is their superaffiliate**. This is the owner's
    rule: whoever brought the customer brought the affiliate.
 2. Otherwise, if they came through an affiliate's **recruiting link**
-   (§5.4) in the 30 days before, that affiliate is.
+   (§5.4) in the 90 days before, that affiliate is.
 3. Otherwise they have none.
 
 Rule 1 goes before rule 2: a customer bound to A who signs up through S's
@@ -786,7 +788,7 @@ one ledger serves every shop. Models, in outline:
 | `AffiliateProfile` | the account, the handle, state (`applied`, `active`, `paused`, `blocked`, `banned`, `closed`), the verified phone number, the identity check's result (name, date of birth, document type and country, expiry, checked when and by whom - no picture), website and channels, payout method reference, tax status and VAT number, terms version accepted; **the superaffiliate** and the share set for it |
 | `Sanction` | the profile, block or ban, the rule, the facts, the evidence, decided by and when, until, the money, the affiliate's statement and appeal; rows are added, never edited |
 | `Boost` | the publisher, scope (everything / shop / category / listing), a percentage from 1 to 45 - or, for hardware, a fixed amount with currency - renewals, validity, saved by (the Owner) |
-| `Click` | affiliate, listing, shop, label, account or session, at; aggregated into `ClickDay` after 30 days |
+| `Click` | affiliate, listing, shop, label, account or session, at; aggregated into `ClickDay` after 90 days |
 | `Binding` | customer (one active row at a time), affiliate, at, through, state, why it ended (`won_back`, `erased`, `banned`) |
 | `Commission` | order line, affiliate, basis (`product_link`, `bound_customer`, `super` with the commission it is a share of), **the base part (the operator's) and the boost part (the merchant's)** with a snapshot of the boost row, amount, currency, state, approve-after date, the amount held back and its release date, statement |
 | `ProgrammeSettings` | the operator's: the base commission (5 %), the default superaffiliate share (10 %), the holdback (5 %, six months), the approval period, the windows |
@@ -846,7 +848,7 @@ one ledger serves every shop. Models, in outline:
 
 | Phase | What | Needs first |
 |---|---|---|
-| 0 | The three open points of §9.1; the lawyer's and tax adviser's answers to L1-L4, L8, L9, L11, T1 | - |
+| 0 | The lawyer's and tax adviser's answers to L1-L4, L8, L9, L11, T1. Nothing is open with the owner (§9.1) | - |
 | 1 | **Product links in the app store**: affiliate profiles with a handle, **identified by a phone number and an ID**; **the base of 5 % and the merchant's boost**, saved by the Owner; the products with what each pays; `/r/` links, clicks, the `ref` on the checkout; attribution of a paid order to a product link; **recruiting links and the superaffiliate's share**; **block and ban with their record**; commissions pending and reversed; the dashboards; approval and payout marked by the operator by hand. The store's code window raised to 90 days. Affiliate **codes** with it or right after: the portal has to learn to publish and apply codes first (its next step 11) | a way to send a text message from the portal; the net price of a line (VAT is the portal's next step 2) |
 | 2 | **The binding**: bind at sign-up and first order, the **win-back** after six months, the base on every bound customer's purchase, the customer's "Referred by"; a referred customer who becomes an affiliate gets their referrer as superaffiliate; **closing and reactivating an account** (twelve months closed, 90 days of grace for a deletion), which the portal does not have, with the binding suspended and restored | buyer accounts on orders (portal next step 3) |
 | 3 | **Money and the other shops**: automatic approval after the approval period, **the 5 % holdback and its release**, statements, self-billed credit notes, Skrill payouts, the boost deducted in the merchant's settlement; baskets with several sellers, **fixed boosts for hardware**, physical goods' approval from delivery, subscriptions' renewals; the native store's `ultrastore://r/` and `ref`; UltraAccount's *Affiliate* section | the settlement of shares and tax invoices (next step 2), the operator's fee among them; the shops themselves |
@@ -875,7 +877,7 @@ The eleven questions the proposal asked:
 | D6 | The second tier | **The superaffiliate** (§5.15) |
 | D7 | Balances | **Per currency**, converted only at payout |
 | D8 | An affiliate's own purchases | **No commission** |
-| D9 | Windows | **Product link 30 days, sign-up 30 days, approval 30 days** |
+| D9 | Windows | **A link or a code counts for 90 days** - for its product, and towards binding a new customer. **Approval 30 days** (the first round had 30 for links too) |
 | D10 | Payout threshold | **25.00** per currency per month |
 | D11 | Does the bound affiliate also earn when a product link wins | **No** - one commission per line, plus the superaffiliate's share |
 
@@ -885,7 +887,7 @@ And those the owner added:
 |---|---|---|
 | N1 | **Superaffiliates.** An affiliate who promotes the programme to other affiliates earns a percentage of their commissions (10 %, for example). A referred customer who becomes an affiliate has their referring affiliate as superaffiliate. **The operator pays it** | §5.15 |
 | N2 | **One commission per sale, plus the superaffiliate's commission** where one is set for that affiliate | §5.6, §5.15 |
-| N3 | **The store keeps a code for 90 days** | §5.4, §5.14 |
+| N3 | **The store keeps a code for 90 days, and a link counts as long** | §5.4, §5.14 |
 | N4 | **Software takes a percentage only. A fixed amount exists for hardware only.** The merchant's Owner sets both; every digital product counts as software | §5.2 |
 | N5 | **A holdback of 5 % for six months** against refunds and chargebacks, shown in the sales statistics | §5.8 |
 | N6 | **An affiliate gives a phone number and a valid ID** | §5.1 |
@@ -895,16 +897,25 @@ And those the owner added:
 | N10 | **The merchant may add +1 to +45 %** to boost its sales, taken in full from the merchant's proceeds | §5.2 |
 | N11 | **The general shop fee is 15 %** | §5.3, §5.12 |
 
-### 9.1 What is still open
+### 9.1 Nothing is open
 
-Three points. The document is written to the first reading of each, so that
-it is whole; a different answer changes the section named.
+The points the decisions left open were answered on 2026-11-26, and the
+sections named are written to the answers:
 
-| # | Open | Written as | The other reading |
-|---|---|---|---|
-| 1 | **A link's window: 30 days or 90?** A code in the store is kept 90 days (N3), a link counts for 30 (D9) | As decided: 90 and 30 (§5.4) | **Recommended: 90 for both.** One number to explain to affiliates and customers, and no reason for an affiliate to hand out codes in place of links. It makes a product link win its product for three months after the click |
-| 2 | **Is the boost paid on a bound customer's purchase with no link?** | No: the boost is for a product link; the bound affiliate gets the base (§5.2) | Yes: every commission on a boosted product is base plus boost. Merchants would then pay up to 45 % on purchases nobody promoted, and boost less |
-| 3 | **The superaffiliate's 10 %: of the whole commission, or of the base?** | Of the whole commission, as the words say; the operator then keeps between 9.50 and 5.00 of its 15.00 (§5.3) | Of the base only: 0.50 on every sale, whatever the merchant's boost |
+| Point | Answer | Where |
+|---|---|---|
+| A link's window, against the 90 days of a code | **90 days for both** | §5.4, §5.5, §5.6 |
+| Is the boost paid on a bound customer's purchase with no link | **No: the bound affiliate gets only the 5 % base** | §5.2 |
+| The superaffiliate's 10 %: of what, and from whom | **Of the affiliate's whole commission; not taken from the affiliate, but out of the operator's fee** | §5.3, §5.15 |
+| Who pays the superaffiliate | **The operator** | §5.12 |
+| The 90 days in D4 | **Twelve months closed; 90 days of grace for a requested deletion** | §5.9 |
+| "Store owner", and what counts as software | **The merchant's Owner; every digital product is software** | §5.2 |
+| Whom a win-back binds | **Also a lapsed customer who had no referrer** | §5.5 |
+
+Read with the 90 days: every window in which a click or a code counts is 90
+days - the product link, the sign-up, a guest who makes an account from
+their order, and the recruiting link. If any of those was meant to stay at
+30, it is one number in `ProgrammeSettings`.
 
 ### 9.2 What the simpler model removed
 
@@ -978,8 +989,9 @@ one test per row of §2.1, and these besides:
   their balance is held; a banned affiliate's bindings and superaffiliate
   relations are ended; each has a record with the rule and the facts, and
   the affiliate's request returns it without another person's data.
-- **The code window.** A code entered in the store is in force on day 90
-  and not on day 91.
+- **The window.** A code entered in the store and a click on a link both
+  count on day 90 and not on day 91, for the product and for binding a new
+  customer.
 - A renewal goes to the first order's affiliate: the base every time, the
   boost only where the merchant set it for renewals.
 - Nothing in the affiliate's or the merchant's reports names the customer.

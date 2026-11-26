@@ -13,7 +13,7 @@
   - A new customer is bound to the affiliate whose link brought them and
     earns that affiliate a commission on every later purchase in every shop,
     at the 5 % the operator pays. A link to one product wins that product's
-    commission, the merchant's boost included, for 30 days without moving
+    commission, the merchant's boost included, for 90 days without moving
     the binding. A customer who has bought nothing for six months and buys
     within two weeks of an affiliate's link is bound to that affiliate. It is suspended while the account is closed,
     restored on reactivation and ends with the account's erasure.
@@ -26,7 +26,6 @@
     show the amount held. An affiliate is identified by a phone number and
     an ID, and can be blocked or banned with a record they get on request.
   - The proposal also covers self-billed credit notes, fraud defences, the
-    questions for a lawyer, four phases, three points the decisions leave
-    open, and a record of what was checked against the code and against
+    questions for a lawyer, four phases, and a record of what was checked against the code and against
     outside sources (the portal has no account handle, no phone number, no
     account closure and no codes in its catalog yet).
