@@ -16432,7 +16432,7 @@ std::vector<std::string> ListDriveRoots();
 
 struct FolderBreadcrumbOptions {
     bool showComputerItem = true;            // leading node listing all drives
-    std::string computerLabel = "Computer";
+    std::string computerLabel;               // empty: "Computer" in the language shown
     bool subFolderDropdowns = true;          // per-segment dropdown of that folder's sub-folders
     // What a click on the "Computer" node itself does. Unset, it navigates to
     // the drive root of the shown path; a host with a page of its own for the
@@ -115940,6 +115940,15 @@ honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
 
 ==============================================================================
+FILE: Docs/UltraAuthenticator/changelog.d/translations-every-language.md
+==============================================================================
+
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
+==============================================================================
 FILE: Docs/UltraAccount/README.md
 ==============================================================================
 
@@ -116055,6 +116064,15 @@ framework and UltraNet.
 - The service calls off the window's thread, with a progress line.
 - The two-factor setup, the devices and the notices, which UltraStore's
   account page has, here too.
+
+==============================================================================
+FILE: Docs/UltraAccount/changelog.d/translations-every-language.md
+==============================================================================
+
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
 
 ==============================================================================
 FILE: Docs/UltraPassword/README.md
@@ -116211,6 +116229,15 @@ framework is built. `-DBUILD_TESTS=ON` adds `UltraPasswordTests`, which checks
 the model, the payload round trip, the vault file and its exports, wrong
 passwords and tampering, the unlock back-off, CSV in and out (Chrome and
 Bitwarden layouts included) and the generator.
+
+==============================================================================
+FILE: Docs/UltraPassword/changelog.d/translations-every-language.md
+==============================================================================
+
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
 
 ==============================================================================
 FILE: Docs/UltraClipboard/README.md
@@ -116387,6 +116414,15 @@ encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
 
 ==============================================================================
+FILE: Docs/UltraClipboard/changelog.d/translations-every-language.md
+==============================================================================
+
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
+==============================================================================
 FILE: Docs/UltraNotifications/README.md
 ==============================================================================
 
@@ -116460,6 +116496,15 @@ UltraNotifications --version | --help
 `BUILD_ULTRANOTIFICATIONS` (on by default) builds it wherever the
 `UltraMessageCenter` library is built. It is packaged with the other
 applications on Linux, Windows and macOS.
+
+==============================================================================
+FILE: Docs/UltraNotifications/changelog.d/translations-every-language.md
+==============================================================================
+
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
 
 ==============================================================================
 FILE: Docs/UltraSnip/README.md
@@ -116793,6 +116838,15 @@ alarms are shown in the window alone. The task model and the store
 reminders and the store.
 
 ==============================================================================
+FILE: Docs/UltraToDo/changelog.d/translations-every-language.md
+==============================================================================
+
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
+==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md
 ==============================================================================
 
@@ -116885,6 +116939,14 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
+
+==============================================================================
+FILE: Docs/ArtCreator/changelog.d/translations-every-language.md
+==============================================================================
+
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md
@@ -118523,6 +118585,15 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/missing-translations.md
+==============================================================================
+
+- **Five desktop texts were English in every language**: the Tasks button's
+  name and its error, the UltraToDo description, "Tool applications on the
+  taskbar too", and the first desktop's tooltip. All 30 languages now have
+  them.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
@@ -120511,6 +120582,19 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/translations-every-language.md
+==============================================================================
+
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+- **Quitting during a transfer asked half in English.** The dialog joined
+  a translated opener ("A download is") to an English rest ("still running
+  - quit anyway?"), and its list of files was English throughout. Each line
+  is now one translated sentence, with each language's plural forms.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
