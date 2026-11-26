@@ -157,8 +157,9 @@ What this means for the design:
   operator's fee and the boost out of the merchant's proceeds; until the
   portal settles shares (next step 2) the programme can count and approve,
   not pay - as `UltraStoreAdmin` did before the payment service existed.
-  **Nothing in the repository sets the operator's fee**: the 15 % is the
-  owner's figure, and the portal's code and README name no store fee.
+  **The general shop fee is 15 %** (decided 2026-11-26), and it is not
+  built: the portal's code and README name no store fee, so the fee itself
+  is part of that step.
 - **The rule of `UltraStoreAdmin` moves, its code does not.** The portal
   replaces the desktop tools; the two-tier credit, the proportional
   reversal and the go/join pages are the design this proposal keeps or
@@ -298,7 +299,7 @@ was paid under (a snapshot on the commission row).
 
 ### 5.3 Where each part comes from
 
-On a sale of 100.00 net, with the operator's fee at 15 %:
+On a sale of 100.00 net, with the general shop fee of 15 %:
 
 | | Affiliate earns | Superaffiliate (10 %, if there is one) | Merchant keeps | Operator keeps of its 15.00 |
 |---|---|---|---|---|
@@ -321,9 +322,10 @@ of the three affiliate rows.
   boost the operator keeps 5.00 of its 15.00, before the provider's fee.
   Reckoned on the base alone it would be 0.50 on every sale, whatever the
   boost. §9.1 asks which is meant.
-- **The 15 % is taken as the fee of every shop.** A shop with a lower fee -
-  a marketplace for hardware often has one - needs the base looked at again,
-  since 5 % plus the superaffiliate's share would be most of it.
+- **15 % is the general shop fee** (decided 2026-11-26), the same in every
+  shop, so the table holds for apps, games, books and hardware alike. If a
+  shop were ever given a lower fee, the base would need looking at again
+  for that shop, since 5 % and the superaffiliate's share come out of it.
 
 ### 5.4 Links, codes and clicks
 
@@ -891,6 +893,7 @@ And those the owner added:
 | N8 | **The affiliate system is free for the merchant, with no opt-in and no opt-out** | §5.2 |
 | N9 | **The minimum affiliate commission is 5 %**, paid by the operator out of its fee of 15 % whatever the merchant offers | §5.2, §5.3 |
 | N10 | **The merchant may add +1 to +45 %** to boost its sales, taken in full from the merchant's proceeds | §5.2 |
+| N11 | **The general shop fee is 15 %** | §5.3, §5.12 |
 
 ### 9.1 What is still open
 
@@ -1058,7 +1061,7 @@ version contradicted itself, all corrected above:
 | Self-billing, §19 UStG, DAC7 | **Still unverified** for affiliates; §19 changed on 1 January 2025 | §7, T1 and T2 |
 | A ban owes the user its reasons (checked 2026-11-26, for N7) | **Confirmed** as a rule for hosting services: DSA Art. 17, covering suspended accounts and stopped payments, with the facts and circumstances in the statement; whether an affiliate profile falls under it is L9 | the Commission's DSA transparency pages; the regulation's Article 17 |
 | A copy of an ID may be kept (checked 2026-11-26, for N6) | **Corrected before it was written**: only with consent and marked as a copy; a note of the check is what the authorities advise | German data-protection and consumer bodies on §20(2) PAuswG |
-| The operator's fee is 15 % (checked 2026-11-26, for N9) | **The owner's figure.** No store fee is named anywhere in the portal's code or README, or in the store's and the operator tool's documents | a search of those files; §3 |
+| The shop fee is 15 % (checked 2026-11-26, for N9 and N11) | **Decided by the owner; not in the repository.** No store fee is named anywhere in the portal's code or README, or in the store's and the operator tool's documents | a search of those files; §3 |
 | The portal's account has a phone number (checked 2026-11-26, for N6) | **No**: only the replaced account service has one | no `phone` in the portal's code |
 | The store's texts follow `kCodeDays` (checked 2026-11-26, for N3) | **Confirmed** for the two texts in `StoreWindow.cpp`; the account page's "30 days" for a deletion is written out twice | `StoreWindow.cpp` lines 898, 1109; `StoreAccountPage.cpp` lines 853, 866 |
 
