@@ -6272,8 +6272,8 @@ FILE: Docs/UltraCanvasSDK.md
 
 # The UltraCanvas SDK
 
-**Version:** 1.3.1
-**Last Modified:** 2026-10-10
+**Version:** 1.4.0
+**Last Modified:** 2026-11-26
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -6310,8 +6310,14 @@ version in the name is the framework's, from the first line of
 ```
 https://start.ultraos.eu/pub/<version>/<archive>
 https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/LATEST
 https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-Windows-0.9.465-x86_64.zip
 ```
+
+`LATEST` is one line, the newest version on the server. The upload writes
+it once that version's files are all in place, and never moves it back to
+an older version; UltraCanvasStart reads it to offer a newer SDK
+(`Apps/UltraCanvasStart/README.md`, *Updating the SDK*).
 
 The `publish-sdk-website` job of `.github/workflows/build.yml` uploads them
 there over SFTP, into `<ULTRAOS_SFTP_DIR>/<version>/`, which the web server
@@ -6321,7 +6327,9 @@ is set, as a repository variable or a secret; the script's head lists the
 other settings. The *SDK website check* workflow
 (`.github/workflows/sdk-website-check.yml`, *Run workflow* in the Actions tab)
 tests those settings without a release: it logs in, writes, renames and
-removes a probe file in the directory. Each version of `main` also has a GitHub release tagged
+removes a probe file in the directory. Run with a version in its `latest`
+input, it sets `LATEST` to that version instead, after checking that the
+version's `SHA256SUMS` is there. Each version of `main` also has a GitHub release tagged
 `v<version>` (the `publish-sdk` job of `.github/workflows/build.yml` creates
 it from the release build that `changelog-fold.yml` dispatches, with the
 version's changelog section as its notes), and the archives are its assets at
@@ -6492,8 +6500,11 @@ An SDK is built on one platform leg and is for that platform and architecture
 only. The Linux SDK follows Ubuntu 22.04's library ABI; a newer distribution
 runs it, an older one may not. The Windows SDK's DLL expects the MSYS2 runtime
 DLLs it was built against (`libc++.dll`, cairo, pango, vips and the rest) on
-`PATH`, as any MSYS2-built program does. The macOS SDK is static and carries no
-runtime dependency beyond the libraries named above.
+`PATH`, as any MSYS2-built program does. The macOS SDK's core is a shared
+`libUltraCanvas.dylib` too: the libraries it was built against are in `deps/lib`
+with `@rpath` install names, so it needs no Homebrew at run time, only the run
+path to `lib/` and `deps/lib` that the package gives a build-tree executable
+(see *Using it*).
 
 The package version in `UltraCanvasConfigVersion.cmake` is the framework's,
 with `SameMajorVersion` compatibility, so `find_package(UltraCanvas 0.9)`
@@ -119736,6 +119747,177 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
+FILE: Docs/UltraCanvasStart/Info.md
+==============================================================================
+
+# UltraCanvas Start and the SDK packages
+
+**Version:** 1.1.0
+**Last Modified:** 2026-11-26
+**Author:** UltraCanvas Framework
+
+UltraCanvas is a C++20 framework for desktop applications on Linux, Windows
+and macOS. To write an application with it you need two things: a computer
+with a compiler and a few libraries, and the framework itself. **UltraCanvas
+Start** takes care of the first, and the **SDK packages** are the second,
+ready to use. Together they take a computer that has nothing from a fresh
+download to a first application that builds, without compiling the framework
+and without reading a page of setup instructions.
+
+## UltraCanvas Start
+
+UltraCanvas Start is a small application that sets a computer up for
+UltraCanvas development. You download it, open it, answer a few questions,
+and it checks, installs and writes everything else. It walks you through six
+steps:
+
+1. **Your computer** - shows what it found: operating system, architecture,
+   package manager, git, the AI coding assistants installed, and the way in
+   for your platform.
+2. **Features** - choose what your application will use (the core is
+   always included; CDR, PDF, OCR, vectorising, audio, barcodes and
+   networking are optional) and which AI assistant you work with, if any:
+   Claude Code, Codex, Copilot, Gemini or another.
+3. **Tools** - checks every compiler, tool and library those choices need,
+   one row each, and installs what is missing with your system's package
+   manager (`apt`, `dnf`, `pacman`, `zypper`, Homebrew, or MSYS2 on Windows,
+   which it sets up itself when it is not there yet). You see the exact
+   command before it runs and its output while it runs.
+4. **Framework** - downloads the SDK package for your platform, verifies it
+   against the published checksums and unpacks it. You can also point it at
+   an archive you downloaded yourself, or choose to build the framework from
+   a clone of the source instead.
+5. **Project** - writes a new application: `CMakeLists.txt`, `main.cpp`,
+   `CMakePresets.json`, a `README.md`, and the instruction file for your AI
+   assistant.
+6. **Build** - builds that application, to prove the installation works,
+   and hands over the first prompt for your assistant.
+
+Every step can be revisited at any time, and a report of the whole setup can
+be copied for support.
+
+### Updating to a newer SDK
+
+Each UltraCanvas Start downloads the SDK of its own release, and also asks
+the server for the newest one. When a newer SDK is out, the Framework step
+says so and offers **Download** for it, with a link to the UltraCanvas Start
+of that release, whose checks know what the new SDK needs. **Move a
+project...** then points an existing application at the new SDK, so its next
+build uses it. From a terminal: `UltraCanvasStart --update-check`,
+`--update-sdk <folder>` and `--update-project <folder> --sdk <prefix>`. UltraCanvas Start also runs without a window -
+`UltraCanvasStart --check`, `--plan` and `--create` work over ssh and in
+scripts.
+
+### Getting UltraCanvas Start
+
+UltraCanvas Start is published with every framework release, on its own, so
+it can reach a computer that has nothing installed yet:
+
+| Platform | Download |
+|---|---|
+| Linux (x86_64, arm64) | `UltraCanvasStart-Linux-<version>-<arch>.tar.xz` |
+| Windows (x86_64, arm64) | `UltraCanvasStart-Windows-<version>-<arch>.zip` |
+| macOS (Apple silicon, Intel) | `UltraCanvasStart-MacOS-<version>-<arch>.dmg` - signed and notarized |
+
+The downloads are on the release page:
+
+```
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/tag/v<version>
+```
+
+On Windows the executable is not code-signed yet, so SmartScreen asks once
+before the first start.
+
+## The SDK packages
+
+An SDK package is the UltraCanvas framework **already built**: the headers,
+the shared core library, the file-format plug-ins and the CMake package that
+`find_package(UltraCanvas)` reads, packed into one archive. Unpack it, point
+CMake at it, and your application builds against it - no forty-minute
+framework build first.
+
+| Package | Built for |
+|---|---|
+| `UltraCanvas-SDK-Linux-<version>-x86_64.tar.xz`, `-arm64` | Linux, Ubuntu 22.04 library ABI and newer |
+| `UltraCanvas-SDK-Windows-<version>-x86_64.zip`, `-arm64` | Windows with the MSYS2 CLANG64 / CLANGARM64 toolchain |
+| `UltraCanvas-SDK-MacOS-<version>-arm64.tar.gz`, `-x86_64` | macOS, Apple silicon and Intel |
+
+Linux x86_64 and arm64, Windows x86_64 and macOS arm64 are in every release;
+Windows arm64 is in nearly every release and macOS Intel only in some.
+
+Each package contains:
+
+- `include/` - the framework's headers;
+- `lib/` - the shared core (`libUltraCanvas`) with every module inside it,
+  the plug-ins, and the CMake package;
+- `deps/` (Windows and macOS) - the libraries the framework uses (cairo,
+  pango, glib, freetype, libvips and the rest), so no Homebrew or MSYS2
+  packages are needed to build against it; on Linux the distribution's
+  development packages take that role, and UltraCanvas Start installs them;
+- `examples/PackageConsumer/` - a two-file application that opens a window
+  and loads every file format: copy it, rename it, start there;
+- this framework's licenses and its SDK documentation.
+
+### Getting an SDK package
+
+Every release is published on the UltraOS server, with a `SHA256SUMS` file
+to verify the download, and on the GitHub release:
+
+```
+https://start.ultraos.eu/pub/<version>/<archive>
+https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/LATEST          (the newest version, one line)
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/<archive>
+```
+
+UltraCanvas Start's Framework step picks the right archive for your platform
+and version, downloads, verifies and unpacks it for you.
+
+### Using it by hand
+
+```bash
+tar xf UltraCanvas-SDK-Linux-<version>-x86_64.tar.xz
+cmake -S MyApp -B build -DCMAKE_PREFIX_PATH=$PWD/UltraCanvas-SDK-Linux-<version>-x86_64
+cmake --build build
+```
+
+with this in `MyApp/CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(MyApp LANGUAGES CXX)
+find_package(UltraCanvas CONFIG REQUIRED)
+add_executable(MyApp main.cpp)
+target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas
+                                    ${ULTRACANVAS_PLUGIN_TARGETS}
+                                    UltraCanvas::UltraCanvasAllFormats)
+```
+
+### What you still need
+
+The SDK saves building the framework; it does not bring a compiler. The
+computer still needs a C++20 compiler, CMake 3.16 or newer and pkg-config -
+on Windows, MSYS2's CLANG64 (or CLANGARM64) toolchain. UltraCanvas Start's
+Tools step checks and installs exactly these.
+
+## Versions and quality
+
+UltraCanvas Start, the SDK packages and the release share one version
+number: the SDK for `v0.9.604` is `UltraCanvas-SDK-…-0.9.604-…`, and the
+UltraCanvas Start of that release downloads it. Every release is tested
+before it is published: each UltraCanvas Start archive is started once
+after packing, and on Linux a clean Ubuntu 22.04 container runs UltraCanvas
+Start's install, then builds its project skeleton and the `PackageConsumer`
+example against the very SDK that is published.
+
+## Further reading
+
+- [`Apps/UltraCanvasStart/README.md`](../../Apps/UltraCanvasStart/README.md) - UltraCanvas Start in detail: every step, the command line, the engine
+- [`Docs/UltraCanvasSDK.md`](../UltraCanvasSDK.md) - the SDK's layout, linking and run-time details per platform
+- [`Docs/GettingStarted.md`](../GettingStarted.md) - the same setup, step by step, by hand
+- [`Docs/GettingStarted-Cloud.md`](../GettingStarted-Cloud.md) - working with an AI assistant without a local compiler
+
+==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
 ==============================================================================
 
@@ -119804,7 +119986,7 @@ as `code`, and each numbered step of a guide is one action.
 | **1 Your computer** | What was detected, as key/value rows: OS, architecture, distribution, the package manager (a found / not-found badge and its path), the MSYS2 root on Windows (a link to install it when missing), home, the AI assistants found, git, the framework version. Under it the guide: Linux, macOS or Windows in a segmented control, preselected to the detected one, and that platform's way in as a numbered guide with the SDK archive named for this version and linked to its release. | Nothing; it is where the reader starts. |
 | **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The AI assistant: *None* first, in red, for a local IDE or the compiler alone (no instruction file, no first prompt), then Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
 | **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each on a row with a switch: an installed one is on and locked; a missing or not checkable one that a package provides can be flipped - on (the default) installs it with the rest, off leaves it out of the install, the command and the report; the row shows the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* (*N missing, M off* with switches off) or *everything installed*, and the line under the buttons says what *Install what is missing* will do - the package manager, how many and the exact command - or why it cannot run. *Install what is missing* (enabled only while something is missing) runs the package manager after a confirmation that shows the command again: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree, after `pacman -Syuu` (twice, in a login shell) brings an installed MSYS2's package lists and core up to date. On Windows without MSYS2 the rows still name MSYS2's packages and Install sets MSYS2 up first: `winget install --id MSYS2.MSYS2` into `C:\msys64`, a first login shell (pacman's keyring) running `pacman -Syuu` twice (a core update ends the first run), then its `pacman` installs the rest and MSYS2 is detected again before the checks. The output is shown in a console as it comes, line by line, and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
-| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its address on [start.ultraos.eu/pub](https://start.ultraos.eu/pub/) and the same archive on the GitHub release; *Download* fetches the archive into a folder you pick, checks it against the version's `SHA256SUMS`, unpacks it there and fills the prefix in (a build without the network library opens the address in the browser instead); *Unpack...* does the same for an archive you downloaded yourself; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
+| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its address on [start.ultraos.eu/pub](https://start.ultraos.eu/pub/) and the same archive on the GitHub release; *Download* fetches the archive into a folder you pick, checks it against the version's `SHA256SUMS`, unpacks it there and fills the prefix in (a build without the network library opens the address in the browser instead); *Unpack...* does the same for an archive you downloaded yourself; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder; *Move a project...* points an existing project at the SDK in the prefix field. *Newest SDK* says what the server's `pub/LATEST` names against the SDK in use, with *Download <version>* and the matching UltraCanvasStart when it is newer (see *Updating the SDK*). For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
 | **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then what was written. The step carries the error marker while no project exists. | The application. |
 | **6 Build** | The proof that the installation works: the two commands a programmer runs (`cmake --preset default`, `cmake --build --preset default`) shown for the project folder, *Build the project* runs them (`engine/StartBuild`: cmake with `-S` and the preset, then the preset's `build/` directory; on Windows the MSYS2 bin directories on the child's PATH), cmake's output in a console, a badge that says *not built yet*, *building...*, *built* or *failed*; the step carries the error marker after a failed build. Under it the hand-over: the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | Whether the application compiles here. |
 
@@ -119817,6 +119999,48 @@ v0.9.252) does not build as written: its `main.cpp` calls
 `app.CreateWindow(config)`, a method the application class does not have.
 Change that line to `auto window = CreateWindow(config);` - the framework's
 function - and it builds; projects written by 0.3.2 and later have it so.
+
+## Updating the SDK
+
+A build of UltraCanvasStart downloads the SDK of its own version. A newer
+release is found through one file on the server, written by
+`scripts/upload-sdk-website.sh` after every release it uploads:
+
+```
+https://start.ultraos.eu/pub/LATEST        one line: the newest version, e.g. 0.9.604
+https://start.ultraos.eu/pub/<version>/    that version's archives and SHA256SUMS
+```
+
+The first visit to the Framework step asks for it in the background
+(*Check again* asks again), and the *Newest SDK* row compares it with the
+SDK in use - the version in the prefix's
+`lib/cmake/UltraCanvas/UltraCanvasConfigVersion.cmake`, or the folder's name,
+or this build's version when no prefix is set:
+
+- **newer, and its `SHA256SUMS` lists this machine's archive**:
+  *Download <version>* fetches, checks and unpacks it like *Download*, into
+  a folder you pick, and fills the prefix in. The row under it links the
+  UltraCanvasStart of that release: a newer SDK can need a package this
+  build's Tools step does not know, and that one does.
+- **newer, without this machine's archive** (macOS Intel is not in every
+  release): it says so and offers nothing.
+- **not newer**: it says the SDK in use is the newest.
+
+*Move a project...* then points an existing project at the SDK in the
+prefix field: it sets every `CMAKE_PREFIX_PATH` in the project's
+`CMakePresets.json` (or adds one to the first `cacheVariables`), writes the
+file beside the old one and renames it over it, and removes
+`build/CMakeCache.txt`, because `find_package` keeps the old SDK's folder in
+`UltraCanvas_DIR`. The build folder's objects stay; the next
+`cmake --preset default` and `cmake --build --preset default` rebuild what
+the new headers change. On the command line the same is
+`--update-check`, `--update-sdk <folder>` and `--update-project <folder> --sdk <prefix>`.
+
+LATEST is written only after the version's files are all on the server, and
+never moved back by a re-run of an older release. The *SDK website check*
+workflow, run by hand with a version in `latest`, sets it to that version
+(`upload-sdk-website.sh --latest <version>`) - the way back after a bad
+release.
 
 ## Command line
 
@@ -119832,6 +120056,11 @@ UltraCanvasStart --plan --assistant codex   # the plan and the project for anoth
 UltraCanvasStart --plan --assistant none    # the plan without an AI assistant
 UltraCanvasStart --create ~/MyApp --name "My App" --sdk ~/UltraCanvas-SDK-Linux-0.9.240-x86_64
                                     # write the project skeleton (the Project step) and exit
+UltraCanvasStart --update-check     # the newest SDK on the server against this build's; exit 3 when newer
+UltraCanvasStart --update-check --sdk ~/UltraCanvas-SDK-Linux-0.9.580-x86_64   # ...against that SDK's
+UltraCanvasStart --update-sdk ~/SDKs   # download, check and unpack the newest SDK there, when it is newer
+UltraCanvasStart --update-project ~/MyApp --sdk ~/SDKs/UltraCanvas-SDK-Linux-0.9.604-x86_64
+                                    # point the project at that SDK (CMakePresets.json, the cache removed)
 UltraCanvasStart --version
 ```
 
@@ -119856,8 +120085,8 @@ static library the GUI, the CLI modes and the tests share:
 | `StartPackages` | the dependency table with the package per manager (apt, dnf, pacman, zypper, Homebrew, MSYS2), `InstallStep`, `Msys2SetupSteps` (winget, first start, update), MSYS2 architecture prefixes |
 | `StartChecks` | `CheckTool`, `CheckPkgConfigModule`, `RunChecks` |
 | `StartPlan` | `BuildPlan`, `RenderReport`, `PlatformNotes`, `DisplayCommand` |
-| `StartSdk` | artifact names matching the CI workflow, the archive's address on start.ultraos.eu and the release page, `DownloadSdk` (the archive, checked against `SHA256SUMS` with `ChecksumFor`), `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix` |
-| `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep` |
+| `StartSdk` | artifact names matching the CI workflow, the archive's address on start.ultraos.eu and the release page, `DownloadSdk` (the archive, checked against `SHA256SUMS` with `ChecksumFor`), `UnpackStep`, `SdkUnpackedFolder`, `FindSdkPrefix`; the update: `SdkLatestUrl`, `ParseLatestVersion`, `CheckSdkUpdate`, `SdkPrefixVersion`, `StartAppDownloadUrl` |
+| `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep`; `RepointPresets` and `RepointProjectSdk`, which move a project to another SDK |
 | `StartAi` | `DetectAi` (claude, codex, copilot, gemini), `AssistantInstallInstructions`, `AssistantGuidanceNotes`, `FirstPrompt`, `CloudChecklist` |
 | `StartGuide` | the pages' prose as Markdown: `PlatformGuide` (one action per step, the SDK named and linked), `AiGuide`; `CheckDetail` and `InstallPreview` for the Tools step's rows and what Install will do; `PlainText` for the report, `Linkify` |
 | `StartRunner` | `RunStep` through `RunProcessCaptured`, with pkexec/sudo for elevated steps |
@@ -119871,14 +120100,59 @@ shell ever sees a string. The dependency table mirrors step 1 of
 `Tests/UltraCanvasStart` (`-DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON`,
 target `UltraCanvasStartEngineTests`): os-release parsing, version
 comparison, the table, the install command, SDK names, the plan, the
-scaffold over a temporary folder with a non-ASCII name, and the guides (one
-action per numbered step, the SDK named for real, the report plain).
+scaffold over a temporary folder with a non-ASCII name, the update (LATEST's
+format, an SDK's version, a project moved to another SDK), and the guides
+(one action per numbered step, the SDK named for real, the report plain).
 
 ## Versioning
 
 The version is the first line of `Docs/UltraCanvasStart/CHANGELOG.md`, read by
 `cmake/UltraCanvasVersion.cmake` into `ULTRACANVASSTART_VERSION`. Every change
 to the application gets a new entry there.
+
+==============================================================================
+FILE: Docs/UltraCanvasStart/changelog.d/console-placeholder-readable.md
+==============================================================================
+
+- **The output consoles' hint is readable.** On the Tools step ("The
+  package manager's output appears here.") and the Build step, the empty
+  console's hint and caret were drawn in the text area's colours for a light
+  ground, dark grey on the dark console. They are light grey now
+  (`UltraCanvasStartTheme.h` 0.3.4, `kConsoleHint`).
+
+==============================================================================
+FILE: Docs/UltraCanvasStart/changelog.d/update-to-the-newest-sdk.md
+==============================================================================
+
+- **The Framework step offers the newest SDK, and moves a project to it.**
+  Until now a build of UltraCanvasStart only knew the SDK of its own version.
+  The first visit to step 4 now asks the server for `pub/LATEST`, the
+  newest version, which the upload writes after every release (framework
+  changelog: `sdk-website-latest`). A *Newest SDK* row compares it with the
+  SDK in the prefix field (the version in its
+  `UltraCanvasConfigVersion.cmake`, or the folder's name), or with this
+  build's version when no prefix is set:
+  - when it is newer and its `SHA256SUMS` lists this machine's archive,
+    *Download <version>* fetches, checks and unpacks it like *Download*, and
+    the UltraCanvasStart of that release is linked, because its Tools step
+    knows what the newer SDK needs;
+  - when that release has no archive for this machine, the row says so;
+  - otherwise it says the SDK in use is the newest. *Check again* asks
+    again.
+
+  *Move a project...* points an existing project at the SDK in the prefix
+  field. It sets `CMAKE_PREFIX_PATH` in the project's `CMakePresets.json` (or
+  adds it), writes the file beside the old one and renames it over it, and
+  removes `build/CMakeCache.txt`, where `find_package` kept the old SDK's
+  folder. On the command line: `--update-check` (exit 3 when a newer SDK can
+  be downloaded), `--update-sdk <folder>` and
+  `--update-project <folder> --sdk <prefix>`. A new project's README says
+  how. (`StartSdk` 0.4.0: `CheckSdkUpdate`, `ParseLatestVersion`,
+  `SdkPrefixVersion`, `StartAppDownloadUrl`; `StartProject` 0.2.0:
+  `RepointPresets`, `RepointProjectSdk`; tests
+  `ParseLatestVersion_reads_the_first_line`,
+  `RepointProjectSdk_rewrites_the_presets_and_drops_the_cache` and five
+  more.)
 
 ==============================================================================
 FILE: Docs/UltraMail/AccountSetup.md
