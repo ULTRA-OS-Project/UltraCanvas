@@ -1,6 +1,10 @@
 {
   "@language": "nb",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} tegning i dette vinduet har ulagrede endringer. Lukke likevel?",
+    "other": "{n} tegninger i dette vinduet har ulagrede endringer. Lukke likevel?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Teksten er lagt til: klikk på den med tekstverktøyet, eller dobbeltklikk på den, for å redigere den",
   "Changed the text": "Teksten er endret",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Klikk på siden og skriv, eller klikk på en tekst for å redigere den; linjen over angir skrift, størrelse, stil, justering og avstand for den. Escape, Ctrl+Enter eller et klikk utenfor avslutter",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Gjennomstreket tekst",
   "Text Underline": "Understreket tekst",
   "The text was emptied, so it was deleted": "Teksten ble tømt, så den ble slettet",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Skriver en ny tekst: Enter starter en ny linje; Escape, Ctrl+Enter eller et klikk utenfor avslutter"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Skriver en ny tekst: Enter starter en ny linje; Escape, Ctrl+Enter eller et klikk utenfor avslutter",
+  "Untitled {0}": "Uten navn {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} har ulagrede endringer. Lukke likevel?",
+  "{0} is open already": "{0} er allerede åpen"
 }

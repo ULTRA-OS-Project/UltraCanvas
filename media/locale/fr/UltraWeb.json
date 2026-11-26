@@ -1,0 +1,8 @@
+{
+  "@language": "fr",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "{0} cookies supprimés ; les autorisations d'appareil des applications sont oubliées",
+  "No cookies to clear; the apps' device permissions are forgotten": "Aucun cookie à supprimer ; les autorisations d'appareil des applications sont oubliées",
+  "{0} wants to use your camera": "{0} souhaite utiliser votre caméra",
+  "{0} wants to use your microphone": "{0} souhaite utiliser votre microphone"
+}

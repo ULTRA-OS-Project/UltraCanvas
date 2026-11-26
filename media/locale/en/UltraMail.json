@@ -66,6 +66,8 @@
   ],
   "\"Re:\" or \"Fw:\" from a sender you never wrote to": "\"Re:\" or \"Fw:\" from a sender you never wrote to",
   "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.": "\"{0}\" could not be written to the attachment cache in {1}. Check that the folder exists and is writable.",
+  "\"{0}\" is still being downloaded from {1}.": "\"{0}\" is still being downloaded from {1}.",
+  "\"{0}\" is still being uploaded to {1}.": "\"{0}\" is still being uploaded to {1}.",
   "(no name)": "(no name)",
   "(unnamed)": "(unnamed)",
   ", and calls itself a reply (\"{0}\") to a message that was never sent": ", and calls itself a reply (\"{0}\") to a message that was never sent",
@@ -79,6 +81,10 @@
     "one": ", with a photo attached",
     "other": ", with {n} photos attached"
   },
+  "... and {n} more.": {
+    "one": "... and {n} more.",
+    "other": "... and {n} more."
+  },
   "; it is about a bill (\"{0}\")": "; it is about a bill (\"{0}\")",
   "A \"Re:\" or \"Fw:\" from a stranger is a common trick to look like an ongoing conversation. If you know the sender, add them to your contacts.": "A \"Re:\" or \"Fw:\" from a stranger is a common trick to look like an ongoing conversation. If you know the sender, add them to your contacts.",
   "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.": "A blocked sender's mail is marked as spam: the orange frame and the strip above the message. A blocked domain blocks its subdomains too. Nothing is moved or deleted - \"Mark as spam\" moves a message to the junk folder.",
@@ -87,7 +93,7 @@
   "A cryptocurrency scam - a recovery phrase, a wallet to pay into": "A cryptocurrency scam - a recovery phrase, a wallet to pay into",
   "A dangerous attachment - a program, or one dressed as a document": "A dangerous attachment - a program, or one dressed as a document",
   "a dead relative, an estate or money nobody claimed (\"{0}\")": "a dead relative, an estate or money nobody claimed (\"{0}\")",
-  "A download is": "A download is",
+  "A download is still running — quit anyway?": "A download is still running — quit anyway?",
   "a fee (\"{0}\")": "a fee (\"{0}\")",
   "a hardship or far-away story": "a hardship or far-away story",
   "A horizontal line": "A horizontal line",
@@ -159,7 +165,7 @@
   "An advance-fee letter - millions waiting for a small fee": "An advance-fee letter - millions waiting for a small fee",
   "an offer of sex or a meeting": "an offer of sex or a meeting",
   "an unknown address": "an unknown address",
-  "An upload is": "An upload is",
+  "An upload is still running — quit anyway?": "An upload is still running — quit anyway?",
   "another site": "another site",
   "Any mail about cryptocurrency (a word of caution)": "Any mail about cryptocurrency (a word of caution)",
   "App-specific password": "App-specific password",
@@ -385,6 +391,8 @@
   "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.": "Privacy - when pictures on the web are downloaded (always, only from websites and senders you trust and your contacts, or never by themselves), whether the known senders' icons are fetched, and a Primary Password asked for at every start.",
   "puts {0}'s own domain ({1}) in front of an unrelated one": "puts {0}'s own domain ({1}) in front of an unrelated one",
   "Quit UltraMail?": "Quit UltraMail?",
+  "Quitting stops it, and the file does not arrive.": "Quitting stops it, and the file does not arrive.",
+  "Quitting stops them, and the files do not arrive.": "Quitting stops them, and the files do not arrive.",
   "Reading": "Reading",
   "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.": "Reading - where a message opens, how wide the folder list is, whether HTML mail is shown formatted or as plain text, the size of its text, which mail counts as waiting for your reply, and where a message's attachments are shown.",
   "reads \"{0}\" - {1}'s name written with {2} letters that look like Latin ones": "reads \"{0}\" - {1}'s name written with {2} letters that look like Latin ones",
@@ -659,6 +667,7 @@
   "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.": "Website icons: for any other sender whose mail passed the scam check, the home page of the domain it writes from is read for its icon - once, and again after a week if there was none. That tells the sender's web server that someone looked, though not which message; never asked for spam, scams, the junk folder or a mailbox provider such as gmail.com.",
   "What a colour is for: the text, or the background behind it": "What a colour is for: the text, or the background behind it",
   "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.": "What it protects: the passwords of your mail accounts, and the key the mail stored on this computer is encrypted with - the mailbox, the address book, the outbox and every downloaded message. Without it nobody can read them, not even someone who copies the whole data folder.",
+  "What was sent is removed from {0} the next time UltraMail uses it.": "What was sent is removed from {0} the next time UltraMail uses it.",
   "When a message has been sent successfully:": "When a message has been sent successfully:",
   "When new mail arrives while UltraMail runs:": "When new mail arrives while UltraMail runs:",
   "When the pictures a message links to on the web are downloaded:": "When the pictures a message links to on the web are downloaded:",
@@ -679,13 +688,22 @@
   "Your mail account passwords are locked. Enter your master password — sending a message or adding an account will ask for it — and syncing resumes.": "Your mail account passwords are locked. Enter your master password — sending a message or adding an account will ask for it — and syncing resumes.",
   "Your mail passwords cannot be unlocked on this build.": "Your mail passwords cannot be unlocked on this build.",
   "Your password": "Your password",
-  "{0} downloads are": "{0} downloads are",
-  "{0} transfers are": "{0} transfers are",
-  "{0} uploads are": "{0} uploads are",
   "{0} — {1}, not yet in your address book.": "{0} — {1}, not yet in your address book.",
   "{0}: enter an app password (Yahoo account > Account security > Generate app password).": "{0}: enter an app password (Yahoo account > Account security > Generate app password).",
+  "{n} download is still running — quit anyway?": {
+    "one": "{n} download is still running — quit anyway?",
+    "other": "{n} downloads are still running — quit anyway?"
+  },
   "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.": {
     "one": "{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here.",
     "other": "{n} messages are waiting to be sent. UltraMail tries again by itself - sooner when the connection is back. A message the server keeps refusing can be corrected (Edit) or deleted here."
+  },
+  "{n} transfer is still running — quit anyway?": {
+    "one": "{n} transfer is still running — quit anyway?",
+    "other": "{n} transfers are still running — quit anyway?"
+  },
+  "{n} upload is still running — quit anyway?": {
+    "one": "{n} upload is still running — quit anyway?",
+    "other": "{n} uploads are still running — quit anyway?"
   }
 }

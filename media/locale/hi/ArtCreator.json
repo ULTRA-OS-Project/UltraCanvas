@@ -1,6 +1,10 @@
 {
   "@language": "hi",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "इस विंडो के {n} चित्र में बिना सहेजे बदलाव हैं। फिर भी बंद करें?",
+    "other": "इस विंडो के {n} चित्रों में बिना सहेजे बदलाव हैं। फिर भी बंद करें?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "टेक्स्ट जोड़ा गया: इसे संपादित करने के लिए टेक्स्ट टूल से इस पर क्लिक करें, या इस पर डबल-क्लिक करें",
   "Changed the text": "टेक्स्ट बदला गया",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "पेज पर क्लिक करके टाइप करें, या किसी टेक्स्ट को संपादित करने के लिए उस पर क्लिक करें; ऊपर का बार उसका फ़ॉन्ट, आकार, शैली, संरेखण और अंतराल तय करता है। Escape, Ctrl+Enter या बाहर क्लिक करने से समाप्त होता है",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "काटकर लिखा टेक्स्ट",
   "Text Underline": "रेखांकित टेक्स्ट",
   "The text was emptied, so it was deleted": "टेक्स्ट खाली हो गया, इसलिए उसे हटा दिया गया",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "नया टेक्स्ट टाइप हो रहा है: Enter नई पंक्ति शुरू करता है; Escape, Ctrl+Enter या बाहर क्लिक करने से समाप्त होता है"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "नया टेक्स्ट टाइप हो रहा है: Enter नई पंक्ति शुरू करता है; Escape, Ctrl+Enter या बाहर क्लिक करने से समाप्त होता है",
+  "Untitled {0}": "शीर्षकहीन {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} में बिना सहेजे बदलाव हैं। फिर भी बंद करें?",
+  "{0} is open already": "{0} पहले से खुला है"
 }

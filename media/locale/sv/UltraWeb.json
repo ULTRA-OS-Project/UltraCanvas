@@ -1,0 +1,8 @@
+{
+  "@language": "sv",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Rensade {0} cookies; programmens enhetsbehörigheter glöms",
+  "No cookies to clear; the apps' device permissions are forgotten": "Inga cookies att rensa; programmens enhetsbehörigheter glöms",
+  "{0} wants to use your camera": "{0} vill använda din kamera",
+  "{0} wants to use your microphone": "{0} vill använda din mikrofon"
+}

@@ -1,6 +1,11 @@
 {
   "@language": "ro",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} desen din această fereastră are modificări nesalvate. Închideți oricum?",
+    "few": "{n} desene din această fereastră au modificări nesalvate. Închideți oricum?",
+    "other": "{n} de desene din această fereastră au modificări nesalvate. Închideți oricum?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "S-a adăugat textul: pentru a-l edita, faceți clic pe el cu instrumentul Text sau faceți dublu clic pe el",
   "Changed the text": "S-a modificat textul",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Faceți clic pe pagină și tastați sau faceți clic pe un text pentru a-l edita; bara de deasupra îi setează fontul, dimensiunea, stilul, alinierea și spațierea. Escape, Ctrl+Enter sau un clic în afară încheie",
@@ -18,5 +23,8 @@
   "Text Strikethrough": "Tăiere cu o linie a textului",
   "Text Underline": "Subliniere text",
   "The text was emptied, so it was deleted": "Textul a fost golit, așa că a fost șters",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Tastarea unui text nou: Enter începe un rând nou; Escape, Ctrl+Enter sau un clic în afară încheie"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Tastarea unui text nou: Enter începe un rând nou; Escape, Ctrl+Enter sau un clic în afară încheie",
+  "Untitled {0}": "Fără titlu {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} are modificări nesalvate. Îl închideți oricum?",
+  "{0} is open already": "{0} este deja deschis"
 }

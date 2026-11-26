@@ -1,0 +1,8 @@
+{
+  "@language": "tr",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "{0} çerez temizlendi; uygulamaların cihaz izinleri unutuldu",
+  "No cookies to clear; the apps' device permissions are forgotten": "Temizlenecek çerez yok; uygulamaların cihaz izinleri unutuldu",
+  "{0} wants to use your camera": "{0} kameranızı kullanmak istiyor",
+  "{0} wants to use your microphone": "{0} mikrofonunuzu kullanmak istiyor"
+}

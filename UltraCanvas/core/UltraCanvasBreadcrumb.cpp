@@ -1,5 +1,6 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
+// Version: 1.8.1 - the Computer node's name and tooltip go through Tr
 // Version: 1.8.0 - FolderBreadcrumbOptions::driveLabel names the drive node and the
 //                  entries of the Computer node's list
 // Version: 1.7.0 - drop-downs open anchored to their crumb: above it when there is no
@@ -10,6 +11,7 @@
 
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasVolumeMonitor.h"
 #include "UltraCanvasTooltipManager.h"
 #include "CSSLayout/LayoutUtils.h"
@@ -1774,8 +1776,10 @@ namespace UltraCanvas {
         // "Computer": jumps to the current drive root and drops down the full
         // list of drives / volumes so any of them can be selected.
         if (options.showComputerItem) {
-            BreadcrumbItem computer("__computer__", options.computerLabel);
-            computer.tooltip = options.computerLabel + " — show all drives";
+            const std::string computerLabel =
+                    options.computerLabel.empty() ? Tr("Computer") : options.computerLabel;
+            BreadcrumbItem computer("__computer__", computerLabel);
+            computer.tooltip = TrF("{0} — show all drives", computerLabel);
             std::string rootTarget = PathToUtf8(base);
             std::function<void()> onComputerClick = options.onComputerClick;
             computer.onClick = [onNavigate, rootTarget, onComputerClick]() {

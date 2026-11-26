@@ -1,6 +1,10 @@
 {
   "@language": "fr",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} dessin de cette fenêtre a des modifications non enregistrées. Fermer quand même ?",
+    "other": "{n} dessins de cette fenêtre ont des modifications non enregistrées. Fermer quand même ?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Texte ajouté : cliquez dessus avec l'outil texte, ou double-cliquez dessus, pour le modifier",
   "Changed the text": "Texte modifié",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Cliquez sur la page et tapez, ou cliquez sur un texte pour le modifier ; la barre ci-dessus règle sa police, sa taille, son style, son alignement et son espacement. Esc, Ctrl+Entrée ou un clic à l'extérieur termine",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Barré du texte",
   "Text Underline": "Souligné du texte",
   "The text was emptied, so it was deleted": "Le texte a été vidé, il a donc été supprimé",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Saisie d'un nouveau texte : Entrée commence une nouvelle ligne ; Esc, Ctrl+Entrée ou un clic à l'extérieur termine"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Saisie d'un nouveau texte : Entrée commence une nouvelle ligne ; Esc, Ctrl+Entrée ou un clic à l'extérieur termine",
+  "Untitled {0}": "Sans titre {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} a des modifications non enregistrées. Le fermer quand même ?",
+  "{0} is open already": "{0} est déjà ouvert"
 }

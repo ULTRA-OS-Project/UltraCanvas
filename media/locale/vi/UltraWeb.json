@@ -1,0 +1,8 @@
+{
+  "@language": "vi",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Đã xóa {0} cookie; quyền thiết bị của các ứng dụng đã bị quên",
+  "No cookies to clear; the apps' device permissions are forgotten": "Không có cookie để xóa; quyền thiết bị của các ứng dụng đã bị quên",
+  "{0} wants to use your camera": "{0} muốn dùng camera của bạn",
+  "{0} wants to use your microphone": "{0} muốn dùng micrô của bạn"
+}
