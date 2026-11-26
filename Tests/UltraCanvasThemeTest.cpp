@@ -475,14 +475,20 @@ int main() {
         rtBase.baseFont.fontFamily = "Georgia";
         rtBase.baseFont.fontSize = 16;
         const RichTextEditStyle rt = RichTextEditStyle::FromTheme(own, rtBase);
-        CHECK(Same(rt.textColor, r.ink) && Same(rt.backgroundColor, r.well) && Same(rt.pageColor, r.well) && Same(rt.deskColor, r.panel) && Same(rt.selectionColor, r.accentSoft)
+        const Color paperExpected = UltraCanvasTheme::Luminance(r.well) > UltraCanvasTheme::Luminance(r.panel) ? r.well : r.panel;
+        CHECK(Same(rt.pageColor, paperExpected)
+              && UltraCanvasTheme::Luminance(rt.deskColor) < UltraCanvasTheme::Luminance(rt.pageColor),
+              "rich text edit: the page the lighter of the well and the panel, the desk darker than the page");
+        CHECK(Same(rt.textColor, r.ink) && Same(rt.backgroundColor, r.well) && Same(rt.selectionColor, r.accentSoft)
               && Same(rt.cursorColor, r.ink) && Same(rt.linkColor, r.accent) && Same(rt.quoteTextColor, r.inkMuted) && Same(rt.codeBackgroundColor, r.panel)
-              && Same(rt.tableBorderColor, r.lineStrong) && Same(rt.borderColor, r.lineStrong), "rich text edit: ink on the well, the page the well, the desk the panel, the accent for the selection and links");
+              && Same(rt.tableBorderColor, r.lineStrong) && Same(rt.borderColor, r.lineStrong), "rich text edit: ink on the well, the accent for the selection and links");
         CHECK(rt.baseFont.fontFamily == "Georgia" && Near(rt.baseFont.fontSize, 16, 1e-9) && Same(rt.commentHighlightColor, RichTextEditStyle().commentHighlightColor)
               && Same(rt.insertionColor, RichTextEditStyle().insertionColor), "rich text edit: the document's font and the comment and tracked-change colours stay");
         UltraCanvasTheme paper = own;
         paper.SetRole("rich-text.page", Colors::White);
         CHECK(Same(RichTextEditStyle::FromTheme(paper).pageColor, Colors::White), "the element role rich-text.page is honoured");
+        paper.SetRole("rich-text.desk", Color(200, 200, 200));
+        CHECK(Same(RichTextEditStyle::FromTheme(paper).deskColor, Color(200, 200, 200)), "the element role rich-text.desk is honoured");
     }
 
     std::printf("FromTheme for the badge, card, chips, panels and the rest\n");
