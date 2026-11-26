@@ -190,8 +190,41 @@ class PublisherApplyForm(forms.ModelForm):
 class PublisherProfileForm(forms.ModelForm):
     class Meta:
         model = Publisher
-        fields = ["name", "website", "support_email", "description"]
-        widgets = {"description": forms.Textarea(attrs={"rows": 4})}
+        fields = ["name", "website", "support_email", "description", "legal_name", "vat_id", "payout_details"]
+        widgets = {"description": forms.Textarea(attrs={"rows": 4}), "payout_details": forms.Textarea(attrs={"rows": 3})}
+
+    PAYOUT_FIELDS = ("legal_name", "vat_id", "payout_details")
+
+    def __init__(self, *args, owner: bool = True, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Where the money goes is the owner's to say, and to see.
+        if not owner:
+            for name in self.PAYOUT_FIELDS:
+                del self.fields[name]
+
+
+class VatRateForm(forms.Form):
+    """A VAT rate as the operator enters it. A plain form, not the model's:
+    a rate for a country and a day that has one replaces it (the tax page
+    saves with update_or_create), so "already exists" is no error here."""
+
+    country = forms.CharField(help_text="ISO 3166-1, two letters (Greece is GR).")
+    percent = forms.DecimalField(max_digits=5, decimal_places=2)
+    valid_from = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    note = forms.CharField(required=False, max_length=200)
+
+    def clean_country(self):
+        country = self.cleaned_data["country"].strip().upper()
+        country = "GR" if country == "EL" else country
+        if len(country) != 2 or not country.isalpha():
+            raise ValidationError("Two letters, such as DE.")
+        return country
+
+    def clean_percent(self):
+        percent = self.cleaned_data["percent"]
+        if not 0 <= percent < 100:
+            raise ValidationError("From 0 to under 100.")
+        return percent
 
 
 PAID = ("one-time", "monthly", "yearly")

@@ -37,7 +37,8 @@ It is built to replace the store's small services (`Server/UltraStoreMarket`,
 a publisher, publish an app, show and serve the catalog; 0.2.0 sells; 0.4.0
 is the account for every service; 0.5.0 is advertising's first phase and
 0.6.0 the first half of its second; 0.7.0 splits a sale between the store
-and the publisher; 0.8.0 lets a person close or delete the account;
+and the publisher; 0.8.0 lets a person close or delete the account; 0.9.0
+reckons VAT, writes invoices and makes the publishers' payouts;
 *What comes next* names the rest.
 
 ## Decisions
@@ -317,9 +318,79 @@ renewal is split like a sale. `/console/sales/` shows each payment with the
 fee and the share and, per currency, *Your share*; the operator's order page
 shows the same with the percentage each payment was sold under. Payments
 recorded before 0.7.0 get the split when the database is migrated, at the
-fee configured then. **Not in the split:** VAT (the fee is reckoned on the
-amount paid until the portal knows the tax in it), the payment provider's
-fee, invoices and payouts - *What comes next*, 2.
+fee configured then. Since 0.9.0 the tax comes out first and the fee is
+reckoned on the net (below). **Not in the split:** the payment provider's
+fee.
+
+**Tax and invoices** (0.9.0, `billing/tax.py`). The store is the seller, so
+it owes the VAT and writes the invoice. **Off until the seller's details are
+configured** - `ULTRASTORE_PORTAL_SELLER_NAME`, `SELLER_ADDRESS` (lines
+separated by `|`), `SELLER_VAT_ID` and `SELLER_COUNTRY`: without all four a
+payment carries no tax and no invoice, as before, and `/operator/tax/` says
+what is missing.
+
+- **The price includes the tax.** A buyer pays the listed price wherever
+  they are; the tax is taken out of it. Of 19.90 at 19 %, 3.18 is tax
+  (19.90 x 19 / 119) and 16.72 is net; the store's fee is 15 % of the net,
+  2.51, and the publisher's share 14.21.
+- **The rate is the buyer's country's on the day the money moves** - the
+  rule for digital services sold to consumers in the EU. The country comes
+  with the order: the buy page asks for it, a client sends `country` with
+  `POST /v1/checkout`; with none, it is the seller's. A country outside the
+  EU is charged no EU tax and the payment says so.
+- **The rates are the operator's data** (`VatRate`: a country, a
+  percentage, the day it counts from), kept on `/operator/tax/`, where a
+  rate for the same country and day replaces the one there and a rate for a
+  later day is a change to come. `ultrastore-portal money seed-rates` loads
+  a starting table of the 27 standard rates, each marked *to be checked* -
+  **check them against the European Commission's table before selling**;
+  the sources consulted when it was written disagreed on two countries. An
+  EU country with no rate is charged the seller's and the payment says so;
+  the tax page counts such payments and lists the countries without a rate.
+- **An invoice for every payment, a credit note for every refund and
+  chargeback**, in one series without gaps: `<INVOICE_PREFIX><year>-000001`,
+  counted per year under a lock. Each is a copy of what it says as it stood -
+  the seller, the buyer's address and country, the net, the rate, the tax,
+  the total - so what the seller is called next year changes no invoice. A
+  credit note names the invoice it takes back and returns the tax in the
+  proportion of the money. The buyer's *Receipt* link shows the invoice
+  where there is one (`GET /v1/orders/<id>/receipt`, as a page or as text);
+  the order's JSON names it (`payments[].invoice_no`).
+- **A quarter's figures** by the buyer's country and the rate - net, tax and
+  total, from the invoices and credit notes written in it - are on
+  `/operator/tax/` and from `ultrastore-portal money quarter <year> <1-4>`:
+  what the one-stop-shop return asks for.
+
+**For the tax adviser before the first sale, and not built:** a business
+buyer's VAT id and the reverse charge; the two pieces of evidence the
+one-stop shop asks for a buyer's country (the portal keeps the one the buyer
+gave); the taxes of countries outside the EU; reduced rates; and whether the
+invoice's wording is enough where the store is established.
+
+**Payouts** (0.9.0, `billing/payouts.py`). A payout gathers what the store
+owes a publisher in one currency:
+
+- a sale's or a renewal's share is due `ULTRASTORE_PORTAL_PAYOUT_HOLD_DAYS`
+  (30) after it was paid - the time in which it is most likely given back;
+  a refund's or a chargeback's comes off at once;
+- a sum under `ULTRASTORE_PORTAL_PAYOUT_MINIMUM` (0.01), or under nothing,
+  makes no payout and is carried: what is given back after a payout comes
+  off the next one, and nobody is asked for money;
+- a payment is in one payout and no more.
+
+**The portal moves no money.** *Make the payouts* on `/operator/payouts/`
+(or `ultrastore-portal money payouts [--until YYYY-MM-DD]`, by default for
+the last day of last month) writes them; each says what to pay and where -
+the publisher's payout details as they stood. The operator pays it at the
+bank or the provider and marks it paid with the transfer's reference, which
+is refused empty. The publisher's owner says where the share goes on the
+publisher profile (the account holder and IBAN, or a Skrill address, with
+the legal name and a VAT id) - the owner alone: another member neither sees
+nor changes it. `/console/sales/` shows what is not paid out yet and every
+payout; `/console/payouts/<n>/` is its statement, payment by payment.
+**Not built:** paying through the provider's own interface, and the tax
+document a payout is to the publisher (a self-billed credit note) - the
+statement says it is not one.
 
 **Who sees what.** The operator sees the orders with the buyer's address;
 a publisher sees what its apps sold (`/console/sales/`: every payment and
@@ -713,6 +784,9 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 | `SKRILL_PAY_TO_EMAIL`, `SKRILL_SECRET_WORD`, `SKRILL_MERCHANT_ID`, `SKRILL_API_PASSWORD` | the Skrill merchant account; the API password for refunds and ending a recurring payment |
 | `SKRILL_PAY_URL`, `SKRILL_API_URL` | `https://pay.skrill.com`, `https://www.skrill.com/app`; another host when Skrill gives a test endpoint |
 | `LICENCE_SEED`, `GRACE_DAYS` (7) | the licence key, a subscription's grace |
+| `SELLER_NAME`, `SELLER_ADDRESS`, `SELLER_VAT_ID`, `SELLER_COUNTRY` | the store as the seller on every invoice: its name, its address (lines separated by `\|`), its VAT id, its country (two letters). Until all four are set no tax is reckoned and no invoice written |
+| `INVOICE_PREFIX` | what stands before an invoice's year and number (`UO-` gives `UO-2026-000001`) |
+| `PAYOUT_HOLD_DAYS` (30), `PAYOUT_MINIMUM` (0.01) | the days a sale waits before its share can be paid out, and the least a payout is made for |
 | `STORE_FEE_PERCENT` (15) | the store's fee: the percentage of what a buyer pays that the store keeps, from 0 to under 100 with at most two decimals; the rest is the publisher's share. Written on each payment, so a change applies to later sales |
 | `RESTRICTED_SECRET`, `RESTRICTED_TTL` (600) | a buyer's download link: nginx's secret and its seconds |
 | `STORE_DOWNLOAD_PATH` | a path under the root where the UltraStore app is downloaded |
@@ -750,9 +824,11 @@ ultrastore_portal/
     constants.py   the fixed lists the catalog is written from (categories, systems, formats)
     admin.py       the admin site
   billing/         buying
-    models.py      Order, Payment
+    models.py      Order, Payment, VatRate, Invoice, Payout
     services.py    an order opened, the provider's report believed or not, the licence, renewals, refunds, the signed link
     split.py       the store's fee and the publisher's share of a payment, and of what a reversal gives back
+    tax.py         VAT by the buyer's country, the rates, invoices and credit notes, a quarter's figures
+    payouts.py     what a publisher is owed, the payouts, marking one paid
     licence.py     the ULIC1 token
     skrill.py      Quick Checkout's form and signature, the refund and recurring API
   web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, promote.py, forms.py,
@@ -771,12 +847,14 @@ In the order the store needs it:
 
 1. **The Skrill sandbox run** - a merchant account in test mode, one
    purchase, one renewal, one refund (*Buying*, the last paragraph).
-2. **Tax and payouts.** A receipt is not a tax invoice: VAT by the buyer's
-   country, invoices, the provider's fee and the payout itself are not
-   built. The split of a sale between the store and the publisher is
-   (*Buying*, 0.7.0): `/console/sales/` shows the publisher's share of what
-   buyers paid, reckoned on the amount paid and not yet on the amount
-   without VAT, and nothing pays it out.
+2. **Tax and payouts, what is left of them.** VAT by the buyer's country,
+   invoices and credit notes, a quarter's figures and the publishers'
+   payouts are built (*Buying*, 0.9.0). Left: a business buyer's VAT id and
+   the reverse charge, the evidence of a buyer's country beyond what they
+   said, the taxes of countries outside the EU, the payment provider's fee
+   in the split, paying a payout through the provider's interface, the
+   self-billed document a payout is to a publisher, and the native store
+   sending the buyer's country with its checkout.
 3. **Buyer accounts** - sign-in from the native store, licences that follow
    a person across machines, devices. Today a purchase is reached by its
    order's secret (kept by the store's app, mailed to a web buyer). The

@@ -142,9 +142,9 @@ build, because its accounts cannot be closed at all today (§3).
 | Orders | One app per order, no buyer account on it (a purchase is reached by the order's secret); `Payment` rows for payments, refunds and chargebacks | `billing/models.py` |
 | Buyer accounts on orders | **Missing**, the portal's next step 3 | the portal's README, *What comes next* |
 | The split of a sale | **Built 2026-11-26** (portal 0.7.0): every payment carries the store's fee of 15 % and the publisher's share, a reversal gives the fee back in proportion, `/console/sales/` shows the share | the portal's README, *Buying*; `billing/split.py` |
-| Tax invoices, VAT, payouts | **Missing**, the rest of the portal's next step 2. The fee is reckoned on the amount paid, not yet on the amount without VAT | the portal's README, *What comes next* |
+| VAT, tax invoices, payouts | **Built 2026-11-26** (portal 0.9.0), off until the seller's details are configured: the VAT of the buyer's country taken out of the price, the fee on the net, an invoice per payment and a credit note per reversal in one numbered series, a quarter's figures by country, and payouts the operator makes and marks paid. **Left:** the reverse charge for business buyers, taxes outside the EU, paying through the provider's interface, the self-billed document for a publisher | the portal's README, *Buying*; `billing/tax.py`, `billing/payouts.py` |
 | One account for every shop | The portal as an OpenID Connect provider. Its `User` is an email, a name and a password: **no handle, no country, no closure** | the portal's README, *One sign-in for every service*; `accounts/models.py` |
-| A handle, and account deletion | **Only in the account service the portal is built to replace**, which the UltraAccount app still signs in to: a handle (3 to 32 letters, digits, dots, underscores); a deletion requested with the password, `deleting` for 90 days (30 until 2026-11-26; signed in still, *cancel* restores it), then carried out - the row kept under its id with the email replaced. **The portal has neither**: no page and no code closes, deactivates or deletes an account | `Server/UltraStoreAccount/README.md`, *What a deletion does*; `Docs/UltraAccount/README.md` |
+| A handle, and account deletion | **Only in the account service the portal is built to replace**, which the UltraAccount app still signs in to: a handle (3 to 32 letters, digits, dots, underscores); a deletion requested with the password, `deleting` for 90 days (30 until 2026-11-26; signed in still, *cancel* restores it), then carried out - the row kept under its id with the email replaced. **The portal has no handle. It can close, delete and reactivate an account since 0.8.0** (2026-11-26; `accounts/closure.py`): closed and kept a year, a deletion with 90 days of grace, then erased | `Server/UltraStoreAccount/README.md`, *What a deletion does*; `Docs/UltraAccount/README.md` |
 | A phone number on the account | **Only in the replaced account service** (verified by a texted code). The portal's `User` has none and the portal sends no text messages | `Server/UltraStoreAccount/README.md`; no `phone` in the portal's code |
 | Click attribution in advertising | **Built, and the pattern to follow.** `POST /v1/checkout` takes `promote`, the token of the advertisement last clicked; `create_order` hands it to `promote.services.order_opened`, the paid order to `order_paid`; `promote.Attribution` is one row per order. Clicks go through `/go/<token>/`. Totals, never who; small numbers folded. The native store does not send the token yet | the portal's `billing/services.py`, `promote/models.py`, `urls.py`; `Docs/Research/UltraAdsDesignProposal.md` §4.9 |
 | The shops besides apps | Design variants only: games, marketplace (baskets with several sellers, delivery, returns), video, music, books (editions, a credit subscription) | `Docs/UltraStore/design/README.md` |
@@ -168,12 +168,13 @@ What this means for the design:
   replaces the desktop tools; the two-tier credit, the proportional
   reversal and the go/join pages are the design this proposal keeps or
   changes deliberately (§5.14, §5.15), not code it ports.
-- **Four things the proposal leans on are not in the portal.** A public
-  **handle** for the affiliate, a verified **phone number**, the **codes**
-  in the catalog, and any way to **close an account**. Each exists only in
-  what the portal replaces. The handle, the phone number and the codes are
-  small (phase 1); closing and reactivating an account is a piece of work of
-  its own, and the owner's closure rule cannot be built before it (phase 2).
+- **Three things the proposal leans on are not in the portal.** A public
+  **handle** for the affiliate, a verified **phone number**, and the
+  **codes** in the catalog. Each exists only in what the portal replaces,
+  and each is small (phase 1). The fourth, a way to **close an account**,
+  was built on 2026-11-26 (portal 0.8.0): closed for a year, a deletion
+  with 90 days of grace, reactivation, erasure - the states the owner's
+  closure rule hangs the binding on.
 - **The advertising module is the template.** It already attributes an
   order to a click with a token sent at the checkout, hooks into the paid
   order and keeps its own ledger; `/go/` is its address, so the affiliate
@@ -523,9 +524,10 @@ affiliate why.
 
 ### 5.9 Closing, reactivating and erasing accounts
 
-**This has to be built first.** The portal's accounts can be neither closed
-nor deleted today (§3); the states below are the ones the account service it
-replaces had, and the proposal assumes the portal takes them over.
+**The states exist.** Since 0.8.0 (2026-11-26) the portal's accounts are
+closed, deleted, reactivated and erased as decided (`accounts/closure.py`,
+the portal's README, *Leaving an account*). What is left for the programme
+is to follow them: the binding is not built yet.
 
 **The customer's account.**
 
@@ -553,7 +555,8 @@ A deletion the person asks for outright has **90 days** of grace in which a
 cancel restores the account. The account service's default and the store's
 two texts were changed from 30 to 90 on 2026-11-26
 (`ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS`, `kDeletionGraceDays` in
-`Account.h`); the `closed` state is still to build.
+`Account.h`); the `closed` state of twelve months is in the portal since
+0.8.0.
 The binding rules above apply to both.
 
 **The affiliate's account.**
@@ -809,7 +812,7 @@ one ledger serves every shop. Models, in outline:
 | A renewal → the first order's affiliate | `process_recurring` |
 | A refund or chargeback → reverse | `refund` and `_chargeback` |
 | Sign-up → bind | `web/account.py`: `signup`, completed in `verify` |
-| Account closure, cancellation, erasure → suspend, restore, remove | **nothing to hook into yet**: the portal has no closure (§3, §5.9) |
+| Account closure, cancellation, erasure → suspend, restore, remove | `accounts/closure.py`: `close`, `request_deletion`, `reactivate`, `cancel_deletion`, `erase` (built 2026-11-26) |
 | `/r/` pages | `urls.py`; no route uses `r/` (`go/` is advertising's click) |
 | The checkout's `ref` | `api/billing.py` (`POST /v1/checkout {app, code?, language?, promote?}`) |
 | Daily: approve, release holdbacks, end blocks, aggregate clicks; monthly: statements | management commands, run by timers like `promote cleanup` |
@@ -855,9 +858,9 @@ one ledger serves every shop. Models, in outline:
 | Phase | What | Needs first |
 |---|---|---|
 | 0 | The lawyer's and tax adviser's answers to L1-L4, L8, L9, L11, T1. Nothing is open with the owner (§9.1) | - |
-| 1 | **Product links in the app store**: affiliate profiles with a handle, **identified by a phone number and an ID**; **the base of 5 % and the merchant's boost**, saved by the Owner; the products with what each pays; `/r/` links, clicks, the `ref` on the checkout; attribution of a paid order to a product link; **recruiting links and the superaffiliate's share**; **block and ban with their record**; commissions pending and reversed; the dashboards; approval and payout marked by the operator by hand. Affiliate **codes** with it or right after: the portal has to learn to publish and apply codes first (its next step 11) | a way to send a text message from the portal; the net price of a line (VAT is the portal's next step 2) |
-| 2 | **The binding**: bind at sign-up and first order, the **win-back** after six months, the base on every bound customer's purchase, the customer's "Referred by"; a referred customer who becomes an affiliate gets their referrer as superaffiliate; **closing and reactivating an account** (twelve months closed, 90 days of grace for a deletion), which the portal does not have, with the binding suspended and restored | buyer accounts on orders (portal next step 3) |
-| 3 | **Money and the other shops**: automatic approval after the approval period, **the 5 % holdback and its release**, statements, self-billed credit notes, Skrill payouts, the boost deducted in the merchant's settlement; baskets with several sellers, **fixed boosts for hardware**, physical goods' approval from delivery, subscriptions' renewals; the native store's `ultrastore://r/` and `ref`; UltraAccount's *Affiliate* section | VAT, tax invoices and payouts (the rest of next step 2; the fee and the split are built); the shops themselves |
+| 1 | **Product links in the app store**: affiliate profiles with a handle, **identified by a phone number and an ID**; **the base of 5 % and the merchant's boost**, saved by the Owner; the products with what each pays; `/r/` links, clicks, the `ref` on the checkout; attribution of a paid order to a product link; **recruiting links and the superaffiliate's share**; **block and ban with their record**; commissions pending and reversed; the dashboards; approval and payout marked by the operator by hand. Affiliate **codes** with it or right after: the portal has to learn to publish and apply codes first (its next step 11) | a way to send a text message from the portal (the net price of a line is there since portal 0.9.0, once the seller's tax details are configured) |
+| 2 | **The binding**: bind at sign-up and first order, the **win-back** after six months, the base on every bound customer's purchase, the customer's "Referred by"; a referred customer who becomes an affiliate gets their referrer as superaffiliate; the binding **suspended and restored with the account's states** (closed, deleting, reactivated, erased - in the portal since 0.8.0) | buyer accounts on orders (portal next step 3) |
+| 3 | **Money and the other shops**: automatic approval after the approval period, **the 5 % holdback and its release**, statements, self-billed credit notes, Skrill payouts, the boost deducted in the merchant's settlement; baskets with several sellers, **fixed boosts for hardware**, physical goods' approval from delivery, subscriptions' renewals; the native store's `ultrastore://r/` and `ref`; UltraAccount's *Affiliate* section | the affiliates' own payouts and credit notes, built on the publishers' (portal 0.9.0: VAT, invoices and payouts are there); the shops themselves |
 | 4 | **Beyond the portal**: the conversions call for UltraPress shops and services; fraud scoring on the click aggregates | phase 3 |
 
 Phase 1 is useful alone: every product has affiliates selling it without a
@@ -1040,7 +1043,7 @@ outside sources, as far as this environment reaches.
 | Member roles Owner, Developer, Marketing, Billing, Analyst | **Confirmed** | `store/models.py` (`PublisherMember.ROLES`) |
 | The other shops exist as designs only | **Confirmed** | `Docs/UltraStore/design/`; no games, books or marketplace model in the portal |
 | The account has a handle | **Corrected.** Only the account service the portal replaces has one; the portal's `User` does not | `accounts/models.py`; §3, §5.1 |
-| An account can be closed, with 30 days of grace | **Corrected.** Only in the replaced service; the portal has no closure or deletion of any kind | no match in the portal's code or README; §3, §5.9, §6.2, D4 |
+| An account can be closed, with 30 days of grace | **Corrected** when checked: only in the replaced service, and the portal had no closure or deletion of any kind. **Built since** (portal 0.8.0, 2026-11-26) | no match in the portal's code or README; §3, §5.9, §6.2, D4 |
 | The catalog carries the codes | **Corrected.** The format does; the portal writes none | no `codes` in the portal's code; §3, §5.14, phase 1 |
 | Advertising's click attribution is the portal's `promote/` | **Confirmed and made precise**: built, with the checkout's `promote`, `order_opened` / `order_paid` and `promote.Attribution`; `/go/` is its address | `billing/services.py`, `promote/models.py`, `urls.py`; §3, §6.2 |
 | UltraFIBU plans self-billed documents | **Corrected.** DATEV export yes; of self-billing only a document kind `gutschrift` in the schema | `UltraFIBUDesignProposal.md` line 769; §5.12 |

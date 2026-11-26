@@ -1,0 +1,14 @@
+{{ invoice.get_kind_display }} {{ invoice.number }}
+Seller:    {{ invoice.seller_name }}, {{ invoice.seller_address|cut:"\r"|striptags }}, VAT id {{ invoice.seller_vat_id }}
+Buyer:     {{ invoice.buyer_email|default:"-" }}{% if invoice.buyer_country %}, {{ invoice.buyer_country }}{% endif %}
+Date:      {{ invoice.issued|date:"Y-m-d" }}
+Supplied:  {{ payment.at|date:"Y-m-d" }}{% if invoice.corrects %}
+Corrects:  invoice {{ invoice.corrects }}{% endif %}
+For:       {{ invoice.description }}
+Publisher: {{ order.app.publisher.name }}
+Net:       {{ invoice.net }} {{ invoice.currency }}
+VAT:       {{ invoice.vat }} {{ invoice.currency }} ({{ invoice.vat_percent_text }} %)
+Total:     {{ invoice.gross }} {{ invoice.currency }}{% if invoice.note %}
+Note:      {{ invoice.note }}{% endif %}
+Order:     {{ order.public_id }}
+Licence:   {{ order.licence_id }}

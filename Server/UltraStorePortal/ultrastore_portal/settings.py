@@ -1,6 +1,7 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.9.0 - tax and payouts (SELLER_..., INVOICE_PREFIX, PAYOUT_HOLD_DAYS, PAYOUT_MINIMUM)
 Version: 0.8.0 - leaving an account (ACCOUNT_CLOSED_DAYS, ACCOUNT_DELETION_GRACE_DAYS)
 Version: 0.7.0 - the store's fee (STORE_FEE_PERCENT)
 Version: 0.5.0 - advertising (PROMOTE, PROMOTE_TOPUPS, PROMOTE_CURRENCY)
@@ -308,6 +309,27 @@ except InvalidOperation as error:
     raise ImproperlyConfigured("ULTRASTORE_PORTAL_STORE_FEE_PERCENT is a number of percent, such as 15") from error
 if not STORE_FEE_PERCENT.is_finite() or not 0 <= STORE_FEE_PERCENT < 100 or STORE_FEE_PERCENT != STORE_FEE_PERCENT.quantize(Decimal("0.01")):
     raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_STORE_FEE_PERCENT is from 0 to under 100, with at most two decimals: {STORE_FEE_PERCENT}")
+# Tax (billing/tax.py). The store is the seller: its name, its address
+# (lines separated by "|"), its VAT id and its country (ISO 3166-1) stand on
+# every invoice. Until all four are set no tax is reckoned and no invoice
+# written. INVOICE_PREFIX goes before the year and the running number.
+SELLER_NAME = env("SELLER_NAME")
+SELLER_ADDRESS = env("SELLER_ADDRESS").replace("|", "\n")
+SELLER_VAT_ID = env("SELLER_VAT_ID")
+SELLER_COUNTRY = env("SELLER_COUNTRY").upper()
+if SELLER_COUNTRY and (len(SELLER_COUNTRY) != 2 or not SELLER_COUNTRY.isalpha()):
+    raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_SELLER_COUNTRY is a two-letter country code, such as DE: {SELLER_COUNTRY}")
+INVOICE_PREFIX = env("INVOICE_PREFIX", "")
+# Payouts (billing/payouts.py): the days a sale waits before its share can
+# be paid out - the time in which it is most likely given back - and the
+# least a payout is made for; a smaller sum is carried to the next.
+PAYOUT_HOLD_DAYS = int(env("PAYOUT_HOLD_DAYS", "30"))
+try:
+    PAYOUT_MINIMUM = Decimal(env("PAYOUT_MINIMUM", "0.01"))
+except InvalidOperation as error:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_PAYOUT_MINIMUM is an amount, such as 25.00") from error
+if PAYOUT_HOLD_DAYS < 0 or not PAYOUT_MINIMUM.is_finite() or PAYOUT_MINIMUM < Decimal("0.01"):
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_PAYOUT_HOLD_DAYS is zero or more, ULTRASTORE_PORTAL_PAYOUT_MINIMUM at least 0.01")
 # Where a visitor without the native store gets it (the app page's link): a
 # path under the root as well.
 STORE_DOWNLOAD_URL = _under_root("STORE_DOWNLOAD_PATH")

@@ -6,7 +6,7 @@
 {% if totals %}
 <div><div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-3">
   {% for row in totals %}
-  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Your share, {{ row.currency }}</span><b>{{ row.share }}</b><span class="small text-secondary">{{ row.sales }} payment{{ row.sales|pluralize }}: {{ row.sold }} sold, {{ row.reversed }} given back, {{ row.net }} net; {{ row.fee }} the store's fee</span></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Your share, {{ row.currency }}</span><b>{{ row.share }}</b><span class="small text-secondary">{{ row.sales }} payment{{ row.sales|pluralize }}: {{ row.sold }} sold, {{ row.reversed }} given back, {{ row.net }} net{% if taxed %}, of it {{ row.vat }} VAT{% endif %}; {{ row.fee }} the store's fee</span></div></div></div>
   {% endfor %}
 </div></div>
 {% endif %}
@@ -15,19 +15,37 @@
   {% if payments %}
   <div class="table-responsive">
   <table class="table align-middle">
-    <thead><tr><th>Date</th><th>App</th><th>What</th><th class="text-end">Amount</th><th class="text-end">Store's fee</th><th class="text-end">Your share</th><th class="text-end">Receipt</th></tr></thead>
+    <thead><tr><th>Date</th><th>App</th><th>What</th><th class="text-end">Amount</th>{% if taxed %}<th class="text-end">VAT</th>{% endif %}<th class="text-end">Store's fee</th><th class="text-end">Your share</th><th class="text-end">Receipt</th><th>Payout</th></tr></thead>
     <tbody>
     {% for payment in payments %}
     <tr><td>{{ payment.at|date:"j M Y, H:i" }}</td><td><a href="{% url 'console:app' payment.order.app.app_id %}">{{ payment.order.app_name }}</a></td>
       <td>{{ payment.get_kind_display }}{% if payment.order.cycle and payment.kind == "sale" %} <span class="badge">subscription</span>{% endif %}</td>
-      <td class="text-end">{{ payment.signed_amount }} {{ payment.currency }}</td><td class="text-end">{{ payment.signed_store_fee }}</td><td class="text-end">{{ payment.signed_publisher_share }}</td>
-      <td class="text-end">{{ payment.receipt_no|default:"" }}</td></tr>
+      <td class="text-end">{{ payment.signed_amount }} {{ payment.currency }}</td>{% if taxed %}<td class="text-end">{{ payment.signed_vat_amount }}{% if payment.country %} <span class="text-secondary small">{{ payment.country }} {{ payment.vat_percent_text }} %</span>{% endif %}</td>{% endif %}<td class="text-end">{{ payment.signed_store_fee }}</td><td class="text-end">{{ payment.signed_publisher_share }}</td>
+      <td class="text-end">{{ payment.receipt_no|default:"" }}</td><td>{% if payment.payout_id %}<a href="{% url 'console:payout' payment.payout_id %}">no. {{ payment.payout_id }}</a>{% else %}<span class="text-secondary">not yet</span>{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
   {% else %}<p class="text-secondary">Nothing sold yet. A paid app's sales, its renewals and anything given back appear here.</p>{% endif %}
-  <p class="small text-secondary mt-3 mb-0">Your share is what buyers paid less the store's fee, {{ fee_percent }} % today; each payment keeps the fee it was sold under, and a refund gives the fee back in proportion. Taxes, the payment provider's fees and payouts are not reckoned here yet. Who bought is the store's to know, not shown here.</p>
+  <p class="small text-secondary mt-3 mb-0">Your share is what buyers paid{% if taxed %}, less the VAT in the price,{% endif %} less the store's fee, {{ fee_percent }} % {% if taxed %}of the rest {% endif %}today; each payment keeps the tax and the fee it was sold under, and a refund gives both back in proportion. Who bought is the store's to know, not shown here.</p>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>Payouts</h2>
+  {% if owed %}<p>Not paid out yet: {% for row in owed %}<b>{{ row.amount }} {{ row.currency }}</b> from {{ row.payments }} payment{{ row.payments|pluralize }}{% if not forloop.last %}, {% endif %}{% endfor %}. A sale's share can be paid out {{ hold_days }} days after it was paid; anything given back comes off.</p>{% endif %}
+  {% if not payout_details %}<div class="alert alert-warning">Where your share is paid is not set. The publisher's owner sets it on the <a href="{% url 'console:publisher' %}">publisher profile</a>.</div>{% endif %}
+  {% if payouts %}
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>No.</th><th>Up to</th><th class="text-end">Amount</th><th>State</th><th>Paid</th><th>Reference</th></tr></thead>
+    <tbody>
+    {% for payout in payouts %}
+    <tr><td><a href="{% url 'console:payout' payout.pk %}">{{ payout.pk }}</a></td><td>{{ payout.until|date:"j M Y" }}</td><td class="text-end">{{ payout.amount }} {{ payout.currency }}</td>
+      <td>{{ payout.get_state_display }}</td><td>{{ payout.paid_at|date:"j M Y"|default:"" }}</td><td class="font-monospace">{{ payout.reference }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="text-secondary mb-0">No payout yet.</p>{% endif %}
 </div></div>
 </div>
 {% endblock %}

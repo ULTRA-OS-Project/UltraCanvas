@@ -16,7 +16,7 @@ from django.views.decorators.http import require_POST
 from django.views.static import serve
 
 from ..billing import services as billing
-from ..billing import skrill
+from ..billing import skrill, tax
 from ..billing.models import Order
 from .storefront import public_app_or_404
 from .utils import too_many
@@ -24,6 +24,16 @@ from .utils import too_many
 
 class BuyForm(forms.Form):
     email = forms.EmailField(label="Your email", help_text="The receipt and the link to your purchase go there.")
+    country = forms.ChoiceField(label="Your country", choices=[], help_text="The price includes the VAT of your country; the invoice names it.")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Asked only when the store reckons tax (billing/tax.py).
+        if tax.configured():
+            self.fields["country"].choices = tax.countries()
+            self.fields["country"].initial = settings.SELLER_COUNTRY
+        else:
+            del self.fields["country"]
 
 
 def buy(request, app_id: str):
@@ -39,7 +49,8 @@ def buy(request, app_id: str):
         else:
             try:
                 from .promote import clicked_token
-                order = billing.create_order(app.app_id, source="web", email=form.cleaned_data["email"], promote=clicked_token(request, app))
+                order = billing.create_order(app.app_id, source="web", email=form.cleaned_data["email"], promote=clicked_token(request, app),
+                                             country=form.cleaned_data.get("country", ""))
             except billing.BillingError as refused:
                 form.add_error(None, refused.description)
             else:

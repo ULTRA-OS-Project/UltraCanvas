@@ -1,0 +1,16 @@
+{% extends "console/base.html" %}
+{% block title %}Payout {{ payout.pk }} - Developer console{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Payout {{ payout.pk }}</h1><span class="text-secondary">{{ payout.amount }} {{ payout.currency }}</span></div>
+<div class="panels">
+<div class="card"><div class="card-body">
+  <dl class="facts">
+    <dt>Amount</dt><dd><b>{{ payout.amount }} {{ payout.currency }}</b>, for what was due on {{ payout.until|date:"j F Y" }}</dd>
+    <dt>State</dt><dd>{{ payout.get_state_display }}{% if payout.paid_at %} on {{ payout.paid_at|date:"j F Y" }}, reference <span class="font-monospace">{{ payout.reference }}</span>{% endif %}</dd>
+  </dl>
+  <p class="small text-secondary mb-0">A statement of what the store paid you, not a tax document.</p>
+</div></div>
+<div class="card"><div class="card-body"><h2>What it holds</h2>{% include "_payout_lines.html" %}</div></div>
+<p><a href="{% url 'console:sales' %}">Back to Sales</a></p>
+</div>
+{% endblock %}

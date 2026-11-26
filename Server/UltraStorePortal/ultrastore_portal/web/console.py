@@ -10,6 +10,8 @@ draw again, {"ok": false, "error" | "errors": {field: [...]}} what was wrong.
 The same address sent by a browser without the script answers with a
 redirect and a message, as every other form here does.
 
+Version: 0.9.0 - Sales shows the tax and the payouts; a payout's statement;
+                 the owner says where the share is paid
 Version: 0.7.0 - Sales shows each payment's split and the publisher's share
 Version: 0.3.0 - pictures uploaded where they are chosen and packages added,
                  edited and removed without leaving the page; no release
@@ -29,8 +31,9 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from ..billing import split
-from ..billing.models import Payment
+from ..billing import payouts, split, tax
+from ..billing.models import Payment, Payout
+from ..store.models import PublisherMember
 from ..store import services
 from ..store.models import App, Package, Release, Screenshot, TermsVersion
 from ..store.packages import store_upload
@@ -107,7 +110,7 @@ def apply(request):
 
 @publisher_required
 def publisher_profile(request):
-    form = PublisherProfileForm(request.POST or None, instance=request.publisher)
+    form = PublisherProfileForm(request.POST or None, instance=request.publisher, owner=request.publisher_role == PublisherMember.OWNER)
     if request.method == "POST" and form.is_valid():
         form.save()
         services.audit(request.user, "publisher.edit", "publisher", request.publisher.slug, fields=form.changed_data)
@@ -134,7 +137,20 @@ def sales(request):
         row["net"] += payment.signed_amount
         row["fee"] += payment.signed_store_fee
         row["share"] += payment.signed_publisher_share
-    return render(request, "console/sales.html", {"payments": payments[:500], "totals": list(totals.values()), "fee_percent": split.percent_text(split.fee_percent())})
+    for row in totals.values():
+        row["vat"] = row["net"] - row["fee"] - row["share"]   # what of the net was tax
+    return render(request, "console/sales.html", {
+        "payments": payments[:500], "totals": list(totals.values()), "fee_percent": split.percent_text(split.fee_percent()),
+        "taxed": tax.configured() or any(row["vat"] for row in totals.values()), "owed": payouts.owed(request.publisher),
+        "payouts": Payout.objects.filter(publisher=request.publisher)[:60], "hold_days": settings.PAYOUT_HOLD_DAYS,
+        "payout_details": request.publisher.payout_details})
+
+
+@publisher_required
+def payout(request, pk: int):
+    """A payout's statement: what it paid, payment by payment."""
+    subject = get_object_or_404(Payout, pk=pk, publisher=request.publisher)
+    return render(request, "console/payout.html", {"payout": subject, **payouts.lines(subject)})
 
 
 @require_POST
