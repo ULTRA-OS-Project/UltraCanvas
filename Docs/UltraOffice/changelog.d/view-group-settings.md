@@ -26,3 +26,11 @@
   show starts on and the presenter view. Each change is saved at once and
   applied at once where it can be; each page says which wait for a new
   document or the next start.
+- **Every command tab fits beside the view group at 1280 px.** The style,
+  font and size lists are narrower; the paragraph alignment and the lists
+  (bullets, numbering, indent) of a document, and a slide's shape alignment
+  and distribution, each share one slot that does the tool picked last and
+  folds out the others; tools whose icon says them - Paragraph, Styles,
+  table, picture, link, comments, accept, reject, sorting, filter, SUM, the
+  pivot table's tools, group, ungroup - are icons, named in their tooltips,
+  and an icon alone takes 34 px instead of 40.

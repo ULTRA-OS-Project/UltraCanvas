@@ -13,6 +13,9 @@
 // chosen and the share. A new document starts with the Settings window's
 // font, size and page.
 //
+// Version: 0.5.0 - Home fits beside the view group at 1280 px: narrower style, font and size lists,
+//                  the lists and the alignment each one slot (a tool group), Paragraph and Styles as
+//                  icons; Insert's table, picture and link and Review's comment tools as icons
 // Version: 0.4.0 - the view group (navigator, pages, page width, whole page, width share with its list,
 //                  zoom out, the zoom level, zoom in) replaces the View tab; the fit and the share are
 //                  remembered; a new document's font, size and page from the settings; the author name
@@ -344,6 +347,7 @@ private:
         auto style = bar->AddDropdownButton("doc-style", "",
             {Tr("Body text"), Tr("Heading 1"), Tr("Heading 2"), Tr("Heading 3"), Tr("Heading 4")}, nullptr);
         style->SetTooltip(Tr("Paragraph style"));
+        style->size.width = CSSLayout::Dimension::Px(120);
         style->onSelectionChanged = [this, edit](int index, const DropdownItem&) {
             edit->SetHeadingLevel(std::max(0, index));
             Sync();
@@ -354,6 +358,7 @@ private:
         fontNames.front() = Tr("Default font");
         auto font = bar->AddDropdownButton("doc-font", "", fontNames, nullptr);
         font->SetTooltip(Tr("Font"));
+        font->size.width = CSSLayout::Dimension::Px(130);
         font->onSelectionChanged = [this, edit](int index, const DropdownItem&) {
             if (index >= 0 && index < static_cast<int>(fonts_.size())) edit->SetFontFamily(fonts_[static_cast<size_t>(index)]);
             Sync();
@@ -364,6 +369,7 @@ private:
         for (float s : kSizes) sizes.push_back(SizeText(s));
         auto size = bar->AddDropdownButton("doc-size", "", sizes, nullptr);
         size->SetTooltip(Tr("Font size"));
+        size->size.width = CSSLayout::Dimension::Px(56);
         size->onSelectionChanged = [this, edit](int index, const DropdownItem&) {
             if (index >= 0 && index < static_cast<int>(sizes_.size())) edit->SetFontSize(sizes_[static_cast<size_t>(index)]);
             Sync();
@@ -378,32 +384,34 @@ private:
         strike_ = AddToggleTool(*bar, "doc-strike", "", "textformat/strike.svg", Tr("Strikethrough"), Act([](auto& e) { e.ToggleStrikethrough(); })).get();
         bar->AddSeparator();
 
-        AddTool(*bar, "doc-bullets", "", "ultramail/list-bullets.svg", Tr("Bulleted list"), Act([](auto& e) { e.ToggleBulletList(); }));
-        AddTool(*bar, "doc-numbers", "", "ultramail/list-numbers.svg", Tr("Numbered list"), Act([](auto& e) { e.ToggleNumberedList(); }));
-        AddTool(*bar, "doc-outdent", "", "office/outdent.svg", Tr("Decrease indent (Shift+Tab)"), Act([](auto& e) { e.OutdentList(); }));
-        AddTool(*bar, "doc-indent", "", "office/indent.svg", Tr("Increase indent (Tab)"), Act([](auto& e) { e.IndentList(); }));
+        // The lists and the alignment: one slot each, doing the tool picked
+        // last; resting the pointer on it shows the others.
+        AddActionGroup(*bar, "doc-lists", {
+            {"doc-bullets", "ultramail/list-bullets.svg", Tr("Bulleted list"), Act([](auto& e) { e.ToggleBulletList(); })},
+            {"doc-numbers", "ultramail/list-numbers.svg", Tr("Numbered list"), Act([](auto& e) { e.ToggleNumberedList(); })},
+            {"doc-outdent", "office/outdent.svg", Tr("Decrease indent (Shift+Tab)"), Act([](auto& e) { e.OutdentList(); })},
+            {"doc-indent", "office/indent.svg", Tr("Increase indent (Tab)"), Act([](auto& e) { e.IndentList(); })}});
+        AddActionGroup(*bar, "doc-align", {
+            {"doc-left", "textformat/align-left.svg", Tr("Align left"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Left); })},
+            {"doc-centre", "textformat/align-centre.svg", Tr("Centre"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Center); })},
+            {"doc-right", "textformat/align-right.svg", Tr("Align right"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Right); })},
+            {"doc-justify", "office/justify.svg", Tr("Justify"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Justify); })}});
         bar->AddSeparator();
-
-        AddTool(*bar, "doc-left", "", "textformat/align-left.svg", Tr("Align left"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Left); }));
-        AddTool(*bar, "doc-centre", "", "textformat/align-centre.svg", Tr("Centre"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Center); }));
-        AddTool(*bar, "doc-right", "", "textformat/align-right.svg", Tr("Align right"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Right); }));
-        AddTool(*bar, "doc-justify", "", "office/justify.svg", Tr("Justify"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Justify); }));
-        bar->AddSeparator();
-        AddTool(*bar, "doc-paragraph", Tr("Paragraph"), "textformat/line-spacing.svg",
-                Tr("Indents, spacing, line spacing, alignment and tab stops"),
+        AddTool(*bar, "doc-paragraph", "", "textformat/line-spacing.svg",
+                Tr("Paragraph: indents, spacing, line spacing, alignment and tab stops"),
                 Dialog([](auto& e, RichDialogClosed done) { ShowParagraphDialog(e, std::move(done)); }));
-        AddTool(*bar, "doc-styles", Tr("Styles"), "menu/palette.svg",
-                Tr("Apply, change or make a named style"),
+        AddTool(*bar, "doc-styles", "", "menu/palette.svg",
+                Tr("Styles: apply, change or make a named style"),
                 Dialog([](auto& e, RichDialogClosed done) { ShowStylesDialog(e, std::move(done)); }));
         tabs_.push_back({Tr("Home"), bar});
     }
 
     void BuildInsert() {
         auto bar = MakeToolbar("office-document-insert");
-        AddTool(*bar, "doc-table", Tr("Table"), "table.svg", Tr("Insert a table of three rows and three columns"),
+        AddTool(*bar, "doc-table", "", "table.svg", Tr("Table: insert a table of three rows and three columns"),
                 Act([](auto& e) { e.InsertTable(3, 3, true); }));
-        AddTool(*bar, "doc-picture", Tr("Picture"), "image.svg", Tr("Insert a picture from a file"), [this]() { InsertPicture(); });
-        AddTool(*bar, "doc-link", Tr("Link"), "link.svg", Tr("Make the selection a link"), [this]() { InsertLink(); });
+        AddTool(*bar, "doc-picture", "", "image.svg", Tr("Picture: insert a picture from a file"), [this]() { InsertPicture(); });
+        AddTool(*bar, "doc-link", "", "link.svg", Tr("Link: make the selection a link"), [this]() { InsertLink(); });
         bar->AddSeparator();
         AddTool(*bar, "doc-pagebreak", Tr("Page break"), "", Tr("Start a new page here"), Act([](auto& e) { e.InsertPageBreak(); }));
         bar->AddSeparator();
@@ -433,11 +441,11 @@ private:
 
     void BuildReview() {
         auto bar = MakeToolbar("office-document-review");
-        AddTool(*bar, "doc-comment", Tr("Comment"), "clipboard/edit.svg", Tr("Comment on the selection"),
+        AddTool(*bar, "doc-comment", "", "clipboard/edit.svg", Tr("Comment: comment on the selection"),
                 Dialog([](auto& e, RichDialogClosed done) { ShowCommentDialog(e, -1, std::move(done)); }));
         AddTool(*bar, "doc-prevcomment", "", "texter/angle-left.svg", Tr("Previous comment"), Act([](auto& e) { e.GoToPreviousComment(); }));
         AddTool(*bar, "doc-nextcomment", "", "texter/angle-right.svg", Tr("Next comment"), Act([](auto& e) { e.GoToNextComment(); }));
-        AddTool(*bar, "doc-comments", Tr("All comments"), "list.svg", Tr("The comments of the document: go to, edit, resolve or delete one"),
+        AddTool(*bar, "doc-comments", "", "list.svg", Tr("All comments: the comments of the document: go to, edit, resolve or delete one"),
                 Dialog([](auto& e, RichDialogClosed done) { ShowCommentsDialog(e, std::move(done)); }));
         showComments_ = AddToggleTool(*bar, "doc-showcomments", Tr("Show comments"), "", Tr("Show the comments and their pane"),
                                       Act([](auto& e) { e.SetShowComments(!e.IsShowingComments()); })).get();
@@ -446,9 +454,9 @@ private:
                                       Act([](auto& e) { e.SetTrackChanges(!e.IsTrackingChanges()); })).get();
         AddTool(*bar, "doc-prevchange", "", "arrow-left.svg", Tr("Previous change"), Act([](auto& e) { e.GoToPreviousChange(); }));
         AddTool(*bar, "doc-nextchange", "", "arrow-right.svg", Tr("Next change"), Act([](auto& e) { e.GoToNextChange(); }));
-        AddTool(*bar, "doc-accept", Tr("Accept"), "ultramail/check.svg", Tr("Accept the change at the caret, or those selected"),
+        AddTool(*bar, "doc-accept", "", "ultramail/check.svg", Tr("Accept: accept the change at the caret, or those selected"),
                 Act([](auto& e) { e.AcceptChangeAtCaret(); }));
-        AddTool(*bar, "doc-reject", Tr("Reject"), "delete.svg", Tr("Reject the change at the caret, or those selected"),
+        AddTool(*bar, "doc-reject", "", "delete.svg", Tr("Reject: reject the change at the caret, or those selected"),
                 Act([](auto& e) { e.RejectChangeAtCaret(); }));
         AddTool(*bar, "doc-acceptall", Tr("Accept all"), "", Tr("Accept every change"), Act([](auto& e) { e.AcceptAllChanges(); }));
         AddTool(*bar, "doc-rejectall", Tr("Reject all"), "", Tr("Reject every change"), Act([](auto& e) { e.RejectAllChanges(); }));

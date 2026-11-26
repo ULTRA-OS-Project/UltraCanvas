@@ -10,6 +10,8 @@
 // toolbar's right end the view group: normal, the slide sorter, the notes,
 // the fitted slide and the zoom.
 //
+// Version: 0.9.0 - Text and Arrange fit beside the view group at 1280 px: narrower font and size lists,
+//                  the shapes' alignment and distribution one slot (a tool group), group and ungroup as icons
 // Version: 0.8.0 - the view group (normal, slide sorter, notes, fit the slide, zoom out, the zoom level,
 //                  zoom in) replaces the View tab; a new deck's slide size and the show's monitors from
 //                  the settings
@@ -489,28 +491,23 @@ private:
 
     void BuildArrange() {
         auto bar = MakeToolbar("office-slides-arrange");
-        AddTool(*bar, "slides-group", Tr("Group"), "artcreator/group.svg", Tr("The selected shapes as one group (Ctrl+G)"),
+        AddTool(*bar, "slides-group", "", "artcreator/group.svg", Tr("Group: the selected shapes as one group (Ctrl+G)"),
                 Act([](UCSlideDeckEditor& e) { e.GroupSelection(); }));
-        AddTool(*bar, "slides-ungroup", Tr("Ungroup"), "artcreator/ungroup.svg",
-                Tr("The selected group taken apart (Ctrl+Shift+G)"), Act([](UCSlideDeckEditor& e) { e.UngroupSelection(); }));
+        AddTool(*bar, "slides-ungroup", "", "artcreator/ungroup.svg",
+                Tr("Ungroup: the selected group taken apart (Ctrl+Shift+G)"), Act([](UCSlideDeckEditor& e) { e.UngroupSelection(); }));
         bar->AddSeparator();
         // Lined up with each other, or with the slide when one is selected.
-        AddTool(*bar, "slides-align-left", "", "artcreator/align-left.svg", Tr("Align left edges"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Left); }));
-        AddTool(*bar, "slides-align-centre", "", "artcreator/align-hcentre.svg", Tr("Align centres"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Centre); }));
-        AddTool(*bar, "slides-align-right", "", "artcreator/align-right.svg", Tr("Align right edges"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Right); }));
-        AddTool(*bar, "slides-align-top", "", "artcreator/align-top.svg", Tr("Align tops"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Top); }));
-        AddTool(*bar, "slides-align-middle", "", "artcreator/align-vcentre.svg", Tr("Align middles"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Middle); }));
-        AddTool(*bar, "slides-align-bottom", "", "artcreator/align-bottom.svg", Tr("Align bottoms"),
-                Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Bottom); }));
-        AddTool(*bar, "slides-distribute-h", "", "artcreator/distribute-h.svg", Tr("Distribute horizontally"),
-                Act([](UCSlideDeckEditor& e) { e.DistributeSelection(true); }));
-        AddTool(*bar, "slides-distribute-v", "", "artcreator/distribute-v.svg", Tr("Distribute vertically"),
-                Act([](UCSlideDeckEditor& e) { e.DistributeSelection(false); }));
+        // One slot: the alignment picked last; resting the pointer on it
+        // shows every alignment and the two distributions.
+        AddActionGroup(*bar, "slides-align", {
+            {"slides-align-left", "artcreator/align-left.svg", Tr("Align left edges"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Left); })},
+            {"slides-align-centre", "artcreator/align-hcentre.svg", Tr("Align centres"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Centre); })},
+            {"slides-align-right", "artcreator/align-right.svg", Tr("Align right edges"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Right); })},
+            {"slides-align-top", "artcreator/align-top.svg", Tr("Align tops"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Top); })},
+            {"slides-align-middle", "artcreator/align-vcentre.svg", Tr("Align middles"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Middle); })},
+            {"slides-align-bottom", "artcreator/align-bottom.svg", Tr("Align bottoms"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Bottom); })},
+            {"slides-distribute-h", "artcreator/distribute-h.svg", Tr("Distribute horizontally"), Act([](UCSlideDeckEditor& e) { e.DistributeSelection(true); })},
+            {"slides-distribute-v", "artcreator/distribute-v.svg", Tr("Distribute vertically"), Act([](UCSlideDeckEditor& e) { e.DistributeSelection(false); })}});
         bar->AddSeparator();
         AddTool(*bar, "slides-front", Tr("Bring to front"), "", Tr("In front of every other shape"),
                 Act([](UCSlideDeckEditor& e) { e.BringToFront(); }));
@@ -814,6 +811,7 @@ private:
         auto font = bar->AddDropdownButton("slides-font", "", fonts, nullptr);
         font->SetTooltip(Tr("Font"));
         font->SetPlaceholderText(Tr("Font"));
+        font->size.width = CSSLayout::Dimension::Px(130);
         font->onSelectionChanged = [this, fonts](int index, const DropdownItem&) {
             if (index < 0 || index >= static_cast<int>(fonts.size())) return;
             const std::string family = fonts[static_cast<size_t>(index)];
@@ -826,6 +824,7 @@ private:
         auto size = bar->AddDropdownButton("slides-size", "", sizeNames, nullptr);
         size->SetTooltip(Tr("Font size"));
         size->SetPlaceholderText(Tr("Size"));
+        size->size.width = CSSLayout::Dimension::Px(64);
         size->onSelectionChanged = [this, sizes](int index, const DropdownItem&) {
             if (index < 0 || index >= static_cast<int>(sizes.size())) return;
             const float pt = sizes[static_cast<size_t>(index)];
@@ -841,6 +840,7 @@ private:
         auto colour = bar->AddDropdownButton("slides-colour", "", colourNames, nullptr);
         colour->SetTooltip(Tr("Text colour"));
         colour->SetPlaceholderText(Tr("Colour"));
+        colour->size.width = CSSLayout::Dimension::Px(104);
         UltraCanvasDropdown* colourBox = colour.get();
         colour->onSelectionChanged = [this, colours, colourBox](int index, const DropdownItem&) {
             if (index < 0 || index >= static_cast<int>(colours.size())) return;

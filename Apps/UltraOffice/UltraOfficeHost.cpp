@@ -1,6 +1,7 @@
 // Apps/UltraOffice/UltraOfficeHost.cpp
 // Helpers every kind of tab shares.
 //
+// Version: 0.3.0 - AddActionGroup; an icon-only tool has a narrower padding
 // Version: 0.2.0 - the view group's bar, the percent boxes
 // Version: 0.1.0
 // Last Modified: 2026-11-25
@@ -41,6 +42,7 @@ std::shared_ptr<UltraCanvasButton> AddTool(UltraCanvasToolbar& toolbar, const st
                                     [action]() { if (action) action(); });
     button->SetTooltip(tip);
     button->SetAcceptsFocus(false);   // pressing a tool must not take the keyboard from the document
+    if (text.empty()) button->SetPadding(4, 5, 4, 5);   // an icon alone: 34 px, so a bar holds more
     return button;
 }
 
@@ -50,7 +52,25 @@ std::shared_ptr<UltraCanvasButton> AddToggleTool(UltraCanvasToolbar& toolbar, co
                                           [action](bool) { if (action) action(); });
     button->SetTooltip(tip);
     button->SetAcceptsFocus(false);
+    if (text.empty()) button->SetPadding(4, 5, 4, 5);
     return button;
+}
+
+std::shared_ptr<UltraCanvasToolGroupButton> AddActionGroup(UltraCanvasToolbar& toolbar, const std::string& id,
+                                                           const std::vector<GroupTool>& tools) {
+    std::vector<ToolGroupItem> items;
+    for (const GroupTool& tool : tools) items.push_back({tool.id, IconPath(tool.icon), tool.tip});
+    auto group = toolbar.AddToolGroup(id, items);
+    group->SetAcceptsFocus(false);
+    group->SetPadding(4, 5, 4, 5);
+    UltraCanvasToolGroupButton* raw = group.get();
+    group->onItemSelected = [raw, tools](const std::string& picked) {
+        // An action, not a mode: the slot is not left pressed.
+        raw->SetPressed(false);
+        for (const GroupTool& tool : tools)
+            if (tool.id == picked && tool.action) { tool.action(); break; }
+    };
+    return group;
 }
 
 std::shared_ptr<UltraCanvasToolbar> MakeViewToolbar(const std::string& id) {
@@ -84,7 +104,7 @@ std::shared_ptr<UltraCanvasDropdown> AddPercentBox(UltraCanvasToolbar& toolbar, 
     auto box = toolbar.AddDropdownButton(id, "", items, nullptr);
     box->SetTooltip(tip);
     box->SetAcceptsFocus(false);
-    box->size.width = CSSLayout::Dimension::Px(84);
+    box->size.width = CSSLayout::Dimension::Px(74);
     UltraCanvasDropdown* raw = box.get();
     box->onSelectionChanged = [raw, choices, minimum, maximum, askTitle, window, onPick](int index, const DropdownItem&) {
         if (index >= 0 && index < static_cast<int>(choices.size())) {

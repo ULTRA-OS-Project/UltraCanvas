@@ -3,6 +3,7 @@
 // the framework's UltraCanvasSettingsPageKit; the controls are the
 // framework's elements (a text field, lists, checkboxes, buttons).
 //
+// Version: 0.1.1 - the format list on Saving wide enough for its names
 // Version: 0.1.0
 // Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
@@ -38,6 +39,7 @@ namespace {
 
 constexpr int kControlWidth = 260;
 constexpr int kCaptionWidth = 170;
+constexpr int kWideControlWidth = 320;   // the format list: "Office Open XML (.docx, .xlsx, .pptx)"
 
 const std::vector<int> kRecentCounts = {0, 4, 8, 12, 20, 30};
 const std::vector<int> kMinutes = {1, 2, 5, 10, 15, 30, 60};
@@ -270,7 +272,11 @@ std::shared_ptr<UltraCanvasContainer> BuildSaving(DialogState* d) {
                              d->Settings().SetSaveFormat(index == 1 ? SaveFormat::OpenDocument : SaveFormat::OfficeOpenXml);
                              Changed(d);
                          });
-    parts.body->AddChild(MakeLabelledRow("office-set-format-row", Tr("New files are saved as:"), d->format, kCaptionWidth));
+    // The two formats' names with their extensions: a wider list, so neither is cut.
+    d->format->size.width = CSSLayout::Dimension::Px(kWideControlWidth);
+    auto formatRow = MakeLabelledRow("office-set-format-row", Tr("New files are saved as:"), d->format, kCaptionWidth);
+    formatRow->size.width = CSSLayout::Dimension::Px(kCaptionWidth + 10 + kWideControlWidth);
+    parts.body->AddChild(formatRow);
 
     d->autosave = Box(d, "office-set-autosave", Tr("Autosave documents into their own files"),
                       [](OfficeSettings& s, bool on) { s.SetAutosave(on); });

@@ -9,6 +9,8 @@
 // field list (UltraCanvasSpreadsheetPivotPanel) while one of its cells is
 // active; each change in it is applied to the pivot at once.
 //
+// Version: 0.8.0 - Data fits beside the view group at 1280 px: sorting, filter, SUM and the pivot
+//                  table's tools as icons
 // Version: 0.7.0 - the view group (freeze panes, unfreeze, gridlines, zoom out, the zoom level, zoom in)
 //                  replaces the View tab; the gridlines from the settings
 // Version: 0.6.0 - pivot tables: Insert > Pivot table (the field list in a dialog, on a new sheet or a cell);
@@ -323,11 +325,11 @@ private:
 
     void BuildData() {
         auto bar = MakeToolbar("office-sheet-data");
-        AddTool(*bar, "sheet-sortup", Tr("Sort A to Z"), "sort-alpha-down.svg", Tr("Sort the selection, smallest first"),
+        AddTool(*bar, "sheet-sortup", "", "sort-alpha-down.svg", Tr("Sort A to Z: sort the selection, smallest first"),
                 Act([](auto& s) { s.SortSelectionAscending(); }));
-        AddTool(*bar, "sheet-sortdown", Tr("Sort Z to A"), "sort-alpha-up.svg", Tr("Sort the selection, largest first"),
+        AddTool(*bar, "sheet-sortdown", "", "sort-alpha-up.svg", Tr("Sort Z to A: sort the selection, largest first"),
                 Act([](auto& s) { s.SortSelectionDescending(); }));
-        filter_ = AddToggleTool(*bar, "sheet-filter", Tr("Filter"), "filter.svg", Tr("Filter buttons on the selection's columns"),
+        filter_ = AddToggleTool(*bar, "sheet-filter", "", "filter.svg", Tr("Filter: filter buttons on the selection's columns"),
                                 Act([this](auto& s) {
                                     if (filtered_) s.RemoveAutoFilter(); else s.SetAutoFilter();
                                     filtered_ = !filtered_;
@@ -338,7 +340,7 @@ private:
         AddTool(*bar, "sheet-fillright", Tr("Fill right"), "", Tr("Copy the left cells across the selection (Ctrl+R)"),
                 Act([](auto& s) { s.FillSelectionRight(); }));
         bar->AddSeparator();
-        AddTool(*bar, "sheet-sum", Tr("Sum"), "office/sum.svg", Tr("Insert the SUM function"),
+        AddTool(*bar, "sheet-sum", "", "office/sum.svg", Tr("Sum: insert the SUM function"),
                 Act([](auto& s) { s.InsertFunction("SUM"); }));
         bar->AddSeparator();
         // The rules of the selection, in the grid's own dialogs.
@@ -350,17 +352,17 @@ private:
                 Act([](auto& s) { s.ShowDataValidationDialog(); }));
         bar->AddSeparator();
         // The pivot table whose cell is active.
-        pivotRefresh_ = AddTool(*bar, "sheet-pivot-refresh", Tr("Refresh"), "menu/refresh.svg",
-                                Tr("Compute the pivot table from its source again (every pivot table when none is picked)"),
+        pivotRefresh_ = AddTool(*bar, "sheet-pivot-refresh", "", "menu/refresh.svg",
+                                Tr("Refresh: compute the pivot table from its source again (every pivot table when none is picked)"),
                                 Act([this](auto& s) { RefreshPivot(s); })).get();
-        pivotSource_ = AddTool(*bar, "sheet-pivot-source", Tr("Change source"), "menu/dataset.svg",
-                               Tr("The cells the pivot table summarises"),
+        pivotSource_ = AddTool(*bar, "sheet-pivot-source", "", "menu/dataset.svg",
+                               Tr("Change source: the cells the pivot table summarises"),
                                Act([](auto& s) { if (s.GetActivePivotTable() >= 0) s.ShowPivotSourceDialog(s.GetActivePivotTable()); })).get();
-        pivotFields_ = AddToggleTool(*bar, "sheet-pivot-fields", Tr("Field list"), "menu/sidebar.svg",
-                                     Tr("Show or hide the pivot table's fields beside the sheet"),
+        pivotFields_ = AddToggleTool(*bar, "sheet-pivot-fields", "", "menu/sidebar.svg",
+                                     Tr("Field list: show or hide the pivot table's fields beside the sheet"),
                                      Act([this](auto&) { panelClosed_ = !panelClosed_; })).get();
-        pivotDelete_ = AddTool(*bar, "sheet-pivot-delete", Tr("Delete pivot"), "delete.svg",
-                               Tr("Remove the pivot table and its cells"),
+        pivotDelete_ = AddTool(*bar, "sheet-pivot-delete", "", "delete.svg",
+                               Tr("Delete pivot: remove the pivot table and its cells"),
                                Act([](auto& s) { s.RemovePivotTable(s.GetActiveSheetIndex(), s.GetActivePivotTable()); })).get();
         tabs_.push_back({Tr("Data"), bar});
     }

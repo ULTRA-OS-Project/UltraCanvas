@@ -104,6 +104,39 @@ void CheckViewGroup(UltraCanvasWindow& window, const std::string& kind, const st
     Check(all, kind + ": every tool shown, in order: " + order);
 }
 
+
+// Every command tab of the tab open (document `docId`) shows all its tools
+// beside the view group at this width: nothing behind the chevron.
+void CheckCommandTabsFit(UltraCanvasApplication& app, UltraCanvasWindow& window, int docId, const std::string& kind) {
+    const std::string id = "office-doc-" + std::to_string(docId);
+    auto* slot = Find<UltraCanvasContainer>(&window, id + "-command-bar");
+    for (int i = 0;; ++i) {
+        auto* tab = Find<UltraCanvasButton>(&window, id + "-tab-" + std::to_string(i));
+        if (!tab || !tab->onToggle) break;
+        tab->onToggle(true);
+        PumpUntil(app, window, [] { return false; }, 300);
+        UltraCanvasToolbar* bar = nullptr;
+        if (slot)
+            for (auto& child : slot->GetChildren())
+                if ((bar = dynamic_cast<UltraCanvasToolbar*>(child.get()))) break;
+        std::string behind, widths;
+        float used = 0.0f;
+        if (bar) {
+            for (const std::string& item : bar->GetOverflowItemIds()) behind += " " + item;
+            for (auto& item : bar->GetItems()) {
+                widths += " " + item->GetIdentifier() + "=" + std::to_string(static_cast<int>(item->GetWidth()));
+                used += item->GetWidth();
+            }
+        }
+        Check(bar && bar->GetOverflowItemIds().empty(),
+              kind + ", command tab " + tab->GetText() + ": every tool on the bar at " + std::to_string(window.GetWidth()) +
+                  " px" + (behind.empty() ? std::string() : " (behind the chevron:" + behind + "; bar " +
+                                                                std::to_string(bar ? bar->GetWidth() : 0.0f) + " wide, items" +
+                                                                widths + ")"));
+    }
+    if (auto* first = Find<UltraCanvasButton>(&window, id + "-tab-0"); first && first->onToggle) first->onToggle(true);
+    PumpUntil(app, window, [] { return false; }, 300);
+}
 } // namespace
 
 int main() {
@@ -225,17 +258,20 @@ int main() {
         Check(home && home->GetOverflowItemIds().size() < narrowBehind,
               "wide again: more Home tools back on the bar (behind the chevron:" + behind + "; the view group " +
                   std::to_string(viewBar ? viewBar->GetWidth() : 0.0f) + " wide)");
+        CheckCommandTabsFit(app, *window, 1, "document");
     }
 
     window->NewDocument(OfficeKind::Spreadsheet);
     PumpUntil(app, *window, [] { return false; }, 300);
     CheckViewGroup(*window, "spreadsheet", "office-sheet-view",
                    {"sheet-freeze", "sheet-unfreeze", "sheet-gridlines", "sheet-zoomout", "sheet-zoom", "sheet-zoomin"});
+    CheckCommandTabsFit(app, *window, 2, "spreadsheet");
     window->NewDocument(OfficeKind::Presentation);
     PumpUntil(app, *window, [] { return false; }, 300);
     CheckViewGroup(*window, "presentation", "office-slides-view",
                    {"slides-view-normal", "slides-view-sorter", "slides-view-notes", "slides-fit", "slides-zoomout",
                     "slides-zoom", "slides-zoomin"});
+    CheckCommandTabsFit(app, *window, 3, "presentation");
 
     std::printf("\n=== The Settings window ===\n");
     window->ShowSettings();
