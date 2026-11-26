@@ -1,0 +1,32 @@
+{% extends "operator/base.html" %}
+{% block title %}Affiliates - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Affiliates</h1><span class="text-secondary">{{ rows|length }}</span></div>
+{% if not can_text %}<div class="alert alert-warning">The store cannot send text messages (no ULTRASTORE_PORTAL_TEXT_GATEWAY_URL): confirm an applicant's phone number yourself at the review.</div>{% endif %}
+<div class="panels">
+{% if cost %}<div><div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-3">
+  {% for row in cost %}<div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Commissions so far, {{ row.currency }}</span><b>{{ row.total }}</b><span class="small text-secondary">{{ row.operator }} from the store's fee, {{ row.merchants }} from publishers' boosts</span></div></div></div>{% endfor %}
+</div></div>{% endif %}
+<div class="card"><div class="card-body">
+  <nav class="nav nav-pills gap-1 mb-3" aria-label="Affiliates by state">
+    {% for value, label in states %}<a class="nav-link{% if state == value %} active{% endif %}" href="?state={{ value }}">{{ label }}</a>{% endfor %}
+    <a class="nav-link{% if state == 'all' %} active{% endif %}" href="?state=all">All</a>
+  </nav>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Affiliate</th><th>Account</th><th>State</th><th>Phone</th><th>Identity</th><th>Brought in by</th><th class="text-end">To pay</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+    <tr><td class="font-monospace">{{ row.profile.handle }}</td><td>{{ row.profile.user.email }}</td><td>{{ row.profile.get_state_display }}</td>
+      <td>{{ row.profile.phone_verified_at|yesno:"proven,not proven" }}</td><td>{{ row.profile.id_checked_at|yesno:"checked,not checked" }}</td>
+      <td class="font-monospace">{{ row.profile.superaffiliate.handle|default:"" }}</td>
+      <td class="text-end">{% for sum in row.owed %}{{ sum.sum }} {{ sum.currency }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'operator:affiliate' row.profile.pk %}">Open</a></td></tr>
+    {% empty %}<tr><td colspan="8" class="text-secondary">Nobody here.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div></div>
+</div>
+{% endblock %}

@@ -1,6 +1,7 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.10.0 - affiliates (AFFILIATES, AFFILIATE_..., TEXT_GATEWAY_...)
 Version: 0.9.0 - tax and payouts (SELLER_..., INVOICE_PREFIX, PAYOUT_HOLD_DAYS, PAYOUT_MINIMUM)
 Version: 0.8.0 - leaving an account (ACCOUNT_CLOSED_DAYS, ACCOUNT_DELETION_GRACE_DAYS)
 Version: 0.7.0 - the store's fee (STORE_FEE_PERCENT)
@@ -133,6 +134,7 @@ INSTALLED_APPS = [
     "ultrastore_portal.store",
     "ultrastore_portal.billing",
     "ultrastore_portal.promote",
+    "ultrastore_portal.affiliates",
 ]
 
 MIDDLEWARE = [
@@ -374,3 +376,26 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
 }
+
+# Affiliates (affiliates/, UltraAffiliates phase 1): off unless switched on.
+# The base commission in percent of the net price, out of the store's fee;
+# the superaffiliate's share of an affiliate's commission; the days a link
+# counts; the days a commission waits before it is approved. A text message
+# (the code that proves an affiliate's phone number) is one POST to the
+# gateway; without one the operator confirms the number at the review.
+AFFILIATES = env("AFFILIATES", "0") == "1"
+try:
+    AFFILIATE_BASE_PERCENT = Decimal(env("AFFILIATE_BASE_PERCENT", "5"))
+    AFFILIATE_SUPER_PERCENT = Decimal(env("AFFILIATE_SUPER_PERCENT", "10"))
+except InvalidOperation as error:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_BASE_PERCENT and _SUPER_PERCENT are numbers of percent") from error
+AFFILIATE_LINK_DAYS = int(env("AFFILIATE_LINK_DAYS", "90"))
+AFFILIATE_APPROVAL_DAYS = int(env("AFFILIATE_APPROVAL_DAYS", "30"))
+if not 0 <= AFFILIATE_BASE_PERCENT <= STORE_FEE_PERCENT:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_BASE_PERCENT comes out of the store's fee: from 0 to ULTRASTORE_PORTAL_STORE_FEE_PERCENT")
+if not 0 <= AFFILIATE_SUPER_PERCENT <= 50 or AFFILIATE_LINK_DAYS < 1 or AFFILIATE_APPROVAL_DAYS < 0:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_SUPER_PERCENT is from 0 to 50, _LINK_DAYS at least 1, _APPROVAL_DAYS zero or more")
+TEXT_GATEWAY_URL = env("TEXT_GATEWAY_URL")
+TEXT_GATEWAY_TOKEN = env("TEXT_GATEWAY_TOKEN")
+if TEXT_GATEWAY_URL and not TEXT_GATEWAY_URL.startswith("https://"):
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_TEXT_GATEWAY_URL is an https address")

@@ -73,6 +73,15 @@ def _mail(user, template: str, subject: str) -> None:
     send_mail(f"{hosts.brand()}: {subject}", body, None, [user.email])
 
 
+def _affiliates():
+    """The affiliate programme follows the account's states: a closed
+    account's profile is closed with it, comes back with it, and is
+    emptied when the account is erased."""
+    from ..affiliates import services
+
+    return services
+
+
 def _audit(user, action: str, **detail) -> None:
     from ..store.services import audit
 
@@ -89,6 +98,7 @@ def close(user) -> User:
     user.is_active = False
     user.save(update_fields=["closed_at", "deletion_requested_at", "erase_after", "is_active"])
     _end_everything(user)
+    _affiliates().account_closed(user)
     _audit(user, "account.close", erase_after=user.erase_after.isoformat())
     transaction.on_commit(lambda: _mail(user, "account_closed.txt", "your account is closed"))
     return user
@@ -102,6 +112,7 @@ def reactivate(user) -> User:
     user.erase_after = None
     user.is_active = True
     user.save(update_fields=["closed_at", "erase_after", "is_active"])
+    _affiliates().account_reactivated(user)
     _audit(user, "account.reactivate")
     return user
 
@@ -143,6 +154,7 @@ def erase(user) -> User:
     SignIn.objects.filter(user=user).delete()
     Consent.objects.filter(user=user).delete()
     PublisherMember.objects.filter(user=user).delete()
+    _affiliates().account_erased(user)
     AuditEntry.objects.filter(actor=user).update(actor_name=f"account {user.pk}")
     user.email = f"erased-{user.pk}@erased.invalid"
     user.name = ""

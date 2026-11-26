@@ -24,6 +24,8 @@ Two providers: Skrill Quick Checkout (skrill.py), and "test", which a
 developer's machine and the tests use - the hand-off page has a button in
 Skrill's place that sends the same signed report through the same code.
 
+Version: 0.10.0 - an order may carry an affiliate's link (`ref`); every
+                  payment is told to the affiliate programme (_record)
 Version: 0.9.0 - an order keeps the buyer's country; a payment carries its
                  tax and gets its invoice or credit note (tax.py)
 Version: 0.7.0 - every payment is written with its split (split.py): the
@@ -176,8 +178,19 @@ def sellable_app(app_id: str) -> App:
     return app
 
 
+def _record(payment: Payment) -> Payment:
+    """What follows every payment the portal writes: its invoice or credit
+    note (tax.py), and what it earns an affiliate or takes back from one
+    (affiliates/services.py)."""
+    from ..affiliates import services as affiliates
+
+    tax.issue_invoice(payment)
+    affiliates.payment_recorded(payment)
+    return payment
+
+
 def create_order(app_id: str, *, source: str = "store", email: str = "", language: str = "", code: str = "", promote: str = "",
-                 country: str = "") -> Order:
+                 country: str = "", ref: str = "") -> Order:
     missing = missing_settings()
     if missing:
         raise BillingError(503, "not_configured", "The store is not set up to sell: " + ", ".join(missing))
@@ -191,6 +204,9 @@ def create_order(app_id: str, *, source: str = "store", email: str = "", languag
     if promote:   # the token of the advertisement the buyer last clicked, kept by their store
         from ..promote import services as advertising
         advertising.order_opened(order, promote)
+    if ref:   # the token of an affiliate's link to this product (affiliates/)
+        from ..affiliates import services as affiliates
+        affiliates.order_opened(order, ref)
     return order
 
 
@@ -291,7 +307,7 @@ def _chargeback(order: Order, fields: dict[str, str]) -> None:
     if order.payments.filter(kind=Payment.CHARGEBACK, reverses=reverses).exists():
         return
     amount = parse_money(fields.get("mb_amount", "")) or order.amount
-    tax.issue_invoice(Payment.objects.create(
+    _record(Payment.objects.create(
         order=order, kind=Payment.CHARGEBACK, amount=amount, currency=order.currency, provider_transaction="",
         reverses=reverses, note="chargeback" + _reason(fields), **split.reversal_split(order, reverses, amount)))
     order.refunded += amount
@@ -336,7 +352,7 @@ def process_status(fields: dict[str, str]) -> Order:
         order.receipt_no = next_receipt_no()
         order.licence = issue(order)
         order.save()
-        tax.issue_invoice(Payment.objects.create(
+        _record(Payment.objects.create(
             order=order, kind=Payment.SALE, amount=order.amount, currency=order.currency,
             provider_transaction=transaction_id, receipt_no=order.receipt_no, **split.sale_split(order, order.amount)))
         audit(None, "order.paid", "order", order.public_id, app=order.app.app_id, amount=money(order.amount), currency=order.currency,
@@ -406,7 +422,7 @@ def process_recurring(fields: dict[str, str]) -> Order:
         order.licence = issue(order)
         order.save()
         number = next_receipt_no()
-        tax.issue_invoice(Payment.objects.create(
+        _record(Payment.objects.create(
             order=order, kind=Payment.RENEWAL, amount=order.list_price, currency=order.currency,
             provider_transaction=transaction_id, receipt_no=number, **split.sale_split(order, order.list_price)))
         audit(None, "order.renewed", "order", order.public_id, app=order.app.app_id, amount=money(order.list_price), receipt=number,
@@ -545,7 +561,7 @@ def refund(order: Order, actor, *, amount: str = "", revoke: bool | None = None,
         provider_transaction = done.get("mb_transaction_id", "")
     order.refunded += value
     take_back = revoke if revoke is not None else order.refunded >= total
-    tax.issue_invoice(Payment.objects.create(
+    _record(Payment.objects.create(
         order=order, kind=Payment.REFUND, amount=value, currency=order.currency, provider_transaction=provider_transaction,
         reverses=payment.provider_transaction, receipt_no=next_receipt_no(), note=note[:300],
         **split.reversal_split(order, payment.provider_transaction, value)))

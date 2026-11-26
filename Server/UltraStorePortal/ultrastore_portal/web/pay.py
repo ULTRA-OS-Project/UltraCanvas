@@ -49,8 +49,9 @@ def buy(request, app_id: str):
         else:
             try:
                 from .promote import clicked_token
+                from .affiliates import ref_for
                 order = billing.create_order(app.app_id, source="web", email=form.cleaned_data["email"], promote=clicked_token(request, app),
-                                             country=form.cleaned_data.get("country", ""))
+                                             country=form.cleaned_data.get("country", ""), ref=ref_for(request, app))
             except billing.BillingError as refused:
                 form.add_error(None, refused.description)
             else:

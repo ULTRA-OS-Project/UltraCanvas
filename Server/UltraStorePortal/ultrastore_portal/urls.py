@@ -21,7 +21,7 @@ from .api import views as api
 from .identity import sso
 from .identity import views as oidc
 from .identity.hosts import account_page
-from .web import account, console, operator, pay, promote, storefront
+from .web import account, affiliates, console, operator, pay, promote, storefront
 
 
 class AppId:
@@ -99,6 +99,7 @@ console_patterns = ([
     path("", console.home, name="home"),
     path("sales/", console.sales, name="sales"),
     path("payouts/<int:pk>/", console.payout, name="payout"),
+    path("affiliates/", affiliates.console_affiliates, name="affiliates"),
     path("apply/", console.apply, name="apply"),
     path("publisher/", console.publisher_profile, name="publisher"),
     path("terms/accept/", console.accept_terms, name="accept_terms"),
@@ -131,6 +132,8 @@ operator_patterns = ([
     path("tax/", operator.tax_page, name="tax"),
     path("payouts/", operator.payouts_page, name="payouts"),
     path("payouts/<int:pk>/", operator.payout_page, name="payout"),
+    path("affiliates/", affiliates.operator_affiliates, name="affiliates"),
+    path("affiliates/<int:pk>/", affiliates.operator_affiliate, name="affiliate"),
     path("publish/", operator.publish, name="publish"),
     path("promote/", promote.operator_home, name="promote"),
     path("audit/", operator.audit, name="audit"),
@@ -187,7 +190,22 @@ promote_patterns = ([
     path("policy/", promote.policy, name="policy"),
 ], "promote")
 
+# UltraAffiliates (web/affiliates.py): the affiliate's own pages, and the
+# links - /r/<handle>/ to the shop, /r/<handle>/<app>/ to a product.
+affiliate_patterns = ([
+    path("", affiliates.home, name="home"),
+    path("products/", affiliates.products, name="products"),
+    path("phone/", affiliates.phone, name="phone"),
+    path("edit/", affiliates.edit, name="edit"),
+    path("pause/", affiliates.pause, name="pause"),
+    path("statement/<int:pk>/", affiliates.statement, name="statement"),
+    path("join/<str:handle>/", affiliates.join, name="join"),
+], "affiliate")
+
 urlpatterns = [
+    path("r/<str:handle>/", affiliates.go, name="affiliate_link"),
+    path("r/<str:handle>/<appid:app_id>/", affiliates.go, name="affiliate_product_link"),
+    path("affiliate/", include(affiliate_patterns)),
     path("", include(store_patterns)),
     path("", include(pay_patterns)),
     path("account/", include(account_patterns)),

@@ -38,8 +38,8 @@ a publisher, publish an app, show and serve the catalog; 0.2.0 sells; 0.4.0
 is the account for every service; 0.5.0 is advertising's first phase and
 0.6.0 the first half of its second; 0.7.0 splits a sale between the store
 and the publisher; 0.8.0 lets a person close or delete the account; 0.9.0
-reckons VAT, writes invoices and makes the publishers' payouts;
-*What comes next* names the rest.
+reckons VAT, writes invoices and makes the publishers' payouts; 0.10.0 is
+the affiliate programme's first phase; *What comes next* names the rest.
 
 ## Decisions
 
@@ -566,6 +566,104 @@ a date that has passed. The affiliate programme
 these states - suspended while closed or deleting, restored on the way
 back, gone with the erasure - once it is built.
 
+## Affiliates
+
+UltraAffiliates, phase 1 of
+[its design](../../Docs/Research/UltraAffiliatesDesignProposal.md) (0.10.0,
+`affiliates/`): **product links**. A person the store knows advertises what
+the store sells; when their link to a product brings its sale, they earn.
+
+**Switched off unless switched on.** `ULTRASTORE_PORTAL_AFFILIATES=1`.
+Without it none of its pages exists, `/r/...` is a 404, and no order earns
+anyone anything.
+
+**The rules, which the code holds to and the tests check:**
+
+- **Free for the publisher, and every paid app is in it.** There is
+  nothing to join, switch on or opt out of. Any active affiliate may take a
+  link to any app.
+- **A base and a boost.** The store pays an affiliate
+  `AFFILIATE_BASE_PERCENT` (**5**) of the net price out of its own fee -
+  the publisher's share is untouched. A publisher's **owner** may add a
+  **boost of 1 to 45 %** of the net on an app, a category or everything
+  (`/console/affiliates/`); the most specific one in force counts, and it
+  comes out of the publisher's proceeds of that sale: the payment's
+  `boost_amount`, which *Your share* and the payout leave out. A boost
+  changed later does not change a sale already made.
+- **A link to a product wins that product** - `/r/<handle>/<app>/` - for
+  `AFFILIATE_LINK_DAYS` (**90**): the last such link the order carries. The
+  web buy page keeps the link's token in the session and sends it with the
+  order; a client sends it as `ref` with `POST /v1/checkout`. `/r/<handle>/`
+  leads to the shop and is counted; in this phase it earns nothing (the
+  binding of a customer to an affiliate is phase 2). `?s=<name>` tells an
+  affiliate's campaigns apart.
+- **Who does not earn:** the buyer themselves (the order's address is the
+  affiliate's), a member of the publisher selling the app, and an affiliate
+  who is not active.
+- **Only a person following a link counts.** A page fetched as a picture, a
+  script or a frame (`Sec-Fetch-Dest`) records no click.
+- **The superaffiliate.** Whoever's recruiting link
+  (`/affiliate/join/<handle>/`) brought an affiliate in earns
+  `AFFILIATE_SUPER_PERCENT` (**10**) of each of that affiliate's
+  commissions, **on top** and at the store's cost - the affiliate's is not
+  reduced, and the publisher pays none of it. One level up and no further.
+  The operator may set another share, or none, for one affiliate.
+- **Pending, then approved** after `AFFILIATE_APPROVAL_DAYS` (**30**). A
+  refund or a chargeback takes the commission back in the proportion of the
+  money, as a line below zero - the affiliate's, the superaffiliate's and
+  the publisher's boost alike - so a sale refunded in parts nets to nothing
+  for everybody. Given back after a payout, it leaves the affiliate owing,
+  and the next sale makes it up.
+- **Identified, not anonymous.** A profile is active once its phone number
+  is proven - a six-digit code by text, good for ten minutes and five
+  tries - and the operator has looked at an identity document and written
+  down what it says: the name, the date of birth, the document and its
+  country. **No picture of a document is kept.** One person has one
+  profile, and an affiliate is eighteen or older.
+- **Blocked or banned.** A blocked affiliate's links count nothing and what
+  they earned is held, until a day or until lifted; a banned one's
+  relations to other affiliates end, for good. Each has a **record** that
+  is added to and never edited: the rule, what happened, the evidence, the
+  money, and what the affiliate said to it. The affiliate sees the rule and
+  what happened at once, can put a statement on the record, and is given
+  the whole of it on request.
+- **Nobody sees who bought.** An affiliate sees the product, the day and
+  the commission; a publisher sees which affiliate sold how often and what
+  its boosts cost.
+- **The profile follows the account** (*Leaving an account*): closed with
+  it, back with it, emptied when it is erased - the row stays, so what it
+  earned and a ban's record still name something.
+
+**The pages.** `/affiliate/` - apply, prove the phone number, then the
+links, what was earned and paid, the affiliates brought in;
+`/affiliate/products/` - every paid app with what a link to it pays.
+`/console/affiliates/` - what a link to each of the publisher's apps earns
+today, the boosts, what affiliates sold. `/operator/affiliates/` - the
+applications, the review, block and ban with their record, an affiliate's
+share and the payout.
+
+**The portal moves no money.** *Mark as paid* on an affiliate's page writes
+the payout down with the transfer's reference; the operator pays at the bank
+or the provider.
+
+**A text message** is one POST to `ULTRASTORE_PORTAL_TEXT_GATEWAY_URL`
+(`to`, `text`; the bearer token `TEXT_GATEWAY_TOKEN`). Without it the store
+cannot send one: the affiliate's page says so, and the operator confirms the
+number at the review.
+
+**The daily maintenance:** `ultrastore-portal affiliates maintain` approves
+what is due, lifts blocks whose time is over, and counts clicks older than
+the link's days by day before removing them. `affiliates owed` and
+`affiliates cost` say what is approved and unpaid, and what the programme
+cost the store's fee and the publishers' boosts.
+
+**Not in this phase** (the design's phases 2 to 4): the binding of a new
+customer to an affiliate and the 5 % on every later purchase, which needs
+the buyer's account on an order; the win-back; the 5 % holdback for six
+months; statements and self-billed credit notes; fixed boosts for hardware;
+affiliate codes; the native store's `ultrastore://r/` links; sales made
+outside the portal.
+
 ## Advertising
 
 UltraAds, phase 1 of
@@ -788,6 +886,8 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 | `LICENCE_SEED`, `GRACE_DAYS` (7) | the licence key, a subscription's grace |
 | `SELLER_NAME`, `SELLER_ADDRESS`, `SELLER_VAT_ID`, `SELLER_COUNTRY` | the store as the seller on every invoice: its name, its address (lines separated by `\|`), its VAT id, its country (two letters). Until all four are set no tax is reckoned and no invoice written |
 | `INVOICE_PREFIX` | what stands before an invoice's year and number (`UO-` gives `UO-2026-000001`) |
+| `AFFILIATES`, `AFFILIATE_BASE_PERCENT` (5), `AFFILIATE_SUPER_PERCENT` (10), `AFFILIATE_LINK_DAYS` (90), `AFFILIATE_APPROVAL_DAYS` (30) | the affiliate programme on (`1`); the base commission in percent of the net price, out of the store's fee (so not above it); the superaffiliate's share of a commission; the days a link counts; the days a commission waits |
+| `TEXT_GATEWAY_URL`, `TEXT_GATEWAY_TOKEN` | where a text message is sent (an https address taking `to` and `text`) and its bearer token; unset, the operator confirms an affiliate's phone number |
 | `PAYOUT_HOLD_DAYS` (30), `PAYOUT_MINIMUM` (0.01) | the days a sale waits before its share can be paid out, and the least a payout is made for |
 | `STORE_FEE_PERCENT` (15) | the store's fee: the percentage of what a buyer pays that the store keeps, from 0 to under 100 with at most two decimals; the rest is the publisher's share. Written on each payment, so a change applies to later sales |
 | `RESTRICTED_SECRET`, `RESTRICTED_TTL` (600) | a buyer's download link: nginx's secret and its seconds |
@@ -810,6 +910,8 @@ ultrastore_portal/
     sessions.py    a sign-in as a record; the store's session ends with it
     sso.py         the store signing in through the account
     management/commands/oidc.py   clients, keys, cleanup
+  affiliates/      UltraAffiliates, phase 1: models.py (AffiliateProfile, Boost, Click, Attribution, Commission,
+                   AffiliatePayout, Sanction), services.py (the rules), texts.py (a text message)
   promote/         advertising: UltraAds, phase 1
     models.py      Placement, Campaign, Balance, LedgerEntry, TopUp, DayCount, Click, Attribution,
                    Keyword, PlacementBid, TermCount, PolicyVersion, PolicyAcceptance

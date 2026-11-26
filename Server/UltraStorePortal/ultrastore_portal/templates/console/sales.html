@@ -27,7 +27,7 @@
   </table>
   </div>
   {% else %}<p class="text-secondary">Nothing sold yet. A paid app's sales, its renewals and anything given back appear here.</p>{% endif %}
-  <p class="small text-secondary mt-3 mb-0">Your share is what buyers paid{% if taxed %}, less the VAT in the price,{% endif %} less the store's fee, {{ fee_percent }} % {% if taxed %}of the rest {% endif %}today; each payment keeps the tax and the fee it was sold under, and a refund gives both back in proportion. Who bought is the store's to know, not shown here.</p>
+  <p class="small text-secondary mt-3 mb-0">Your share is what buyers paid{% if taxed %}, less the VAT in the price,{% endif %} less the store's fee, {{ fee_percent }} % {% if taxed %}of the rest {% endif %}today{% if affiliates_on %}, and less the boost you set where an affiliate's link brought the sale{% endif %}; each payment keeps the tax and the fee it was sold under, and a refund gives both back in proportion. Who bought is the store's to know, not shown here.</p>
 </div></div>
 <div class="card"><div class="card-body">
   <h2>Payouts</h2>

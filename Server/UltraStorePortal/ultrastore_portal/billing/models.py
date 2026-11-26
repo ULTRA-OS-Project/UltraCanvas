@@ -1,6 +1,8 @@
 """A purchase: the order a store or a visitor opened, and every movement of
 money on it - the sale, a subscription's renewals, refunds, a chargeback.
 
+Version: 0.10.0 - a payment's boost_amount: what of the publisher's share an
+                  affiliate's boost took (affiliates/services.py)
 Version: 0.9.0 - the buyer's country on an order; a payment's VAT and the
                  payout it was paid in; VatRate, Invoice, Payout
 Version: 0.7.0 - a payment carries its split: the store's fee, and the
@@ -114,6 +116,10 @@ class Payment(models.Model):
     vat_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     vat_amount = models.DecimalField(max_digits=9, decimal_places=2, default=0)
     vat_note = models.CharField(max_length=120, blank=True)
+    # What an affiliate's commission took of the publisher's part: the boost
+    # the merchant set for the product (affiliates/services.py). A reversal
+    # carries what it gives back of it.
+    boost_amount = models.DecimalField(max_digits=9, decimal_places=2, default=0)
     # The payout the publisher's share of this payment was paid in (payouts.py).
     payout = models.ForeignKey("Payout", null=True, blank=True, on_delete=models.PROTECT, related_name="payments")
     receipt_no = models.PositiveBigIntegerField(null=True, blank=True, unique=True)
@@ -145,7 +151,11 @@ class Payment(models.Model):
 
     @property
     def publisher_share(self):
-        return self.amount - self.vat_amount - self.store_fee
+        return self.amount - self.vat_amount - self.store_fee - self.boost_amount
+
+    @property
+    def signed_boost_amount(self):
+        return -self.boost_amount if self.is_reversal else self.boost_amount
 
     @property
     def signed_vat_amount(self):

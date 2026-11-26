@@ -55,7 +55,7 @@ def checkout(request):
     if not isinstance(body, dict) or not str(body.get("app") or "").strip():
         return error(400, "bad_request", "The body is a JSON object naming the app")
     order = billing.create_order(str(body["app"]).strip(), source="store", code=str(body.get("code") or ""), language=str(body.get("language") or ""),
-                                 promote=str(body.get("promote") or ""), country=str(body.get("country") or ""))
+                                 promote=str(body.get("promote") or ""), country=str(body.get("country") or ""), ref=str(body.get("ref") or ""))
     return answer({**billing.order_public(order), "secret": order.secret, "checkout_url": billing.checkout_url(order),
                    "environment": "sandbox" if settings.PAYMENT_PROVIDER == "test" else "production"})
 

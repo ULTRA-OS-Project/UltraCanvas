@@ -2,7 +2,9 @@
 
 **Date:** 2026-11-25
 **Status:** Proposal, **with the owner's decisions of 2026-11-26 worked in**
-(§9). Nothing of it is built; §3 says what the repository already has that
+(§9). **Phase 1 - product links - is built** in the store portal (0.10.0,
+its README's *Affiliates*; §8 says what of the phase is in and what is
+not); the phases after it are not. §3 says what the repository already has that
 it builds on. **No question to the owner is open** (§9.1); what remains
 before building is the lawyer's and the tax adviser's (§7). **Rechecked on the same date**, claim by
 claim, against the tree and against outside sources: §12 is the record of
@@ -862,6 +864,24 @@ one ledger serves every shop. Models, in outline:
 | 2 | **The binding**: bind at sign-up and first order, the **win-back** after six months, the base on every bound customer's purchase, the customer's "Referred by"; a referred customer who becomes an affiliate gets their referrer as superaffiliate; the binding **suspended and restored with the account's states** (closed, deleting, reactivated, erased - in the portal since 0.8.0) | buyer accounts on orders (portal next step 3) |
 | 3 | **Money and the other shops**: automatic approval after the approval period, **the 5 % holdback and its release**, statements, self-billed credit notes, Skrill payouts, the boost deducted in the merchant's settlement; baskets with several sellers, **fixed boosts for hardware**, physical goods' approval from delivery, subscriptions' renewals; the native store's `ultrastore://r/` and `ref`; UltraAccount's *Affiliate* section | the affiliates' own payouts and credit notes, built on the publishers' (portal 0.9.0: VAT, invoices and payouts are there); the shops themselves |
 | 4 | **Beyond the portal**: the conversions call for UltraPress shops and services; fraud scoring on the click aggregates | phase 3 |
+
+**Phase 1 as built** (portal 0.10.0, 2026-11-26, off until
+`ULTRASTORE_PORTAL_AFFILIATES=1`): affiliate profiles with a handle; the
+phone number proven by a texted code where the portal has a text gateway,
+else confirmed by the operator; the identity check as the operator's
+record, with no picture kept and one profile per person; the base of 5 %
+out of the store's fee and the merchant's boost of 1 to 45 % out of the
+merchant's proceeds, saved by the Owner; every paid app with what it pays;
+`/r/<handle>/<app>/` links, clicks from a person only, the `ref` on the
+checkout; the last product link within 90 days winning its product;
+recruiting links and the superaffiliate's share on top, one level;
+commissions pending, approved after 30 days and reversed in proportion;
+block and ban with their record and the affiliate's statement; the
+operator marking a payout paid; the profile following the account's
+states. **Left out of it, against the row above:** affiliate codes (the
+portal still publishes and applies none), and a superaffiliate by way of a
+referred customer (that is the binding, phase 2). A link to the shop is
+counted and earns nothing until the binding exists.
 
 Phase 1 is useful alone: every product has affiliates selling it without a
 merchant lifting a finger, and every rule of §5.6 that does not involve a
