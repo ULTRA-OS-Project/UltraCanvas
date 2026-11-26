@@ -1,5 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.15.0 - the caret's line in Markdown is formatted like the rendered lines
+//                 (StyleMarkdownCaretLine, after the tables are sized)
 // Version: 3.14.2 - a selection or a search match paints inside a Markdown table's cells, and a
 //                 selected rule, picture or display formula is tinted across its row;
 //                 the empty ApplySelectionAttributes / ClearSelectionAttributes are gone
@@ -4017,6 +4019,13 @@ namespace UltraCanvas {
         tablesLaidOutWidth = -1.0f;   // set again by every table sized
         for (auto [s, e] : tableSpans) {
             NormalizeTableGroupWidths(s, e);
+        }
+
+        // The caret's line is laid out as its source; formatted once the tables
+        // are sized, so a table row can put its cells under their columns.
+        if (currentLine && editingMode == TextAreaEditingMode::MarkdownHybrid &&
+            markdownStyle.styleCaretLine) {
+            StyleMarkdownCaretLine(currentLine.get(), cursorPosition.lineIndex);
         }
 
         // Pass 3: cascade cumulative Y positions. Must run after table heights are finalized.

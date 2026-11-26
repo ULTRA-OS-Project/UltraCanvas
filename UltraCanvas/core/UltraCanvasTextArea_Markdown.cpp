@@ -1,6 +1,9 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.9.0 - StyleMarkdownCaretLine: the caret's line is formatted like the rendered
+//                  lines over its source, its markup dimmed, a table row's cells under their
+//                  columns
 // Version: 2.8.5 - each table cell maps its text back to the source line (cpMap), so a
 //                  selection or a search match can be painted inside it
 // Version: 2.8.4 - a table is sized to the visible width once it is known: without word wrap the
@@ -1177,6 +1180,284 @@ namespace UltraCanvas {
                 pos += abbr.size();
             }
         }
+    }
+
+    // The caret's line keeps its source text - every character stays where the
+    // caret and the editing code expect it - and is formatted over it: what the
+    // rendered line shows formatted is formatted the same way here, and the
+    // markup it comes from is dimmed. Attributes only, so the cpMap stays the
+    // identity. Runs after NormalizeTableGroupWidths, which places the columns a
+    // table row's cells are moved under.
+    void UltraCanvasTextArea::StyleMarkdownCaretLine(LineLayoutBase* ll, int lineIndex) {
+        if (!ll || !ll->layout || lineIndex < 0 || lineIndex >= (int)lineLayouts.size()) return;
+        const LineLayoutBase* rendered = lineLayouts[lineIndex].get();
+        if (!rendered) return;
+        switch (rendered->layoutType) {
+            // Code keeps its syntax colours; a display formula's lines are LaTeX.
+            case LineLayoutType::CodeblockStart:
+            case LineLayoutType::CodeblockEnd:
+            case LineLayoutType::CodeblockContent:
+            case LineLayoutType::MathBlock:
+            case LineLayoutType::MathBlockCollapsed:
+                return;
+            default:
+                break;
+        }
+        const std::string txt = GetLineContent(lineIndex);
+        const int n = static_cast<int>(txt.size());
+        if (n == 0) return;
+        ITextLayout* layout = ll->layout.get();
+
+        // An input method's composition is spliced into the layout at the caret:
+        // a source byte past it sits that much further on in the layout.
+        int compositionByte = -1, compositionBytes = 0;
+        if (!preeditText.empty() && lineIndex == cursorPosition.lineIndex) {
+            const int cp = std::clamp(cursorPosition.columnIndex, 0, utf8_length(txt));
+            compositionByte = static_cast<int>(utf8_cp_to_byte(txt, cp));
+            compositionBytes = static_cast<int>(preeditText.size());
+        }
+        auto toLayout = [&](int b) {
+            return (compositionByte >= 0 && b > compositionByte) ? b + compositionBytes : b;
+        };
+        auto add = [&](std::unique_ptr<ITextAttribute> a, int from, int to) {
+            if (from >= to) return;
+            a->SetRange(toLayout(from), toLayout(to));
+            layout->InsertAttribute(std::move(a));
+        };
+        auto dim = [&](int from, int to) {
+            add(TextAttributeFactory::CreateForeground(markdownStyle.markupColor), from, to);
+        };
+        const int lh = computedLineHeight > 0 ? computedLineHeight
+                                              : static_cast<int>(style.fontStyle.fontSize * 1.3f);
+        auto smallRaised = [&](int from, int to, double rise) {
+            add(TextAttributeFactory::CreateScale(0.7), from, to);
+            add(TextAttributeFactory::CreateRise(static_cast<int>(lh * rise)), from, to);
+        };
+
+        // The text in the text colour, as the rendered lines draw it: the syntax
+        // colours give way to the formatting.
+        add(TextAttributeFactory::CreateForeground(style.fontColor), 0, n);
+
+        // Inline formatting of txt[from, to): the renderer's own parse, its runs
+        // mapped back onto the source through its cpMap. A stretch of source no
+        // visible character comes from is markup and is dimmed when it opens or
+        // closes a run ("**", "`", "](url)") or is marker punctuation only (an
+        // escape's backslash); the rest of such stretches is substituted text
+        // (":smile:", "--") and keeps the text colour.
+        auto styleInline = [&](int from, int to) {
+            if (from >= to) return;
+            const std::string payload = txt.substr(from, to - from);
+            std::string visible;
+            std::vector<InlineRun> runs;
+            std::vector<CpRun> map;
+            ParseInlineMarkdownRuns(payload, visible, runs, &map);
+            const int payloadCps = utf8_length(payload);
+            const int visibleCps = utf8_length(visible);
+            auto srcByte = [&](int cp) {
+                return from + static_cast<int>(utf8_cp_to_byte(payload, std::clamp(cp, 0, payloadCps)));
+            };
+            auto charAt = [&](int cp) {
+                const size_t b = utf8_cp_to_byte(payload, cp);
+                return b < payload.size() ? payload[b] : '\0';
+            };
+            std::vector<char> covered(payloadCps + 1, 0), runStart(payloadCps + 1, 0), runEnd(payloadCps + 1, 0);
+            for (int v = 0; v < visibleCps; v++) {
+                const int sc = VisibleCpToSourceCp(map, v);
+                if (sc >= 0 && sc < payloadCps) covered[sc] = 1;
+            }
+            for (const auto& run : runs) {
+                if (run.startByte >= run.endByte) continue;
+                const int vs = utf8_byte_to_cp(visible, run.startByte);
+                const int ve = utf8_byte_to_cp(visible, run.endByte);
+                int ss = std::clamp(VisibleCpToSourceCp(map, vs), 0, payloadCps);
+                int se = std::clamp(VisibleCpToSourceCp(map, ve - 1) + 1, ss, payloadCps);
+                if (run.kind == InlineRun::Math) {
+                    // A typeset formula is one placeholder character: its LaTeX
+                    // is all the source up to its closing dollars.
+                    int next = std::clamp(VisibleCpToSourceCp(map, ve), se, payloadCps);
+                    while (next > se && charAt(next - 1) == '$') next--;
+                    for (int k = se; k < next; k++) covered[k] = 1;
+                    se = next;
+                }
+                runStart[ss] = 1;
+                runEnd[se] = 1;
+                const int a = srcByte(ss), b = srcByte(se);
+                switch (run.kind) {
+                    case InlineRun::Bold:
+                        add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold), a, b);
+                        break;
+                    case InlineRun::Italic:
+                        add(TextAttributeFactory::CreateFontStyle(FontSlant::Italic), a, b);
+                        break;
+                    case InlineRun::Code:
+                        add(TextAttributeFactory::CreateFontStyle(style.fixedFontStyle), a, b);
+                        add(TextAttributeFactory::CreateForeground(markdownStyle.codeTextColor), a, b);
+                        add(TextAttributeFactory::CreateBackground(markdownStyle.codeBackgroundColor), a, b);
+                        break;
+                    case InlineRun::Strike:
+                        add(TextAttributeFactory::CreateStrikethrough(true), a, b);
+                        break;
+                    case InlineRun::Subscript:
+                        smallRaised(a, b, -0.15);
+                        break;
+                    case InlineRun::Superscript:
+                        smallRaised(a, b, 0.25);
+                        break;
+                    case InlineRun::Math:
+                        add(TextAttributeFactory::CreateFontStyle(FontSlant::Italic), a, b);
+                        add(TextAttributeFactory::CreateForeground(markdownStyle.mathTextColor), a, b);
+                        break;
+                    case InlineRun::Link:
+                    case InlineRun::Image:
+                        add(TextAttributeFactory::CreateForeground(markdownStyle.linkColor), a, b);
+                        if (markdownStyle.linkUnderline)
+                            add(TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle), a, b);
+                        break;
+                    case InlineRun::Footnote:
+                        add(TextAttributeFactory::CreateForeground(markdownStyle.footnoteRefColor), a, b);
+                        smallRaised(a, b, 0.25);
+                        break;
+                }
+            }
+            auto isMarker = [](char c) {
+                return std::strchr("*_~`^[]()!\\$<>=", c) != nullptr && c != '\0';
+            };
+            for (int k = 0; k < payloadCps;) {
+                if (covered[k]) { k++; continue; }
+                const int g = k;
+                bool markersOnly = true;
+                while (k < payloadCps && !covered[k]) {
+                    if (!isMarker(charAt(k))) markersOnly = false;
+                    k++;
+                }
+                if (markersOnly || runEnd[g] || runStart[k]) dim(srcByte(g), srcByte(k));
+            }
+        };
+
+        int pos = 0;
+        while (pos < n && (txt[pos] == ' ' || txt[pos] == '\t')) pos++;
+
+        switch (rendered->layoutType) {
+            case LineLayoutType::HorizontalLine:
+                dim(0, n);
+                break;
+
+            case LineLayoutType::TableHederRow:
+            case LineLayoutType::TableSeparatorRow:
+            case LineLayoutType::TableRow: {
+                // Cell borders: every `|` but an escaped one.
+                std::vector<int> pipes;
+                for (int i = pos; i < n; i++) {
+                    if (txt[i] == '\\') { i++; continue; }
+                    if (txt[i] == '|') pipes.push_back(i);
+                }
+                const bool separator = rendered->layoutType == LineLayoutType::TableSeparatorRow;
+                if (separator) {
+                    dim(0, n);
+                } else {
+                    for (size_t k = 0; k < pipes.size(); k++) {
+                        dim(pipes[k], pipes[k] + 1);
+                        const int cellEnd = k + 1 < pipes.size() ? pipes[k + 1] : n;
+                        int a = pipes[k] + 1, b = cellEnd;
+                        while (a < b && (txt[a] == ' ' || txt[a] == '\t')) a++;
+                        while (b > a && (txt[b - 1] == ' ' || txt[b - 1] == '\t')) b--;
+                        styleInline(a, b);
+                    }
+                }
+
+                // Each cell under its column: the space before a `|` widens to put
+                // the bar on the column's divider, the space after it to start the
+                // cell's text where the rendered cell's starts. Measured left to
+                // right, each spacer after the ones before it. A line that wraps,
+                // or a cell too wide for its column, keeps its natural spacing.
+                const auto* tbl = dynamic_cast<const TableLineLayout*>(rendered);
+                if (!tbl || layout->GetLineCount() > 1) break;
+                const int cols = static_cast<int>(tbl->cellsLayouts.size());
+                const double pad = markdownStyle.tableCellPadding;
+                auto xAt = [&](int b) { return static_cast<double>(layout->IndexToPos(toLayout(b)).x); };
+                auto isBlank = [&](int b) { return b >= 0 && b < n && (txt[b] == ' ' || txt[b] == '\t'); };
+                auto spacer = [&](int b, double target) {
+                    const double w = target - xAt(b);
+                    if (w >= 1.0) add(TextAttributeFactory::CreateShapeSpacer(w), b, b + 1);
+                };
+                for (int k = 0; k < (int)pipes.size() && k <= cols; k++) {
+                    const int p = pipes[k];
+                    if (k > 0 && k < cols && tbl->cellsLayouts[k] && isBlank(p - 1) && p - 1 > pipes[k - 1]) {
+                        const double bar = xAt(p + 1) - xAt(p);
+                        spacer(p - 1, tbl->cellsLayouts[k]->bounds.x - pad - bar / 2.0);
+                    }
+                    if (k < cols && tbl->cellsLayouts[k] && isBlank(p + 1)) {
+                        const int cellEnd = k + 1 < (int)pipes.size() ? pipes[k + 1] : n;
+                        int text = p + 1;
+                        while (text < cellEnd && isBlank(text)) text++;
+                        if (text < cellEnd) spacer(p + 1, tbl->cellsLayouts[k]->bounds.x);
+                    }
+                }
+                break;
+            }
+
+            default: {
+                // Heading: the whole line at the heading's size, its text bold.
+                if (pos < n && txt[pos] == '#') {
+                    int level = 0;
+                    while (level < 6 && pos + level < n && txt[pos + level] == '#') level++;
+                    if (pos + level < n && txt[pos + level] == ' ') {
+                        const auto& mult = markdownStyle.headerSizeMultipliers;
+                        add(TextAttributeFactory::CreateFontSize(style.fontStyle.fontSize * mult[level - 1]), 0, n);
+                        dim(pos, pos + level);
+                        int bodyEnd = n;
+                        // An explicit {#id} anchor after the text is markup too.
+                        if (txt[n - 1] == '}') {
+                            const size_t open = txt.rfind("{#");
+                            if (open != std::string::npos && static_cast<int>(open) > pos + level) {
+                                dim(static_cast<int>(open), n);
+                                bodyEnd = static_cast<int>(open);
+                            }
+                        }
+                        add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold), pos + level + 1, bodyEnd);
+                        styleInline(pos + level + 1, bodyEnd);
+                        break;
+                    }
+                }
+                // Quote markers, then a list marker (and a task's box), then the text.
+                while (pos < n && txt[pos] == '>') {
+                    dim(pos, pos + 1);
+                    pos++;
+                    while (pos < n && (txt[pos] == ' ' || txt[pos] == '\t')) pos++;
+                }
+                auto marker = [&](int from, int to) {
+                    add(TextAttributeFactory::CreateForeground(markdownStyle.bulletColor), from, to);
+                    add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold), from, to);
+                };
+                int digits = pos;
+                while (digits < n && std::isdigit(static_cast<unsigned char>(txt[digits]))) digits++;
+                if (pos + 1 < n && (txt[pos] == '-' || txt[pos] == '*' || txt[pos] == '+') && txt[pos + 1] == ' ') {
+                    marker(pos, pos + 1);
+                    pos += 2;
+                } else if (digits > pos && digits + 1 < n && (txt[digits] == '.' || txt[digits] == ')') &&
+                           txt[digits + 1] == ' ') {
+                    marker(pos, digits + 1);
+                    pos = digits + 2;
+                } else if (rendered->layoutType == LineLayoutType::DefinitionContinuation &&
+                           pos + 1 < n && txt[pos] == ':' && txt[pos + 1] == ' ') {
+                    dim(pos, pos + 1);
+                    pos += 2;
+                }
+                if (pos + 3 < n && txt[pos] == '[' && txt[pos + 2] == ']' && txt[pos + 3] == ' ' &&
+                    (txt[pos + 1] == ' ' || txt[pos + 1] == 'x' || txt[pos + 1] == 'X')) {
+                    marker(pos, pos + 3);
+                    pos += 4;
+                }
+                styleInline(pos, n);
+                break;
+            }
+        }
+
+        // The current search matches and the selection over the formatting.
+        ApplyLineSearchHighlights(ll, lineIndex);
+        ApplyLineSelectionBackground(ll, lineIndex);
+        ll->bounds.width  = layout->GetLayoutWidth();
+        ll->bounds.height = layout->GetLayoutHeight();
     }
 
     // Normalize column widths across every row of a single table. Measures each non-separator
