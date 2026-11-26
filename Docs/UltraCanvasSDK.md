@@ -1,7 +1,7 @@
 # The UltraCanvas SDK
 
-**Version:** 1.3.1
-**Last Modified:** 2026-10-10
+**Version:** 1.3.2
+**Last Modified:** 2026-11-26
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -220,8 +220,11 @@ An SDK is built on one platform leg and is for that platform and architecture
 only. The Linux SDK follows Ubuntu 22.04's library ABI; a newer distribution
 runs it, an older one may not. The Windows SDK's DLL expects the MSYS2 runtime
 DLLs it was built against (`libc++.dll`, cairo, pango, vips and the rest) on
-`PATH`, as any MSYS2-built program does. The macOS SDK is static and carries no
-runtime dependency beyond the libraries named above.
+`PATH`, as any MSYS2-built program does. The macOS SDK's core is a shared
+`libUltraCanvas.dylib` too: the libraries it was built against are in `deps/lib`
+with `@rpath` install names, so it needs no Homebrew at run time, only the run
+path to `lib/` and `deps/lib` that the package gives a build-tree executable
+(see *Using it*).
 
 The package version in `UltraCanvasConfigVersion.cmake` is the framework's,
 with `SameMajorVersion` compatibility, so `find_package(UltraCanvas 0.9)`
