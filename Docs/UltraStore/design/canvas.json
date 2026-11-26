@@ -1,664 +1,860 @@
 {
-  "v": 3,
-  "createdOnFiles": {
-    "v": 1,
-    "at": "2026-11-05T10:20:00Z"
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-05T10:20:00Z"
+ },
+ "title": "UltraStore Shop Design",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 2480,
+   "title": "Discover (home)",
+   "expand": "fill",
+   "is_interactive": true
   },
-  "title": "UltraStore Shop Design",
-  "launch": {
-    "view": "canvas"
+  "AppDetail.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 2280,
+   "title": "App page: UltraVideo",
+   "expand": "fill",
+   "is_interactive": true
   },
-  "pages": [],
-  "boards": {
-    "Main.dc.html": {
-      "x": 0,
-      "y": 0,
-      "w": 1440,
-      "h": 2480,
-      "title": "Discover (home)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AppDetail.dc.html": {
-      "x": 1520,
-      "y": 0,
-      "w": 1440,
-      "h": 2280,
-      "title": "App page: UltraVideo",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "Categories.dc.html": {
-      "x": 3040,
-      "y": 0,
-      "w": 1440,
-      "h": 1720,
-      "title": "Browse by category",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "PhoneHome.dc.html": {
-      "x": 0,
-      "y": 2900,
-      "w": 390,
-      "h": 844,
-      "title": "Phone: Discover",
-      "radius": 44
-    },
-    "PhoneDetail.dc.html": {
-      "x": 470,
-      "y": 2900,
-      "w": 390,
-      "h": 844,
-      "title": "Phone: App page",
-      "radius": 44
-    },
-    "AdminDashboard.dc.html": {
-      "x": 0,
-      "y": 4100,
-      "w": 1440,
-      "h": 1560,
-      "title": "Admin: Overview",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AdminApps.dc.html": {
-      "x": 1520,
-      "y": 4100,
-      "w": 1440,
-      "h": 1360,
-      "title": "Admin: Apps + Add an app",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AdminAppEditor.dc.html": {
-      "x": 3040,
-      "y": 4100,
-      "w": 1440,
-      "h": 2380,
-      "title": "Admin: App form (UltraVideo)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AdminSales.dc.html": {
-      "x": 0,
-      "y": 6900,
-      "w": 1440,
-      "h": 1460,
-      "title": "Admin: Sales ledger",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AdminFinance.dc.html": {
-      "x": 1520,
-      "y": 6900,
-      "w": 1440,
-      "h": 1760,
-      "title": "Admin: Financial reports",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AdminPublish.dc.html": {
-      "x": 3040,
-      "y": 6900,
-      "w": 1440,
-      "h": 1480,
-      "title": "Admin: Publish + upload",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SuperDashboard.dc.html": {
-      "x": 0,
-      "y": 9200,
-      "w": 1440,
-      "h": 1640,
-      "title": "Super admin: Operations",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SuperMerchants.dc.html": {
-      "x": 1520,
-      "y": 9200,
-      "w": 1440,
-      "h": 1860,
-      "title": "Super admin: Merchants",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SuperMerchantDetail.dc.html": {
-      "x": 3040,
-      "y": 9200,
-      "w": 1440,
-      "h": 1900,
-      "title": "Super admin: Merchant file + suspend",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SuperReview.dc.html": {
-      "x": 0,
-      "y": 11600,
-      "w": 1440,
-      "h": 1760,
-      "title": "Super admin: App review and release",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SuperReports.dc.html": {
-      "x": 1520,
-      "y": 11600,
-      "w": 1440,
-      "h": 1620,
-      "title": "Super admin: Reports",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SuperTerms.dc.html": {
-      "x": 3040,
-      "y": 11600,
-      "w": 1440,
-      "h": 1640,
-      "title": "Super admin: Terms and notices",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "GamesHome.dc.html": {
-      "x": 0,
-      "y": 14000,
-      "w": 1440,
-      "h": 2860,
-      "title": "Games: Discover (home)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "GamesDetail.dc.html": {
-      "x": 1520,
-      "y": 14000,
-      "w": 1440,
-      "h": 2560,
-      "title": "Games: Game page (Skyline Siege)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "GamesGenres.dc.html": {
-      "x": 3040,
-      "y": 14000,
-      "w": 1440,
-      "h": 2160,
-      "title": "Games: Browse by genre",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "GamesPhoneHome.dc.html": {
-      "x": 4560,
-      "y": 14000,
-      "w": 390,
-      "h": 844,
-      "title": "Games phone: Discover",
-      "radius": 44
-    },
-    "MarketHome.dc.html": {
-      "x": 0,
-      "y": 17600,
-      "w": 1440,
-      "h": 2760,
-      "title": "Market: Home",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "MarketProduct.dc.html": {
-      "x": 1520,
-      "y": 17600,
-      "w": 1440,
-      "h": 2760,
-      "title": "Market: Product page (Nordlicht Aura 2)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "MarketSearch.dc.html": {
-      "x": 3040,
-      "y": 17600,
-      "w": 1440,
-      "h": 2200,
-      "title": "Market: Search and browse",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "MarketBasket.dc.html": {
-      "x": 0,
-      "y": 20760,
-      "w": 1440,
-      "h": 1720,
-      "title": "Market: Basket and checkout",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "MarketPhoneHome.dc.html": {
-      "x": 1520,
-      "y": 20760,
-      "w": 390,
-      "h": 844,
-      "title": "Market phone: Home",
-      "radius": 44
-    },
-    "VideoHome.dc.html": {
-      "x": 0,
-      "y": 23200,
-      "w": 1440,
-      "h": 2200,
-      "title": "Video: Home",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "VideoWatch.dc.html": {
-      "x": 1520,
-      "y": 23200,
-      "w": 1440,
-      "h": 2080,
-      "title": "Video: Watch (UltraVideo 0.7)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "VideoChannel.dc.html": {
-      "x": 3040,
-      "y": 23200,
-      "w": 1440,
-      "h": 1900,
-      "title": "Video: Channel (ULTRA OS Project)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "VideoStudio.dc.html": {
-      "x": 0,
-      "y": 25700,
-      "w": 1440,
-      "h": 1900,
-      "title": "Video: Studio, upload and your videos",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "VideoPhoneWatch.dc.html": {
-      "x": 1520,
-      "y": 25700,
-      "w": 390,
-      "h": 844,
-      "title": "Video phone: Watch",
-      "radius": 44
-    },
-    "MusicHome.dc.html": {
-      "x": 0,
-      "y": 28300,
-      "w": 1440,
-      "h": 2000,
-      "title": "Music: Home",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "MusicAlbum.dc.html": {
-      "x": 1520,
-      "y": 28300,
-      "w": 1440,
-      "h": 1800,
-      "title": "Music: Album (Low Tide)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "MusicArtist.dc.html": {
-      "x": 3040,
-      "y": 28300,
-      "w": 1440,
-      "h": 1900,
-      "title": "Music: Artist (Kesselhaus Quartet)",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "MusicSearch.dc.html": {
-      "x": 0,
-      "y": 30700,
-      "w": 1440,
-      "h": 1700,
-      "title": "Music: Search and browse",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "MusicPhoneNowPlaying.dc.html": {
-      "x": 1520,
-      "y": 30700,
-      "w": 390,
-      "h": 844,
-      "title": "Music phone: Now playing",
-      "radius": 44
-    },
-    "AccountSignUp.dc.html": {
-      "x": 0,
-      "y": 33100,
-      "w": 1440,
-      "h": 1040,
-      "title": "Account: Sign in, create account, verify, profile",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AccountProfile.dc.html": {
-      "x": 1520,
-      "y": 33100,
-      "w": 1440,
-      "h": 2460,
-      "title": "Account: Profile, security, devices, notifications, privacy",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AccountBilling.dc.html": {
-      "x": 3040,
-      "y": 33100,
-      "w": 1440,
-      "h": 2180,
-      "title": "Account: Payment, subscriptions, licences, orders",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AccountPhoneProfile.dc.html": {
-      "x": 4560,
-      "y": 33100,
-      "w": 390,
-      "h": 844,
-      "title": "Account phone: Account",
-      "radius": 44
-    },
-    "AccountRecovery.dc.html": {
-      "x": 0,
-      "y": 35900,
-      "w": 1440,
-      "h": 1260,
-      "title": "Account: Reset password, two-factor setup, delete",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SuperUsers.dc.html": {
-      "x": 1520,
-      "y": 35900,
-      "w": 1440,
-      "h": 1640,
-      "title": "Super admin: Users",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "AccountPhoneSignIn.dc.html": {
-      "x": 3040,
-      "y": 35900,
-      "w": 390,
-      "h": 844,
-      "title": "Account phone: Sign in",
-      "radius": 44
-    },
-    "BooksHome.dc.html": {
-      "x": 0,
-      "y": 38200,
-      "w": 1440,
-      "h": 2420,
-      "title": "Books: Discover",
-      "expand": "fill"
-    },
-    "BooksDetail.dc.html": {
-      "x": 1520,
-      "y": 38200,
-      "w": 1440,
-      "h": 2180,
-      "title": "Books: A title (The Salt Garden)",
-      "expand": "fill"
-    },
-    "BooksBrowse.dc.html": {
-      "x": 3040,
-      "y": 38200,
-      "w": 1440,
-      "h": 1640,
-      "title": "Books: Browse",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "BooksLibrary.dc.html": {
-      "x": 0,
-      "y": 41000,
-      "w": 1440,
-      "h": 1760,
-      "title": "Books: Your library",
-      "expand": "fill"
-    },
-    "BooksPhoneListen.dc.html": {
-      "x": 1520,
-      "y": 41000,
-      "w": 390,
-      "h": 844,
-      "title": "Books phone: Listening",
-      "radius": 44
-    },
-    "AdminMarketplace.dc.html": {
-      "x": 0,
-      "y": 41000,
-      "w": 1440,
-      "h": 2160,
-      "title": "Admin: Marketplace (apply, waiting, the shop's profile)",
-      "expand": "fill"
-    }
+  "Categories.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1720,
+   "title": "Browse by category",
+   "expand": "fill",
+   "is_interactive": true
   },
-  "order": [
-    "Main.dc.html",
-    "AppDetail.dc.html",
-    "Categories.dc.html",
-    "PhoneHome.dc.html",
-    "PhoneDetail.dc.html",
-    "AdminDashboard.dc.html",
-    "AdminApps.dc.html",
-    "AdminAppEditor.dc.html",
-    "AdminSales.dc.html",
-    "AdminFinance.dc.html",
-    "AdminPublish.dc.html",
-    "SuperDashboard.dc.html",
-    "SuperMerchants.dc.html",
-    "SuperMerchantDetail.dc.html",
-    "SuperReview.dc.html",
-    "SuperReports.dc.html",
-    "SuperTerms.dc.html",
-    "GamesHome.dc.html",
-    "GamesDetail.dc.html",
-    "GamesGenres.dc.html",
-    "GamesPhoneHome.dc.html",
-    "MarketHome.dc.html",
-    "MarketProduct.dc.html",
-    "MarketSearch.dc.html",
-    "MarketBasket.dc.html",
-    "MarketPhoneHome.dc.html",
-    "VideoHome.dc.html",
-    "VideoWatch.dc.html",
-    "VideoChannel.dc.html",
-    "VideoStudio.dc.html",
-    "VideoPhoneWatch.dc.html",
-    "MusicHome.dc.html",
-    "MusicAlbum.dc.html",
-    "MusicArtist.dc.html",
-    "MusicSearch.dc.html",
-    "MusicPhoneNowPlaying.dc.html",
-    "AccountSignUp.dc.html",
-    "AccountProfile.dc.html",
-    "AccountBilling.dc.html",
-    "AccountPhoneProfile.dc.html",
-    "AccountRecovery.dc.html",
-    "SuperUsers.dc.html",
-    "AccountPhoneSignIn.dc.html",
-    "BooksHome.dc.html",
-    "BooksDetail.dc.html",
-    "BooksBrowse.dc.html",
-    "BooksLibrary.dc.html",
-    "BooksPhoneListen.dc.html",
-    "AdminMarketplace.dc.html"
-  ],
-  "notes": {
-    "desk": {
-      "x": 0,
-      "y": -300,
-      "text": "UltraStore - web shop, desktop",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "phone": {
-      "x": 0,
-      "y": 2600,
-      "text": "UltraStore - phone",
-      "kind": "title1",
-      "maxW": 860
-    },
-    "look": {
-      "x": 960,
-      "y": 2900,
-      "w": 420,
-      "text": "Look: white ground, ink #0F172A, UltraStore blue #2563EB from the app icon, Manrope display over Inter body, 20 px card radius, pill buttons. Real ULTRA OS app icons and versions; prices, sizes and dates beyond the UltraVideo example in Docs/UltraStore/README.md are sample data marked [PRICE] where unknown. No star ratings: the catalog has none yet.",
-      "fill": "blue"
-    },
-    "admin": {
-      "x": 0,
-      "y": 3800,
-      "text": "UltraStoreAdmin - merchant and admin backend",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "admin2": {
-      "x": 0,
-      "y": 6600,
-      "text": "UltraStoreAdmin - sales, finance, publish",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "adminnote": {
-      "x": 4560,
-      "y": 4100,
-      "w": 420,
-      "text": "Admin pages follow Docs/UltraStoreAdmin/README.md: the sidebar lists the store pages then every app and component; the app form carries every catalog setting; Publish checks, signs and uploads; Sales is the ledger sale sync fills; Finance is the affiliate report plus revenue by app. Every figure (revenue, orders, payouts) is sample data for layout only.",
-      "fill": "orange"
-    },
-    "super": {
-      "x": 0,
-      "y": 8900,
-      "text": "UltraStore operator - super admin (proposal)",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "super2": {
-      "x": 0,
-      "y": 11300,
-      "text": "UltraStore operator - review, reports, terms",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "supernote": {
-      "x": 4560,
-      "y": 9200,
-      "w": 420,
-      "text": "The operator tier is not in Docs/UltraStore*/README.md yet: it is a proposal for a marketplace where other publishers (merchants) run shops in UltraStore. The operator approves and releases app submissions, handles reports from users and merchants, warns, suspends and reinstates merchants and apps, and keeps every merchant on the current terms of service. Dark sidebar marks the tier. All names, counts and cases are sample data.",
-      "fill": "purple"
-    },
-    "games": {
-      "x": 0,
-      "y": 13700,
-      "text": "UltraStore - games shop variant",
-      "kind": "title1",
-      "maxW": 4950
-    },
-    "gamesnote": {
-      "x": 4560,
-      "y": 15000,
-      "w": 420,
-      "text": "A variant of the shop for computer games: the same chrome, type and shapes, the accent violet #7C3AED (a prop; blue is one click away), covers instead of icons, and the genres Action, 3D, Simulation, Tactics, Adventure, Learning (education, by age), Retro, Board games, Puzzle, Racing, Role-playing, Sports. The game page adds the PEGI rating with descriptors, players and co-op, controller support, system requirements and a demo. The repository has no games proposal: the catalog knows the category 'games' only; genre, age rating, players, input and requirements are proposed fields. Every game, studio, count and [PRICE] is invented sample data.",
-      "fill": "green"
-    },
-    "market": {
-      "x": 0,
-      "y": 17300,
-      "text": "UltraStore - marketplace variant (many sellers, physical goods)",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "marketnote": {
-      "x": 4560,
-      "y": 17600,
-      "w": 420,
-      "text": "A variant of the shop as a general marketplace in the manner of Amazon, eBay or Temu: many verified sellers (the merchants of the store README's marketplace tier) in one basket, physical goods with delivery, returns, star ratings from delivered orders, deals with a countdown, departments instead of categories, and a basket grouped by seller with the checkout steps. The accent is orange #EA580C (a prop). The words are the standard string set's Shopping.json (Basket, Add to basket, Proceed to checkout, Free shipping, Estimated delivery, Deal, Best sellers, Guest checkout, Voucher code, Compare, In stock, Low stock); payment is the store's own, as the store README decides it: the payment service and Skrill Quick Checkout's hosted page, card data never in the marketplace. These variants are UltraStore's own business, not UltraPress's shop module. Nothing of this exists in the catalog or the services yet: products, sellers, prices, ratings, stock, delivery and every figure are invented sample data; the pictures are [PHOTO] placeholders.",
-      "fill": "orange"
-    },
-    "video": {
-      "x": 0,
-      "y": 22900,
-      "text": "UltraStore - video portal variant",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "videonote": {
-      "x": 4560,
-      "y": 23200,
-      "w": 420,
-      "text": "A variant as a video portal in the manner of YouTube or Vimeo: the home with the sections rail, topic chips, the video grid with durations and the watched bar, Shorts, live with a viewer count; the watch page on the UltraCanvas video element (chapters on the seek bar, captions, quality, speed, picture in picture, theatre), the channel with subscribe and support, the description with chapters, comments with a creator's reply, up next and the transcript; the channel page with working sort and kind filters; the Studio with the upload (format check, chapters from UltraVideo's markers, captions from the subtitle track, visibility, licence), the channel figures and the videos table with a copyright claim; the phone's watch page. The accent is red #DC2626 (a prop). What exists: the video element plays a file or a URL (GStreamer, Media Foundation, AVFoundation), poster frames, the codec registry; UltraVideo exports MP4 and WebM. What does not: a portal service (channels, uploads, renditions, comments, subscriptions, support payments through the store's payment service). Every channel, video, count and figure is invented sample data; the ULTRA OS Project channel is the team's own, its videos invented; the pictures are [THUMBNAIL] placeholders.",
-      "fill": "blue"
-    },
-    "music": {
-      "x": 0,
-      "y": 28000,
-      "text": "UltraStore - music streaming variant",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "musicnote": {
-      "x": 4560,
-      "y": 28300,
-      "w": 420,
-      "text": "A variant as a music streaming service in the manner of Spotify: the home with the library rail (playlists, artists, podcasts, downloads), the jump-back-in tiles, mixes made for you, new releases, the charts, podcasts; an album page with the track table, plays, likes, durations, the credits and the artist's share of the subscription; an artist page with popular songs, a working discography filter (albums, singles, live, appears on; newest or oldest), about, tour dates and fans also like; search with working type and genre filters and browse-all; the phone's Now playing with lyrics. The now-playing bar on every desktop page: shuffle, repeat, position, lyrics, queue, the playing device, the quality mark. The accent is green #16A34A (a prop). What exists: UltraCanvas Audio plays WAV, MP3 and FLAC always, OGG, Opus and AAC with the system codecs, gapless through miniaudio, with the audio player element and the analysis for visualisation; subscriptions (monthly, yearly) exist in the store and its payment service. What does not: a streaming service (catalogue, licences, renditions, mixes, downloads, the artists' share). Every artist, album, song, count and figure is invented sample data; the covers are [COVER] placeholders.",
-      "fill": "green"
-    },
-    "account": {
-      "x": 0,
-      "y": 32800,
-      "text": "UltraStore account - sign up and profile (proposal, shared by every shop)",
-      "kind": "title1",
-      "maxW": 4950
-    },
-    "accountnote": {
-      "x": 4560,
-      "y": 34100,
-      "w": 420,
-      "text": "The account every shop on this canvas shares: sign in or create an account (email, password with the strength check, country for VAT and the age rating, year of birth, consent), the email code, the profile basics and what the account keeps, the welcome with two-factor as the next step - the steps work in the script. The account page: profile (avatar, name, handle, the private email, country and year), security (password, two-factor with UltraAuthenticator or any TOTP app with recovery codes, passkeys, sign-in history), devices with the licence seats they hold, notifications, privacy and data (history on the account or on the machine, the data archive, delete the account). Payment methods (a reference to the method through the store's payment service and Skrill Quick Checkout, never the card), subscriptions (monthly, yearly, switch, cancel), purchases and licences with seats and install on a machine, orders and invoices as PDF and XRechnung with returns and credit notes. The phone's account page. A proposal: the store README says the store has no accounts - licences live in registry.sqlite on each machine and the payment service sells without one. An account service would tie licences, subscriptions, the library and the reporter's identity to a person across machines. Every person, device, order and figure is invented sample data.",
-      "fill": "purple"
-    },
-    "account2": {
-      "x": 0,
-      "y": 35600,
-      "text": "UltraStore account - recovery, the operator's users, phone sign-in",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "books": {
-      "x": 0,
-      "y": 37900,
-      "text": "UltraStore - e-book and audiobook shop variant",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "booksnote": {
-      "x": 4560,
-      "y": 38200,
-      "w": 420,
-      "text": "A variant as an e-book and audiobook shop in the manner of Audible: the home with the book of the month in both editions, continue listening and reading with the place kept between the audiobook and the e-book, the genres, the editor's picks, Books Plus (one credit a month through the store's subscription, the book kept), a series with the next part on pre-order, short listens; a title's page with the editions (audiobook, e-book, both kept in step), the narrator, chapters shared by both editions, reviews that say listened or read to the end, the author's and narrator's share of the price; browse with working format, genre, language and Plus filters; the library with progress, the device the place was last kept on, bookmarks and highlights, the files on the machine, this year's hours and pages; the phone's listening screen with chapters, 30-second skips, speed, the sleep timer, bookmark and 'read here'. What exists: UltraViewer reads EPUB, FB2, MOBI, PRC, AZW and AZW3 (UltraCanvasEBookViewer with the chapter toolbar and the table of contents) and PDF; UltraCanvas Audio plays MP3, M4A/M4B (AAC with FAAD2, fdk-aac or the GStreamer plugins) and the rest; the store sells subscriptions through its own payment service and Skrill Quick Checkout. What does not: a book catalogue with editions, narrators, chapters, credits, the kept place and the publishers' share. The shop is UltraStore's own business. Every book, author, narrator, review and figure is invented sample data; the covers are drawn [COVER] placeholders.",
-      "fill": "yellow"
-    },
-    "merchant": {
-      "x": 0,
-      "y": 40700,
-      "text": "UltraStoreAdmin - the merchant's Marketplace page (self-service)",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "merchantnote": {
-      "x": 1520,
-      "y": 41000,
-      "w": 420,
-      "text": "The merchant tier's self-service, built 2026-11-19 (Docs/UltraStore/README.md, The operator tier, 'How does a merchant join?'): a merchant applies for a shop from its admin backend - the shop's name, contact, email, website and a line about the publisher, with the public half of the key that will sign its submissions, the application signed by that key; the operator approves (the merchant registered with that key) or rejects with a reason the applicant reads; once approved the merchant edits its own profile (name, contact, website, description), and rotates its key signed with the old one. The page is drawn with its three states stacked: before a shop, waiting, open. The operator's side is the Applications section on SuperMerchants. Not built: staff accounts per merchant (a key is the identity; a second machine is a second key), the public publisher page beyond the catalog's name and URL, the finance design's VAT by country and statements archive.",
-      "fill": "blue"
-    }
+  "PhoneHome.dc.html": {
+   "x": 0,
+   "y": 2900,
+   "w": 390,
+   "h": 844,
+   "title": "Phone: Discover",
+   "radius": 44
   },
-  "designSystems": []
+  "PhoneDetail.dc.html": {
+   "x": 470,
+   "y": 2900,
+   "w": 390,
+   "h": 844,
+   "title": "Phone: App page",
+   "radius": 44
+  },
+  "AdminDashboard.dc.html": {
+   "x": 0,
+   "y": 4100,
+   "w": 1440,
+   "h": 1560,
+   "title": "Admin: Overview",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AdminApps.dc.html": {
+   "x": 1520,
+   "y": 4100,
+   "w": 1440,
+   "h": 1360,
+   "title": "Admin: Apps + Add an app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AdminAppEditor.dc.html": {
+   "x": 3040,
+   "y": 4100,
+   "w": 1440,
+   "h": 2380,
+   "title": "Admin: App form (UltraVideo)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AdminSales.dc.html": {
+   "x": 0,
+   "y": 6900,
+   "w": 1440,
+   "h": 1460,
+   "title": "Admin: Sales ledger",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AdminFinance.dc.html": {
+   "x": 1520,
+   "y": 6900,
+   "w": 1440,
+   "h": 1760,
+   "title": "Admin: Financial reports",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AdminPublish.dc.html": {
+   "x": 3040,
+   "y": 6900,
+   "w": 1440,
+   "h": 1480,
+   "title": "Admin: Publish + upload",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SuperDashboard.dc.html": {
+   "x": 0,
+   "y": 9200,
+   "w": 1440,
+   "h": 1640,
+   "title": "Super admin: Operations",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SuperMerchants.dc.html": {
+   "x": 1520,
+   "y": 9200,
+   "w": 1440,
+   "h": 1860,
+   "title": "Super admin: Merchants",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SuperMerchantDetail.dc.html": {
+   "x": 3040,
+   "y": 9200,
+   "w": 1440,
+   "h": 1900,
+   "title": "Super admin: Merchant file + suspend",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SuperReview.dc.html": {
+   "x": 0,
+   "y": 11600,
+   "w": 1440,
+   "h": 1760,
+   "title": "Super admin: App review and release",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SuperReports.dc.html": {
+   "x": 1520,
+   "y": 11600,
+   "w": 1440,
+   "h": 1620,
+   "title": "Super admin: Reports",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SuperTerms.dc.html": {
+   "x": 3040,
+   "y": 11600,
+   "w": 1440,
+   "h": 1640,
+   "title": "Super admin: Terms and notices",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "GamesHome.dc.html": {
+   "x": 0,
+   "y": 14000,
+   "w": 1440,
+   "h": 2860,
+   "title": "Games: Discover (home)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "GamesDetail.dc.html": {
+   "x": 1520,
+   "y": 14000,
+   "w": 1440,
+   "h": 2560,
+   "title": "Games: Game page (Skyline Siege)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "GamesGenres.dc.html": {
+   "x": 3040,
+   "y": 14000,
+   "w": 1440,
+   "h": 2160,
+   "title": "Games: Browse by genre",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "GamesPhoneHome.dc.html": {
+   "x": 4560,
+   "y": 14000,
+   "w": 390,
+   "h": 844,
+   "title": "Games phone: Discover",
+   "radius": 44
+  },
+  "MarketHome.dc.html": {
+   "x": 0,
+   "y": 17600,
+   "w": 1440,
+   "h": 2760,
+   "title": "Market: Home",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MarketProduct.dc.html": {
+   "x": 1520,
+   "y": 17600,
+   "w": 1440,
+   "h": 2760,
+   "title": "Market: Product page (Nordlicht Aura 2)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MarketSearch.dc.html": {
+   "x": 3040,
+   "y": 17600,
+   "w": 1440,
+   "h": 2200,
+   "title": "Market: Search and browse",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MarketBasket.dc.html": {
+   "x": 0,
+   "y": 20760,
+   "w": 1440,
+   "h": 1720,
+   "title": "Market: Basket and checkout",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MarketPhoneHome.dc.html": {
+   "x": 1520,
+   "y": 20760,
+   "w": 390,
+   "h": 844,
+   "title": "Market phone: Home",
+   "radius": 44
+  },
+  "VideoHome.dc.html": {
+   "x": 0,
+   "y": 23200,
+   "w": 1440,
+   "h": 2200,
+   "title": "Video: Home",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "VideoWatch.dc.html": {
+   "x": 1520,
+   "y": 23200,
+   "w": 1440,
+   "h": 2080,
+   "title": "Video: Watch (UltraVideo 0.7)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "VideoChannel.dc.html": {
+   "x": 3040,
+   "y": 23200,
+   "w": 1440,
+   "h": 1900,
+   "title": "Video: Channel (ULTRA OS Project)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "VideoStudio.dc.html": {
+   "x": 0,
+   "y": 25700,
+   "w": 1440,
+   "h": 1900,
+   "title": "Video: Studio, upload and your videos",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "VideoPhoneWatch.dc.html": {
+   "x": 1520,
+   "y": 25700,
+   "w": 390,
+   "h": 844,
+   "title": "Video phone: Watch",
+   "radius": 44
+  },
+  "MusicHome.dc.html": {
+   "x": 0,
+   "y": 28300,
+   "w": 1440,
+   "h": 2000,
+   "title": "Music: Home",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MusicAlbum.dc.html": {
+   "x": 1520,
+   "y": 28300,
+   "w": 1440,
+   "h": 1800,
+   "title": "Music: Album (Low Tide)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MusicArtist.dc.html": {
+   "x": 3040,
+   "y": 28300,
+   "w": 1440,
+   "h": 1900,
+   "title": "Music: Artist (Kesselhaus Quartet)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MusicSearch.dc.html": {
+   "x": 0,
+   "y": 30700,
+   "w": 1440,
+   "h": 1700,
+   "title": "Music: Search and browse",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MusicPhoneNowPlaying.dc.html": {
+   "x": 1520,
+   "y": 30700,
+   "w": 390,
+   "h": 844,
+   "title": "Music phone: Now playing",
+   "radius": 44
+  },
+  "AccountSignUp.dc.html": {
+   "x": 0,
+   "y": 33100,
+   "w": 1440,
+   "h": 1040,
+   "title": "Account: Sign in, create account, verify, profile",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AccountProfile.dc.html": {
+   "x": 1520,
+   "y": 33100,
+   "w": 1440,
+   "h": 2460,
+   "title": "Account: Profile, security, devices, notifications, privacy",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AccountBilling.dc.html": {
+   "x": 3040,
+   "y": 33100,
+   "w": 1440,
+   "h": 2180,
+   "title": "Account: Payment, subscriptions, licences, orders",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AccountPhoneProfile.dc.html": {
+   "x": 4560,
+   "y": 33100,
+   "w": 390,
+   "h": 844,
+   "title": "Account phone: Account",
+   "radius": 44
+  },
+  "AccountRecovery.dc.html": {
+   "x": 0,
+   "y": 35900,
+   "w": 1440,
+   "h": 1260,
+   "title": "Account: Reset password, two-factor setup, delete",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SuperUsers.dc.html": {
+   "x": 1520,
+   "y": 35900,
+   "w": 1440,
+   "h": 1640,
+   "title": "Super admin: Users",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AccountPhoneSignIn.dc.html": {
+   "x": 3040,
+   "y": 35900,
+   "w": 390,
+   "h": 844,
+   "title": "Account phone: Sign in",
+   "radius": 44
+  },
+  "BooksHome.dc.html": {
+   "x": 0,
+   "y": 38200,
+   "w": 1440,
+   "h": 2420,
+   "title": "Books: Discover",
+   "expand": "fill"
+  },
+  "BooksDetail.dc.html": {
+   "x": 1520,
+   "y": 38200,
+   "w": 1440,
+   "h": 2180,
+   "title": "Books: A title (The Salt Garden)",
+   "expand": "fill"
+  },
+  "BooksBrowse.dc.html": {
+   "x": 3040,
+   "y": 38200,
+   "w": 1440,
+   "h": 1640,
+   "title": "Books: Browse",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "BooksLibrary.dc.html": {
+   "x": 0,
+   "y": 41000,
+   "w": 1440,
+   "h": 1760,
+   "title": "Books: Your library",
+   "expand": "fill"
+  },
+  "BooksPhoneListen.dc.html": {
+   "x": 1520,
+   "y": 41000,
+   "w": 390,
+   "h": 844,
+   "title": "Books phone: Listening",
+   "radius": 44
+  },
+  "AdminMarketplace.dc.html": {
+   "x": 0,
+   "y": 41000,
+   "w": 1440,
+   "h": 2160,
+   "title": "Admin: Marketplace (apply, waiting, the shop's profile)",
+   "expand": "fill"
+  },
+  "SuperOperators.dc.html": {
+   "x": 3040,
+   "y": 35900,
+   "w": 1440,
+   "h": 1560,
+   "title": "Super admin: Operators (sign-in, the roles, the accounts)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "TradeHome.dc.html": {
+   "x": 0,
+   "y": 44000,
+   "w": 1440,
+   "h": 3080,
+   "title": "Trade: Home (RFQ, categories, ready to ship, verified suppliers, assurance)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "TradeProduct.dc.html": {
+   "x": 1520,
+   "y": 44000,
+   "w": 1440,
+   "h": 1860,
+   "title": "Trade: Product (quantity price tiers, order in escrow)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "TradeSupplier.dc.html": {
+   "x": 3040,
+   "y": 44000,
+   "w": 1440,
+   "h": 2340,
+   "title": "Trade: Supplier (verification, capabilities, inquiry)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "TradeRFQ.dc.html": {
+   "x": 0,
+   "y": 47200,
+   "w": 1440,
+   "h": 1600,
+   "title": "Trade: Buyer desk (quotes compared, award to an order)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "TradePhoneHome.dc.html": {
+   "x": 1520,
+   "y": 47200,
+   "w": 390,
+   "h": 844,
+   "title": "Trade phone: Source",
+   "radius": 44
+  },
+  "AffiliateDashboard.dc.html": {
+   "x": 0,
+   "y": 49600,
+   "w": 1440,
+   "h": 2060,
+   "title": "Affiliates: Dashboard (the period, your money, campaigns, commissions)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AffiliateLinks.dc.html": {
+   "x": 1520,
+   "y": 49600,
+   "w": 1440,
+   "h": 1800,
+   "title": "Affiliates: Links and QR codes (the link maker)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AffiliateProducts.dc.html": {
+   "x": 3040,
+   "y": 49600,
+   "w": 1440,
+   "h": 1960,
+   "title": "Affiliates: Products to promote (what each pays, filters)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AffiliatePayouts.dc.html": {
+   "x": 0,
+   "y": 52200,
+   "w": 1440,
+   "h": 2240,
+   "title": "Affiliates: Payouts and statements (the holdback, a statement)",
+   "expand": "fill"
+  },
+  "AffiliateApply.dc.html": {
+   "x": 1520,
+   "y": 52200,
+   "w": 1440,
+   "h": 1120,
+   "title": "Affiliates: Become an affiliate (you, phone, identity, done)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "AffiliatePhoneHome.dc.html": {
+   "x": 4560,
+   "y": 49600,
+   "w": 390,
+   "h": 844,
+   "title": "Affiliates phone: Dashboard",
+   "radius": 44
+  },
+  "AffiliatePhoneLink.dc.html": {
+   "x": 5030,
+   "y": 49600,
+   "w": 390,
+   "h": 844,
+   "title": "Affiliates phone: Link and QR code",
+   "radius": 44,
+   "is_interactive": true
+  },
+  "AdminAffiliates.dc.html": {
+   "x": 0,
+   "y": 55000,
+   "w": 1440,
+   "h": 1700,
+   "title": "Admin: Affiliates (the merchant's boosts, what each product pays)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SuperAffiliates.dc.html": {
+   "x": 1520,
+   "y": 55000,
+   "w": 1440,
+   "h": 1940,
+   "title": "Super admin: Affiliates (applications, payouts, block and ban)",
+   "expand": "fill",
+   "is_interactive": true
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "AppDetail.dc.html",
+  "Categories.dc.html",
+  "PhoneHome.dc.html",
+  "PhoneDetail.dc.html",
+  "AdminDashboard.dc.html",
+  "AdminApps.dc.html",
+  "AdminAppEditor.dc.html",
+  "AdminSales.dc.html",
+  "AdminFinance.dc.html",
+  "AdminPublish.dc.html",
+  "SuperDashboard.dc.html",
+  "SuperMerchants.dc.html",
+  "SuperMerchantDetail.dc.html",
+  "SuperReview.dc.html",
+  "SuperReports.dc.html",
+  "SuperTerms.dc.html",
+  "GamesHome.dc.html",
+  "GamesDetail.dc.html",
+  "GamesGenres.dc.html",
+  "GamesPhoneHome.dc.html",
+  "MarketHome.dc.html",
+  "MarketProduct.dc.html",
+  "MarketSearch.dc.html",
+  "MarketBasket.dc.html",
+  "MarketPhoneHome.dc.html",
+  "VideoHome.dc.html",
+  "VideoWatch.dc.html",
+  "VideoChannel.dc.html",
+  "VideoStudio.dc.html",
+  "VideoPhoneWatch.dc.html",
+  "MusicHome.dc.html",
+  "MusicAlbum.dc.html",
+  "MusicArtist.dc.html",
+  "MusicSearch.dc.html",
+  "MusicPhoneNowPlaying.dc.html",
+  "AccountSignUp.dc.html",
+  "AccountProfile.dc.html",
+  "AccountBilling.dc.html",
+  "AccountPhoneProfile.dc.html",
+  "AccountRecovery.dc.html",
+  "SuperUsers.dc.html",
+  "AccountPhoneSignIn.dc.html",
+  "BooksHome.dc.html",
+  "BooksDetail.dc.html",
+  "BooksBrowse.dc.html",
+  "BooksLibrary.dc.html",
+  "BooksPhoneListen.dc.html",
+  "AdminMarketplace.dc.html",
+  "SuperOperators.dc.html",
+  "TradeHome.dc.html",
+  "TradeProduct.dc.html",
+  "TradeSupplier.dc.html",
+  "TradeRFQ.dc.html",
+  "TradePhoneHome.dc.html",
+  "AffiliateDashboard.dc.html",
+  "AffiliateLinks.dc.html",
+  "AffiliateProducts.dc.html",
+  "AffiliatePayouts.dc.html",
+  "AffiliateApply.dc.html",
+  "AffiliatePhoneHome.dc.html",
+  "AffiliatePhoneLink.dc.html",
+  "AdminAffiliates.dc.html",
+  "SuperAffiliates.dc.html"
+ ],
+ "notes": {
+  "affiliates3": {
+   "x": 0,
+   "y": 54700,
+   "text": "UltraAffiliates - the merchant's boosts, the operator's page",
+   "kind": "title1",
+   "maxW": 2960
+  },
+  "affiliates2": {
+   "x": 0,
+   "y": 51900,
+   "text": "UltraAffiliates - payouts and statements, becoming an affiliate",
+   "kind": "title1",
+   "maxW": 2960
+  },
+  "affiliates": {
+   "x": 0,
+   "y": 49300,
+   "text": "UltraAffiliates - the affiliate's pages (dashboard, links and QR codes, products)",
+   "kind": "title1",
+   "maxW": 5420
+  },
+  "affiliatesnote": {
+   "x": 5500,
+   "y": 49600,
+   "w": 420,
+   "fill": "blue",
+   "text": "UltraAffiliates, the design of Docs/Research/UltraAffiliatesDesignProposal.md: the pages of an affiliate in the web shop's chrome with a rail of their own, the merchant's boost page in the admin backend's look, the operator's page in the operator's. The rules they show are the owner's decisions: 5 % of the net price from the store's fee on every sale, a boost of 1 to 45 % a merchant may add, a link and a code counting for 90 days, a new customer staying the affiliate's, 10 % of an affiliate's commission to whoever brought them in, 30 days pending, 5 % held back for six months, a payout a month from 25.00. Built in Server/UltraStorePortal (0.10.0 to 0.12.0) in a plainer form: the link maker's QR code is the real code of the link shown, drawn by the same algorithm as the portal's qr.py. The charts, the campaign table, the catalogue's filters and the saved look of a QR code are proposals beyond what is built. Every affiliate, product figure and amount is sample data."
+  },
+  "desk": {
+   "x": 0,
+   "y": -300,
+   "text": "UltraStore - web shop, desktop",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "phone": {
+   "x": 0,
+   "y": 2600,
+   "text": "UltraStore - phone",
+   "kind": "title1",
+   "maxW": 860
+  },
+  "look": {
+   "x": 960,
+   "y": 2900,
+   "w": 420,
+   "text": "Look: white ground, ink #0F172A, UltraStore blue #2563EB from the app icon, Manrope display over Inter body, 20 px card radius, pill buttons. Real ULTRA OS app icons and versions; prices, sizes and dates beyond the UltraVideo example in Docs/UltraStore/README.md are sample data marked [PRICE] where unknown. No star ratings: the catalog has none yet.",
+   "fill": "blue"
+  },
+  "admin": {
+   "x": 0,
+   "y": 3800,
+   "text": "UltraStoreAdmin - merchant and admin backend",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "admin2": {
+   "x": 0,
+   "y": 6600,
+   "text": "UltraStoreAdmin - sales, finance, publish",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "adminnote": {
+   "x": 4560,
+   "y": 4100,
+   "w": 420,
+   "text": "Admin pages follow Docs/UltraStoreAdmin/README.md: the sidebar lists the store pages then every app and component; the app form carries every catalog setting; Publish checks, signs and uploads; Sales is the ledger sale sync fills; Finance is the affiliate report plus revenue by app. Every figure (revenue, orders, payouts) is sample data for layout only.",
+   "fill": "orange"
+  },
+  "super": {
+   "x": 0,
+   "y": 8900,
+   "text": "UltraStore operator - super admin (proposal)",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "super2": {
+   "x": 0,
+   "y": 11300,
+   "text": "UltraStore operator - review, reports, terms",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "supernote": {
+   "x": 4560,
+   "y": 9200,
+   "w": 420,
+   "text": "The operator tier is not in Docs/UltraStore*/README.md yet: it is a proposal for a marketplace where other publishers (merchants) run shops in UltraStore. The operator approves and releases app submissions, handles reports from users and merchants, warns, suspends and reinstates merchants and apps, and keeps every merchant on the current terms of service. Dark sidebar marks the tier. All names, counts and cases are sample data.",
+   "fill": "purple"
+  },
+  "games": {
+   "x": 0,
+   "y": 13700,
+   "text": "UltraStore - games shop variant",
+   "kind": "title1",
+   "maxW": 4950
+  },
+  "gamesnote": {
+   "x": 4560,
+   "y": 15000,
+   "w": 420,
+   "text": "A variant of the shop for computer games: the same chrome, type and shapes, the accent violet #7C3AED (a prop; blue is one click away), covers instead of icons, and the genres Action, 3D, Simulation, Tactics, Adventure, Learning (education, by age), Retro, Board games, Puzzle, Racing, Role-playing, Sports. The game page adds the PEGI rating with descriptors, players and co-op, controller support, system requirements and a demo. The repository has no games proposal: the catalog knows the category 'games' only; genre, age rating, players, input and requirements are proposed fields. Every game, studio, count and [PRICE] is invented sample data.",
+   "fill": "green"
+  },
+  "market": {
+   "x": 0,
+   "y": 17300,
+   "text": "UltraStore - marketplace variant (many sellers, physical goods)",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "marketnote": {
+   "x": 4560,
+   "y": 17600,
+   "w": 420,
+   "text": "A variant of the shop as a general marketplace in the manner of Amazon, eBay or Temu: many verified sellers (the merchants of the store README's marketplace tier) in one basket, physical goods with delivery, returns, star ratings from delivered orders, deals with a countdown, departments instead of categories, and a basket grouped by seller with the checkout steps. The accent is orange #EA580C (a prop). The words are the standard string set's Shopping.json (Basket, Add to basket, Proceed to checkout, Free shipping, Estimated delivery, Deal, Best sellers, Guest checkout, Voucher code, Compare, In stock, Low stock); payment is the store's own, as the store README decides it: the payment service and Skrill Quick Checkout's hosted page, card data never in the marketplace. These variants are UltraStore's own business, not UltraPress's shop module. Nothing of this exists in the catalog or the services yet: products, sellers, prices, ratings, stock, delivery and every figure are invented sample data; the pictures are [PHOTO] placeholders.",
+   "fill": "orange"
+  },
+  "video": {
+   "x": 0,
+   "y": 22900,
+   "text": "UltraStore - video portal variant",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "videonote": {
+   "x": 4560,
+   "y": 23200,
+   "w": 420,
+   "text": "A variant as a video portal in the manner of YouTube or Vimeo: the home with the sections rail, topic chips, the video grid with durations and the watched bar, Shorts, live with a viewer count; the watch page on the UltraCanvas video element (chapters on the seek bar, captions, quality, speed, picture in picture, theatre), the channel with subscribe and support, the description with chapters, comments with a creator's reply, up next and the transcript; the channel page with working sort and kind filters; the Studio with the upload (format check, chapters from UltraVideo's markers, captions from the subtitle track, visibility, licence), the channel figures and the videos table with a copyright claim; the phone's watch page. The accent is red #DC2626 (a prop). What exists: the video element plays a file or a URL (GStreamer, Media Foundation, AVFoundation), poster frames, the codec registry; UltraVideo exports MP4 and WebM. What does not: a portal service (channels, uploads, renditions, comments, subscriptions, support payments through the store's payment service). Every channel, video, count and figure is invented sample data; the ULTRA OS Project channel is the team's own, its videos invented; the pictures are [THUMBNAIL] placeholders.",
+   "fill": "blue"
+  },
+  "music": {
+   "x": 0,
+   "y": 28000,
+   "text": "UltraStore - music streaming variant",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "musicnote": {
+   "x": 4560,
+   "y": 28300,
+   "w": 420,
+   "text": "A variant as a music streaming service in the manner of Spotify: the home with the library rail (playlists, artists, podcasts, downloads), the jump-back-in tiles, mixes made for you, new releases, the charts, podcasts; an album page with the track table, plays, likes, durations, the credits and the artist's share of the subscription; an artist page with popular songs, a working discography filter (albums, singles, live, appears on; newest or oldest), about, tour dates and fans also like; search with working type and genre filters and browse-all; the phone's Now playing with lyrics. The now-playing bar on every desktop page: shuffle, repeat, position, lyrics, queue, the playing device, the quality mark. The accent is green #16A34A (a prop). What exists: UltraCanvas Audio plays WAV, MP3 and FLAC always, OGG, Opus and AAC with the system codecs, gapless through miniaudio, with the audio player element and the analysis for visualisation; subscriptions (monthly, yearly) exist in the store and its payment service. What does not: a streaming service (catalogue, licences, renditions, mixes, downloads, the artists' share). Every artist, album, song, count and figure is invented sample data; the covers are [COVER] placeholders.",
+   "fill": "green"
+  },
+  "account": {
+   "x": 0,
+   "y": 32800,
+   "text": "UltraStore account - sign up and profile (proposal, shared by every shop)",
+   "kind": "title1",
+   "maxW": 4950
+  },
+  "accountnote": {
+   "x": 4560,
+   "y": 34100,
+   "w": 420,
+   "text": "The account every shop on this canvas shares: sign in or create an account (email, password with the strength check, country for VAT and the age rating, year of birth, consent), the email code, the profile basics and what the account keeps, the welcome with two-factor as the next step - the steps work in the script. The account page: profile (avatar, name, handle, the private email, country and year), security (password, two-factor with UltraAuthenticator or any TOTP app with recovery codes, passkeys, sign-in history), devices with the licence seats they hold, notifications, privacy and data (history on the account or on the machine, the data archive, delete the account). Payment methods (a reference to the method through the store's payment service and Skrill Quick Checkout, never the card), subscriptions (monthly, yearly, switch, cancel), purchases and licences with seats and install on a machine, orders and invoices as PDF and XRechnung with returns and credit notes. The phone's account page. A proposal: the store README says the store has no accounts - licences live in registry.sqlite on each machine and the payment service sells without one. An account service would tie licences, subscriptions, the library and the reporter's identity to a person across machines. Every person, device, order and figure is invented sample data.",
+   "fill": "purple"
+  },
+  "account2": {
+   "x": 0,
+   "y": 35600,
+   "text": "UltraStore account - recovery, the operator's users, phone sign-in",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "books": {
+   "x": 0,
+   "y": 37900,
+   "text": "UltraStore - e-book and audiobook shop variant",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "booksnote": {
+   "x": 4560,
+   "y": 38200,
+   "w": 420,
+   "text": "A variant as an e-book and audiobook shop in the manner of Audible: the home with the book of the month in both editions, continue listening and reading with the place kept between the audiobook and the e-book, the genres, the editor's picks, Books Plus (one credit a month through the store's subscription, the book kept), a series with the next part on pre-order, short listens; a title's page with the editions (audiobook, e-book, both kept in step), the narrator, chapters shared by both editions, reviews that say listened or read to the end, the author's and narrator's share of the price; browse with working format, genre, language and Plus filters; the library with progress, the device the place was last kept on, bookmarks and highlights, the files on the machine, this year's hours and pages; the phone's listening screen with chapters, 30-second skips, speed, the sleep timer, bookmark and 'read here'. What exists: UltraViewer reads EPUB, FB2, MOBI, PRC, AZW and AZW3 (UltraCanvasEBookViewer with the chapter toolbar and the table of contents) and PDF; UltraCanvas Audio plays MP3, M4A/M4B (AAC with FAAD2, fdk-aac or the GStreamer plugins) and the rest; the store sells subscriptions through its own payment service and Skrill Quick Checkout. What does not: a book catalogue with editions, narrators, chapters, credits, the kept place and the publishers' share. The shop is UltraStore's own business. Every book, author, narrator, review and figure is invented sample data; the covers are drawn [COVER] placeholders.",
+   "fill": "yellow"
+  },
+  "merchant": {
+   "x": 0,
+   "y": 40700,
+   "text": "UltraStoreAdmin - the merchant's Marketplace page (self-service)",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "merchantnote": {
+   "x": 1520,
+   "y": 41000,
+   "w": 420,
+   "text": "The merchant tier's self-service, built 2026-11-19 (Docs/UltraStore/README.md, The operator tier, 'How does a merchant join?'): a merchant applies for a shop from its admin backend - the shop's name, contact, email, website and a line about the publisher, with the public half of the key that will sign its submissions, the application signed by that key; the operator approves (the merchant registered with that key) or rejects with a reason the applicant reads; once approved the merchant edits its own profile (name, contact, website, description), and rotates its key signed with the old one. The page is drawn with its three states stacked: before a shop, waiting, open. The operator's side is the Applications section on SuperMerchants. Not built: staff accounts per merchant (a key is the identity; a second machine is a second key), the public publisher page beyond the catalog's name and URL, the finance design's VAT by country and statements archive.",
+   "fill": "blue"
+  },
+  "operatorsnote": {
+   "x": 4560,
+   "y": 35900,
+   "w": 420,
+   "text": "The operator accounts with roles, built 2026-11-19 (Docs/UltraStore/README.md, The operator tier, 'Who sits at the operator's window?'): the marketplace service keeps the accounts (email, scrypt password, a role: admin, reviewer, support, auditor) and signs a session at sign-in that the account service verifies with the shared secret, so one sign-in reaches both with the same name and role; every operator call carries a permission and the audit log names the person. The static operator token of each service is the bootstrap admin that makes the first account. The window signs in on its Settings page, shows who and which role in the sidebar, and has the Operators page; the command line has signin, whoami, operator and signout. Not built: two-factor for operators, a password reset by mail (an admin sets a new password), per-merchant staff.",
+   "fill": "blue"
+  },
+  "trade": {
+   "x": 0,
+   "y": 43700,
+   "text": "UltraStore - B2B trade variant (manufacturers and bulk buyers)",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "tradenote": {
+   "x": 4560,
+   "y": 44000,
+   "w": 420,
+   "fill": "green",
+   "text": "A variant as a business-to-business sourcing marketplace in the manner of Alibaba: the home with a products / suppliers search, a request-for-quotation box, categories, ready-to-ship products priced by quantity tier with the minimum order, verified suppliers and the trade-assurance steps; a product with the three price tiers, a quantity that picks the tier and computes goods, pallet shipping, the total and the 30 % deposit, samples, the specification, the supplier's record; a supplier's profile with what the operator verified (register, VAT id, factory visit, ISO certificates), capabilities, main products and an inquiry form; the buyer desk with a request's quotes compared and sorted (landed cost, unit price, lead time, minimum), 'ask back' and 'award', the award turning into an order whose money sits in escrow until receipt; the phone's source screen. What exists: merchants and their verification by the operator (Super: Merchants), the store's payment service with subscriptions and refunds, the marketplace service with submissions and review. What does not: company buyer accounts, quantity price tiers, requests for quotation and quotes, escrow with milestones, inspection reports and disputes - every order here is a contract the store would have to hold. Every supplier, product, price and figure is invented sample data; the photos are gradient placeholders."
+  }
+ },
+ "designSystems": []
 }
