@@ -86423,10 +86423,14 @@ double ratio = UltraCanvasTheme::Contrast(derived.onAccent, derived.accent);   /
 ```
 
 `DeriveAccent` keeps the readability the test enforces: text on the
-accent is white or the dark ink, whichever reads better, and the accent is
-moved toward black or white a step at a time until that text reaches
-4.5:1 (7:1 for high contrast) - a yellow or a mid-grey accent is nudged, a
-blue stays itself; `accentHover` is the accent moved 8 % toward the ink;
+accent is white on any accent white already reaches 3:1 on - the blues,
+reds, purples, oranges and mid greens a desktop offers - and the dark ink
+only on a light accent (yellow, light cyan, a pastel). WCAG 2 contrast
+alone would put black on the Windows blue `0,120,215` (4.67:1 against
+white's 4.499:1), which is hard to read; so the accent is moved toward
+black (white text) or white (dark ink) a step at a time until the text
+reaches 4.5:1 (7:1 for high contrast) - that blue becomes `0,113,202`, a
+yellow stays itself; `accentHover` is the accent moved 8 % toward the ink;
 `accentSoft` the accent at 18 % over the panel when dark, 14 % when light;
 `focus` the accent unless it fails 3:1 on the ground, then `lineStrong`.
 
