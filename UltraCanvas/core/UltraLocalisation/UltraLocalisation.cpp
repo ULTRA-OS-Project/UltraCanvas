@@ -3,9 +3,10 @@
 // with the vendored yyjson engine directly, as UltraWin's QMP client does,
 // so the archive stands without the core; the format is the one
 // UltraCanvasLocalisationProposal.md §4 shows.
+// Version: 1.2.0 - phase L6: numbers, dates and times in the person's conventions; TrF's numbers in the language's digits and decimal separator, TrN's count grouped
 // Version: 1.1.0 - the plural rules of Breton, Scottish Gaelic, Manx, Cornish, Tachelhit, Tamazight, Filipino, Colognian, the Sami languages, Hebrew's many, pt-PT
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -15,6 +16,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -109,6 +112,11 @@ struct State {
     bool basesGiven = false;
     std::vector<std::string> libraries;       // AddSet
     std::vector<Layer> layers;                // lookup order
+    LocaleFormats regional;                   // SetRegionalFormats: the platform's
+    bool regionalGiven = false;
+    std::string formatsTag = "en";            // the language's regional tag: "en-GB" while the catalogue is "en"
+    bool languageFromDesktop = false;         // chosen from the desktop's languages, not by --lang or a setting
+    LocaleFormats formats;                    // what the Format... calls use, worked out when any of the above changes
     struct Handler { int id; UltraLocalisation::ChangeHandler fn; };
     std::vector<Handler> handlers;
     int nextHandler = 1;
@@ -425,7 +433,12 @@ std::string UltraLocalisation::NativeName(const std::string& language) {
     return CanonicalTag(language);
 }
 
-std::string UltraLocalisation::ChooseLanguage(const std::vector<std::string>& systemLanguages) {
+namespace {
+
+// ChooseLanguage, with where the answer came from: `formatsTag` is the tag
+// the numbers and dates are written for (the desktop's "en-GB" that found
+// the "en" catalogue), `fromDesktop` whether the person chose nothing here.
+std::string ChooseLanguageFrom(const std::vector<std::string>& systemLanguages, std::string& formatsTag, bool& fromDesktop) {
     State& st = S();
     std::string override, settings;
     {
@@ -433,22 +446,60 @@ std::string UltraLocalisation::ChooseLanguage(const std::vector<std::string>& sy
         override = st.languageOverride;
         settings = st.settings;
     }
-    if (!override.empty()) return override;
+    fromDesktop = false;
+    if (!override.empty()) { formatsTag = override; return override; }
     const std::string env = GetEnvUtf8("ULTRACANVAS_LANG");
-    if (!env.empty()) return CanonicalTag(env);
+    if (!env.empty()) { formatsTag = CanonicalTag(env); return formatsTag; }
     const LanguageSettings conf = LanguageSettings::Load(settings);
-    if (!conf.language.empty() && conf.language != "system") return conf.language;
-    const std::vector<std::string> available = AvailableLanguages();
+    if (!conf.language.empty() && conf.language != "system") { formatsTag = conf.language; return conf.language; }
+    fromDesktop = true;
+    const std::vector<std::string> available = UltraLocalisation::AvailableLanguages();
     for (const std::string& wanted : systemLanguages) {
         for (const std::string& tag : FallbackWalk(wanted)) {
-            if (std::find(available.begin(), available.end(), tag) != available.end()) return tag;
+            if (std::find(available.begin(), available.end(), tag) != available.end()) {
+                formatsTag = CanonicalTag(wanted);
+                return tag;
+            }
         }
     }
+    formatsTag = systemLanguages.empty() ? std::string("en") : CanonicalTag(systemLanguages.front());
     return "en";
 }
 
+std::string BaseOf(const std::string& tag) {
+    const std::vector<std::string> walk = FallbackWalk(tag);
+    return Lower(walk.empty() ? std::string() : walk.back());
+}
+
+// The formats the calls use, from the state; the caller holds the lock.
+void UpdateFormats(State& st) {
+    if (st.regionalGiven && !st.regional.language.empty() &&
+        (st.languageFromDesktop || BaseOf(st.regional.language) == BaseOf(st.language))) {
+        st.formats = st.regional;
+        return;
+    }
+    st.formats = UltraLocalisation::FormatsFor(st.formatsTag.empty() ? st.language : st.formatsTag);
+}
+
+}  // namespace
+
+std::string UltraLocalisation::ChooseLanguage(const std::vector<std::string>& systemLanguages) {
+    std::string formatsTag;
+    bool fromDesktop = false;
+    return ChooseLanguageFrom(systemLanguages, formatsTag, fromDesktop);
+}
+
 bool UltraLocalisation::Initialize(const std::string& application, const std::vector<std::string>& systemLanguages) {
-    return Load(ChooseLanguage(systemLanguages), application);
+    std::string formatsTag;
+    bool fromDesktop = false;
+    const std::string language = ChooseLanguageFrom(systemLanguages, formatsTag, fromDesktop);
+    const bool ok = Load(language, application);
+    State& st = S();
+    std::unique_lock lock(st.mutex);
+    st.formatsTag = formatsTag;
+    st.languageFromDesktop = fromDesktop;
+    UpdateFormats(st);
+    return ok;
 }
 
 bool UltraLocalisation::Load(const std::string& language, const std::string& application) {
@@ -458,6 +509,9 @@ bool UltraLocalisation::Load(const std::string& language, const std::string& app
     st.language = tag;
     st.application = application;
     st.layers.clear();
+    st.formatsTag = tag;
+    st.languageFromDesktop = false;
+    UpdateFormats(st);
     const bool english = Lower(tag) == "en";
     bool any = false;
     std::vector<std::string> bases = st.basesGiven ? st.basesSet : BasesFromCatalogue(st, tag, application);
@@ -591,6 +645,11 @@ void UltraLocalisation::Reset() {
     st.libraries.clear();
     st.layers.clear();
     st.handlers.clear();
+    st.regional = LocaleFormats{};
+    st.regionalGiven = false;
+    st.formatsTag = "en";
+    st.languageFromDesktop = false;
+    st.formats = LocaleFormats{};
 }
 
 // ===== PLURALS =====
@@ -705,6 +764,532 @@ std::string UltraLocalisation::PluralCategory(const std::string& language, long 
     return n == 1 ? "one" : "other";
 }
 
+// ===== NUMBERS, DATES AND TIMES =====
+
+namespace {
+
+// The separators CLDR writes, spelled as bytes so the table reads the same
+// whatever the compiler's source charset.
+#define UC_NBSP "\xC2\xA0"          // U+00A0 no-break space
+#define UC_NNBSP "\xE2\x80\xAF"     // U+202F narrow no-break space
+#define UC_RSQUO "\xE2\x80\x99"     // U+2019, the Swiss group separator
+#define UC_RLM "\xE2\x80\x8F"       // U+200F right-to-left mark
+
+const char* const kArabicIndicDigits = "\xD9\xA0\xD9\xA1\xD9\xA2\xD9\xA3\xD9\xA4\xD9\xA5\xD9\xA6\xD9\xA7\xD9\xA8\xD9\xA9";
+
+// One region's conventions, from CLDR: the decimal and group separators,
+// the group sizes and the fewest digits worth grouping, the percent
+// pattern, the three date patterns, the two time patterns, how a date and a
+// time are joined, the digits.
+struct FormatRow {
+    const char* tag;
+    const char* decimal;
+    const char* group;
+    int groupSize, secondaryGroupSize, minimumGroupingDigits;
+    const char* percent;
+    const char* shortDate;
+    const char* longDate;
+    const char* fullDate;
+    const char* shortTime;
+    const char* mediumTime;
+    const char* join;
+    const char* digits;
+};
+
+const FormatRow kFormatRows[] = {
+    {"en", ".", ",", 3, 3, 1, "{0}%", "M/d/y", "MMMM d, y", "EEEE, MMMM d, y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"en-GB", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"en-IE", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"en-AU", ".", ",", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"en-NZ", ".", ",", 3, 3, 1, "{0}%", "d/MM/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"en-CA", ".", ",", 3, 3, 1, "{0}%", "y-MM-dd", "MMMM d, y", "EEEE, MMMM d, y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"en-IN", ".", ",", 3, 2, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"en-ZA", ",", UC_NBSP, 3, 3, 1, "{0}%", "y/MM/dd", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"de", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"de-AT", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"de-CH", ".", UC_RSQUO, 3, 3, 1, "{0}%", "dd.MM.y", "d. MMMM y", "EEEE, d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"fr", ",", UC_NNBSP, 3, 3, 1, "{0}" UC_NNBSP "%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"fr-CA", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "y-MM-dd", "d MMMM y", "EEEE d MMMM y", "HH 'h' mm", "HH 'h' mm 'min' ss 's'", "{1} {0}", ""},
+    {"fr-CH", ",", UC_NNBSP, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"es", ",", ".", 3, 3, 2, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", ""},
+    {"es-MX", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", ""},
+    {"es-US", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"es-419", ".", ",", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"it", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"it-CH", ".", UC_RSQUO, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"nl", ",", ".", 3, 3, 1, "{0}%", "dd-MM-y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"nl-BE", ",", ".", 3, 3, 1, "{0}%", "d/MM/y", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"pt", ",", UC_NBSP, 3, 3, 2, "{0}%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"pt-BR", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d 'de' MMMM 'de' y", "EEEE, d 'de' MMMM 'de' y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"ja", ".", ",", 3, 3, 1, "{0}%", "y/MM/dd", "y年M月d日", "y年M月d日EEEE", "H:mm", "H:mm:ss", "{1} {0}", ""},
+    {"zh", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日EEEE", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"zh-Hant", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日 EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", ""},
+    {"zh-TW", ".", ",", 3, 3, 1, "{0}%", "y/M/d", "y年M月d日", "y年M月d日 EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", ""},
+    {"zh-Hant-HK", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "y年M月d日", "y年M月d日EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", ""},
+    {"zh-HK", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "y年M月d日", "y年M月d日EEEE", "ah:mm", "ah:mm:ss", "{1} {0}", ""},
+    {"ko", ".", ",", 3, 3, 1, "{0}%", "y. M. d.", "y년 M월 d일", "y년 M월 d일 EEEE", "a h:mm", "a h:mm:ss", "{1} {0}", ""},
+    {"ru", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d MMMM y 'г'.", "EEEE, d MMMM y 'г'.", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"uk", ",", UC_NBSP, 3, 3, 1, "{0}%", "dd.MM.y", "d MMMM y 'р'.", "EEEE, d MMMM y 'р'.", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"pl", ",", UC_NBSP, 3, 3, 2, "{0}%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"cs", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d. M. y", "d. MMMM y", "EEEE d. MMMM y", "H:mm", "H:mm:ss", "{1} {0}", ""},
+    {"sk", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d. M. y", "d. MMMM y", "EEEE d. MMMM y", "H:mm", "H:mm:ss", "{1} {0}", ""},
+    {"sv", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "y-MM-dd", "d MMMM y", "EEEE d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"da", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE 'den' d. MMMM y", "HH.mm", "HH.mm.ss", "{1} {0}", ""},
+    {"nb", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"no", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"nn", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d. MMMM y", "EEEE d. MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"fi", ",", UC_NBSP, 3, 3, 1, "{0}" UC_NBSP "%", "d.M.y", "d. MMMM y", "EEEE d. MMMM y", "H.mm", "H.mm.ss", "{1} {0}", ""},
+    {"tr", ",", ".", 3, 3, 1, "%{0}", "dd.MM.y", "d MMMM y", "d MMMM y EEEE", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"el", ",", ".", 3, 3, 1, "{0}%", "d/M/y", "d MMMM y", "EEEE d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"ar", "\xD9\xAB", "\xD9\xAC", 3, 3, 1, "{0}\xD9\xAA\xD8\x9C", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y",
+     "h:mm a", "h:mm:ss a", "{1} {0}", kArabicIndicDigits},
+    {"ar-MA", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"ar-DZ", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "h:mm a", "h:mm:ss a", "{1} {0}", ""},
+    {"ar-TN", ",", ".", 3, 3, 1, "{0}%", "d" UC_RLM "/M" UC_RLM "/y", "d MMMM y", "EEEE\xD8\x8C d MMMM y", "h:mm a", "h:mm:ss a", "{1} {0}", ""},
+    {"he", ".", ",", 3, 3, 1, "{0}%", "d.M.y", "d בMMMM y", "EEEE, d בMMMM y", "H:mm", "H:mm:ss", "{1}, {0}", ""},
+    {"hu", ",", UC_NBSP, 3, 3, 1, "{0}%", "y. MM. dd.", "y. MMMM d.", "y. MMMM d., EEEE", "H:mm", "H:mm:ss", "{1} {0}", ""},
+    {"ro", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "dd.MM.y", "d MMMM y", "EEEE, d MMMM y", "HH:mm", "HH:mm:ss", "{1}, {0}", ""},
+    {"hi", ".", ",", 3, 2, 1, "{0}%", "d/M/y", "d MMMM y", "EEEE, d MMMM y", "h:mm a", "h:mm:ss a", "{1}, {0}", ""},
+    {"id", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM y", "EEEE, d MMMM y", "HH.mm", "HH.mm.ss", "{1} {0}", ""},
+    {"vi", ",", ".", 3, 3, 1, "{0}%", "dd/MM/y", "d MMMM, y", "EEEE, d MMMM, y", "HH:mm", "HH:mm:ss", "{0} {1}", ""},
+    {"th", ".", ",", 3, 3, 1, "{0}%", "d/M/y", "d MMMM y", "EEEEที่ d MMMM y", "HH:mm", "HH:mm:ss", "{1} {0}", ""},
+    {"ca", ",", ".", 3, 3, 1, "{0}" UC_NBSP "%", "d/M/y", "d MMMM 'de' y", "EEEE, d MMMM 'de' y", "H:mm", "H:mm:ss", "{1}, {0}", ""},
+};
+
+LocaleFormats FormatsOfRow(const FormatRow& r) {
+    LocaleFormats f;
+    f.decimalSeparator = r.decimal;
+    f.groupSeparator = r.group;
+    f.groupSize = r.groupSize;
+    f.secondaryGroupSize = r.secondaryGroupSize;
+    f.minimumGroupingDigits = r.minimumGroupingDigits;
+    f.digits = r.digits;
+    f.percentPattern = r.percent;
+    f.shortDate = r.shortDate;
+    f.longDate = r.longDate;
+    f.fullDate = r.fullDate;
+    f.shortTime = r.shortTime;
+    f.mediumTime = r.mediumTime;
+    f.dateTimePattern = r.join;
+    return f;
+}
+
+LocaleFormats CurrentFormats() {
+    State& st = S();
+    std::shared_lock lock(st.mutex);
+    return st.formats;
+}
+
+// The ten digits of a LocaleFormats, each a UTF-8 sequence; empty for the
+// ASCII ones (or a `digits` that does not hold ten).
+std::vector<std::string> DigitsOf(const std::string& digits) {
+    std::vector<std::string> out;
+    for (size_t i = 0; i < digits.size();) {
+        const unsigned char c = static_cast<unsigned char>(digits[i]);
+        const size_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 1;
+        out.push_back(digits.substr(i, len));
+        i += len;
+    }
+    if (out.size() != 10) out.clear();
+    return out;
+}
+
+// ASCII digits in `text` as the language writes them.
+std::string LocaliseDigits(const std::string& text, const LocaleFormats& f) {
+    if (f.digits.empty()) return text;
+    const std::vector<std::string> digits = DigitsOf(f.digits);
+    if (digits.empty()) return text;
+    std::string out;
+    for (char c : text) {
+        if (c >= '0' && c <= '9') out += digits[static_cast<size_t>(c - '0')];
+        else out += c;
+    }
+    return out;
+}
+
+// "1234567" grouped: "1.234.567", "12,34,567" in India; whole while it has
+// fewer digits than a group and the minimum.
+std::string GroupDigits(const std::string& digits, const LocaleFormats& f) {
+    const size_t first = static_cast<size_t>(std::max(1, f.groupSize));
+    const size_t rest = static_cast<size_t>(std::max(1, f.secondaryGroupSize));
+    const size_t minimum = static_cast<size_t>(std::max(1, f.minimumGroupingDigits));
+    if (f.groupSeparator.empty() || f.groupSize <= 0 || digits.size() < first + minimum) return digits;
+    std::vector<std::string> groups;
+    size_t end = digits.size();
+    size_t size = first;
+    while (end > 0) {
+        const size_t start = end > size ? end - size : 0;
+        groups.push_back(digits.substr(start, end - start));
+        end = start;
+        size = rest;
+    }
+    std::string out;
+    for (size_t i = groups.size(); i-- > 0;) {
+        out += groups[i];
+        if (i > 0) out += f.groupSeparator;
+    }
+    return out;
+}
+
+std::string FormatIntegerWith(long long value, const LocaleFormats& f) {
+    const bool negative = value < 0;
+    const unsigned long long magnitude = negative ? 0ULL - static_cast<unsigned long long>(value) : static_cast<unsigned long long>(value);
+    return LocaliseDigits((negative ? "-" : "") + GroupDigits(std::to_string(magnitude), f), f);
+}
+
+// Exactly `decimals` digits after the separator; grouped when `group`.
+std::string FormatNumberWith(double value, int decimals, const LocaleFormats& f, bool group) {
+    if (std::isnan(value)) return "NaN";
+    if (std::isinf(value)) return value < 0 ? "-\xE2\x88\x9E" : "\xE2\x88\x9E";
+    decimals = std::clamp(decimals, 0, 15);
+    // The digits in the classic locale, whatever LC_NUMERIC and the global
+    // C++ locale say; the separators are put in below.
+    std::ostringstream stream;
+    stream.imbue(std::locale::classic());
+    stream.setf(std::ios::fixed);
+    stream.precision(decimals);
+    stream << value;
+    std::string text = stream.str();
+    bool negative = false;
+    if (!text.empty() && text[0] == '-') { negative = true; text.erase(0, 1); }
+    const size_t dot = text.find('.');
+    std::string whole = dot == std::string::npos ? text : text.substr(0, dot);
+    const std::string fraction = dot == std::string::npos ? std::string() : text.substr(dot + 1);
+    if (negative && whole.find_first_not_of('0') == std::string::npos && fraction.find_first_not_of('0') == std::string::npos)
+        negative = false;   // -0,0 is 0,0
+    std::string out = negative ? "-" : "";
+    out += group ? GroupDigits(whole, f) : whole;
+    if (!fraction.empty()) out += f.decimalSeparator + fraction;
+    return LocaliseDigits(out, f);
+}
+
+std::string Padded(int value, int width) {
+    std::string s = std::to_string(value < 0 ? -value : value);
+    while (static_cast<int>(s.size()) < width) s.insert(s.begin(), '0');
+    return value < 0 ? "-" + s : s;
+}
+
+// 0 for Sunday, Sakamoto's method.
+int WeekdayOf(int year, int month, int day) {
+    static const int offsets[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+    if (month < 1 || month > 12) return 0;
+    if (month < 3) --year;
+    const int w = (year + year / 4 - year / 100 + year / 400 + offsets[month - 1] + day) % 7;
+    return w < 0 ? w + 7 : w;
+}
+
+const char* const kMonthNames[] = {"January", "February", "March", "April", "May", "June", "July",
+                                   "August", "September", "October", "November", "December"};
+const char* const kMonthShort[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+const char* const kWeekdayNames[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+const char* const kWeekdayShort[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+
+bool IsPatternLetter(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+
+// A CLDR pattern written out with the formats' digits and the standard
+// set's words.
+std::string FormatPatternWith(const CalendarTime& when, const std::string& pattern, const LocaleFormats& f) {
+    const int month = std::clamp(when.month, 1, 12);
+    const int weekday = when.weekday >= 0 && when.weekday <= 6 ? when.weekday : WeekdayOf(when.year, when.month, when.day);
+    std::string out;
+    for (size_t i = 0; i < pattern.size();) {
+        const char c = pattern[i];
+        if (c == '\'') {
+            if (i + 1 < pattern.size() && pattern[i + 1] == '\'') { out += '\''; i += 2; continue; }
+            ++i;
+            while (i < pattern.size()) {
+                if (pattern[i] == '\'') {
+                    if (i + 1 < pattern.size() && pattern[i + 1] == '\'') { out += '\''; i += 2; continue; }
+                    ++i;
+                    break;
+                }
+                out += pattern[i++];
+            }
+            continue;
+        }
+        if (!IsPatternLetter(c)) { out += c; ++i; continue; }
+        size_t n = 1;
+        while (i + n < pattern.size() && pattern[i + n] == c) ++n;
+        i += n;
+        auto number = [&](int value, size_t width) { out += LocaliseDigits(Padded(value, static_cast<int>(width)), f); };
+        switch (c) {
+            case 'y': case 'u':
+                if (n == 2) number(((when.year % 100) + 100) % 100, 2);
+                else number(when.year, n);
+                break;
+            case 'M': case 'L':
+                if (n <= 2) number(month, n);
+                else if (n == 3) out += TrC("month-short", kMonthShort[month - 1]);
+                else out += TrC(c == 'M' ? "date-month" : "month", kMonthNames[month - 1]);
+                break;
+            case 'd': number(when.day, std::min<size_t>(n, 2)); break;
+            case 'E': case 'c': case 'e':
+                if (n <= 2 && c != 'E') break;   // the numeric weekday: not written
+                if (n <= 3) out += TrC("weekday", kWeekdayShort[weekday]);
+                else out += TrC("date-weekday", kWeekdayNames[weekday]);
+                break;
+            case 'H': number(when.hour, std::min<size_t>(n, 2)); break;
+            case 'k': number(when.hour == 0 ? 24 : when.hour, std::min<size_t>(n, 2)); break;
+            case 'h': number(when.hour % 12 == 0 ? 12 : when.hour % 12, std::min<size_t>(n, 2)); break;
+            case 'K': number(when.hour % 12, std::min<size_t>(n, 2)); break;
+            case 'm': number(when.minute, std::min<size_t>(n, 2)); break;
+            case 's': number(when.second, std::min<size_t>(n, 2)); break;
+            case 'a': case 'b': case 'B': out += TrC("time", when.hour < 12 ? "AM" : "PM"); break;
+            default: break;   // the era, the time zone, the quarter, fractions: not written
+        }
+    }
+    // A field left out (an era, a zone) leaves its spaces behind
+    std::string tidy;
+    for (char ch : out) {
+        if (ch == ' ' && (tidy.empty() || tidy.back() == ' ')) continue;
+        tidy += ch;
+    }
+    while (!tidy.empty() && tidy.back() == ' ') tidy.pop_back();
+    return tidy;
+}
+
+std::string JoinDateTime(const std::string& date, const std::string& time, const LocaleFormats& f) {
+    const std::string pattern = f.dateTimePattern.empty() ? std::string("{1} {0}") : f.dateTimePattern;
+    return LocalisationDetail::Substitute(pattern, {time, date});
+}
+
+// A literal piece of a converted pattern: its runs of letters quoted, a
+// quote doubled.
+void AppendLiteral(std::string& out, const std::string& literal) {
+    bool open = false;
+    for (char c : literal) {
+        if (IsPatternLetter(c) != open) { out += '\''; open = !open; }
+        if (c == '\'') out += "''";
+        else out += c;
+    }
+    if (open) out += '\'';
+}
+
+}  // namespace
+
+LocaleFormats UltraLocalisation::FormatsFor(const std::string& language) {
+    const std::string canonical = CanonicalTag(language.empty() ? std::string("en") : language);
+    for (const std::string& tag : FallbackWalk(canonical)) {
+        for (const FormatRow& row : kFormatRows) {
+            if (Lower(row.tag) == Lower(tag)) {
+                LocaleFormats f = FormatsOfRow(row);
+                f.language = canonical;
+                return f;
+            }
+        }
+    }
+    LocaleFormats f;
+    f.language = canonical;
+    return f;
+}
+
+LocaleFormats UltraLocalisation::Formats() { return CurrentFormats(); }
+
+void UltraLocalisation::SetRegionalFormats(const LocaleFormats& formats) {
+    State& st = S();
+    std::unique_lock lock(st.mutex);
+    st.regional = formats;
+    if (!st.regional.language.empty()) st.regional.language = CanonicalTag(st.regional.language);
+    st.regionalGiven = !formats.language.empty();
+    UpdateFormats(st);
+}
+
+LocaleFormats UltraLocalisation::RegionalFormats() {
+    State& st = S();
+    std::shared_lock lock(st.mutex);
+    if (st.regionalGiven) return st.regional;
+    LocaleFormats none;
+    none.language.clear();
+    return none;
+}
+
+std::string UltraLocalisation::FormatNumber(double value, int decimals) {
+    return FormatNumberWith(value, decimals, CurrentFormats(), true);
+}
+
+std::string UltraLocalisation::FormatInteger(long long value) { return FormatIntegerWith(value, CurrentFormats()); }
+
+std::string UltraLocalisation::FormatPercent(double fraction, int decimals) {
+    const LocaleFormats f = CurrentFormats();
+    const std::string number = FormatNumberWith(fraction * 100.0, decimals, f, true);
+    return LocalisationDetail::Substitute(f.percentPattern.empty() ? std::string("{0}%") : f.percentPattern, {number});
+}
+
+std::string UltraLocalisation::FormatFileSize(unsigned long long bytes) {
+    if (bytes < 1024) return TrN("{n} byte", "{n} bytes", static_cast<long long>(bytes));
+    static const char* const units[] = {"KB", "MB", "GB", "TB"};
+    double value = static_cast<double>(bytes) / 1024.0;
+    size_t unit = 0;
+    // 1023,96 KB rounds to "1024,0 KB": the next unit says it better
+    while (unit + 1 < sizeof units / sizeof units[0] && value >= 1023.95) { value /= 1024.0; ++unit; }
+    return FormatNumberWith(value, 1, CurrentFormats(), true) + " " + Tr(units[unit]);
+}
+
+CalendarTime UltraLocalisation::LocalTime(std::time_t when) {
+    std::tm parts{};
+#if defined(_WIN32)
+    localtime_s(&parts, &when);
+#else
+    localtime_r(&when, &parts);
+#endif
+    CalendarTime t;
+    t.year = parts.tm_year + 1900;
+    t.month = parts.tm_mon + 1;
+    t.day = parts.tm_mday;
+    t.weekday = parts.tm_wday;
+    t.hour = parts.tm_hour;
+    t.minute = parts.tm_min;
+    t.second = parts.tm_sec;
+    return t;
+}
+
+std::string UltraLocalisation::FormatPattern(const CalendarTime& when, const std::string& pattern) {
+    return FormatPatternWith(when, pattern, CurrentFormats());
+}
+
+std::string UltraLocalisation::FormatDate(const CalendarTime& when, DateStyle style) {
+    const LocaleFormats f = CurrentFormats();
+    const std::string& pattern = style == DateStyle::Short ? f.shortDate : style == DateStyle::Long ? f.longDate : f.fullDate;
+    return FormatPatternWith(when, pattern, f);
+}
+
+std::string UltraLocalisation::FormatTime(const CalendarTime& when, TimeStyle style) {
+    const LocaleFormats f = CurrentFormats();
+    return FormatPatternWith(when, style == TimeStyle::Short ? f.shortTime : f.mediumTime, f);
+}
+
+std::string UltraLocalisation::FormatDateTime(const CalendarTime& when, DateStyle date, TimeStyle time) {
+    const LocaleFormats f = CurrentFormats();
+    return JoinDateTime(FormatDate(when, date), FormatTime(when, time), f);
+}
+
+std::string UltraLocalisation::FormatDate(std::time_t when, DateStyle style) { return FormatDate(LocalTime(when), style); }
+std::string UltraLocalisation::FormatTime(std::time_t when, TimeStyle style) { return FormatTime(LocalTime(when), style); }
+std::string UltraLocalisation::FormatDateTime(std::time_t when, DateStyle date, TimeStyle time) {
+    return FormatDateTime(LocalTime(when), date, time);
+}
+
+std::string UltraLocalisation::DecimalSeparator() { return CurrentFormats().decimalSeparator; }
+std::string UltraLocalisation::GroupSeparator() { return CurrentFormats().groupSeparator; }
+
+std::string UltraLocalisation::PatternFromStrftime(const std::string& format) {
+    std::string out, literal;
+    auto field = [&](const char* ldml) { AppendLiteral(out, literal); literal.clear(); out += ldml; };
+    for (size_t i = 0; i < format.size(); ++i) {
+        if (format[i] != '%' || i + 1 >= format.size()) { literal += format[i]; continue; }
+        size_t j = i + 1;
+        bool unpadded = false;
+        // glibc's flags and the E / O modifiers
+        while (j < format.size() && std::strchr("-_0^#EO", format[j])) { unpadded = unpadded || format[j] == '-'; ++j; }
+        if (j >= format.size()) break;
+        i = j;
+        switch (format[j]) {
+            case 'd': field(unpadded ? "d" : "dd"); break;
+            case 'e': field("d"); break;
+            case 'm': field(unpadded ? "M" : "MM"); break;
+            case 'Y': case 'G': field("y"); break;
+            case 'y': case 'g': field("yy"); break;
+            case 'b': case 'h': field("MMM"); break;
+            case 'B': field("MMMM"); break;
+            case 'a': field("EEE"); break;
+            case 'A': field("EEEE"); break;
+            case 'H': field(unpadded ? "H" : "HH"); break;
+            case 'k': field("H"); break;
+            case 'I': field(unpadded ? "h" : "hh"); break;
+            case 'l': field("h"); break;
+            case 'M': field(unpadded ? "m" : "mm"); break;
+            case 'S': field(unpadded ? "s" : "ss"); break;
+            case 'p': case 'P': field("a"); break;
+            case 'r': field("hh:mm:ss a"); break;
+            case 'R': field("HH:mm"); break;
+            case 'T': field("HH:mm:ss"); break;
+            case 'D': field("MM/dd/yy"); break;
+            case 'F': field("y-MM-dd"); break;
+            case 'n': case 't': literal += ' '; break;
+            case '%': literal += '%'; break;
+            default: break;   // %Z, %z, %C, %j, %U ...: nothing a date of ours writes
+        }
+    }
+    AppendLiteral(out, literal);
+    return out;
+}
+
+std::string UltraLocalisation::PatternFromWindows(const std::string& picture) {
+    std::string out;
+    for (size_t i = 0; i < picture.size();) {
+        const char c = picture[i];
+        if (c == '\'') {
+            // A quoted piece is the same in both: copy it through its closing quote
+            out += c;
+            ++i;
+            while (i < picture.size()) {
+                out += picture[i];
+                if (picture[i] == '\'') {
+                    if (i + 1 < picture.size() && picture[i + 1] == '\'') { out += '\''; i += 2; continue; }
+                    ++i;
+                    break;
+                }
+                ++i;
+            }
+            continue;
+        }
+        if (!IsPatternLetter(c)) { out += c; ++i; continue; }
+        size_t n = 1;
+        while (i + n < picture.size() && picture[i + n] == c) ++n;
+        i += n;
+        switch (c) {
+            case 'd': out += n >= 4 ? "EEEE" : n == 3 ? "EEE" : n == 2 ? "dd" : "d"; break;
+            case 'M': out += std::string(std::min<size_t>(n, 4), 'M'); break;
+            case 'y': out += n >= 3 ? "y" : "yy"; break;
+            case 'h': case 'H': case 'm': case 's': out += std::string(std::min<size_t>(n, 2), c); break;
+            case 't': out += 'a'; break;
+            case 'g': break;   // the era
+            default: AppendLiteral(out, std::string(n, c)); break;
+        }
+    }
+    return out;
+}
+
+std::string UltraLocalisation::PatternWithoutSeconds(const std::string& pattern) {
+    std::string out;
+    bool quoted = false;
+    for (size_t i = 0; i < pattern.size(); ++i) {
+        const char c = pattern[i];
+        if (c == '\'') { quoted = !quoted; out += c; continue; }
+        if (!quoted && c == 's') {
+            while (i + 1 < pattern.size() && pattern[i + 1] == 's') ++i;
+            // the separator before the seconds goes with them
+            while (!out.empty() && (out.back() == ':' || out.back() == '.' || out.back() == ',')) out.pop_back();
+            continue;
+        }
+        out += c;
+    }
+    return out;
+}
+
+std::string UltraLocalisation::PatternWithFullYear(const std::string& pattern) {
+    std::string out;
+    bool quoted = false;
+    for (size_t i = 0; i < pattern.size(); ++i) {
+        const char c = pattern[i];
+        if (c == '\'') quoted = !quoted;
+        if (!quoted && c == 'y') {
+            size_t n = 1;
+            while (i + n < pattern.size() && pattern[i + n] == 'y') ++n;
+            out += n == 2 ? std::string("y") : std::string(n, 'y');
+            i += n - 1;
+            continue;
+        }
+        out += c;
+    }
+    return out;
+}
+
+#undef UC_NBSP
+#undef UC_NNBSP
+#undef UC_RSQUO
+#undef UC_RLM
+
 // ===== THE CALLS =====
 
 std::string Tr(std::string_view source) {
@@ -728,7 +1313,7 @@ std::string TrC(std::string_view context, std::string_view source) {
 
 std::string TrN(std::string_view singular, std::string_view plural, long long count) {
     State& st = S();
-    std::string countText = LocalisationDetail::ArgText(count);
+    const std::string countText = UltraLocalisation::FormatInteger(count);   // a count is a quantity: grouped
     std::shared_lock lock(st.mutex);
     const std::string key(singular);
     for (const Layer& layer : st.layers) {
@@ -769,22 +1354,32 @@ std::string Substitute(std::string_view text, const std::vector<std::string>& ar
 }
 
 std::string ArgText(std::string_view value) { return std::string(value); }
-std::string ArgText(long long value) { return std::to_string(value); }
-std::string ArgText(unsigned long long value) { return std::to_string(value); }
+// A number argument in the language's digits and decimal separator,
+// ungrouped: it is as often a year, a port or a line number as a quantity,
+// and "Port 8.080" would be wrong where "1.234 Dateien" is right (TrN and
+// FormatInteger group).
+std::string ArgText(long long value) { return LocaliseDigits(std::to_string(value), CurrentFormats()); }
+std::string ArgText(unsigned long long value) { return LocaliseDigits(std::to_string(value), CurrentFormats()); }
 std::string ArgText(double value) {
-    // dot-decimal whatever LC_NUMERIC says: formatted in the classic locale,
-    // six significant decimals, trailing zeros dropped
+    // six decimals at most, the trailing zeros dropped, then the language's
+    // separator and digits
+    if (std::isnan(value) || std::isinf(value)) return FormatNumberWith(value, 0, CurrentFormats(), false);
     std::ostringstream out;
     out.imbue(std::locale::classic());
     out.setf(std::ios::fixed);
     out.precision(6);
     out << value;
     std::string s = out.str();
-    if (s.find('.') != std::string::npos) {
+    const size_t dot = s.find('.');
+    if (dot != std::string::npos) {
         while (!s.empty() && s.back() == '0') s.pop_back();
         if (!s.empty() && s.back() == '.') s.pop_back();
     }
-    return s;
+    if (s == "-0") s = "0";
+    const LocaleFormats f = CurrentFormats();
+    const size_t point = s.find('.');
+    if (point != std::string::npos) s.replace(point, 1, f.decimalSeparator);
+    return LocaliseDigits(s, f);
 }
 
 }  // namespace LocalisationDetail

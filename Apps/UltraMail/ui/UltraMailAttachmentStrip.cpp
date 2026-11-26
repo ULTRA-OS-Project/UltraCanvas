@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
+// Version: 0.5.1 - an attachment's size in the person's language and conventions (UltraLocalisation::FormatFileSize)
 // Version: 0.5.0 - a chip's card and paperclip follow the look (the clip in the secondary ink)
 // Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.1 - the chip's menu is anchored to the chip (OpenMenuAnchored): below
@@ -9,7 +10,7 @@
 //                  drew as a box; a click opens the chip's menu under it, a
 //                  double-click still opens the attachment
 // Version: 0.2.1 - the strip is hidden while the message has no attachments
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-26
 // V0.2.0: chips are themed cards
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAttachmentStrip.h"
@@ -41,11 +42,7 @@ constexpr float kIcon  = 16.0f;
 constexpr int   kMenuW = 180;
 
 std::string HumanSize(std::size_t bytes) {
-    char buf[32];
-    if (bytes < 1024) std::snprintf(buf, sizeof buf, "%zu B", bytes);
-    else if (bytes < 1024 * 1024) std::snprintf(buf, sizeof buf, "%.1f KB", bytes / 1024.0);
-    else std::snprintf(buf, sizeof buf, "%.1f MB", bytes / (1024.0 * 1024.0));
-    return buf;
+    return UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));   // "1,2 MB" in German
 }
 
 } // namespace

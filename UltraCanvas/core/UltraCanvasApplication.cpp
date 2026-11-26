@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.26.2 - the platform's regional formats reach UltraLocalisation before the language is chosen
 // Version: 1.26.1 - the destructor waits for the ImageMagick warm-up (FinishImageMagickWarmUp):
 //                  a program done before it was left it running into exit
 // Version: 1.26.0 - the pointer leaving a window, or the window losing the focus, takes its
@@ -57,7 +58,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAppearanceSettings.h"
@@ -1451,17 +1452,20 @@ namespace UltraCanvas {
         // The translation catalogues (UltraLocalisation): the shipped tree
         // under media/locale/, the person's overrides and Language.conf in
         // the UltraCanvas settings folder, the language from --lang /
-        // ULTRACANVAS_LANG / Language.conf / the desktop's languages. Before
+        // ULTRACANVAS_LANG / Language.conf / the desktop's languages, and the
+        // region's numbers and dates from the platform's settings. Before
         // the native backend, so the first window is built translated.
         {
             const std::filesystem::path settings = UltraCanvasSettingsFolder();
             UltraLocalisation::SetFolders(NormalizePath(GetResourcesDir() + "media/locale/"),
                                           settings.empty() ? std::string() : PathToUtf8(settings));
+            UltraLocalisation::SetRegionalFormats(SystemRegionalFormats());
             UltraLocalisation::Initialize(appName, SystemLanguageTags());
             debugOutput << "UltraCanvas: language " << UltraLocalisation::CurrentLanguage()
                         << " (" << UltraLocalisation::EntryCount(LocalisationOrigin::Application) << " application, "
                         << UltraLocalisation::EntryCount(LocalisationOrigin::Base) << " base, "
-                        << UltraLocalisation::EntryCount(LocalisationOrigin::Standard) << " standard entries)" << std::endl;
+                        << UltraLocalisation::EntryCount(LocalisationOrigin::Standard) << " standard entries), formats "
+                        << UltraLocalisation::Formats().language << std::endl;
         }
         endStep("translation catalogues");
 

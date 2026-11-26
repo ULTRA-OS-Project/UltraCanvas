@@ -29,11 +29,15 @@
 //   const std::string language = UltraCanvas::SystemLanguage();                 // "de-AT", or "en" when nothing is set
 //   const std::string base = UltraCanvas::LanguageTagBase(language);             // "de"
 //   const bool same = UltraCanvas::LanguageTagsEqual("de_AT", "de-at");          // true
+//   const UltraCanvas::LocaleFormats region = UltraCanvas::SystemRegionalFormats();  // region.decimalSeparator: ","
 //
+// Version: 1.1.0 - SystemRegionalFormats, the region's numbers and dates
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #pragma once
+
+#include "UltraLocalisation/UltraLocalisation.h"   // LocaleFormats
 
 #include <string>
 #include <vector>
@@ -71,5 +75,20 @@ namespace UltraCanvas {
 
     // The first of SystemLanguageTags(), "en" when it has none.
     std::string SystemLanguage();
+
+    // The person's regional formats - the decimal and group separators, the
+    // date and time patterns - from the platform's region settings, over the
+    // built-in conventions of the region (UltraLocalisation::FormatsFor):
+    // GetLocaleInfoEx on Windows, NSLocale and NSDateFormatter on macOS and
+    // iOS, LC_NUMERIC / LC_TIME on Linux and the BSDs (the variables the
+    // desktop's region setting exports). A LocaleFormats with an empty
+    // language where the platform has nothing beyond its language - Android
+    // and the browser, whose language tag already names the region. The
+    // application base hands it to UltraLocalisation::SetRegionalFormats.
+    LocaleFormats SystemRegionalFormats();
+
+    // The platform's part: fills `formats` and returns true when the
+    // platform has region settings. Defined in OS/<Platform>/.
+    bool SystemRegionalFormatsNative(LocaleFormats& formats);
 
 }  // namespace UltraCanvas

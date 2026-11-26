@@ -3,9 +3,15 @@
 // device configuration the activity was started with, as "de-AT". Empty
 // before the native activity exists (a headless engine), when the POSIX
 // variables - which Android does not set either - leave the caller at "en".
+//
+// SystemRegionalFormatsNative: nothing more. The device configuration's
+// language and country, which SystemLanguageTagsNative gives already, name
+// the region, and UltraLocalisation keeps that tag for the built-in
+// conventions.
+// Version: 1.1.0 - SystemRegionalFormatsNative
 // Version: 1.0.1 - the application base is included before the platform header
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #include "UltraCanvasSystemLanguage.h"
 
@@ -30,6 +36,11 @@ std::vector<std::string> SystemLanguageTagsNative() {
     if (country[0] != '\0') tag += std::string("-") + country;
     tags.push_back(tag);
     return tags;
+}
+
+bool SystemRegionalFormatsNative(LocaleFormats& formats) {
+    (void)formats;
+    return false;
 }
 
 }  // namespace UltraCanvas

@@ -143,7 +143,7 @@ TEST(MetricValuePicksTheRightField) {
 }
 
 TEST(FormatBytesIsHumanReadable) {
-    REQUIRE_EQ(FormatBytes(512), std::string("512 B"));
+    REQUIRE_EQ(FormatBytes(512), std::string("512 bytes"));   // UltraLocalisation::FormatFileSize, English
     REQUIRE_EQ(FormatBytes(2048), std::string("2.0 KB"));
     REQUIRE_EQ(FormatBytes(3ll * 1024 * 1024), std::string("3.0 MB"));
 }

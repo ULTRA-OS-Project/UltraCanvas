@@ -1,9 +1,13 @@
 // Apps/EmailCleaner/engine/EmailCleanerTypes.cpp
 // Enum conversions, address/date parsing and the UTC calendar arithmetic the
 // timetable and timeline bucketing are built on.
+// Version: 0.1.1 - FormatBytes is UltraLocalisation::FormatFileSize: "1,2 MB" in German, "512 bytes" below a kilobyte
 // Version: 0.1.0 (Phase 1)
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerTypes.h"
+
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatBytes
 
 #include <algorithm>
 #include <array>
@@ -457,16 +461,8 @@ std::string BucketLabel(int64_t bucketStart, TimeBucket bucket) {
 }
 
 std::string FormatBytes(int64_t bytes) {
-    static const char* units[] = { "B", "KB", "MB", "GB", "TB" };
-    double v = static_cast<double>(bytes);
-    int unit = 0;
-    while (v >= 1024.0 && unit < 4) { v /= 1024.0; ++unit; }
-    char buf[48];
-    if (unit == 0)
-        std::snprintf(buf, sizeof(buf), "%lld B", static_cast<long long>(bytes));
-    else
-        std::snprintf(buf, sizeof(buf), "%.1f %s", v, units[unit]);
-    return buf;
+    // In the person's language and conventions: "1,2 MB", "512 Bytes"
+    return UltraCanvas::UltraLocalisation::FormatFileSize(bytes > 0 ? static_cast<unsigned long long>(bytes) : 0ULL);
 }
 
 std::string FormatDate(int64_t epochSeconds) {

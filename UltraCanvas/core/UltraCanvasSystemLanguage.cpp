@@ -1,7 +1,8 @@
 // core/UltraCanvasSystemLanguage.cpp
 // See UltraCanvasSystemLanguage.h.
+// Version: 1.1.0 - SystemRegionalFormats
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #include "UltraCanvasSystemLanguage.h"
 
@@ -119,6 +120,14 @@ std::vector<std::string> SystemLanguageTags() {
 std::string SystemLanguage() {
     const std::vector<std::string> tags = SystemLanguageTags();
     return tags.empty() ? std::string("en") : tags.front();
+}
+
+LocaleFormats SystemRegionalFormats() {
+    LocaleFormats formats;
+    if (SystemRegionalFormatsNative(formats) && !formats.language.empty()) return formats;
+    formats = LocaleFormats{};
+    formats.language.clear();
+    return formats;
 }
 
 }  // namespace UltraCanvas

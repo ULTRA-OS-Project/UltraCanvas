@@ -1,10 +1,11 @@
 // core/UltraCanvasUtils.h
 // Utils
+// Version: 1.2.1 - FormatFileSize is UltraLocalisation's, in the person's language and conventions
 // Version: 1.2.0 - LaunchDetachedProcess with an environment for the started program
 // Version: 1.1.0 - UltraCanvas_LibraryVersion(): the version, with C linkage
 // Version: 1.0.1 - NormalizePath: a '\' at the end is a separator only on Windows
 // Version: 1.0.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -42,6 +43,7 @@
 #endif
 
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // FormatFileSize
 #include <sstream>
 #include <filesystem>
 #include <fstream>
@@ -438,17 +440,8 @@ namespace UltraCanvas {
     }
 
     std::string FormatFileSize(size_t bytes) {
-        std::ostringstream oss;
-        if (bytes >= 1024 * 1024 * 1024) {
-            oss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0 * 1024.0)) << " GB";
-        } else if (bytes >= 1024 * 1024) {
-            oss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0)) << " MB";
-        } else if (bytes >= 1024) {
-            oss << std::fixed << std::setprecision(2) << (bytes / 1024.0) << " KB";
-        } else {
-            oss << bytes << " bytes";
-        }
-        return oss.str();
+        // The person's language and conventions: "1,2 MB", "512 Bytes"
+        return UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));
     }
 
     std::string GetExecutableDir() {

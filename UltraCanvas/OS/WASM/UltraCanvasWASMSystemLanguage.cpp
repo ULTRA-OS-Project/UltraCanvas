@@ -1,8 +1,13 @@
 // OS/WASM/UltraCanvasWASMSystemLanguage.cpp
 // SystemLanguageTagsNative in a browser: navigator.languages, the person's
 // order, else navigator.language. The POSIX variables do not exist here.
+//
+// SystemRegionalFormatsNative: nothing more. navigator.language, which
+// SystemLanguageTagsNative gives already, names the region, and
+// UltraLocalisation keeps that tag for the built-in conventions.
+// Version: 1.1.0 - SystemRegionalFormatsNative
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #include "UltraCanvasSystemLanguage.h"
 
@@ -36,6 +41,11 @@ std::vector<std::string> SystemLanguageTagsNative() {
     }
     std::free(joined);
     return tags;
+}
+
+bool SystemRegionalFormatsNative(LocaleFormats& formats) {
+    (void)formats;
+    return false;
 }
 
 }  // namespace UltraCanvas

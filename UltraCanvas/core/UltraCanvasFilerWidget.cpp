@@ -51,6 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.61.1 - a file's size in the person's language and conventions (UltraLocalisation::FormatFileSize): "1,2 MB"
 // Version: 1.61.0 - openMenuProvider: the host's entries after "Open with"
 // Version: 1.60.0 - a favorite can stand out by a solid fill, a border or a shade in a colour of the
 //                  host's (SetFavoriteHighlight), and the heart can be switched off
@@ -197,7 +198,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-24
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -931,18 +932,9 @@ namespace UltraCanvas {
             return CategoryUsesDarkInk(category);
         }
 
+        // In the person's language and conventions: "1,2 MB"
         std::string FormatSize(uint64_t bytes) {
-            char buf[32];
-            if (bytes < 1024) {
-                snprintf(buf, sizeof(buf), "%llu B", (unsigned long long)bytes);
-            } else if (bytes < 1024ull * 1024) {
-                snprintf(buf, sizeof(buf), "%.1f KB", bytes / 1024.0);
-            } else if (bytes < 1024ull * 1024 * 1024) {
-                snprintf(buf, sizeof(buf), "%.1f MB", bytes / (1024.0 * 1024));
-            } else {
-                snprintf(buf, sizeof(buf), "%.2f GB", bytes / (1024.0 * 1024 * 1024));
-            }
-            return buf;
+            return UltraLocalisation::FormatFileSize(static_cast<unsigned long long>(bytes));
         }
 
         // Uniform size string for the "Bar size" view: always a mantissa with

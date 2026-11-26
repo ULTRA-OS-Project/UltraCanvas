@@ -30,6 +30,15 @@
 // of CLDR categories ("one", "few", "many", "other"); "{n}" in it is the
 // count. Placeholders are "{0}", "{1}", ... filled by TrF.
 //
+// Numbers, dates and times in the person's conventions (phase L6):
+// FormatNumber, FormatInteger, FormatPercent, FormatFileSize, FormatDate,
+// FormatTime, FormatDateTime, from the platform's regional settings or the
+// built-in CLDR conventions of the language, with the month and weekday
+// names of the standard set. TrF writes a number argument in the language's
+// digits and decimal separator, ungrouped, since an argument is as often a
+// year, a port or a line number as a quantity; TrN groups its count, which
+// is always a quantity.
+//
 // doc-check: int count = 3; int done = 1;
 // doc-check: example
 //   std::string save = UltraCanvas::Tr("Save");                                      // "Speichern"
@@ -37,12 +46,16 @@
 //   std::string files = UltraCanvas::TrN("{n} file", "{n} files", count);            // "3 Dateien"
 //   std::string progress = UltraCanvas::TrF("Deleted {0} of {1}", done, count);      // "1 von 3 gelöscht"
 //   std::string language = UltraCanvas::UltraLocalisation::CurrentLanguage();        // "de"
+//   std::string size = UltraCanvas::UltraLocalisation::FormatFileSize(1258291);      // "1,2 MB"
+//   std::string day = UltraCanvas::UltraLocalisation::FormatDate(std::time(nullptr), UltraCanvas::DateStyle::Long);   // "21. Oktober 2026"
 //
+// Version: 1.1.0 - phase L6: numbers, dates and times in the person's conventions
 // Version: 1.0.0 - phase L1: the three layers, the fallback walk, plurals, Language.conf
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #pragma once
 
+#include <ctime>
 #include <functional>
 #include <map>
 #include <string>
@@ -69,9 +82,9 @@ namespace UltraCanvas {
 
     namespace LocalisationDetail {
         std::string Substitute(std::string_view text, const std::vector<std::string>& args);
-        // The text an argument becomes: strings as they are, integers as
-        // digits, floating point dot-decimal with the trailing zeros dropped
-        // (the locale's own formatting is phase L6 of the proposal).
+        // The text an argument becomes: strings as they are, integers in the
+        // language's digits, ungrouped, floating point with its decimal
+        // separator, at most six decimals with the trailing zeros dropped.
         std::string ArgText(std::string_view value);
         inline std::string ArgText(const std::string& value) { return value; }
         inline std::string ArgText(const char* value) { return value ? std::string(value) : std::string(); }
@@ -140,6 +153,55 @@ namespace UltraCanvas {
         static LanguageSettings Load(const std::string& settingsFolder);
         // Written beside the file and renamed over it.
         bool Save(const std::string& settingsFolder) const;
+    };
+
+    // ===== NUMBERS, DATES AND TIMES =====
+
+    // How a date is written. Short is all digits with the year in full
+    // (21.10.2026, 10/21/2026, 2026-10-21); Long names the month (21. Oktober
+    // 2026); Full adds the weekday (Mittwoch, 21. Oktober 2026).
+    enum class DateStyle { Short, Long, Full };
+
+    // A clock time without (14:05, 2:05 PM) or with its seconds.
+    enum class TimeStyle { Short, Medium };
+
+    // The shape of numbers, dates and times in one region: what the
+    // Format... calls write with. The platform's regional settings give it
+    // where it has them (SetRegionalFormats); FormatsFor has the conventions
+    // of every language UltraCanvas ships and of the common regional
+    // variants, from CLDR. Date and time patterns are CLDR (LDML) patterns:
+    // d dd M MM MMM MMMM y yy EEE EEEE H HH h hh m mm s ss a, text in quotes.
+    // The month and weekday names and the AM/PM words come from the standard
+    // set in the person's language (date-month|October, date-weekday|Monday,
+    // month-short|Oct, weekday|Mo, time|AM), not from the region.
+    struct LocaleFormats {
+        std::string language = "en";             // the tag these describe: "de-DE", "en-GB"
+        std::string decimalSeparator = ".";
+        std::string groupSeparator = ",";        // "" for none
+        int groupSize = 3;                       // the group nearest the decimal separator
+        int secondaryGroupSize = 3;              // every group before it: 2 in India
+        int minimumGroupingDigits = 1;           // 2: 1234 stays whole and 12 345 is grouped (es, pl, pt-PT)
+        std::string digits;                      // the ten digits 0-9, UTF-8; "" for 0123456789
+        std::string percentPattern = "{0}%";     // "{0} %", "%{0}"
+        std::string shortDate = "M/d/y";
+        std::string longDate = "MMMM d, y";
+        std::string fullDate = "EEEE, MMMM d, y";
+        std::string shortTime = "h:mm a";
+        std::string mediumTime = "h:mm:ss a";
+        std::string dateTimePattern = "{1}, {0}";   // {1} the date, {0} the time
+
+        bool operator==(const LocaleFormats&) const = default;
+    };
+
+    // A date and a wall-clock time, as a calendar shows them.
+    struct CalendarTime {
+        int year = 1970;
+        int month = 1;          // 1-12
+        int day = 1;            // 1-31
+        int weekday = -1;       // 0 Sunday - 6 Saturday; -1 to work it out from the date
+        int hour = 0;           // 0-23
+        int minute = 0;
+        int second = 0;
     };
 
     // ===== THE MODULE =====
@@ -218,6 +280,63 @@ namespace UltraCanvas {
         // Reads one catalogue file as Load does; false when it is not there
         // or not a catalogue.
         static bool ReadCatalogue(const std::string& path, LocalisationCatalogue& out, std::string& error);
+
+        // ----- Numbers, dates and times in the person's conventions -----
+        // Text a person reads. A file format or a protocol writes its numbers
+        // with FormatFloatClassic instead, whatever the language.
+
+        // 1.234,5 - exactly `decimals` digits after the separator, rounded.
+        static std::string FormatNumber(double value, int decimals);
+        // 1.234 - grouped.
+        static std::string FormatInteger(long long value);
+        // 12,5 % from 0.125.
+        static std::string FormatPercent(double fraction, int decimals);
+        // 512 Bytes, 1,2 KB, 3,4 MB: 1024 bytes to the kilobyte, one decimal,
+        // the unit names from the standard set.
+        static std::string FormatFileSize(unsigned long long bytes);
+        // In the local time zone.
+        static std::string FormatDate(std::time_t when, DateStyle style);
+        static std::string FormatTime(std::time_t when, TimeStyle style);
+        static std::string FormatDateTime(std::time_t when, DateStyle date, TimeStyle time);
+        // The same for a date and time given as a calendar shows them.
+        static std::string FormatDate(const CalendarTime& when, DateStyle style);
+        static std::string FormatTime(const CalendarTime& when, TimeStyle style);
+        static std::string FormatDateTime(const CalendarTime& when, DateStyle date, TimeStyle time);
+        // Any CLDR pattern - "EEEE", "MMMM y" - with the person's names and digits.
+        static std::string FormatPattern(const CalendarTime& when, const std::string& pattern);
+        // What a numeric field accepts and shows: "," on a German desktop.
+        static std::string DecimalSeparator();
+        static std::string GroupSeparator();
+
+        // The formats the calls above use: the platform's regional settings
+        // when it gave them and they are for the language shown - or the
+        // language came from the desktop, so the region is the person's
+        // choice too - else FormatsFor the language, its regional tag kept
+        // ("en-GB" although the catalogue is "en").
+        static LocaleFormats Formats();
+        // The built-in conventions for a tag, walked down ("de-CH" has its
+        // own, "de-LU" is "de"); English for a language it does not know.
+        // Pure.
+        static LocaleFormats FormatsFor(const std::string& language);
+        // What the platform says, from SystemRegionalFormats() in the
+        // application base; a LocaleFormats with an empty language drops it.
+        static void SetRegionalFormats(const LocaleFormats& formats);
+        static LocaleFormats RegionalFormats();
+
+        // The local time a std::time_t is, the weekday filled in.
+        static CalendarTime LocalTime(std::time_t when);
+        // A strftime format ("%d.%m.%Y", "%I:%M:%S %p") and a Windows
+        // date/time picture ("dddd, d. MMMM yyyy", "h:mm tt") as a CLDR
+        // pattern, for the platform readers. Pure.
+        static std::string PatternFromStrftime(const std::string& format);
+        static std::string PatternFromWindows(const std::string& picture);
+        // A time pattern without its seconds: "HH:mm:ss" -> "HH:mm",
+        // "h:mm:ss a" -> "h:mm a". Pure.
+        static std::string PatternWithoutSeconds(const std::string& pattern);
+        // A two-digit year as the year in full: "dd.MM.yy" -> "dd.MM.y", for
+        // a platform's short date where DateStyle::Short writes the year in
+        // full. Pure.
+        static std::string PatternWithFullYear(const std::string& pattern);
 
         // Everything back to the start: no folders, no sets, English. For
         // tests.

@@ -43,6 +43,9 @@ target_include_directories(EmailCleanerEngine PUBLIC
 # for a static UltraCanvas, through libultracanvas for a shared one) as PUBLIC
 # dependencies, and expresses the link order those need — inherit both.
 target_link_libraries(EmailCleanerEngine PUBLIC UltraMailEngine)
+# FormatBytes is UltraLocalisation's FormatFileSize; the public name is the
+# shared core when there is one, so the engine and the app share one set.
+target_link_libraries(EmailCleanerEngine PUBLIC UltraLocalisation)
 
 message(STATUS "  [✓] EmailCleaner engine - ENABLED (target: EmailCleanerEngine)")
 

@@ -145,7 +145,7 @@ int main() {
     // ===== PLACEHOLDERS, PLURALS =====
     Check(TrF("Deleted {0} of {1}", 1, 3) == "1 von 3 gelöscht", "TrF with integers");
     Check(TrF("Deleted {0} of {1}", std::string("a"), "b") == "a von b gelöscht", "TrF with strings");
-    Check(TrF("{0} and {1}", 2.5, true) == "2.5 and true", "TrF: a double dot-decimal, a bool");
+    Check(TrF("{0} and {1}", 2.5, true) == "2,5 and true", "TrF: a double with the language's decimal separator, a bool");
     Check(TrF("{0} {1}", 1) == "1 {1}", "a missing argument leaves its placeholder");
     Check(TrN("{n} file", "{n} files", 1) == "1 Datei" && TrN("{n} file", "{n} files", 5) == "5 Dateien", "German plural");
     Check(TrN("{n} item", "{n} items", 0) == "0 items" && TrN("{n} item", "{n} items", 1) == "1 item", "untranslated plural falls back to English forms");
@@ -244,8 +244,112 @@ int main() {
         Check(seen.size() == 1, "a removed handler is not called");
     }
 
+    // ===== NUMBERS, DATES AND TIMES =====
+    {
+        const std::string nbsp = "\xC2\xA0", nnbsp = "\xE2\x80\xAF";
+        // The calendar words come from the standard set, as the shipped catalogues carry them
+        Write(shipped / "de" / "Standard.json",
+              "{ \"@language\": \"de\", \"@name\": \"Deutsch\", \"Cancel\": \"Abbrechen\", \"Save\": \"Speichern\",\n"
+              "  \"date-month|October\": \"Oktober\", \"date-weekday|Wednesday\": \"Mittwoch\", \"month-short|Oct\": \"Okt.\",\n"
+              "  \"weekday|We\": \"Mi\", \"MB\": \"MB\", \"KB\": \"KB\",\n"
+              "  \"{n} byte\": { \"one\": \"{n} Byte\", \"other\": \"{n} Bytes\" } }");
+        Write(shipped / "ru" / "Standard.json",
+              "{ \"@language\": \"ru\", \"date-month|October\": \"октября\", \"date-weekday|Wednesday\": \"среда\" }");
+        Write(shipped / "ar" / "Standard.json", "{ \"@language\": \"ar\", \"time|PM\": \"م\" }");
+        UltraLocalisation::SetRegionalFormats(LocaleFormats{"", "", "", 0, 0, 0, "", "", "", "", "", "", "", ""});
+        CalendarTime when;
+        when.year = 2026; when.month = 10; when.day = 21; when.hour = 14; when.minute = 5; when.second = 9;
+
+        UltraLocalisation::Load("en", "");
+        Check(UltraLocalisation::FormatNumber(1234.5, 1) == "1,234.5", "en: 1,234.5");
+        Check(UltraLocalisation::FormatInteger(-1234567) == "-1,234,567", "en: a negative integer grouped");
+        Check(UltraLocalisation::FormatNumber(-0.04, 1) == "0.0", "no minus on a rounded zero");
+        Check(UltraLocalisation::FormatPercent(0.125, 1) == "12.5%", "en: 12.5%");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Short) == "10/21/2026", "en: short date");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Full) == "Wednesday, October 21, 2026", "en: full date, the weekday worked out");
+        Check(UltraLocalisation::FormatTime(when, TimeStyle::Short) == "2:05 PM", "en: 12-hour clock");
+        Check(UltraLocalisation::FormatDateTime(when, DateStyle::Short, TimeStyle::Medium) == "10/21/2026, 2:05:09 PM", "en: date and time joined");
+        Check(UltraLocalisation::FormatFileSize(512) == "512 bytes" && UltraLocalisation::FormatFileSize(1) == "1 byte", "en: bytes, plural");
+        Check(UltraLocalisation::FormatFileSize(1536) == "1.5 KB" && UltraLocalisation::FormatFileSize(1258291) == "1.2 MB", "en: KB and MB");
+        Check(UltraLocalisation::FormatFileSize(1024ULL * 1024 - 1) == "1.0 MB", "a size that rounds to 1024 takes the next unit");
+        Check(TrN("{n} file", "{n} files", 12345) == "12,345 files", "TrN groups its count");
+        Check(TrF("Port {0}", 8080) == "Port 8080", "TrF does not group an integer");
+
+        UltraLocalisation::Load("de", "");
+        Check(UltraLocalisation::FormatNumber(1234.5, 2) == "1.234,50", "de: 1.234,50");
+        Check(UltraLocalisation::FormatNumber(2.675, 0) == "3", "de: no decimals");
+        Check(UltraLocalisation::FormatPercent(0.125, 1) == "12,5" + nbsp + "%", "de: 12,5 %");
+        Check(UltraLocalisation::DecimalSeparator() == "," && UltraLocalisation::GroupSeparator() == ".", "de: the separators");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Short) == "21.10.2026", "de: 21.10.2026");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Long) == "21. Oktober 2026", "de: the month from the standard set");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Full) == "Mittwoch, 21. Oktober 2026", "de: the weekday from the standard set");
+        Check(UltraLocalisation::FormatTime(when, TimeStyle::Short) == "14:05", "de: 24-hour clock");
+        Check(UltraLocalisation::FormatPattern(when, "EEE, d. MMM") == "Mi, 21. Okt.", "de: the short names");
+        Check(UltraLocalisation::FormatFileSize(1258291) == "1,2 MB" && UltraLocalisation::FormatFileSize(1023) == "1.023 Bytes",
+              "de: 1,2 MB and 1.023 Bytes");
+        Check(TrF("{0} of {1}", 1.5, 1234) == "1,5 of 1234", "de: TrF's double with a comma, its integer whole");
+
+        UltraLocalisation::Load("fr", "");
+        Check(UltraLocalisation::FormatNumber(1234567.891, 2) == "1" + nnbsp + "234" + nnbsp + "567,89", "fr: narrow spaces");
+        UltraLocalisation::Load("es", "");
+        Check(UltraLocalisation::FormatInteger(1234) == "1234" && UltraLocalisation::FormatInteger(12345) == "12.345",
+              "es: four digits stay whole");
+        UltraLocalisation::Load("hi", "");
+        Check(UltraLocalisation::FormatInteger(1234567) == "12,34,567", "hi: the Indian grouping");
+        UltraLocalisation::Load("ru", "");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Long) == "21 октября 2026 г.", "ru: the genitive month, the quoted year mark");
+        UltraLocalisation::Load("ar", "");
+        Check(UltraLocalisation::FormatInteger(1234) == "\xD9\xA1\xD9\xAC\xD9\xA2\xD9\xA3\xD9\xA4", "ar: Arabic-Indic digits and group");
+        Check(UltraLocalisation::FormatTime(when, TimeStyle::Short) == "\xD9\xA2:\xD9\xA0\xD9\xA5 م", "ar: the PM word, the digits");
+        Check(TrF("{0}", 25) == "\xD9\xA2\xD9\xA5", "ar: TrF in the language's digits");
+
+        // The tables
+        Check(UltraLocalisation::FormatsFor("de-CH").groupSeparator == "\xE2\x80\x99", "de-CH has its own");
+        Check(UltraLocalisation::FormatsFor("de-LU").shortDate == "dd.MM.y" && UltraLocalisation::FormatsFor("de-LU").language == "de-LU",
+              "de-LU walks to de and keeps its tag");
+        Check(UltraLocalisation::FormatsFor("en-GB").shortDate == "dd/MM/y", "en-GB is not American");
+        Check(UltraLocalisation::FormatsFor("xx").shortDate == "M/d/y", "an unknown language is English");
+
+        // The desktop's regional tag is kept although the catalogue is "en"
+        UltraLocalisation::Initialize("", {"en-GB"});
+        Check(UltraLocalisation::CurrentLanguage() == "en" && UltraLocalisation::FormatDate(when, DateStyle::Short) == "21/10/2026",
+              "en-GB from the desktop: English text, British dates");
+
+        // The platform's regional settings: used for the language shown, or
+        // when the language came from the desktop; not for a language chosen
+        // here that is not the region's
+        LocaleFormats region = UltraLocalisation::FormatsFor("de-DE");
+        region.shortDate = "yyyy-MM-dd";
+        UltraLocalisation::SetRegionalFormats(region);
+        UltraLocalisation::Load("de", "");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Short) == "2026-10-21", "the region's own pattern for its language");
+        UltraLocalisation::Load("fr", "");
+        Check(UltraLocalisation::FormatDate(when, DateStyle::Short) == "21/10/2026", "a language chosen here that is not the region's: its own");
+        UltraLocalisation::Initialize("", {"en-US"});
+        Check(UltraLocalisation::CurrentLanguage() == "en" && UltraLocalisation::FormatNumber(1.5, 1) == "1,5",
+              "a language from the desktop: the region's numbers");
+        Check(UltraLocalisation::RegionalFormats().shortDate == "yyyy-MM-dd", "RegionalFormats gives back what was set");
+        UltraLocalisation::SetRegionalFormats(LocaleFormats{"", "", "", 0, 0, 0, "", "", "", "", "", "", "", ""});
+        Check(UltraLocalisation::RegionalFormats().language.empty(), "an empty language drops them");
+
+        // The pattern converters
+        Check(UltraLocalisation::PatternFromStrftime("%d.%m.%Y") == "dd.MM.y", "strftime: de_DE");
+        Check(UltraLocalisation::PatternFromStrftime("%I:%M:%S %p") == "hh:mm:ss a", "strftime: en_US time");
+        Check(UltraLocalisation::PatternFromStrftime("%Y年%m月%d日") == "y年MM月dd日", "strftime: ja_JP");
+        Check(UltraLocalisation::PatternFromStrftime("%e de %B") == "d 'de' MMMM", "strftime: letters quoted");
+        Check(UltraLocalisation::PatternFromStrftime("%-d/%-m/%y") == "d/M/yy", "strftime: glibc's unpadded");
+        Check(UltraLocalisation::PatternFromWindows("dddd, d. MMMM yyyy") == "EEEE, d. MMMM y", "Windows: de-DE long date");
+        Check(UltraLocalisation::PatternFromWindows("h:mm tt") == "h:mm a", "Windows: en-US short time");
+        Check(UltraLocalisation::PatternFromWindows("d 'de' MMMM 'de' yyyy") == "d 'de' MMMM 'de' y", "Windows: quotes kept");
+        Check(UltraLocalisation::PatternWithoutSeconds("HH:mm:ss") == "HH:mm", "seconds dropped");
+        Check(UltraLocalisation::PatternWithoutSeconds("h:mm:ss a") == "h:mm a", "seconds dropped before a");
+        Check(UltraLocalisation::PatternWithFullYear("dd.MM.yy") == "dd.MM.y" && UltraLocalisation::PatternWithFullYear("y 'yy'") == "y 'yy'",
+              "a two-digit year in full, quoted text left");
+    }
+
     UltraLocalisation::Reset();
     Check(Tr("Save") == "Save" && UltraLocalisation::CurrentLanguage() == "en", "Reset is English with nothing loaded");
+    Check(UltraLocalisation::FormatNumber(1.5, 1) == "1.5", "Reset is English numbers");
     fs::remove_all(root, ec);
 
     std::printf("UltraLocalisationTest: %d checks, %d failed\n", testCount, failCount);
