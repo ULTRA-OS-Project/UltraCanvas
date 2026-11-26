@@ -5,13 +5,14 @@ refund, a chargeback, and the signed link to a paid app's package."""
 from __future__ import annotations
 
 import datetime as dt
+import importlib
 import json
 from decimal import Decimal
 
 from django.core import mail
 from django.test import RequestFactory, override_settings
 
-from ultrastore_portal.billing import licence, skrill
+from ultrastore_portal.billing import licence, skrill, split
 from ultrastore_portal.billing import services as billing
 from ultrastore_portal.billing.models import Order, Payment
 from ultrastore_portal.store import catalog
@@ -351,3 +352,105 @@ class ConfigurationTests(PortalCase):
         with override_settings(PAYMENT_PROVIDER=""):
             self.assertContains(self.client.get("/operator/"), "The store is not selling")
 
+
+
+class SplitTests(BillingCase):
+    """The store's fee and the publisher's share of every payment."""
+
+    def test_a_sale_is_split_at_the_fee_of_the_day_and_keeps_it(self):
+        order = self.checkout()
+        self.client.post(f"/pay/{order['order_id']}/test/", {"outcome": "paid"})
+        first = Payment.objects.get()
+        # 15 % of 19.90 is 2.985: to the cent, half up.
+        self.assertEqual((first.fee_percent, first.store_fee, first.publisher_share), (Decimal("15"), Decimal("2.99"), Decimal("16.91")))
+        with override_settings(STORE_FEE_PERCENT=Decimal("20")):
+            later = self.checkout()
+            self.client.post(f"/pay/{later['order_id']}/test/", {"outcome": "paid"})
+        second = Payment.objects.exclude(pk=first.pk).get()
+        self.assertEqual((second.fee_percent, second.store_fee, second.publisher_share), (Decimal("20"), Decimal("3.98"), Decimal("15.92")))
+        first.refresh_from_db()
+        self.assertEqual(first.store_fee, Decimal("2.99"))   # a fee changed later leaves what was sold as it was
+
+        self.sign_in("dev@example.org")
+        page = self.client.get("/console/sales/")
+        self.assertContains(page, "Your share, EUR")
+        self.assertContains(page, "<b>32.83</b>", html=True)   # 16.91 + 15.92
+        self.assertContains(page, "6.97 the store")            # 2.99 + 3.98
+        self.assertContains(page, "15 % today")
+        self.assertNotContains(page, "buyer@example.org")
+        self.sign_in("operator@example.org")
+        page = self.client.get(f"/operator/orders/{Order.objects.get(public_id=order['order_id']).pk}/")
+        self.assertContains(page, "2.99")
+        self.assertContains(page, "(15 %)")
+        self.assertContains(page, "16.91")
+
+    def test_the_fee_is_reckoned_to_the_cent_half_up(self):
+        self.assertEqual(split.fee_of(Decimal("0.10"), Decimal("15")), Decimal("0.02"))     # 0.015
+        self.assertEqual(split.fee_of(Decimal("0.03"), Decimal("15")), Decimal("0.00"))     # 0.0045
+        self.assertEqual(split.fee_of(Decimal("100.00"), Decimal("12.5")), Decimal("12.50"))
+        self.assertEqual(split.fee_of(Decimal("19.90"), Decimal("0")), Decimal("0.00"))
+        self.assertEqual((split.percent_text(Decimal("15.00")), split.percent_text(Decimal("10")), split.percent_text(Decimal("12.50"))), ("15", "10", "12.5"))
+
+    def test_a_reversal_gives_the_fee_back_in_proportion_and_never_more_than_it_took(self):
+        fee = lambda amount, before=("0", "0"): split.reversal_fee(Decimal("19.90"), Decimal("2.99"), Decimal(amount), Decimal(before[0]), Decimal(before[1]))
+        self.assertEqual(fee("5.00"), Decimal("0.75"))                       # 2.99 * 5.00 / 19.90 = 0.7512
+        self.assertEqual(fee("14.90", ("5.00", "0.75")), Decimal("2.24"))    # the rest of the payment: the rest of its fee
+        self.assertEqual(fee("19.90"), Decimal("2.99"))
+        self.assertEqual(fee("25.00"), Decimal("2.99"))                      # a chargeback above the payment returns no more than the fee
+        self.assertEqual(fee("1.00", ("18.00", "2.99")), Decimal("0.00"))    # nothing left to return
+
+    def test_payments_from_before_the_split_get_it_when_the_portal_is_upgraded(self):
+        order = self.checkout()
+        self.client.post(f"/pay/{order['order_id']}/test/", {"outcome": "paid"})
+        found = Order.objects.get(public_id=order["order_id"])
+        sale = found.payments.get()
+        Payment.objects.create(order=found, kind=Payment.REFUND, amount=Decimal("5.00"), currency="EUR", reverses=sale.provider_transaction)
+        Payment.objects.create(order=found, kind=Payment.CHARGEBACK, amount=Decimal("14.90"), currency="EUR", reverses=sale.provider_transaction)
+        Payment.objects.update(fee_percent=0, store_fee=0)   # as 0.6.0 left them
+        from django.apps import apps
+        importlib.import_module("ultrastore_portal.billing.migrations.0002_payment_split").split_earlier_payments(apps, None)
+        self.assertEqual([(p.kind, p.fee_percent, p.store_fee) for p in found.payments.all()],
+                         [("sale", Decimal("15"), Decimal("2.99")), ("refund", Decimal("15"), Decimal("0.75")), ("chargeback", Decimal("15"), Decimal("2.24"))])
+
+
+@override_settings(**SKRILL)
+class SkrillSplitTests(BillingCase):
+    provider = SKRILL
+
+    def totals(self) -> tuple[Decimal, Decimal]:
+        payments = Payment.objects.all()
+        return sum(p.signed_store_fee for p in payments), sum(p.signed_publisher_share for p in payments)
+
+    def test_a_refund_in_parts_returns_the_whole_fee_and_no_more(self):
+        order = self.checkout()
+        self.report(order["order_id"])
+        found = Order.objects.get(public_id=order["order_id"])
+        self.sign_in("operator@example.org")
+        self.answers += ["<response><sid>s1</sid></response>", "<response><mb_transaction_id>900200</mb_transaction_id><status>2</status></response>"]
+        self.client.post(f"/operator/orders/{found.pk}/", {"amount": "5.00"})
+        part = Payment.objects.get(kind="refund")
+        self.assertEqual((part.fee_percent, part.store_fee, part.publisher_share), (Decimal("15"), Decimal("0.75"), Decimal("4.25")))
+        self.assertEqual(self.totals(), (Decimal("2.24"), Decimal("12.66")))
+        self.answers += ["<response><sid>s2</sid></response>", "<response><mb_transaction_id>900201</mb_transaction_id><status>2</status></response>"]
+        self.client.post(f"/operator/orders/{found.pk}/", {"amount": "14.90"})
+        self.assertEqual(Payment.objects.filter(kind="refund").order_by("id").last().store_fee, Decimal("2.24"))
+        self.assertEqual(self.totals(), (Decimal("0.00"), Decimal("0.00")))
+        self.sign_in("dev@example.org")
+        self.assertContains(self.client.get("/console/sales/"), "<b>0.00</b>", html=True)
+
+    def test_a_chargeback_returns_the_fee(self):
+        order = self.checkout()
+        self.report(order["order_id"])
+        self.report(order["order_id"], status="-3")
+        back = Payment.objects.get(kind="chargeback")
+        self.assertEqual((back.store_fee, back.signed_store_fee, back.signed_publisher_share), (Decimal("2.99"), Decimal("-2.99"), Decimal("-16.91")))
+        self.assertEqual(self.totals(), (Decimal("0.00"), Decimal("0.00")))
+
+    def test_a_renewal_is_split_like_a_sale(self):
+        monthly = self.make_app(self.publisher, "org.acme.monthly", name="Monthly", pricing_model="monthly", price="4.00", currency="EUR")
+        self.make_release(monthly)
+        order = self.checkout("org.acme.monthly")
+        self.report(order["order_id"], amount="4.00", rec_payment_id="REC1")
+        self.report(order["order_id"], amount="4.00", url="/v1/skrill/recurring", mb_transaction_id="900101")
+        self.assertEqual([(p.kind, p.store_fee, p.publisher_share) for p in Payment.objects.order_by("id")],
+                         [("sale", Decimal("0.60"), Decimal("3.40")), ("renewal", Decimal("0.60"), Decimal("3.40"))])

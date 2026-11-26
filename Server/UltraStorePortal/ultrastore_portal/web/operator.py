@@ -2,6 +2,7 @@
 releases in review, the decision on each, the reports, the catalog and the
 audit log. Staff only.
 
+Version: 0.7.0 - an order's payments with their split
 Version: 0.1.0
 """
 

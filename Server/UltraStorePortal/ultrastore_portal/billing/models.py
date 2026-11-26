@@ -1,6 +1,8 @@
 """A purchase: the order a store or a visitor opened, and every movement of
 money on it - the sale, a subscription's renewals, refunds, a chargeback.
 
+Version: 0.7.0 - a payment carries its split: the store's fee, and the
+                 publisher's share (split.py)
 Version: 0.1.0
 """
 
@@ -96,6 +98,10 @@ class Payment(models.Model):
     currency = models.CharField(max_length=3)
     provider_transaction = models.CharField(max_length=64, blank=True, db_index=True)
     reverses = models.CharField(max_length=64, blank=True, help_text="The provider's transaction a refund or a chargeback takes back.")
+    # The split, written when the money moves (split.py): the store's fee of
+    # this amount at the percentage in force then; the rest is the publisher's.
+    fee_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="The store's fee when the money moved, in percent.")
+    store_fee = models.DecimalField(max_digits=9, decimal_places=2, default=0, help_text="The store's part of the amount; a reversal gives it back.")
     receipt_no = models.PositiveBigIntegerField(null=True, blank=True, unique=True)
     note = models.CharField(max_length=300, blank=True)
     at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -107,5 +113,25 @@ class Payment(models.Model):
         return f"{self.kind} {self.amount} {self.currency}"
 
     @property
+    def is_reversal(self) -> bool:
+        return self.kind not in (self.SALE, self.RENEWAL)
+
+    @property
     def signed_amount(self):
-        return self.amount if self.kind in (self.SALE, self.RENEWAL) else -self.amount
+        return -self.amount if self.is_reversal else self.amount
+
+    @property
+    def fee_percent_text(self) -> str:
+        return format(self.fee_percent.normalize(), "f")
+
+    @property
+    def publisher_share(self):
+        return self.amount - self.store_fee
+
+    @property
+    def signed_store_fee(self):
+        return -self.store_fee if self.is_reversal else self.store_fee
+
+    @property
+    def signed_publisher_share(self):
+        return -self.publisher_share if self.is_reversal else self.publisher_share

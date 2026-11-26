@@ -10,6 +10,7 @@ draw again, {"ok": false, "error" | "errors": {field: [...]}} what was wrong.
 The same address sent by a browser without the script answers with a
 redirect and a message, as every other form here does.
 
+Version: 0.7.0 - Sales shows each payment's split and the publisher's share
 Version: 0.3.0 - pictures uploaded where they are chosen and packages added,
                  edited and removed without leaving the page; no release
                  before the listing has what a review needs
@@ -28,6 +29,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from ..billing import split
 from ..billing.models import Payment
 from ..store import services
 from ..store.models import App, Package, Release, Screenshot, TermsVersion
@@ -117,19 +119,22 @@ def publisher_profile(request):
 
 @publisher_required
 def sales(request):
-    """What the publisher's apps sold: every payment and every reversal,
-    and the net per currency."""
+    """What the publisher's apps sold: every payment and every reversal
+    with its split, and per currency what buyers paid, the store's fee and
+    the publisher's share (billing/split.py)."""
     payments = (Payment.objects.filter(order__app__publisher=request.publisher).select_related("order__app").order_by("-at", "-id"))
     totals: dict[str, dict] = {}
     for payment in payments:
-        row = totals.setdefault(payment.currency, {"currency": payment.currency, "sold": 0, "reversed": 0, "net": 0, "sales": 0})
+        row = totals.setdefault(payment.currency, {"currency": payment.currency, "sold": 0, "reversed": 0, "net": 0, "sales": 0, "fee": 0, "share": 0})
         if payment.kind in (Payment.SALE, Payment.RENEWAL):
             row["sold"] += payment.amount
             row["sales"] += 1
         else:
             row["reversed"] += payment.amount
         row["net"] += payment.signed_amount
-    return render(request, "console/sales.html", {"payments": payments[:500], "totals": list(totals.values())})
+        row["fee"] += payment.signed_store_fee
+        row["share"] += payment.signed_publisher_share
+    return render(request, "console/sales.html", {"payments": payments[:500], "totals": list(totals.values()), "fee_percent": split.percent_text(split.fee_percent())})
 
 
 @require_POST

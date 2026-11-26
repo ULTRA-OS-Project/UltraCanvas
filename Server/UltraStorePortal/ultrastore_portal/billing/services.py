@@ -24,6 +24,9 @@ Two providers: Skrill Quick Checkout (skrill.py), and "test", which a
 developer's machine and the tests use - the hand-off page has a button in
 Skrill's place that sends the same signed report through the same code.
 
+Version: 0.7.0 - every payment is written with its split (split.py): the
+                 store's fee and the publisher's share; a refund and a
+                 chargeback give the fee back in proportion
 Version: 0.1.0
 """
 
@@ -47,7 +50,7 @@ from django.utils import timezone
 
 from ..store.models import App, Package, Release, Setting
 from ..store.services import audit
-from . import skrill
+from . import skrill, split
 from .licence import LicenceKey
 from .models import Order, Payment
 
@@ -284,7 +287,7 @@ def _chargeback(order: Order, fields: dict[str, str]) -> None:
         return
     amount = parse_money(fields.get("mb_amount", "")) or order.amount
     Payment.objects.create(order=order, kind=Payment.CHARGEBACK, amount=amount, currency=order.currency, provider_transaction="",
-                           reverses=reverses, note="chargeback" + _reason(fields))
+                           reverses=reverses, note="chargeback" + _reason(fields), **split.reversal_split(order, reverses, amount))
     order.refunded += amount
     order.status = Order.CHARGEBACK
     order.revoked_at = timezone.now()
@@ -328,7 +331,7 @@ def process_status(fields: dict[str, str]) -> Order:
         order.licence = issue(order)
         order.save()
         Payment.objects.create(order=order, kind=Payment.SALE, amount=order.amount, currency=order.currency,
-                               provider_transaction=transaction_id, receipt_no=order.receipt_no)
+                               provider_transaction=transaction_id, receipt_no=order.receipt_no, **split.sale_split(order.amount))
         audit(None, "order.paid", "order", order.public_id, app=order.app.app_id, amount=money(order.amount), currency=order.currency,
               receipt=order.receipt_no)
         from ..promote import services as advertising
@@ -397,7 +400,7 @@ def process_recurring(fields: dict[str, str]) -> Order:
         order.save()
         number = next_receipt_no()
         Payment.objects.create(order=order, kind=Payment.RENEWAL, amount=order.list_price, currency=order.currency,
-                               provider_transaction=transaction_id, receipt_no=number)
+                               provider_transaction=transaction_id, receipt_no=number, **split.sale_split(order.list_price))
         audit(None, "order.renewed", "order", order.public_id, app=order.app.app_id, amount=money(order.list_price), receipt=number,
               paid_until=order.paid_until.isoformat())
         return order
@@ -535,7 +538,8 @@ def refund(order: Order, actor, *, amount: str = "", revoke: bool | None = None,
     order.refunded += value
     take_back = revoke if revoke is not None else order.refunded >= total
     Payment.objects.create(order=order, kind=Payment.REFUND, amount=value, currency=order.currency, provider_transaction=provider_transaction,
-                           reverses=payment.provider_transaction, receipt_no=next_receipt_no(), note=note[:300])
+                           reverses=payment.provider_transaction, receipt_no=next_receipt_no(), note=note[:300],
+                           **split.reversal_split(order, payment.provider_transaction, value))
     if take_back and not order.revoked:
         order.status = Order.REFUNDED
         order.revoked_at = timezone.now()

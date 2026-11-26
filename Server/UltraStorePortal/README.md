@@ -36,7 +36,8 @@ It is built to replace the store's small services (`Server/UltraStoreMarket`,
 (`ultrastoreadmin`, `ultrastoreop`). 0.1.0 was the essential path - register
 a publisher, publish an app, show and serve the catalog; 0.2.0 sells; 0.4.0
 is the account for every service; 0.5.0 is advertising's first phase and
-0.6.0 the first half of its second; *What comes next* names the rest.
+0.6.0 the first half of its second; 0.7.0 splits a sale between the store
+and the publisher; *What comes next* names the rest.
 
 ## Decisions
 
@@ -301,9 +302,28 @@ so; a partial refund leaves it. A chargeback comes as Skrill's report
 longer handed out, its downloads are refused, and `GET /v1/licences/<id>`
 answers `revoked`.
 
+**The store's fee and the publisher's share** (0.7.0). The store keeps a
+fee of every payment - **15 %** of what the buyer paid
+(`ULTRASTORE_PORTAL_STORE_FEE_PERCENT`), to the cent, half up - and the rest
+is the publisher's share. The split is written on the payment when the money
+moves (`Payment.fee_percent`, `store_fee`; `billing/split.py`) and never
+reckoned again: a fee changed in the settings changes later sales only. A
+refund or a chargeback gives the fee back in the proportion of the money
+given back - half of a payment refunded returns half of its fee, and the
+last cent of a payment returns whatever of its fee is left, so a payment
+refunded in parts nets to nothing for the store and for the publisher. A
+renewal is split like a sale. `/console/sales/` shows each payment with the
+fee and the share and, per currency, *Your share*; the operator's order page
+shows the same with the percentage each payment was sold under. Payments
+recorded before 0.7.0 get the split when the database is migrated, at the
+fee configured then. **Not in the split:** VAT (the fee is reckoned on the
+amount paid until the portal knows the tax in it), the payment provider's
+fee, invoices and payouts - *What comes next*, 2.
+
 **Who sees what.** The operator sees the orders with the buyer's address;
 a publisher sees what its apps sold (`/console/sales/`: every payment and
-reversal, the net per currency), never who bought.
+reversal with its split, the net and its share per currency), never who
+bought.
 
 **The test provider.** `ULTRASTORE_PORTAL_PAYMENT_PROVIDER=test` (refused
 without `ULTRASTORE_PORTAL_DEBUG=1`) puts a page with *Pay*, *Let the
@@ -655,6 +675,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 | `SKRILL_PAY_TO_EMAIL`, `SKRILL_SECRET_WORD`, `SKRILL_MERCHANT_ID`, `SKRILL_API_PASSWORD` | the Skrill merchant account; the API password for refunds and ending a recurring payment |
 | `SKRILL_PAY_URL`, `SKRILL_API_URL` | `https://pay.skrill.com`, `https://www.skrill.com/app`; another host when Skrill gives a test endpoint |
 | `LICENCE_SEED`, `GRACE_DAYS` (7) | the licence key, a subscription's grace |
+| `STORE_FEE_PERCENT` (15) | the store's fee: the percentage of what a buyer pays that the store keeps, from 0 to under 100 with at most two decimals; the rest is the publisher's share. Written on each payment, so a change applies to later sales |
 | `RESTRICTED_SECRET`, `RESTRICTED_TTL` (600) | a buyer's download link: nginx's secret and its seconds |
 | `STORE_DOWNLOAD_PATH` | a path under the root where the UltraStore app is downloaded |
 | `ALLOWED_HOSTS`, `LOG_LEVEL`, `DEBUG` | |
@@ -693,6 +714,7 @@ ultrastore_portal/
   billing/         buying
     models.py      Order, Payment
     services.py    an order opened, the provider's report believed or not, the licence, renewals, refunds, the signed link
+    split.py       the store's fee and the publisher's share of a payment, and of what a reversal gives back
     licence.py     the ULIC1 token
     skrill.py      Quick Checkout's form and signature, the refund and recurring API
   web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, promote.py, forms.py,
@@ -712,9 +734,11 @@ In the order the store needs it:
 1. **The Skrill sandbox run** - a merchant account in test mode, one
    purchase, one renewal, one refund (*Buying*, the last paragraph).
 2. **Tax and payouts.** A receipt is not a tax invoice: VAT by the buyer's
-   country, invoices, and the split of a sale between the publisher, the
-   store and the provider's fee are not built. `/console/sales/` shows what
-   buyers paid, nothing about what a publisher is owed.
+   country, invoices, the provider's fee and the payout itself are not
+   built. The split of a sale between the store and the publisher is
+   (*Buying*, 0.7.0): `/console/sales/` shows the publisher's share of what
+   buyers paid, reckoned on the amount paid and not yet on the amount
+   without VAT, and nothing pays it out.
 3. **Buyer accounts** - sign-in from the native store, licences that follow
    a person across machines, devices. Today a purchase is reached by its
    order's secret (kept by the store's app, mailed to a web buyer). The

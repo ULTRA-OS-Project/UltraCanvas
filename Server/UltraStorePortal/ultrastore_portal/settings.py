@@ -1,6 +1,7 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.7.0 - the store's fee (STORE_FEE_PERCENT)
 Version: 0.5.0 - advertising (PROMOTE, PROMOTE_TOPUPS, PROMOTE_CURRENCY)
 Version: 0.4.0 - the account's own address (ACCOUNT_URL) and the OpenID
                  Connect provider's settings (OIDC_...)
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import os
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -289,6 +291,15 @@ LICENCE_SEED = env("LICENCE_SEED")
 GRACE_DAYS = int(env("GRACE_DAYS", "7"))
 RESTRICTED_SECRET = env("RESTRICTED_SECRET") or ("development-only-link-secret" if (DEBUG or RUNNING_TESTS) else "")
 RESTRICTED_TTL = int(env("RESTRICTED_TTL", "600"))
+# The store's fee: the percentage of what a buyer pays that the store keeps;
+# the rest is the publisher's share (billing/split.py). Written on each
+# payment when the money moves, so changing it here changes later sales only.
+try:
+    STORE_FEE_PERCENT = Decimal(env("STORE_FEE_PERCENT", "15"))
+except InvalidOperation as error:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_STORE_FEE_PERCENT is a number of percent, such as 15") from error
+if not STORE_FEE_PERCENT.is_finite() or not 0 <= STORE_FEE_PERCENT < 100 or STORE_FEE_PERCENT != STORE_FEE_PERCENT.quantize(Decimal("0.01")):
+    raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_STORE_FEE_PERCENT is from 0 to under 100, with at most two decimals: {STORE_FEE_PERCENT}")
 # Where a visitor without the native store gets it (the app page's link): a
 # path under the root as well.
 STORE_DOWNLOAD_URL = _under_root("STORE_DOWNLOAD_PATH")
