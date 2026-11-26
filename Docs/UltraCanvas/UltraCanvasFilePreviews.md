@@ -112,8 +112,9 @@ framework, once, on the first query:
 | `pdf` | the first page (PDF plugin builds, with an engine) | `pdf` |
 | `ebook-cover` | the cover the book declares | `epub`, `mobi`, `prc`, `azw`, `azw3` |
 | `video-poster` | a frame a short way into the clip | the containers the media codec registry decodes |
-| `word-processing` | a thumbnail: the first page as the document lays it out (`odt`, `docx`, `doc`); a preview document: the document, the first page's header and footer inline (those and `tex`) | `odt`, `docx`, `doc`, `tex` |
+| `word-processing` | a thumbnail: the first page as the document lays it out (`odt`, `ott`, `docx`, `dotx`, `dotm`, `doc`); a preview document: the document, the first page's header and footer inline (those and `tex`) | `odt`, `ott`, `docx`, `dotx`, `dotm`, `doc`, `tex` |
 | `powerpoint` | a thumbnail: the first slide as drawn (`RenderPptxSlide`), as large as fits the tile at the slide's shape; a preview document: each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm`, `odp`, `otp`, `fodp` |
+| `spreadsheet` | a thumbnail: the first printed page of the sheet on show - cut into pages by its print settings, as its PDF is (`SpreadsheetPrintPages`) - on white paper; a workbook over 2 MB keeps its glyph | `ods`, `ots`, `xlsx`, `xltx`, `xltm` |
 
 The Filer draws its own styling over these: an outline round a PDF page, a
 shaded edge on a book cover and on a document's page.

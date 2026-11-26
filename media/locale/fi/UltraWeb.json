@@ -1,0 +1,8 @@
+{
+  "@language": "fi",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Tyhjennettiin {0} evästettä; sovellusten laiteoikeudet unohdetaan",
+  "No cookies to clear; the apps' device permissions are forgotten": "Ei tyhjennettäviä evästeitä; sovellusten laiteoikeudet unohdetaan",
+  "{0} wants to use your camera": "{0} haluaa käyttää kameraasi",
+  "{0} wants to use your microphone": "{0} haluaa käyttää mikrofoniasi"
+}

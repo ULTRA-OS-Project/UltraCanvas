@@ -694,11 +694,11 @@ TEST(weigh_sent_recipients_reads_the_sent_folders_recent_mail_first) {
     std::map<std::string, double> w;
     REQUIRE(s.WeighSentRecipients(w, now).success);
     REQUIRE(w.size() == 4);
-    auto near = [](double a, double b) { return a > b - 1e-9 && a < b + 1e-9; };
-    REQUIRE(near(w["anna@example.com"], 1.5));     // today 1 + 90 days 1/2
-    REQUIRE(near(w["max@example.com"], 1.0));
-    REQUIRE(near(w["old@example.com"], 0.25));     // 4 x 1/16
-    REQUIRE(near(w["future@example.com"], 1.0));
+    auto closeTo = [](double a, double b) { return a > b - 1e-9 && a < b + 1e-9; };
+    REQUIRE(closeTo(w["anna@example.com"], 1.5));     // today 1 + 90 days 1/2
+    REQUIRE(closeTo(w["max@example.com"], 1.0));
+    REQUIRE(closeTo(w["old@example.com"], 0.25));     // 4 x 1/16
+    REQUIRE(closeTo(w["future@example.com"], 1.0));
     REQUIRE(w["old@example.com"] < w["max@example.com"]);
 }
 

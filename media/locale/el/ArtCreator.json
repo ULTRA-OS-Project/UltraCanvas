@@ -1,6 +1,10 @@
 {
   "@language": "el",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} σχέδιο σε αυτό το παράθυρο έχει μη αποθηκευμένες αλλαγές. Να κλείσει παρ' όλα αυτά;",
+    "other": "{n} σχέδια σε αυτό το παράθυρο έχουν μη αποθηκευμένες αλλαγές. Να κλείσουν παρ' όλα αυτά;"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Το κείμενο προστέθηκε: για να το επεξεργαστείτε, κάντε κλικ σε αυτό με το εργαλείο «Κείμενο» ή κάντε διπλό κλικ σε αυτό",
   "Changed the text": "Το κείμενο άλλαξε",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Κάντε κλικ στη σελίδα και πληκτρολογήστε ή κάντε κλικ σε ένα κείμενο για να το επεξεργαστείτε· η γραμμή επάνω ορίζει τη γραμματοσειρά, το μέγεθος, το στυλ, τη στοίχιση και τις αποστάσεις του. Το Escape, το Ctrl+Enter ή ένα κλικ έξω ολοκληρώνει",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Διακριτή διαγραφή κειμένου",
   "Text Underline": "Υπογράμμιση κειμένου",
   "The text was emptied, so it was deleted": "Το κείμενο άδειασε, οπότε διαγράφηκε",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Πληκτρολόγηση νέου κειμένου: το Enter ξεκινά νέα γραμμή· το Escape, το Ctrl+Enter ή ένα κλικ έξω ολοκληρώνει"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Πληκτρολόγηση νέου κειμένου: το Enter ξεκινά νέα γραμμή· το Escape, το Ctrl+Enter ή ένα κλικ έξω ολοκληρώνει",
+  "Untitled {0}": "Χωρίς τίτλο {0}",
+  "{0} has unsaved changes. Close it anyway?": "Το {0} έχει μη αποθηκευμένες αλλαγές. Να κλείσει παρ' όλα αυτά;",
+  "{0} is open already": "Το {0} είναι ήδη ανοιχτό"
 }

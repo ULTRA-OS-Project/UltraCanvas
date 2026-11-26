@@ -33,6 +33,8 @@ state of the selection** rather than two asterisks in a buffer.
   - [Formulas](#formulas)
   - [Charts](#charts)
   - [Structure](#structure)
+- [Document dialogs](#document-dialogs)
+- [Navigator](#navigator)
 - [Following the theme](#following-the-theme)
   - [A document's colours on a dark page](#a-documents-colours-on-a-dark-page)
 - [Keyboard](#keyboard)
@@ -304,6 +306,25 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+A paragraph's whole layout - what a paragraph dialog shows - is one
+`RichParagraphFormat`: alignment, indents (`firstLineIndentPt` negative for a
+hanging indent), space before and after (below 0 = not stated: the view's own
+spacing), line spacing as a multiple or a fixed height (`lineHeightPt`, at
+least that with `lineHeightAtLeast`), and tab stops. `SetParagraphFormat`
+gives it to every paragraph the selection touches, as one undo step; in a
+table cell the alignment and the line spacing go to the cell (or to every
+selected cell):
+
+```cpp
+RichParagraphFormat format = editor->GetParagraphFormat();   // the caret's paragraph
+format.leftIndentPt = 36.0f;
+format.firstLineIndentPt = -18.0f;              // hanging
+format.spaceAfterPt = 6.0f;
+format.lineSpacing = 1.5f;
+format.tabStops = {{144.0f, RichTabKind::Right}};
+editor->SetParagraphFormat(format);             // false when nothing changed
+```
+
 Tracking - extra room between every two letters of the whole text, as a drawing
 program's letter spacing - is part of the element's style, in pixels at 100%
 (ArtCreator sets it for the text typed on its page):
@@ -413,7 +434,9 @@ its text; double-clicking calls `onCommentActivated`. In the model a comment
 is `UCRichDocument::comments` (`RichComment`: author, initials, date, text,
 resolved) and the runs it covers carry its index in `RichTextRun::commentIds`,
 so it moves and grows with its text; `RemoveComment` is one undo step, and a
-comment whose text is deleted disappears. Comments are not printed or
+comment whose text is deleted disappears. `GoToNextComment()` and
+`GoToPreviousComment()` select the next or previous comment's text in document
+order, wrapping round, and `GoToComment(index)` one comment's. Comments are not printed or
 exported to PDF. DOCX (`comments.xml`, ranges that may cross paragraphs) and
 ODT (`office:annotation`, with LibreOffice's resolved flag) read and write
 them; DOCX does not keep the resolved flag.
@@ -424,7 +447,7 @@ them; DOCX does not keep the resolved flag.
 editor->SetCommentAuthor("Ada Lovelace");        // signs comments and changes
 editor->SetTrackChanges(true);
 // ... typing is marked inserted, deleting marks text deleted ...
-editor->GoToNextChange();                        // selects it
+editor->GoToNextChange();                        // selects it; GoToPreviousChange() goes back
 editor->AcceptChangeAtCaret();                   // or RejectChangeAtCaret, AcceptAllChanges, RejectAllChanges
 ```
 
@@ -525,6 +548,29 @@ not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
 which cell occupies each slot, and is what both the layout and these operations
 use; positions keep addressing cells as `{row, index-within-row}`.
 
+#### A table's properties
+
+```cpp
+RichTableProperties table;
+if (editor->GetTableProperties(table)) {         // the caret's table
+    table.widthPercent = 60.0f;                  // of the column; widthPt for a fixed width
+    table.align = RichTextAlign::Center;
+    table.headerRow = true;
+    table.borderWidthPt = 0.5f;                  // < 0: the editor's own grid; 0: no lines
+    table.borderColor = "#808080";
+    table.cellPaddingPt = 4.0f;                  // < 0: the view's default
+    editor->SetTableProperties(table);           // one undo step
+}
+```
+
+`RichTableProperties` is what a table dialog shows: the table's width
+(`RichDocBlock::tableWidthPercent` / `tableWidthPt`), where a narrower one sits
+(`tableAlign`, `tableIndentPt`), `tableAutoFit`, whether the first row is a
+header row, and what every cell has in common - its lines, padding and
+vertical alignment. A border of the document's own (`borderWidthPt >= 0`) sets
+`tableBordersFromDocument`, so the cells' lines are drawn instead of the
+editor's grid.
+
 #### Selecting a block of cells
 
 Drag (or Shift+arrow) from one cell into another and the selection becomes a
@@ -573,11 +619,19 @@ editor->GetEditor().SetFloatOffset(RichDocPosition(block, placeholderOffset), /*
 if (editor->HasSelectedImage()) {
     editor->SetSelectedImageAltText("Quarterly revenue by region");
     editor->SetSelectedImageSize(/*widthPt*/ 240, /*heightPt*/ 160);
+    // The text beside it, the picture at the column's right (one undo step).
+    editor->SetSelectedImageWrap(RichTextRun::ImageWrap::Square, RichTextAlign::Right);
 }
 editor->SelectImage(RichDocPosition(imageBlock, 0));
 // Editing core: pictures are addressed by where they sit.
 editor->GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
 ```
+
+`SetSelectedImageWrap` (the editing core's `SetImageWrap`) changes how the
+text goes round a picture; `GetSelectedImageWrap` reads it. A picture of its
+own paragraph (a `RichBlockType::Image` block) that is made to float becomes
+the one picture in the line of a paragraph, at the same position (`{block,
+0}`), so it stays selected and one undo gives the block back.
 
 ### Floating pictures
 
@@ -895,6 +949,84 @@ alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
+
+## Document dialogs
+
+`UltraCanvasRichTextEditDialogs.h` has the dialogs a word processor puts over
+this element, each a form (`UltraCanvasFormLayout`) of the framework's
+elements in an `UltraCanvasModalDialog`, modal over the element's window:
+
+| Dialog | Show | Values | What OK does |
+|---|---|---|---|
+| Page setup | `ShowPageSetupDialog` | `RichPageSetupDialogValues` (paper from `RichPaperSizes()`, orientation, size, margins, header and footer distance) | `SetPageSetup` |
+| Paragraph | `ShowParagraphDialog` | `RichParagraphFormat` | `SetParagraphFormat` |
+| Styles | `ShowStylesDialog` | `RichStylesDialogValues` (apply, change, new from the selection) | `ApplyParagraphStyle` / `ApplyCharacterStyle`, `UpdateStyle`, `NewStyleFromCaret` |
+| Table properties | `ShowTablePropertiesDialog` | `RichTableProperties` | `SetTableProperties` |
+| Picture | `ShowPictureDialog` | `RichPictureDialogValues` (alt text, wrapping, position, size) | `SetSelectedImageAltText`, `SetSelectedImageSize`, `SetSelectedImageWrap` |
+| Table of contents | `ShowContentsDialog` | `RichContentsDialogValues` (levels, rebuild the existing) | `InsertTableOfContents` / `UpdateTableOfContents` |
+| Caption | `ShowCaptionDialog` | `RichCaptionDialogValues` (label, text) | `InsertCaption` |
+| Cross-reference | `ShowCrossReferenceDialog` | `RichCrossReferenceDialogValues` (a target from `RichCrossReferenceTargets`, text or page) | `InsertCrossReference` |
+| Footnote | `ShowNoteDialog` | `RichNoteDialogValues` (footnote or endnote, its text) | `InsertNote(kind, text)` |
+| Comment | `ShowCommentDialog(edit, index)` | `RichCommentDialogValues` (text, resolved) | `AddComment` / `SetCommentText`, `SetCommentResolved` |
+| Comments | `ShowCommentsDialog` | `RichCommentsDialogValues` (go to, resolve or reopen, delete; Edit opens the comment's own) | `GoToComment`, `SetCommentResolved`, `RemoveComment` |
+
+Each comes in three parts, so what it does is tested without a window
+(`Tests/RichTextDialogsTest.cpp`): `Read...DialogValues(edit)` is what the
+form opens with, `Apply...DialogValues(edit, values)` is what OK does - true
+when it changed the document, one undo step where the editor keeps one - and
+`Show...Dialog(edit, onClosed)` is the window, which reads, lets the values be
+changed and on OK applies them; Cancel changes nothing. `onClosed(applied)`
+runs either way. A dialog holds the element weakly: a tab closed while its
+dialog is open is not kept alive, and the dialog then does nothing. Lengths
+are shown in centimetres and spacing in points; the document keeps points.
+
+```cpp
+#include "UltraCanvasRichTextEditDialogs.h"
+
+ShowParagraphDialog(*editor, [](bool applied) { (void)applied; /* bring a toolbar into step */ });
+
+RichPageSetupDialogValues page = ReadPageSetupDialogValues(*editor);
+page.paper = 4;                    // RichPaperSizes()[4]: Letter
+page.landscape = true;
+ApplyPageSetupDialogValues(*editor, page);       // what the dialog's OK does
+```
+
+## Navigator
+
+`UltraCanvasDocumentNavigator` ([doc](UltraCanvasDocumentNavigator.md)) is
+the side panel a word processor puts beside this element: the headings as a
+tree by level (the caret's heading selected, following it), the tables,
+pictures, charts, comments, bookmarks, notes and tracked changes, a search
+box that filters them and lists the finds, and buttons that promote, demote
+and move a heading's section. It reads the model through
+`BuildRichDocumentOutline` (`UltraCanvasRichDocumentOutline.h`, UI-free) and
+uses what this element offers any such panel:
+
+| Call | What it does |
+|---|---|
+| `AddDocumentObserver(fn)` / `RemoveDocumentObserver(id)` | Any number of listeners besides the host's `onDocumentChanged` / `onSelectionChanged`: `fn(true)` after every edit (undo and a new document included), `fn(false)` after the caret or the selection moved |
+| `GoToPosition(pos)`, `GoToRange(range)` | The caret at a body position, or a body range selected, scrolled into view (a header or note being edited is finished first) |
+| `MoveHeadingSection(heading, beforeBlock)` | A heading with its text and subheadings moved before another block (`GetBlockCount()` = to the end), one undo step |
+| `MoveHeadingSectionUp(heading)` / `MoveHeadingSectionDown(heading)` | ...past the sibling heading of its level before or after it |
+| `ChangeHeadingSectionLevel(heading, delta)` | The heading and every heading in its section one level up (-1) or down (+1); a heading in its level's style takes the new level's style |
+
+The section rules are the editing core's, so they are tested without a
+display: `UCRichDocumentEditor::HeadingSectionEnd` (a heading's section ends
+at the next heading of its level or above) and `SiblingHeading`.
+
+```cpp
+#include "UltraCanvasDocumentNavigator.h"
+
+auto navigator = std::make_shared<UltraCanvasDocumentNavigator>("navigator", 0, 0, 260, 600);
+navigator->SetEdit(editor);                       // follows its document from now on
+const int id = editor->AddDocumentObserver([](bool documentChanged) { (void)documentChanged; /* a word count */ });
+editor->ChangeHeadingSectionLevel(0, +1);         // the first heading's chapter one level down
+editor->Undo();                                   // ...and back, in one step
+editor->RemoveDocumentObserver(id);
+```
+
+UltraOffice's document tab opens them from its Home, Insert, Layout and
+Review tabs, and UltraTexter's word-processing tab from its context menu.
 
 ## Following the theme
 
@@ -1302,7 +1434,17 @@ style.padding = 0.0f;            // the pages bring their own margins
 editor->SetStyle(style);
 editor->SetPageView(true);       // like Writer's print layout
 int pages = editor->GetPageCount();
+
+RichPageSetup page = editor->GetEffectivePageSetup();   // A4 with 2 cm margins when the document states none
+page.widthPt = 792.0f;           // US Letter, landscape
+page.heightPt = 612.0f;
+page.marginLeftPt = page.marginRightPt = 72.0f;
+editor->SetPageSetup(page);      // one undo step; laid out again at once
 ```
+
+`SetPageSetup` gives the document its page (`UCRichDocument::page`). The page
+is part of the undo step (`UCRichDocumentEditor::SetPageSetup`), so an undo
+puts the old size and margins back and the document is laid out on them again.
 
 Page view draws the document's pages (`UCRichDocument::page`: size,
 margins, header and footer distances - A4 with 2 cm margins when the

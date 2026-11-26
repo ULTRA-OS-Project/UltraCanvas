@@ -54,8 +54,8 @@ the front; a start without arguments just brings it forward
   or several files to view just those.
 - **e-books:** PageUp / PageDown switch chapters, the TOC panel toggles from
   the reading toolbar.
-- **Presentations:** a deck shows its slides; **F5** starts the slide show
-  from the first slide (**Shift+F5** from the one shown) - full screen, the
+- **Presentations:** a deck (.pptx, .odp, the 97-2003 .ppt) shows its
+  slides; **F5** starts the slide show from the first slide (**Shift+F5** from the one shown) - full screen, the
   arrows, Space and Page Up / Down to move, **Escape** to leave. **O** shows
   the outline of the slides instead.
 - **Password-protected files:** a protected PDF, UltraCanvas image or

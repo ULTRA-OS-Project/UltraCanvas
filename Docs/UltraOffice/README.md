@@ -11,14 +11,17 @@ It is built from the framework's elements, one per kind of document:
 
 | Kind | Element | Opens | Saves |
 |---|---|---|---|
-| Document | [`UltraCanvasRichTextEdit`](../UltraCanvas/UltraCanvasRichTextEdit.md), in page view | .odt, .docx, .doc, LaTeX, Markdown, text | .docx, .odt |
-| Spreadsheet | [`UltraCanvasSpreadsheet`](../UltraCanvas/UltraCanvasSpreadsheetExamples.md) | .ods, .xlsx, .xls, .csv, .tsv | .xlsx, .ods, .csv, .tsv |
-| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their template and show variants | .pptx, .odp |
+| Document | [`UltraCanvasRichTextEdit`](../UltraCanvas/UltraCanvasRichTextEdit.md), in page view | .odt, .docx, .doc, LaTeX, Markdown, text; templates .ott, .dotx, .dotm | .docx, .odt; templates .dotx, .ott |
+| Spreadsheet | [`UltraCanvasSpreadsheet`](../UltraCanvas/UltraCanvasSpreadsheetExamples.md) | .ods, .xlsx, .xls, .csv, .tsv; templates .ots, .xltx, .xltm | .xlsx, .ods, .csv, .tsv; templates .xltx, .ots |
+| Presentation | [`UltraCanvasSlideEdit`](../UltraCanvas/UltraCanvasSlideEdit.md) | .pptx, .odp and their show variants; PowerPoint 97-2003 .ppt, .pps; templates .potx, .potm, .otp, .pot | .pptx, .odp; templates .potx, .otp |
 
 What a file is comes from `UltraCanvasFileLoader::DetectOfficeDocumentKind`:
 the extension, else the package inside (`mimetype`, `word/document.xml`,
-`xl/workbook.xml`, `ppt/presentation.xml`). The design, and the phases still
-to come (the slide editor, charts, comments and track changes), are in
+`xl/workbook.xml`, `ppt/presentation.xml`; a compound file with a "PowerPoint
+Document" stream is a presentation,
+[UltraCanvasPresentationPpt](../UltraCanvas/UltraCanvasPresentationPpt.md)).
+The design it was built to, in
+six phases, is
 [`Docs/Research/UltraOfficeDesignProposal.md`](../Research/UltraOfficeDesignProposal.md).
 
 ## The window
@@ -34,17 +37,123 @@ The command tabs:
 
 - **Documents** - *Home*: cut, copy, paste, paragraph style, font, size,
   bold, italic, underline, strikethrough, bullets, numbering, indent,
-  alignment. *Insert*: table, picture, link, page break, footnote, contents.
-  *View*: pages on or off, page width, whole page, zoom.
+  alignment, *Paragraph* (indents, space before and after, line spacing,
+  alignment, tab stops) and *Styles* (apply a named style, change one, or
+  make a new paragraph style from the selection). *Insert*: table, picture,
+  link, page break, *Footnote* (a footnote or an endnote, with its text or
+  opened for typing), *Contents* (headings to a level; a document that has
+  contents rebuilds them), *Caption* (Figure, Table or Equation, numbered),
+  *Cross-reference* (to a caption or a bookmark, its text or its page).
+  *Layout*: *Page setup* (paper, orientation, size, margins, header and
+  footer distance), *Table* (width, alignment, indent, header row, fitting
+  the contents, borders and their colour, cell padding, the cells' vertical
+  alignment) and *Picture* (alt text, wrapping, position, size). *Review*:
+  a new comment, the previous and next comment, *All comments* (go to, edit,
+  resolve or reopen, delete), show or hide comments (and their pane); track
+  changes, the previous and next change, accept, reject, accept all, reject
+  all. *View*: *Navigator* (F5, below), pages on or off, page width, whole
+  page, zoom.
+
+  The dialogs are the framework's
+  ([Document dialogs](../UltraCanvas/UltraCanvasRichTextEdit.md#document-dialogs)),
+  shared with UltraTexter. What each OK changes is one undo step - the page
+  setup too - and Cancel changes nothing. Lengths are in centimetres,
+  spacing in points. Comments and changes are signed with the login name; a
+  double-click on a comment in the pane edits it.
+
+  **The navigator** is a side panel at the left of the document, shown and
+  hidden with *View > Navigator* or **F5** (LibreOffice Writer's key; Word's
+  Ctrl+F6 moves between windows, so it was not taken). Drag the bar between
+  it and the page to make it wider; the choice to show it and its width are
+  kept in the settings and apply to every document tab. It is the framework's
+  [`UltraCanvasDocumentNavigator`](../UltraCanvas/UltraCanvasDocumentNavigator.md),
+  shared with UltraTexter:
+  - **Headings** as a tree by level. The heading the caret is under is the
+    selected row and follows the caret; a click goes to a heading. The
+    buttons above the tree promote and demote a heading with its
+    subheadings, and move its chapter (the heading, its text and its
+    subheadings) up or down past the heading of its level beside it;
+    dragging a heading's row onto another heading moves the chapter before
+    that one, onto the *Headings* row to the end. Each is one undo step.
+  - **Tables, Pictures, Charts** (by caption, alt text or title), **Comments**
+    (with their authors; a double-click opens *All comments*), **Bookmarks**,
+    **Footnotes and endnotes** (a double-click opens the note) and **Tracked
+    changes**; a click goes there and selects the picture, chart, comment or
+    change.
+  - **The search box** filters every list and lists under *Found in the text*
+    each place the document says it; a click selects it.
+
+  The lists follow the document as it is edited, read again once the typing
+  pauses.
 - **Spreadsheets** - *Home*: cut, copy, paste, bold, italic, alignment,
-  wrap, number format, decimals. *Data*: sort, filter, fill down and right,
-  SUM. *Page*: set and clear the print area, landscape, fit to width,
-  gridlines, headings. *View*: freeze and unfreeze panes.
+  wrap, number format, decimals. *Insert*: *Chart* opens the chart gallery
+  over the selected cells - every chart of the framework, 52 types in nine
+  categories (column and bar, line and area, pie and circular, scatter and
+  bubble, statistical, financial, flow and hierarchy, matrix and maps,
+  other), each drawn from the selection, with what it shows and the
+  columns it reads; *Chart type* changes the selected chart's type in the
+  same gallery; the selected chart's properties (type, title, legend,
+  series in rows) and deleting it; *Pivot table* summarises the selected
+  cells in a pivot table. *Data*: sort, filter, fill
+  down and right, SUM, conditional formatting (value and formula rules,
+  text, blanks, errors, top values, averages, duplicates, colour scales,
+  data bars) and data validation (numbers, dates, times, text length, a list
+  typed or taken from cells, a custom formula; how a wrong entry is
+  answered); for the pivot table under the active cell *Refresh* (every
+  pivot table when none is), *Change source*, *Field list* and *Delete
+  pivot*. *Review*: the active cell's comment (add, change, delete) and
+  link (a web or mail address, or a cell of the workbook; open, remove).
+  *Page*: set and clear the print area, landscape, fit to width, gridlines,
+  headings. *View*: freeze and unfreeze panes.
+
+  A chart stands over the cells, anchored to them: a click selects it, a
+  drag moves it, its handles resize it, Delete removes it and a
+  double-click opens its properties. It reads its cells again whenever they
+  change, is saved in .xlsx and .ods, and prints where it stands
+  ([Charts](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts)). The
+  gallery picks with a click or the arrow keys and Enter; a type the
+  selection does not fit shows a sample and says why ("A bubble chart needs
+  three columns of numbers: x, y and size."). A type Excel and LibreOffice
+  have no form for - a Sankey diagram, a Gantt chart, a funnel, a heatmap -
+  is saved as a column chart of its numbers, which they show, with the
+  real type beside it for UltraOffice to read back
+  ([Every chart type](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#every-chart-type)).
+
+  A pivot table summarises a block of cells whose first row names its
+  fields. *Insert > Pivot table* opens its field list in a dialog: the data
+  (the selection, or a range typed in), where it goes (a new sheet, or a
+  cell of this sheet), and the fields - pick one and add it to the rows,
+  columns, values or filters (a double-click puts numbers into the values
+  and anything else into the rows), remove it or move it up and down. A
+  value field is summed, counted, averaged, taken as its min or max,
+  multiplied, its numbers counted, its standard deviation or variance taken,
+  and shown as it is or as a share of the grand total, its row or its
+  column; a row, column or filter field has its order, the items it shows,
+  its subtotals and a grouping - dates by year, quarter or month, numbers
+  by a step. The grand totals at the bottom and the right can be turned
+  off, and several values put one under the other. The pivot's cells are
+  drawn with a header style and cannot be typed over; while one of them is
+  active, the field list stands beside the sheet and each change in it is
+  applied at once. When the source cells change the pivot follows, a
+  double-click on a value opens a new sheet of the rows behind it, and
+  pivots are kept in .xlsx and .ods - those Excel and LibreOffice made are
+  read and refreshed too
+  ([Pivot tables](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#pivot-tables)).
+
+  A comment is marked by a red corner and shown while the pointer rests on
+  the cell; a link is blue and underlined, and Ctrl+click opens it.
+  Conditional formats, validation rules, comments and links are kept in
+  .xlsx and .ods, and printed and exported as PDF as shown
+  ([Conditional formats](../UltraCanvas/UltraCanvasSpreadsheetExamples.md#conditional-formats)).
 - **Presentations** - *Home*: new slide (Ctrl+M) or one from the deck's
   layouts, duplicate, delete and hide a slide, present. *Insert*: text box,
   drawn shape (rectangle, rounded rectangle, ellipse, triangle, arrow, star),
-  picture. *Arrange*: bring to front, forward, backward, to back; duplicate
-  and delete shapes. *Text*: bold, italic, underline, strikethrough, font,
+  picture. *Arrange*: group and ungroup (Ctrl+G, Ctrl+Shift+G); align the
+  left edges, centres, right edges, tops, middles or bottoms (to each other,
+  or to the slide when one shape is selected), distribute across or down;
+  bring to front, forward, backward, to back; duplicate and delete shapes.
+  *Format*: crop a picture with its handles, reset the crop; a chart's data.
+  *View*: normal, the slide sorter, the notes pane. *Text*: bold, italic, underline, strikethrough, font,
   size, larger and smaller, colour, alignment, bullets, numbering, list
   level - on the text being edited, or all the text of the selected shapes.
   *Table*: insert a table, rows above and below, columns left and right,
@@ -56,14 +165,65 @@ The command tabs:
   turned with their handles, snapping to the slide and to each other;
   double-click a shape (or Enter) to edit its text in place, formatted, with
   bullets and numbering - a table's cell likewise - Ctrl+Enter or a click
-  elsewhere to keep it, Escape to drop it. The show runs full screen
+  elsewhere to keep it, Escape to drop it. A group is selected, moved,
+  resized and turned as one shape; a double-click selects a shape inside
+  it, Escape the group again. Groups are kept in .pptx (`p:grpSp`) and .odp
+  (`draw:g`), a crop as `a:srcRect` and `fo:clip`. A double-click on a chart
+  (from the file, or pasted from a spreadsheet) opens its data in a small
+  spreadsheet; OK puts it into the chart, its kind kept, as one undo step.
+  Under the slide the notes pane holds the speaker notes, formatted, with a
+  splitter to size it; what is typed goes into the slide (one undo step) on
+  leaving the pane or the slide. The slide sorter shows every slide in a
+  grid: Ctrl+click and Shift+click choose several, a drag moves them, a
+  right-click offers a new slide, duplicate, hide and delete, and a
+  double-click edits a slide. A right-click on the slide offers cut, copy,
+  paste, group, the order, crop, the chart's data and delete. The show runs full screen
   with the slides' transitions and timings; on a second monitor the
   presenter view shows the next slide, the notes and the time. A click or
   the arrows move on, a number and Enter jump, B or W blank the screen,
   Escape ends it.
 
-The **Start** tab opens a file, lists the recent ones and starts a new
-document or spreadsheet.
+The **Start** tab opens a file, lists the recent ones, starts a new
+document, spreadsheet or presentation, and shows the templates (below).
+
+## New from template
+
+A template is an ordinary .ott / .dotx (documents), .ots / .xltx
+(spreadsheets) or .otp / .potx (presentations) file: the same package as the
+document, under the template's media type
+(`UltraCanvasFileLoader::IsOfficeTemplate`). Opening one - from the gallery,
+the File menu, the Open dialog, the recent list or the command line - starts
+a **new, untitled document** with its content ("Document 3"), so Save asks
+for a name and the template itself is never written over.
+
+The **Start** tab's *New from template* gallery shows a card per template,
+with a picture of its first page, its sheet or its first slide (drawn by the
+framework's file previews a moment after the tab shows), and *Open a template
+file* takes one from anywhere. The File menu has the same list under **New
+from template...**, with **Other template...** at its end.
+
+The templates come from two folders:
+
+| Folder | What |
+|---|---|
+| `media/templates/office/` (in the resources, installed with the rest of `media/`) | the shipped set: a letter, a report with headings and a memo; a budget, an invoice and a simple list; a plain and a dark presentation |
+| `UltraOffice/templates/` in the UltraCanvas settings folder | the user's own: **Save as template...** proposes this folder |
+
+**Save as template...** writes the open document as a template of its kind,
+in the format new files are saved as (.dotx / .xltx / .potx, or .ott / .ots
+/ .otp; the dialog offers both). The document keeps its own file, name and
+unsaved changes; the gallery shows the new template at once.
+
+The shipped set is made by the framework's own writers:
+`Tests/OfficeTemplatesTest.cpp` holds each template, and
+
+```bash
+build/bin/OfficeTemplatesTest --write media/templates/office
+```
+
+writes them again after one is changed there. Without `--write` the test
+(a ctest entry) checks that each shipped file is a template of its kind,
+loads, and still holds what the test makes of it.
 
 ## The File menu
 
@@ -72,10 +232,12 @@ document or spreadsheet.
 | New document | Ctrl+N |
 | New spreadsheet | Ctrl+Shift+N |
 | New presentation | |
+| New from template... | the templates, then *Other template...* |
 | Open... | Ctrl+O |
 | Open recent | |
 | Save | Ctrl+S |
 | Save as... | Ctrl+Shift+S |
+| Save as template... | into `UltraOffice/templates/` |
 | Export as PDF... | every kind |
 | Print... | Ctrl+P, every kind |
 | Close | Ctrl+W |
@@ -83,7 +245,8 @@ document or spreadsheet.
 | Quit | Ctrl+Q |
 
 Save writes a file where it came from in its own format; a file only read
-(.doc, .xls, Markdown, LaTeX, text) asks for a name. A file
+(.doc, .xls, .ppt / .pps / .pot, Markdown, LaTeX, text) asks for a name,
+and is saved as the default type of its kind. A file
 opened with a password is saved protected with it again. A .docx saved again
 keeps the theme and font table it came with (`UCRichDocument::keptParts`). Closing a tab or
 the window with unsaved changes asks first.
@@ -123,8 +286,11 @@ twice.
 
 `UltraOffice/settings.json` in the UltraCanvas settings folder
 (`UltraCanvasAppSettings`) keeps the recent files
-(`recent`, twelve) and the format new files are saved as (`saveFormat`:
-`ooxml` or `odf`).
+(`recent`, twelve), the format new files are saved as (`saveFormat`:
+`ooxml` or `odf`), which also picks the type *Save as template* proposes, and
+whether a document's navigator is shown (`documentNavigator`) and how wide
+(`documentNavigatorWidth`, pixels). The
+user's templates are in `UltraOffice/templates/` beside it.
 
 ## Files
 
@@ -132,13 +298,15 @@ twice.
 |---|---|
 | `Apps/UltraOffice/main.cpp` | the command line, one copy per user |
 | `Apps/UltraOffice/UltraOfficeWindow.h`, `.cpp` | the window: tabs, command row, File menu, Start tab, open, save, close, autosave and recovery |
+| `Apps/UltraOffice/UltraOfficeTemplates.h`, `.cpp` | the templates offered (shipped and the user's) and the Start tab's gallery |
 | `Apps/UltraOffice/UltraOfficeHost.h`, `.cpp` | what every kind of tab provides (`OfficeHost`) and the shared toolbar helpers |
-| `Apps/UltraOffice/UltraOfficeDocumentHost.cpp` | documents |
+| `Apps/UltraOffice/UltraOfficeDocumentHost.cpp` | documents, and their navigator's side panel |
 | `Apps/UltraOffice/UltraOfficeSpreadsheetHost.cpp` | spreadsheets |
 | `Apps/UltraOffice/UltraOfficePresentationHost.cpp` | presentations |
 | `Apps/UltraOffice/UltraOffice.desktop` | the freedesktop entry |
 | `media/appicon/UltraOffice.svg`, `.png` | the icon |
 | `media/icons/office/` | the kind icons and the tools the shared sets lack |
+| `media/templates/office/` | the shipped templates, made by `Tests/OfficeTemplatesTest.cpp --write` |
 
 ## Languages
 

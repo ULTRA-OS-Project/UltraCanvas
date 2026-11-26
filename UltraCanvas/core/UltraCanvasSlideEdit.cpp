@@ -1,6 +1,10 @@
 // core/UltraCanvasSlideEdit.cpp
 // The presentation editor element (include/UltraCanvasSlideEdit.h).
 //
+// Version: 1.5.0 - groups (Ctrl+G / Ctrl+Shift+G, a double-click enters one, a group framed, resized and
+//                  turned as one); crop mode; the slide sorter (SetView); onEditChart, onModeChange
+// Version: 1.4.0 - Copy / Cut / Paste through the system clipboard (UltraCanvasOfficeClipboard.h); the
+//                  strip and the shapes as parts to assistive technology (AccessibleSlides)
 // Version: 1.3.0 - the show mode is gone: UltraCanvasSlideShowPlayer plays the deck
 // Version: 1.2.0 - a double-click on a table asks for its cell (onEditTableCell)
 // Version: 1.1.0 - SetEditingShape: the shape's text left out while a host edits it in place
@@ -9,6 +13,8 @@
 #include "UltraCanvasSlideEdit.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboard.h"
+#include "UltraCanvasOfficeClipboard.h"
 #include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraLocalisation/UltraLocalisation.h"
@@ -30,6 +36,11 @@ constexpr double kDragThreshold = 4.0;
 constexpr double kHandleSize = 8.0;
 constexpr int64_t kNudge = 91440;            // a tenth of an inch
 constexpr int64_t kFineNudge = 12700;        // a point
+constexpr double kSorterThumbWidth = 220.0;  // the sorter's thumbnails
+constexpr double kSorterGap = 28.0;
+constexpr double kSorterMargin = 24.0;
+constexpr double kSorterLabel = 22.0;        // the slide's number under its thumbnail
+constexpr double kCropMark = 12.0;           // a crop handle's arms
 
 const Color kWorkspace(232, 232, 235);
 const Color kStripFill(244, 244, 246);
@@ -95,7 +106,18 @@ UltraCanvasSlideEdit::UltraCanvasSlideEdit(const std::string& id, int x, int y, 
         if (onChange) onChange();
     };
     editor_.onSelectionChange = [this]() {
+        if (cropping_) {
+            // Crop mode ends once the picture is no longer the one selected.
+            const auto& selection = editor_.GetSelection();
+            const PptxSlide* slide = editor_.CurrentSlide();
+            if (!slide || selection.size() != 1 ||
+                slide->shapes[static_cast<size_t>(selection.front())].kind != PptxShapeKind::Picture) {
+                cropping_ = false;
+                ModeChanged();
+            }
+        }
         RequestRedraw();
+        AnnounceAccessibleSelection();
         if (onSelectionChange) onSelectionChange();
     };
 }
@@ -253,8 +275,12 @@ void UltraCanvasSlideEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRect)
     ctx->PushState();
     ctx->SetFillPaint(kWorkspace);
     ctx->FillRectangle(Rect2Dd(0, 0, b.width, b.height));
-    DrawCanvas(ctx);
-    if (showStrip_) DrawStrip(ctx);
+    if (view_ == SlideEditView::Sorter) {
+        DrawSorter(ctx);
+    } else {
+        DrawCanvas(ctx);
+        if (showStrip_) DrawStrip(ctx);
+    }
     ctx->PopState();
 }
 
@@ -331,7 +357,29 @@ void UltraCanvasSlideEdit::DrawCanvas(IRenderContext* ctx) {
         DrawFrame(ctx, shape, false);
     }
     ctx->SetLineDash(UCDashPattern());
-    DrawSelection(ctx, slide);
+    // Inside a group: the group's box, faint, round what can be chosen.
+    if (const std::vector<int>& entered = editor_.GetEnteredGroup(); !entered.empty()) {
+        int64_t left = INT64_MAX, top = INT64_MAX, right = INT64_MIN, bottom = INT64_MIN;
+        for (const PptxShape& shape : slide.shapes) {
+            if (shape.groupPath.size() < entered.size() ||
+                !std::equal(entered.begin(), entered.end(), shape.groupPath.begin()))
+                continue;
+            left = std::min(left, shape.x);
+            top = std::min(top, shape.y);
+            right = std::max(right, shape.x + shape.width);
+            bottom = std::max(bottom, shape.y + shape.height);
+        }
+        if (left <= right) {
+            const Point2Dd a = ToView(static_cast<double>(left), static_cast<double>(top));
+            const Point2Dd z = ToView(static_cast<double>(right), static_cast<double>(bottom));
+            ctx->SetStrokePaint(kPlaceholderLine);
+            ctx->SetLineDash(UCDashPattern({2, 3}));
+            ctx->DrawRectangle(Rect2Dd(a.x - 3, a.y - 3, z.x - a.x + 6, z.y - a.y + 6));
+            ctx->SetLineDash(UCDashPattern());
+        }
+    }
+    if (cropping_) DrawCrop(ctx, slide);
+    else DrawSelection(ctx, slide);
 
     // Snapping's guide lines, across the slide.
     ctx->SetStrokePaint(kGuide);
@@ -411,12 +459,19 @@ void UltraCanvasSlideEdit::DrawSelection(IRenderContext* ctx, const PptxSlide& s
         if (i < static_cast<int>(slide.shapes.size())) DrawFrame(ctx, slide.shapes[static_cast<size_t>(i)], true);
         return;
     }
+    const bool group = editor_.SelectionIsOneGroup();
     // Several: each one's frame, and the box round them all with its handles.
     int64_t left = INT64_MAX, top = INT64_MAX, right = INT64_MIN, bottom = INT64_MIN;
     for (int i : selection) {
         if (i >= static_cast<int>(slide.shapes.size())) continue;
         const PptxShape& shape = slide.shapes[static_cast<size_t>(i)];
+        if (group) {   // a group is one shape: its parts only hinted at
+            ctx->SetStrokeWidth(1.0f);
+            ctx->SetLineDash(UCDashPattern({2, 2}));
+        }
         DrawFrame(ctx, shape, false);
+        ctx->SetLineDash(UCDashPattern());
+        ctx->SetStrokeWidth(1.5f);
         left = std::min(left, shape.x);
         top = std::min(top, shape.y);
         right = std::max(right, shape.x + shape.width);
@@ -424,25 +479,364 @@ void UltraCanvasSlideEdit::DrawSelection(IRenderContext* ctx, const PptxSlide& s
     }
     const Point2Dd a = ToView(static_cast<double>(left), static_cast<double>(top));
     const Point2Dd z = ToView(static_cast<double>(right), static_cast<double>(bottom));
-    ctx->SetLineDash(UCDashPattern({3, 3}));
+    if (!group) ctx->SetLineDash(UCDashPattern({3, 3}));
     ctx->DrawRectangle(Rect2Dd(a.x, a.y, z.x - a.x, z.y - a.y));
     ctx->SetLineDash(UCDashPattern());
-    DrawHandles(ctx, {a, Point2Dd(z.x, a.y), z, Point2Dd(a.x, z.y)}, false);
+    DrawHandles(ctx, {a, Point2Dd(z.x, a.y), z, Point2Dd(a.x, z.y)}, group);
+}
+
+// Crop mode: the whole picture faint, the part kept over it, and the crop
+// handles - bars at the corners and the sides' middles.
+void UltraCanvasSlideEdit::DrawCrop(IRenderContext* ctx, const PptxSlide& slide) {
+    const auto& selection = editor_.GetSelection();
+    if (selection.size() != 1 || selection.front() >= static_cast<int>(slide.shapes.size())) return;
+    const PptxShape& picture = slide.shapes[static_cast<size_t>(selection.front())];
+    const SlideBox full = UCSlideDeckEditor::PictureFullBox(picture);
+    PptxShape whole = picture;
+    whole.x = full.x;
+    whole.y = full.y;
+    whole.width = full.width;
+    whole.height = full.height;
+    whole.cropLeft = whole.cropTop = whole.cropRight = whole.cropBottom = 0;
+    whole.line.clear();
+    const Rect2Dd rect = SlideRect();
+    const double emu = EmuPerPixel();
+    // Drawn into a window that starts at the whole picture's corner, so the
+    // parts cropped away off the slide show too.
+    PptxSlide ghost;
+    PptxShape shifted = whole;
+    shifted.x = 0;
+    shifted.y = 0;
+    ghost.shapes = {shifted};
+    PptxSlideDrawOptions options;
+    options.background = false;
+    const Rect2Dd window(rect.x + static_cast<double>(full.x) / emu, rect.y + static_cast<double>(full.y) / emu, rect.width,
+                         std::max(rect.height, static_cast<double>(full.height) / emu + 2));
+    ctx->PushState();
+    ctx->SetAlpha(0.35);
+    DrawPptxSlide(ctx, *editor_.GetDeck(), ghost, window, options);
+    ctx->PopState();
+    PptxSlide kept;
+    kept.shapes = {picture};
+    DrawPptxSlide(ctx, *editor_.GetDeck(), kept, rect, options);
+    ctx->SetStrokePaint(kPlaceholderLine);
+    ctx->SetStrokeWidth(1.0f);
+    ctx->SetLineDash(UCDashPattern({4, 3}));
+    DrawFrame(ctx, whole, false);
+    ctx->SetLineDash(UCDashPattern());
+    ctx->SetStrokePaint(kAccent);
+    DrawFrame(ctx, picture, false);
+    // The handles, on the part kept, turned with it.
+    const double x = static_cast<double>(picture.x), y = static_cast<double>(picture.y);
+    const double w = static_cast<double>(picture.width), h = static_cast<double>(picture.height);
+    const Point2Dd centre(x + w / 2, y + h / 2);
+    std::vector<Point2Dd> corners;
+    for (const Point2Dd& c : {Point2Dd(x, y), Point2Dd(x + w, y), Point2Dd(x + w, y + h), Point2Dd(x, y + h)}) {
+        const Point2Dd turned = Turn(c, centre, picture.rotationDeg);
+        corners.push_back(ToView(turned.x, turned.y));
+    }
+    auto toward = [](const Point2Dd& from, const Point2Dd& to, double length) {
+        const double d = std::hypot(to.x - from.x, to.y - from.y);
+        const double k = d > 0 ? std::min(length, d / 2.0) / d : 0;
+        return Point2Dd(from.x + (to.x - from.x) * k, from.y + (to.y - from.y) * k);
+    };
+    for (int pass = 0; pass < 2; ++pass) {   // a white edge under black bars
+        ctx->SetStrokePaint(pass == 0 ? Colors::White : Colors::Black);
+        ctx->SetStrokeWidth(pass == 0 ? 6.0f : 3.5f);
+        for (size_t i = 0; i < 4; ++i) {
+            const Point2Dd& c = corners[i];
+            const Point2Dd& next = corners[(i + 1) % 4];
+            const Point2Dd& before = corners[(i + 3) % 4];
+            ctx->DrawLine(c, toward(c, next, kCropMark));
+            ctx->DrawLine(c, toward(c, before, kCropMark));
+            const Point2Dd middle((c.x + next.x) / 2, (c.y + next.y) / 2);
+            ctx->DrawLine(toward(middle, c, kCropMark / 2), toward(middle, next, kCropMark / 2));
+        }
+    }
+}
+
+// ===== THE SORTER =====
+
+int UltraCanvasSlideEdit::SorterColumns() const {
+    const double width = GetLocalBounds().width;
+    return std::max(1, static_cast<int>((width - 2 * kSorterMargin + kSorterGap) / (kSorterThumbWidth + kSorterGap)));
+}
+
+Rect2Dd UltraCanvasSlideEdit::SorterThumbRect(int index) const {
+    const int columns = SorterColumns();
+    const double height = kSorterThumbWidth * static_cast<double>(editor_.SlideHeight()) / static_cast<double>(editor_.SlideWidth());
+    const double rowWidth = columns * kSorterThumbWidth + (columns - 1) * kSorterGap;
+    const double left = std::max(kSorterMargin, (GetLocalBounds().width - rowWidth) / 2.0);
+    const int column = index % columns, row = index / columns;
+    return Rect2Dd(left + column * (kSorterThumbWidth + kSorterGap),
+                   kSorterMargin + row * (height + kSorterGap + kSorterLabel) - sorterScroll_, kSorterThumbWidth, height);
+}
+
+int UltraCanvasSlideEdit::SorterSlideAt(const Point2Df& p) const {
+    for (int i = 0; i < editor_.GetSlideCount(); ++i) {
+        const Rect2Dd r = SorterThumbRect(i);
+        if (p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height + kSorterLabel) return i;
+    }
+    return -1;
+}
+
+int UltraCanvasSlideEdit::SorterDropAt(const Point2Df& p) const {
+    // The gap the pointer is nearest: before slide i (0 .. count).
+    const int count = editor_.GetSlideCount();
+    if (count == 0) return 0;
+    const int columns = SorterColumns();
+    const Rect2Dd first = SorterThumbRect(0);
+    const double rowHeight = first.height + kSorterGap + kSorterLabel;
+    const int rows = (count + columns - 1) / columns;
+    const int row = std::clamp(static_cast<int>(std::floor((p.y - first.y + kSorterGap / 2) / rowHeight)), 0, rows - 1);
+    int column = columns;
+    for (int c = 0; c < columns; ++c) {
+        if (p.x < first.x + c * (kSorterThumbWidth + kSorterGap) + kSorterThumbWidth / 2) { column = c; break; }
+    }
+    return std::clamp(row * columns + column, 0, count);
+}
+
+void UltraCanvasSlideEdit::EnsureSorterVisible(int index) {
+    if (index < 0) return;
+    const Rect2Dd r = SorterThumbRect(index);
+    const double height = GetLocalBounds().height;
+    if (r.y < kSorterMargin) sorterScroll_ -= kSorterMargin - r.y;
+    else if (r.y + r.height + kSorterLabel > height - kSorterMargin)
+        sorterScroll_ += r.y + r.height + kSorterLabel - (height - kSorterMargin);
+    sorterScroll_ = std::max(0.0, sorterScroll_);
+}
+
+void UltraCanvasSlideEdit::DrawSorter(IRenderContext* ctx) {
+    const Rect2Df b = GetLocalBounds();
+    const auto& deck = editor_.GetDeck();
+    const std::vector<int> chosen = GetSorterSelection();
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(0, 0, b.width, b.height));
+    FontStyle font;
+    font.fontSize = 11;
+    ctx->SetFontStyle(font);
+    for (int i = 0; i < editor_.GetSlideCount(); ++i) {
+        const Rect2Dd r = SorterThumbRect(i);
+        if (r.y + r.height + kSorterLabel < 0 || r.y > b.height) continue;
+        const PptxSlide& slide = deck->slides[static_cast<size_t>(i)];
+        ctx->SetFillPaint(Color(0, 0, 0, 30));
+        ctx->FillRectangle(Rect2Dd(r.x + 3, r.y + 4, r.width, r.height));
+        DrawPptxSlide(ctx, *deck, slide, r);
+        if (slide.hidden) {   // dimmed: left out of the show
+            ctx->SetFillPaint(Color(255, 255, 255, 140));
+            ctx->FillRectangle(r);
+        }
+        const bool on = std::binary_search(chosen.begin(), chosen.end(), i);
+        ctx->SetStrokePaint(on ? kAccent : kStripLine);
+        ctx->SetStrokeWidth(on ? 3.0f : 1.0f);
+        const double grow = on ? 2.5 : 1.0;
+        ctx->DrawRectangle(Rect2Dd(r.x - grow, r.y - grow, r.width + 2 * grow, r.height + 2 * grow));
+        std::string label = std::to_string(i + 1);
+        if (slide.hidden) label += " - " + Tr("Hidden");
+        ctx->SetTextPaint(on ? kAccent : kNumber);
+        ctx->DrawText(label, Point2Dd(r.x + r.width / 2 - ctx->GetTextLineWidth(label) / 2, r.y + r.height + 5));
+    }
+    if (drag_ == Drag::SorterSlides && dragStarted_ && sorterDropIndex_ >= 0 && editor_.GetSlideCount() > 0) {
+        // Where the slides go: a bar in the gap.
+        const int count = editor_.GetSlideCount();
+        const bool after = sorterDropIndex_ >= count;   // past the last slide
+        const Rect2Dd r = SorterThumbRect(after ? count - 1 : sorterDropIndex_);
+        const double x = after ? r.x + r.width + kSorterGap / 2 : r.x - kSorterGap / 2;
+        ctx->SetStrokePaint(kAccent);
+        ctx->SetStrokeWidth(4.0f);
+        ctx->DrawLine(Point2Dd(x, r.y - 4), Point2Dd(x, r.y + r.height + 4));
+    }
+    ctx->PopState();
+}
+
+void UltraCanvasSlideEdit::SetView(SlideEditView view) {
+    if (view_ == view) return;
+    view_ = view;
+    drag_ = Drag::NoDrag;
+    preview_.reset();
+    guides_ = SlideSnap{};
+    cropping_ = false;
+    const int current = editor_.GetCurrentSlide();
+    if (view_ == SlideEditView::Sorter) {
+        sorterSelection_ = current >= 0 ? std::vector<int>{current} : std::vector<int>();
+        sorterAnchor_ = current;
+        EnsureSorterVisible(current);
+    } else {
+        EnsureThumbVisible(current);
+    }
+    ModeChanged();
+}
+
+std::vector<int> UltraCanvasSlideEdit::GetSorterSelection() const {
+    std::vector<int> slides;
+    const int count = editor_.GetSlideCount();
+    for (int i : sorterSelection_)
+        if (i >= 0 && i < count) slides.push_back(i);
+    std::sort(slides.begin(), slides.end());
+    slides.erase(std::unique(slides.begin(), slides.end()), slides.end());
+    if (slides.empty() && editor_.GetCurrentSlide() >= 0) slides.push_back(editor_.GetCurrentSlide());
+    return slides;
+}
+
+void UltraCanvasSlideEdit::SetSorterSelection(std::vector<int> slides) {
+    sorterSelection_ = std::move(slides);
+    sorterSelection_ = GetSorterSelection();
+    if (!sorterSelection_.empty()) {
+        sorterAnchor_ = sorterSelection_.front();
+        editor_.SetCurrentSlide(sorterSelection_.front());
+    }
+    RequestRedraw();
+}
+
+bool UltraCanvasSlideEdit::SetCropMode(bool crop) {
+    if (crop) {
+        const auto& selection = editor_.GetSelection();
+        const PptxSlide* slide = editor_.CurrentSlide();
+        if (view_ != SlideEditView::Normal || !slide || selection.size() != 1 ||
+            slide->shapes[static_cast<size_t>(selection.front())].kind != PptxShapeKind::Picture)
+            return false;
+    }
+    if (cropping_ == crop) return true;
+    cropping_ = crop;
+    ModeChanged();
+    return true;
+}
+
+void UltraCanvasSlideEdit::ModeChanged() {
+    RequestRedraw();
+    if (onModeChange) onModeChange();
+}
+
+bool UltraCanvasSlideEdit::OnSorterPress(const UCEvent& event) {
+    const Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
+    if (!Contains(p)) return false;
+    SetFocus(true);
+    pressAt_ = p;
+    dragStarted_ = false;
+    const int slide = SorterSlideAt(p);
+    const std::vector<int> chosen = GetSorterSelection();
+    const bool wasChosen = slide >= 0 && std::binary_search(chosen.begin(), chosen.end(), slide);
+    if (event.button == UCMouseButton::Right) {
+        if (slide >= 0 && !wasChosen) SetSorterSelection({slide});
+        if (onContextMenu) onContextMenu(true, slide, -1, event.pointerWindow.x, event.pointerWindow.y);
+        RequestRedraw();
+        return true;
+    }
+    if (event.button != UCMouseButton::Left || slide < 0) return true;
+    if (event.shift && sorterAnchor_ >= 0) {
+        std::vector<int> range;
+        for (int i = std::min(sorterAnchor_, slide); i <= std::max(sorterAnchor_, slide); ++i) range.push_back(i);
+        if (event.ctrl) range.insert(range.end(), chosen.begin(), chosen.end());
+        sorterSelection_ = range;
+        editor_.SetCurrentSlide(slide);
+    } else if (event.ctrl) {
+        std::vector<int> next = chosen;
+        if (wasChosen) next.erase(std::find(next.begin(), next.end(), slide));
+        else next.push_back(slide);
+        sorterSelection_ = next;
+        sorterAnchor_ = slide;
+        editor_.SetCurrentSlide(slide);
+    } else if (!wasChosen) {
+        SetSorterSelection({slide});
+    }
+    // A press on a chosen slide keeps the choice, for dragging them all; let
+    // go without a drag, it chooses that slide alone.
+    pressedStripSlide_ = (wasChosen && !event.shift && !event.ctrl) ? slide : -1;
+    drag_ = Drag::SorterSlides;
+    sorterDropIndex_ = -1;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+    RequestRedraw();
+    return true;
+}
+
+bool UltraCanvasSlideEdit::OnSorterKey(const UCEvent& event) {
+    const bool ctrl = event.ctrl && !event.alt;
+    const int count = editor_.GetSlideCount();
+    const int current = editor_.GetCurrentSlide();
+    auto go = [&](int to) {
+        to = std::clamp(to, 0, std::max(0, count - 1));
+        if (count == 0) return true;
+        if (event.shift && sorterAnchor_ >= 0) {
+            std::vector<int> range;
+            for (int i = std::min(sorterAnchor_, to); i <= std::max(sorterAnchor_, to); ++i) range.push_back(i);
+            sorterSelection_ = range;
+            editor_.SetCurrentSlide(to);
+        } else {
+            SetSorterSelection({to});
+        }
+        EnsureSorterVisible(to);
+        RequestRedraw();
+        return true;
+    };
+    switch (event.virtualKey) {
+        case UCKeys::Left: return go(current - 1);
+        case UCKeys::Right: return go(current + 1);
+        case UCKeys::Up: return go(current - SorterColumns());
+        case UCKeys::Down: return go(current + SorterColumns());
+        case UCKeys::Home: return go(0);
+        case UCKeys::End: return go(count - 1);
+        case UCKeys::Return:
+            SetView(SlideEditView::Normal);
+            return true;
+        case UCKeys::Delete: case UCKeys::Backspace:
+            editor_.DeleteSlides(GetSorterSelection());
+            SetSorterSelection({editor_.GetCurrentSlide()});
+            return true;
+        case UCKeys::A:
+            if (ctrl) {
+                std::vector<int> all;
+                for (int i = 0; i < count; ++i) all.push_back(i);
+                sorterSelection_ = all;
+                RequestRedraw();
+                return true;
+            }
+            break;
+        case UCKeys::D:
+            if (ctrl) {
+                const std::vector<int> chosen = GetSorterSelection();
+                editor_.DuplicateSlides(chosen);
+                std::vector<int> copies;
+                for (size_t k = 0; k < chosen.size(); ++k) copies.push_back(chosen.back() + 1 + static_cast<int>(k));
+                SetSorterSelection(copies);
+                return true;
+            }
+            break;
+        default: break;
+    }
+    return false;
 }
 
 // ===== EVENTS =====
 
 bool UltraCanvasSlideEdit::OnEvent(const UCEvent& event) {
     switch (event.type) {
-        case UCEventType::MouseDown: return OnPress(event);
+        case UCEventType::MouseDown: return view_ == SlideEditView::Sorter ? OnSorterPress(event) : OnPress(event);
         case UCEventType::MouseMove: return OnMove(event);
         case UCEventType::MouseUp: return OnRelease(event);
         case UCEventType::MouseDoubleClick: {
             const Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
+            if (view_ == SlideEditView::Sorter) {
+                // A slide to edit.
+                const int slide = Contains(p) ? SorterSlideAt(p) : -1;
+                if (slide < 0) return false;
+                drag_ = Drag::NoDrag;
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+                SetView(SlideEditView::Normal);
+                GoToSlide(slide);
+                return true;
+            }
             if (!Contains(p) || p.x < StripRect().width) return false;
+            if (cropping_) { SetCropMode(false); return true; }
             const Point2Dd at = ToSlide(p);
             const int shape = editor_.ShapeAt(static_cast<int64_t>(at.x), static_cast<int64_t>(at.y));
             int row = -1, col = -1;
+            // A group: a double-click chooses inside it.
+            if (shape >= 0 && editor_.EnterGroup(shape)) return true;
+            if (shape >= 0 && editor_.CurrentSlide()->shapes[static_cast<size_t>(shape)].kind == PptxShapeKind::Chart) {
+                editor_.Select({shape});
+                if (onEditChart) onEditChart(shape);
+                return true;
+            }
             if (shape >= 0 && editor_.TableCellAt(shape, static_cast<int64_t>(at.x), static_cast<int64_t>(at.y), row, col)) {
                 editor_.Select({shape});
                 if (onEditTableCell) onEditTableCell(shape, row, col);
@@ -454,6 +848,15 @@ bool UltraCanvasSlideEdit::OnEvent(const UCEvent& event) {
         case UCEventType::MouseWheel: {
             const Point2Df p(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
             if (!Contains(p)) return false;
+            if (view_ == SlideEditView::Sorter) {
+                const int rows = (editor_.GetSlideCount() + SorterColumns() - 1) / SorterColumns();
+                const double rowHeight = SorterThumbRect(0).height + kSorterGap + kSorterLabel;
+                const double total = rows * rowHeight + 2 * kSorterMargin;
+                sorterScroll_ = std::clamp(sorterScroll_ - event.wheelDelta * 40.0, 0.0,
+                                           std::max(0.0, total - GetLocalBounds().height));
+                RequestRedraw();
+                return true;
+            }
             if (p.x < StripRect().width) {
                 const double total = editor_.GetSlideCount() * (ThumbHeight() + kStripGap) + 2 * kStripTop;
                 stripScroll_ = std::clamp(stripScroll_ - event.wheelDelta * 40.0, 0.0,
@@ -512,12 +915,33 @@ bool UltraCanvasSlideEdit::OnPress(const UCEvent& event) {
         return true;
     }
     if (event.button != UCMouseButton::Left) return true;
-
     handle_ = editor_.HandleAt(ax, ay, EmuPerPixel());
+    if (cropping_) {
+        // The crop handles crop; a press anywhere else ends crop mode.
+        if (handle_ != SlideHandle::NoHandle && handle_ != SlideHandle::Rotate) {
+            drag_ = Drag::Crop;
+            const PptxShape& shape = editor_.CurrentSlide()->shapes[static_cast<size_t>(editor_.GetSelection().front())];
+            startBox_ = SlideBox{shape.x, shape.y, shape.width, shape.height};
+            startRotation_ = shape.rotationDeg;
+            if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+            RequestRedraw();
+            return true;
+        }
+        const int shape = editor_.ShapeAt(ax, ay);
+        if (shape >= 0 && editor_.IsSelected(shape)) return true;
+        SetCropMode(false);
+        handle_ = SlideHandle::NoHandle;
+    }
     if (handle_ != SlideHandle::NoHandle) {
         drag_ = handle_ == SlideHandle::Rotate ? Drag::Rotate : Drag::Resize;
     } else {
         const int shape = editor_.ShapeAt(ax, ay);
+        // Inside a group, a press outside it goes back to whole groups.
+        if (const std::vector<int>& entered = editor_.GetEnteredGroup(); !entered.empty()) {
+            const std::vector<int>* path = shape >= 0 ? &editor_.CurrentSlide()->shapes[static_cast<size_t>(shape)].groupPath : nullptr;
+            if (!path || path->size() < entered.size() || !std::equal(entered.begin(), entered.end(), path->begin()))
+                editor_.ExitGroup();
+        }
         if (shape < 0) {
             if (!event.shift && !event.ctrl) editor_.ClearSelection();
             drag_ = Drag::Band;
@@ -557,6 +981,11 @@ bool UltraCanvasSlideEdit::OnMove(const UCEvent& event) {
     }
     if (drag_ == Drag::StripSlide) {
         stripDropIndex_ = StripDropAt(p);
+        RequestRedraw();
+        return true;
+    }
+    if (drag_ == Drag::SorterSlides) {
+        sorterDropIndex_ = SorterDropAt(p);
         RequestRedraw();
         return true;
     }
@@ -602,7 +1031,7 @@ void UltraCanvasSlideEdit::UpdatePreview(const Point2Df& p, bool shift, bool alt
         return;
     }
 
-    if (drag_ == Drag::Rotate && selection.size() == 1) {
+    if (drag_ == Drag::Rotate && !selection.empty()) {
         const double cx = static_cast<double>(startBox_.x) + static_cast<double>(startBox_.width) / 2;
         const double cy = static_cast<double>(startBox_.y) + static_cast<double>(startBox_.height) / 2;
         double angle = std::atan2(to.y - cy, to.x - cx) * 180.0 / kPi + 90.0;
@@ -611,11 +1040,27 @@ void UltraCanvasSlideEdit::UpdatePreview(const Point2Df& p, bool shift, bool alt
             for (double right : {0.0, 90.0, 180.0, 270.0, 360.0, -90.0})
                 if (std::fabs(angle - right) < 3.0) angle = right;
         angle = std::fmod(angle + 360.0, 360.0);
-        preview_->shapes[static_cast<size_t>(selection.front())].rotationDeg = angle;
+        dragAngle_ = angle;
+        if (selection.size() == 1) {
+            preview_->shapes[static_cast<size_t>(selection.front())].rotationDeg = angle;
+            return;
+        }
+        // A group turns as one about its box's centre.
+        const double a = angle * kPi / 180.0;
+        for (int i : selection) {
+            PptxShape& shape = preview_->shapes[static_cast<size_t>(i)];
+            const PptxShape& was = current->shapes[static_cast<size_t>(i)];
+            const double dx = static_cast<double>(was.x) + static_cast<double>(was.width) / 2 - cx;
+            const double dy = static_cast<double>(was.y) + static_cast<double>(was.height) / 2 - cy;
+            shape.x = static_cast<int64_t>(cx + dx * std::cos(a) - dy * std::sin(a) - static_cast<double>(was.width) / 2);
+            shape.y = static_cast<int64_t>(cy + dx * std::sin(a) + dy * std::cos(a) - static_cast<double>(was.height) / 2);
+            shape.rotationDeg = std::fmod(was.rotationDeg + angle, 360.0);
+        }
         return;
     }
 
-    if (drag_ != Drag::Resize) return;
+    if (drag_ != Drag::Resize && drag_ != Drag::Crop) return;
+    if (drag_ == Drag::Crop) shift = alt = false;   // a crop keeps neither proportions nor its centre
     const bool left = handle_ == SlideHandle::Left || handle_ == SlideHandle::TopLeft || handle_ == SlideHandle::BottomLeft;
     const bool right = handle_ == SlideHandle::Right || handle_ == SlideHandle::TopRight || handle_ == SlideHandle::BottomRight;
     const bool top = handle_ == SlideHandle::Top || handle_ == SlideHandle::TopLeft || handle_ == SlideHandle::TopRight;
@@ -646,7 +1091,7 @@ void UltraCanvasSlideEdit::UpdatePreview(const Point2Df& p, bool shift, bool alt
         else { const double nw = h * aspect; if (left && !alt) l = r - nw; else if (alt) { l = centre.x - nw / 2; r = centre.x + nw / 2; } else r = l + nw; }
     }
     SlideBox box{static_cast<int64_t>(l), static_cast<int64_t>(t), static_cast<int64_t>(r - l), static_cast<int64_t>(b - t)};
-    if (snapping_ && !alt && !shift && std::fabs(rotation) < 0.01) {
+    if (snapping_ && !alt && !shift && std::fabs(rotation) < 0.01 && drag_ != Drag::Crop) {
         guides_ = editor_.Snap(box, tolerance, selection, false, handle_);
         box = guides_.box;
     }
@@ -660,6 +1105,20 @@ void UltraCanvasSlideEdit::UpdatePreview(const Point2Df& p, bool shift, bool alt
         const Point2Dd after = Turn(anchorLocal, newCentre, rotation);
         box.x += static_cast<int64_t>(before.x - after.x);
         box.y += static_cast<int64_t>(before.y - after.y);
+    }
+    if (drag_ == Drag::Crop && selection.size() == 1) {
+        // The part kept: no more than the whole picture, its scale unchanged.
+        PptxShape& shape = preview_->shapes[static_cast<size_t>(selection.front())];
+        const SlideBox full = UCSlideDeckEditor::PictureFullBox(current->shapes[static_cast<size_t>(selection.front())]);
+        const int64_t l = std::max(box.x, full.x), t = std::max(box.y, full.y);
+        const int64_t r = std::min(box.Right(), full.Right()), b = std::min(box.Bottom(), full.Bottom());
+        if (r - l < 2 || b - t < 2 || full.width <= 0 || full.height <= 0) return;
+        shape.x = l; shape.y = t; shape.width = r - l; shape.height = b - t;
+        shape.cropLeft = static_cast<double>(l - full.x) / static_cast<double>(full.width);
+        shape.cropTop = static_cast<double>(t - full.y) / static_cast<double>(full.height);
+        shape.cropRight = static_cast<double>(full.Right() - r) / static_cast<double>(full.width);
+        shape.cropBottom = static_cast<double>(full.Bottom() - b) / static_cast<double>(full.height);
+        return;
     }
     if (selection.size() == 1) {
         PptxShape& shape = preview_->shapes[static_cast<size_t>(selection.front())];
@@ -701,6 +1160,28 @@ bool UltraCanvasSlideEdit::OnRelease(const UCEvent& event) {
         RequestRedraw();
         return true;
     }
+    if (drag == Drag::SorterSlides) {
+        const std::vector<int> moving = GetSorterSelection();
+        if (moved && sorterDropIndex_ >= 0 && !moving.empty()) {
+            // Where the first of them lands, among the slides that stay.
+            int at = 0;
+            for (int i = 0; i < sorterDropIndex_; ++i)
+                if (!std::binary_search(moving.begin(), moving.end(), i)) ++at;
+            editor_.MoveSlides(moving, sorterDropIndex_);
+            std::vector<int> landed;
+            for (size_t k = 0; k < moving.size(); ++k) landed.push_back(at + static_cast<int>(k));
+            sorterSelection_ = landed;
+            sorterAnchor_ = at;
+            editor_.SetCurrentSlide(at);
+            EnsureSorterVisible(at);
+        } else if (!moved && pressedStripSlide_ >= 0) {
+            SetSorterSelection({pressedStripSlide_});
+        }
+        sorterDropIndex_ = -1;
+        pressedStripSlide_ = -1;
+        RequestRedraw();
+        return true;
+    }
     if (drag == Drag::Band) {
         if (moved) {
             std::vector<int> picked = editor_.ShapesInside(bandBox_);
@@ -722,6 +1203,11 @@ bool UltraCanvasSlideEdit::OnRelease(const UCEvent& event) {
         editor_.MoveSelection(b.x - a.x, b.y - a.y);
     } else if (drag == Drag::Rotate && selection.size() == 1) {
         editor_.SetShapeRotation(selection.front(), preview->shapes[static_cast<size_t>(selection.front())].rotationDeg);
+    } else if (drag == Drag::Rotate && !selection.empty()) {
+        editor_.RotateSelection(dragAngle_);
+    } else if (drag == Drag::Crop && selection.size() == 1) {
+        const PptxShape& b = preview->shapes[static_cast<size_t>(selection.front())];
+        editor_.SetPictureCropBox(selection.front(), SlideBox{b.x, b.y, b.width, b.height});
     } else if (drag == Drag::Resize) {
         if (selection.size() == 1) {
             const PptxShape& b = preview->shapes[static_cast<size_t>(selection.front())];
@@ -764,8 +1250,13 @@ bool UltraCanvasSlideEdit::OnKey(const UCEvent& event) {
     if (ctrl && event.virtualKey == UCKeys::Z) { if (event.shift) editor_.Redo(); else editor_.Undo(); return true; }
     if (ctrl && event.virtualKey == UCKeys::Y) { editor_.Redo(); return true; }
     if (ctrl && event.virtualKey == UCKeys::M) { editor_.NewSlide(-1); EnsureThumbVisible(editor_.GetCurrentSlide()); return true; }
+    if (view_ == SlideEditView::Sorter) return OnSorterKey(event);
     if (event.virtualKey == UCKeys::PageUp) { GoToSlide(slide - 1); return true; }
     if (event.virtualKey == UCKeys::PageDown) { GoToSlide(slide + 1); return true; }
+    if (cropping_ && (event.virtualKey == UCKeys::Escape || event.virtualKey == UCKeys::Return)) {
+        SetCropMode(false);
+        return true;
+    }
 
     if (stripActive_) {
         switch (event.virtualKey) {
@@ -785,26 +1276,351 @@ bool UltraCanvasSlideEdit::OnKey(const UCEvent& event) {
         case UCKeys::Up: editor_.NudgeSelection(0, -step); return true;
         case UCKeys::Down: editor_.NudgeSelection(0, step); return true;
         case UCKeys::Delete: case UCKeys::Backspace: editor_.DeleteSelection(); return true;
-        case UCKeys::Escape: editor_.ClearSelection(); return true;
+        case UCKeys::Escape:
+            if (!editor_.GetEnteredGroup().empty()) editor_.ExitGroup();   // the group chosen whole again
+            else editor_.ClearSelection();
+            return true;
         case UCKeys::Tab: {
+            // The next group or shape (a group's shapes come together).
             const PptxSlide* current = editor_.CurrentSlide();
             if (!current || current->shapes.empty()) return true;
             const int count = static_cast<int>(current->shapes.size());
-            const int at = editor_.GetSelection().empty() ? (event.shift ? count : -1) : editor_.GetSelection().front();
+            const auto& chosen = editor_.GetSelection();
+            const int at = chosen.empty() ? (event.shift ? count : -1) : (event.shift ? chosen.front() : chosen.back());
             editor_.Select({(at + (event.shift ? -1 : 1) + count) % count});
             return true;
         }
+        case UCKeys::G:
+            if (ctrl) {
+                if (event.shift) editor_.UngroupSelection();
+                else editor_.GroupSelection();
+                return true;
+            }
+            break;
         case UCKeys::Return: case UCKeys::F2:
             if (editor_.GetSelection().size() == 1) EditTextOf(editor_.GetSelection().front());
             return true;
         case UCKeys::A: if (ctrl) { editor_.SelectAll(); return true; } break;
         case UCKeys::D: if (ctrl) { editor_.DuplicateSelection(); return true; } break;
-        case UCKeys::C: if (ctrl) { editor_.CopySelection(); return true; } break;
-        case UCKeys::X: if (ctrl) { editor_.CutSelection(); return true; } break;
-        case UCKeys::V: if (ctrl) { editor_.Paste(); return true; } break;
+        case UCKeys::C: if (ctrl) { Copy(); return true; } break;
+        case UCKeys::X: if (ctrl) { Cut(); return true; } break;
+        case UCKeys::V: if (ctrl) { Paste(); return true; } break;
         default: break;
     }
     return false;
+}
+
+// ===== CLIPBOARD =====
+
+namespace {
+
+std::string WithoutCarriageReturns(std::string text) {
+    text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+    return text;
+}
+
+// A box of `width` x `height` EMU in the middle of the slide, no larger than
+// most of it.
+SlideBox CentredBox(const UCSlideDeckEditor& editor, double width, double height) {
+    const double slideW = static_cast<double>(editor.SlideWidth()), slideH = static_cast<double>(editor.SlideHeight());
+    const double most = 0.9;
+    if (width > slideW * most) {
+        height *= slideW * most / width;
+        width = slideW * most;
+    }
+    height = std::min(height, slideH * most);
+    SlideBox box;
+    box.width = static_cast<int64_t>(width);
+    box.height = static_cast<int64_t>(height);
+    box.x = (editor.SlideWidth() - box.width) / 2;
+    box.y = (editor.SlideHeight() - box.height) / 2;
+    return box;
+}
+
+constexpr double kEmuPerPixel = 9525.0;      // at 96 pixels to the inch
+constexpr double kEmuPerPoint = 12700.0;
+
+} // namespace
+
+void UltraCanvasSlideEdit::Copy() {
+    editor_.CopySelection();
+    if (editor_.GetSelection().empty()) return;
+    // Other programs (and the document editor) get the shapes' text, and
+    // HTML with a table kept as a table.
+    copiedText_ = PptxShapesAsClipboardText(editor_.CopiedShapes());
+    const std::string html = PptxShapesAsClipboardHtml(editor_.CopiedShapes());
+    if (html.empty()) SetClipboardText(copiedText_);
+    else SetClipboardHtml(html, copiedText_);
+}
+
+void UltraCanvasSlideEdit::Cut() {
+    if (editor_.GetSelection().empty()) return;
+    Copy();
+    editor_.DeleteSelection();
+}
+
+void UltraCanvasSlideEdit::Paste() {
+    if (!editor_.CurrentSlide()) return;
+    std::string text;
+    const bool haveText = GetClipboardText(text);
+    // The shapes copied here, while the system clipboard still holds what
+    // their copy put there; else what was copied since, here or elsewhere.
+    if (editor_.CanPaste() && haveText && WithoutCarriageReturns(text) == WithoutCarriageReturns(copiedText_)) {
+        editor_.Paste();
+        return;
+    }
+    if (PasteFromSystemClipboard()) return;
+    if (editor_.CanPaste() && !haveText) editor_.Paste();   // no system clipboard to be had
+}
+
+bool UltraCanvasSlideEdit::PasteFromSystemClipboard() {
+    // A chart copied from a spreadsheet: a chart, as large as it was there.
+    RichChart chart;
+    int chartWidth = 0, chartHeight = 0;
+    if (GetClipboardChart(chart, chartWidth, chartHeight)) {
+        const int shape = editor_.InsertChart(CentredBox(editor_, chartWidth * kEmuPerPixel, chartHeight * kEmuPerPixel), chart);
+        if (shape >= 0) return true;
+    }
+
+    PptxRun look;
+    look.sizePt = 18;
+    look.font = editor_.GetDeck() ? editor_.GetDeck()->minorFont : std::string();
+    // A text box as wide as most of the slide, as tall as its lines.
+    auto insertText = [&](const std::vector<PptxParagraph>& paragraphs) {
+        if (paragraphs.empty()) return false;
+        double height = 2 * 45720.0;   // the insets
+        for (const PptxParagraph& paragraph : paragraphs) {
+            float size = 0;
+            for (const PptxRun& run : paragraph.runs) size = std::max(size, run.sizePt);
+            height += (size > 0 ? size : 18.0f) * 1.2 * kEmuPerPoint;
+        }
+        return editor_.InsertFormattedTextBox(CentredBox(editor_, editor_.SlideWidth() * 0.7, height), paragraphs) >= 0;
+    };
+    // Cells: a table, rows of about two fifths of an inch, columns of up to two inches.
+    auto insertTable = [&](const PptxTableCells& cells) {
+        size_t columns = 0;
+        for (const auto& row : cells) columns = std::max(columns, row.size());
+        if (cells.empty() || columns == 0) return false;
+        const double width = static_cast<double>(columns) * 1828800.0;
+        const double height = static_cast<double>(cells.size()) * 370840.0;
+        return editor_.InsertTable(CentredBox(editor_, width, height), cells) >= 0;
+    };
+
+    std::string html;
+    if (GetClipboardHtml(html) && !html.empty()) {
+        PptxTableCells cells;
+        if (PptxTableCellsFromHtml(html, cells) && insertTable(cells)) return true;
+        if (insertText(PptxParagraphsFromClipboardHtml(html, look))) return true;
+    }
+    std::string text;
+    const bool haveText = GetClipboardText(text) && !text.empty();
+    // A picture (another program's image, no text beside it).
+    if (UltraCanvasClipboard* clipboard = GetClipboard(); clipboard && !haveText) {
+        std::vector<uint8_t> bytes;
+        std::string format;
+        if (clipboard->GetImage(bytes, format) && !bytes.empty()) {
+            int width = 0, height = 0;
+            UCRichDocument::SniffImagePixelSize(bytes, width, height);
+            std::string extension = format;
+            if (extension.find('/') != std::string::npos) extension = UCRichDocument::FileExtensionForMimeType(extension);
+            if (extension.empty()) extension = "png";
+            if (editor_.InsertPicture(bytes, extension, width, height) >= 0) return true;
+        }
+    }
+    if (!haveText) return false;
+    ClipboardCellRows rows;
+    if (ClipboardTableFromTabbedText(text, rows) && insertTable(PptxTableCellsFromRows(rows))) return true;
+    return insertText(PptxParagraphsFromClipboardText(text, look));
+}
+
+// ===== ACCESSIBILITY =====
+
+namespace {
+
+// A shape's kind, as a screen reader names a shape without text.
+std::string KindName(const PptxShape& shape) {
+    if (shape.placeholder == "dt") return Tr("Date");
+    if (shape.placeholder == "ftr") return Tr("Footer");
+    if (shape.placeholder == "sldNum") return Tr("Slide number");
+    switch (shape.kind) {
+        case PptxShapeKind::Title: return Tr("Title");
+        case PptxShapeKind::Subtitle: return Tr("Subtitle");
+        case PptxShapeKind::Body: return Tr("Content");
+        case PptxShapeKind::Table: return Tr("Table");
+        case PptxShapeKind::Picture: return Tr("Image");
+        case PptxShapeKind::Connector: return Tr("Line");
+        case PptxShapeKind::Chart: return Tr("Chart");
+        default: return Tr("Text");
+    }
+}
+
+AccessibleRole RoleOf(const PptxShape& shape) {
+    switch (shape.kind) {
+        case PptxShapeKind::Table: return AccessibleRole::Table;
+        case PptxShapeKind::Picture:
+        case PptxShapeKind::Chart: return AccessibleRole::Image;
+        case PptxShapeKind::Connector: return AccessibleRole::Group;
+        default: return AccessibleRole::Label;
+    }
+}
+
+// The first words of `text`, at most eight and about sixty bytes.
+std::string FirstWords(const std::string& text) {
+    std::string out;
+    int words = 0;
+    bool inWord = false;
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i] == '\n' || text[i] == '\t' ? ' ' : text[i];
+        const bool space = c == ' ';
+        if (!space && !inWord) {
+            if (words == 8 || out.size() >= 60) {
+                while (!out.empty() && out.back() == ' ') out.pop_back();
+                out += "...";
+                return out;
+            }
+            ++words;
+        }
+        inWord = !space;
+        if (space && (out.empty() || out.back() == ' ')) continue;
+        out += c;
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out;
+}
+
+std::string ShapeTextOf(const PptxShape& shape) {
+    if (shape.kind == PptxShapeKind::Table) {
+        std::string text;
+        for (const auto& row : shape.rows)
+            for (const auto& cell : row)
+                for (const PptxParagraph& paragraph : cell) text += paragraph.Text() + " ";
+        return text;
+    }
+    if (shape.kind == PptxShapeKind::Picture) return shape.altText;
+    if (shape.kind == PptxShapeKind::Chart) return shape.chart.title;
+    return UCSlideDeckEditor::ShapeText(shape);
+}
+
+} // namespace
+
+// The strip and the slide as a screen reader walks them. It holds the
+// element raw: the element owns it.
+class UltraCanvasSlideEdit::AccessibleSlides : public IAccessibleParts {
+public:
+    explicit AccessibleSlides(UltraCanvasSlideEdit& owner) : edit(owner) {}
+
+    int GetPartCount(const std::vector<int>& parent) const override {
+        if (parent.empty()) return 2;   // the strip, the slide
+        if (parent.size() != 1) return 0;
+        if (parent[0] == 0) return edit.editor_.GetSlideCount();
+        const PptxSlide* slide = edit.editor_.CurrentSlide();
+        return parent[0] == 1 && slide ? static_cast<int>(slide->shapes.size()) : 0;
+    }
+
+    AccessiblePart GetPart(const std::vector<int>& path) const override {
+        AccessiblePart part;
+        const int count = edit.editor_.GetSlideCount();
+        const int current = edit.editor_.GetCurrentSlide();
+        if (path.size() == 1 && path[0] == 0) {
+            part.role = AccessibleRole::List;
+            part.name = Tr("Slides");
+            if (edit.showStrip_) part.bounds = ToWindow(edit.StripRect());
+            return part;
+        }
+        if (path.size() == 1 && path[0] == 1) {
+            part.role = AccessibleRole::Group;
+            part.name = edit.GetAccessibleName();
+            part.bounds = ToWindow(edit.SlideRect());
+            return part;
+        }
+        if (path.size() != 2) return part;
+        if (path[0] == 0) {
+            const int index = path[1];
+            if (index < 0 || index >= count) return part;
+            const PptxSlide& slide = edit.editor_.GetDeck()->slides[static_cast<size_t>(index)];
+            part.role = AccessibleRole::ListItem;
+            part.name = TrF("Slide {0} of {1}", index + 1, count);
+            if (!slide.title.empty()) part.name += ": " + FirstWords(slide.title);
+            if (slide.hidden) part.description = Tr("Hidden");
+            part.selected = index == current;
+            part.focused = edit.stripActive_ && index == current;
+            if (edit.showStrip_) part.bounds = ToWindow(edit.ThumbRect(index));
+            return part;
+        }
+        if (path[0] != 1) return part;
+        const PptxSlide* slide = edit.editor_.CurrentSlide();
+        const int index = path[1];
+        if (!slide || index < 0 || index >= static_cast<int>(slide->shapes.size())) return part;
+        const PptxShape& shape = slide->shapes[static_cast<size_t>(index)];
+        part.role = RoleOf(shape);
+        const std::string words = FirstWords(ShapeTextOf(shape));
+        part.name = words.empty() ? KindName(shape) : words;
+        part.description = KindName(shape);
+        part.selected = edit.editor_.IsSelected(index);
+        const auto& selection = edit.editor_.GetSelection();
+        part.focused = !edit.stripActive_ && !selection.empty() && selection.front() == index;
+        const Point2Dd from = edit.ToView(static_cast<double>(shape.x), static_cast<double>(shape.y));
+        const Point2Dd to = edit.ToView(static_cast<double>(shape.x + shape.width), static_cast<double>(shape.y + shape.height));
+        part.bounds = ToWindow(Rect2Dd(from.x, from.y, to.x - from.x, to.y - from.y));
+        return part;
+    }
+
+    std::vector<int> GetFocusedPart() const override {
+        const int current = edit.editor_.GetCurrentSlide();
+        if (current < 0) return {};
+        if (edit.stripActive_) return {0, current};
+        const auto& selection = edit.editor_.GetSelection();
+        if (selection.empty()) return {};
+        return {1, selection.front()};
+    }
+
+    std::vector<std::vector<int>> GetSelectedParts() const override {
+        std::vector<std::vector<int>> out;
+        const int current = edit.editor_.GetCurrentSlide();
+        if (current < 0) return out;
+        out.push_back({0, current});
+        for (int shape : edit.editor_.GetSelection()) out.push_back({1, shape});
+        return out;
+    }
+
+private:
+    UltraCanvasSlideEdit& edit;
+
+    Rect2Df ToWindow(const Rect2Dd& local) const {
+        const Point2Df origin = edit.GetPositionInWindow();
+        return Rect2Df(origin.x + static_cast<float>(local.x), origin.y + static_cast<float>(local.y),
+                       static_cast<float>(local.width), static_cast<float>(local.height));
+    }
+};
+
+std::string UltraCanvasSlideEdit::GetAccessibleName() const {
+    if (!GetAccessibleNameOverride().empty()) return GetAccessibleNameOverride();
+    const int count = editor_.GetSlideCount();
+    const int current = editor_.GetCurrentSlide();
+    if (current < 0) return std::string();
+    std::string name = TrF("Slide {0} of {1}", current + 1, count);
+    const PptxSlide* slide = editor_.CurrentSlide();
+    if (slide && !slide->title.empty()) name += ": " + FirstWords(slide->title);
+    return name;
+}
+
+IAccessibleParts* UltraCanvasSlideEdit::GetAccessiblePartsInterface() {
+    if (!accessibleSlides_) accessibleSlides_ = std::make_shared<AccessibleSlides>(*this);
+    return accessibleSlides_.get();
+}
+
+void UltraCanvasSlideEdit::AnnounceAccessibleSelection() {
+    if (!UltraCanvasAccessibility::HasListeners()) return;
+    const int current = editor_.GetCurrentSlide();
+    if (current != announcedSlide_) {
+        announcedSlide_ = current;
+        NotifyAccessibility(AccessibilityEventType::NameChanged);   // another slide shown
+    }
+    AccessibilityEvent event;
+    event.type = AccessibilityEventType::SelectionChanged;
+    event.element = this;
+    event.part = GetAccessiblePartsInterface()->GetFocusedPart();
+    UltraCanvasAccessibility::Notify(event);
 }
 
 } // namespace UltraCanvas

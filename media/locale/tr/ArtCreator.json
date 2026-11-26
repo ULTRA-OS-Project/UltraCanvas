@@ -1,6 +1,10 @@
 {
   "@language": "tr",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "Bu penceredeki {n} çizimin kaydedilmemiş değişiklikleri var. Yine de kapatılsın mı?",
+    "other": "Bu penceredeki {n} çizimin kaydedilmemiş değişiklikleri var. Yine de kapatılsın mı?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Metin eklendi: düzenlemek için Metin aracıyla üzerine tıklayın veya çift tıklayın",
   "Changed the text": "Metin değiştirildi",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Sayfaya tıklayıp yazın veya düzenlemek için bir metne tıklayın; yukarıdaki çubuk metnin yazı tipini, boyutunu, stilini, hizalamasını ve aralığını ayarlar. Escape, Ctrl+Enter veya dışarıya tıklama işlemi bitirir",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Üstü çizili metin",
   "Text Underline": "Altı çizili metin",
   "The text was emptied, so it was deleted": "Metin boşaltıldı, bu yüzden silindi",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Yeni metin yazılıyor: Enter yeni bir satır başlatır; Escape, Ctrl+Enter veya dışarıya tıklama işlemi bitirir"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Yeni metin yazılıyor: Enter yeni bir satır başlatır; Escape, Ctrl+Enter veya dışarıya tıklama işlemi bitirir",
+  "Untitled {0}": "Adsız {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} içinde kaydedilmemiş değişiklikler var. Yine de kapatılsın mı?",
+  "{0} is open already": "{0} zaten açık"
 }

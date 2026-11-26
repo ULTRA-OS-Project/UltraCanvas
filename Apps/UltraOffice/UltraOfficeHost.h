@@ -6,6 +6,7 @@
 // the slide show) for presentations - so the window never asks "and which
 // kind is this?" (Docs/Research/UltraOfficeDesignProposal.md, §4.2).
 //
+// Version: 0.2.0 - AttachSettings (what a kind remembers: the document's navigator), HandleShortcut (F5)
 // Version: 0.1.0
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
@@ -19,6 +20,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace UltraCanvas { class UltraCanvasAppSettings; }
 
 namespace UltraOffice {
 
@@ -85,6 +88,13 @@ public:
     virtual std::string GetStatusText() const = 0;
     // Gives the keyboard to the document.
     virtual void Focus() = 0;
+
+    // The window's settings, for what a kind remembers between runs (the
+    // document's navigator, shown or not): given once, when its tab is added.
+    virtual void AttachSettings(UltraCanvas::UltraCanvasAppSettings* settings) { (void)settings; }
+    // A key the window's own shortcuts leave alone, offered to the tab that
+    // is open: true when the kind used it (F5 shows the document's navigator).
+    virtual bool HandleShortcut(const UltraCanvas::UCEvent& event) { (void)event; return false; }
 
     // The host tells the window that the modified state or the status changed.
     std::function<void()> onChanged;

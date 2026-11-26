@@ -1,6 +1,7 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.11.2 - the file dialog's captions, its Home folder, messages and tooltips go through Tr
 // Version: 3.11.1 - the Save dialog's "Drag to Folder" caption wraps onto two lines instead of being cut
 // Version: 3.11.0 - an input dialog's iconAboveInput: a picture centred above its field, in the
 //                  message colour (the Unlock dialog's lock)
@@ -2163,7 +2164,7 @@ namespace UltraCanvas {
                 OnNameTyped(text);
             };
             auto nameGroup = makeGroup("FileDialogNameGroup", "FileDialogNameLabel",
-                                       "File name", fileNameInput);
+                                       Tr("File name"), fileNameInput);
 
             if (fileConfig.filterToggles) {
                 // One button per kind of file, any number on, sized to their
@@ -2186,7 +2187,7 @@ namespace UltraCanvas {
                 stack->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
                 stack->AddChild(nameGroup);
                 stack->AddChild(makeGroup("FileDialogTypeGroup", "FileDialogTypeLabel",
-                                          "Show", toggleRow));
+                                          Tr("Show"), toggleRow));
                 fields->AddChild(stack);
                 if (pictureSizeLabel) stack->AddChild(pictureSizeLabel);
 
@@ -2218,7 +2219,7 @@ namespace UltraCanvas {
                 nameGroup->layoutItem.SetFlexGrow(3).SetFlexShrink(1).SetFlexBasis(
                         CSSLayout::Dimension::Px(0));
                 fields->AddChild(nameGroup);
-                auto typeGroup = makeGroup("FileDialogTypeGroup", "FileDialogTypeLabel", "File type",
+                auto typeGroup = makeGroup("FileDialogTypeGroup", "FileDialogTypeLabel", Tr("File type"),
                                            withSettings("FileDialogTypeRow", filterDropdown));
                 typeGroup->layoutItem.SetFlexGrow(2).SetFlexShrink(1).SetFlexBasis(
                         CSSLayout::Dimension::Px(0));
@@ -2396,7 +2397,7 @@ namespace UltraCanvas {
         const std::string home = UserHomeDirectory();
         std::error_code ec;
         if (!home.empty() && std::filesystem::is_directory(PathFromUtf8(home), ec)) {
-            AddFolderTreeNode(kTreeRootId, TreeNodeId(kPlaceTag, home), "Home",
+            AddFolderTreeNode(kTreeRootId, TreeNodeId(kPlaceTag, home), Tr("Home"),
                               "home-user.svg", false);
         }
         for (const UserFolderInfo& folder : GetWellKnownUserFolders()) {
@@ -2862,8 +2863,8 @@ namespace UltraCanvas {
                 // there: say so, as the platforms' save dialogs do, rather
                 // than leave OK doing nothing.
                 UltraCanvasDialogManager::ShowInformation(
-                        "The folder \"" + PathToUtf8(parent) + "\" does not exist.\n"
-                        "Check the path, or choose a folder from the tree.",
+                        TrF("The folder \"{0}\" does not exist.\n"
+                            "Check the path, or choose a folder from the tree.", PathToUtf8(parent)),
                         Tr("Folder Not Found"), nullptr, this);
                 return;
             }
@@ -2879,8 +2880,8 @@ namespace UltraCanvas {
         // swallowed, which read as a dead button; the platforms' open dialogs
         // all say what was wrong. The dialog stays open on the name typed.
         UltraCanvasDialogManager::ShowInformation(
-                "\"" + typed + "\" was not found in\n" + currentDirectory + ".\n\n"
-                "Check the name, or choose a file from the list.",
+                TrF("\"{0}\" was not found in\n{1}.\n\n"
+                    "Check the name, or choose a file from the list.", typed, currentDirectory),
                 Tr("File Not Found"), nullptr, this);
     }
 
@@ -3016,12 +3017,12 @@ namespace UltraCanvas {
         saveSettingsButton->SetDisabled(!hasSettings);
         if (hasSettings) {
             saveSettingsButton->SetTooltip(format.settings.empty()
-                    ? format.name + " settings: the size it is written at"
-                    : format.name + " settings: how the file is written");
+                    ? TrF("{0} settings: the size it is written at", format.name)
+                    : TrF("{0} settings: how the file is written", format.name));
         } else if (type.empty()) {
             saveSettingsButton->SetTooltip(Tr("Settings: the name has no type to choose settings for"));
         } else {
-            saveSettingsButton->SetTooltip("Settings: ." + type + " files have none to choose");
+            saveSettingsButton->SetTooltip(TrF("Settings: .{0} files have none to choose", type));
         }
     }
 

@@ -1,5 +1,13 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.14.0 - pivot tables: their cells read-only (typing, pasting, cutting, a double-click drills
+//                   in or opens the field list), refreshed when their source changes, before drawing
+// Version: 1.13.0 - Ctrl+Shift+Enter enters a formula as a legacy array formula over the selection
+// Version: 1.12.0 - a table to assistive technology (AccessibleGrid); Copy / Cut a selected chart onto the
+//                   office clipboard; another program's HTML table read by ClipboardTableFromHtml
+// Version: 1.11.0 - conditional formats, comments (a red corner) and links (blue, underlined) drawn by PaintCell;
+//                   a comment or link shown while the pointer rests on its cell; Ctrl+click opens a link
+// Version: 1.10.0 - charts drawn over the cells and taking the pointer first (UltraCanvasSpreadsheetChart.cpp)
 // Version: 1.9.0 - the system clipboard: text and an HTML table out, another program's table or text in; a paste is an undo step
 // Version: 1.8.0 - a keyboard move selects the cell it lands on, not only the active cell; Shift+arrow extends the range
 // Version: 1.7.0 - every change a sheet reports reaches the formula engine; Paste recalculates
@@ -16,10 +24,13 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasCSVImport.h"
-#include "HTMLReader/HTMLParser.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasOfficeClipboard.h"
+#include "UltraCanvasSpreadsheetChart.h"
+#include "UltraCanvasTooltipManager.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <charconv>
 #include <functional>
@@ -83,6 +94,8 @@ CellTextMeasureFn MakeSpreadsheetTextMeasurer(IRenderContext* ctx) {
 
 void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!ctx) return;
+    // The pivots whose sources changed write their cells before they are drawn.
+    if (!pivotSourcesChanged_.empty()) RefreshChangedPivotTables();
 
     // A file loaded before the grid was on a window left its unsized columns
     // waiting for real font metrics; this is the first moment we have them.
@@ -122,6 +135,7 @@ void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
     RenderCells(ctx);
     RenderSelection(ctx);
     RenderFormulaRangeHighlights(ctx);
+    RenderCharts(ctx);   // over the cells (UltraCanvasSpreadsheetChart.cpp)
 
     if (HasFrozenPanes()) {
         RenderFreezeLines(ctx);
@@ -527,10 +541,9 @@ void UltraCanvasSpreadsheet::RenderCells(IRenderContext* ctx) {
 }
 
 void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, const Rect2Di& bounds) {
-    auto* sheet = GetActiveSheet();
+    const SpreadsheetSheet* sheet = GetActiveSheet();
     if (!sheet) return;
     
-    const SpreadsheetCell* cell = sheet->GetCellIfExists(row, col);
 
     // In-cell editing: draw the live edit buffer over a clean background instead
     // of the committed value; both come from the editor child.
@@ -550,19 +563,37 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
                                        const Rect2Di& bounds) {
     const SpreadsheetCell* cell = sheet.GetCellIfExists(row, col);
 
+    // The conditional formats over the cell: a rule's style laid over the
+    // cell's own, a colour scale's fill, a data bar.
+    const ConditionalCellFormat conditional = sheet.GetConditionalFormatting(row, col);
+    const bool styled = (cell && cell->HasCustomStyle()) || conditional.style.has_value();
+    CellStyle style = (cell && cell->HasCustomStyle()) ? cell->GetStyle() : CellStyle();
+    if (conditional.style) ApplyConditionalStyle(style, *conditional.style);
+
     // Cell background
-    if (cell && cell->HasCustomStyle()) {
-        const auto& style = cell->GetStyle();
-        if (style.fill.pattern != FillPattern::NoFill) {
-            ctx->SetFillPaint(style.fill.foregroundColor);
-            ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
-        }
+    if (conditional.fill) {
+        ctx->SetFillPaint(*conditional.fill);
+        ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
+    } else if (styled && style.fill.pattern != FillPattern::NoFill) {
+        ctx->SetFillPaint(style.fill.foregroundColor);
+        ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
+    }
+
+    // A data bar from the left edge, as long as the value is far along the
+    // rule's range, under the value.
+    if (conditional.hasDataBar && bounds.width > 4 && bounds.height > 4) {
+        const double room = bounds.width - 4.0;
+        const double length = std::max(2.0, room * conditional.dataBarLength);
+        const Color bar = conditional.dataBarColor;
+        ctx->SetFillPaint(Color(bar.r, bar.g, bar.b, 170));
+        ctx->FillRectangle(Rect2Dd(bounds.x + 2.0, bounds.y + 2.0, length, bounds.height - 4.0));
+        ctx->SetStrokePaint(bar);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRectangle(Rect2Dd(bounds.x + 2.5, bounds.y + 2.5, length - 1.0, bounds.height - 5.0));
     }
 
     // Cell content
-    if (cell && !cell->IsEmpty()) {
-        const auto& style = cell->GetStyle();
-
+    if (cell && !cell->IsEmpty() && conditional.showValue) {
         // Set font
         FontStyle cellFont;
         cellFont.fontFamily = style.font.family.empty() ? "Arial" : style.font.family;
@@ -572,7 +603,11 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
         ctx->SetFontStyle(cellFont);
         // Negative values in a "red negatives" number format paint red, as in
         // the authoring application; otherwise the style's own font colour wins.
+        // A link reads as one - blue and underlined - unless its cell has a
+        // colour of its own.
         Color textColor = style.font.color;
+        const bool link = cell->HasHyperlink();
+        if (link && textColor == Colors::Black) textColor = Color(5, 99, 193);
         if (style.numberFormat.negativeRed && cell->IsNumeric() &&
             cell->GetNumber() < 0.0) {
             textColor = Color(255, 0, 0);
@@ -600,16 +635,14 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
         }
 
         // Horizontal alignment
+        const int textWidth = ctx->GetTextLineWidth(text);
         if (style.hAlign == HorizontalAlignment::Center) {
-            int textWidth = ctx->GetTextLineWidth(text);
             textX = bounds.x + (bounds.width - textWidth) / 2;
         } else if (style.hAlign == HorizontalAlignment::Right) {
-            int textWidth = ctx->GetTextLineWidth(text);
             textX = bounds.x + bounds.width - textWidth - padding;
         } else if (style.hAlign == HorizontalAlignment::General) {
             // Numbers and dates align right, text aligns left
             if (cell->IsNumeric()) {
-                int textWidth = ctx->GetTextLineWidth(text);
                 textX = bounds.x + bounds.width - textWidth - padding;
             }
         }
@@ -618,12 +651,27 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
         ctx->PushState();
         ctx->ClipRect(Rect2Df(bounds.x + 1, bounds.y + 1, bounds.width - 2, bounds.height - 2));
         ctx->DrawText(text, Point2Df(textX, textY));
+        // Underline (a link's too) and strikethrough, along the first line.
+        const bool underline = link || style.font.underline != UnderlineStyle::NoUnderline;
+        if ((underline || style.font.strikethrough) && text.find('\n') == std::string::npos) {
+            const double lineHeight = ctx->GetTextLineHeight(text);
+            ctx->SetStrokePaint(textColor);
+            ctx->SetStrokeWidth(1.0f);
+            if (underline) {
+                const double y = std::floor(textY + lineHeight * 0.92) + 0.5;
+                ctx->DrawLine(Point2Dd(textX, y), Point2Dd(textX + textWidth, y));
+            }
+            if (style.font.strikethrough) {
+                const double y = std::floor(textY + lineHeight * 0.55) + 0.5;
+                ctx->DrawLine(Point2Dd(textX, y), Point2Dd(textX + textWidth, y));
+            }
+        }
         ctx->PopState();
     }
 
     // Cell borders (if custom)
-    if (cell && cell->HasCustomStyle()) {
-        const auto& borders = cell->GetStyle().borders;
+    if (styled) {
+        const auto& borders = style.borders;
 
         if (borders.left.style != BorderStyle::NoBorder) {
             ctx->SetStrokePaint(borders.left.color);
@@ -647,6 +695,15 @@ void UltraCanvasSpreadsheet::PaintCell(IRenderContext* ctx, const SpreadsheetShe
             ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
                           Point2Df(bounds.x + bounds.width, bounds.y + bounds.height));
         }
+    }
+
+    // A comment: the red corner the spreadsheet programs mark it with.
+    if (cell && cell->HasComment()) {
+        const double size = std::min(7.0, std::min(bounds.width, bounds.height) / 2.0);
+        const double right = bounds.x + bounds.width;
+        ctx->SetFillPaint(Color(220, 30, 30));
+        ctx->FillLinePath({Point2Dd(right - size, bounds.y), Point2Dd(right, bounds.y),
+                           Point2Dd(right, bounds.y + size)});
     }
 }
 
@@ -1177,6 +1234,8 @@ CellRange UltraCanvasSpreadsheet::AutoFillTargetFor(int row, int col) const {
 // ============================================================================
 
 bool UltraCanvasSpreadsheet::OnEvent(const UCEvent& event) {
+    // A chart under the pointer, or the selected one, takes the event first.
+    if (HandleChartEvent(event)) return true;
     switch (event.type) {
         case UCEventType::MouseDown:
             HandleMouseDown(event);
@@ -1276,6 +1335,12 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
                 StopEditing(true);
             }
             
+            // Ctrl+click on a link opens it; a plain click selects the cell.
+            if (event.ctrl && !event.shift && OpenHyperlink(hit.row, hit.col)) {
+                mouseDown_ = false;
+                break;
+            }
+
             mouseDownCell_ = clickedCell;
             
             if (event.shift) {
@@ -1523,6 +1588,9 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
     // column/row boundaries are draggable (the application applies the hovered
     // element's cursor automatically).
     HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
+    // A cell's comment or link shows while the pointer rests on it.
+    const bool overCell = hit.area == HitArea::Cell && !IsEditing();
+    UpdateCellTip(event, overCell ? hit.row : -1, overCell ? hit.col : -1);
     switch (hit.area) {
         case HitArea::ColumnResizer: SetMouseCursor(UCMouseCursor::SizeWE); break;
         case HitArea::RowResizer:    SetMouseCursor(UCMouseCursor::SizeNS); break;
@@ -1541,6 +1609,34 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
     }
 }
 
+void UltraCanvasSpreadsheet::UpdateCellTip(const UCEvent& event, int row, int col) {
+    const SpreadsheetSheet* sheet = GetActiveSheet();
+    const SpreadsheetCell* cell = (sheet && row >= 0 && col >= 0) ? sheet->GetCellIfExists(row, col) : nullptr;
+    const bool tip = cell && (cell->HasComment() || cell->HasHyperlink());
+    if (!tip) row = col = -1;
+    if (row == tipRow_ && col == tipCol_) return;
+    tipRow_ = row;
+    tipCol_ = col;
+    // The application raises an element's tooltip as the pointer enters it,
+    // so a tip per cell is shown from here as the pointer crosses cells.
+    if (!tip) {
+        ClearTooltipContent();
+        UltraCanvasTooltipManager::HideTooltip();
+        return;
+    }
+    TooltipContent content;
+    if (const CellComment* note = cell->GetComment()) {
+        if (!note->author.empty()) content.AddTitle(note->author);
+        content.AddPlainText(note->text);
+    }
+    if (const CellHyperlink* link = cell->GetHyperlink()) {
+        content.AddPlainText(link->tooltip.empty() ? link->target : link->tooltip);
+        content.AddPlainText(Tr("Ctrl+click to open the link"));
+    }
+    SetTooltipContent(content);
+    if (auto* win = GetWindow()) UltraCanvasTooltipManager::UpdateAndShowTooltip(win, content, event.pointerWindow);
+}
+
 void UltraCanvasSpreadsheet::HandleMouseDoubleClick(const UCEvent& event) {
     HitTestResult hit = HitTest(event.pointer.x, event.pointer.y);
 
@@ -1557,6 +1653,8 @@ void UltraCanvasSpreadsheet::HandleMouseDoubleClick(const UCEvent& event) {
         PromptRenameSheet(hit.tabIndex);
     }
     else if (hit.area == HitArea::Cell) {
+        // A pivot's cell: its source rows, or its field list.
+        if (HandlePivotDoubleClick(hit.row, hit.col)) return;
         StartInCellEditing();
         if (onCellDoubleClick) onCellDoubleClick(hit.row, hit.col);
     }
@@ -1739,7 +1837,7 @@ void UltraCanvasSpreadsheet::HandleKeyPress(const UCEvent& event) {
         // Start editing with the typed character
         if (event.character >= 32) {
             StartEditing();
-            SetEditBuffer(std::string(1, static_cast<char>(event.character)));
+            if (IsEditing()) SetEditBuffer(std::string(1, static_cast<char>(event.character)));
         }
     }
 }
@@ -2176,6 +2274,22 @@ void UltraCanvasSpreadsheet::BuildCellEditor(const std::string& initialText,
         Invalidate();
     };
     cellEditor->onEnterPressed = [this](const std::string&) {
+        // Ctrl+Shift+Enter on a formula: a legacy array formula over the
+        // selection (or the cell alone), as in Excel.
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (app && app->IsCtrlHeld() && app->IsShiftHeld() && !editBuffer_.empty() && editBuffer_[0] == '=') {
+            const std::string formula = editBuffer_;
+            const CellAddress at = editingCell_;
+            CellRange range = GetSelection();
+            if (!range.Contains(at.row, at.col)) range = CellRange(at.row, at.col, at.row, at.col);
+            StopEditing(false);
+            if (auto* sheet = GetActiveSheet()) {
+                if (recordingUndo_) RecordRangeChange(range);
+                sheet->SetArrayFormula(range, formula);
+                Recalculate();
+            }
+            return true;
+        }
         StopEditing(true);
         if (!IsEditing()) MoveActiveCell(1, 0);   // Retry edits a refused entry again
         return true;
@@ -2212,6 +2326,7 @@ void UltraCanvasSpreadsheet::StartEditingAt(int row, int col) {
     if (IsEditing()) {
         StopEditing(true);
     }
+    if (RefusePivotEdit(CellRange(row, col, row, col))) return;
     
     editingCell_ = CellAddress(row, col);
     editMode_ = SpreadsheetEditMode::Editing;
@@ -2331,6 +2446,7 @@ void UltraCanvasSpreadsheet::InsertFunction(const std::string& name) {
 
 void UltraCanvasSpreadsheet::StartInCellEditing() {
     CellAddress active = GetActiveCell();
+    if (RefusePivotEdit(CellRange(active.row, active.col, active.row, active.col))) return;
     editingCell_ = active;
     editMode_ = SpreadsheetEditMode::InCellEditing;
     
@@ -2519,7 +2635,7 @@ std::vector<std::string> UltraCanvasSpreadsheet::GetValidationListItems(int row,
     const auto* sheet = GetActiveSheet();
     const DataValidation* rule = sheet ? sheet->GetEffectiveValidation(row, col) : nullptr;
     if (!rule || rule->type != ValidationType::List || !rule->showDropdown) return {};
-    return DataValidationListItems(*rule);
+    return sheet->GetValidationListItems(row, col);   // its own list, or the cells it names
 }
 
 bool UltraCanvasSpreadsheet::ChooseValidationListItem(int row, int col, const std::string& item) {
@@ -2809,7 +2925,16 @@ void UltraCanvasSpreadsheet::AutoFitRowHeight(int row) {
 void UltraCanvasSpreadsheet::Copy() {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
-    
+    // A selected chart is what is copied: a static chart for a document or
+    // a slide, a picture and its data for other programs.
+    if (const int chart = GetSelectedChart(); chart >= 0) {
+        const SpreadsheetChart* copied = GetChart(chart);
+        const Rect2Di box = GetChartBounds(chart);
+        if (copied) CopyChartToClipboard(copied->chart, box.width, box.height);
+        return;
+    }
+    ClearClipboardChart();
+
     clipboardRange_ = GetSelection();
     clipboardSheetName_ = sheet->GetName();
     clipboardOp_ = ClipboardOperation::Copy;
@@ -2823,7 +2948,13 @@ void UltraCanvasSpreadsheet::Copy() {
 }
 
 void UltraCanvasSpreadsheet::Cut() {
+    if (const int chart = GetSelectedChart(); chart >= 0) {
+        Copy();
+        RemoveChart(chart);
+        return;
+    }
     Copy();
+    if (RefusePivotEdit(GetSelection())) return;   // copied, but not taken away
     clipboardOp_ = ClipboardOperation::Cut;
 }
 
@@ -2882,6 +3013,7 @@ void UltraCanvasSpreadsheet::PasteSpecial(const PasteOptions& options) {
         const CellRange target(dest.row, dest.col,
                                std::min(dest.row + static_cast<int>(clipboardData_.size()) - 1, SpreadsheetLimits::MaxRows - 1),
                                std::min(dest.col + static_cast<int>(width) - 1, SpreadsheetLimits::MaxColumns - 1));
+        if (RefusePivotEdit(target)) return;
         if (recordingUndo_) RecordRangeChange(target);   // a paste is undone
     }
     // A copied formula's references move with it; a cut one's stay on the
@@ -2956,51 +3088,10 @@ std::string UltraCanvasSpreadsheet::RangeAsHtml(const CellRange& range) const {
 }
 
 bool UltraCanvasSpreadsheet::PasteHtml(const std::string& html) {
-    HTML::Parser parser;
-    HTML::Document document = parser.Parse(html);
-    HTML::Node* table = document.root ? document.root->FindFirst("table") : nullptr;
-    if (!table) return false;
-    // The table's rows, inside thead / tbody / tfoot or not; a cell that
-    // spans columns or rows keeps the cells it covers free.
-    std::vector<HTML::Node*> rows;
-    std::function<void(HTML::Node*)> collect = [&](HTML::Node* node) {
-        for (const auto& child : node->children) {
-            if (child->IsElement("tr")) rows.push_back(child.get());
-            else if (child->IsElement("thead") || child->IsElement("tbody") || child->IsElement("tfoot")) collect(child.get());
-        }
-    };
-    collect(table);
-    if (rows.empty()) return false;
-    std::vector<std::vector<std::string>> grid(rows.size());
-    std::vector<std::vector<bool>> taken(rows.size());
-    auto spanOf = [](const HTML::Node& cell, const char* name) {
-        int span = 1;
-        const std::string value = cell.GetAttribute(name);
-        if (!value.empty()) {
-            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), span);
-            if (parsed.ec != std::errc()) span = 1;
-        }
-        return std::clamp(span, 1, 1000);
-    };
-    for (size_t r = 0; r < rows.size(); ++r) {
-        size_t col = 0;
-        for (const auto& child : rows[r]->children) {
-            if (!child->IsElement("td") && !child->IsElement("th")) continue;
-            while (col < taken[r].size() && taken[r][col]) ++col;
-            const int colSpan = spanOf(*child, "colspan");
-            const int rowSpan = spanOf(*child, "rowspan");
-            for (int dr = 0; dr < rowSpan && r + static_cast<size_t>(dr) < rows.size(); ++dr) {
-                auto& line = taken[r + static_cast<size_t>(dr)];
-                auto& values = grid[r + static_cast<size_t>(dr)];
-                const size_t end = col + static_cast<size_t>(colSpan);
-                if (line.size() < end) line.resize(end, false);
-                if (values.size() < end) values.resize(end);
-                for (size_t c = col; c < end; ++c) line[c] = true;
-            }
-            grid[r][col] = HTML::ExtractPlainText(*child);
-            col += static_cast<size_t>(colSpan);
-        }
-    }
+    // The table's rows, a cell spanning columns or rows keeping the cells it
+    // covers free (UltraCanvasOfficeClipboard.h).
+    ClipboardCellRows grid;
+    if (!ClipboardTableFromHtml(html, grid)) return false;
     return PasteValues(grid);
 }
 
@@ -3035,6 +3126,7 @@ bool UltraCanvasSpreadsheet::PasteValues(const std::vector<std::vector<std::stri
     const CellRange target(dest.row, dest.col,
                            std::min(dest.row + static_cast<int>(rows.size()) - 1, SpreadsheetLimits::MaxRows - 1),
                            std::min(dest.col + static_cast<int>(width) - 1, SpreadsheetLimits::MaxColumns - 1));
+    if (RefusePivotEdit(target)) return false;
     if (recordingUndo_) RecordRangeChange(target);
     {
         UndoRecordingPause pause(*this);   // the one step above covers every cell
@@ -3137,23 +3229,29 @@ void UltraCanvasSpreadsheet::SetupSheetCallbacks(SpreadsheetSheet* sheet) {
     // The sheet is held raw: it owns these callbacks.
     sheet->onCellChange = [this, sheet](int row, int col) {
         if (formulaEngine_) formulaEngine_->MarkDirty(CellAddress(row, col), sheet->GetName());
+        chartsDirty_ = true;
+        if (!writingPivots_) NotePivotSourceChange(sheet->GetName(), CellRange(row, col, row, col));
         Invalidate();
         if (onCellChange) onCellChange(row, col);
     };
 
     sheet->onRangeChange = [this, sheet](const CellRange& range) {
         if (formulaEngine_) formulaEngine_->MarkRangeDirty(range, sheet->GetName());
+        chartsDirty_ = true;
+        if (!writingPivots_) NotePivotSourceChange(sheet->GetName(), range);
         Invalidate();
     };
     
     sheet->onSelectionChange = [this]() {
         UpdateFormulaBar();
         Invalidate();
+        AnnounceAccessibleSelection();
         if (onSelectionChange) onSelectionChange();
     };
     
     sheet->onStructureChange = [this]() {
         if (formulaEngine_) formulaEngine_->MarkAllDirty();   // rows or columns moved
+        chartsDirty_ = true;
         Invalidate();
         if (onStructureChange) onStructureChange();
     };
@@ -3202,6 +3300,169 @@ size_t UltraCanvasSpreadsheet::GetMemorySize() const {
     }
     
     return size;
+}
+
+// ============================================================================
+// ACCESSIBILITY
+// ============================================================================
+
+// The grid as a screen reader walks it: rows of cells, the active cell
+// focused, the selection selected. It holds the grid raw: the grid owns it.
+class UltraCanvasSpreadsheet::AccessibleGrid : public IAccessibleTable, public IAccessibleParts {
+public:
+    explicit AccessibleGrid(UltraCanvasSpreadsheet& owner) : grid(owner) {}
+
+    // ----- the table -----
+    int GetRowCount() const override { return grid.GetActiveSheet() ? Extent().end.row + 1 : 0; }
+    int GetColumnCount() const override { return grid.GetActiveSheet() ? Extent().end.col + 1 : 0; }
+    std::string GetRowHeader(int row) const override { return std::to_string(row + 1); }
+    std::string GetColumnHeader(int column) const override { return CellAddress::ColumnToLetter(column); }
+
+    AccessiblePart GetCell(int row, int column) const override {
+        AccessiblePart part;
+        if (row < 0 || column < 0 || row >= GetRowCount() || column >= GetColumnCount()) return part;
+        part.role = AccessibleRole::TableCell;
+        part.row = row;
+        part.column = column;
+        part.name = AddressOf(row, column);
+        const std::string value = grid.GetCellDisplayValue(row, column);
+        if (!value.empty()) part.name += " " + value;
+        part.description = grid.GetCellFormula(row, column);   // what makes the value, when a formula does
+        const CellAddress active = grid.GetActiveCell();
+        part.focused = active.row == row && active.col == column;
+        const CellRange selection = grid.GetSelection();
+        part.selected = row >= selection.start.row && row <= selection.end.row &&
+                        column >= selection.start.col && column <= selection.end.col;
+        part.bounds = ToWindow(grid.GetCellBounds(row, column), row, column);
+        return part;
+    }
+
+    bool GetFocusedCell(int& row, int& column) const override {
+        if (!grid.GetActiveSheet()) return false;
+        const CellAddress active = grid.GetActiveCell();
+        row = active.row;
+        column = active.col;
+        return true;
+    }
+
+    bool GetSelectedCells(int& firstRow, int& firstColumn, int& lastRow, int& lastColumn) const override {
+        if (!grid.GetActiveSheet()) return false;
+        const CellRange selection = grid.GetSelection();
+        firstRow = selection.start.row;
+        firstColumn = selection.start.col;
+        lastRow = selection.end.row;
+        lastColumn = selection.end.col;
+        return true;
+    }
+
+    // ----- the parts: the rows, and each row's cells -----
+    int GetPartCount(const std::vector<int>& parent) const override {
+        if (parent.empty()) return GetRowCount();
+        if (parent.size() == 1 && parent[0] >= 0 && parent[0] < GetRowCount()) return GetColumnCount();
+        return 0;
+    }
+
+    AccessiblePart GetPart(const std::vector<int>& path) const override {
+        if (path.size() == 2) return GetCell(path[0], path[1]);
+        AccessiblePart part;
+        if (path.size() != 1 || path[0] < 0 || path[0] >= GetRowCount()) return part;
+        const int row = path[0];
+        part.role = AccessibleRole::TableRow;
+        part.row = row;
+        part.name = std::to_string(row + 1);   // as its header says it
+        const CellRange selection = grid.GetSelection();
+        part.selected = row >= selection.start.row && row <= selection.end.row;
+        const Rect2Di first = grid.GetCellBounds(row, 0);
+        const int right = grid.gridBounds_.x + grid.gridBounds_.width;
+        part.bounds = ToWindow(Rect2Di(first.x, first.y, std::max(0, right - first.x), first.height), row, 0);
+        return part;
+    }
+
+    std::vector<int> GetFocusedPart() const override {
+        int row = 0, column = 0;
+        if (!GetFocusedCell(row, column)) return {};
+        return {row, column};
+    }
+
+    std::vector<std::vector<int>> GetSelectedParts() const override {
+        std::vector<std::vector<int>> out;
+        int r0 = 0, c0 = 0, r1 = 0, c1 = 0;
+        if (!GetSelectedCells(r0, c0, r1, c1)) return out;
+        // A whole column or row selected is a million cells: the first ones
+        // say what it is.
+        constexpr size_t kMost = 4096;
+        for (int r = r0; r <= r1 && out.size() < kMost; ++r)
+            for (int c = c0; c <= c1 && out.size() < kMost; ++c) out.push_back({r, c});
+        return out;
+    }
+
+    static std::string AddressOf(int row, int column) {
+        return CellAddress::ColumnToLetter(column) + std::to_string(row + 1);
+    }
+
+private:
+    UltraCanvasSpreadsheet& grid;
+
+    // The used cells, and as far as the active cell and the selection reach
+    // (a whole column selected reaches a thousand rows past the active cell).
+    CellRange Extent() const {
+        const SpreadsheetSheet* sheet = grid.GetActiveSheet();
+        const CellRange used = sheet->GetUsedRange();
+        const CellAddress active = grid.GetActiveCell();
+        const CellRange selection = grid.GetSelection();
+        const int lastRow = std::max({used.end.row, active.row, std::min(selection.end.row, active.row + 1000)});
+        const int lastCol = std::max({used.end.col, active.col, std::min(selection.end.col, active.col + 1000)});
+        return CellRange(0, 0, std::clamp(lastRow, 0, SpreadsheetLimits::MaxRows - 1),
+                         std::clamp(lastCol, 0, SpreadsheetLimits::MaxColumns - 1));
+    }
+
+    // A cell's box in window coordinates; empty when it is scrolled out of view.
+    Rect2Df ToWindow(const Rect2Di& box, int row, int column) const {
+        const SpreadsheetSheet* sheet = grid.GetActiveSheet();
+        if (!sheet || box.width <= 0 || box.height <= 0 || row < sheet->GetScrollRow() || column < sheet->GetScrollColumn())
+            return Rect2Df(0, 0, 0, 0);
+        const Rect2Di& view = grid.gridBounds_;
+        if (box.x >= view.x + view.width || box.y >= view.y + view.height) return Rect2Df(0, 0, 0, 0);
+        const Point2Df origin = grid.GetPositionInWindow();
+        return Rect2Df(origin.x + static_cast<float>(box.x), origin.y + static_cast<float>(box.y),
+                       static_cast<float>(box.width), static_cast<float>(box.height));
+    }
+};
+
+std::string UltraCanvasSpreadsheet::GetAccessibleName() const {
+    if (!GetAccessibleNameOverride().empty()) return GetAccessibleNameOverride();
+    const SpreadsheetSheet* sheet = GetActiveSheet();
+    return sheet ? sheet->GetName() : std::string();
+}
+
+std::string UltraCanvasSpreadsheet::GetAccessibleValueText() const {
+    if (!GetActiveSheet()) return std::string();
+    const CellAddress active = GetActiveCell();
+    std::string text = AccessibleGrid::AddressOf(active.row, active.col);
+    const std::string value = GetCellDisplayValue(active.row, active.col);
+    if (!value.empty()) text += " " + value;
+    return text;
+}
+
+IAccessibleParts* UltraCanvasSpreadsheet::GetAccessiblePartsInterface() {
+    if (!accessibleGrid_) accessibleGrid_ = std::make_shared<AccessibleGrid>(*this);
+    return accessibleGrid_.get();
+}
+
+IAccessibleTable* UltraCanvasSpreadsheet::GetAccessibleTableInterface() {
+    if (!accessibleGrid_) accessibleGrid_ = std::make_shared<AccessibleGrid>(*this);
+    return accessibleGrid_.get();
+}
+
+void UltraCanvasSpreadsheet::AnnounceAccessibleSelection() {
+    if (!UltraCanvasAccessibility::HasListeners() || !GetActiveSheet()) return;
+    const CellAddress active = GetActiveCell();
+    AccessibilityEvent event;
+    event.type = AccessibilityEventType::SelectionChanged;
+    event.element = this;
+    event.part = {active.row, active.col};
+    UltraCanvasAccessibility::Notify(event);
+    NotifyAccessibility(AccessibilityEventType::ValueChanged);   // the value text is the active cell
 }
 
 } // namespace UltraCanvas

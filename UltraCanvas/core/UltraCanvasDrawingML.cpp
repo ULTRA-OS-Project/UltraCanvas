@@ -1,8 +1,10 @@
 // core/UltraCanvasDrawingML.cpp
 // DrawingML charts and colours - see UltraCanvasDrawingML.h.
+// Version: 1.3.0 - surface charts (c:surface3DChart) and contour maps (c:surfaceChart); a bubble series' size references
+// Version: 1.2.0 - series as cell references with cached values (a workbook's chart), and read back
 // Version: 1.1.0 - WriteDrawingMLChart (moved from the .docx writer), with the axis ranges a chart states
 // Version: 1.0.0 - ReadDrawingMLChart and DrawingMLColor, moved out of the .docx reader
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDrawingML.h"
@@ -246,6 +248,7 @@ bool ReadDrawingMLChart(const std::string& chartXml, const std::map<std::string,
     bool lines = false, pie = false, horizontal = false, stacked = false, percent = false, scatter = false;
     bool area = false, doughnut = false, lineMarkers = false;
     bool radar = false, radarFilled = false, radarMarkers = false, bubble = false, stock = false;
+    bool contour = false, surface = false;     // c:surfaceChart (seen from above), c:surface3DChart
     std::vector<std::string> pointColors;       // a pie's slices, where the file colours them
     static const char* const kPalette[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
     for (auto* kind = plot->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
@@ -258,6 +261,8 @@ bool ReadDrawingMLChart(const std::string& chartXml, const std::map<std::string,
             radar = tag == "radarChart";
             bubble = bubbleKind;
             stock = tag == "stockChart";
+            contour = tag == "surfaceChart";
+            surface = tag == "surface3DChart";
             if (auto* style = Child(kind, "radarStyle")) {
                 radarFilled = Attr(style, "val") == "filled";
                 radarMarkers = Attr(style, "val") == "marker";
@@ -355,13 +360,14 @@ bool ReadDrawingMLChart(const std::string& chartXml, const std::map<std::string,
     if (series.empty()) return false;
 
     RichChart data;
-    data.kind = radar ? RichChart::Kind::Radar : bubble ? RichChart::Kind::Bubble : stock ? RichChart::Kind::Stock
+    data.kind = surface ? RichChart::Kind::Surface : contour ? RichChart::Kind::Contour
+              : radar ? RichChart::Kind::Radar : bubble ? RichChart::Kind::Bubble : stock ? RichChart::Kind::Stock
               : pie ? (doughnut ? RichChart::Kind::Doughnut : RichChart::Kind::Pie)
               : scatter ? RichChart::Kind::Scatter
               : area ? RichChart::Kind::Area
               : lines ? RichChart::Kind::Line
               : horizontal ? RichChart::Kind::Bar : RichChart::Kind::Column;
-    data.stacked = stacked && !radar && !bubble && !stock;
+    data.stacked = stacked && !radar && !bubble && !stock && !contour && !surface;
     data.percent = percent && !radar && !bubble && !stock;
     data.filled = radarFilled;
     data.legend = Find(root, "legend") != nullptr;
@@ -409,6 +415,41 @@ bool ReadDrawingMLChart(const std::string& chartXml, const std::map<std::string,
 // A chart's part: its kind, categories and series, the values as literals
 // (there is no workbook behind them).
 std::string WriteDrawingMLChart(const RichChart& chart) {
+    return WriteDrawingMLChart(chart, {});
+}
+
+std::vector<DrawingMLSeriesSource> ReadDrawingMLChartSources(const std::string& chartXml) {
+    std::vector<DrawingMLSeriesSource> sources;
+    tinyxml2::XMLDocument chart;
+    if (chart.Parse(chartXml.c_str(), chartXml.size()) != tinyxml2::XML_SUCCESS || !chart.RootElement()) return sources;
+    auto* plot = Find(chart.RootElement(), "plotArea");
+    // The formula of a reference under `holder` (c:tx, c:cat, c:val ...).
+    auto formula = [](const tinyxml2::XMLElement* holder) {
+        for (auto* ref = holder ? holder->FirstChildElement() : nullptr; ref; ref = ref->NextSiblingElement()) {
+            if (!Is(ref, "strRef") && !Is(ref, "numRef") && !Is(ref, "multiLvlStrRef")) continue;
+            auto* f = Child(ref, "f");
+            if (f && f->GetText()) return std::string(f->GetText());
+        }
+        return std::string();
+    };
+    for (auto* kind = plot ? plot->FirstChildElement() : nullptr; kind; kind = kind->NextSiblingElement()) {
+        const std::string tag = LocalName(kind);
+        if (tag.size() < 6 || tag.compare(tag.size() - 5, 5, "Chart") != 0) continue;
+        for (auto* ser = Child(kind, "ser"); ser; ser = Next(ser, "ser")) {
+            DrawingMLSeriesSource source;
+            source.name = formula(Child(ser, "tx"));
+            source.categories = formula(Child(ser, "cat"));
+            source.values = formula(Child(ser, "val"));
+            if (source.values.empty()) source.values = formula(Child(ser, "yVal"));
+            source.xValues = formula(Child(ser, "xVal"));
+            source.sizes = formula(Child(ser, "bubbleSize"));
+            sources.push_back(std::move(source));
+        }
+    }
+    return sources;
+}
+
+std::string WriteDrawingMLChart(const RichChart& chart, const std::vector<DrawingMLSeriesSource>& sources) {
     using Kind = RichChart::Kind;
     std::ostringstream xml;
     xml.imbue(std::locale::classic());
@@ -417,27 +458,36 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
         return hex.size() == 7 && hex[0] == '#'
             ? "<a:solidFill><a:srgbClr val=\"" + hex.substr(1) + "\"/></a:solidFill>" : std::string();
     };
-    auto numbers = [&](const char* tag, const std::vector<double>& values) {
-        xml << "<" << tag << "><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val=\"" << values.size() << "\"/>";
+    // (With a formula: a reference to the cells, the values its cache.)
+    auto numbers = [&](const char* tag, const std::vector<double>& values, const std::string& formula = std::string()) {
+        xml << "<" << tag << ">";
+        if (!formula.empty()) xml << "<c:numRef><c:f>" << Escape(formula) << "</c:f><c:numCache>";
+        else xml << "<c:numLit>";
+        xml << "<c:formatCode>General</c:formatCode><c:ptCount val=\"" << values.size() << "\"/>";
         for (size_t i = 0; i < values.size(); i++) {
             if (std::isfinite(values[i])) xml << "<c:pt idx=\"" << i << "\"><c:v>" << values[i] << "</c:v></c:pt>";
         }
-        xml << "</c:numLit></" << tag << ">";
+        xml << (formula.empty() ? "</c:numLit>" : "</c:numCache></c:numRef>") << "</" << tag << ">";
     };
-    auto names = [&]() {
-        if (chart.categories.empty()) return;
-        xml << "<c:cat><c:strLit><c:ptCount val=\"" << chart.categories.size() << "\"/>";
+    auto names = [&](const std::string& formula = std::string()) {
+        if (chart.categories.empty() && formula.empty()) return;
+        if (!formula.empty()) xml << "<c:cat><c:strRef><c:f>" << Escape(formula) << "</c:f><c:strCache>";
+        else xml << "<c:cat><c:strLit>";
+        xml << "<c:ptCount val=\"" << chart.categories.size() << "\"/>";
         for (size_t i = 0; i < chart.categories.size(); i++) {
             xml << "<c:pt idx=\"" << i << "\"><c:v>" << Escape(chart.categories[i]) << "</c:v></c:pt>";
         }
-        xml << "</c:strLit></c:cat>";
+        xml << (formula.empty() ? "</c:strLit></c:cat>" : "</c:strCache></c:strRef></c:cat>");
     };
     const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
     const bool scatter = chart.kind == Kind::Scatter;
     const bool line = chart.kind == Kind::Line;
     const bool bars = chart.kind == Kind::Column || chart.kind == Kind::Bar;
     const bool radar = chart.kind == Kind::Radar, bubble = chart.kind == Kind::Bubble, stock = chart.kind == Kind::Stock;
-    const char* tag = radar ? "c:radarChart" : bubble ? "c:bubbleChart" : stock ? "c:stockChart"
+    // A surface seen in 3D (c:surface3DChart) or from above, as a contour map
+    // (c:surfaceChart): its series over the categories, and a series axis.
+    const bool surface = chart.kind == Kind::Surface, contour = chart.kind == Kind::Contour;
+    const char* tag = surface ? "c:surface3DChart" : contour ? "c:surfaceChart" : radar ? "c:radarChart" : bubble ? "c:bubbleChart" : stock ? "c:stockChart"
                     : pie ? (chart.kind == Kind::Doughnut ? "c:doughnutChart" : "c:pieChart")
                     : scatter ? "c:scatterChart" : line ? "c:lineChart"
                     : chart.kind == Kind::Area ? "c:areaChart" : "c:barChart";
@@ -450,7 +500,11 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
         xml << "<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>" << Escape(chart.title)
             << "</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>";
     }
-    xml << "<c:autoTitleDeleted val=\"" << (chart.title.empty() ? 1 : 0) << "\"/><c:plotArea><c:layout/><" << tag << ">";
+    xml << "<c:autoTitleDeleted val=\"" << (chart.title.empty() ? 1 : 0) << "\"/>";
+    if (surface) xml << "<c:view3D><c:rotX val=\"15\"/><c:rotY val=\"20\"/><c:rAngAx val=\"0\"/></c:view3D>";
+    if (contour) xml << "<c:view3D><c:rotX val=\"90\"/><c:rotY val=\"0\"/><c:rAngAx val=\"0\"/><c:perspective val=\"0\"/></c:view3D>";
+    xml << "<c:plotArea><c:layout/><" << tag << ">";
+    if (surface || contour) xml << "<c:wireframe val=\"0\"/>";
     if (bars) xml << "<c:barDir val=\"" << (chart.kind == Kind::Bar ? "bar" : "col") << "\"/>";
     bool anySmooth = false, anyRadarMark = false;
     for (const RichChartSeries& one : chart.series) {
@@ -460,14 +514,20 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
     if (scatter) xml << "<c:scatterStyle val=\"" << (anySmooth ? "smoothMarker" : "lineMarker") << "\"/>";
     if (radar) xml << "<c:radarStyle val=\"" << (chart.filled ? "filled" : anyRadarMark ? "marker" : "standard") << "\"/>";
     if (bars) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "clustered") << "\"/>";
-    else if (!pie && !scatter && !radar && !bubble && !stock) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "standard") << "\"/>";
-    if (!stock) xml << "<c:varyColors val=\"" << (pie ? 1 : 0) << "\"/>";
+    else if (!pie && !scatter && !radar && !bubble && !stock && !surface && !contour) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "standard") << "\"/>";
+    if (!stock && !surface && !contour) xml << "<c:varyColors val=\"" << (pie ? 1 : 0) << "\"/>";
     bool anyMarked = false;
     for (size_t s = 0; s < chart.series.size(); s++) {
         const RichChartSeries& one = chart.series[s];
+        const DrawingMLSeriesSource source = s < sources.size() ? sources[s] : DrawingMLSeriesSource();
         anyMarked = anyMarked || one.marked;
         xml << "<c:ser><c:idx val=\"" << s << "\"/><c:order val=\"" << s << "\"/>";
-        if (!one.name.empty()) xml << "<c:tx><c:v>" << Escape(one.name) << "</c:v></c:tx>";
+        if (!source.name.empty()) {
+            xml << "<c:tx><c:strRef><c:f>" << Escape(source.name) << "</c:f><c:strCache><c:ptCount val=\"1\"/>"
+                   "<c:pt idx=\"0\"><c:v>" << Escape(one.name) << "</c:v></c:pt></c:strCache></c:strRef></c:tx>";
+        } else if (!one.name.empty()) {
+            xml << "<c:tx><c:v>" << Escape(one.name) << "</c:v></c:tx>";
+        }
         std::string fill = color(one.color);
         // (Writer draws a line or a bubble only in a colour the file
         // states: one without takes the office palette's, as it shows.)
@@ -492,19 +552,19 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
             }
         }
         if (scatter || bubble) {
-            if (one.xValues.size() == one.values.size()) numbers("c:xVal", one.xValues);
-            numbers("c:yVal", one.values);
+            if (one.xValues.size() == one.values.size()) numbers("c:xVal", one.xValues, source.xValues);
+            numbers("c:yVal", one.values, source.values);
             if (bubble) {
                 std::vector<double> sizes = one.sizes;
                 sizes.resize(one.values.size(), 1.0);
-                numbers("c:bubbleSize", sizes);
+                numbers("c:bubbleSize", sizes, source.sizes);
                 xml << "<c:bubble3D val=\"0\"/>";
             } else {
                 xml << "<c:smooth val=\"" << (one.smooth ? 1 : 0) << "\"/>";
             }
         } else {
-            names();
-            numbers("c:val", one.values);
+            names(source.categories);
+            numbers("c:val", one.values, source.values);
             if (line || stock) xml << "<c:smooth val=\"" << (one.smooth && line ? 1 : 0) << "\"/>";
         }
         xml << "</c:ser>";
@@ -530,6 +590,7 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
         if (chart.kind == Kind::Doughnut) xml << "<c:holeSize val=\"50\"/>";
     } else {
         xml << "<c:axId val=\"1\"/><c:axId val=\"2\"/>";
+        if (surface || contour) xml << "<c:axId val=\"3\"/>";
     }
     xml << "</" << tag << ">";
     if (!pie) {
@@ -551,6 +612,10 @@ std::string WriteDrawingMLChart(const RichChart& chart) {
                "<c:valAx><c:axId val=\"2\"/>" << scaling(chart.valueMin, chart.valueMax, true) <<
                "<c:delete val=\"0\"/><c:axPos val=\"" << (lying ? "b" : "l") << "\"/><c:majorGridlines/>"
                "<c:tickLblPos val=\"nextTo\"/><c:crossAx val=\"1\"/></c:valAx>";
+        if (surface || contour) {
+            xml << "<c:serAx><c:axId val=\"3\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\""
+                << (contour ? 1 : 0) << "\"/><c:axPos val=\"b\"/><c:tickLblPos val=\"nextTo\"/><c:crossAx val=\"2\"/></c:serAx>";
+        }
     }
     xml << "</c:plotArea>";
     if (chart.legend) xml << "<c:legend><c:legendPos val=\"r\"/><c:overlay val=\"0\"/></c:legend>";

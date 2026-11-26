@@ -59,8 +59,8 @@ static void TestMath() {
     Check(!shear.DecomposeTRS(st, sr, ss), "DecomposeTRS reports shear it cannot express");
 
     // Double precision is the reason positions are not float.
-    MeshPrimitive far; far.Positions.push_back(Vec3d(1234567.891, 0, 0));
-    Check(Near(far.ComputeBounds().Min.x, 1234567.891, 1e-6), "a far-from-origin coordinate keeps sub-micron precision");
+    MeshPrimitive distant; distant.Positions.push_back(Vec3d(1234567.891, 0, 0));
+    Check(Near(distant.ComputeBounds().Min.x, 1234567.891, 1e-6), "a far-from-origin coordinate keeps sub-micron precision");
 }
 
 static void TestTopology() {

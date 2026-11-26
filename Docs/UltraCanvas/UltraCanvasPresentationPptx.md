@@ -19,8 +19,12 @@ merged cells, cropped pictures, charts and SmartArt.
 back (*Writing a deck*, below).
 
 An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
-model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
-outline, the preview and the text extraction below serve both kinds of deck.
+model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), and a
+PowerPoint 97-2003 deck (`.ppt`, `.pps`, `.pot`) by
+[UltraCanvasPresentationPpt](UltraCanvasPresentationPpt.md), so the outline,
+the preview and the text extraction below serve every kind of deck;
+`UltraCanvasFileLoader::LoadPresentation` picks the reader by the file's
+content.
 
 ## Opening one as a document
 
@@ -94,11 +98,11 @@ UCRichDocument outline = PptxPresentationToRichDocument(deck);
 | Type | Holds |
 |---|---|
 | `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `majorFont` / `minorFont` (the theme's heading and body typefaces), `masters` and `layouts` (the design, in the file's order), `pictures` (bytes by part, read `withPictures`) |
-| `PptxSlide` | `number` (1-based), `layoutIndex` (into `layouts`; -1: none known), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black), `transition` |
+| `PptxSlide` | `number` (1-based), `layoutIndex` (into `layouts`; -1: none known), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black), `transition`, `groupNames` (a group's name by its id) |
 | `PptxMaster` | `name`, `placeholders` (title, body, date, footer, number), `background` |
 | `PptxLayout` | `name` ("Title and Content"), `type` (`p:sldLayout/@type`: `title`, `obj`, `twoObj`, `titleOnly` ...), `masterIndex`, `placeholders` (each with its `placeholder` type and prompt text), `background` (empty: the master's) |
 | `PptxTransition` | `kind` (`PptxTransitionKind`: `NoTransition`, `Fade`, `Push`, `Wipe`, `Split`, `Cover`, `Zoom`), `durationSec`, `advanceOnClick`, `advanceAfterSec` (-1: never by itself) |
-| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`, `Connector`, `Chart`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `rotationDeg`, `flipH` / `flipV`, `placeholder` (its type), `anchor`, `fontScale` (autofit), the text's `insetLeft` ... `insetBottom` (EMU, -1: PowerPoint's own), `wrap`, `textRotation` (90 / 270 for vertical text), `fill` (and a gradient's `gradientStops`, `gradientAngleDeg`, `gradientRadial`), `line`, `lineWidthPt`, `dash`, `arrowStart` / `arrowEnd`, `geometry` (the preset) or `customPath` (a freeform's outline, 0..1 across the box), `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `cellStyles` (`PptxCellStyle` each), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`), `altText` and crop (`cropLeft` ... `cropBottom`, a share of the picture); a chart's `chart` (`RichChart`) |
+| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`, `Connector`, `Chart`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `rotationDeg`, `flipH` / `flipV`, `placeholder` (its type), `anchor`, `fontScale` (autofit), the text's `insetLeft` ... `insetBottom` (EMU, -1: PowerPoint's own), `wrap`, `textRotation` (90 / 270 for vertical text), `fill` (and a gradient's `gradientStops`, `gradientAngleDeg`, `gradientRadial`), `line`, `lineWidthPt`, `dash`, `arrowStart` / `arrowEnd`, `geometry` (the preset) or `customPath` (a freeform's outline, 0..1 across the box), `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `cellStyles` (`PptxCellStyle` each), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`), `altText` and crop (`cropLeft` ... `cropBottom`, a share of the picture); a chart's `chart` (`RichChart`); `groupPath`, the groups it is in (ids, outermost first; empty: none) |
 | `PptxCellStyle` | a table cell's `fill`, `textColor` and `bold` (from the table style), its four borders (`color`, `widthPt`), `gridSpan` / `rowSpan`, `mergedAway` (covered by a merged cell), insets and `anchor` |
 | `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`, `spaceBefore` / `spaceAfter` / `lineSpacing` (`PptxSpacing`: a share of a line or points), `marginLeft` and `indent` (EMU), `bulletChar`, `bulletFont`, `bulletColor`, `bulletSizePercent`, `numberScheme` (`a:buAutoNum`'s type) and `numberStartAt`; `Text()` joins the runs |
 | `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline`, `strike`, `baseline` (per cent: > 0 superscript, < 0 subscript), `allCaps` / `smallCaps`, `highlight`, `hyperlink` (a URL, or `#slide3` for a jump within the deck), `sizePt`, `color` and `font` (resolved; 0 / empty when nothing says) |
@@ -126,8 +130,13 @@ reads a package already in memory.
   An empty placeholder is kept - an editor shows its prompt and types into
   it - in its place, with one empty paragraph whose run keeps the size
   `a:endParaRPr` (else its layout and master) gives.
-- Groups are read through, their shapes in order and placed on the slide (the
-  group's offset and scaling applied). Connectors (`p:cxnSp`) are read as
+- Groups (`p:grpSp`) are kept: their shapes in order and placed on the
+  slide (the group's offset and its `chOff` / `chExt` scaling applied, and a
+  turned group's `rot` - each shape's centre goes round the group's, each
+  shape turns as much), each with the group in its `groupPath` and the
+  group's name in the slide's `groupNames`; a group inside a group nests.
+  A reader of the shapes alone draws the slide as it is. `PptxGroupIds` and
+  `PptxNewGroupId` give the ids a slide uses and a free one. Connectors (`p:cxnSp`) are read as
   lines: their outline (`line`, a bent or curved connector's preset), dash
   and arrowheads. A placeholder that names no place
   takes its layout's, then its master's (matched by `idx`, then by type; a
@@ -315,7 +324,11 @@ package PowerPoint, LibreOffice and the reader open:
 - tables with their cells' merges (`gridSpan`, `rowSpan`, `hMerge`, `vMerge`),
   fills, borders, margins and anchors; a table without cell looks (from the
   OpenDocument reader) takes PowerPoint's default table style;
-- pictures from `deck.pictures` with their crop - read the deck
+- groups: a `p:grpSp` round the shapes of each `groupPath`, nested, named
+  from `groupNames` (else "Group <id>"), its `a:off` / `a:ext` the box of
+  its shapes and its `a:chOff` / `a:chExt` the same, so the shapes keep their
+  places;
+- pictures from `deck.pictures` with their crop (`a:srcRect`) - read the deck
   `withPictures`, or a picture is written as a grey box with its
   description; charts as chart parts ([UltraCanvasDrawingML](UltraCanvasDrawingML.md)'s
   `WriteDrawingMLChart`, values as literals, no workbook); speaker notes.

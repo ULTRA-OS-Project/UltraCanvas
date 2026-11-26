@@ -27,6 +27,10 @@
 //                  it (CanImagePipelineLoad stays false for every font).
 //   LayeredImage — UCRasterDocument's own files: the UCD 2.1 layered image
 //                  (no libvips needed) and the UltraPaint project (libvips).
+// Version: 1.7.0 - PowerPoint 97-2003 presentations (.ppt, .pps) and templates (.pot), read only
+// Version: 1.6.0 - templates as types of their own: .ott, .dotx and .dotm (read), .ots, .xltx and .xltm
+//                  (read); .potx / .potm and .otp leave the PowerPoint and OpenDocument presentation
+//                  rows for template rows of their own
 // Version: 1.5.0 - OpenDocument presentations (.odp, .otp, .fodp); PowerPoint lists .ppsm and
 //                  .potm, which its reader always took
 // Version: 1.4.0 - LayeredImage: *.ucd (UCD 2.1 layered image) and *.ucraster
@@ -36,7 +40,7 @@
 //                  HEIC without libheif's encoder); ICO and QOI name the
 //                  framework's own plugins
 // Version: 1.1.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
@@ -222,23 +226,49 @@ namespace {
                         MediaFormatCategory::Document, true, true,
                         "MuPDF", "save supports incremental update" });
 #endif
+        // A template is its document's package under the template's media
+        // type: each has a row of its own, so a Save dialog can offer it by
+        // name ("Save as template", UltraCanvasFileLoader::AddOfficeTemplateSaveTypes).
         out.push_back({ "odt", {}, "OpenDocument Text",
+                        MediaFormatCategory::Document, true, true,
+                        "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "ott", {}, "OpenDocument Text template",
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)", "" });
         out.push_back({ "docx", {}, "Word document (OOXML)",
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)", "" });
-        out.push_back({ "pptx", { "pptm", "ppsx", "ppsm", "potx", "potm" }, "PowerPoint presentation (OOXML)",
+        out.push_back({ "dotx", {}, "Word template (OOXML)",
+                        MediaFormatCategory::Document, true, true,
+                        "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "dotm", {}, "Word macro-enabled template",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in (miniz + tinyxml2)", "read as a template; its macros neither run nor are kept" });
+        out.push_back({ "pptx", { "pptm", "ppsx", "ppsm" }, "PowerPoint presentation (OOXML)",
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)",
                         "slides read and drawn, or opened as an outline; written from the deck model or from a "
                         "document (a slide per heading); password-protected files read and written" });
-        out.push_back({ "odp", { "otp", "fodp" }, "OpenDocument Presentation",
+        out.push_back({ "potx", { "potm" }, "PowerPoint template (OOXML)",
+                        MediaFormatCategory::Document, true, true,
+                        "built-in (miniz + tinyxml2)", "a .potm is written without macros" });
+        out.push_back({ "odp", { "fodp" }, "OpenDocument Presentation",
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)",
                         "slides read and drawn (text, tables, pictures, charts), or opened as an outline; written "
                         "from the deck model or from a document (a slide per heading); password-protected files "
                         "read, not written" });
+        out.push_back({ "otp", {}, "OpenDocument Presentation template",
+                        MediaFormatCategory::Document, true, true,
+                        "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "ppt", { "pps" }, "PowerPoint 97-2003 presentation",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in OLE2/CFB parser",
+                        "slides read and drawn (text, bullets, shapes, pictures, tables, notes, transitions), or "
+                        "opened as an outline; saved as .pptx or .odp; password-protected files are refused" });
+        out.push_back({ "pot", {}, "PowerPoint 97-2003 template",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in OLE2/CFB parser", "read as a template: opens as a new, untitled deck" });
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });
@@ -301,9 +331,18 @@ namespace {
         out.push_back({ "ods", {}, "OpenDocument Spreadsheet",
                         MediaFormatCategory::Spreadsheet, true, true,
                         "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "ots", {}, "OpenDocument Spreadsheet template",
+                        MediaFormatCategory::Spreadsheet, true, true,
+                        "built-in (miniz + tinyxml2)", "" });
         out.push_back({ "xlsx", {}, "Excel workbook (OOXML)",
                         MediaFormatCategory::Spreadsheet, true, true,
                         "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "xltx", {}, "Excel template (OOXML)",
+                        MediaFormatCategory::Spreadsheet, true, true,
+                        "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "xltm", {}, "Excel macro-enabled template",
+                        MediaFormatCategory::Spreadsheet, true, false,
+                        "built-in (miniz + tinyxml2)", "read as a template; its macros neither run nor are kept" });
         out.push_back({ "xls", {}, "Excel 97-2003 workbook",
                         MediaFormatCategory::Spreadsheet, true, false,
                         "built-in .xls reader",

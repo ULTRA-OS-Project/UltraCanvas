@@ -1,6 +1,10 @@
 {
   "@language": "sv",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} teckning i det här fönstret har osparade ändringar. Stäng ändå?",
+    "other": "{n} teckningar i det här fönstret har osparade ändringar. Stäng ändå?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Texten har lagts till: klicka på den med textverktyget eller dubbelklicka på den för att redigera den",
   "Changed the text": "Texten har ändrats",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Klicka på sidan och skriv, eller klicka på en text för att redigera den; fältet ovanför ställer in dess teckensnitt, storlek, stil, justering och avstånd. Escape, Ctrl+Enter eller ett klick utanför avslutar",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Genomstruken text",
   "Text Underline": "Understruken text",
   "The text was emptied, so it was deleted": "Texten tömdes, så den togs bort",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Skriver en ny text: Enter börjar en ny rad; Escape, Ctrl+Enter eller ett klick utanför avslutar"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Skriver en ny text: Enter börjar en ny rad; Escape, Ctrl+Enter eller ett klick utanför avslutar",
+  "Untitled {0}": "Namnlös {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} har osparade ändringar. Stäng ändå?",
+  "{0} is open already": "{0} är redan öppen"
 }

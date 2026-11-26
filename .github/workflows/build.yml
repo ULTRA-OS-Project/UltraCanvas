@@ -2661,7 +2661,8 @@ jobs:
             ColorPaletteManagerTest ColorPickerAutoHeightTest
             ColorPickerDesignSelectorTest ColorPickerDragTest
             ColorPickerModelDropdownTest DialogCloseAllTest DialogEscapeTest
-            DialogStackingTest ElementPressTakenTest ExitDuringWarmUpTest FilerPaneDragTest
+            DialogStackingTest DocumentNavigatorElementTest ElementPressTakenTest
+            ExitDuringWarmUpTest FilerPaneDragTest
             FilerRescanKeepsThumbnailsTest
             ImageFileWatchDisplayTest LabelNaturalTextWidthTest
             LabelSelectionTest MediaViewerLoadingTest
@@ -2669,10 +2670,12 @@ jobs:
             PopupOwnWindowTest RichTextEditElementTest SessionLockTest
             TabPillStyleScreenshotTest TagInputGrowTest
             TextAreaAutoCompleteTest TextAreaDetachedTest
+            TextAreaMarkdownCaretLineTest TextAreaMarkdownSelectionTest
             TextAreaSearchHighlightTest TextAreaSpellCheckTest
             TextAreaSyntaxStateTest TextMetricsScreenshotTest
             TimecodeFieldElementTest ToolGroupButtonTest TooltipOwnWindowTest
             VideoTimelineElementTest WindowCurrentDesktopTest
+            UltraOfficeTemplateWindowTest
           )
           regex="^($(IFS='|'; echo "${tests[*]}"))\$"
           registered=$(ctest -N -R "$regex" | grep -cE '^ *Test +#' || true)

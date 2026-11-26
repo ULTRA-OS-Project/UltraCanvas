@@ -270,6 +270,19 @@ that is plainly not one - the phone with `+` and the country code). A new
 account's are `credentials.email` and `credentials.phoneNumber` with
 `createAccount`.
 
+Where the service takes one (`pictureSupported`, filled by
+`UltraIM_FetchAccountProfile` - ChatCube Direct does), the profile carries
+the owner's picture too: `picturePath`, a square JPEG, PNG or WebP file, ""
+for none. An update applies it only with `pictureChanged` set, so a host
+that never shows the picture cannot remove it by leaving the field empty;
+with the flag, "" removes it. The provider keeps its own copy. ChatCube
+Direct takes at most 32 KiB (one sealed message;
+`UltraCanvasProfilePictureEditor::SetMaxOutputBytes` makes one that fits)
+and sends it to every contact end to end, as it sends a message - again
+when it changes, and to a contact added later; the contacts' pictures come
+back as `avatarPath` on their conversations and contacts and
+`senderAvatarPath` on their messages.
+
 How signing in on the device is protected is `UltraIMSignInProtection`
 (the `SignInProtection` capability): `DeviceKey` (nothing to type),
 `Password`, `AuthenticatorCode` (a TOTP code from an authenticator app -
@@ -616,6 +629,12 @@ other over mDNS alone, which skips without a responder unless
   message (`org.matrix.msc3245.voice`, with the `org.matrix.msc1767.audio`
   block) and its length (`info.duration`, milliseconds - set for a video
   too when `UltraIMSendOptions::durationSeconds` says it).
+- **Pictures:** a room's own (`m.room.avatar`) and its members'
+  (`avatar_url` on their `m.room.member` event) are fetched once each as a
+  96 x 96 thumbnail (the authenticated media API, else the one before it)
+  into the cache: `avatarPath` on a room - its own picture, else for a
+  direct chat the other person's - and on a contact, `senderAvatarPath` on
+  their messages; the room is told (`ConversationUpdate`) when one arrives.
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
   emotes, pictures, videos, audio and files with their attachments (the
   `filename` and the body as the caption, MSC2530), edits (`m.replace` -
@@ -896,6 +915,12 @@ The provider turns that into chats:
   `SetRedirectUri`). The access token is kept in UltraVault, so the next
   start signs in by itself (`SignIn` with no server); `credentials.accessToken`
   signs in with a token made in the server's settings instead.
+- **Pictures:** each account a poll or a new chat meets has its
+  `avatar_static` fetched once into the media folder: `avatarPath` on its
+  one-to-one chat and its contact, `senderAvatarPath` on its statuses; the
+  chat is told (`ConversationUpdate`) when it arrives. The server's grey
+  stand-in for no picture (`.../missing.png`) is not fetched, so the
+  initials show.
 - **People:** `AddContact` takes `@user@server`, `user@server`, `@user`
   (this server) or a profile's page (`https://server/@user`): the server
   looks them up (`/api/v1/accounts/lookup`), or asks theirs

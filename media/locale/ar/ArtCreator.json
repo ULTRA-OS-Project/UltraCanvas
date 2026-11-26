@@ -1,6 +1,14 @@
 {
   "@language": "ar",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "zero": "{n} رسومات في هذه النافذة بها تغييرات غير محفوظة. هل تريد الإغلاق على أي حال؟",
+    "one": "يوجد رسم في هذه النافذة به تغييرات غير محفوظة. هل تريد الإغلاق على أي حال؟ ({n})",
+    "two": "رسمان ({n}) في هذه النافذة بهما تغييرات غير محفوظة. هل تريد الإغلاق على أي حال؟",
+    "few": "{n} رسومات في هذه النافذة بها تغييرات غير محفوظة. هل تريد الإغلاق على أي حال؟",
+    "many": "{n} رسمًا في هذه النافذة بها تغييرات غير محفوظة. هل تريد الإغلاق على أي حال؟",
+    "other": "{n} رسم في هذه النافذة بها تغييرات غير محفوظة. هل تريد الإغلاق على أي حال؟"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "أُضيف النص: انقر عليه بأداة النص، أو انقر عليه نقرًا مزدوجًا، لتحريره",
   "Changed the text": "تم تغيير النص",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "انقر على الصفحة واكتب، أو انقر على نص لتحريره؛ يضبط الشريط أعلاه خطه وحجمه ونمطه ومحاذاته وتباعده. يُنهي Escape أو Ctrl+Enter أو النقر في الخارج الكتابة",
@@ -18,5 +26,8 @@
   "Text Strikethrough": "نص يتوسطه خط",
   "Text Underline": "تسطير النص",
   "The text was emptied, so it was deleted": "أصبح النص فارغًا، لذا حُذف",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "كتابة نص جديد: يبدأ Enter سطرًا جديدًا؛ ويُنهي Escape أو Ctrl+Enter أو النقر في الخارج الكتابة"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "كتابة نص جديد: يبدأ Enter سطرًا جديدًا؛ ويُنهي Escape أو Ctrl+Enter أو النقر في الخارج الكتابة",
+  "Untitled {0}": "بدون عنوان {0}",
+  "{0} has unsaved changes. Close it anyway?": "«{0}» به تغييرات غير محفوظة. هل تريد إغلاقه على أي حال؟",
+  "{0} is open already": "«{0}» مفتوح بالفعل"
 }

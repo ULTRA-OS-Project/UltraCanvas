@@ -5,6 +5,7 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.9.0 - GetAccessiblePartsInterface / GetAccessibleTableInterface: what an element draws itself
 // Version: 4.8.0 - WarnIfIdentifierReadsAsText, for the one-string constructors: one string is an
 //                  element's identifier, on every element
 // Version: 4.7.0 - SetFollowThemeByDefault: whether a new element follows the theme (the policy sets it);
@@ -571,6 +572,11 @@ namespace UltraCanvas {
         virtual std::string GetAccessibleDescription() const;
         void SetAccessibleDescription(const std::string& description) { accessibleDescription = description; }
         virtual IAccessibleText* GetAccessibleTextInterface() { return nullptr; }
+        // The pieces it draws itself (a spreadsheet's cells, a slide
+        // editor's slides and shapes), and a grid of cells as a table; null
+        // for an element without them.
+        virtual IAccessibleParts* GetAccessiblePartsInterface() { return nullptr; }
+        virtual IAccessibleTable* GetAccessibleTableInterface() { return nullptr; }
         // Checked, pressed or switched on; NotToggleable for anything else.
         virtual AccessibleToggleState GetAccessibleToggleState() const { return AccessibleToggleState::NotToggleable; }
         // A slider's, spin button's or progress bar's value; false without one.

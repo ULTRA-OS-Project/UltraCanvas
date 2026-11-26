@@ -3,6 +3,9 @@
 // phone number, and how signing in on this computer is protected.
 //
 //   Profile
+//     (picture)  Profile picture
+//                [Change picture] [Remove]
+//                who sees it
 //     Name           [ Erin                         ]
 //     E-mail         [ erin@example.org             ]
 //     Phone number   [ +49 151 2345 6789            ]
@@ -27,17 +30,21 @@
 // to the confirmed address brings back on another computer (the sign-in
 // page's "Recover my ChatCube ID").
 //
-// The name goes to the contacts; the e-mail and the phone number into the
+// The picture (where the network takes one: ChatCube Direct) is chosen and
+// placed with the framework's UltraCanvasProfilePictureEditor, kept under
+// the 32 KiB a sealed body carries, and goes with Save profile: to every
+// contact, end to end. The name goes to the contacts; the e-mail and the phone number into the
 // identity's key vault and to the relay, for the owner alone (UltraIM's
 // account profile). The protection is UltraIM's sign-in protection: the
 // identity's vault behind a password, and/or the code of an authenticator
 // app - UltraAuthenticator scans the QR code from this screen, any other
 // authenticator from a phone. Changing it asks for what protects it now.
 //
+// Version: 0.1.3 - the profile picture (where the network takes one): chosen, placed, sent with Save profile
 // Version: 0.1.2 - the e-mail address confirmed by the link e-mailed to it; recovery by an e-mailed link
 // Version: 0.1.1 - confirming the e-mail and phone with the relay's codes; account recovery on or off
 // Version: 0.1.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -50,6 +57,7 @@
 
 namespace UltraCanvas {
 class UltraCanvasButton;
+class UltraCanvasProfilePictureEditor;
 class UltraCanvasContainer;
 class UltraCanvasDropdown;
 class UltraCanvasLabel;
@@ -103,6 +111,11 @@ private:
     bool closed_ = true;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow>    window_;
+    // The picture, and one chosen or removed since the window was filled:
+    // sent with the next Save profile.
+    std::shared_ptr<UltraCanvas::UltraCanvasProfilePictureEditor> picture_;
+    std::string stagedPicture_;
+    bool pictureChanged_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> name_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> email_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> phone_;

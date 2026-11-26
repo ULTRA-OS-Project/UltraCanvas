@@ -1,6 +1,9 @@
 {
   "@language": "vi",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "other": "Cửa sổ này có {n} bản vẽ chưa lưu. Vẫn đóng?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "Đã thêm văn bản: nhấp vào văn bản bằng Công cụ văn bản, hoặc nhấp đúp vào nó, để chỉnh sửa",
   "Changed the text": "Đã thay đổi văn bản",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Nhấp vào trang rồi gõ, hoặc nhấp vào một văn bản để chỉnh sửa; thanh phía trên đặt phông chữ, kích thước, kiểu, căn chỉnh và khoảng cách của văn bản. Escape, Ctrl+Enter hoặc nhấp ra ngoài để kết thúc",
@@ -18,5 +21,8 @@
   "Text Strikethrough": "Gạch ngang văn bản",
   "Text Underline": "Gạch chân văn bản",
   "The text was emptied, so it was deleted": "Văn bản đã bị làm trống nên đã bị xóa",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Đang gõ văn bản mới: Enter bắt đầu dòng mới; Escape, Ctrl+Enter hoặc nhấp ra ngoài để kết thúc"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Đang gõ văn bản mới: Enter bắt đầu dòng mới; Escape, Ctrl+Enter hoặc nhấp ra ngoài để kết thúc",
+  "Untitled {0}": "Chưa đặt tên {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} có thay đổi chưa lưu. Vẫn đóng?",
+  "{0} is open already": "{0} đã được mở rồi"
 }

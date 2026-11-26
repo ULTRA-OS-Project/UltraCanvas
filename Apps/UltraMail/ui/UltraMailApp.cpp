@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.11.2 - the quit-during-transfers dialog in whole translated sentences
 // Version: 0.11.1 - "Always from this sender" (pictures) keeps a no-reply address with a
 //                   code per message as one sender (SenderLists::Normalize)
 // Version: 0.11.0 - the look follows a change of the theme while UltraMail is open: a theme
@@ -1505,15 +1506,22 @@ void UltraMailApp::AskQuitDuringTransfers(
     std::size_t uploads = 0;
     for (const Transfer& t : transfers) if (t.kind == Transfer::Kind::Upload) ++uploads;
     const std::size_t downloads = transfers.size() - uploads;
-    std::string what;
+    // Whole sentences, so a language words them its own way: the opener used
+    // to be translated and the rest ("still running — quit anyway?") not.
+    std::string question;
     if (transfers.size() == 1)
-        what = uploads ? Tr("An upload is") : Tr("A download is");
+        question = uploads ? Tr("An upload is still running — quit anyway?")
+                           : Tr("A download is still running — quit anyway?");
     else if (downloads == 0)
-        what = TrF("{0} uploads are", std::to_string(uploads));
+        question = TrN("{n} upload is still running — quit anyway?",
+                       "{n} uploads are still running — quit anyway?", static_cast<long long>(uploads));
     else if (uploads == 0)
-        what = TrF("{0} downloads are", std::to_string(downloads));
+        question = TrN("{n} download is still running — quit anyway?",
+                       "{n} downloads are still running — quit anyway?", static_cast<long long>(downloads));
     else
-        what = TrF("{0} transfers are", std::to_string(transfers.size()));
+        question = TrN("{n} transfer is still running — quit anyway?",
+                       "{n} transfers are still running — quit anyway?",
+                       static_cast<long long>(transfers.size()));
 
     // Which files, and where to or from: the file name and the account's name.
     std::string details;
@@ -1524,15 +1532,16 @@ void UltraMailApp::AskQuitDuringTransfers(
         UltraCloud::Account account;
         const std::string place = cloud_->Accounts().Get(t.accountId, account)
                                           ? account.displayName : t.accountId;
-        details += "\"" + name + "\" is still being " +
-                   (t.kind == Transfer::Kind::Upload ? "uploaded to " : "downloaded from ") +
-                   place + ".\n";
+        details += (t.kind == Transfer::Kind::Upload
+                            ? TrF("\"{0}\" is still being uploaded to {1}.", name, place)
+                            : TrF("\"{0}\" is still being downloaded from {1}.", name, place)) + "\n";
     }
     if (transfers.size() > 4)
-        details += "... and " + std::to_string(transfers.size() - 4) + " more.\n";
+        details += TrN("... and {n} more.", "... and {n} more.",
+                       static_cast<long long>(transfers.size() - 4)) + "\n";
     details += transfers.size() == 1
-                       ? "Quitting stops it, and the file does not arrive."
-                       : "Quitting stops them, and the files do not arrive.";
+                       ? Tr("Quitting stops it, and the file does not arrive.")
+                       : Tr("Quitting stops them, and the files do not arrive.");
     // An upload to an FTP or SFTP account leaves what it sent on the server,
     // which UltraCloud removes the next time UltraMail uses that account.
     for (const Transfer& t : transfers) {
@@ -1541,15 +1550,15 @@ void UltraMailApp::AskQuitDuringTransfers(
         if (!cloud_->Accounts().Get(t.accountId, account)) continue;
         std::shared_ptr<UltraCloud::ICloudProvider> provider = cloud_->ProviderFor(account);
         if (!provider || !provider->Capabilities().partialUploadsRemain) continue;
-        details += " What was sent is removed from " + account.displayName +
-                   " the next time UltraMail uses it.";
+        details += " " + TrF("What was sent is removed from {0} the next time UltraMail uses it.",
+                             account.displayName);
         break;
     }
 
     DialogConfig cfg;
     cfg.title = Tr("Quit UltraMail?");
     cfg.dialogType = DialogType::Warning;
-    cfg.message = what + " still running — quit anyway?";
+    cfg.message = question;
     cfg.details = details;
     cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
     cfg.width = 500;

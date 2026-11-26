@@ -1,3 +1,49 @@
+#### 2026-11-26 *0.10.101*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+- **Quitting during a transfer asked half in English.** The dialog joined
+  a translated opener ("A download is") to an English rest ("still running
+  - quit anyway?"), and its list of files was English throughout. Each line
+  is now one translated sentence, with each language's plural forms.
+
+#### 2026-11-25 *0.10.100*
+- **UltraMail in German.** A first German catalogue
+  (`media/locale/de/UltraMail.json`, 606 entries, marked as a machine draft
+  awaiting review): the menus, settings, dialogs, the warning strip, the
+  "Do you really want to open the link?" question and every reason the
+  scam/phishing scan gives. Words UltraMail shares with the other programs come
+  from the standard and Communication sets as before.
+- **The links of a plain-text mail look like links.** A web address, a
+  `mailto:` or a mail address written in a plain-text message (or an HTML
+  message read as plain text) opened in the browser when clicked, but was
+  drawn like the text around it, so nothing said it could be clicked - a
+  Microsoft account's "verify this alias" mail showed its links as grey
+  text. They are now drawn in the look's accent colour and underlined, the
+  colour following a change of the look; what is drawn as a link is exactly
+  what a click opens (`PlainLinkSpans`, the rules `PlainLinkAt` reads).
+- **The scan's reasons are in the reader's language.** Every reason the
+  scam/phishing scan gives - the warning strip's list, the sender badge's
+  tooltip, the "Do you really want to open the link?" question - and the
+  sender's verdict line ("New sender", "In your address book", ...) go through
+  `Tr` / `TrF`, so a UltraMail catalogue translates them; a reason that lists
+  several signs joins them with the language's own separators. The engine
+  links UltraLocalisation (its home is the shared core, so engine and
+  application share one loaded set). A message that warns has its stored
+  reasons written again in the current language when it is shown, from a
+  fresh scan that came to the same findings, so a change of language does not
+  leave old mail in the old one.
+- **A link of a suspicious message asks before it opens.** While the warning
+  strip warns of the message shown (a scam, phishing, parts that do not add
+  up), a click on one of its web links - in formatted or plain-text mail -
+  asks "Do you really want to open the link?" and says why: the strip's
+  verdict, where this link goes when that is not the sender's domain, the
+  domain mismatch and the scan's reasons. "Do not open" is the answer Return
+  and Escape give. A sender the reader only blocked, and the caution every
+  mail about crypto gets, do not ask; a `mailto:` link opens the composer as
+  before.
+
 #### 2026-11-23 *0.10.99*
 - **"Always trust" works for senders that put a code in their no-reply
   address.** Claude's sign-in mails come from

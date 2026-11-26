@@ -81,6 +81,8 @@ UltraCanvasTheme ThemeFor(bool dark) {
         t.SetRole("chatcube.bubble-other-line", Color(56, 61, 72, 255));
         t.SetRole("chatcube.call-bar", Color(30, 52, 38, 255));
         for (size_t i = 0; i < kAvatarsDark.size(); ++i) t.SetRole("chatcube.avatar." + std::to_string(i), kAvatarsDark[i]);
+        // The framework's profile picture reads these (Edit profile's own picture).
+        for (size_t i = 0; i < kAvatarsDark.size(); ++i) t.SetRole("avatar." + std::to_string(i), kAvatarsDark[i]);
     } else {
         r.ground = Color(246, 247, 249, 255);
         r.panel = kWhite;
@@ -106,6 +108,7 @@ UltraCanvasTheme ThemeFor(bool dark) {
         t.SetRole("chatcube.bubble-other-line", Color(226, 229, 235, 255));
         t.SetRole("chatcube.call-bar", Color(228, 243, 232, 255));
         for (size_t i = 0; i < kAvatarsLight.size(); ++i) t.SetRole("chatcube.avatar." + std::to_string(i), kAvatarsLight[i]);
+        for (size_t i = 0; i < kAvatarsLight.size(); ++i) t.SetRole("avatar." + std::to_string(i), kAvatarsLight[i]);
     }
     t.SetRole("chatcube.presence-online", Color(52, 199, 89, 255));
     t.SetRole("chatcube.presence-away", Color(255, 184, 0, 255));

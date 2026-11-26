@@ -1,0 +1,8 @@
+{
+  "@language": "uk",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Очищено файлів cookie: {0}; дозволи програм на доступ до пристроїв скасовано",
+  "No cookies to clear; the apps' device permissions are forgotten": "Немає файлів cookie для очищення; дозволи програм на доступ до пристроїв скасовано",
+  "{0} wants to use your camera": "{0} хоче використовувати вашу камеру",
+  "{0} wants to use your microphone": "{0} хоче використовувати ваш мікрофон"
+}

@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.1.32*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-25 *0.1.31*
 - **Advertising: the console around a campaign** (`Server/UltraStorePortal` 0.6.0, its README's *Advertising*, *The console*; the first half of phase 2 of `Docs/Research/UltraAdsDesignProposal.md`).
   - **Search words of the publisher's choosing**, each matching every word in any order, the words together, or exactly the search - and words a campaign is *never* shown for. A campaign with its own words is shown for those searches and no others. The relevance floor still holds: the listing itself must hold half of what was searched, so a word bought for a listing that has nothing to do with it shows nothing at any price.

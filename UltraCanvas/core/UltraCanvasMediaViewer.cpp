@@ -1,6 +1,7 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.31.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) is a presentation too
 // Version: 1.30.0 - a word-processing document (.odt, .docx, .doc) opens in the document view as its
 //                   pages: read by UCWordDocumentIO, laid out by UltraCanvasRichTextEdit as its print
 //                   and PDF export are, shown by the PDF view (zoom, page strip, search); a protected
@@ -75,7 +76,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-25
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -141,6 +142,7 @@
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
 #include "UltraCanvasPresentationPptx.h"   // IsPptxExtension: a deck → its outline → markdown
 #include "UltraCanvasPresentationOdp.h"    // IsOdpExtension
+#include "UltraCanvasPresentationPpt.h"    // IsPptExtension
 #include "UltraCanvasPresentationPages.h"  // a deck's slides as the document view's pages
 #include "UltraCanvasRichTextEdit.h"        // a word-processing document laid out as its printed pages
 #include "UltraCanvasOfficeEncryption.h"   // CheckOfficePassword: a protected deck waits for Unlock
@@ -2704,7 +2706,7 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
 
 bool UltraCanvasMediaViewer::IsPresentationFile(const std::string& path) {
     const std::string e = LowerExt(path);
-    return !e.empty() && (IsPptxExtension(e) || IsOdpExtension(e));
+    return !e.empty() && (IsPptxExtension(e) || IsOdpExtension(e) || IsPptExtension(e));
 }
 
 bool UltraCanvasMediaViewer::IsHtmlFile(const std::string& path) {

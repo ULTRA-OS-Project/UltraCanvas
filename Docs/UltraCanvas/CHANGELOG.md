@@ -1,3 +1,549 @@
+#### 2026-11-26 *0.9.602*
+- **CI: a cancelled duplicate Build run no longer leaves a commit without a
+  "Build result".** `build-result.yml` let only the newest Build run of a
+  commit set the status, and took the newest to be the first run the API
+  listed. Two labels added together on pull request #1402 started two Build
+  runs in the same second; the build's concurrency cancelled the older, the
+  API listed that one first, and every event of the real run - its pending,
+  its failure, its re-run's success - was skipped, so the commit never had a
+  "Build result" at all. The newest is now the run with the highest id among
+  the commit's runs that were not cancelled (among all of them when every one
+  was), so a run its successor cancelled never stands in for it.
+
+#### 2026-11-26 *0.9.601*
+- **A word processor's navigator, in the framework.**
+  `UltraCanvasDocumentNavigator` (new, `UltraCanvasDocumentNavigator.h`) is
+  the side panel beside an `UltraCanvasRichTextEdit`: the headings as a tree
+  by level, whose selected row is the heading the caret is under and follows
+  it; the tables, pictures, charts, comments (with their authors; a
+  double-click opens the list of comments), bookmarks, footnotes and
+  endnotes and tracked changes; a click goes there and selects the picture,
+  chart, comment or change. Its search box filters every list and lists the
+  places the document says it. Buttons promote, demote and move a heading's
+  section (the heading, its text and its subheadings) up or down, and a
+  heading's row dragged onto another heading moves the section before it.
+  The lists follow the edits once the typing pauses (`SetRefreshDelay`), and
+  the tree is rebuilt only when the outline changed. UltraOffice and
+  UltraTexter show it.
+- **The outline, UI-free.** `BuildRichDocumentOutline`
+  (`UltraCanvasRichDocumentOutline.h`, new) reads a `UCRichDocument` into a
+  `RichDocumentOutline`: headings (level, words, parent, section end),
+  tables (rows, columns, caption, first cell), pictures and charts (where
+  they are, caption, alt text, title), comments (author, the range and words
+  they are on), bookmarks, notes (mark, words, reference) and tracked changes
+  (who, when, what); `HeadingAt` is the heading a block is under.
+- **Heading sections, as undo steps.** `UCRichDocumentEditor::HeadingSectionEnd`,
+  `SiblingHeading`, `MoveHeadingSection` (before any block, or to the end),
+  `MoveHeadingSectionUp` / `Down` and `ChangeHeadingSectionLevel` (promote or
+  demote a heading with every heading under it; a heading in its level's
+  style takes the new level's), each one undo step; the same on
+  `UltraCanvasRichTextEdit`, which also gains `GoToPosition`, `GoToRange` and
+  `AddDocumentObserver` / `RemoveDocumentObserver` - any number of listeners
+  to its edits and caret moves besides the host's own callbacks.
+
+  Covered in `RichDocumentOutlineTest` (no display) and
+  `DocumentNavigatorElementTest` (Xvfb).
+- **Slides: groups, alignment, picture crops, the slide sorter, notes as
+  paragraphs and a chart's data, in the deck model and the slide editor.**
+  - The deck model keeps group shapes: `PptxShape::groupPath` (the groups a
+    shape is in, outermost first) and `PptxSlide::groupNames`. The .pptx
+    reader keeps `p:grpSp` (its `chOff` / `chExt` scaling applied as before,
+    a turned group's shapes now turned with it) and the writer writes it
+    back, nested, its box the shapes'; the .odp reader and writer keep
+    `draw:g`. `PptxGroupIds`, `PptxNewGroupId`.
+  - A picture's crop is read from and written to an .odp's `fo:clip`, in
+    lengths of the picture at its own size (`PptxPictureNaturalSize`: its
+    pixels at the resolution a PNG's `pHYs` or a JPEG's JFIF states, else
+    96 to the inch, as LibreOffice measures it); the .pptx's `a:srcRect` was
+    kept already.
+  - `UCSlideDeckEditor`: groups are selected whole (`Select`,
+    `ToggleSelected`, `ShapesInside`), `GroupSelection` / `UngroupSelection`
+    (one step each), `EnterGroup` / `ExitGroup` to choose inside one,
+    `RotateSelection` turns a group as one, the z-order commands keep a
+    group together and a copy of a group is a group of its own;
+    `AlignSelection(SlideAlignment)` and `DistributeSelection` (to the
+    slide for one shape); `SetPictureCropBox`, `SetPictureCrop`,
+    `ResetPictureCrop`, `PictureFullBox`; `SetShapeChart`, `ChartDataRows`,
+    `ChartWithDataRows` (a chart's data as cells, its kind kept);
+    `SetSlideNotes(index, paragraphs)`; `MoveSlides`, `DuplicateSlides`,
+    `DeleteSlides`, `SetSlidesHidden` for several slides as one step.
+  - `UltraCanvasSlideEdit`: Ctrl+G / Ctrl+Shift+G, a group framed, resized
+    and turned with its own handles, a double-click selecting inside it and
+    Escape going back; crop mode (`SetCropMode`) with crop handles over the
+    picture's faint whole; the slide sorter (`SetView(SlideEditView::Sorter)`:
+    a grid of thumbnails, click, Ctrl and Shift choose, a drag moves them
+    together, Ctrl+D, Delete, a right-click for a host's menu);
+    `onEditChart` on a double-click on a chart, `onModeChange`.
+  - The .pptx reader no longer bullets the speaker notes by default (the
+    slide master's body style was applied to them); the .odp writer no longer
+    reads past the theme's colours for a table in a deck made in memory.
+  - `PptxSlideDrawOptions::background`: false draws a slide's shapes alone,
+    over what the context holds.
+- **Pivot tables in spreadsheets** (`UltraCanvasSpreadsheetPivot.h`). A
+  `SpreadsheetPivotTable` summarises a block of cells whose first row names
+  its fields: row and column fields (nested, each with its order, subtotals,
+  hidden items and a grouping - dates by years, quarters or months, numbers
+  by a step), filter fields above the table, and value fields summed,
+  counted, averaged, as min, max, product, count of numbers, standard
+  deviation or variance (sample or population), shown as they are or as a
+  share of the grand total, of the row or of the column; grand totals at the
+  bottom and the right on or off, several values side by side or one under
+  the other. The model is display-free: `ComputeSpreadsheetPivot` lays it
+  out as cells, `RefreshSpreadsheetPivot` writes them onto a sheet with a
+  header style (and clears where it stood), `SpreadsheetPivotDrillDownRows`
+  gives the source rows behind a value.
+- **On the grid.** A sheet keeps the pivots standing on it
+  (`SpreadsheetSheet::GetPivotTables`); `InsertPivotTable`, `SetPivotTable`,
+  `RemovePivotTable`, `RefreshPivotTable(s)`, `SetPivotTableSource`. A
+  pivot's cells are read-only (typing, pasting, cutting and clearing them is
+  refused with a message), a change to its source refreshes it before the
+  grid draws and before it saves (`RefreshChangedPivotTables`), and a
+  double-click on a value opens a sheet of the rows behind it
+  (`DrillDownPivotCell`, `onPivotDrillDown`) - on any other of its cells, its
+  field list. The field list is an element, `UltraCanvasSpreadsheetPivotPanel`
+  (fields, rows, columns, values and filters, each field's settings and
+  items), in a dialog (`ShowSpreadsheetPivotDialog`, the grid's
+  `ShowInsertPivotTableDialog` / `ShowPivotTableDialog`) or docked beside
+  the grid; `ShowPivotSourceDialog` asks for a new source.
+- **.xlsx and .ods keep them.** .xlsx: a pivot cache definition per pivot
+  (`xl/pivotCache/pivotCacheDefinitionN.xml`, its source, its fields'
+  values and groupings, `refreshOnLoad`), its records, a pivot table part
+  (`xl/pivotTables/pivotTableN.xml`) with their relationships and content
+  types, and the workbook's `<pivotCaches>`; .ods: `table:data-pilot-tables`
+  with a `table:data-pilot-table` per pivot (`table:source-cell-range`,
+  `table:data-pilot-field`s with their levels, members, sort order, groups
+  and field references). Both are read back - Excel's and LibreOffice's own
+  too; what the model cannot represent (a calculated field, a grouping that
+  adds fields, a source outside the workbook) keeps the file's cells and
+  says why (`unsupportedReason`). `SpreadsheetPivotTest` checks the sums
+  against hand-worked ones and the files through LibreOffice, including
+  pivots LibreOffice made itself.
+- `SpreadsheetSheet::NotifyCellsChanged`: cells written straight through
+  `GetOrCreateCell` reach the formula engine and the grid.
+
+#### 2026-11-26 *0.9.600*
+- **Cells, charts and text could not be pasted from one office kind into
+  another, and the spreadsheet grid and the slide editor said nothing to a
+  screen reader.**
+  - `UltraCanvasOfficeClipboard.h` (new): copy and paste between the grid,
+    the document editor and the slide editor through the system
+    clipboard's flavours - an HTML table or tab-separated text as cells
+    (`ClipboardTableFromHtml`, `ClipboardTableFromTabbedText`,
+    `ClipboardHtmlIsTable`), cells as a slide table's
+    (`PptxTableCellsFromHtml` keeps bold, italic, colour and alignment,
+    `PptxTableCellsFromRows`), a document's selection or plain text as a
+    text box's paragraphs (`PptxParagraphsFromClipboardHtml` / `Text`),
+    slide shapes as text and HTML for other programs; and the office
+    clipboard for what no flavour carries - a chart (`CopyChartToClipboard`,
+    `GetClipboardChart`), kept in the process beside a PNG of it (HTML) and
+    its data (text) for every other program.
+  - `UltraCanvasSlideEdit`: `Copy` / `Cut` / `Paste` (Ctrl+C / X / V) put the
+    shapes' text and HTML on the system clipboard, and Paste reads it once
+    something else was copied since - a spreadsheet's chart as a chart, cells
+    as a table, a picture as a picture, a document's selection or text as a
+    text box. `UCSlideDeckEditor::InsertTable(box, cells)`,
+    `InsertFormattedTextBox`, `InsertChart`, `CopiedShapes`.
+  - `UltraCanvasSpreadsheet`: with a chart selected, `Copy` / `Cut` take the
+    chart onto the office clipboard; another program's HTML table is read by
+    the shared `ClipboardTableFromHtml`.
+  - `UltraCanvasRichTextEdit::Paste` takes a spreadsheet's chart as a chart
+    frame in the line (`InsertChart`, `UCRichDocumentEditor::InsertChart`);
+    cells already paste as a table through their HTML.
+  - Accessibility: parts an element draws itself (`IAccessibleParts`,
+    `AccessiblePart`, `UltraCanvasUIElement::GetAccessiblePartsInterface`), a
+    grid of cells (`IAccessibleTable`, `GetAccessibleTableInterface`), the
+    roles `TableRow`, `TableCell` and `Canvas` (mapped on AT-SPI, UI
+    Automation and AppKit) and `AccessibilityEvent::part`. The grid is a
+    table named by its sheet - rows and cells as parts, a cell named by its
+    address and value ("B3 42"), the active cell focused, its value text,
+    and announced when it or the selection moves; the slide editor is a
+    canvas named by the slide shown, the strip's slides and the slide's
+    shapes (named by their first words, else their kind) as parts, the
+    selected shape focused and announced. The bridges do not yet publish
+    parts as objects of their own.
+
+  Covered in `OfficeClipboardTest` and `OfficeAccessibilityTest`.
+- **Office templates are read and written for documents and spreadsheets,
+  as they already were for decks.** A template is its document's package
+  under the template's media type, and the writers now write one by the
+  extension:
+  - `UCWordDocumentIO`: an .ott is an .odt with the
+    `application/vnd.oasis.opendocument.text-template` mimetype (and
+    manifest), a .dotx a .docx whose main part is
+    `wordprocessingml.template.main+xml`; both read back as documents. A
+    .dotm (macro-enabled) is read, its macros neither run nor kept, and
+    refused on save. `IsWordTemplateExtension`.
+  - `UltraCanvasSpreadsheet::LoadFromFile` / `SaveToFile`: .ots
+    (`...spreadsheet-template`) and .xltx (`spreadsheetml.template.main+xml`,
+    with a password too) written and read; .xltm read.
+    `IsSpreadsheetTemplateExtension`.
+  - The format inventory lists every template as a type of its own: .ott,
+    .dotx, .dotm (read), .ots, .xltx, .xltm (read), and .potx / .potm and .otp,
+    which leave the PowerPoint and OpenDocument presentation rows.
+- **`UltraCanvasFileLoader`: templates.** `DetectOfficeDocumentKind` gives a
+  template its kind; `IsOfficeTemplate(path)` says whether a file is one -
+  by its extension, or by its package (an OpenDocument `-template` mimetype,
+  an Office Open XML template content type) when the name says nothing - so
+  an office suite opens it as a new, untitled document;
+  `IsOfficeTemplateExtension` asks the name alone. `AddOfficeTemplateSaveTypes
+  (opts, kind)` is "Save as template"'s list (.ott and .dotx, .ots and .xltx,
+  .potx and .otp), and `AddSpreadsheetSaveTypes(opts)` a workbook's Save
+  list. `AddTextDocumentSaveTypes` and `AddPresentationSaveTypes` no longer
+  offer the templates, which the template list does. Covered by
+  `FileLoaderOfficeKindTest`, `WordFormatsTest` and the new
+  `OfficeTemplatesTest`, which also makes UltraOffice's shipped templates
+  (`media/templates/office/`, `--write`) and checks they load.
+- **File previews: a workbook's first printed page.** The built-in providers
+  draw the thumbnail of an .ods, .xlsx, .ots, .xltx or .xltm - the sheet on
+  show cut into pages by its print settings, as its PDF is - so the Filer's
+  tiles show it rather than the type's glyph (a workbook over 2 MB keeps the
+  glyph); the templates .ott, .dotx and .dotm preview as their documents do.
+- **PowerPoint 97-2003 decks (.ppt, and .pps / .pot) are read**
+  (`UltraCanvasPresentationPpt.h`: `ReadPptPresentation`,
+  `ReadPptPresentationFromMemory`, `IsPptPresentationFile`, `IsPptExtension`)
+  into the deck model the .pptx and .odp readers fill, so the slide editor,
+  the show, the page views, PDF export and the outline work on them, and
+  "Save as" writes .pptx or .odp. The reader follows the Current User stream
+  and the UserEditAtom chain to the last edit, then reads the slide size,
+  fonts, masters (their text styles, colour schemes and placeholders; a
+  title master as a "title" layout), each slide's shapes - places in EMU,
+  turns and mirroring, preset and freeform outlines, fills, gradients,
+  outlines, pictures with their bytes and crop, placeholders, tables (a
+  group marked as one) - and their text with bullets, numbering, levels,
+  spacing, bold, italic, underline, size, scheme colours, typefaces and
+  hyperlinks, inherited from the master where a run says nothing; notes,
+  hidden slides, transitions and backgrounds. An encrypted deck is refused
+  with a reason. Every length is checked; a damaged file never crashes it
+  (`PptReaderFuzzSmoke`).
+- `UltraCanvasFileLoader::LoadPresentation` reads any deck by its content -
+  .pptx and kin, .odp and kin, .ppt and kin - and is what the page views
+  (`UltraCanvasPresentationPages`), the file previews and UltraOffice read
+  with. `LoadTextDocument`, `ExtractText`, `DetectOfficeDocumentKind` (a
+  compound file with a "PowerPoint Document" stream, by its content too),
+  the format inventory and the media viewer take a .ppt.
+- The OfficeArt drawing layer of the .doc reader - shape properties, the
+  picture store, PNG / JPEG / EMF / WMF pictures, freeforms - is shared with
+  the .ppt reader (`Plugins/Documents/Word/UltraCanvasOfficeArt.h`), and
+  knows about 150 Office shape types by their DrawingML preset (it knew 30),
+  so a .doc, a .docx's VML shape and an .odt's `mso-spt` shape draw more of
+  them as what they are.
+- **The document dialogs of a word processor, in the framework.**
+  `UltraCanvasRichTextEditDialogs.h` puts eleven dialogs over an
+  `UltraCanvasRichTextEdit`, each a form (`UltraCanvasFormLayout`) of the
+  framework's elements in an `UltraCanvasModalDialog`: page setup (paper,
+  orientation, size, margins, header and footer distance), paragraph
+  (indents, space before and after, line spacing, alignment, tab stops),
+  named styles (apply, change, new from the selection), table properties,
+  a picture's alt text, wrapping, position and size, table of contents,
+  caption, cross-reference, footnote or endnote, a comment, and the list of
+  a document's comments (go to, edit, resolve or reopen, delete). Each is
+  `Read...DialogValues`, `Apply...DialogValues` - what OK does, testable
+  without a window (`RichTextDialogsTest`) - and `Show...Dialog`; Cancel
+  changes nothing. UltraOffice and UltraTexter both open them.
+- **What they set, as undo steps.** `SetParagraphFormat`
+  (`RichParagraphFormat`: a paragraph's whole layout, or a cell's alignment
+  and line spacing), `SetPageSetup` (the page is now part of an undo step,
+  and an undo that changes it lays the document out again),
+  `SetTableProperties` (`RichTableProperties`: width, alignment, indent,
+  header row, fitting the contents, every cell's lines, padding and vertical
+  alignment), `SetSelectedImageWrap` / the core's `SetImageWrap` (a picture
+  of its own paragraph that is made to float becomes the picture in a
+  paragraph's line, at the same position), and `InsertNote(kind, text)`, a
+  note with its text. `GoToPreviousChange`, `GoToNextComment`,
+  `GoToPreviousComment` and `GoToComment` select a change or a comment's
+  text. `RichPageSetup` and `RichTabStop` compare with `==`.
+- **Spreadsheet: array formulas and spills.** A range or an array constant
+  (`{1,2;3,4}`) is a value: arithmetic and the functions of single values
+  (`ABS`, `IF`, `LEN` ...) work element by element, and a formula whose
+  result is an array spills into the cells to its right and below, as in
+  Excel 365 - `#SPILL!` when a cell in the way is taken, the spill following
+  its source as it grows and shrinks, `A1#` for the whole spill and `@` for
+  one value. The spilled cells hold values, not formulas
+  (`SpreadsheetCell::IsSpilledValue`). Legacy array formulas fill a fixed
+  range: Ctrl+Shift+Enter in the grid enters one over the selection
+  (`SpreadsheetSheet::SetArrayFormula`). `LET`
+  and `LAMBDA` (called directly, through a LET name, or by `MAP`, `REDUCE`,
+  `SCAN`, `BYROW`, `BYCOL`, `MAKEARRAY`), and arguments left out
+  (`SEQUENCE(3,,10)`).
+- **Spreadsheet: dynamic-array functions** `FILTER`, `SORT`, `SORTBY`,
+  `UNIQUE`, `SEQUENCE`, `RANDARRAY`, `TRANSPOSE` and `XMATCH`; `XLOOKUP`
+  returns whole rows or columns and takes its match and search modes.
+- **Spreadsheet: financial functions** `NPER`, `RATE`, `IPMT`, `PPMT`,
+  `CUMIPMT`, `CUMPRINC`, `IRR`, `XIRR`, `XNPV`, `MIRR`, `SLN`, `SYD`, `DB`,
+  `DDB`, `VDB`, `EFFECT` and `NOMINAL`, with Excel's iteration limits for
+  `RATE`, `IRR` and `XIRR` (`#NUM!` when they do not converge).
+- **.xlsx and .ods keep array formulas.** .xlsx: `<f t="array" ref>`, a
+  dynamic one with the cell metadata (`cm`, `xl/metadata.xml`) that keeps it
+  a spill in Excel; `A1#`, `@`, the new functions' prefixes and LET's names
+  as Excel stores them; a formula's text, Boolean or error result is written
+  with its type. .ods: `table:number-matrix-*-spanned`, inline arrays and
+  Excel's functions in their `COM.MICROSOFT.` namespace (read too). A
+  formula read from a file without dynamic arrays is worth one value, a
+  range in it giving the cell on its row, as Excel and LibreOffice read it.
+- The spreadsheet documentation lists the common Excel functions still
+  missing, by category.
+- **Every chart of the framework in a spreadsheet.** `RichChart::Kind` names
+  every chart a table of cells can feed - waterfall, diverging bars,
+  population pyramid, dumbbell, Mekko, cumulative flow, nested areas, polar,
+  radial bars, progress rings, gauge, quadrant, importance-performance,
+  ternary, hexbin, 3D scatter, histogram, box and whisker, jitter,
+  ridgeline, funnel, pyramid, Sankey, chord, treemap, sunburst, Gantt,
+  timeline, heatmap, calendar heatmap, contour, surface, word cloud and
+  parliament, beside the office kinds - and `CreateRichChartElement` /
+  `DrawRichChart` (`UltraCanvasRichDocumentChart.h`) build the element of
+  any of them from the chart's categories and series, so documents and
+  slides draw them too (`RichChartSeries::labels` carries a column of words,
+  `RichChart::bins` a histogram's bins). `SpreadsheetChartTypes()` lists 52
+  types in nine categories with their names and descriptions;
+  `MakeSpreadsheetChartOfType` reads the columns as each type does (a
+  bubble chart's x, y and size, a Sankey diagram's sources, targets and
+  amounts, a Gantt chart's tasks, starts and ends, a first column of dates
+  as categories), and `SpreadsheetChartFitMessage` says why a selection does
+  not fit a type ("A bubble chart needs three columns of numbers: x, y and
+  size."). Kanban boards, the circular infographic, the spectrogram, the
+  image histogram, the GL surface and the parallel-coordinates module are
+  left out: no table of cells feeds them.
+- **The chart gallery.** `ShowSpreadsheetChartGallery` shows every type by
+  category, each tile a picture of the selection drawn by the chart itself
+  (a faded sample, with the reason, where it does not fit), its name and
+  description; a click or the arrow keys pick one, Enter or a double click
+  takes it, the category chips scroll to their section. The grid's
+  `ShowInsertChartDialog` and `ShowChartTypeDialog` use it, and the
+  properties dialog's *Type* is a button that opens it. The gallery is a
+  new element, `UltraCanvasGalleryPicker`: tiles of live pictures in titled
+  sections, picked with the mouse or the keys.
+- **Kept in .xlsx and .ods.** A kind the format has a form for is written
+  as itself - now also a surface (`c:surface3DChart`), a contour map
+  (`c:surfaceChart`) and a bubble chart's size references (`c:bubbleSize`,
+  `DrawingMLSeriesSource::sizes`). Every other kind is written as a column
+  chart of its numbers, which Excel and LibreOffice show, with an
+  UltraCanvas extension holding the real kind, its look and every series'
+  ranges: `c:extLst/c:ext` in the chart part, and an element of our own
+  namespace at the end of the .ods chart object. Reading puts the kind
+  back. Excel 2016's `cx:` parts are not written; those kinds take the
+  extension too.
+- `UltraCanvasChartElementBase::SetEntranceAnimation`: a chart shown
+  complete from the first frame - on a page, in print, as a thumbnail.
+- **`check_platform_names.py` knows `<windows.h>`'s object-like macros.** A
+  new `win32-macro` rule flags a lambda, variable, member, enumerator or
+  `#undef` named `near`, `far`, `NEAR`, `FAR`, `IN`, `OUT`, `OPTIONAL`,
+  `interface`, `small`, `ERROR`, `DELETE` and the rest of the hand-kept list
+  in `scripts/win32_object_macros.txt`: on Windows those names are rewritten
+  ("expected unqualified-id"), and a spreadsheet chart helper named `near`
+  broke both Windows builds that way. The A/W rule only knew function-like
+  macros. Sixteen `near` / `far` identifiers are renamed (`closeTo`,
+  `distant`) in the slide editor, the DXF reader, the requirement diagram,
+  ArtCreator and nine tests; the `small` and `interface` sites, which build
+  today because `WIN32_LEAN_AND_MEAN` keeps the COM and RPC headers out, are
+  baselined.
+
+#### 2026-11-26 *0.9.599*
+- **A menu stayed open, floating above everything, after its window had moved
+  or gone behind another.** A menu opened from the menu bar (or a dropdown's
+  list, any popup) is shown in a top-level window of its own, kept above every
+  other window.
+  - **Moved window (Windows).** The Windows layer never handled `WM_MOVE`, so
+    dragging the window by its title bar left the menu where it had been. A
+    press on the frame - title bar, border - is now a click outside the popups
+    (`UltraCanvasWindowBase::ClosePopupsOnFramePress`, on `WM_NCLBUTTONDOWN`
+    and its right / middle / X siblings and `WM_ENTERSIZEMOVE`), so the menu
+    closes before the window moves, as a native menu does. A popup that does
+    not close on a click outside follows the window instead, live during the
+    drag (`MovePopupHostsWithWindow` on `WM_MOVE`). `GetConfig().x / y` and
+    `onWindowMove` follow a move on Windows too, which they never did.
+  - **Moved window (X11, macOS).** The window manager keeps the title-bar
+    press to itself there, so the menu followed the dragged window instead.
+    A window found moved since its first popup opened
+    (`ClosePopupsIfWindowMoved`, on X11's ConfigureNotify and macOS's
+    `windowDidMove`) now closes the popups that close on a click outside.
+  - **Window no longer in front.** A popup closed when the focus left the
+    application, but stayed open when it went to another window of the same
+    application - a second document window brought to the front - floating
+    over it. It now closes unless the focus went to its own window or a
+    dialog of it (`IsSelfOrDialogOfSelf`, by the transient parent).
+  - **Window hidden or minimised.** Its popups close (`HandleWindowHidden`);
+    the windows of those that stay open are hidden, and never shown while
+    their window is minimised.
+  - **Window covered without losing the focus.** A popup's own window was
+    topmost, above every window, so another program's window put in front
+    without taking the focus came under the menu. It is now kept above its
+    own window only - an owned window on Windows (no `WS_EX_TOPMOST`), a
+    child window at its level on macOS, the window's transient on X11 - so
+    whatever covers the window covers the menu. A window not in the ordinary
+    stack still has its popups above every window
+    (`UltraCanvasWindowBase::PopupsAboveEveryWindow`: a desktop - UltraDesktop's
+    bars are kept below the applications - a notification, an overlay, a lock
+    screen, or one `alwaysOnTop`).
+
+#### 2026-11-26 *0.9.598*
+- **Text the framework showed in English whatever the language.** The file
+  dialog's "File name", "File type" and "Show" captions, its Home folder, its
+  "not found" messages and its settings-button tooltips; the file list's
+  column headings (Name, Size, Type, Modified ...) and type names ("PNG
+  Image", "Folder", "Shortcut"); the path strip's "Computer" node; and the
+  loudspeaker's messages on Linux and Windows ("No sound server is
+  running."). They now go through Tr, with translations in all 30 languages.
+  A type name is one entry per kind of file ("{0} Image"), so a language puts
+  the format's name where its grammar wants it ("Image PNG", "PNG-Bild").
+  `FolderBreadcrumbOptions::computerLabel` is empty by default, meaning
+  "Computer" in the language shown.
+
+#### 2026-11-25 *0.9.597*
+- **A profile picture element.** `UltraCanvasProfilePicture` shows a
+  person's picture in a circle, or their initials on one of eight colours
+  that a key (their id) picks, the same one every time. Editable, it wears a
+  badge, and a click, Return or Space chooses a new picture: the FileLoader's
+  Open dialog, then a crop dialog that places the picture in the circle
+  (drag to move it, the wheel or a slider to zoom, previews at 40 and 28
+  pixels), then the framed square written at 256 pixels - JPEG, or PNG for a
+  picture with transparency - into a folder of the application's own, and
+  reported through `onPictureChanged`. Delete, or **Remove**, goes back to
+  the initials. The parts are there on their own too:
+  - `UltraCanvasProfilePictureEditor`, the row of a profile page: the
+    picture, **Choose a picture** (**Change picture** once there is one),
+    **Remove** and a line of hint;
+  - `UltraCanvasProfilePictureCropper`, the placing area, and
+    `ShowProfilePictureCropDialog`, the dialog around it;
+  - `CropProfilePicture`, which writes the square a `ProfilePictureFrame`
+    frames, and `ProfilePictureInitials`.
+
+  A selectable widget, `ProfilePicture`, registered as `profile-picture` and
+  `profile-picture-editor`: compiled in by default, the
+  `ultracanvas-widget-profile-picture` module in a lean build. DemoApp shows
+  it under *Widgets > Profile Picture*. Covered by `ProfilePictureTest`.
+- **UltraIM: the owner's profile picture.** `UltraIMAccountProfile` gains
+  `picturePath` (a square JPEG, PNG or WebP, "" for none), `pictureSupported`
+  (filled by `FetchAccountProfile`) and `pictureChanged`: an update applies
+  the picture only with the flag, so a host that never shows it cannot
+  remove it by accident. The provider module ABI is 13. ChatCube Direct
+  keeps a copy, at most 32 KiB, and sends it to each contact as a sealed
+  `picture` body through its outbox - over the data channel, else the
+  relay's queue - again when it changes and to a contact added later (each
+  contact remembers the version it was sent); a contact's picture comes
+  back as `avatarPath` and `senderAvatarPath`. Covered in
+  `DirectProviderTests` (`TestProfilePicture`).
+- **The profile picture keeps under a size.** `CropProfilePictureWithin`
+  writes the framed square and, when the file comes out larger than asked,
+  again as JPEG at a lower quality, then smaller, until it fits;
+  `UltraCanvasProfilePicture::SetMaxOutputBytes` uses it for a chosen
+  picture. The editor row's buttons are reachable
+  (`GetChooseButton`, `GetRemoveButton`) for an application that styles its
+  own. Covered in `ProfilePictureTest`.
+- **Matrix and Mastodon: people's pictures.** Matrix fetches a room's
+  picture (`m.room.avatar`) and its members' (`avatar_url`) once each as a
+  96-pixel thumbnail - the authenticated media API, else the older one - and
+  Mastodon each account's `avatar_static` (not the server's grey
+  `missing.png`): `avatarPath` on the chats and contacts, `senderAvatarPath`
+  on their messages, with a `ConversationUpdate` when a picture arrives.
+  Covered in `MatrixProviderTests` (against Synapse: a picture set as
+  `avatar_url` shown at the other side) and `MastodonProviderTests` (the
+  fake server serves the avatars, and the grey stand-in for Carol).
+
+#### 2026-11-25 *0.9.596*
+- **Charts in spreadsheets.** A sheet holds charts
+  (`UltraCanvasSpreadsheetChart.h`): a `SpreadsheetChart` anchored to two
+  cells with offsets, as .xlsx's two-cell anchor keeps it, holding a
+  `RichChart` whose series are ranges of cells - names, categories (a scatter
+  series' x values) and values - read from the cells again whenever they
+  change. The grid draws them with the chart engine over the cells, where
+  they stand as it scrolls, and prints them; a click selects one, a drag
+  moves it, its eight handles resize it, Delete removes it, the arrow keys
+  nudge it, a double-click opens its properties (kind, title, legend, series
+  in rows), and each change is an undo step. `InsertChartFromSelection` makes
+  columns, bars (side by side or stacked), lines, areas, pies, doughnuts,
+  scatter and radar charts from the selection, the first row and column
+  taken as names and categories where they hold words. Inserted rows and
+  columns move a chart and its ranges with the cells; a renamed sheet's
+  ranges follow it.
+- **.xlsx and .ods keep them.** .xlsx: a drawing per sheet
+  (`xl/drawings/drawingN.xml`, `xdr:twoCellAnchor` and `graphicFrame`) and a
+  chart part per chart with `c:f` references and their caches
+  (`WriteDrawingMLChart(chart, sources)`, `ReadDrawingMLChartSources`); .ods:
+  a `draw:frame` in the sheet's `table:shapes` naming an `Object N/` chart
+  whose series point at the sheets (`WriteOdfChartObject(chart, w, h,
+  sources, plotArea)`, `ReadOdfChartSources`), and LibreOffice's cell-anchored
+  frames read too. LibreOffice opens both, and its conversions read back.
+  Covered in `SpreadsheetChartRoundTripTest` and `SpreadsheetChartDrawTest`.
+- **An untitled chart's top value label is no longer cut off.** The chart
+  engine centres a left or right axis's labels on their ticks but reserved
+  no room above the plot for the top one, so a chart without a title showed
+  half of its "60.0" at the top edge - in spreadsheets, documents and slides
+  alike. `UltraCanvasChartEngineElement` now reserves half a label's height
+  above and below the plot for such an axis (under a title, what the title
+  band does not already leave).
+- **Spreadsheet conditional formats were stored but never drawn, and no
+  file kept them.** `UltraCanvasSpreadsheet::PaintCell` - the grid's and the
+  printed page's painter - now draws them (`SpreadsheetSheet::
+  GetConditionalFormatting`): value comparisons (a number, text or a
+  formula), formula rules moved to each cell, text, blank and error rules,
+  top or bottom values, above or below the average, duplicate and unique
+  values, two- and three-colour scales and data bars. A rule's style lays
+  only what it sets over the cell (`ApplyConditionalStyle`); the figures a
+  scale or a bar needs are worked out once per change of the cells. `.xlsx`
+  reads and writes them as `conditionalFormatting` with `dxfs`, `.ods` as
+  `calcext:conditional-formats` with common cell styles, both as LibreOffice
+  does.
+- **Data validation in files, and the rules it skipped.** `.xlsx`
+  (`dataValidations`) and `.ods` (`table:content-validations`) read and
+  write validation rules. A Custom rule's formula is evaluated (it passed
+  everything), a list may be taken from cells (`formula1` `"=$G$1:$G$9"`,
+  `IsRangeListSource`, `SpreadsheetSheet::GetValidationListItems`), and a
+  bound may be a formula (`"=$F$1"`).
+- **Comments and links.** A comment is marked by a red corner and shown
+  while the pointer rests on its cell; a link's text is blue and underlined,
+  shows where it goes, and Ctrl+click opens it (`OpenHyperlink`: an address
+  through `OpenURL`, a place in the workbook by going there;
+  `onOpenHyperlink` takes it over). `SetCellComment` / `SetCellHyperlink`
+  and their `Remove...` are undo steps. `.xlsx` keeps comments (the comments
+  part and the VML drawing Excel shows them with) and links (`hyperlinks`),
+  `.ods` keeps them as `office:annotation` and `text:a`; a cell that holds
+  only a note or a validation is written.
+- **The rules dialogs.** `ShowConditionalFormatDialog`,
+  `ShowDataValidationDialog`, `ShowCommentDialog` and `ShowHyperlinkDialog`
+  edit the selection's rules and the active cell's comment and link, each a
+  form of the framework's elements in a modal dialog;
+  `AddSelectionConditionalFormat`, `ClearSelectionConditionalFormats` and
+  `SetSelectionValidation` do it from code.
+- **Conditional formats and validation rules are undo steps**, as comments
+  and links are: each change made through the grid - `AddConditionalFormat`,
+  `SetConditionalFormatRule` and `RemoveConditionalFormatRule` (new),
+  `AddSelectionConditionalFormat`, `ClearSelectionConditionalFormats`,
+  `SetSelectionValidation`, and the two dialogs - is one step
+  (`UndoActionType::RulesChange`), and undoing a validation rule gives the
+  cells back their own rules it replaced.
+- **The dialogs, tried in a window.** The chart properties dialog was an
+  empty window with no OK or Cancel (a `Custom` dialog builds no sections or
+  buttons); it is drawn now. The conditional-format and validation dialogs
+  are as tall as the rows the chosen rule needs (they kept room for every
+  row, a wide empty band under one or two), keep their controls in place as
+  rows come and go (`HoldFormCaptionColumn`, new in `UltraCanvasFormLayout.h`:
+  the caption column as wide as every caption, hidden ones too), and their
+  lists and fields fill the dialog's width, so the validation value's hint is
+  no longer cut off; a comment fills its dialog. A data bar starts from a
+  single colour (a bar from "Red, yellow, green" came out red), "Delete
+  rule" shows only when there is a rule to delete, and a rule between two
+  values reads "between 30 and 50", not "30 / 50".
+- Covered by `SpreadsheetRulesTest`: the rules evaluated, drawn on an
+  off-screen page, set through the grid's calls, and saved as `.xlsx` and
+  `.ods` and loaded back - and, where LibreOffice is installed, converted by
+  it and loaded back.
+- **`UltraCanvasTextArea`: a click on a line the caret was not on is hit-tested
+  against that line.** A mouse press moves the caret; until the next frame
+  lays the caret's line out again, `GetActualLineLayout` handed back the old
+  caret line's layout for the new one, so a release hit-tested before a frame
+  was drawn (a fast click, a synthetic one) landed on the wrong text and a
+  link under it did not open. The caret's own layout is now used only for the
+  line it was laid out for (`currentLineIndex`).
+- **`UltraCanvasTextArea`: a subclass can style ranges of a plain line.** The
+  protected virtual `GetLineSpans(lineIndex, lineText)` answers byte ranges of
+  a line with a `TokenStyle` (`TextAreaLineSpan`: colour, bold, italic,
+  underline), drawn over the syntax colours whenever the line is laid out -
+  in PlainText mode and on the raw line being edited in Markdown mode, an
+  input method's composition moving the ranges after it along.
+  `InvalidateLineSpans()` lays the lines out again when the answer changes for
+  unchanged text (a theme change). UltraMail draws the links of a plain-text
+  mail with it.
+
 #### 2026-11-25 *0.9.595*
 - **A .docx saved again lost its theme and font table.** The DOCX writer
   builds its package from the document model, which held neither, so the

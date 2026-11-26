@@ -175,9 +175,10 @@ int main() {
     FileDialogOptions docSave;
     UltraCanvasFileLoader::AddTextDocumentSaveTypes(docSave);
     Check(docSave.filters.size() == 4 && Holds(docSave.filters[0], "odt") && Holds(docSave.filters[1], "docx") &&
-              Holds(docSave.filters[2], "pptx") && Holds(docSave.filters[2], "potx") && Holds(docSave.filters[3], "odp") &&
-              Holds(docSave.filters[3], "fodp"),
-          "AddTextDocumentSaveTypes: ODT, DOCX, then PowerPoint and OpenDocument presentations - what SaveTextDocument writes");
+              Holds(docSave.filters[2], "pptx") && Holds(docSave.filters[2], "ppsx") && !Holds(docSave.filters[2], "potx") &&
+              Holds(docSave.filters[3], "odp") && Holds(docSave.filters[3], "fodp") && !Holds(docSave.filters[3], "otp"),
+          "AddTextDocumentSaveTypes: ODT, DOCX, then PowerPoint and OpenDocument presentations - what SaveTextDocument writes, "
+          "but the templates (AddOfficeTemplateSaveTypes)");
 
     const fs::path dir = fs::temp_directory_path() / "uc-fileloader-type-lists";
     std::error_code ec;
