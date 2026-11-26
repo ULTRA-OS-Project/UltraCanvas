@@ -43,8 +43,11 @@
 - [Sheet tab menu](#sheet-tab-menu)
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
 - [Data validation](#data-validation)
+- [Conditional formats](#conditional-formats)
+- [Comments and links](#comments-and-links)
 - [Best Practices](#best-practices)
 - [Printing and PDF](#printing-and-pdf)
+- [Charts](#charts)
 - [See Also](#see-also)
 
 ## Overview
@@ -73,6 +76,7 @@
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references; Ctrl-drag copies instead, a double-click fills down beside the neighbouring data, Ctrl+D / Ctrl+R fill down / right (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
+- **Charts**: Columns, bars, lines, areas, pies, scatter and radar charts made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
@@ -390,6 +394,10 @@ workbook opened and saved again comes back as it was:
 | Print area | `_xlnm.Print_Area` | `table:print-ranges` |
 | Rows / columns repeated on every page | `_xlnm.Print_Titles` | header rows / columns |
 | Page setup, header and footer, page breaks | `printOptions`, `pageMargins`, `pageSetup`, `headerFooter`, `rowBreaks` / `colBreaks` | the page layout and master page in `styles.xml`, `fo:break-before` |
+| Conditional formats | `conditionalFormatting`, their styles as `dxfs` in `styles.xml` | `calcext:conditional-formats`, their styles as common styles in `styles.xml` |
+| Validation rules | `dataValidations` | `table:content-validations`, named by the cells |
+| Comments | the comments part, and the legacy VML drawing Excel shows them with | `office:annotation` in the cell |
+| Links | `hyperlinks` (an address through the sheet's relationships, a place as `location`) | a `text:a` in the cell's text |
 
 Header and footer texts are kept in Excel's codes (`&P` page, `&N` pages,
 `&A` sheet, `&F` file, `&D` date, `&T` time, `&&` an ampersand), which an
@@ -1236,7 +1244,25 @@ in a dialog titled with `errorTitle` that shows `errorMessage` (or a default):
 
 A refused entry leaves no undo step. A rule with `showErrorAlert = false`
 keeps whatever is typed, and blanks pass while `allowBlank` is true (the
-default). Custom (formula) rules are not evaluated yet and always pass.
+default).
+
+A `Custom` rule is a formula that must come out true. It is written for the
+rule's top-left cell and moved to each other cell as a copied formula is
+(`=K1>A1` on K1:K5 checks `=K3>A3` in K3). A bound of the other rules may be
+a formula too (`=$F$1`), worked out when the cell is checked:
+
+```cpp
+DataValidation later;
+later.type = ValidationType::Custom;
+later.formula1 = "=B2>A2";                       // the end after the start, row by row
+grid->GetActiveSheet()->SetValidation(CellRange(1, 1, 50, 1), later);      // B2:B51
+
+DataValidation upTo;
+upTo.type = ValidationType::Decimal;
+upTo.op = ValidationOperator::LessOrEqual;
+upTo.formula1 = "=$F$1";                         // no more than F1 holds
+grid->GetActiveSheet()->SetValidation(CellRange(1, 4, 50, 4), upTo);       // E2:E51
+```
 
 To ask in your own way, set `onValidationFailed`. It replaces the dialog, and
 `answer` may be called at once or later, exactly once:
@@ -1259,9 +1285,139 @@ std::vector<std::string> items = grid->GetValidationListItems(1, 3);   // {"Open
 grid->ChooseValidationListItem(1, 3, "Done");                          // false for an item not offered
 ```
 
-The list's items are the rule's own text; a list taken from a range of cells
-(`$F$1:$F$5`) is not read yet. Neither ODS nor XLSX reads or writes rules yet,
-so they are set from code.
+A list rule whose `formula1` starts with `=` names cells instead
+(`IsRangeListSource`): `"=$G$1:$G$9"`, `"='Lists'.A1:A20"` or a named range.
+Its items are the cells' values, read when the arrow opens or an entry is
+checked, so the list follows the cells:
+
+```cpp
+DataValidation region;
+region.type = ValidationType::List;
+region.formula1 = "=$G$1:$G$3";                  // North, South, East in G1:G3
+grid->GetActiveSheet()->SetValidation(CellRange(1, 0, 50, 0), region);
+std::vector<std::string> regions = grid->GetActiveSheet()->GetValidationListItems(1, 0);
+```
+
+`.xlsx` and `.ods` read and write the rules (see *What a workbook file
+keeps*), and `ShowDataValidationDialog()` edits the selection's rule:
+what is allowed, the condition and its values, blanks, the list arrow, and
+how a wrong entry is answered (`SetSelectionValidation` from code; a rule of
+type `Any` removes it).
+
+## Conditional formats
+
+A conditional format changes how the cells of a range look by what they
+hold. The sheet keeps them (`SpreadsheetSheet::AddConditionalFormat`,
+`SetConditionalFormats`), and `UltraCanvasSpreadsheet::PaintCell` draws them,
+so the grid, the printed page and the PDF all show them. A format is a range
+and its rules:
+
+| Rule (`ConditionalFormatType`) | Holds when | Settings |
+|---|---|---|
+| `CellValue` | the value compares with `formula1` (and `formula2`) by `op` | a number, `"quoted text"` or a formula (`=$B$1`) |
+| `Expression` | the formula in `formula1` is true, moved to each cell from the range's top-left one | `=E1>$F$1` |
+| `ContainsText`, `NotContainsText`, `BeginsWithText`, `EndsWithText` | the shown text, ignoring case | the text in `formula1` |
+| `ContainsBlanks`, `NotContainsBlanks`, `ContainsErrors`, `NotContainsErrors` | the cell is empty / shows an error | |
+| `Top10` | among the highest (`bottom`: lowest) `formula1` values, or percent of them (`percent`) | |
+| `AboveAverage` | above the range's average (`aboveAverage` false: below; `equalAverage`: or equal) | |
+| `DuplicateValues`, `UniqueValues` | the text occurs more than once / once in the range | |
+| `ColorScale` | a number: the cell filled with `colorScale`'s two or three colours, mixed by where the value lies | `thresholds` (default lowest, 50th percentile, highest) |
+| `DataBar` | a number: a bar of `dataBarColor` from the left edge, as long as the value is far between the lowest and the highest | `thresholds`, `showValue` |
+
+A rule's `style` lays only what it sets over the cell's own
+(`ApplyConditionalStyle`): a fill, a font colour other than black, bold,
+italic, underline, strikethrough. Rules are tried by `priority` (lower first;
+one without a priority after those with one), then in order; the first
+style that holds wins, a colour scale and a data bar draw beside it, and
+`stopIfTrue` ends the search.
+
+```cpp
+SpreadsheetSheet* sheet = grid->GetActiveSheet();
+
+ConditionalFormatRule over;
+over.type = ConditionalFormatType::CellValue;
+over.op = ValidationOperator::GreaterThan;
+over.formula1 = "1000";
+over.style.fill = CellFill::Solid(Color(255, 199, 206));
+over.style.font.color = Color(156, 0, 6);
+
+ConditionalFormat amounts;
+amounts.range = CellRange(1, 2, 99, 2);                          // C2:C100
+amounts.rules.push_back(over);
+sheet->AddConditionalFormat(amounts);
+
+ConditionalFormatRule scale;
+scale.type = ConditionalFormatType::ColorScale;
+scale.colorScale = {Color(248, 105, 107), Color(255, 235, 132), Color(99, 190, 123)};
+ConditionalFormat heat;
+heat.range = CellRange(1, 3, 99, 3);                             // D2:D100
+heat.rules.push_back(scale);
+sheet->AddConditionalFormat(heat);
+
+ConditionalCellFormat look = sheet->GetConditionalFormatting(4, 2);   // what C5 is drawn with
+if (look.style) { /* the rule's style */ }
+if (look.fill) { /* a colour scale's colour */ }
+```
+
+The figures a colour scale, a data bar, top values and duplicates need (the
+lowest, the highest, the sorted values) are worked out once per change of the
+sheet's cells, not per cell drawn. `ShowConditionalFormatDialog()` lists the
+rules over the selection, adds one (a value comparison, a formula, text,
+blanks, errors, top or bottom values, above or below the average,
+duplicates, unique values, a two- or three-colour scale, a data bar) and
+changes or deletes the one picked; `AddSelectionConditionalFormat` and
+`ClearSelectionConditionalFormats` do the same from code. `.xlsx` and `.ods`
+read and write them; an icon set or a date rule is not drawn and not kept.
+
+A change made through the grid - its calls or its dialogs - is one undo step,
+as a typed value is; the sheet's own calls above are not. On the grid, a
+format is added with `AddConditionalFormat`, and a rule of the active sheet's
+format (in `GetConditionalFormats()` order) changed or deleted by its
+position, the format going with its last rule:
+
+```cpp
+ConditionalFormatRule over;
+over.type = ConditionalFormatType::CellValue;
+over.op = ValidationOperator::GreaterThan;
+over.formula1 = "1000";
+over.style.font.bold = true;
+
+ConditionalFormat flagged;
+flagged.range = CellRange(1, 4, 99, 4);                          // E2:E100
+flagged.rules.push_back(over);
+grid->AddConditionalFormat(flagged);                             // one undo step
+over.formula1 = "5000";
+grid->SetConditionalFormatRule(0, 0, over);                      // false when there is no such rule
+grid->RemoveConditionalFormatRule(0, 0);
+grid->Undo();                                                    // the rule is back
+```
+
+`SetSelectionValidation` is an undo step in the same way, and its undo gives
+back the cells' own rules the range's replaced.
+
+## Comments and links
+
+A cell's comment (`CellComment`: text, author) is marked by a red corner
+at the cell's top right, and resting the pointer on the cell shows it. A
+link (`CellHyperlink`) draws its cell's text blue and underlined (unless the
+cell has a colour of its own); the pointer resting on it shows where it goes,
+and Ctrl+click opens it - a web or mail address through the system
+(`OpenURL`), a place in the workbook (`HyperlinkType::InternalCell`,
+`"Sheet2.B4"`) by selecting it. Setting `onOpenHyperlink` takes the opening
+over (to ask first, or in a test).
+
+```cpp
+grid->SetCellComment(0, 0, "Checked against the March statement", "Ann");   // an undo step
+grid->SetCellHyperlink(1, 0, CellHyperlink("https://example.com/report"));
+grid->SetCellHyperlink(2, 0, CellHyperlink("Summary.A1", HyperlinkType::InternalCell));
+grid->OpenHyperlink(2, 0);                       // goes to Summary!A1; false for a cell without a link
+grid->RemoveCellComment(0, 0);
+```
+
+A link set on an empty cell gives it the address as its text.
+`ShowCommentDialog()` and `ShowHyperlinkDialog()` edit the active cell's
+(each with a button that removes it); both are kept by `.xlsx` (with the VML
+drawing Excel needs to show a comment) and `.ods`.
 
 ## Best Practices
 
@@ -1272,6 +1428,7 @@ so they are set from code.
 - **Prefer the auto-detecting loaders for a quick "Open"** (`LoadFromFile`, single-arg `LoadCSV`); use the `*WithOptions` variants plus the import/export dialogs when the user needs to choose charset, separators, or quoting.
 - **Always check the return value and `GetLastError()`** after any `Load*`/`Save*` call to surface a clear reason to the user.
 - **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
+- **Rules live on the sheet, the dialogs on the grid.** Conditional formats and validation rules are `SpreadsheetSheet`'s (`AddConditionalFormat`, `SetValidation`); comments and links are a cell's. The grid's `Show...Dialog` calls edit them for the selection.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
 
 ## Printing and PDF
@@ -1317,6 +1474,98 @@ if (pages->ExportPdf(pdf, error))
     PrintDocumentWithDialog("Budget", pdf, "application/pdf", window, pages);
 ```
 
+## Charts
+
+A sheet holds charts (`UltraCanvasSpreadsheetChart.h`). A `SpreadsheetChart`
+is anchored to cells - its top-left corner some pixels into one cell, its
+bottom-right into another, as .xlsx's two-cell anchor keeps it - and holds a
+`RichChart`, the chart model documents and decks use, whose series are
+ranges of cells: each series' name, its categories (a scatter series' x
+values) and its values (`SpreadsheetChartSeries`, ranges as
+`SpreadsheetChartRange`: a sheet's name and a `CellRange`). It is drawn by
+the chart engine (`DrawRichDocumentChart`) over the cells, moves with them
+when the grid scrolls or rows and columns are inserted above or left of it,
+and prints where it stands.
+
+| Kind (`RichChart::Kind`) | Offered by *Insert chart* |
+|---|---|
+| `Column`, `Bar` (side by side or `stacked`) | Columns, Columns stacked, Bars, Bars stacked |
+| `Line`, `Area` (or stacked) | Line, Area, Area stacked |
+| `Pie`, `Doughnut` | the first series, its values as slices named by the categories |
+| `Scatter` | each series' points over the first line of numbers as x |
+| `Radar` | the categories as spokes |
+
+A file's bubble and stock charts are read and drawn too, from the values the
+file keeps with them.
+
+`InsertChartFromSelection(kind, stacked, seriesIn)` makes one from the
+selection as a spreadsheet does (`MakeSpreadsheetChart`): a first row of
+words names the series, a first column of words (or an empty corner) holds
+the categories, and the series run down the columns when the block is at
+least as tall as it is wide (`SpreadsheetChartSeriesIn::Automatic`), else
+along the rows. It returns -1, and inserts nothing, when the selection holds
+no number. A single selected cell stands for the block of cells in use
+around it.
+
+On the grid a click selects a chart, a drag moves it, its eight handles
+resize it, Delete (or Backspace) removes it and the arrow keys nudge it (ten
+pixels with Shift); a double-click opens `ShowChartPropertiesDialog` - the
+kind, the title, the legend and, for a chart made from a block, whether the
+series run along the rows - unless `onChartDoubleClick` is set. Inserting,
+changing, moving, resizing and deleting are each one undo step
+(`UndoActionType::ChartChange`).
+
+The data is read from the cells again whenever they change: the grid marks
+its charts stale when a sheet reports a change and reads them before it
+draws and before it saves (`RefreshCharts`, which also recalculates the
+formulas waiting). A chart whose ranges name a sheet reads it from any sheet;
+renaming that sheet renames the ranges.
+
+| Format | How a chart is kept |
+|---|---|
+| .xlsx | `xl/drawings/drawingN.xml` (an `xdr:twoCellAnchor` holding a `graphicFrame`), its relationships, and `xl/charts/chartN.xml` written by `WriteDrawingMLChart` with the series as `c:f` references (`'Sales Data'!$B$2:$B$7`) and their cached values; a one-cell anchor is read too |
+| .ods | a `draw:frame` in the sheet's `table:shapes` naming an object `Object N/` whose `content.xml` is a `chart:chart` (`WriteOdfChartObject`) with `chart:values-cell-range-address` and the categories' and names' ranges into the sheets; a frame LibreOffice anchors in a cell is read too |
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"
+
+// Months in A2:A7, two regions' sales in B2:C7, their names in B1:C1.
+grid->Select(CellRange(0, 0, 6, 2));
+int index = grid->InsertChartFromSelection(RichChart::Kind::Column);   // one undo step
+if (index >= 0) {
+    SpreadsheetChart chart = *grid->GetChart(index);
+    chart.chart.title = "Sales";
+    chart.chart.legend = true;
+    // Six columns wide from G2, ten pixels into it.
+    chart.anchor.from = CellAddress(1, 6);
+    chart.anchor.fromOffsetX = 10;
+    chart.anchor.to = CellAddress(16, 12);
+    grid->SetChart(index, chart);                                   // one undo step
+}
+
+grid->SetCellValue(3, 1, 120.0);   // the chart shows it the next time it is drawn
+grid->RefreshCharts();             // ...or now
+const RichChart& data = grid->GetChart(0)->chart;   // series[0].values[2] == 120
+
+grid->onChartSelectionChange = [](int selected) { /* -1: none */ };
+```
+
+A chart of any block, placed and kept by hand:
+
+<!-- doc-check: SpreadsheetSheet& sheet; std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+SpreadsheetChart pie = MakeSpreadsheetChart(sheet, CellRange(0, 0, 6, 1), RichChart::Kind::Pie);
+pie.anchor = SpreadsheetChartAnchorForBox(sheet, Rect2Di(400, 40, 360, 260));   // sheet pixels
+grid->InsertChart(pie);
+
+// The ranges' two spellings.
+SpreadsheetChartRange range;
+SpreadsheetChartRange::FromExcel("'Sales Data'!$B$2:$B$7", range);
+std::string odf = range.ToOdf();   // 'Sales Data'.$B$2:.$B$7
+```
+
 ## See Also
 
 - [`Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp`](../../Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp) - Full working demo (sample data, Open/Import/Save flows)
@@ -1328,3 +1577,4 @@ if (pages->ExportPdf(pdf, error))
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
 - [`include/UltraCanvasSpreadsheetPrint.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetPrint.h) - A sheet's pages for PDF and printers
+- [`include/UltraCanvasSpreadsheetChart.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetChart.h) - Charts on a sheet, anchored to cells, their series ranges of cells

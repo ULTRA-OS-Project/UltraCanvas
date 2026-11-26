@@ -1,3 +1,210 @@
+#### 2026-11-26 *0.9.599*
+- **A menu stayed open, floating above everything, after its window had moved
+  or gone behind another.** A menu opened from the menu bar (or a dropdown's
+  list, any popup) is shown in a top-level window of its own, kept above every
+  other window.
+  - **Moved window (Windows).** The Windows layer never handled `WM_MOVE`, so
+    dragging the window by its title bar left the menu where it had been. A
+    press on the frame - title bar, border - is now a click outside the popups
+    (`UltraCanvasWindowBase::ClosePopupsOnFramePress`, on `WM_NCLBUTTONDOWN`
+    and its right / middle / X siblings and `WM_ENTERSIZEMOVE`), so the menu
+    closes before the window moves, as a native menu does. A popup that does
+    not close on a click outside follows the window instead, live during the
+    drag (`MovePopupHostsWithWindow` on `WM_MOVE`). `GetConfig().x / y` and
+    `onWindowMove` follow a move on Windows too, which they never did.
+  - **Moved window (X11, macOS).** The window manager keeps the title-bar
+    press to itself there, so the menu followed the dragged window instead.
+    A window found moved since its first popup opened
+    (`ClosePopupsIfWindowMoved`, on X11's ConfigureNotify and macOS's
+    `windowDidMove`) now closes the popups that close on a click outside.
+  - **Window no longer in front.** A popup closed when the focus left the
+    application, but stayed open when it went to another window of the same
+    application - a second document window brought to the front - floating
+    over it. It now closes unless the focus went to its own window or a
+    dialog of it (`IsSelfOrDialogOfSelf`, by the transient parent).
+  - **Window hidden or minimised.** Its popups close (`HandleWindowHidden`);
+    the windows of those that stay open are hidden, and never shown while
+    their window is minimised.
+  - **Window covered without losing the focus.** A popup's own window was
+    topmost, above every window, so another program's window put in front
+    without taking the focus came under the menu. It is now kept above its
+    own window only - an owned window on Windows (no `WS_EX_TOPMOST`), a
+    child window at its level on macOS, the window's transient on X11 - so
+    whatever covers the window covers the menu. A window not in the ordinary
+    stack still has its popups above every window
+    (`UltraCanvasWindowBase::PopupsAboveEveryWindow`: a desktop - UltraDesktop's
+    bars are kept below the applications - a notification, an overlay, a lock
+    screen, or one `alwaysOnTop`).
+
+#### 2026-11-26 *0.9.598*
+- **Text the framework showed in English whatever the language.** The file
+  dialog's "File name", "File type" and "Show" captions, its Home folder, its
+  "not found" messages and its settings-button tooltips; the file list's
+  column headings (Name, Size, Type, Modified ...) and type names ("PNG
+  Image", "Folder", "Shortcut"); the path strip's "Computer" node; and the
+  loudspeaker's messages on Linux and Windows ("No sound server is
+  running."). They now go through Tr, with translations in all 30 languages.
+  A type name is one entry per kind of file ("{0} Image"), so a language puts
+  the format's name where its grammar wants it ("Image PNG", "PNG-Bild").
+  `FolderBreadcrumbOptions::computerLabel` is empty by default, meaning
+  "Computer" in the language shown.
+
+#### 2026-11-25 *0.9.597*
+- **A profile picture element.** `UltraCanvasProfilePicture` shows a
+  person's picture in a circle, or their initials on one of eight colours
+  that a key (their id) picks, the same one every time. Editable, it wears a
+  badge, and a click, Return or Space chooses a new picture: the FileLoader's
+  Open dialog, then a crop dialog that places the picture in the circle
+  (drag to move it, the wheel or a slider to zoom, previews at 40 and 28
+  pixels), then the framed square written at 256 pixels - JPEG, or PNG for a
+  picture with transparency - into a folder of the application's own, and
+  reported through `onPictureChanged`. Delete, or **Remove**, goes back to
+  the initials. The parts are there on their own too:
+  - `UltraCanvasProfilePictureEditor`, the row of a profile page: the
+    picture, **Choose a picture** (**Change picture** once there is one),
+    **Remove** and a line of hint;
+  - `UltraCanvasProfilePictureCropper`, the placing area, and
+    `ShowProfilePictureCropDialog`, the dialog around it;
+  - `CropProfilePicture`, which writes the square a `ProfilePictureFrame`
+    frames, and `ProfilePictureInitials`.
+
+  A selectable widget, `ProfilePicture`, registered as `profile-picture` and
+  `profile-picture-editor`: compiled in by default, the
+  `ultracanvas-widget-profile-picture` module in a lean build. DemoApp shows
+  it under *Widgets > Profile Picture*. Covered by `ProfilePictureTest`.
+- **UltraIM: the owner's profile picture.** `UltraIMAccountProfile` gains
+  `picturePath` (a square JPEG, PNG or WebP, "" for none), `pictureSupported`
+  (filled by `FetchAccountProfile`) and `pictureChanged`: an update applies
+  the picture only with the flag, so a host that never shows it cannot
+  remove it by accident. The provider module ABI is 13. ChatCube Direct
+  keeps a copy, at most 32 KiB, and sends it to each contact as a sealed
+  `picture` body through its outbox - over the data channel, else the
+  relay's queue - again when it changes and to a contact added later (each
+  contact remembers the version it was sent); a contact's picture comes
+  back as `avatarPath` and `senderAvatarPath`. Covered in
+  `DirectProviderTests` (`TestProfilePicture`).
+- **The profile picture keeps under a size.** `CropProfilePictureWithin`
+  writes the framed square and, when the file comes out larger than asked,
+  again as JPEG at a lower quality, then smaller, until it fits;
+  `UltraCanvasProfilePicture::SetMaxOutputBytes` uses it for a chosen
+  picture. The editor row's buttons are reachable
+  (`GetChooseButton`, `GetRemoveButton`) for an application that styles its
+  own. Covered in `ProfilePictureTest`.
+- **Matrix and Mastodon: people's pictures.** Matrix fetches a room's
+  picture (`m.room.avatar`) and its members' (`avatar_url`) once each as a
+  96-pixel thumbnail - the authenticated media API, else the older one - and
+  Mastodon each account's `avatar_static` (not the server's grey
+  `missing.png`): `avatarPath` on the chats and contacts, `senderAvatarPath`
+  on their messages, with a `ConversationUpdate` when a picture arrives.
+  Covered in `MatrixProviderTests` (against Synapse: a picture set as
+  `avatar_url` shown at the other side) and `MastodonProviderTests` (the
+  fake server serves the avatars, and the grey stand-in for Carol).
+
+#### 2026-11-25 *0.9.596*
+- **Charts in spreadsheets.** A sheet holds charts
+  (`UltraCanvasSpreadsheetChart.h`): a `SpreadsheetChart` anchored to two
+  cells with offsets, as .xlsx's two-cell anchor keeps it, holding a
+  `RichChart` whose series are ranges of cells - names, categories (a scatter
+  series' x values) and values - read from the cells again whenever they
+  change. The grid draws them with the chart engine over the cells, where
+  they stand as it scrolls, and prints them; a click selects one, a drag
+  moves it, its eight handles resize it, Delete removes it, the arrow keys
+  nudge it, a double-click opens its properties (kind, title, legend, series
+  in rows), and each change is an undo step. `InsertChartFromSelection` makes
+  columns, bars (side by side or stacked), lines, areas, pies, doughnuts,
+  scatter and radar charts from the selection, the first row and column
+  taken as names and categories where they hold words. Inserted rows and
+  columns move a chart and its ranges with the cells; a renamed sheet's
+  ranges follow it.
+- **.xlsx and .ods keep them.** .xlsx: a drawing per sheet
+  (`xl/drawings/drawingN.xml`, `xdr:twoCellAnchor` and `graphicFrame`) and a
+  chart part per chart with `c:f` references and their caches
+  (`WriteDrawingMLChart(chart, sources)`, `ReadDrawingMLChartSources`); .ods:
+  a `draw:frame` in the sheet's `table:shapes` naming an `Object N/` chart
+  whose series point at the sheets (`WriteOdfChartObject(chart, w, h,
+  sources, plotArea)`, `ReadOdfChartSources`), and LibreOffice's cell-anchored
+  frames read too. LibreOffice opens both, and its conversions read back.
+  Covered in `SpreadsheetChartRoundTripTest` and `SpreadsheetChartDrawTest`.
+- **An untitled chart's top value label is no longer cut off.** The chart
+  engine centres a left or right axis's labels on their ticks but reserved
+  no room above the plot for the top one, so a chart without a title showed
+  half of its "60.0" at the top edge - in spreadsheets, documents and slides
+  alike. `UltraCanvasChartEngineElement` now reserves half a label's height
+  above and below the plot for such an axis (under a title, what the title
+  band does not already leave).
+- **Spreadsheet conditional formats were stored but never drawn, and no
+  file kept them.** `UltraCanvasSpreadsheet::PaintCell` - the grid's and the
+  printed page's painter - now draws them (`SpreadsheetSheet::
+  GetConditionalFormatting`): value comparisons (a number, text or a
+  formula), formula rules moved to each cell, text, blank and error rules,
+  top or bottom values, above or below the average, duplicate and unique
+  values, two- and three-colour scales and data bars. A rule's style lays
+  only what it sets over the cell (`ApplyConditionalStyle`); the figures a
+  scale or a bar needs are worked out once per change of the cells. `.xlsx`
+  reads and writes them as `conditionalFormatting` with `dxfs`, `.ods` as
+  `calcext:conditional-formats` with common cell styles, both as LibreOffice
+  does.
+- **Data validation in files, and the rules it skipped.** `.xlsx`
+  (`dataValidations`) and `.ods` (`table:content-validations`) read and
+  write validation rules. A Custom rule's formula is evaluated (it passed
+  everything), a list may be taken from cells (`formula1` `"=$G$1:$G$9"`,
+  `IsRangeListSource`, `SpreadsheetSheet::GetValidationListItems`), and a
+  bound may be a formula (`"=$F$1"`).
+- **Comments and links.** A comment is marked by a red corner and shown
+  while the pointer rests on its cell; a link's text is blue and underlined,
+  shows where it goes, and Ctrl+click opens it (`OpenHyperlink`: an address
+  through `OpenURL`, a place in the workbook by going there;
+  `onOpenHyperlink` takes it over). `SetCellComment` / `SetCellHyperlink`
+  and their `Remove...` are undo steps. `.xlsx` keeps comments (the comments
+  part and the VML drawing Excel shows them with) and links (`hyperlinks`),
+  `.ods` keeps them as `office:annotation` and `text:a`; a cell that holds
+  only a note or a validation is written.
+- **The rules dialogs.** `ShowConditionalFormatDialog`,
+  `ShowDataValidationDialog`, `ShowCommentDialog` and `ShowHyperlinkDialog`
+  edit the selection's rules and the active cell's comment and link, each a
+  form of the framework's elements in a modal dialog;
+  `AddSelectionConditionalFormat`, `ClearSelectionConditionalFormats` and
+  `SetSelectionValidation` do it from code.
+- **Conditional formats and validation rules are undo steps**, as comments
+  and links are: each change made through the grid - `AddConditionalFormat`,
+  `SetConditionalFormatRule` and `RemoveConditionalFormatRule` (new),
+  `AddSelectionConditionalFormat`, `ClearSelectionConditionalFormats`,
+  `SetSelectionValidation`, and the two dialogs - is one step
+  (`UndoActionType::RulesChange`), and undoing a validation rule gives the
+  cells back their own rules it replaced.
+- **The dialogs, tried in a window.** The chart properties dialog was an
+  empty window with no OK or Cancel (a `Custom` dialog builds no sections or
+  buttons); it is drawn now. The conditional-format and validation dialogs
+  are as tall as the rows the chosen rule needs (they kept room for every
+  row, a wide empty band under one or two), keep their controls in place as
+  rows come and go (`HoldFormCaptionColumn`, new in `UltraCanvasFormLayout.h`:
+  the caption column as wide as every caption, hidden ones too), and their
+  lists and fields fill the dialog's width, so the validation value's hint is
+  no longer cut off; a comment fills its dialog. A data bar starts from a
+  single colour (a bar from "Red, yellow, green" came out red), "Delete
+  rule" shows only when there is a rule to delete, and a rule between two
+  values reads "between 30 and 50", not "30 / 50".
+- Covered by `SpreadsheetRulesTest`: the rules evaluated, drawn on an
+  off-screen page, set through the grid's calls, and saved as `.xlsx` and
+  `.ods` and loaded back - and, where LibreOffice is installed, converted by
+  it and loaded back.
+- **`UltraCanvasTextArea`: a click on a line the caret was not on is hit-tested
+  against that line.** A mouse press moves the caret; until the next frame
+  lays the caret's line out again, `GetActualLineLayout` handed back the old
+  caret line's layout for the new one, so a release hit-tested before a frame
+  was drawn (a fast click, a synthetic one) landed on the wrong text and a
+  link under it did not open. The caret's own layout is now used only for the
+  line it was laid out for (`currentLineIndex`).
+- **`UltraCanvasTextArea`: a subclass can style ranges of a plain line.** The
+  protected virtual `GetLineSpans(lineIndex, lineText)` answers byte ranges of
+  a line with a `TokenStyle` (`TextAreaLineSpan`: colour, bold, italic,
+  underline), drawn over the syntax colours whenever the line is laid out -
+  in PlainText mode and on the raw line being edited in Markdown mode, an
+  input method's composition moving the ranges after it along.
+  `InvalidateLineSpans()` lays the lines out again when the answer changes for
+  unchanged text (a theme change). UltraMail draws the links of a plain-text
+  mail with it.
+
 #### 2026-11-25 *0.9.595*
 - **A .docx saved again lost its theme and font table.** The DOCX writer
   builds its package from the document model, which held neither, so the

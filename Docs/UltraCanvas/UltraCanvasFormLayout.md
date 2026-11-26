@@ -45,6 +45,7 @@ coordinate, and a longer caption widens the column instead of clipping.
 | `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
 | `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
 | `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+| `HoldFormCaptionColumn(grid)` | Holds the caption column at its widest caption, hidden rows' too, so the controls stay put as rows are shown and hidden. Call it once the grid is in a window. |
 | `DisableScrollbars(container)` | Turns a container's scrollbars off — for any container that only arranges what is in it. `CreateFormGrid` and `CreateFormCellRow` call it themselves. |
 
 The grid does not scroll, and neither does a cell row: whatever needs to, the
@@ -69,6 +70,20 @@ viewport onto taller content opts in with `CreateScrollableContainer` or
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
 current format's options that way — without leaving holes or empty tracks.
+The `auto` caption column then counts only the captions shown: hide the row
+with the widest one and every control moves left, to move back when it shows
+again. A form whose rows follow a choice holds the column instead, once it is
+in a window (the captions measure their text, and measure nothing before):
+
+<!-- doc-check: DialogConfig config; std::shared_ptr<UltraCanvasDropdown> kindDropdown; std::shared_ptr<UltraCanvasDropdown> alertDropdown; -->
+```cpp
+auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+auto form = CreateFormGrid("rule-form");
+AddFormRow(form, "kind", "Allow:", kindDropdown);
+AddFormRow(form, "alert", "On a wrong entry:", alertDropdown);
+dialog->AddDialogElement(form);
+HoldFormCaptionColumn(form);          // as wide as "On a wrong entry:", shown or not
+```
 
 ## Buttons
 

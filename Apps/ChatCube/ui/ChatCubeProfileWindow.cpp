@@ -1,12 +1,14 @@
 // Apps/ChatCube/ui/ChatCubeProfileWindow.cpp
 // The Edit profile window - see the header.
+// Version: 0.1.4 - the profile picture: UltraCanvasProfilePictureEditor at the head of the card, kept under
+//                  32 KiB, sent with Save profile (UltraIMAccountProfile::pictureChanged)
 // Version: 0.1.3 - follows a change of the look while open (OnLook, SetInk); the scroll bar and the
 //                  dropdown in the theme's colours
 // Version: 0.1.2 - the e-mail address confirmed by the link e-mailed to it (Check, Send again); recovery
 //                  by an e-mailed link, on once the address is confirmed
 // Version: 0.1.1 - confirming the e-mail and phone with the relay's codes; account recovery on or off
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeProfileWindow.h"
@@ -15,6 +17,9 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDataFolder.h"
+#include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasProfilePicture.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
@@ -24,6 +29,8 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <system_error>
 
 using namespace UltraCanvas;
 
@@ -36,6 +43,15 @@ constexpr int kWindowHeight = 760;
 constexpr int kFieldWidth = 440;
 constexpr int kHalfField = (kFieldWidth - 10) / 2;
 constexpr int kQrSide = 180;
+constexpr float kPictureSide = 88.0f;
+// The largest picture ChatCube Direct carries in one sealed body.
+constexpr size_t kMaxPictureBytes = 32 * 1024;
+
+// Where a chosen picture is written before Save profile hands it to the
+// network, which keeps its own copy: emptied whenever the window is built.
+std::filesystem::path PictureStaging() {
+    return UltraCanvasDataFolder("ChatCube") / "cache" / "profile-picture";
+}
 
 // The protections in the list's order, which is UltraIMSignInProtection's.
 constexpr int kProtectionCount = 4;
@@ -209,7 +225,37 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
     auto heading = MakeLabel("cc-profile-heading", Tr("Profile"), 13.0f);
     heading->SetFontWeight(FontWeight::Bold);
     profile->AddChild(heading);
+    // The picture, where the network takes one (Load shows it).
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(PictureStaging(), ec);
+    }
+    picture_ = std::make_shared<UltraCanvasProfilePictureEditor>("cc-profile-picture", 0, 0,
+                                                                 static_cast<float>(kFieldWidth), kPictureSide);
+    picture_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    picture_->SetHint(Tr("A photo of you, or anything square. Your contacts see it beside your name; it goes "
+                         "to them end to end encrypted, like a message."));
+    UltraCanvasProfilePicture* face = picture_->GetPicture();
+    face->SetOutputDirectory(PathToUtf8(PictureStaging()));
+    face->SetOutputSize(256);
+    face->SetMaxOutputBytes(kMaxPictureBytes);
+    StyleButton(picture_->GetChooseButton(), false);
+    StyleButton(picture_->GetRemoveButton(), false, true);
+    OnLook(picture_->GetRemoveButton(), [](UltraCanvasButton& b) { b.SetTextColors(L().danger); });
+    picture_->onPictureChanged = [this](const std::string& path) {
+        stagedPicture_ = path;
+        pictureChanged_ = true;
+        SetProfileStatus(path.empty() ? Tr("Picture removed - Save profile tells your contacts.")
+                                      : Tr("New picture - Save profile sends it to your contacts."));
+    };
+    picture_->onPictureError = [this](const std::string& error) {
+        SetProfileStatus(TrF("The picture could not be used: {0}", error), true);
+    };
+    picture_->SetVisible(false);
+    profile->AddChild(picture_);
     name_ = MakeInput("cc-profile-name", Tr("Your name, as your contacts see it"), kFieldWidth);
+    // The initials follow the name while no picture is set.
+    name_->onTextChanged = [this](const std::string& text) { picture_->SetName(Trim(text)); };
     profile->AddChild(Field("cc-profile-name-field", Tr("Name"), name_));
     // Under each: whether the relay has it confirmed - or, for the address,
     // Check (after opening the link e-mailed to it), for the phone the code to type.
@@ -382,6 +428,11 @@ void ChatCubeProfileWindow::Load() {
         name_->SetText(p.displayName);
         email_->SetText(p.email);
         phone_->SetText(p.phoneNumber);
+        picture_->SetVisible(p.pictureSupported);
+        picture_->SetName(p.displayName);
+        picture_->SetPicturePath(p.picturePath);
+        pictureChanged_ = false;
+        stagedPicture_.clear();
         profile_ = p;
         UpdateVerification();
         UpdateRecovery();
@@ -394,6 +445,14 @@ void ChatCubeProfileWindow::Refresh() {
     UltraIM_FetchAccountProfile(providerId_, [this](const UltraIMResult& r, const UltraIMAccountProfile& p) {
         if (!window_ || !r) return;
         profile_ = p;
+        // After a save the network's own copy is shown; the staged one goes.
+        if (!pictureChanged_ && p.pictureSupported && p.picturePath != picture_->GetPicturePath()) {
+            const std::string staged = picture_->GetPicturePath();
+            picture_->SetPicturePath(p.picturePath);
+            std::error_code ec;
+            if (!staged.empty() && PathFromUtf8(staged).parent_path() == PictureStaging())
+                std::filesystem::remove(PathFromUtf8(staged), ec);
+        }
         UpdateVerification();
         UpdateRecovery();
     });
@@ -575,6 +634,10 @@ void ChatCubeProfileWindow::SaveProfile() {
     if (profile.email.empty()) return SetProfileStatus(Tr("Type your e-mail address - it is how you recover the account."), true);
     if (profile.phoneNumber.empty())
         return SetProfileStatus(Tr("Type your phone number - it is how you recover the account."), true);
+    if (pictureChanged_) {
+        profile.pictureChanged = true;
+        profile.picturePath = stagedPicture_;
+    }
     saveProfile_->SetDisabled(true);
     SetProfileStatus(Tr("Saving\xE2\x80\xA6"));
     UltraIM_UpdateAccountProfile(providerId_, profile, [this, profile](const UltraIMResult& r) {
@@ -584,7 +647,15 @@ void ChatCubeProfileWindow::SaveProfile() {
             SetProfileStatus(r.message, true);
             return;
         }
-        SetProfileStatus(Tr("Saved. A changed e-mail address or phone number gets a code to confirm it."));
+        if (profile.pictureChanged) {
+            pictureChanged_ = false;
+            stagedPicture_.clear();
+            SetProfileStatus(profile.picturePath.empty()
+                                 ? Tr("Saved. Your contacts see your initials again once they are online.")
+                                 : Tr("Saved. Your contacts get the new picture as soon as they are online."));
+        } else {
+            SetProfileStatus(Tr("Saved. A changed e-mail address or phone number gets a code to confirm it."));
+        }
         Refresh();
         if (onProfileChanged) onProfileChanged(profile);
         if (onSaved) onSaved(Tr("Your profile is saved."));

@@ -1,6 +1,10 @@
 {
   "@language": "ca",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "{n} dibuix d'aquesta finestra té canvis sense desar. Voleu tancar-la igualment?",
+    "other": "{n} dibuixos d'aquesta finestra tenen canvis sense desar. Voleu tancar-la igualment?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "S'ha afegit el text: feu-hi clic amb l'eina de text, o feu-hi doble clic, per editar-lo",
   "Changed the text": "S'ha modificat el text",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Feu clic a la pàgina i escriviu, o feu clic en un text per editar-lo; la barra de dalt n'estableix la lletra, la mida, l'estil, l'alineació i l'espaiat. Esc, Ctrl+Retorn o un clic a fora acaba",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Ratllat del text",
   "Text Underline": "Subratllat del text",
   "The text was emptied, so it was deleted": "El text s'ha buidat i, per tant, s'ha suprimit",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Escrivint un text nou: Retorn comença una línia nova; Esc, Ctrl+Retorn o un clic a fora acaba"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Escrivint un text nou: Retorn comença una línia nova; Esc, Ctrl+Retorn o un clic a fora acaba",
+  "Untitled {0}": "Sense títol {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} té canvis sense desar. Voleu tancar-lo igualment?",
+  "{0} is open already": "{0} ja és obert"
 }

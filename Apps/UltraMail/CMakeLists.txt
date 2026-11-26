@@ -3,8 +3,9 @@
 # (account / folder / message store on UltraDatabase) and, on top of it, the
 # UltraMail GUI executable (Toolbox, account wizard, reading view, composer,
 # contacts) linking the UltraCanvas UI library.
+# Version: 0.6.0 - the engine links UltraLocalisation (the scan's reasons through Tr)
 # Version: 0.5.0
-# Last Modified: 2026-09-03
+# Last Modified: 2026-11-25
 # Author: UltraCanvas Framework / ULTRA OS
 
 # The engine depends only on UltraDatabase, so it builds and tests headlessly.
@@ -114,6 +115,12 @@ endif()
 # library after libultramail_engine on every consumer's link line.
 if(TARGET UltraNet)
     target_link_libraries(UltraMailEngine PUBLIC UltraNet)
+endif()
+# The scan's reasons go through Tr (UltraLocalisation): UI-free, and its home
+# resolves to the shared core or the archive as UltraNet's does, so the engine
+# and the application share one set of loaded catalogues.
+if(TARGET UltraLocalisation)
+    target_link_libraries(UltraMailEngine PUBLIC UltraLocalisation)
 endif()
 
 message(STATUS "  [✓] UltraMail engine - ENABLED (target: UltraMailEngine)")

@@ -1,5 +1,7 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
+// Version: 1.4.1 - a left/right axis reserves half its end labels' height above and below
+//                  the plot, so an untitled chart's top value label is not cut off
 // Version: 1.4.0 - axis distributions (slot 550): Outside bands reserve their depth
 //                  beyond the plot's opposite edge and push that edge's axes out;
 //                  Near / Far / Both draw inside the plot or along an in-plot rule,
@@ -14,7 +16,7 @@
 // Version: 1.3.5 - the ternary projection's plot area is its triangle
 // Version: 1.3.4 - ChartHighlightShape::Polygon
 // Version: 1.3.3
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-25
 // V1.3.3: Tick labels drawn inside the plot (an in-plot axis, the radial
 //   value rule under Polar) are obstacles in the label plan, so a solved
 //   label no longer overprints them - the polar chart's "0 ppm" under its
@@ -659,6 +661,24 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
             const double overhang = std::max(overhangLow, overhangHigh) + 2.0;
             request.Reserve(ChartAxisEdge::Left, overhang);
             request.Reserve(ChartAxisEdge::Right, overhang);
+        } else {
+            // A left/right axis centres its labels on the ticks too, so the
+            // top label ("60.0") stands half its height above the plot: with
+            // no title above it, it was cut off at the element's top edge.
+            // Reserve that overhang at the top and the bottom; a title band
+            // already leaves 6 px of it under the title.
+            const double span = std::max(1.0, static_cast<double>(GetHeight()));
+            double overhangLow = 0.0, overhangHigh = 0.0;
+            for (const ChartTick& tick : axis.GenerateTicks(targetTickCount)) {
+                const double half = ctx->GetTextLineDimensions(tick.label).height * 0.5;
+                overhangLow = std::max(overhangLow, half - tick.normalized * span);
+                overhangHigh = std::max(overhangHigh, half - (1.0 - tick.normalized) * span);
+            }
+            const double overhang = std::max(overhangLow, overhangHigh);
+            if (overhang > 0.0) {
+                request.Reserve(ChartAxisEdge::Top, std::max(0.0, overhang - (titleBand > 0.0 ? 6.0 : 0.0)));
+                request.Reserve(ChartAxisEdge::Bottom, overhang);
+            }
         }
         const double titleNeed = axis.title.empty()
                                      ? 0.0 : ctx->GetTextLineHeight(axis.title) + 4.0;

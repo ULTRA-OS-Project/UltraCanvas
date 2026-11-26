@@ -8,6 +8,9 @@
 // numbered parts (32 KiB each, one envelope per part), peer to peer over
 // the link when it is up, else through the relay's queue - so a file reaches
 // someone offline, and a group, with nothing added to the relay.
+// The owner's profile picture goes the same way, to each contact: a sealed
+// "picture" body with a version and the bytes (at most 32 KiB), sent again
+// when it changes and to a contact added later; the relay never holds it.
 //
 // The identity's key vault opens by itself with the device key, or - as its
 // owner chooses (SetSignInProtection) - only with a password (the vault
@@ -17,6 +20,8 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.16 - the profile picture: the owner's sent to every contact end to end (a "picture" body),
+//                  the contacts' kept and shown beside their names
 // Version: 0.1.15 - group revisions (relay 1.6): a record older than the newest applied is dropped,
 //                  and a group we were taken out of stays out
 // Version: 0.1.14 - a group request reports the group as the relay's reply has it, not a re-read
@@ -344,6 +349,22 @@ private:
     // A "delete" from the sender of the messages it names.
     void HandleDeleteBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
     void HandleEditBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    // ---- the profile picture: the owner's, sent to every contact as a
+    // sealed "picture" body (the version, the bytes base64, none when it
+    // was removed); the contacts' kept in the media folder
+    // A copy of `path` becomes the owner's picture ("" removes it), with a
+    // new version; false with `error` when it is no picture or too large.
+    bool SetOwnPicture(const std::string& path, UltraIMResult& error);
+    // The owner's picture to a contact that does not have this version yet
+    // (each contact's last version sent is remembered); to every contact.
+    void SharePictureWith(const std::string& userId);
+    void SharePicture();
+    void HandlePictureBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    // A contact's picture here ("" for none), and the paths filled in on
+    // what goes to the host: a 1:1 conversation's, a message's sender's.
+    std::string PictureOf(const std::string& userId);
+    void FillPictures(UltraIMConversation& conversation);
+    void FillPictures(UltraIMMessage& message);
     // A part of one of our files has left (the relay took it, or the other
     // side's link acknowledged it): TransferProgress, at each percent.
     void NotePartLeft(const std::string& outboxId);

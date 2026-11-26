@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.1.21*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-20 *0.1.20*
 - **The packages into the operator's package store**: `market submit` and the Marketplace page's *Submit* upload each package of the app from this store's `packages/` folder right after the submission, when the operator keeps a package store (the `packages` check says *waiting*); `market upload <submission> <app-id>` sends them again. The submission names each package's format and access, so the operator's publish lays it out under `packages/` or `restricted/`.
 

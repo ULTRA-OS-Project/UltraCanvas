@@ -1,6 +1,9 @@
 {
   "@language": "ja",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "other": "このウィンドウの {n} 個の図面に未保存の変更があります。それでも閉じますか?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "テキストを追加しました: 編集するには、テキストツールでクリックするか、ダブルクリックします",
   "Changed the text": "テキストを変更しました",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "ページをクリックして入力するか、テキストをクリックして編集します。上のバーでフォント、サイズ、スタイル、配置、間隔を設定します。Escape、Ctrl+Enter、または外側をクリックすると終了します",
@@ -18,5 +21,8 @@
   "Text Strikethrough": "テキストの取り消し線",
   "Text Underline": "テキストの下線",
   "The text was emptied, so it was deleted": "テキストが空になったため、削除しました",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "新しいテキストを入力中: Enter で改行します。Escape、Ctrl+Enter、または外側をクリックすると終了します"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "新しいテキストを入力中: Enter で改行します。Escape、Ctrl+Enter、または外側をクリックすると終了します",
+  "Untitled {0}": "無題 {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} に未保存の変更があります。それでも閉じますか?",
+  "{0} is open already": "{0} はすでに開いています"
 }

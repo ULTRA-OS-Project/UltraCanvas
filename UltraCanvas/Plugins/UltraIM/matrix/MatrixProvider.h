@@ -10,6 +10,8 @@
 // are fetched as the message arrives, the rest when asked for, and a local
 // file is uploaded as a photo, a video or a file - encrypted (AES-256-CTR,
 // the m.file format) in an encrypted room.
+// Version: 0.2.7 - the pictures: a room's (m.room.avatar) and its members' (m.room.member avatar_url),
+//                  fetched as small thumbnails, on the conversations, contacts and messages
 // Version: 0.2.6 - TransferProgress while a file uploads to or downloads from the content repository
 // Version: 0.2.5 - SendVoiceNote (m.audio as a voice message); VoiceNotes
 // Version: 0.2.4 - DeleteMessage's scope (for everyone only), GetDeleteChoices
@@ -148,6 +150,8 @@ private:
         std::string id;
         std::string name;                       // m.room.name
         std::string alias;                      // m.room.canonical_alias
+        std::string avatarUrl;                  // m.room.avatar (mxc)
+        std::map<std::string, std::string> memberAvatars;   // user -> m.room.member's avatar_url (mxc)
         std::map<std::string, std::string> members;    // joined / invited user -> display name
         std::set<std::string> joined;
         std::vector<std::string> heroes;
@@ -233,6 +237,11 @@ private:
     std::string NameOf(const Room& room, const std::string& userId) const;
 
     void SetDirect(const std::string& userId, const std::string& roomId);
+    // The pictures (mutex held): an mxc URL's thumbnail here ("" until
+    // fetched), a member's, and a fetch queued (FlushDownloads sends it).
+    std::string AvatarFile(const std::string& url) const;
+    std::string MemberAvatar(const Room& room, const std::string& userId) const;
+    void QueueAvatar(const std::string& url);
 
     // ---- media ------------------------------------------------------------------
     // Where a media file is kept once fetched: the cache directory, named by
@@ -246,6 +255,10 @@ private:
     void StartDownload(const DownloadJob& job, bool legacyEndpoint);
     void OnMediaDownloaded(const DownloadJob& job, const MatrixBytes& bytes);
     void MediaFailed(const std::string& url, const std::string& why);
+    // A picture's thumbnail (96 x 96, cropped) from the content repository;
+    // once here, the rooms showing it are told (ConversationUpdate).
+    void StartAvatar(const std::string& url, bool legacyEndpoint);
+    void OnAvatar(const std::string& url, const MatrixBytes& r);
     UltraIMResult SendMedia(const std::string& conversationId, const std::string& localPath, const std::string& caption,
                             UltraIMMessageType type, const UltraIMSendOptions& options);
 
@@ -294,6 +307,9 @@ private:
     std::map<std::string, std::vector<UltraIMAttachmentCallback>> mediaWaiters_;
     std::set<std::string> downloading_;
     std::vector<DownloadJob> downloadQueue_;
+    std::map<std::string, std::string> avatarFiles_;            // mxc URL -> its thumbnail here
+    std::set<std::string> avatarFetching_;
+    std::vector<std::string> avatarQueue_;
 
     std::thread     syncThread_;
     std::atomic<bool> stopping_{false};

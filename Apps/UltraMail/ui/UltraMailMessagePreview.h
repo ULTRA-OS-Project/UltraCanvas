@@ -3,6 +3,9 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.19.0 - a link of a message the warning strip warns of asks first: "Do you
+//                   really want to open the link?" with the strip's reasons
+//                   (LinkNeedsConfirmation, LinkCautionText)
 // Version: 0.18.0 - onAddContact (the warning strip's "Add to contacts"); SetContacts
 //                  shows the message again when its sender joined the address book
 // Version: 0.17.0 - SetWarningStrip: the warning strip's kinds (Settings > Display >
@@ -67,6 +70,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -216,10 +220,32 @@ public:
     // sender's mail - for the message shown. Asked for as the menu opens.
     std::function<std::vector<UltraCanvas::MenuItemData>(const MessageEnvelope&)> senderMenuItems;
 
+    // A web link of the shown message asks before it opens while the warning
+    // strip warns of the message (a scam, phishing, parts that do not add
+    // up): "Do you really want to open the link?", with the strip's verdict
+    // and reasons. Not for a sender the reader only blocked, nor for the
+    // caution every mail about crypto gets.
+    bool LinkNeedsConfirmation() const { return linkCaution_.has_value(); }
+    // The question's text for `href`: the link, then why it is suspicious -
+    // the strip's verdict, where the link goes when that is not the
+    // sender's domain, the domain mismatch and the scan's reasons. "" while
+    // no link needs confirming.
+    std::string LinkCautionText(const std::string& href) const;
+
 private:
     // A link of the body was clicked: web addresses open in the browser, mail
-    // addresses through onComposeTo.
+    // addresses through onComposeTo. A web link of a message the warning strip
+    // warns of asks first (ConfirmSuspiciousLink).
     void ActivateLink(const std::string& href);
+    void ConfirmSuspiciousLink(const std::string& href);
+    // What the warning strip said, kept for a click on a link: set while the
+    // strip warns of the shown message.
+    struct LinkCaution {
+        std::string verdict;               // the strip's title, without its mark
+        std::string senderDomain;          // the From address's domain
+        std::vector<std::string> reasons;  // the strip's evidence, a line each
+    };
+    std::optional<LinkCaution> linkCaution_;
     // Render a body into bodyHost_: HTML through the HTMLReader element
     // builder (CSSLayout engine), plain text into a read-only text area.
     void RenderBody(const std::string& body, bool isHtml);

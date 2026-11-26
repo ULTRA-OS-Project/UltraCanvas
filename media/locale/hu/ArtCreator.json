@@ -1,6 +1,10 @@
 {
   "@language": "hu",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "Az ablakban {n} rajzban mentetlen módosítások vannak. Mégis bezárja?",
+    "other": "Az ablakban {n} rajzban vannak mentetlen módosítások. Mégis bezárja?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "A szöveg hozzáadva: szerkesztéséhez kattintson rá a Szöveg eszközzel, vagy kattintson rá duplán",
   "Changed the text": "A szöveg módosítva",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Kattintson az oldalra és gépeljen, vagy kattintson egy szövegre a szerkesztéséhez; a fenti sáv állítja be a betűtípusát, méretét, stílusát, igazítását és térközeit. Az Escape, a Ctrl+Enter vagy egy kívülre kattintás befejezi",
@@ -18,5 +22,8 @@
   "Text Strikethrough": "Áthúzott szöveg",
   "Text Underline": "Aláhúzott szöveg",
   "The text was emptied, so it was deleted": "A szöveg kiürült, ezért törölve lett",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Új szöveg gépelése: az Enter új sort kezd; az Escape, a Ctrl+Enter vagy egy kívülre kattintás befejezi"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Új szöveg gépelése: az Enter új sort kezd; az Escape, a Ctrl+Enter vagy egy kívülre kattintás befejezi",
+  "Untitled {0}": "Névtelen {0}",
+  "{0} has unsaved changes. Close it anyway?": "{0} mentetlen módosításokat tartalmaz. Mégis bezárja?",
+  "{0} is open already": "A(z) {0} már meg van nyitva"
 }

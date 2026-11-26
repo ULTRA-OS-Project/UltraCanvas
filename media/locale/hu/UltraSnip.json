@@ -18,7 +18,6 @@
   "Edit in UltraPaint: open the saved picture there": "Szerkesztés az UltraPaintben: a mentett kép megnyitása ott",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Minden módosítás azonnal érvénybe lép és mentődik; semmit sem kell jóváhagyni.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Az UltraSnip összes megjelenített szövege egyetlen táblázatban, a forráskészleteikkel együtt: a saját készlete, a Kép és a Videó alapkészlet, valamint a standard készlet. A módosítás a beállítások mappájába mentődik, és az UltraSnip következő indításakor jelenik meg.",
-  "File type": "Fájltípus",
   "File type:": "Fájltípus:",
   "Finish the recording": "A felvétel befejezése",
   "Folder: Pictures/Screenshots (the default)": "Mappa: Pictures/Screenshots (alapértelmezett)",

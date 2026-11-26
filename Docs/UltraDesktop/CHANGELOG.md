@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.4.28*
+- **Five desktop texts were English in every language**: the Tasks button's
+  name and its error, the UltraToDo description, "Tool applications on the
+  taskbar too", and the first desktop's tooltip. All 30 languages now have
+  them.
+
 #### 2026-11-25 *0.4.27*
 - **A window already open on another virtual desktop comes to the one you
   are on (Linux, X11).** With UOS-Settings, UltraClipboard, UltraSnip or
