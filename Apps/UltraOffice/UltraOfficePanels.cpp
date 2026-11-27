@@ -1,6 +1,8 @@
 // Apps/UltraOffice/UltraOfficePanels.cpp
 // The tool panels built from a tool table (UltraOfficePanels.h).
 //
+// Version: 0.2.0 - a value's description where it has no number (ToolValue::describe); the size box
+//                  beside the font reads "-" while no size is shown (a language's "Size" did not fit)
 // Version: 0.1.0
 // Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
@@ -90,15 +92,18 @@ bool IsSizeTool(const ToolEntry* entry) {
     return list || number;
 }
 
-// Shows a number, or nothing (the spinner blank) when there is none.
-void ShowNumber(UltraCanvasSpinner& spinner, const std::optional<double>& value) {
+// Shows a number; when there is none, what `describe` says of the value
+// ("exactly 14 pt"), else nothing (the spinner blank: several values).
+void ShowNumber(UltraCanvasSpinner& spinner, const std::optional<double>& value,
+                const std::function<std::string()>& describe = nullptr) {
     if (value) {
         spinner.SetFormatter(nullptr);
         spinner.SetValue(*value);
     } else {
         // Blank, and stepping from the bottom of the range: any value typed
         // or stepped to is a change.
-        spinner.SetFormatter([](double) { return std::string(); });
+        const std::string text = describe ? describe() : std::string();
+        spinner.SetFormatter([text](double) { return text; });
         spinner.SetValue(spinner.GetMinValue());
     }
     spinner.RequestRedraw();
@@ -134,13 +139,17 @@ struct ChoiceList {
     std::function<void()> sync;
 };
 
-ChoiceList MakeChoice(const ToolEntry& entry, UltraCanvasToolValueRows* rows, float width) {
+// `placeholder`: what the box reads while nothing is chosen, where the
+// entry's own would not fit (the narrow size box beside the font: "-").
+ChoiceList MakeChoice(const ToolEntry& entry, UltraCanvasToolValueRows* rows, float width,
+                      const std::string& placeholder = std::string()) {
     ChoiceList made;
     made.box = CreateDropdown(entry.id, 0, 0, width, kRowHeight);
     auto shown = std::make_shared<std::vector<std::string>>();
     if (entry.list.items) *shown = entry.list.items();
     for (const std::string& item : *shown) made.box->AddItem(item);
-    if (!entry.list.placeholder.empty()) made.box->SetPlaceholderText(entry.list.placeholder);
+    const std::string empty = placeholder.empty() ? entry.list.placeholder : placeholder;
+    if (!empty.empty()) made.box->SetPlaceholderText(empty);
     made.box->SetTooltip(entry.tooltip);
     made.box->SetAccessibleName(entry.label);
     if (width > 0.0f) {
@@ -154,7 +163,7 @@ ChoiceList MakeChoice(const ToolEntry& entry, UltraCanvasToolValueRows* rows, fl
         if (row->list.choose) row->list.choose(index);
         if (!row->list.keepsChoice) raw->SetSelectedIndex(-1, false);
     };
-    made.sync = [row, raw, shown]() {
+    made.sync = [row, raw, shown, empty]() {
         const int index = row->list.selected ? row->list.selected() : -1;   // asked first: it may add its value
         if (row->list.items) {
             std::vector<std::string> items = row->list.items();
@@ -162,7 +171,7 @@ ChoiceList MakeChoice(const ToolEntry& entry, UltraCanvasToolValueRows* rows, fl
                 *shown = std::move(items);
                 raw->ClearItems();
                 for (const std::string& item : *shown) raw->AddItem(item);
-                if (!row->list.placeholder.empty()) raw->SetPlaceholderText(row->list.placeholder);
+                if (!empty.empty()) raw->SetPlaceholderText(empty);
             }
         }
         if (row->list.selected) raw->SetSelectedIndex(index, false);
@@ -335,7 +344,7 @@ void ToolPanels::BuildPanel(const ToolPanelTools& group) {
                     });
                     const ToolEntry* size = i + 1 < tools.size() && IsSizeTool(tools[i + 1]) ? tools[i + 1] : nullptr;
                     if (size && size->kind == ToolKind::List) {
-                        ChoiceList box = MakeChoice(*size, owner, kSizeBoxWidth);
+                        ChoiceList box = MakeChoice(*size, owner, kSizeBoxWidth, "-");
                         line->AddChild(box.box);
                         Place(size->id, group.key, box.box.get());
                         syncs.push_back(box.sync);
@@ -396,7 +405,7 @@ void ToolPanels::BuildPanel(const ToolPanelTools& group) {
                     };
                     UltraCanvasSpinner* raw = spinner.get();
                     rows.AddRow(entry.id, entry.label, spinner, [raw, row]() {
-                        ShowNumber(*raw, row->value.get ? row->value.get() : std::nullopt);
+                        ShowNumber(*raw, row->value.get ? row->value.get() : std::nullopt, row->value.describe);
                     });
                     Place(entry.id, group.key, spinner.get());
                 }

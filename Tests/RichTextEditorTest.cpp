@@ -1201,6 +1201,19 @@ static void TestTableMergeAndSplit() {
     CHECK_EQ(GridPicture(ed, t), std::string("a\nb\nc\nd* .* / .* .*"));
     CHECK_EQ(ed.TableColumnCount(t, 1), 2);
 
+    // A span with cells after it: split, every row has its three cells again
+    // (the cells after the span once slid into the freed slots, a cell short).
+    {
+        UCRichDocumentEditor wide(MakeDocument({"x"}));
+        const int w3 = wide.InsertTable(3, 3);
+        CHECK(wide.MergeTableCells(w3, 0, 0, 1, 1));    // (0,0)-(1,1)
+        CHECK(wide.SplitTableCell(w3, 0, 0));
+        for (int r = 0; r < 3; ++r) {
+            CHECK_EQ(wide.GetBlock(w3).tableRows[static_cast<size_t>(r)].cells.size(), size_t(3));
+            CHECK_EQ(wide.TableColumnCount(w3, r), 3);
+        }
+    }
+
     // Splitting a 1x1 cell changes nothing, and says so.
     CHECK(!ed.SplitTableCell(t, 0, 1));
     // Merging nothing is not a merge.

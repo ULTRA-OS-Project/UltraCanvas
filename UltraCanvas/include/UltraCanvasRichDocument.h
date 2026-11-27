@@ -6,6 +6,8 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.23.0 - ParagraphStyleOf: what a paragraph takes from its style where it states nothing;
+//                   a cell's fill is drawn and written whether or not its table's lines are the document's
 // Version: 1.22.0 - RichPageSetup::furnitureSpacingPt: the room between a header or footer and the text
 // Version: 1.21.0 - RichPageSetup and RichTabStop compare (operator==), for the page setup and
 //                   paragraph dialogs' undo steps
@@ -37,7 +39,7 @@
 // Version: 1.4.0 - RichTextRun::letterSpacingPt: a run's own room between its letters;
 //                  RichStyleCharacter::letterSpacingPt: a character style's
 // Version: 1.3.3
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -336,8 +338,10 @@ struct RichTableCell {
     // Horizontal alignment of the cell's text: a column of amounts is
     // right-aligned, a date column centred. Default = the table's left.
     RichTextAlign align = RichTextAlign::Default;
-    // The cell's frame and fill, as the document drew them. Only used when
-    // the table's RichDocBlock::tableBordersFromDocument is set.
+    // The cell's frame and fill, as the document drew them. The frame is
+    // only used when the table's RichDocBlock::tableBordersFromDocument is
+    // set; the fill always (a table on the view's own grid has shaded cells
+    // too).
     RichBorder borderTop, borderBottom, borderLeft, borderRight;
     std::string backgroundColor;    // "#RRGGBB"; empty = none
     // Where the text sits in a cell taller than it, and the room between the
@@ -1112,6 +1116,12 @@ public:
     // A style with its basedOn chain folded in: every property it ends up
     // with, from itself or an ancestor.
     RichStyle ResolveStyle(const std::string& id) const;
+    // What `block` takes from its paragraph style where it states nothing
+    // itself: its style's paragraph properties with the basedOn chain folded
+    // in - Normal's for a paragraph that names no style, its level's
+    // heading style for a heading that names none. Empty when the document
+    // has no styles (a Markdown file's): such a paragraph is what it states.
+    RichStyleParagraph ParagraphStyleOf(const RichDocBlock& block) const;
     // True when `id` is `ancestorId` or based on it, however indirectly.
     bool StyleDerivesFrom(const std::string& id, const std::string& ancestorId) const;
     // Normal, Title, Subtitle, Heading 1-6, Quote, Code; Strong, Emphasis,

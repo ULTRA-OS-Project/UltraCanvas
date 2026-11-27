@@ -1,11 +1,12 @@
 // Apps/UltraOffice/UltraOfficeSettings.cpp
 // See the header.
 //
+// Version: 0.4.0 - the Start tab's tools note dismissed ("toolPanelsNoteDismissed")
 // Version: 0.3.0 - the tools ("toolLayout", "toolRail") and each kind's panels ("documentPanels",
 //                  "spreadsheetPanels", "presentationPanels") and their width ("...PanelWidth")
 // Version: 0.2.0 - the recent fonts ("recentFonts")
 // Version: 0.1.0
-// Last Modified: 2026-11-26
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeSettings.h"
 
@@ -46,6 +47,7 @@ const char* kSecondScreenKey = "showOnSecondScreen";
 const char* kPresenterKey = "presenterView";
 const char* kToolLayoutKey = "toolLayout";
 const char* kToolRailKey = "toolRail";
+const char* kToolsNoteKey = "toolPanelsNoteDismissed";   // not a setting: kept by RestoreDefaults
 
 // A kind's panels and their width: "documentPanels", "documentPanelWidth" ...
 std::string PanelKeyOf(OfficeKind kind, const char* what) {
@@ -140,6 +142,8 @@ void OfficeSettings::SetToolLayout(ToolLayout layout) {
 }
 bool OfficeSettings::GetToolRail() const { return store_.GetBool(kToolRailKey, false); }
 void OfficeSettings::SetToolRail(bool rail) { store_.Set(kToolRailKey, rail); }
+bool OfficeSettings::GetToolsNoteDismissed() const { return store_.GetBool(kToolsNoteKey, false); }
+void OfficeSettings::SetToolsNoteDismissed(bool dismissed) { store_.Set(kToolsNoteKey, dismissed); }
 
 std::string OfficeSettings::GetPanelState(OfficeKind kind) const { return store_.GetString(PanelKeyOf(kind, "Panels")); }
 void OfficeSettings::SetPanelState(OfficeKind kind, const std::string& state) { store_.Set(PanelKeyOf(kind, "Panels"), state); }

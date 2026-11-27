@@ -6,6 +6,7 @@
 // with Save(). No window or display is needed, so the model is tested on its
 // own (Tests/UltraOfficeSettingsTest.cpp).
 //
+// Version: 0.4.0 - the Start tab's note on where the tools went, once dismissed ("toolPanelsNoteDismissed")
 // Version: 0.3.0 - the tools: panels at the left (the default) or the toolbar at the top, the icon rail;
 //                  each kind's panels (their order, which are open) and the column's width
 // Version: 0.2.0 - the font lists: every installed font (FontChoices gone), the recent fonts kept
@@ -14,7 +15,7 @@
 //                  Saving (format, autosave, recovery copies, interval), Documents (font, size, page,
 //                  navigator, fit and width share), Spreadsheets (gridlines), Presentations (slide size,
 //                  which monitor the show goes to, presenter view)
-// Last Modified: 2026-11-26
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -86,6 +87,10 @@ public:
     static constexpr int kAutoRailWidth = 1100;
     bool GetToolRail() const;
     void SetToolRail(bool rail);
+    // The Start tab's note that the tools are in the panels at the left,
+    // shown until it is dismissed. Not a setting: Restore defaults keeps it.
+    bool GetToolsNoteDismissed() const;
+    void SetToolsNoteDismissed(bool dismissed);
     // Each kind's panels: their order and which are open
     // (UltraCanvasToolPanelStack::SaveState, as one line), and the column's
     // width (kMinPanelWidth to kMaxPanelWidth). Empty: the kind's defaults.

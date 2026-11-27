@@ -325,6 +325,40 @@ format.tabStops = {{144.0f, RichTabKind::Right}};
 editor->SetParagraphFormat(format);             // false when nothing changed
 ```
 
+`GetParagraphFormat` says what the paragraph itself states. A tool panel
+shows what applies instead: `GetEffectiveParagraphFormat` gives each value as
+the paragraph is laid out - its own, else its paragraph style's
+(`UCRichDocument::ParagraphStyleOf`: Normal's for a paragraph naming none, a
+heading's level style), else the view's (no space before, the view's block
+spacing after, single lines) - and flags the values the paragraphs of the
+selection disagree on, the only ones to show as "-". A paragraph that states
+no spacing is laid out with its style's, so a heading made with
+`SetHeadingLevel` has Heading 1's 12 pt above it:
+
+```cpp
+const RichParagraphFormatState now = editor->GetEffectiveParagraphFormat();
+if (!now.spaceBeforeMixed) {
+    float before = now.format.spaceBeforePt;    // never "not stated" here
+    (void)before;
+}
+```
+
+A list's marker - a number in a format, a bullet, a check list's box - is a
+`RichListMarker`; `SetListMarker` makes the selection's paragraphs list items
+with it (one undo step), `EndList` makes them plain paragraphs again:
+
+```cpp
+RichListMarker lettered;
+lettered.ordered = true;
+lettered.numberFormat = RichNumberFormat::LowerLetter;   // a. b. c.
+editor->SetListMarker(lettered);
+RichListMarker marker;
+bool mixed = false;
+const bool inList = editor->GetListMarker(marker, mixed);   // false: no list item
+(void)inList;
+editor->EndList();
+```
+
 Tracking - extra room between every two letters of the whole text, as a drawing
 program's letter spacing - is part of the element's style, in pixels at 100%
 (ArtCreator sets it for the text typed on its page):
@@ -570,6 +604,27 @@ header row, and what every cell has in common - its lines, padding and
 vertical alignment. A border of the document's own (`borderWidthPt >= 0`) sets
 `tableBordersFromDocument`, so the cells' lines are drawn instead of the
 editor's grid.
+
+`GetEffectiveTableProperties` gives the same as the table is drawn: where
+the document states no lines, the width of the view's grid line (0.75 pt),
+and where it states no padding, the view's. A cell's fill - the caret's
+cell, or every selected cell - is `GetCellShading` / `SetCellShading`
+(`"#RRGGBB"`, `""` for none; one undo step), drawn whether the table's lines
+are the document's or the view's grid, and written by the DOCX and ODT
+writers either way:
+
+```cpp
+RichTableProperties drawn;
+if (editor->GetEffectiveTableProperties(drawn)) {
+    float line = drawn.borderWidthPt;            // 0.75 on the view's own grid
+    (void)line;
+}
+editor->SetCellShading("#FFC000");
+std::string fill;
+if (editor->GetCellShading(fill)) {              // false: no table, or cells that differ
+    // fill == "#FFC000"
+}
+```
 
 #### Selecting a block of cells
 

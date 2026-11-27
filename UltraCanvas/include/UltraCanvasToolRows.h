@@ -31,6 +31,8 @@
 //     content->AddChild(font);
 //     content->AddChild(values);
 //
+// Version: 1.1.0 - UltraCanvasToolValueRows: a caption longer than kCaptionBreakLength letters is set on
+//                  two lines (TwoLineCaption) instead of narrowing the controls until their values are cut off
 // Version: 1.0.0
 // Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
@@ -105,6 +107,13 @@ namespace UltraCanvas {
     public:
         explicit UltraCanvasToolValueRows(const std::string& identifier, float rowGap = 6.0f,
                                           float columnGap = 8.0f);
+        // The captions' column is as wide as its widest caption. A caption of
+        // more letters than this - a language's "Horizontal position" - is set
+        // on two lines, broken at the space nearest its middle, so that it
+        // does not narrow the controls beside it until their values are cut
+        // off (TwoLineCaption; AddRow and the Add... rows use it).
+        static constexpr size_t kCaptionBreakLength = 14;
+        static std::string TwoLineCaption(const std::string& caption);
 
         // "caption [spinner]": a number with its unit as a suffix ("pt").
         std::shared_ptr<UltraCanvasSpinner> AddSpinner(const std::string& id, const std::string& caption,

@@ -26,6 +26,7 @@
   - [Color Properties](#color-properties)
   - [Layout Properties](#layout-properties)
   - [Dragging a tab to another place](#dragging-a-tab-to-another-place)
+  - [The keyboard on the tab strip](#the-keyboard-on-the-tab-strip)
 - [Factory Functions](#factory-functions)
   - [CreateTabbedContainerWithDropdown](#createtabbedcontainerwithdropdown)
   - [CreateTabbedContainer](#createtabbedcontainer)
@@ -507,6 +508,28 @@ either end (or past it) carries the tab one place in that direction every
 it reaches the end or the pointer moves back. `ReorderTabs(from, to)` moves a
 tab without a drag. Dragging out of the bar altogether is a separate feature:
 see `SetAllowTabDragOut()`, `onTabDragOut` and `AcceptTabTransfer()`.
+
+### The keyboard on the tab strip
+
+By default the strip never takes the keyboard. An application that moves
+the keyboard from pane to pane with F6 turns on
+`SetKeyboardFocusOnRequest(true)` and gives it to the strip with
+`FocusTabStrip()`: a click on a tab still leaves the keyboard in the page,
+and while the strip has it, Left and Right choose a tab and a ring in
+`focusRingColor` (the theme's focus colour) is drawn round the open tab. The
+strip gives the keyboard up like any element, and takes it again only from
+the next `FocusTabStrip()`:
+
+```cpp
+tabs->SetKeyboardFocusOnRequest(true);
+// F6 reached the strip:
+if (!tabs->FocusTabStrip()) {
+    // hidden or disabled: the next pane instead
+}
+```
+
+UltraOffice's window does this (`Apps/UltraOffice/UltraOfficeWindow.cpp`,
+`CycleFocus`).
 
 ## Factory Functions
 

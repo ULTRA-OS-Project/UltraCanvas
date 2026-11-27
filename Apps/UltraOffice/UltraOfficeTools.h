@@ -26,6 +26,8 @@
 // view tab (kViewGroupTab) and in no panel (ToolPanel::ViewGroup): it stays
 // at the right end of the one top toolbar in both layouts.
 //
+// Version: 0.3.0 - ToolValue::describe: a value a number does not say (a line height in points); getters
+//                  give the value in effect (a paragraph's style's, the view's), none only for several
 // Version: 0.2.0 - the panels built from the table (UltraOfficePanels.h): ToolEntry::panelElement (an
 //                  element a panel shows across its width, the pivot field list), ToolWriter::Custom,
 //                  ToolTable::onSynced (the bars' getters read again: the panels follow)
@@ -151,9 +153,14 @@ struct ToolValue {
     double maximum = 0.0;
     double step = 1.0;
     int decimals = 0;
-    // Number: the value now; nullopt when there is none to show (nothing
-    // selected, the selection disagrees, the document's own default).
+    // Number: the value in effect now - the selection's own, else what it
+    // takes from its style or the view; nullopt only when there is none to
+    // show (nothing selected, the selection holds several values).
     std::function<std::optional<double>()> get;
+    // Number: what the control says while `get` has no number, when the
+    // value is of another kind ("exactly 14 pt" for a line spacing); empty
+    // or null: blank.
+    std::function<std::string()> describe;
     std::function<void(double)> set;
     // Colour: the same for a colour; nullopt for none or several.
     std::function<std::optional<UltraCanvas::Color>()> getColour;

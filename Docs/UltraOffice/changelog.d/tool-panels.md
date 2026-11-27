@@ -35,3 +35,26 @@
   tools are panels (beside the grid with the toolbar).
 - **F6** goes from the tab strip to the toolbar (File), the panels and the
   document, and Shift+F6 back; every shortcut works in both layouts.
+- **The panels show the values in effect.** Space before and after, the
+  indents and the line spacing of a paragraph that states none of its own
+  show what it is laid out with - its paragraph style's (a heading's 12 pt
+  before and 4 pt after), else the view's own spacing and single lines - and
+  the table's Borders the grid line a table of no lines of its own is drawn
+  with; "-" only for a selection of paragraphs that differ. A line spacing
+  set as a height reads "exactly 14 pt" (or "at least").
+- **The Page panel** has the page's orientation (Portrait, Landscape), its
+  size (A3, A4, A5, Letter, Legal; Custom for one of its own), the margins
+  (Narrow, Normal, Moderate, Wide; Custom opens Page setup) and the columns,
+  beside Page setup as the header's "…".
+- **The Lists panel** has the list style: None, bullets, dashes, check
+  boxes, or numbers as 1. 2. 3., a. b. c., A. B. C., i. ii. iii. or I. II.
+  III.
+- **The Table panel** merges the selected cells (or a cell with the one at
+  its right), merges a cell with the one below, splits a merged cell, and
+  shades the cell or the selected cells (No shading takes it away).
+- **The Slide panel** has the slide's background colour.
+- **The Start tab says once where the tools went**: in the panels at the
+  left, with Settings, where *Tools: Toolbar at the top* brings the toolbar
+  back, and *Hide this note*, which `settings.json` remembers
+  (`toolPanelsNoteDismissed`).
+- **F6 on the tab strip shows a focus ring** round the open tab.

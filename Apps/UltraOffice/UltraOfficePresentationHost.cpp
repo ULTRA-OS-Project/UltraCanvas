@@ -10,6 +10,7 @@
 // toolbar's right end the view group: normal, the slide sorter, the notes,
 // the fitted slide and the zoom.
 //
+// Version: 0.12.0 - the Slide panel's background colour (the slide's own, else the white it is drawn on)
 // Version: 0.11.0 - the tools are one table (UltraOfficeTools.h) the command tabs and the view group are
 //                   built from, with no change to what they show; the panels' own tools in it too: the
 //                   selected shapes' position, size, rotation, fill, outline colour and width, and the
@@ -874,6 +875,21 @@ private:
                  [this]() { return SelectedField(&PptxShape::lineWidthPt); },
                  [this](double pt) { ChangeSelectedShapes("Line width", [pt](PptxShape& s) { s.lineWidthPt = pt; }); })
             .context = ToolContext::ShapeSelected;
+        // This slide's background: its own colour, or its layout's or
+        // master's as read, else the white it is drawn on.
+        w.Colour("slides-background", Tr("Background"), P::Slide,
+                 [this]() -> std::optional<Color> {
+                     const PptxSlide* slide = Editor().CurrentSlide();
+                     if (!slide) return std::nullopt;
+                     if (slide->background.size() != 6) return Colors::White;
+                     return ParseColor("#" + slide->background);
+                 },
+                 [this](const Color& colour) {
+                     if (!Editor().CurrentSlide()) return;
+                     CloseText(true);
+                     const std::string hex = colour.ToHexString().substr(1);
+                     Editor().ChangeSlide("Background", [hex](PptxSlide& s) { s.background = hex; });
+                 });
         w.Number("slides-transition-duration", Tr("Duration"), Tr("seconds"), 0.1, 10.0, 0.1, 1, P::Transitions,
                  [this]() -> std::optional<double> {
                      const PptxSlide* slide = Editor().CurrentSlide();

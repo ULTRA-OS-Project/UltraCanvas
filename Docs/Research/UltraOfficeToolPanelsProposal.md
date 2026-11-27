@@ -227,18 +227,29 @@ the column, opened.
 change, none a change of design:
 
 - Tools §3 names that the table does not hold yet, so no panel shows them:
-  the document's page size, orientation, margin presets and columns (the
-  Page panel is *Page setup* alone), the list style, the table's merge and
-  split, cell shading and border style, a grid picker for a new table, a
-  document chart's panel; a sheet's percent and currency buttons and its
-  picture insert; a slide's background, chart and table insert, a table's
-  cell fill and a chart's type. The picture's width, height and keep
-  proportions are being added to the document's Picture panel separately.
-- The Start tab's one-time note on where the tools went, with *Use the
-  toolbar at the top* (§7, *Familiarity*).
-- The panels' layout under the demo's layout audit with pseudo-localised
-  texts (a long caption narrows a value row's control), and a dark-look
-  screenshot pass.
+  the document table's border style (`RichTableProperties` has no line
+  style yet: a field, the Table properties dialog's row and both writers'
+  handling of it, framework work before a panel row), a grid picker for a
+  new table (a new element: a hover-to-size grid popup), a document chart's
+  panel (a chart in a document has no selection state the panels can ask
+  for - `ChartSelected` is a sheet's and a slide's); a sheet's percent and
+  currency buttons and its picture insert; a slide's chart and table
+  insert, a table's cell fill and a chart's type. The first three need
+  framework work first; the sheet's and the slide's are their hosts' next
+  rows of the table.
+- The panels' layout under a layout audit with pseudo-localised texts:
+  UltraOffice has no `--audit-layout` of its own (the demo's audits its
+  pages only), so the panels were checked by hand in German and Finnish
+  and in the dark look (2026-11-27); an audit mode for an application's
+  window is a framework change of its own.
+
+Done on 2026-11-27: the values in effect (a paragraph's style's, the
+view's, a table's grid line), "-" only for a selection that differs; the
+Page panel's orientation, page size, margin presets (Custom: Page setup) and
+columns; the Lists panel's list style; the Table panel's merge, merge down,
+split and cell shading; the Slide panel's background colour; the Start tab's
+one-time note with Settings; the tab strip's focus ring when F6 reaches it
+(`UltraCanvasTabbedContainer::SetKeyboardFocusOnRequest`).
 
 **The table (phase 1).** A row (`ToolEntry`) has the command id (also its
 widget's id), icon, label, tooltip with the shortcut, kind (`Button`,

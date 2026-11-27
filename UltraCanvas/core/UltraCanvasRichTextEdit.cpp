@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.25.0 - GetEffectiveParagraphFormat, GetEffectiveTableProperties, lists and cell shading; a paragraph
+//                   stating no spacing has its style's; a cell's fill on the view's grid too
 // Version: 1.24.1 - a Windows metafile picture of its own size is laid out (and tiled in a fill) at that
 //                   size, not at the twice as large pixels it is drawn in (PictureOwnSizePx)
 // Version: 1.24.0 - GetImageDisplaySize, GetImageNaturalSize: a picture's size through the layout's own
@@ -2187,9 +2189,22 @@ float UltraCanvasRichTextEdit::GapAfterBlock(const std::vector<RichDocBlock>& bl
     if (index < 0 || index + 1 >= count) return 0.0f;
     const RichDocBlock& block = blocks[static_cast<size_t>(index)];
     const RichDocBlock& next = blocks[static_cast<size_t>(index) + 1];
-    float gap = (block.spaceAfterPt < 0.0f && next.spaceBeforePt < 0.0f)
-            ? style.blockSpacing
-            : Px(std::max(0.0f, block.spaceAfterPt) + std::max(0.0f, next.spaceBeforePt));
+    // A paragraph that states no spacing has its style's, where the style
+    // states some (a heading made with the style list); readers state it
+    // on every paragraph, so this is a document edited here.
+    const std::shared_ptr<UCRichDocument>& document = editor.GetDocument();
+    auto styled = [&document](const RichDocBlock& b, bool after) {
+        const float own = after ? b.spaceAfterPt : b.spaceBeforePt;
+        const bool text = b.type == RichBlockType::Paragraph || b.type == RichBlockType::Heading ||
+                          b.type == RichBlockType::ListItem || b.type == RichBlockType::BlockQuote;
+        if (own >= 0.0f || !text || !document || document->styles.empty()) return own;
+        const RichStyleParagraph fromStyle = document->ParagraphStyleOf(b);
+        const std::optional<float>& value = after ? fromStyle.spaceAfterPt : fromStyle.spaceBeforePt;
+        return value ? *value : own;
+    };
+    const float after = styled(block, true), before = styled(next, false);
+    float gap = (after < 0.0f && before < 0.0f) ? style.blockSpacing
+                                                : Px(std::max(0.0f, after) + std::max(0.0f, before));
     // A paragraph frame takes room of its own, as in a word processor: its
     // padding and line width below the last paragraph of a box and above the
     // first. Paragraphs within one box keep their plain spacing.
@@ -3988,7 +4003,12 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
                 if (block.tableBordersFromDocument && modelCell) {
                     DrawDocumentCellFrame(ctx, *modelCell, cellRect);
                 } else {
-                    ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
+                    // The view's grid: the cell's own fill (a panel's cell
+                    // shading) under it.
+                    const Color fill = modelCell && !modelCell->backgroundColor.empty()
+                                           ? DocumentColor(modelCell->backgroundColor, Colors::Transparent)
+                                           : Colors::Transparent;
+                    ctx->DrawFilledRectangle(cellRect, fill, 1.0f, style.tableBorderColor);
                 }
                 for (const RichDocPosition& selected : selectedCells) {
                     if (selected.cellRow == bl.cellRows[i] && selected.cellColumn == bl.cellColumns[i]) {
@@ -6146,6 +6166,43 @@ bool UltraCanvasRichTextEdit::GetTableProperties(RichTableProperties& out) const
 bool UltraCanvasRichTextEdit::SetTableProperties(const RichTableProperties& properties) {
     const RichDocPosition caret = editor.GetCaret();
     if (readOnly || !caret.InCell() || !editor.SetTableProperties(caret.blockIndex, properties)) return false;
+    AfterEdit();
+    return true;
+}
+
+RichParagraphFormatState UltraCanvasRichTextEdit::GetEffectiveParagraphFormat() const {
+    // What the layout does with a paragraph that states nothing: the view's
+    // block spacing after it (GapAfterBlock), none before, single lines.
+    RichParagraphFormat unstated;
+    unstated.align = RichTextAlign::Left;
+    unstated.spaceBeforePt = 0.0f;
+    unstated.spaceAfterPt = style.blockSpacing / kPixelsPerPoint;
+    unstated.lineSpacing = 1.0f;
+    return editor.GetEffectiveParagraphFormat(unstated);
+}
+
+bool UltraCanvasRichTextEdit::GetEffectiveTableProperties(RichTableProperties& out) const {
+    if (!GetTableProperties(out)) return false;
+    // The view's own grid: a one-pixel line; its padding 4 px at the sides.
+    if (out.borderWidthPt < 0.0f) out.borderWidthPt = 1.0f / kPixelsPerPoint;
+    if (out.cellPaddingPt < 0.0f) out.cellPaddingPt = 4.0f / kPixelsPerPoint;
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetCellShading(const std::string& colour) {
+    if (readOnly || !editor.SetCellShading(colour)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetListMarker(const RichListMarker& marker) {
+    if (readOnly || !editor.SetListMarker(marker)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::EndList() {
+    if (readOnly || !editor.EndList()) return false;
     AfterEdit();
     return true;
 }

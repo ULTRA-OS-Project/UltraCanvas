@@ -1,6 +1,7 @@
 // core/UltraCanvasToolRows.cpp
 // The rows of a tool panel: icon buttons and toggles, labelled values, lists
 // (UltraCanvasToolRows.h).
+// Version: 1.1.0 - a caption longer than kCaptionBreakLength letters on two lines (TwoLineCaption)
 // Version: 1.0.0
 // Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
@@ -140,10 +141,33 @@ namespace UltraCanvas {
 
     // ===== VALUE ROWS =====
 
+    std::string UltraCanvasToolValueRows::TwoLineCaption(const std::string& caption) {
+        // Its letters (UTF-8 lead bytes) and the spaces it could break at.
+        std::vector<size_t> spaces;
+        size_t letters = 0;
+        for (size_t i = 0; i < caption.size(); ++i) {
+            const unsigned char c = static_cast<unsigned char>(caption[i]);
+            if ((c & 0xC0) == 0x80) continue;
+            if (c == ' ') spaces.push_back(i);
+            if (c == '\n') return caption;   // broken already
+            ++letters;
+        }
+        if (letters <= kCaptionBreakLength || spaces.empty()) return caption;
+        // The space nearest the middle, by bytes: near enough for a caption.
+        size_t best = spaces.front();
+        for (size_t at : spaces)
+            if (std::abs(static_cast<long>(at) - static_cast<long>(caption.size() / 2)) <
+                std::abs(static_cast<long>(best) - static_cast<long>(caption.size() / 2)))
+                best = at;
+        return caption.substr(0, best) + "\n" + caption.substr(best + 1);
+    }
+
     UltraCanvasToolValueRows::UltraCanvasToolValueRows(const std::string& identifier, float rowGap, float columnGap)
             : UltraCanvasContainer(identifier, 0, 0, 0, 0) {
         // The form grid of UltraCanvasFormLayout.h: the captions' column as
-        // wide as the widest caption, the controls in the rest.
+        // wide as the widest caption, the controls in the rest. A long
+        // caption is set on two lines (AddRow), so that it does not narrow
+        // the controls until their values are cut off.
         layout.SetGrid();
         CSSLayout::GridTrackSize captionColumn;
         CSSLayout::GridTrackSize controlColumn;
@@ -166,7 +190,7 @@ namespace UltraCanvas {
                                           const std::shared_ptr<UltraCanvasUIElement>& control,
                                           std::function<void()> sync) {
         if (!control) return;
-        auto label = CreateFormCaption(id + "-caption", caption);
+        auto label = CreateFormCaption(id + "-caption", TwoLineCaption(caption));
         AddChild(label);
         AddChild(control);
         if (sync) syncers.push_back(std::move(sync));

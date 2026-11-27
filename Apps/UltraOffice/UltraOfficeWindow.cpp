@@ -2,6 +2,8 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.11.0 - the Start tab's note on where the tools went (once, until dismissed); the tab strip's
+//                   keyboard focus and its ring are the framework's (SetKeyboardFocusOnRequest)
 // Version: 0.10.0 - the tools in panels at the left by default (UltraOfficePanels.h), the toolbar a setting
 //                   switched at once; one top row with the view group last; the panel column's splitter and
 //                   each kind's panel order, open panels and width kept; the icon rail; F6 / Shift+F6
@@ -18,7 +20,7 @@
 // Version: 0.3.0 - recovered documents offered on the Start tab, so the window never waits on the question
 // Version: 0.2.0 - autosave every minute and crash recovery
 // Version: 0.1.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeWindow.h"
 #include "UltraOfficeSettingsDialog.h"
@@ -99,19 +101,6 @@ int KindSlot(OfficeKind kind) {
     }
 }
 
-// The tab strip, which takes the keyboard when F6 brings it there (Left /
-// Right go from tab to tab) and not from a click, so the document keeps it.
-class OfficeTabStrip : public UltraCanvasTabbedContainer {
-public:
-    using UltraCanvasTabbedContainer::UltraCanvasTabbedContainer;
-    bool AcceptsFocus() const override { return keyboardWanted; }
-    bool OnEvent(const UCEvent& event) override {
-        if (event.type == UCEventType::FocusLost) keyboardWanted = false;
-        return UltraCanvasTabbedContainer::OnEvent(event);
-    }
-    bool keyboardWanted = false;
-};
-
 bool IsInside(const UltraCanvasUIElement* element, const UltraCanvasContainer* container) {
     return element && container && (element == container || element->IsDescendantOf(container));
 }
@@ -137,7 +126,11 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
     InstallEventFilter("office-shortcuts", [this](const UCEvent& event) { return HandleShortcut(event); },
                        {UCEventType::KeyDown});
 
-    tabs_ = std::make_shared<OfficeTabStrip>("office-tabs");
+    tabs_ = std::make_shared<UltraCanvasTabbedContainer>("office-tabs");
+    // The strip takes the keyboard when F6 brings it there (Left / Right go
+    // from tab to tab, a focus ring round the open tab) and not from a
+    // click, so the document keeps it.
+    tabs_->SetKeyboardFocusOnRequest(true);
     tabs_->SetTabStyle(TabStyle::Modern);
     tabs_->SetCloseMode(TabCloseMode::ClosableExceptFirst);
     tabs_->SetShowNewTabButton(true);
@@ -234,6 +227,27 @@ void UltraOfficeWindow::BuildStartPage() {
     page->SetRecent(Tr("Recent"), recent, [this](const std::string& path) { OpenPath(path); }, prefs_.GetRecentCount());
     page->AddAction(Tr("Open a file..."), [this]() { ShowOpenDialog(); },
                     Tr("Word processing, spreadsheet and presentation files: ODF, Office Open XML, CSV and more."));
+    // Once, until dismissed: where the tools went, and the way back to the
+    // toolbar (proposal, "Familiarity").
+    if (prefs_.GetToolLayout() == ToolLayout::Panels && !prefs_.GetToolsNoteDismissed()) {
+        page->AddSection(Tr("Where the tools are"));
+        const std::string note = TrF("The tools are now in panels at the left of each document: open, close and drag "
+                                     "them as you like. To have the toolbar at the top again, choose it in {0}, {1}, {2}.",
+                                     Tr("Settings"), Tr("General"), Tr("Tools"));
+        // As many 18 px lines as the language's text needs at the note's
+        // 12 px (about 7 px a letter, a CJK one twice that), and one spare.
+        int units = 0;
+        for (size_t i = 0; i < note.size();) {
+            const unsigned char c = static_cast<unsigned char>(note[i]);
+            const size_t length = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+            units += length >= 3 ? 2 : 1;
+            i += length;
+        }
+        const int lines = 2 + units * 7 / std::max(1, page->ContentWidth());
+        page->AddNote(note, lines * 18);
+        page->AddButton(Tr("Settings"), [this]() { ShowSettings(); })->SetIdentifier("office-start-tools-settings");
+        page->AddButton(Tr("Hide this note"), [this]() { DismissToolsNote(); })->SetIdentifier("office-start-tools-dismiss");
+    }
     page->AddSection(Tr("Start something new"));
     page->AddButton(Tr("New document"), [this]() { NewDocument(OfficeKind::Document); });
     page->AddButton(Tr("New spreadsheet"), [this]() { NewDocument(OfficeKind::Spreadsheet); });
@@ -1092,7 +1106,6 @@ bool UltraOfficeWindow::HandleShortcut(const UCEvent& event) {
 
 void UltraOfficeWindow::CycleFocus(bool backwards) {
     OpenDocument* doc = Active();
-    auto* strip = static_cast<OfficeTabStrip*>(tabs_.get());
     UltraCanvasUIElement* focused = GetFocusedElement();
     // Where the keyboard is: 0 the tab strip, 1 the toolbar, 2 the panels, 3 the document.
     int at = 3;
@@ -1105,9 +1118,7 @@ void UltraOfficeWindow::CycleFocus(bool backwards) {
         const int next = ((at + (backwards ? -step : step)) % 4 + 4) % 4;
         switch (next) {
             case 0:
-                strip->keyboardWanted = true;
-                if (tabs_->SetFocus(true)) return;
-                strip->keyboardWanted = false;
+                if (tabs_->FocusTabStrip()) return;
                 break;
             case 1:
                 if (doc && doc->fileButton && doc->fileButton->SetFocus(true)) return;
@@ -1179,6 +1190,17 @@ void UltraOfficeWindow::SetSaveFormat(SaveFormat format) {
 // ===== SETTINGS =====
 
 void UltraOfficeWindow::ShowSettings() { ShowSettingsDialog(*this); }
+
+void UltraOfficeWindow::DismissToolsNote() {
+    if (prefs_.GetToolsNoteDismissed()) return;
+    prefs_.SetToolsNoteDismissed(true);
+    settings_.Save();
+    RebuildStartPageLater();
+}
+
+bool UltraOfficeWindow::IsToolsNoteShown() const {
+    return startPane_ && startPane_->FindChildById("office-start-tools-dismiss") != nullptr;
+}
 
 void UltraOfficeWindow::ApplyTheme() {
     auto* app = UltraCanvasApplication::GetInstance();

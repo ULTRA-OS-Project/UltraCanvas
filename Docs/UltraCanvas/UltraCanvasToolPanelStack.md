@@ -263,7 +263,7 @@ struct ToolRowButton {
 | Row | Adds | Shows |
 |---|---|---|
 | `UltraCanvasToolButtonRow` | `AddButton`, `AddToggle`, `AddButton(ToolRowButton)`, `AddGap` | a wrapping row of 28 × 28 icon buttons (`Ghost` look), the tooltip "Bold (Ctrl+B)" |
-| `UltraCanvasToolValueRows` | `AddSpinner` (a suffix such as "pt"), `AddDropdown`, `AddColorSwatches`, `AddRow` for a control of your own | "caption [control]" on a form grid whose caption column is as wide as the widest caption |
+| `UltraCanvasToolValueRows` | `AddSpinner` (a suffix such as "pt"), `AddDropdown`, `AddColorSwatches`, `AddRow` for a control of your own | "caption [control]" on a form grid whose caption column is as wide as the widest caption; a caption of more than 14 letters (`kCaptionBreakLength`) is set on two lines, so it does not narrow the controls until their values are cut off |
 | `UltraCanvasToolValueRows` | `AddListRow`, `AddFontPicker`, `AddWideRow` | a list across both columns: the paragraph style, the font in `UltraCanvasFontPicker` |
 
 Every value is editable: the setter runs when the user changes it (a toggle

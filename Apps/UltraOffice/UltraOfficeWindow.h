@@ -19,6 +19,8 @@
 // (UltraOfficeSettingsDialog.h, File > Settings, Ctrl+,) sets what
 // UltraOfficeSettings.h names.
 //
+// Version: 0.7.0 - the Start tab says once where the tools went, with Settings to switch back; the tab
+//                  strip's focus ring when F6 reaches it
 // Version: 0.6.0 - the tool panels at the left (the default), the toolbar a setting; one top toolbar with the
 //                  view group last; panel order, open panels and the column's width kept per kind; the icon
 //                  rail; F6 between the tab strip, the toolbar, the panels and the document
@@ -30,7 +32,7 @@
 // Version: 0.3.0 - recovered documents offered on the Start tab, not in a dialog
 // Version: 0.2.0 - autosave and crash recovery
 // Version: 0.1.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -91,6 +93,10 @@ public:
     OfficeSettings& Settings() { return prefs_; }
     // The Settings window (File > Settings..., Ctrl+, , the Start tab).
     void ShowSettings();
+    // The Start tab's note on where the tools went: shown (panel mode) until
+    // dismissed, which settings.json remembers; for tests, whether it is.
+    void DismissToolsNote();
+    bool IsToolsNoteShown() const;
     // After a change in the Settings window: the theme, the autosave timer,
     // the Start tab's recent files and each open tab follow at once.
     void ApplySettings();

@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.20.2 - a cell shaded in a table on the view's own grid keeps its fill (w:shd)
 // Version: 1.20.1 - a picture alone in its paragraph keeps the paragraph's indents, alignment and spacing,
 //                   read and written
 // Version: 1.20.0 - a Word template (.dotx) is written as one: its main part's template content type
@@ -4761,7 +4762,13 @@ private:
                 if (rowSpan > 1) {
                     xml << "<w:vMerge w:val=\"restart\"/>";
                 }
-                if (block.tableBordersFromDocument) WriteCellFrame(xml, cell);
+                if (block.tableBordersFromDocument) {
+                    WriteCellFrame(xml, cell);
+                } else if (cell.backgroundColor.size() == 7) {
+                    // A cell shaded on the view's own grid keeps its fill.
+                    xml << "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\""
+                        << EscapeXml(cell.backgroundColor.substr(1)) << "\"/>";
+                }
                 xml << "</w:tcPr>";
                 std::vector<RichTextRun> runs = cell.runs;
                 if (row.header) {

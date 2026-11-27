@@ -5,6 +5,7 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.16.1 - a cell shaded in a table on the view's own grid keeps its fill (fo:background-color)
 // Version: 1.16.0 - an OpenDocument text template (.ott) is written as one: its template media type
 // Version: 1.15.1 - chart objects written and read by UltraCanvasOdfChart (core, shared with the .odp writer)
 // Version: 1.15.0 - a password-protected .odt opened with its password (UltraCanvasOdfEncryption.h)
@@ -4096,6 +4097,8 @@ private:
         std::ostringstream props;
         if (!fromDocument) {
             props << " fo:border=\"0.50pt solid #000000\"";
+            // A cell shaded on the view's own grid keeps its fill.
+            if (!cell.backgroundColor.empty()) props << " fo:background-color=\"" << EscapeXml(cell.backgroundColor) << "\"";
         } else {
             props << " fo:border-top=\"" << BorderValue(cell.borderTop) << "\""
                   << " fo:border-bottom=\"" << BorderValue(cell.borderBottom) << "\""

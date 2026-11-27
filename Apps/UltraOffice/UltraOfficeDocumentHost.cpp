@@ -13,6 +13,10 @@
 // chosen and the share. A new document starts with the Settings window's
 // font, size and page.
 //
+// Version: 0.9.0 - the panels show the values in effect (the paragraph's, its style's, the view's; the table's
+//                  grid line), "-" only for a selection that differs; the Page panel's orientation, page size,
+//                  margins (presets, Custom: Page setup) and columns; the Lists panel's list style; the Table
+//                  panel's merge, merge down, split and cell shading
 // Version: 0.8.0 - the Picture panel's width and height in cm (GetImageDisplaySize: a picture of its own
 //                  size shows it) and "Keep proportions", on by default
 // Version: 0.7.0 - the tools are one table (UltraOfficeTools.h) the command tabs and the view group are
@@ -578,15 +582,18 @@ private:
         w.Colour("doc-highlight", Tr("Highlight"), P::Font,
                  [state]() { return TextColour(state().highlightColor, state().highlightMixed); },
                  [this, edit](const Color& colour) { edit->SetHighlightColor(colour.ToHexString()); Sync(); });
-        // The caret paragraph's spacing and indents (the selection's
-        // paragraphs take what is set), in points; line spacing as a
+        // The caret paragraph's spacing and indents as they apply - its own,
+        // else its style's, else the view's (GetEffectiveParagraphFormat) -
+        // in points, "-" only for a selection of paragraphs that differ (the
+        // selection's paragraphs take what is set); line spacing as a
         // multiple of single.
-        auto spacing = [this, edit](float RichParagraphFormat::*field, bool unsetBelowZero) {
+        using Mixed = bool RichParagraphFormatState::*;
+        auto spacing = [this, edit](float RichParagraphFormat::*field, Mixed mixed) {
             ToolValue value;
-            value.get = [edit, field, unsetBelowZero]() -> std::optional<double> {
-                const float now = edit->GetParagraphFormat().*field;
-                if (unsetBelowZero && now < 0.0f) return std::nullopt;   // the view's own spacing
-                return now;
+            value.get = [edit, field, mixed]() -> std::optional<double> {
+                const RichParagraphFormatState now = edit->GetEffectiveParagraphFormat();
+                if (now.*mixed) return std::nullopt;
+                return now.format.*field;
             };
             value.set = [this, edit, field](double to) {
                 RichParagraphFormat format = edit->GetParagraphFormat();
@@ -596,29 +603,39 @@ private:
             };
             return value;
         };
-        w.Number("doc-linespacing", Tr("Line spacing"), Tr("lines"), 0.5, 5.0, 0.05, 2, P::Paragraph,
-                 [edit]() -> std::optional<double> {
-                     const RichParagraphFormat format = edit->GetParagraphFormat();
-                     if (format.lineHeightPt > 0.0f) return std::nullopt;   // a height in points, not a multiple
-                     return format.lineSpacing > 0.0f ? format.lineSpacing : 1.0f;
-                 },
-                 [this, edit](double to) {
-                     RichParagraphFormat format = edit->GetParagraphFormat();
-                     format.lineSpacing = static_cast<float>(to);
-                     format.lineHeightPt = 0.0f;
-                     format.lineHeightAtLeast = false;
-                     edit->SetParagraphFormat(format);
-                     Sync();
-                 });
-        struct Spacing { const char* id; std::string label; float RichParagraphFormat::*field; double minimum; bool unset; };
+        {
+            ToolEntry& line = w.Number("doc-linespacing", Tr("Line spacing"), Tr("lines"), 0.5, 5.0, 0.05, 2, P::Paragraph,
+                     [edit]() -> std::optional<double> {
+                         const RichParagraphFormatState now = edit->GetEffectiveParagraphFormat();
+                         // A height in points is no multiple: describe says it.
+                         if (now.lineSpacingMixed || now.format.lineHeightPt > 0.0f) return std::nullopt;
+                         return now.format.lineSpacing > 0.0f ? now.format.lineSpacing : 1.0f;
+                     },
+                     [this, edit](double to) {
+                         RichParagraphFormat format = edit->GetParagraphFormat();
+                         format.lineSpacing = static_cast<float>(to);
+                         format.lineHeightPt = 0.0f;
+                         format.lineHeightAtLeast = false;
+                         edit->SetParagraphFormat(format);
+                         Sync();
+                     });
+            line.value.describe = [edit]() {
+                const RichParagraphFormatState now = edit->GetEffectiveParagraphFormat();
+                if (now.lineSpacingMixed || now.format.lineHeightPt <= 0.0f) return std::string();
+                const std::string points = SizeText(std::round(now.format.lineHeightPt * 10.0f) / 10.0f);
+                return now.format.lineHeightAtLeast ? TrF("at least {0} pt", points) : TrF("exactly {0} pt", points);
+            };
+        }
+        struct Spacing { const char* id; std::string label; float RichParagraphFormat::*field; double minimum; Mixed mixed; };
         const Spacing spacings[] = {
-            {"doc-spacebefore", Tr("Space before"), &RichParagraphFormat::spaceBeforePt, 0.0, true},
-            {"doc-spaceafter", Tr("Space after"), &RichParagraphFormat::spaceAfterPt, 0.0, true},
-            {"doc-indentleft", Tr("Indent left"), &RichParagraphFormat::leftIndentPt, 0.0, false},
-            {"doc-indentright", Tr("Indent right"), &RichParagraphFormat::rightIndentPt, 0.0, false},
-            {"doc-indentfirst", Tr("First line"), &RichParagraphFormat::firstLineIndentPt, -288.0, false}};
+            {"doc-spacebefore", Tr("Space before"), &RichParagraphFormat::spaceBeforePt, 0.0, &RichParagraphFormatState::spaceBeforeMixed},
+            {"doc-spaceafter", Tr("Space after"), &RichParagraphFormat::spaceAfterPt, 0.0, &RichParagraphFormatState::spaceAfterMixed},
+            {"doc-indentleft", Tr("Indent left"), &RichParagraphFormat::leftIndentPt, 0.0, &RichParagraphFormatState::leftIndentMixed},
+            {"doc-indentright", Tr("Indent right"), &RichParagraphFormat::rightIndentPt, 0.0, &RichParagraphFormatState::rightIndentMixed},
+            {"doc-indentfirst", Tr("First line"), &RichParagraphFormat::firstLineIndentPt, -288.0,
+             &RichParagraphFormatState::firstLineIndentMixed}};
         for (const Spacing& s : spacings) {
-            const ToolValue value = spacing(s.field, s.unset);
+            const ToolValue value = spacing(s.field, s.mixed);
             w.Number(s.id, s.label, Tr("pt"), s.minimum, 288.0, 1.0, 1, P::Paragraph, value.get, value.set);
         }
         // The table the caret is in.
@@ -635,6 +652,21 @@ private:
                          Act([](auto& e) { e.DeleteCurrentRow(); })));
         inTable(w.Button("doc-col-delete", "", Tr("Delete column"), Tr("Delete this cell's column"), P::Table,
                          Act([](auto& e) { e.DeleteCurrentColumn(); })));
+        // Merging: the selected cells, else this one with the one at its
+        // right; splitting a merged cell back into its own.
+        {
+            ToolEntry& merge = w.Button("doc-cell-merge", "", Tr("Merge cells"),
+                                        Tr("Merge the selected cells, or this cell with the one at its right"), P::Table,
+                                        Act([](auto& e) { if (!e.HasCellSelection() || !e.MergeSelectedCells()) e.MergeWithCellRight(); }));
+            inTable(merge);
+            ToolEntry& down = w.Button("doc-cell-merge-down", "", Tr("Merge down"), Tr("Merge this cell with the one below it"),
+                                       P::Table, Act([](auto& e) { e.MergeWithCellBelow(); }));
+            inTable(down);
+            ToolEntry& split = w.Button("doc-cell-split", "", Tr("Split cell"), Tr("Split a merged cell into the cells it covers"),
+                                        P::Table, Act([](auto& e) { e.SplitCurrentCell(); }));
+            split.isEnabled = [edit]() { return edit->CanSplitCurrentCell(); };
+            inTable(split);
+        }
         inTable(w.Toggle("doc-table-header", "", Tr("Header row"), Tr("The first row is a header row"), P::Table,
                          Act([](auto& e) {
                              RichTableProperties table;
@@ -648,8 +680,9 @@ private:
                          }));
         inTable(w.Number("doc-table-border", Tr("Borders"), Tr("pt"), 0.0, 12.0, 0.25, 2, P::Table,
                          [edit]() -> std::optional<double> {
+                             // As drawn: the document's lines, else the view's grid line.
                              RichTableProperties table;
-                             if (!edit->GetTableProperties(table) || table.borderWidthPt < 0.0f) return std::nullopt;
+                             if (!edit->GetEffectiveTableProperties(table)) return std::nullopt;
                              return table.borderWidthPt;
                          },
                          [this, edit](double to) {
@@ -659,6 +692,19 @@ private:
                              edit->SetTableProperties(table);
                              Sync();
                          }));
+        // The fill of this cell, or of the selected cells; "No shading" takes it away.
+        inTable(w.Colour("doc-cell-shading", Tr("Cell shading"), P::Table,
+                         [edit]() -> std::optional<Color> {
+                             std::string hex;
+                             if (!edit->GetCellShading(hex) || hex.empty()) return std::nullopt;
+                             return ParseColor(hex);
+                         },
+                         [this, edit](const Color& colour) {
+                             edit->SetCellShading(colour.ToHexString());
+                             Sync();
+                         }));
+        inTable(w.Button("doc-cell-noshading", "", Tr("No shading"), Tr("Take the fill away from this cell or the selected cells"),
+                         P::Table, Act([](auto& e) { e.SetCellShading(std::string()); })));
         // The selected picture's size in cm, as it is laid out (its own pixel
         // size where the file gives it none); set, the other side follows in
         // proportion while "Keep proportions" is on. One undo step each.
@@ -694,6 +740,187 @@ private:
                            Tr("Setting the width or the height scales the other side with it"), P::Picture,
                            [this]() { keepPictureProportions_ = !keepPictureProportions_; Sync(); },
                            [this]() { return keepPictureProportions_; }));
+
+        // The list style of the caret's list (or of the selection's
+        // paragraphs, which become list items with it); None ends the list.
+        {
+            ToolEntry& list = w.List("doc-liststyle", Tr("List style"), Tr("The marker of the list: a bullet or a numbering"),
+                                     P::Lists);
+            list.list.items = []() {
+                std::vector<std::string> names;
+                for (const ListStyleChoice& choice : ListStyleChoices()) names.push_back(choice.name);
+                return names;
+            };
+            list.list.placeholder = "-";
+            list.list.choose = [this, edit](int index) {
+                const std::vector<ListStyleChoice> choices = ListStyleChoices();
+                if (index < 0 || index >= static_cast<int>(choices.size())) return;
+                if (index == 0) edit->EndList();
+                else edit->SetListMarker(choices[static_cast<size_t>(index)].marker);
+                Sync();
+                edit->SetFocus(true);
+            };
+            list.list.selected = [edit]() {
+                RichListMarker marker;
+                bool mixed = false;
+                const bool isList = edit->GetListMarker(marker, mixed);
+                if (mixed) return -1;
+                if (!isList) return 0;
+                const std::vector<ListStyleChoice> choices = ListStyleChoices();
+                for (size_t i = 1; i < choices.size(); ++i)
+                    if (choices[i].marker == marker) return static_cast<int>(i);
+                return -1;   // a marker of the document's own
+            };
+        }
+
+        // The page: its orientation, size, margins and columns (Page setup,
+        // the panel's "…", for the rest).
+        auto page = [edit]() { return edit->GetEffectivePageSetup(); };
+        auto orient = [this, edit](bool landscape) {
+            RichPageSetup now = edit->GetEffectivePageSetup();
+            if ((now.widthPt > now.heightPt) != landscape) {
+                std::swap(now.widthPt, now.heightPt);
+                edit->SetPageSetup(now);
+            }
+            Sync();
+        };
+        w.Toggle("doc-portrait", "", Tr("Portrait"), Tr("The page upright"), P::Page, [orient]() { orient(false); },
+                 [page]() { const RichPageSetup p = page(); return p.heightPt >= p.widthPt; });
+        w.Toggle("doc-landscape", "", Tr("Landscape"), Tr("The page on its side"), P::Page, [orient]() { orient(true); },
+                 [page]() { const RichPageSetup p = page(); return p.widthPt > p.heightPt; });
+        {
+            ToolEntry& size = w.List("doc-pagesize", Tr("Page size"), Tr("The paper the document is laid out on"), P::Page);
+            // The sizes, and the document's own when it is none of them.
+            size.list.items = [page]() {
+                std::vector<std::string> names;
+                for (const PageSizeChoiceEntry& choice : PageSizeChoices()) names.push_back(choice.name);
+                if (PageSizeIndex(page()) < 0) names.push_back(Tr("Custom"));
+                return names;
+            };
+            size.list.choose = [this, edit](int index) {
+                const std::vector<PageSizeChoiceEntry> choices = PageSizeChoices();
+                if (index < 0 || index >= static_cast<int>(choices.size())) return;
+                RichPageSetup now = edit->GetEffectivePageSetup();
+                const bool landscape = now.widthPt > now.heightPt;
+                now.widthPt = choices[static_cast<size_t>(index)].widthPt;
+                now.heightPt = choices[static_cast<size_t>(index)].heightPt;
+                if (landscape) std::swap(now.widthPt, now.heightPt);
+                edit->SetPageSetup(now);
+                Sync();
+            };
+            size.list.selected = [page]() {
+                const int index = PageSizeIndex(page());
+                return index >= 0 ? index : static_cast<int>(PageSizeChoices().size());
+            };
+        }
+        {
+            // The presets, and Custom: the Page setup dialog, which is also
+            // what a document's own margins show.
+            ToolEntry& margins = w.List("doc-margins", Tr("Margins"), TrF("The room round the text: a preset, or {0} in {1}", Tr("Custom"), Tr("Page setup")),
+                                        P::Page);
+            margins.list.items = []() {
+                std::vector<std::string> names;
+                for (const MarginChoice& choice : MarginChoices()) names.push_back(choice.name);
+                names.push_back(Tr("Custom"));
+                return names;
+            };
+            margins.list.choose = [this, edit](int index) {
+                const std::vector<MarginChoice> choices = MarginChoices();
+                if (index >= static_cast<int>(choices.size())) {
+                    ShowPageSetupDialog(*edit, [this](bool) { Sync(); });
+                    return;
+                }
+                if (index < 0) return;
+                RichPageSetup now = edit->GetEffectivePageSetup();
+                const MarginChoice& choice = choices[static_cast<size_t>(index)];
+                now.marginTopPt = now.marginBottomPt = choice.topBottomPt;
+                now.marginLeftPt = now.marginRightPt = choice.sidesPt;
+                edit->SetPageSetup(now);
+                Sync();
+            };
+            margins.list.selected = [page]() {
+                const RichPageSetup p = page();
+                const std::vector<MarginChoice> choices = MarginChoices();
+                auto closeTo = [](float a, float b) { return std::fabs(a - b) < 0.5f; };
+                for (size_t i = 0; i < choices.size(); ++i)
+                    if (closeTo(p.marginTopPt, choices[i].topBottomPt) && closeTo(p.marginBottomPt, choices[i].topBottomPt) &&
+                        closeTo(p.marginLeftPt, choices[i].sidesPt) && closeTo(p.marginRightPt, choices[i].sidesPt))
+                        return static_cast<int>(i);
+                return static_cast<int>(choices.size());   // Custom
+            };
+        }
+        w.Number("doc-columns", Tr("Columns"), "", 1.0, 6.0, 1.0, 0, P::Page,
+                 [edit]() -> std::optional<double> { return std::max(1, edit->GetCurrentSection().columns); },
+                 [this, edit](double to) {
+                     edit->SetSectionColumns(static_cast<int>(std::lround(to)), edit->GetCurrentSection().columnGapPt);
+                     Sync();
+                 });
+    }
+
+    // ===== LISTS AND PAGES, AS THE PANELS OFFER THEM =====
+    struct ListStyleChoice {
+        std::string name;
+        RichListMarker marker;
+    };
+    // None (no list), then the bullets and the numberings.
+    static std::vector<ListStyleChoice> ListStyleChoices() {
+        auto bullet = [](const std::string& text, bool box) {
+            RichListMarker m;
+            m.bulletText = text;
+            m.checkbox = box;
+            return m;
+        };
+        auto numbered = [](RichNumberFormat format) {
+            RichListMarker m;
+            m.ordered = true;
+            m.numberFormat = format;
+            return m;
+        };
+        return {{Tr("None"), RichListMarker{}},
+                {"\xE2\x80\xA2 " + Tr("Bullets"), bullet("", false)},
+                {"\xE2\x80\x93 " + Tr("Dashes"), bullet("\xE2\x80\x93", false)},
+                {"\xE2\x98\x90 " + Tr("Check boxes"), bullet("", true)},
+                {"1. 2. 3.", numbered(RichNumberFormat::Decimal)},
+                {"a. b. c.", numbered(RichNumberFormat::LowerLetter)},
+                {"A. B. C.", numbered(RichNumberFormat::UpperLetter)},
+                {"i. ii. iii.", numbered(RichNumberFormat::LowerRoman)},
+                {"I. II. III.", numbered(RichNumberFormat::UpperRoman)}};
+    }
+
+    struct PageSizeChoiceEntry {
+        std::string name;
+        float widthPt;
+        float heightPt;
+    };
+    // Upright; a landscape page is the same turned.
+    static std::vector<PageSizeChoiceEntry> PageSizeChoices() {
+        return {{"A3", 841.89f, 1190.55f}, {"A4", 595.28f, 841.89f}, {"A5", 419.53f, 595.28f},
+                {Tr("Letter"), 612.0f, 792.0f}, {Tr("Legal"), 612.0f, 1008.0f}};
+    }
+    // The choice `page` is (either way up); -1 for none.
+    static int PageSizeIndex(const RichPageSetup& page) {
+        const float shortSide = std::min(page.widthPt, page.heightPt), longSide = std::max(page.widthPt, page.heightPt);
+        const std::vector<PageSizeChoiceEntry> choices = PageSizeChoices();
+        for (size_t i = 0; i < choices.size(); ++i)
+            if (std::fabs(shortSide - choices[i].widthPt) < 1.5f && std::fabs(longSide - choices[i].heightPt) < 1.5f)
+                return static_cast<int>(i);
+        return -1;
+    }
+
+    struct MarginChoice {
+        std::string name;
+        float topBottomPt;
+        float sidesPt;
+    };
+    // Narrow 1.27 cm, Normal 2 cm (a new A4 document's), Moderate 2.54 cm
+    // (a new Letter one's: an inch), Wide 2.54 cm above and below, 5.08 cm
+    // at the sides.
+    static std::vector<MarginChoice> MarginChoices() {
+        constexpr float cm = static_cast<float>(kPointsPerCm);
+        return {{Tr("Narrow"), 1.27f * cm, 1.27f * cm},
+                {Tr("Normal"), 2.0f * cm, 2.0f * cm},
+                {Tr("Moderate"), 2.54f * cm, 2.54f * cm},
+                {Tr("Wide"), 2.54f * cm, 5.08f * cm}};
     }
 
     // A colour of the format state ("#RRGGBB"): none when there is none, or

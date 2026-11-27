@@ -46,7 +46,7 @@ alignment each share one slot - it does the tool picked last, and resting
 the pointer on it folds out the others.
 
 **F6** moves the keyboard from the tab strip (Left and Right then choose a
-tab) to the toolbar (File; Enter opens the menu), the tool panels (the first
+tab; a focus ring marks the open tab) to the toolbar (File; Enter opens the menu), the tool panels (the first
 panel's header) and the document, and Shift+F6 the other way. Every shortcut
 works in both layouts.
 
@@ -67,9 +67,13 @@ panels. In a panel:
   the font picker across the panel, with the size beside it;
 - a value is edited in place: a number is a spinner with its unit (line
   spacing in lines, space before and after and the indents in points, a
-  shape's position and size in centimetres, its rotation in degrees), blank
-  where the selection has none or several; a colour is a row of swatches
-  under its label;
+  shape's position and size in centimetres, its rotation in degrees), and
+  it shows the value in effect: a paragraph that states no spacing of its
+  own shows its style's (a heading's 12 pt before and 4 pt after), else the
+  view's own spacing and single lines, and a table with no lines of its own
+  the grid line it is drawn with - "-" only where the selection holds
+  paragraphs that differ; a line spacing set as a height reads "exactly
+  14 pt"; a colour is a row of swatches under its label;
 - a topic with a dialog has it as the "…" button in the panel's header -
   *Paragraph*, *Styles*, *Page setup*, *Table properties*, *Picture*, *Chart
   properties*, *All comments* - and the header's info icon names it and the
@@ -85,6 +89,24 @@ selection holds, and goes with it:
 | Document | Clipboard, Style, Font, Paragraph, Lists, Insert, Page, Review | Font, Paragraph | Table (the caret in a table), Picture (a picture selected) |
 | Spreadsheet | Clipboard, Cell, Alignment, Number, Data, Insert, Page | Cell, Number | Chart (a chart selected), Pivot table (a pivot table's cell active: its tools and the field list) |
 | Presentation | Clipboard, Slide, Insert, Transitions, Slide show | Slide (and Text when shown) | Text (text, or a shape with text, selected), Arrange and Shape (shapes selected: position, size, rotation, fill, line colour and width), Picture, Table, Chart |
+
+Besides the toolbars' tools, a document's panels hold what the bars leave
+to the dialogs: the Font panel's superscript, subscript, text colour and
+highlight; the Paragraph panel's line spacing, space before and after and
+indents; the Lists panel's **list style** (None, bullets, dashes, check
+boxes, 1. 2. 3., a. b. c., A. B. C., i. ii. iii., I. II. III.); the **Page
+panel**'s orientation (Portrait, Landscape), page size (A3, A4, A5, Letter,
+Legal, and Custom for a size of the document's own), margins (Narrow 1.27
+cm, Normal 2 cm, Moderate 2.54 cm, Wide; Custom opens Page setup) and
+columns; the Table panel's merge (the selected cells, or a cell with the one
+at its right), merge down, split, header row, borders and **cell shading**
+(No shading takes it away); the Picture panel's width, height and *Keep
+proportions*. A presentation's Slide panel has the slide's **background**
+colour.
+
+The Start tab says once where the tools went - in the panels at the left -
+with *Settings*, where *Tools: Toolbar at the top* brings the toolbar back,
+and *Hide this note*, which `settings.json` keeps (`toolPanelsNoteDismissed`).
 
 A panel opens and closes with a click on its header (or Enter, Space).
 **Drag a panel by its header** to put it elsewhere - a line shows where it
