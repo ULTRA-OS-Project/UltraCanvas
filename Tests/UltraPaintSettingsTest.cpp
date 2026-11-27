@@ -11,8 +11,12 @@
 //
 // The settings folder is pointed at a scratch folder first, so the user's own
 // settings are never read or written. Headless.
+//
+// The text bar's recent fonts (text.recentfonts) go to the file and back in
+// their order, and SaveRecentFonts keeps the rest of the file as SavePicker does.
+// Version: 1.1.0 - the recent fonts
 // Version: 1.0.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "UltraPaintSettings.h"
@@ -170,6 +174,25 @@ int main() {
         TEST("with the design, and the defaults beside it",
              loaded.pickerDesign == ColorPickerWheelStyle::Bar && loaded.paletteAdaptive &&
              loaded.magnifierSize == UltraPaintSettings::kDefaultMagnifierSize);
+    }
+
+    // ===== The text bar's recent fonts =====
+    {
+        std::filesystem::remove(path);
+        UltraPaintSettings other;
+        other.magnifierSize = 250;
+        other.Save();
+        UltraPaintSettings s;   // read before the magnifier changed
+        s.recentFonts = {"Ubuntu Light", "DejaVu Sans", "Noto Serif CJK JP"};
+        TEST("the recent fonts are saved", s.SaveRecentFonts());
+        UltraPaintSettings loaded;
+        loaded.Load();
+        TEST("they come back in their order", loaded.recentFonts == s.recentFonts);
+        TEST("and SaveRecentFonts keeps the rest of the file", loaded.magnifierSize == 250);
+        std::filesystem::remove(path);
+        UltraPaintSettings none;
+        none.Load();
+        TEST("no file: no recent fonts", none.recentFonts.empty());
     }
 
     std::filesystem::remove_all(scratch);

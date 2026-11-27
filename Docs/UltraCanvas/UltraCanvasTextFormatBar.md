@@ -3,7 +3,10 @@
 ## What it is
 
 The bar a program shows over text the user sets on a canvas, a page or a video
-frame: **Font** (every installed family, each shown in itself), **Size**,
+frame: **Font** (an [UltraCanvasFontPicker](UltraCanvasFontPicker.md): the
+fonts the text uses, the ones chosen last and every installed family, each
+shown in itself, with the styles beyond bold and italic beside a family that
+has them), **Size**,
 **Bold**, **Italic**, **Underline**, **Strikethrough**, **Align** left / centre
 / right, **Line spacing** (% of the size) and **Letter spacing**, in one row.
 ArtCreator, UltraPaint and UltraVideo show it while their text tool is active.
@@ -91,22 +94,62 @@ default).
 
 ## The Font list
 
-Every family `GetInstalledFontFamilies()` reports, after the generic "Sans",
-"Serif" and "Monospace", each drawn in itself (`DropdownItem::fontFamily`). The
-dropdown prepares those previews lazily: once the bar is on screen, in small
-idle slices, the rows the list opens on first - see *A font list* in
-[UltraCanvasDropDownExamples.md](UltraCanvasDropDownExamples.md). A format
-naming a font this computer lacks shows it at the top of the list, marked as
-not installed. `RefreshFonts()` reads the installed fonts again, and the bar does
-that itself when the fonts the text engine knows change
-(`GetFontSetGeneration()`): a font file registered, or on Windows the system
-fonts arriving after a start with a cold font cache - the list made with the
-window held the bundled fonts alone until then.
+The Font list is an [UltraCanvasFontPicker](UltraCanvasFontPicker.md)
+(`GetFontPicker()`), the closed box showing the text's family in itself. Open,
+it is wider than the box and has three sections:
+
+- **In this document** - the families the host's document uses, which it
+  hands over in `onFontListOpening` with `SetDocumentFonts`.
+  `AddTextFormatFonts(families, base, words)` gathers them, one text after
+  another: a text's own family and the ones its words set. A family this
+  computer lacks is marked so, in grey italics; the text's own family is
+  there too when it is not installed.
+- **Recent** - the fonts chosen last, newest first. The host reads them from
+  its settings once (`SetRecentFonts`) and saves them in
+  `onRecentFontsChanged`, so each program keeps its own.
+- **All fonts** - the generic "Sans", "Serif" and "Monospace", then every
+  installed family A to Z (`GetInstalledFontCatalogue()`), each drawn in
+  itself with a small icon for its format. The pictures are made in idle
+  slices once the list opens.
+
+Typing with the list open jumps to the family whose name starts with what was
+typed. The keyboard focus stays with the text being typed meanwhile, so the
+selected words stay selected (`HasKeyboardFocus()` is true while the list is
+open).
+
+A family with styles bold and italic cannot reach - Light, SemiBold,
+Condensed, Black - has an arrow to its styles. The bar has a Bold and an
+Italic button but no weight of its own, so a style chosen there is turned
+into what a text with bold and italic keeps: the face's own family name where
+the text engine reaches the face by it ("Ubuntu Light", "Ubuntu Thin", with
+Bold on where that name's bold is the face), else the family with Bold for a
+weight of 600 or more; Italic from the style's slant. It reaches
+`onFormatChanged` as a `Font` change followed by `Bold` and `Italic` where
+those changed, one call each. A family of Regular, Bold, Italic and Bold
+Italic alone has no arrow: the B and I buttons are its styles.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasTextFormatBar> bar; std::vector<std::shared_ptr<const UCRichDocument>> texts; std::vector<std::string> savedRecentFonts; void SaveRecentFonts(const std::vector<std::string>& fonts); -->
+```cpp
+bar->onFontListOpening = [&]() {
+    std::vector<std::string> fonts;
+    for (const auto& words : texts) AddTextFormatFonts(fonts, "Sans", words.get());
+    bar->SetDocumentFonts(fonts);
+};
+bar->SetRecentFonts(savedRecentFonts);              // from the program's settings
+bar->onRecentFontsChanged = [](const std::vector<std::string>& fonts) { SaveRecentFonts(fonts); };
+```
+
+`RefreshFonts()` reads the installed fonts again, and the bar does that itself
+when the fonts the text engine knows change (`GetFontSetGeneration()`): a font
+file registered, or on Windows the system fonts arriving after a start with a
+cold font cache - the list made with the window held the bundled fonts alone
+until then. `GetFontFamilies()` names what "All fonts" lists.
 
 ## Narrow places
 
-The controls take about 860 pixels. In a narrower place the Font list gives up
-width first, down to 90 pixels, so every other control stays in reach.
+The controls take about 860 pixels; the Font list's closed box 210 of them. In
+a narrower place the box gives up width first, down to 90 pixels, so every
+other control stays in reach; the list it opens stays as wide as a name needs.
 
 ## Look
 

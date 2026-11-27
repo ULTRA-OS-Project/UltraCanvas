@@ -28,6 +28,13 @@
 //  - Escape closes an open menu through the popup system (the application
 //    closes the topmost popup when its closeByEscapeKey is set). That was
 //    already so; the check here keeps the menu registered that way.
+//  - One Escape closed two menus: the window closed the topmost popup on the
+//    key's press and again on its release, so a submenu went and its menu
+//    with it. A press closes one popup now and its release closes nothing
+//    (UltraCanvasWindowBase::HandlePopupEscapeKey, which the application
+//    hands every key first): the submenu goes, the menu stays for the next
+//    Escape, and that one's release is taken too, so the window under the
+//    last popup never sees it.
 //  - UltraCanvasTabbedContainer stored SetDropdownSearchEnabled() and
 //    SetDropdownSearchThreshold() and ignored them: the overflow button always
 //    opened the search popup. It now opens a plain menu of the tabs unless
@@ -54,13 +61,14 @@
 // the menu is drawn into an offscreen surface read back pixel by pixel. The
 // fade is read off a second stand-in whose "screen" is an offscreen surface,
 // so UpdateAndRender() composites onto it exactly as onto a real window.
+// Version: 1.7.0 - one Escape (press and release) closes one popup: the submenu, then the menu
 // Version: 1.6.0 - menu bar items measured in their own font
 // Version: 1.5.0 - a tall menu bar dropdown stays under its bar
 // Version: 1.4.0 - anchored menus and menubar drop-downs; symbolic icon tint
 // Version: 1.3.0 - popups blend over the window; the menu's rounded, shadowed panel
 // Version: 1.2.0 - the whole popup fades, composited by the window at its opacity
 // Version: 1.1.0 - activating an item with no application
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenu.h"
@@ -334,6 +342,62 @@ void MenuChecks(HeadlessWindow& win) {
     picker->OnEvent(key);
     TEST("Return on an item runs it without an application", ran);
     if (picker->IsVisible()) picker->CloseMenu();
+}
+
+// ---- One Escape, one popup ----
+// A menu with its submenu open gets one Escape - its press and its release,
+// each routed as UltraCanvasApplication routes a key: the window's popup
+// Escape first, then the topmost popup.
+void EscapeOneLevelChecks(HeadlessWindow& win) {
+    auto send = [&win](UCEventType type) {
+        UCEvent e;
+        e.type = type;
+        e.virtualKey = UCKeys::Escape;
+        if (win.HandlePopupEscapeKey(e)) return true;
+        if (PopupElement* top = win.GetActivePopupElement()) top->element->OnEvent(e);
+        return false;
+    };
+    bool closed = false;
+    auto menu = std::make_shared<UltraCanvasMenu>("escape-tree", 180, 0);
+    menu->SetMenuType(MenuType::PopupMenu);
+    MenuStyle style = menu->GetStyle();
+    style.enableAnimations = false;
+    menu->SetStyle(style);
+    menu->AddItem(MenuItemData::Submenu("More", {MenuItemData::Action("Inner", [] {}),
+                                                 MenuItemData::Action("Other", [] {})}));
+    menu->AddItem(MenuItemData::Action("Plain", [] {}));
+    menu->onMenuClosed = [&closed] { closed = true; };
+    menu->OpenMenu(Point2Di(10, 10), win, PopupElementSettings());
+    UCEvent key;
+    key.type = UCEventType::KeyDown;
+    key.virtualKey = UCKeys::Down;
+    menu->OnEvent(key);
+    key.virtualKey = UCKeys::Right;
+    menu->OnEvent(key);
+    PopupElement* top = win.GetActivePopupElement();
+    TEST("Right opens the submenu over its menu",
+         top && top->element != menu.get() && top->settings.closeByEscapeKey && menu->IsVisible());
+
+    send(UCEventType::KeyDown);
+    const bool releaseTaken = send(UCEventType::KeyUp);
+    top = win.GetActivePopupElement();
+    TEST("one Escape (press and release) closes the submenu alone",
+         top && top->element == menu.get() && menu->IsVisible() && !closed);
+    TEST("... its release closing nothing more", releaseTaken);
+
+    send(UCEventType::KeyDown);
+    TEST("the second Escape closes the menu", !win.GetActivePopupElement() && !menu->IsVisible() && closed);
+    TEST("... and its release is taken: the window under the last popup does not see it",
+         send(UCEventType::KeyUp));
+    TEST("a third release, with nothing open, is the window's again", !send(UCEventType::KeyUp));
+
+    // A release whose press went elsewhere (the menu opened meanwhile) closes nothing.
+    closed = false;
+    menu->OpenMenu(Point2Di(10, 10), win, PopupElementSettings());
+    send(UCEventType::KeyUp);
+    top = win.GetActivePopupElement();
+    TEST("an Escape's release alone closes no popup", top && top->element == menu.get() && !closed);
+    if (menu->IsVisible()) menu->CloseMenu();
 }
 
 void PopupOpacityChecks() {
@@ -1007,6 +1071,7 @@ int main() {
     UCImage::InitializeImageSubsysterm("MenuAndTabBehaviourTest");
     auto win = std::make_shared<HeadlessWindow>();
     MenuChecks(*win);
+    EscapeOneLevelChecks(*win);
     PopupOpacityChecks();
     MenuPanelChecks();
     AnchoredMenuChecks();

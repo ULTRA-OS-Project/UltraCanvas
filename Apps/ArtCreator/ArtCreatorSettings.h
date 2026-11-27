@@ -9,19 +9,21 @@
 // user made in the palette manager (picker.userpalettes), the look of the
 // rotation handle (handles.rotation) and whether the transform bar shows
 // the rotation centre on the page or from the middle of the selection
-// (transform.centre); the Selector's panel and the bar change those.
+// (transform.centre); the Selector's panel and the bar change those. And the
+// fonts chosen last in the text bar's font list (text.recentfonts).
 //
 // Every open window - in this process or another - keeps its own copy, read
 // when it opened, and changes the file through Update: the file is read
 // again, only the change is made to it, and it is written whole by a rename,
 // so a window never writes another's changes back to what they were.
+// Version: 1.5.0 - text.recentfonts: the text bar's recent fonts
 // Version: 1.4.0 - Update: a change made to the file as it is now, not to the copy the
 //                  window opened with; Save writes through a temporary file and a rename
 // Version: 1.3.0 - handles.rotation (dial / stem) and transform.centre (absolute / relative)
 // Version: 1.2.0 - picker.userpalettes: the palettes made with "Add palette"
 // Version: 1.1.0 - picker.palettes: the palette rows under the colour picker
 // Version: 1.0.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -34,6 +36,7 @@
 #include <map>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -61,6 +64,11 @@ public:
     // The transform bar's centre fields: the centre's place on the page,
     // or how far it lies from the middle of the selection.
     bool centreRelative = false;
+
+    // ===== TEXT =====
+    // The fonts chosen last in the text bar's font list, newest first, the
+    // names separated by commas (which no family name has).
+    std::vector<std::string> recentFonts;
 
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
@@ -112,6 +120,8 @@ public:
             if (it->second == "relative") centreRelative = true;
             else if (it->second == "absolute") centreRelative = false;
         }
+        it = kv.find("text.recentfonts");
+        if (it != kv.end()) recentFonts = SplitNames(it->second);
         return true;
     }
 
@@ -156,10 +166,32 @@ private:
         if (!userPalettes.empty()) file << "picker.userpalettes = " << userPalettes << "\n";
         file << "handles.rotation = " << (rotationHandle == VectorRotationHandleStyle::Stem ? "stem" : "dial") << "\n";
         file << "transform.centre = " << (centreRelative ? "relative" : "absolute") << "\n";
+        if (!recentFonts.empty()) file << "text.recentfonts = " << JoinNames(recentFonts) << "\n";
         file.flush();
         return file.good();
     }
 
+    static std::vector<std::string> SplitNames(const std::string& s) {
+        std::vector<std::string> out;
+        size_t start = 0;
+        while (start <= s.size()) {
+            const size_t comma = s.find(',', start);
+            const std::string name = Trim(s.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
+            if (!name.empty()) out.push_back(name);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        return out;
+    }
+    static std::string JoinNames(const std::vector<std::string>& names) {
+        std::string out;
+        for (const auto& name : names) {
+            if (name.empty() || name.find_first_of(",\n") != std::string::npos) continue;
+            if (!out.empty()) out += ", ";
+            out += name;
+        }
+        return out;
+    }
     static std::string Trim(const std::string& s) {
         const size_t a = s.find_first_not_of(" \t");
         if (a == std::string::npos) return {};

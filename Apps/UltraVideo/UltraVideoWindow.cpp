@@ -1,6 +1,9 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
 // Version: 0.7.0 - the theme under the Own policy: the provider picks the palette (the project's look or the desktop's) and takes the host's fonts; ApplyOwnLooks after the theme
+// Version: 0.15.0 - the text bar's font list (the framework's font picker): the project's title
+//                  fonts under "In this document", the recent fonts kept in the settings
+//                  (text.recentFonts in settings.json)
 // Version: 0.14.0 - the export's progress window names its size, frame rate, codec and sound; the
 //                  path in "Saved ..." keeps its backslashes (escaped for the Markdown message)
 // Version: 0.13.0 - selected words of a title take a letter spacing and a colour (the Clip
@@ -25,6 +28,7 @@
 #include "VideoFXUltraCanvasText.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasAppSettings.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRasterText.h"
@@ -2296,6 +2300,9 @@ namespace {
     }
 }
 
+// The text bar's recent fonts in UltraVideo's settings.json
+constexpr const char* kRecentFontsKey = "text.recentFonts";
+
 void UltraVideoWindow::BuildTextBar() {
     // The framework's text bar, in pixels of the project's frame; it follows
     // the theme (the palette) as the panels do.
@@ -2309,7 +2316,33 @@ void UltraVideoWindow::BuildTextBar() {
     textBar_->onControlDone = [this]() {
         if (!editingTitle_.empty() && titleEditor_) titleEditor_->SetFocus(true);
     };
+    // The font list: the project's title fonts on top, then the ones chosen
+    // last (kept in the settings), then every installed font.
+    textBar_->onFontListOpening = [this]() { textBar_->SetDocumentFonts(DocumentFonts()); };
+    {
+        UltraCanvasAppSettings settings("UltraVideo");
+        settings.Load();
+        textBar_->SetRecentFonts(settings.GetList(kRecentFontsKey));
+    }
+    textBar_->onRecentFontsChanged = [](const std::vector<std::string>& fonts) {
+        UltraCanvasAppSettings settings("UltraVideo");
+        settings.Load();
+        settings.Set(kRecentFontsKey, fonts);
+        settings.Save();
+    };
     textBar_->SetVisible(false);
+}
+
+std::vector<std::string> UltraVideoWindow::DocumentFonts() const {
+    std::vector<std::string> fonts;
+    const int h = document_.Height();
+    if (!editingTitle_.empty() && titleEditor_)
+        AddTextFormatFonts(fonts, editingSpan_.Look().fontFamily, titleEditor_->GetDocument().get());
+    for (const auto& title : document_.titles) {
+        const VideoFXOverlay look = title.Look();
+        AddTextFormatFonts(fonts, look.fontFamily, TextOverlayWords(look, h).get());
+    }
+    return fonts;
 }
 
 void UltraVideoWindow::ShowTextBar() {

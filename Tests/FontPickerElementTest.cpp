@@ -7,9 +7,16 @@
 // list beside a family with Light and Medium, choosing a style (the family,
 // the weight, the slant, the face's own family name), a family of Regular,
 // Bold and the italics without one, typing to jump, the keys, and the recent
-// fonts following a choice. ULTRACANVAS_SCREENSHOT_DIR=<dir> writes the
+// fonts following a choice; Escape, routed through the application as a real
+// key is (its press and its release), closes the styles list alone, then the
+// list. The text bar's Font list (UltraCanvasTextFormatBar) is this picker:
+// it lists the generic names, takes the document's and the recent fonts from
+// its host, and a family or a style chosen there reaches onFormatChanged as
+// the family with Bold and Italic. ULTRACANVAS_SCREENSHOT_DIR=<dir> writes the
 // window as PPM files at each step. Skips without a display (fails with
 // ULTRACANVAS_TEST_DISPLAY_REQUIRED).
+// Version: 1.1.0 - Escape through the application: one level per press, the release closing nothing;
+//                  the text bar's Font list
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
@@ -17,8 +24,10 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFontPicker.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasTextFormatBar.h"
 #include "UltraCanvasWindow.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -106,6 +115,17 @@ UCEvent Key(UCKeys key, const std::string& text = std::string()) {
     event.text = text;
     if (text.size() == 1) event.character = text[0];
     return event;
+}
+
+// A key as the platform layer hands it to the application, for `window`.
+void Dispatch(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>& window, UCEventType type,
+              UCKeys key) {
+    UCEvent event;
+    event.type = type;
+    event.virtualKey = key;
+    event.targetWindow = window;
+    event.nativeWindowHandle = window->GetNativeHandle();
+    app.DispatchEvent(event);
 }
 
 } // namespace
@@ -300,10 +320,116 @@ int main() {
     TEST("the default-font row chooses \"\"", chosen.back().family.empty() && picker->GetCurrentFamily().empty());
     picker->OpenList();
     TEST("a caption is no choice", !picker->ChooseRow(1) && picker->IsListOpen());
-    picker->OnEvent(Key(UCKeys::Escape));
-    TEST("Escape closes the list", !picker->IsListOpen());
+    // Escape as the application gets it: a press and a release each. The
+    // styles list goes first, the list stays - then the list.
+    picker->OpenStyles(picker->FindRow("Ubuntu", Section::AllFonts));
+    TEST("the styles list is open over the list", picker->IsStylesOpen() && picker->IsListOpen());
+    Dispatch(app, window, UCEventType::KeyDown, UCKeys::Escape);
+    Dispatch(app, window, UCEventType::KeyUp, UCKeys::Escape);
+    TEST("one Escape (press and release) closes the styles list alone", !picker->IsStylesOpen() && picker->IsListOpen());
+    Dispatch(app, window, UCEventType::KeyDown, UCKeys::Escape);
+    Dispatch(app, window, UCEventType::KeyUp, UCKeys::Escape);
+    TEST("the next Escape closes the list", !picker->IsListOpen());
     picker->SetMixed();
     TEST("a mixed selection: no value", picker->IsMixed() && picker->GetAccessibleValueText().empty());
+    window->RemoveChild(picker);
+
+    // ===== THE TEXT BAR'S FONT LIST =====
+    auto bar = CreateTextFormatBar("Bar", 44.0f);
+    bar->SetElementSize(Size2Df(kWidth, 44));
+    struct Report { TextFormatAttribute attribute; TextFormat format; };
+    std::vector<Report> reports;
+    int opening = 0;
+    std::vector<std::vector<std::string>> barRecent;
+    // As a host does: it applies the attribute to its text, then shows the
+    // text's format again - bold and italic as the text has them so far.
+    TextFormat text;
+    bar->onFormatChanged = [&](TextFormatAttribute attribute, const TextFormat& f) {
+        reports.push_back({attribute, f});
+        if (attribute == TextFormatAttribute::Font) text.fontFamily = f.fontFamily;
+        if (attribute == TextFormatAttribute::Bold) text.bold = f.bold;
+        if (attribute == TextFormatAttribute::Italic) text.italic = f.italic;
+        bar->SetFormat(text);
+    };
+    bar->onFontListOpening = [&]() {
+        ++opening;
+        bar->SetDocumentFonts({"Ubuntu Mono", "No Such Font 0815"});
+    };
+    bar->onRecentFontsChanged = [&barRecent](const std::vector<std::string>& list) { barRecent.push_back(list); };
+    bar->SetRecentFonts({"Ubuntu Condensed"});
+    text.fontFamily = "Sans";
+    bar->SetFormat(text);
+    window->AddChild(bar);
+    std::vector<std::shared_ptr<UltraCanvasUIElement>> barElements = {bar};
+    for (int i = 0; i < 3; ++i) DisplayTest::Frame(window, barElements);
+    UltraCanvasFontPicker* fontList = bar->GetFontPicker();
+    TEST("the bar's Font list is a font picker", fontList != nullptr);
+    if (fontList) {
+        TEST("its closed box keeps the dropdown's width in the bar",
+             fontList->GetWidth() >= 90 && fontList->GetWidth() <= 210 && fontList->GetHeight() <= 30);
+        TEST("the generic names come first, then the installed families",
+             bar->GetFontFamilies().size() > 3 && bar->GetFontFamilies()[0] == "Sans" &&
+             fontList->FindRow("Ubuntu", Section::AllFonts) >= 0);
+        TEST("Sans is no missing font in the box", fontList->IsCurrentInstalled() && fontList->GetCurrentFamily() == "Sans");
+        fontList->OpenList();
+        for (int i = 0; i < 3; ++i) {
+            if (fontList->GetListView()) fontList->GetListView()->RequestRedraw();
+            DisplayTest::Frame(window, barElements);
+        }
+        shoot("text-bar-font-list.ppm");
+        TEST("opening the list asks the host for the document's fonts", opening == 1 && fontList->IsListOpen());
+        const int missingRow = fontList->FindRow("No Such Font 0815", Section::Document);
+        TEST("... shown under \"In this document\", the missing one marked",
+             fontList->FindRow("Ubuntu Mono", Section::Document) >= 0 && fontList->GetRow(missingRow) &&
+             fontList->GetRow(missingRow)->kind == UltraCanvasFontPicker::RowKind::Missing);
+        TEST("... and the recent ones under \"Recent\"", fontList->FindRow("Ubuntu Condensed", Section::Recent) >= 0);
+        TEST("the bar has the keyboard while its list is open", bar->HasKeyboardFocus());
+
+        // A family: onFormatChanged(Font) with the family, bold and italic kept.
+        reports.clear();
+        TEST("choosing a family closes the list",
+             fontList->ChooseRow(fontList->FindRow("Ubuntu Mono", Section::AllFonts)) && !fontList->IsListOpen());
+        TEST("... and reports the family", reports.size() == 1 && reports[0].attribute == TextFormatAttribute::Font &&
+                                           reports[0].format.fontFamily == "Ubuntu Mono" && !reports[0].format.bold &&
+                                           !reports[0].format.italic && bar->GetFormat().fontFamily == "Ubuntu Mono");
+        TEST("the recent fonts follow, for the host to keep",
+             !barRecent.empty() && barRecent.back().size() == 2 && barRecent.back()[0] == "Ubuntu Mono" &&
+             bar->GetRecentFonts().front() == "Ubuntu Mono");
+
+        // A style: the family (its face's own name), then Bold and Italic as they changed.
+        auto chooseStyle = [&](const std::string& name) {
+            fontList->OpenList();
+            if (!fontList->OpenStyles(fontList->FindRow("Ubuntu", Section::AllFonts))) return false;
+            const auto& shown = fontList->GetStylesShown();
+            for (size_t i = 0; i < shown.size(); ++i) {
+                if (shown[i].name == name) {
+                    reports.clear();
+                    return fontList->ChooseStyle(static_cast<int>(i));
+                }
+            }
+            fontList->CloseList();
+            return false;
+        };
+        auto reported = [&reports](TextFormatAttribute attribute) {
+            return std::any_of(reports.begin(), reports.end(), [attribute](const Report& r) { return r.attribute == attribute; });
+        };
+        TEST("Ubuntu's styles list opens from the bar", chooseStyle("Medium Italic"));
+        TEST("Medium Italic: the family by its face's name, then Italic",
+             reports.size() == 2 && reports[0].attribute == TextFormatAttribute::Font &&
+             reports[0].format.fontFamily == "Ubuntu Light" && reports[1].attribute == TextFormatAttribute::Italic &&
+             reports[1].format.italic && !reports[1].format.bold);
+        TEST("Bold: the family, then Bold, and Italic off",
+             chooseStyle("Bold") && !reports.empty() && reports[0].attribute == TextFormatAttribute::Font &&
+             reports.back().format.bold && !reports.back().format.italic && reported(TextFormatAttribute::Bold) &&
+             reported(TextFormatAttribute::Italic));
+        if (!reports.empty()) std::cerr << "   (Bold reported as \"" << reports[0].format.fontFamily << "\")" << std::endl;
+        TEST("the B and I buttons show it", bar->GetFormat().bold && !bar->GetFormat().italic);
+        TEST("Bold Italic: the host's text ends bold and italic", chooseStyle("Bold Italic") && text.bold && text.italic &&
+                                                                  bar->GetFormat().bold && bar->GetFormat().italic);
+        TEST("Thin: kept as \"Ubuntu Thin\", not bold",
+             chooseStyle("Thin") && !reports.empty() && reports[0].format.fontFamily == "Ubuntu Thin" &&
+             !bar->GetFormat().bold);
+    }
 
     std::cerr << "========================================" << std::endl;
     std::cerr << testCount - failCount << " passed, " << failCount << " failed" << std::endl;

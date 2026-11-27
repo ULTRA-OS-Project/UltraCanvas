@@ -136,7 +136,10 @@ the title lane) and the words lie over the picture where the title shows, at
 the viewer's scale, in its font and colour; the title leaves the frame
 meanwhile. The **text bar** over the viewer - the framework's
 `UltraCanvasTextFormatBar`, the one ArtCreator and UltraPaint show - sets the
-font (every installed font, each shown in itself), size (pixels of the
+font (the framework's font list: the project's title fonts, the ones
+chosen last - kept in UltraVideo's settings - then every installed font,
+each shown in itself, with a family's Light, Condensed or Black styles
+beside it), size (pixels of the
 project's frame), bold, italic, underline, strikethrough, alignment, line
 spacing and letter spacing: of the selected words, else of the whole title;
 with no title being typed, of the selected title as one undo step. Escape,
