@@ -716,6 +716,7 @@ namespace UltraCanvas {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
             "QRCodeTabs", 0, 0, 0, 0);
+        DemoKit::StyleTabs(tabs);
         tabs->AddTab(Tr("Encode"), BuildEncodePage());
         tabs->AddTab(Tr("Decode"), BuildDecodePage());
         tabs->SetActiveTab(0);

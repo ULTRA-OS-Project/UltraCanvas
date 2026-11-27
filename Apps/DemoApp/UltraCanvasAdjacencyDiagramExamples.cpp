@@ -471,7 +471,7 @@ namespace UltraCanvas {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("AdjDiagTabs");
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
 
         tabs->AddTab(Tr("Library branch"),    MakeLibraryTab(statusLabel));
         tabs->AddTab(Tr("Matrix view"),       MakeLibraryMatrixTab(statusLabel));

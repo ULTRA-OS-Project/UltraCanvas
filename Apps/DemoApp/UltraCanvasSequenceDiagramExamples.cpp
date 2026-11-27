@@ -101,6 +101,7 @@ namespace UltraCanvas {
         auto centerCard = DemoKit::AddCard(contentContainer, "seqCenter", "", "",
                                            880 + 2 * DemoKit::kCardPadding + 2);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("seqTabs", 0, 0, 880, 600);
+        DemoKit::StyleTabs(tabbedContainer);
 
         struct SampleTab {
             const char* tabId;

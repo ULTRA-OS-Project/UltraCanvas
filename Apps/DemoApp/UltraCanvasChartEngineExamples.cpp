@@ -1223,7 +1223,7 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
 
     auto optionTabs = std::make_shared<UltraCanvasTabbedContainer>(
             "EngineOptionTabs", 0, 0, 0, kTabBarH);
-    optionTabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(optionTabs);
     optionTabs->SetTabHeight(kTabBarH);
     optionTabs->SetTabMinWidth(78);
     optionTabs->SetCloseMode(TabCloseMode::NoClose);

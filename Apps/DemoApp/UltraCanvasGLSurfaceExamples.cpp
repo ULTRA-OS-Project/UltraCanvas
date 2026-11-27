@@ -40,10 +40,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GLShowcaseTabs", 0, 0, 1004, 726);
     tabs->SetTabHeight(38);
     tabs->SetTabMinWidth(150);
-    // Plainly tabs: the Modern style's accent underline marks the open one,
+    // The pages' shared tab look (an accent underline marks the open tab),
     // and each title carries a thumbnail of what its tab shows, after it.
-    tabs->SetTabStyle(TabStyle::Modern);
-    tabs->SetActiveTabIndicatorThickness(3);
+    DemoKit::StyleTabs(tabs);
     tabs->SetIconSize(26);
     tabs->SetIconAfterTitle(true);
     tabs->AddTab(Tr("3D Models"), CreateGLModelsTab());

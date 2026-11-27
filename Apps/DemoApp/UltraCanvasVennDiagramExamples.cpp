@@ -144,6 +144,7 @@ namespace UltraCanvas {
         // ===== TABS =====
         auto tabsCard = DemoKit::AddCard(contentContainer, "vennTabsCard", "", "", 690);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("vennTabs", 0, 0, 660, 580);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         // As wide as the card, never narrower than the diagrams need.
         DemoKit::AddStretched(tabsCard, tabbedContainer);

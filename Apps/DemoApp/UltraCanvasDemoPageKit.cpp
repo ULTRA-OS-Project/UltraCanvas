@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemoPageKit.cpp
 // The shared demo page look (UltraCanvasDemoPageKit.h).
+// Version: 1.4.0 - StyleTabs
 // Version: 1.3.0 - Themed
 // Version: 1.2.0 - ColourOf, KitContainer, KitLabel: the kit follows a dark theme
 // Version: 1.1.0 - ApplyContentMinWidth
@@ -400,6 +401,12 @@ namespace DemoKit {
         auto card = AddCard(parent, id, title);
         Add(card, CreateBullets(id + "List", items));
         return card;
+    }
+
+    void StyleTabs(const std::shared_ptr<UltraCanvasTabbedContainer>& tabs) {
+        if (!tabs) return;
+        tabs->SetTabStyle(TabStyle::Modern);
+        tabs->SetActiveTabIndicatorThickness(3);
     }
 
 } // namespace DemoKit

@@ -261,7 +261,7 @@ UltraCanvasDemoApplication::CreateNetworkingExamples() {
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("UltraNetTabs", 0, 0, 0, 0);
     tabs->SetTabPosition(TabPosition::Top);
-    tabs->SetTabStyle(TabStyle::Modern);
+    DemoKit::StyleTabs(tabs);
     tabs->SetCloseMode(TabCloseMode::NoClose);
     tabs->SetTabHeight(30);
 

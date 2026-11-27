@@ -172,6 +172,7 @@ namespace UltraCanvas {
         auto centerCard = DemoKit::AddCard(contentContainer, "fishboneCenter", "", "",
                                            660 + 2 * DemoKit::kCardPadding + 2);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("fishboneTabs", 0, 0, 660, 580);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(centerCard, tabbedContainer);
 

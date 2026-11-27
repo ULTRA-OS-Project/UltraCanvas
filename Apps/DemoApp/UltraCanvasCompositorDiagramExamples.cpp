@@ -1494,7 +1494,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
 
     // ---- TabbedContainer (grows to fill the middle) ----
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("compTabs", 0, 0, 0, 0);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
     // The size each tab and diagram is built with; the tabbed container

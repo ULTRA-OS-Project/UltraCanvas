@@ -932,7 +932,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBubbleCh
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("BubbleChartTabs", 0, 0, 0, 0);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
 
     tabs->AddTab(Tr("Bubble Matrix (Mrs. President)"), BuildMatrixTab());

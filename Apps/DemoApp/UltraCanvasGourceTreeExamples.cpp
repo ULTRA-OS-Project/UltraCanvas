@@ -334,6 +334,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
     // ===== TABBED CONTAINER =====
     auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("GourceTabs");
+    DemoKit::StyleTabs(tabbedContainer);
     tabbedContainer->SetTabPosition(TabPosition::Top);
     DemoKit::Add(card, tabbedContainer, 1);
 
