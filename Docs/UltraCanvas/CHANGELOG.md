@@ -1,3 +1,25 @@
+#### 2026-11-27 *0.9.610*
+- **Windows: one application as an MSIX package of its own, for a product of
+  its own in the Microsoft Store** - `./package-win-msix.sh --app Texter`
+  builds UltraTexter's (`dist-msix/UltraTexter-Windows-<version>-<arch>[-test|-store].msix`).
+  - The package holds the program and what it loads, cut out of `dist/` by
+    `scripts/make_msix_layout.py --app`: the DLLs the import tables reach from
+    the program, the plug-ins and the run-time modules in `lib/`
+    (`scripts/pe_imports.py`), the plug-in families but UltraIM, `lib/`,
+    `etc/`, the media the framework reads and `cacert.pem` - not the other
+    programs, their DLLs, or the demo's samples.
+  - Its version is the application's own, line 1 of its changelog; a
+    two-part version becomes four parts (1.94 -> 1.94.0.0). `MSIX_VERSION`
+    sets another, for a Store resubmission when only the framework changed.
+    `MSIX_DISPLAY_NAME` and `MSIX_DESCRIPTION` set the package's name and
+    description (the suite's too).
+  - CI builds UltraTexter's test package on every packaged Windows run, and
+    its Store package on a release build once the Actions variable
+    `MSIX_TEXTER_IDENTITY_NAME` holds the product's identity name from
+    Partner Center.
+  - The suite package is unchanged. `Docs/UltraCanvas/UltraCanvasWindowsMSIX.md`,
+    *One application on its own* and *UltraTexter as its own product*.
+
 #### 2026-11-26 *0.9.609*
 - **Render contexts made on several threads at once no longer corrupt the heap.** Every Cairo render context adds itself to one list of live contexts when it is made and takes itself off when it is destroyed (`RenderContextCairo::g_Instances`), and the list had no lock. A thumbnail worker making an offscreen context while the UI thread or another worker made or destroyed one grew and shrank the vector at once: an element written past its end, a buffer freed twice. It showed as an abort inside `malloc` - "unaligned tcache chunk detected", "double free or corruption" - somewhere later, which is how `TextRenderThreadsTest` failed on CI now and then. The list is locked now, also while a change of the text font options walks it. The test makes and destroys contexts on eight threads as well; unlocked, that part aborted in about every second run of six seconds.
 
