@@ -10,7 +10,9 @@ gives the application. The PE images are test_pe_imports.py's. Run with
     python3 -m unittest discover -s scripts/tests -v
 """
 import importlib.util
+import io
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -155,6 +157,38 @@ class Manifest(unittest.TestCase):
             # Its file types come along: Explorer's "Open with".
             self.assertIn(".md", [t.text for t in applications[0].iter(
                 "{http://schemas.microsoft.com/appx/manifest/uap/windows10}FileType")])
+
+    def written(self, apps):
+        tree = layout.build_manifest(
+            apps, "ULTRAOSDevelopment.Test", "CN=Test", "Test", "Test", "Test",
+            "1.0.0.0", "x64", "10.0.18362.0", "10.0.26100.0")
+        out = io.BytesIO()
+        tree.write(out, encoding="utf-8", xml_declaration=True)
+        return out.getvalue().decode("utf-8")
+
+    def check_ignorable_prefixes_are_declared(self, apps, expected):
+        text = self.written(apps)
+        ignorable = re.search(r'IgnorableNamespaces="([^"]*)"', text).group(1).split()
+        # makeappx refuses a prefix named here that the manifest does not
+        # declare (0x80080204), and ElementTree declares only the used ones.
+        for prefix in ignorable:
+            self.assertIn(f"xmlns:{prefix}=", text)
+        self.assertEqual(sorted(ignorable), sorted(expected))
+
+    def test_ignorable_namespaces_without_a_toast_activator(self):
+        texter = layout.App("Texter", "UltraTexter", "Texter.png", "An editor",
+                            [layout.TEXT_TYPES])
+        self.check_ignorable_prefixes_are_declared([texter], ["uap", "uap3", "rescap"])
+
+    def test_ignorable_namespaces_with_a_toast_activator(self):
+        mail = layout.App("UltraMail", "UltraMail", "UltraMail.png", "Mail", [],
+                          "org.ultraos.ultramail")
+        self.check_ignorable_prefixes_are_declared(
+            [mail], ["uap", "com", "desktop", "rescap"])
+
+    def test_ignorable_namespaces_of_a_plain_application(self):
+        plain = layout.App("UltraFiler", "UltraFiler", "UltraFiler.png", "Files")
+        self.check_ignorable_prefixes_are_declared([plain], ["uap", "rescap"])
 
 
 if __name__ == "__main__":

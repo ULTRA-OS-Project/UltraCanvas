@@ -511,7 +511,7 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
         prefix, _, local = tag.rpartition(":")
         return f"{{{ns[prefix]}}}{local}"
 
-    package = ET.Element(q("Package"), {"IgnorableNamespaces": "uap uap3 com desktop rescap"})
+    package = ET.Element(q("Package"))
     ET.SubElement(package, q("Identity"), {
         "Name": identity_name,
         "Publisher": publisher,
@@ -592,6 +592,15 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
         # only on request, so it is off unless asked for (sideloaded and
         # enterprise packages).
         ET.SubElement(capabilities, q("rescap:Capability"), {"Name": "allowElevation"})
+
+    # IgnorableNamespaces may name only prefixes the manifest declares, and
+    # ElementTree declares only those an element uses: the package of an
+    # application without a toast activator (Texter on its own) has no com:
+    # or desktop: element, and makeappx refuses it for naming them ("The
+    # package contains an XML prefix that is not defined", 0x80080204).
+    used = {element.tag[1:].partition("}")[0] for element in package.iter()}
+    package.set("IgnorableNamespaces",
+                " ".join(prefix for prefix, uri in ns.items() if prefix and uri in used))
 
     ET.indent(package, space="  ")
     return ET.ElementTree(package)
