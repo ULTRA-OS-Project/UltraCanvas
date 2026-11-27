@@ -105,7 +105,7 @@ The command tabs:
   Settings window, the login name until one is given; a double-click on a
   comment in the pane edits it.
 
-  **The navigator** is a side panel at the left of the document, shown and
+  **The navigator** is a side panel at the right of the document, shown and
   hidden with the view group's navigator tool or **F5** (LibreOffice Writer's key; Word's
   Ctrl+F6 moves between windows, so it was not taken). Drag the bar between
   it and the page to make it wider; the choice to show it and its width are

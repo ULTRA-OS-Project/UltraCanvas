@@ -7,7 +7,7 @@
 // (UltraCanvasRichTextEditDialogs.h), and PDF export and printing of the pages.
 // At the toolbar's right end the view group: the navigator, pages on or off,
 // the three fits (page width, whole page, a share of the width with its list)
-// and the zoom. At its left, in a resizable side panel, the navigator
+// and the zoom. At the document's right, in a resizable side panel, the navigator
 // (UltraCanvasDocumentNavigator.h): its tool or F5 shows and hides it, and
 // the window's settings remember the choice and its width, the fit last
 // chosen and the share. A new document starts with the Settings window's
@@ -19,6 +19,7 @@
 // Version: 0.5.0 - Home fits beside the view group at 1280 px: narrower style, font and size lists,
 //                  the lists and the alignment each one slot (a tool group), Paragraph and Styles as
 //                  icons; Insert's table, picture and link and Review's comment tools as icons
+// Version: 0.5.0 - the navigator at the document's right
 // Version: 0.4.0 - the view group (navigator, pages, page width, whole page, width share with its list,
 //                  zoom out, the zoom level, zoom in) replaces the View tab; the fit and the share are
 //                  remembered; a new document's font, size and page from the settings; the author name
@@ -79,6 +80,7 @@ std::string SizeText(float size) {
 const char* kNavigatorWidthKey = "documentNavigatorWidth";
 constexpr int kNavigatorWidth = 260;
 constexpr int kNavigatorMinWidth = 160;
+constexpr size_t kNavigatorPane = 1;   // the split's panes: the document, then the navigator
 
 // A pane of the split: a column its one element fills.
 void FillPane(const std::shared_ptr<UltraCanvasContainer>& pane, const std::shared_ptr<UltraCanvasUIElement>& element) {
@@ -123,7 +125,7 @@ public:
         edit->onCommentActivated = [this, edit](int index) {
             ShowCommentDialog(*edit, index, [this](bool) { Sync(); });
         };
-        // The document fills a split whose left pane, when shown, is the
+        // The document fills a split whose right pane, when shown, is the
         // navigator over the same element.
         split_ = std::make_shared<UltraCanvasSplitPane>("office-document-split", SplitOrientation::Horizontal);
         split_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -285,7 +287,7 @@ private:
     std::shared_ptr<UltraCanvasRichTextEdit> editor_;
     std::shared_ptr<UltraCanvasSplitPane> split_;
     std::shared_ptr<UltraCanvasDocumentNavigator> navigator_;
-    std::shared_ptr<UltraCanvasContainer> navigatorPane_;     // the split's left pane while it is shown
+    std::shared_ptr<UltraCanvasContainer> navigatorPane_;     // the split's right pane while it is shown
     UltraCanvasAppSettings* settings_ = nullptr;              // the window's
     bool navigatorShown_ = false;
     UltraCanvasButton* navigatorButton_ = nullptr;
@@ -471,10 +473,10 @@ private:
             navigatorShown_ = show;
             if (show) {
                 const int width = settings_ ? settings_->GetInt(kNavigatorWidthKey, kNavigatorWidth) : kNavigatorWidth;
-                navigatorPane_ = split_->InsertPane(0, 0.25);
+                navigatorPane_ = split_->AddPane(0.25);   // at the right of the document
                 FillPane(navigatorPane_, navigator_);
-                split_->SetPaneMinSize(0, kNavigatorMinWidth);
-                split_->SetPaneFixedSize(0, std::max(kNavigatorMinWidth, width));
+                split_->SetPaneMinSize(kNavigatorPane, kNavigatorMinWidth);
+                split_->SetPaneFixedSize(kNavigatorPane, std::max(kNavigatorMinWidth, width));
                 navigator_->Refresh();
             } else if (navigatorPane_) {
                 navigatorPane_->RemoveChild(navigator_);
@@ -498,7 +500,7 @@ private:
 
     void RememberNavigatorWidth() {
         if (!settings_ || !navigatorShown_) return;
-        const int width = split_->GetPaneFixedSize(0);
+        const int width = split_->GetPaneFixedSize(kNavigatorPane);
         if (width <= 0) return;
         settings_->Set(kNavigatorWidthKey, width);
         settings_->Save();
