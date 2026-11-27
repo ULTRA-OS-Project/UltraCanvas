@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.26.3 - Escape closes one popup per press (UltraCanvasWindowBase::HandlePopupEscapeKey):
+//                  the release no longer closes the popup under it (a submenu's parent menu)
 // Version: 1.26.2 - GetInstalledFontFamilies moved to UltraCanvasInstalledFonts.cpp, on the catalogue's
 //                  enumeration (the names alone; the hidden families left out)
 // Version: 1.26.1 - the destructor waits for the ImageMagick warm-up (FinishImageMagickWarmUp):
@@ -2300,6 +2302,10 @@ namespace UltraCanvas {
                 }
             }
 
+            // Escape closes one popup per press; its release closes nothing
+            // (HandlePopupEscapeKey). Before any element sees the key.
+            if (targetWindow->HandlePopupEscapeKey(event)) goto finish;
+
             // close popup element handling first
             if (popupElement) {
                 // THERE element->Contains() WHICH IS NOT THE SAME AS element->GetBounds().Contains(),
@@ -2310,12 +2316,6 @@ namespace UltraCanvas {
                     && isPointerOutsidePopupElement
                     && !popupElement->element->ContainsInWindow(event.pointerWindow)) {
                     targetWindow->ClosePopup(*popupElement->element, ClosePopupReason::ClickOutside);
-                    goto finish;
-                }
-                if (popupElement->settings.closeByEscapeKey
-                    && event.IsKeyboardEvent()
-                    && event.virtualKey == UCKeys::Escape) {
-                    targetWindow->ClosePopup(*popupElement->element, ClosePopupReason::EscapeKey);
                     goto finish;
                 }
             }

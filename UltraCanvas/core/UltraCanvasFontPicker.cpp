@@ -3,8 +3,11 @@
 // (an UltraCanvasListView with a delegate that draws each row), the styles
 // list in a second popup beside it, and the pictures of the names kept and
 // prepared in idle slices.
+// Version: 1.0.1 - Escape left to the window (closeByEscapeKey), which now closes one popup per
+//                  press: the list's own Escape, the workaround for the release, is gone;
+//                  SetFamilies makes the names' pictures again
 // Version: 1.0.0
-// Last Modified: 2026-11-26
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFontPicker.h"
@@ -317,6 +320,7 @@ void UltraCanvasFontPicker::SetFamilies(std::shared_ptr<const std::vector<Instal
     families = std::move(list);
     rowsDirty = true;
     previewsDirty = true;
+    nameLayouts.clear();   // a host hands new ones when the fonts changed
 }
 
 const std::vector<InstalledFontFamily>& UltraCanvasFontPicker::GetFamilies() const {
@@ -569,10 +573,9 @@ void UltraCanvasFontPicker::OpenList() {
     PlaceList();
     PopupElementSettings settings;
     settings.popupOwner = shared_from_this();
-    // Escape is the list's own (HandleListKey, on the key going down): the
-    // window closes the popup on top at an Escape's release too, which
-    // took the list away with the styles list one Escape closed.
-    settings.closeByEscapeKey = false;
+    // Escape: the window closes the popup on top, one per press - the
+    // styles list first, then this one (onPopupClosed keeps up).
+    settings.closeByEscapeKey = true;
     settings.closeByClickOutside = true;
     listOpen = true;
     window->OpenPopup(listPosition, *listView, settings);
@@ -702,7 +705,7 @@ bool UltraCanvasFontPicker::OpenStyles(int row) {
 
     PopupElementSettings settings;
     settings.popupOwner = listView;   // the pointer over the list stays the list's
-    settings.closeByEscapeKey = false;   // HandleStylesKey: Escape closes this list alone
+    settings.closeByEscapeKey = true;    // Escape closes this list alone, the families' stays
     settings.closeByClickOutside = true;
     stylesOpen = true;
     window->OpenPopup(Point2Di(static_cast<int>(x), static_cast<int>(y)), *stylesView, settings);
@@ -819,7 +822,6 @@ bool UltraCanvasFontPicker::HandleListKey(const UCEvent& event) {
         case UCKeys::Home:     MoveHighlight(-static_cast<int>(rows.size())); return true;
         case UCKeys::End:      MoveHighlight(static_cast<int>(rows.size())); return true;
         case UCKeys::Return:   ChooseRow(GetHighlightedRow()); return true;
-        case UCKeys::Escape:   CloseList(); return true;
         case UCKeys::Right:
             OpenStyles(GetHighlightedRow());
             return true;
@@ -843,7 +845,6 @@ bool UltraCanvasFontPicker::HandleStylesKey(const UCEvent& event) {
     if (event.type != UCEventType::KeyDown || !stylesOpen || !stylesView) return false;
     switch (event.virtualKey) {
         case UCKeys::Left:
-        case UCKeys::Escape:
             CloseStyles();
             return true;
         case UCKeys::Return: {

@@ -1,5 +1,6 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.13.0 - HandlePopupEscapeKey: one popup per Escape press; the release closes nothing
 // Version: 1.12.0 - a popup's own window is kept above its window only (its parent), not above every
 //                  window: another program's window put in front covers the menu too; above every
 //                  window still for a desktop's, a notification's, an overlay's or an always-on-top one
@@ -1674,6 +1675,28 @@ namespace UltraCanvas {
             if (pe.element == &elem) return pe.opacity;
         }
         return 1.0f;
+    }
+
+    bool UltraCanvasWindowBase::HandlePopupEscapeKey(const UCEvent& event) {
+        if (event.virtualKey != UCKeys::Escape || !event.IsKeyboardEvent()) return false;
+        // The release of a press that closed a popup: the press was the
+        // popup's, and so is its release. It used to count as a second
+        // Escape and close the popup under it - a submenu's menu, the list a
+        // styles list stood beside - or, with none left, the window.
+        if (event.type == UCEventType::KeyUp && escapePressClosedPopup) {
+            escapePressClosedPopup = false;
+            return true;
+        }
+        if (event.type == UCEventType::KeyDown) escapePressClosedPopup = false;
+        PopupElement* top = GetActivePopupElement();
+        if (!top || !top->element || !top->settings.closeByEscapeKey) return false;
+        if (event.type == UCEventType::KeyDown) {
+            ClosePopup(*top->element, ClosePopupReason::EscapeKey);
+            escapePressClosedPopup = true;
+        }
+        // A release whose press went elsewhere, or a text event carrying
+        // the key, closes nothing either: the popup's key all the same.
+        return true;
     }
 
     PopupElement* UltraCanvasWindowBase::GetActivePopupElement() {

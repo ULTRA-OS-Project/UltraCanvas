@@ -8,6 +8,7 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.11.0 - DocumentFonts: the project's title fonts for the text bar's font list
 // Version: 0.7.0 - the theme under the Own policy: the palette from the project's look or the desktop, the host's fonts
 // Version: 0.10.0 - ColourTitle: the Clip panel's colour for the selected words of a title being typed
 // Version: 0.9.0 - titles typed on the frame with the text bar (BeginTitleEdit ... CommitTitleEdit)
@@ -193,6 +194,9 @@ private:
     void BuildTextBar();
     void ShowTextBar();          // while a title is selected or typed
     void SyncTextBar();
+    // The fonts the project's titles use - the one being typed, every
+    // title's and its words' own - for the font list's "In this document".
+    std::vector<std::string> DocumentFonts() const;
     int TitleAtViewerPoint(const UltraCanvas::Point2Df& surfacePoint) const;
     void BeginTitleEdit(int titleIndex);
     void PlaceTitleEditor();

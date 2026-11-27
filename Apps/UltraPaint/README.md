@@ -134,7 +134,7 @@ in `UltraPaintWindow.cpp`; the fold-out is the framework's
 | Polyline | Y | Click to add corners; double-click or Enter ends it, a click on the first corner closes it (filled in the background colour with *Fill a closed shape*). Backspace takes the last corner back, Escape cancels, Shift constrains each segment to 45° |
 | Arrow | V | Drag from the tail to the tip: a filled head at the tip, or at both ends. *Head size* in pixels, never less than three times the line width |
 | Curve | J | Drag a straight line, then drag or click twice to bend it - the first bend pulls the whole curve, the second its far half. Enter keeps it as it is, Escape cancels |
-| Text | T | Type on the image: a click starts a text, a drag a box its lines wrap in, a click on a text edits it. The **text bar** under the toolbar (the framework's `UltraCanvasTextFormatBar`, as in ArtCreator) sets the font - every installed font, each shown in itself - size, bold, italic, underline, strikethrough, alignment, line spacing and letter spacing; the colour is the foreground colour. Kept as a **text layer** until merged - see below |
+| Text | T | Type on the image: a click starts a text, a drag a box its lines wrap in, a click on a text edits it. The **text bar** under the toolbar (the framework's `UltraCanvasTextFormatBar`, as in ArtCreator) sets the font - the framework's font list: the fonts the image's texts use, the ones chosen last (kept in UltraPaint's settings), then every installed font, each shown in itself with its format's icon, and beside a family with Light, Condensed or Black styles those styles (one chosen is the family with Bold and Italic) - size, bold, italic, underline, strikethrough, alignment, line spacing and letter spacing; the colour is the foreground colour. Kept as a **text layer** until merged - see below |
 | Zoom | Z | Click in, Alt/right-click out |
 | Pan | H | Space+drag works with every tool |
 
@@ -177,7 +177,7 @@ exactly what the layer gets.
 | Do | How |
 |---|---|
 | Start a text | Click: the lines wrap at the image's right edge. Drag: a box, and the lines wrap at its width |
-| Format it | The tool options: *Font* (every font installed on the system - type the first letters in the open list to jump to one), *Size* in pixels, *Bold*, *Italic*, *Underline*, *Align* (left, centre, right); the colour is the foreground colour. With text selected they change the selection, otherwise what is typed next - so one text can mix fonts, sizes and colours. Ctrl+B / Ctrl+I / Ctrl+U work while typing |
+| Format it | The tool options: *Font* (the image's fonts, the recent ones and every font installed on the system - type the first letters in the open list to jump to one), *Size* in pixels, *Bold*, *Italic*, *Underline*, *Align* (left, centre, right); the colour is the foreground colour. With text selected they change the selection, otherwise what is typed next - so one text can mix fonts, sizes and colours. Ctrl+B / Ctrl+I / Ctrl+U work while typing |
 | Finish it | Escape, Ctrl+Enter, a click outside the text, another tool or any command. The text becomes a text layer, one undo step ("Text"); nothing typed adds nothing |
 | Edit it later | With the Text tool, click in its box (the Text tool shows every text's box dashed), or *Layer > Edit Text*. Emptying it removes the layer |
 | Change it whole | With the Text tool and a text layer active (not typing), the text bar and the foreground colour apply to all of it |

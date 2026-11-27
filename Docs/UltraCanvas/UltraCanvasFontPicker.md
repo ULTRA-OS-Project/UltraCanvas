@@ -94,7 +94,9 @@ and the rich text editor's font notice does not report it as missing.
 With the list open: **Up**, **Down**, **Page Up**, **Page Down**, **Home**,
 **End** move over the rows (the captions are stepped over); **Return**
 chooses; **Right** opens the highlighted family's styles and **Left** closes
-them; **Escape** closes the styles, then the list. Letters typed go to the
+them; **Escape** closes the styles, then the list - one per press, as the
+window closes any popup on Escape (`PopupElementSettings::closeByEscapeKey`),
+the key's release closing nothing. Letters typed go to the
 first family of *All fonts* whose name starts with them - typed within a
 second of each other they build one name ("ubuntu m"), the same letter again
 steps on, **Backspace** takes the last one back. With `SetAcceptsFocus(false)`
@@ -186,8 +188,12 @@ Latin-1, else its first characters.
 
 UltraOffice's document *Home* font list, its presentation *Text* tab's font
 list, the Settings window's font for new documents, and the font of the
-framework's Styles dialog (`ShowStylesDialog`, `UltraCanvasRichTextEditDialogs.h`).
+framework's Styles dialog (`ShowStylesDialog`, `UltraCanvasRichTextEditDialogs.h`),
+and the Font list of the text bar (`UltraCanvasTextFormatBar`) that UltraPaint,
+ArtCreator and UltraVideo show with their text tool.
 
 ## Version history
 
+- 1.0.1 - Escape is the window's (one popup per press), not the list's own;
+  `SetFamilies` makes the names' pictures again.
 - 1.0.0 - the font list, and the installed fonts' catalogue under it.

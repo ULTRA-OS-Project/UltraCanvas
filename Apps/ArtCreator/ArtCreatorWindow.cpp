@@ -3,6 +3,9 @@
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command; the drawings' tabs (one canvas, selection and history
 // each).
+// Version: 1.14.0 - the text bar's font list (the framework's font picker): the drawing's fonts
+//                  under "In this document", the recent fonts kept in the settings
+//                  (text.recentfonts)
 // Version: 1.13.0 - several drawings per window, in tabs over the canvas (BuildTabs,
 //                  AddDrawingTab, SwitchToTab): New, Open, a drop, the command line and a
 //                  second start add a tab, Open takes an untouched new drawing's place and
@@ -3024,9 +3027,37 @@ void ArtCreatorWindow::BuildTextBar() {
     textBar->onControlDone = [this]() {
         if (IsEditingText() && textEditor && textEditorHost && textEditorHost->IsVisible()) textEditor->SetFocus(true);
     };
+    // The font list: the drawing's fonts on top, then the ones chosen last
+    // (kept in the settings), then every installed font.
+    textBar->onFontListOpening = [this]() { textBar->SetDocumentFonts(DocumentFonts()); };
+    textBar->SetRecentFonts(settings.recentFonts);
+    textBar->onRecentFontsChanged = [this](const std::vector<std::string>& fonts) {
+        settings.Update([&fonts](ArtCreatorSettings& s) { s.recentFonts = fonts; });
+    };
     textBar->SetVisible(false);
     window->AddChild(textBar);
     SyncTextBar();
+}
+
+std::vector<std::string> ArtCreatorWindow::DocumentFonts() const {
+    std::vector<std::string> fonts;
+    if (textSession && textSession->model && textEditor)
+        AddTextFormatFonts(fonts, textSession->model->BaseStyle.FontFamily, textEditor->GetDocument().get());
+    if (!document) return fonts;
+    std::function<void(const std::shared_ptr<VectorElement>&)> visit = [&](const std::shared_ptr<VectorElement>& e) {
+        if (!e) return;
+        if (const auto* text = dynamic_cast<const VectorText*>(e.get())) {
+            AddTextFormatFonts(fonts, text->BaseStyle.FontFamily, nullptr);
+            for (const auto& span : text->Spans) AddTextFormatFonts(fonts, span.Style.FontFamily, nullptr);
+        } else if (const auto* onPath = dynamic_cast<const VectorTextPath*>(e.get())) {
+            for (const auto& span : onPath->Data.Spans) AddTextFormatFonts(fonts, span.Style.FontFamily, nullptr);
+        } else if (const auto* group = dynamic_cast<const VectorGroup*>(e.get())) {
+            for (const auto& child : group->Children) visit(child);
+        }
+    };
+    for (const auto& layer : document->Layers)
+        if (layer) for (const auto& child : layer->Children) visit(child);
+    return fonts;
 }
 
 void ArtCreatorWindow::ShowTextBar(bool show) {
