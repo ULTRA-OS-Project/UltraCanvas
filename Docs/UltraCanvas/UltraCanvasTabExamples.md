@@ -278,6 +278,9 @@ void SetCloseButtonHoverColor(const Color& c);
 void SetCloseButtonStrokeWidth(float width);         // Default: 1
 void SetActiveTabIndicatorColor(const Color& c);     // TabStyle::Modern; default Color(33, 150, 243)
 void SetActiveTabIndicatorThickness(int px);         // TabStyle::Modern; default 2
+void SetIconSize(int size);                          // Default: 16
+void SetIconAfterTitle(bool after);                  // Default: false - true puts the icon at the
+                                                     // tab's right end, after the title
 ```
 
 #### Pill Style (TabStyle::Pill only)
