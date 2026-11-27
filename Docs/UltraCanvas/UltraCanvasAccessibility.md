@@ -52,7 +52,9 @@ beyond the tooltip.
 | `UltraCanvasSlider` | `Slider` | `SetAccessibleName` | range, settable (no single value in range mode) |
 | `UltraCanvasSpinner` | `SpinButton` | `SetAccessibleName` | range, settable; value text = what it shows |
 | `UltraCanvasBusyIndicator` | `ProgressBar` | `SetAccessibleName` | indeterminate (no range) |
-| `UltraCanvasGroupBox` | `Group` | title | |
+| `UltraCanvasGroupBox` | `Group` | title | a collapsible box: action *open* / *close*; a focusable header (`SetHeaderFocusable`) takes the focus |
+| `UltraCanvasToolPanelStack` | `Toolbar` | `SetAccessibleName` | its panels are group boxes named by their titles; the rail's icons are buttons named by them too |
+| `UltraCanvasToolButtonRow` | `Toolbar` | `SetAccessibleName` | each tool a button named by its name ("Bold"), a toggle with its state |
 | `UltraCanvasTabbedContainer` | `TabList` | open tab's title | |
 | `UltraCanvasToolbar` | `Toolbar` | `SetAccessibleName` | its buttons are its children |
 | `UltraCanvasListView` / `UltraCanvasTreeView` | `List` / `Tree` | `SetAccessibleName` | rows and nodes are drawn, not elements: not yet reachable one by one |

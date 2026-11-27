@@ -1925,6 +1925,25 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FontPickerElementTest")
 endif()
 
+# ===== TOOL PANEL STACK ELEMENT TEST =====
+# UltraCanvasToolPanelStack on a window, driven through the application: open
+# and closed panels, the order (SetOrder, a dragged header, Ctrl+Up/Down),
+# the saved state, context panels that do not move the panel under the
+# pointer, the rail and its flyout (Escape one level), the keyboard and the
+# tool rows' setters. ULTRACANVAS_SCREENSHOT_DIR=<dir> writes PPM screenshots.
+# Skips itself without a DISPLAY; CI runs it under Xvfb (the framework window
+# tests).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolPanelStackElementTest...")
+    add_executable(ToolPanelStackElementTest ${CMAKE_CURRENT_SOURCE_DIR}/ToolPanelStackElementTest.cpp)
+    target_include_directories(ToolPanelStackElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(ToolPanelStackElementTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolPanelStackElementTest PRIVATE UltraCanvas)
+    set_target_properties(ToolPanelStackElementTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME ToolPanelStackElementTest COMMAND ToolPanelStackElementTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolPanelStackElementTest")
+endif()
+
 # ===== TEXT METRICS SCREENSHOT TEST =====
 # Cap-height centring, level indicators, crisp 1px borders and a caret that
 # spans the text's line box, read back from the composited pixels. It is also
