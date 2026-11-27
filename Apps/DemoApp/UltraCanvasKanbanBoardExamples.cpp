@@ -325,7 +325,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateKanbanBo
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("KanbanTabs", 0, 0,
                                                              INNER_W, INNER_H + 40);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(30);
     tabs->SetTabCornerRadius(8.0f);
     tabs->SetTabMaxWidth(180);

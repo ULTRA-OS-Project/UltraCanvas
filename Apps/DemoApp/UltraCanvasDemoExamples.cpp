@@ -246,7 +246,7 @@ namespace UltraCanvas {
         // Vertical tab bar on the left: one tab per supported file type.
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("TextDocumentTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Left);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(26);
         // Many file types — the tab column scrolls when it does not fit the

@@ -454,7 +454,7 @@ namespace UltraCanvas {
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
                 "ArcTabs");
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetTabMaxWidth(300);
 
         tabs->AddTab(Tr("Character co-occurrence"),   MakeFriendsTab(statusLabel));

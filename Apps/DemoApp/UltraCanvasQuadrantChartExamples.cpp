@@ -114,6 +114,7 @@ namespace UltraCanvas {
         // ===== TABS =====
         auto tabsCard = DemoKit::AddCard(contentContainer, "quadrantTabsCard", "", "", tabsCardWidth);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("quadrantTabs", 0, 0, 660, 580);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(tabsCard, tabbedContainer);
 

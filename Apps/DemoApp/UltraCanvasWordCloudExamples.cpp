@@ -200,6 +200,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordClou
     // ===== TABS =====
     auto tabsCard = DemoKit::AddCard(contentContainer, "wcTabsCard", "", "", 690);
     auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("wcTabs", 0, 0, 660, 580);
+    DemoKit::StyleTabs(tabbedContainer);
     tabbedContainer->SetTabPosition(TabPosition::Top);
     // As wide as the card, never narrower than the clouds need.
     DemoKit::AddStretched(tabsCard, tabbedContainer);

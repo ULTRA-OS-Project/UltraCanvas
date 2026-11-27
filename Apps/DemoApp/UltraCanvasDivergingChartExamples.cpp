@@ -27,7 +27,7 @@ namespace UltraCanvas {
         // Create tabbed container for the three chart types
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("divergingChartTabs", 0, 0, 700, 500);
         tabbedContainer->SetTabHeight(35);
-        tabbedContainer->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabbedContainer);
 
         // Helper function to generate sample data
         auto generateSampleData = []() -> std::vector<std::pair<std::string, std::map<std::string, float>>> {

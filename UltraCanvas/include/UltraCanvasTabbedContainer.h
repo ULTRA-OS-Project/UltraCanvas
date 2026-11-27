@@ -1,5 +1,6 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.12.0 - SetIconAfterTitle: the icon at the tab's right end, after its title
 // Version: 2.11.0 - ApplyTheme sets the titles' size (the caption size); the constructor tail
 // Version: 2.10.0 - ApplyTheme
 // Version: 2.9.0 - the Modern style's indicator line has a colour and a thickness of its own
@@ -155,6 +156,9 @@ namespace UltraCanvas {
         int fontSize = 11;
         int iconSize = 16;
         int iconPadding = 4;
+        // false: the icon leads the title (the default); true: it sits at
+        // the tab's right end, after the title and before a badge or the X.
+        bool iconAfterTitle = false;
         int closeButtonSize = 16;
         int closeButtonMargin = 4;
         bool showTabSeparators = false;
@@ -348,6 +352,8 @@ namespace UltraCanvas {
         int GetContentLeftPadding() const { return contentLeftPadding; }
         void SetIconSize(int size) { iconSize = size; InvalidateTabbar(); }
         int GetIconSize() const { return iconSize; }
+        void SetIconAfterTitle(bool after) { iconAfterTitle = after; InvalidateTabbar(); }
+        bool IsIconAfterTitle() const { return iconAfterTitle; }
         bool CalcBadgeDimensions(TabData* tabData);
 
         void SetNewTabButtonWidth(int w) { newTabButtonWidth = w; InvalidateTabbar(); }

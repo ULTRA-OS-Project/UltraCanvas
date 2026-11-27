@@ -737,7 +737,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePyramidC
     DemoKit::Add(page, card, 1);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PyramidChartTabs", 0, 0, 0, 0);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
 
     tabs->AddTab(Tr("3D Ribbon Pyramid"), Build3DRibbonTab());

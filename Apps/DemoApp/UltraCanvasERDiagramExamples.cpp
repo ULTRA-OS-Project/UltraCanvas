@@ -635,7 +635,7 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
             "erTabs", 0, 0, TABS_W, TABS_H);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
 
     const int INNER_W = TABS_W - 8;
     const int INNER_H = TABS_H - 40;

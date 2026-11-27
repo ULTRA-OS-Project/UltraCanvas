@@ -469,7 +469,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBrazilSc
     // Tabbed container — Classic on left, Beeswarm on right
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("BrazilTabs", 0, 0, 0, 0);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
     
     tabs->AddTab(Tr("Classic Jitter"),   BuildBrazilClassicJitterTab(ds));

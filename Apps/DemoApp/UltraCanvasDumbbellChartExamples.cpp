@@ -510,7 +510,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDumbbell
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
         "DumbbellChartTabs", 0, 0, kTabContentW + 10, kTabContentH + 40);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
 
     tabs->AddTab(Tr("Social Media by Age & Gender"), BuildSocialMediaTab());

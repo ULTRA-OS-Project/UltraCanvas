@@ -4,6 +4,7 @@
 //   2. A shader playground of animated full-screen fragment effects
 //   3. "Zarch" — a low-poly hover-ship simulation over scrolling biome terrain
 // The per-tab content is built in the UltraCanvasGL*Tab.cpp files.
+// Version: 2.2.0 - Modern tabs with an underline and a thumbnail after each title
 // Version: 2.1.0 - the shared page look (UltraCanvasDemoPageKit): kit title and
 //                  description, the tabs in a card, the no-GL notice as a card
 // Version: 2.0.0
@@ -19,6 +20,8 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 
 namespace UltraCanvas {
 
@@ -31,15 +34,23 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     // Sized so the per-tab content area (width × height-tabHeight) comfortably
     // contains every tab's children: the control panel reaches x≈986 and the
     // Shaders tab's source viewer reaches y≈680, so the content area must be at
-    // least ~986 × ~680. 1004 × (726-34=692) clears both with margin and still
+    // least ~986 × ~680. 1004 × (726-38=688) clears both with margin and still
     // fits inside the demo's display column, so no tab ever shows scrollbars.
     // The tabs' children are placed absolutely, so the tabs keep that size.
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GLShowcaseTabs", 0, 0, 1004, 726);
-    tabs->SetTabHeight(34);
+    tabs->SetTabHeight(38);
     tabs->SetTabMinWidth(150);
+    // The pages' shared tab look (an accent underline marks the open tab),
+    // and each title carries a thumbnail of what its tab shows, after it.
+    DemoKit::StyleTabs(tabs);
+    tabs->SetIconSize(26);
+    tabs->SetIconAfterTitle(true);
     tabs->AddTab(Tr("3D Models"), CreateGLModelsTab());
     tabs->AddTab(Tr("Shaders"), CreateGLShaderTab());
     tabs->AddTab(Tr("Zarch"), CreateGLZarchTab());
+    const char* kThumbnails[] = {"models.png", "shaders.png", "zarch.png"};
+    for (int i = 0; i < 3; ++i)
+        tabs->SetTabIcon(i, NormalizePath(GetResourcesDir() + "media/icons/glshowcase/" + kThumbnails[i]));
     tabs->SetActiveTab(0);
     DemoKit::AddFixed(card, tabs);
 

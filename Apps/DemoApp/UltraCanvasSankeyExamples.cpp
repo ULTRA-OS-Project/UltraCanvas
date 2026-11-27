@@ -400,7 +400,7 @@ namespace UltraCanvas {
                 "SankeyTabs", 0, 0, 1020, 710
         );
         tabbedContainer->SetTabPosition(TabPosition::Top);
-        tabbedContainer->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabbedContainer);
         DemoKit::AddFixed(tabsCard, tabbedContainer);
 
         auto oilContainer = MakeSankeyTab("OilTab", 1020, 700, 5);

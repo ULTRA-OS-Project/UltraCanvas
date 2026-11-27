@@ -71,7 +71,7 @@ namespace UltraCanvas {
         DemoKit::Add(root, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PacketTabs", 0, 0, 0, 0);
-        tabs->SetTabStyle(TabStyle::Rounded);
+        DemoKit::StyleTabs(tabs);
         tabs->SetTabHeight(30);
         tabs->SetTabCornerRadius(8.0f);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));

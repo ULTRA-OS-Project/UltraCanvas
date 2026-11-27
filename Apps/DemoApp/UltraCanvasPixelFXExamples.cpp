@@ -1050,7 +1050,7 @@ namespace {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PixelFXTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));

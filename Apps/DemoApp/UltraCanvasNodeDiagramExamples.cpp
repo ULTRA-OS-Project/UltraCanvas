@@ -1954,7 +1954,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     
     // ---- Tabbed container with the diagrams ----
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ndTabs", 0, 0, 0, 0);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     
     // The size each tab page and its diagram are built with; the tabs then

@@ -24,6 +24,7 @@
 //                     {"UltraCanvasToolbarBuilder builds it fluently", "..."});
 //   return page;
 //
+// Version: 1.4.0 - StyleTabs: every page's tabs in one look, underlined (the OpenGL showcase's)
 // Version: 1.3.0 - Themed: a page's own decorative colour, as it is in the light look and with its
 //                  lightness turned over (hue kept) in a dark one
 // Version: 1.2.0 - the colours follow the theme: the light look as it was, the theme's roles in a
@@ -37,6 +38,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTheme.h"
+#include "UltraCanvasTabbedContainer.h"
 #include "UltraLocalisation/UltraLocalisation.h"   // Tr for the pages' texts
 
 #include <memory>
@@ -225,6 +227,10 @@ namespace DemoKit {
     std::shared_ptr<UltraCanvasContainer> AddNotes(const std::shared_ptr<UltraCanvasContainer>& parent,
                                                    const std::string& id, const std::string& title,
                                                    const std::vector<std::string>& items);
+
+    // The tab look every page shares: TabStyle::Modern, the open tab marked
+    // by a 3 px accent underline, so a tab bar reads as tabs at a glance.
+    void StyleTabs(const std::shared_ptr<UltraCanvasTabbedContainer>& tabs);
 
 } // namespace DemoKit
 } // namespace UltraCanvas

@@ -716,7 +716,13 @@ int main() {
               && Same(freshTree->GetSelectionTextColor(), dark.roles.ink) && Same(freshTree->GetVerticalScrollbarStyle().trackBorderColor, dark.roles.line),
               "a new scrollbar, list view and tree view are styled from the theme, a dark tree's selection the soft accent with ink, its scrollbar with it");
         UltraCanvasUIElement::SetFollowThemeByDefault(false);
-        CHECK(UltraCanvasTreeView("plain").GetSelectionTextColor().a == 0, "a tree that does not follow keeps the row's own text colour on a selected row");
+        {
+            UltraCanvasTreeView plainTree("plain");
+            CHECK(plainTree.GetSelectionTextColor().a == 0 && Same(plainTree.SelectedRowTextColor(), Colors::White),
+                  "a tree that does not follow writes a selected row in white on the default blue, not the row's black");
+            plainTree.SetSelectionColor(Color(200, 225, 250));
+            CHECK(Same(plainTree.SelectedRowTextColor(), Colors::Black), "and in black on a selection too light for white");
+        }
         UltraCanvasUIElement::SetFollowThemeByDefault(true);
         auto freshPanel = std::make_shared<UltraCanvasContainer>("fresh-panel", 0, 0, 200, 100);
         auto freshGroup = std::make_shared<UltraCanvasGroupBox>("fresh-group", 0, 0, 200, 100, "Group");

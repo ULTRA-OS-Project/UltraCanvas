@@ -1131,7 +1131,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGaugeExa
     // scrolls instead of squeezing the gauges).
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
         "GaugeTabs", 0, 0, 920, 860);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
     DemoKit::AddStretched(card, tabs);
     CSSLayout::BoxConstraints limits;

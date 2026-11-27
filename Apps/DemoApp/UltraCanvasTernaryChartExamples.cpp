@@ -38,6 +38,7 @@ namespace UltraCanvas {
         // ===== TABS =====
         auto chartCard = DemoKit::AddCard(row, "ternaryChartCard");
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ternaryTabs", 0, 0, 760, 640);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(chartCard, tabbedContainer);
 
