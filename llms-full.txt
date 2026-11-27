@@ -30236,8 +30236,11 @@ bool masked = view->GetIconsAsMask();
 
 ## A font list: each font shown in itself
 
-A row is drawn in its item's `fontFamily` when it has one, so a font picker is
-an ordinary dropdown - no element of its own and no drawing callback:
+A row is drawn in its item's `fontFamily` when it has one, so a short font list
+is an ordinary dropdown. For a word processor's font list - the closed box in
+the current font, every installed font with its format icon, the document's
+and the recent fonts on top, a family's styles beside it, symbol fonts with a
+sample - use [`UltraCanvasFontPicker`](UltraCanvasFontPicker.md) instead.
 
 ```cpp
 auto fonts = CreateDropdown("font", 0, 0, 210, 26);
@@ -39790,6 +39793,210 @@ gate, the name records of the framework's own bundled Ubuntu faces, the
 specimen rasterizer across sizes and scales, graceful refusal of a PNG and of
 a truncated font, and the filer/inventory classification. It needs no
 installed font.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFontPicker.md
+==============================================================================
+
+# UltraCanvasFontPicker and the installed fonts
+
+## What it is
+
+`UltraCanvasFontPicker` (`UltraCanvasFontPicker.h`) is a font list in the
+WYSIWYG style of a word processor or a drawing program. Closed, it is a box
+that shows the current family **in its own font**. Open, it is a list - wider
+than the box, 300 px by default - of:
+
+1. a **default font** row, when the host asks for one (`SetDefaultFontEntry`),
+   which chooses `""`;
+2. **In this document**: the families the document uses (the host names them,
+   `SetDocumentFonts`). A family the computer lacks is marked: grey italics
+   with *(not installed)*, or *(shown in Arial)* where an installed font stands
+   in for it by name (`FontFamilySubstitute`);
+3. **Recent**: the fonts chosen last, newest first (`SetRecentFonts`;
+   `onRecentFontsChanged` tells the host to keep them in its settings);
+4. a divider and **All fonts**: every installed family, A to Z.
+
+Every family's name is drawn in that family at one size
+(`FontPickerStyle::previewSize`, 14), with a small icon for the format of its
+files at the left: **O** for OpenType, **TT** for TrueType, **a** for Type 1, a
+pixel **A** for a bitmap font (`media/icons/fonts/`). A symbol or dingbat font
+whose own glyphs cannot spell its name - Wingdings, Symbol, Webdings, an icon
+font, an emoji font, a font of another script - is named in the interface's
+font with a few of its own characters after the name.
+
+A family with styles that **Bold** and **Italic** cannot reach - Light,
+SemiBold, Black, Condensed - has an arrow. Resting the pointer on it (or
+**Right**) opens its styles beside the list, each drawn in itself; choosing one
+gives the family with that weight, slant and width. A family of Regular, Bold,
+Italic and Bold Italic alone has no arrow: the B and I buttons beside the list
+reach those four. `SetStylesSubmenu(FontPickerStylesSubmenu::EveryMultiStyleFamily)`
+gives every family with more than one style the arrow, `::Off` none.
+
+## Using it
+
+<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> bar; std::shared_ptr<UltraCanvasRichTextEdit> editor; std::vector<std::string> recentFromSettings; void SaveRecentFonts(const std::vector<std::string>& families); -->
+```cpp
+auto font = CreateFontPicker("FontList", 0, 0, 130, 26);
+font->SetListWidth(300);                    // the open list; the box stays 130 px
+font->SetDefaultFontEntry(Tr("Default font"));
+font->SetRecentFonts(recentFromSettings);
+font->SetAcceptsFocus(false);               // a toolbar's: the keyboard stays with the document
+font->onListOpening = [editor, raw = font.get()]() {
+    raw->SetDocumentFonts(editor->GetFontReport().namedFamilies);
+};
+font->onRecentFontsChanged = [](const std::vector<std::string>& families) { SaveRecentFonts(families); };
+font->onFontChosen = [editor](const FontPickerChoice& choice) {
+    RichCharFormatDelta delta;
+    delta.setFontFamily = true;
+    delta.fontFamily = choice.family;       // "" from the default row
+    if (choice.fromStyles) {                // a style: bold and italic as it is
+        delta.setBold = true;
+        delta.bold = choice.weight >= 600;
+        delta.setItalic = true;
+        delta.italic = choice.slant != FontSlant::Normal;
+    }
+    editor->ApplyCharFormat(delta);
+};
+bar->AddWidget("FontList", font);
+```
+
+The host keeps the box in step with the text: `SetCurrentFont(family)` for one
+family, `SetMixed()` for a selection in several (the box is blank).
+`FontPickerChoice` carries what was chosen:
+
+| Field | From a family's row | From the styles list |
+|---|---|---|
+| `family` | the family (`""` from the default row) | the family |
+| `style` | `""` | the style's name, as the font names it ("SemiBold Italic") |
+| `weight`, `slant`, `stretch` | 400, upright, 100 | the style's (CSS weight 100 to 1000, stretch in per cent) |
+| `faceFamily`, `faceFamilyBold` | `""`, false | the face's own family name, where the text engine reaches the face by it, and whether with bold ("Ubuntu Thin"; "" where it cannot) |
+| `fromStyles` | false | true |
+
+A document that knows bold and italic but no weights - the rich text
+document - keeps a Light or a Condensed face by `faceFamily`, the face's name
+in the fonts' four-style naming that Windows and Word use ("Segoe UI Light",
+"Arial Black", "DejaVu Sans Condensed"), with bold as `faceFamilyBold` says.
+In that naming a family has a regular and a bold face, and the text engine
+takes the face of that name nearest the weight asked for: Ubuntu's "Ubuntu
+Light" holds Light and Medium, and fontconfig gives it without bold as Medium,
+which is nearer the regular weight - so Light cannot be kept by that name and
+`faceFamily` is empty for it (`InstalledFontStyle::faceFamilyReach`). Where the
+face has no name the engine gives back (that case; a variable font's named
+instances; every font on macOS, whose text engine takes no such names), the
+nearest is bold or not. UltraOffice does exactly this (`ApplyFontChoice` in
+`Apps/UltraOffice/UltraOfficeHost.cpp`). A name the document gives that is a
+face's own name is found as its family's row (`FindInstalledFontFamilyOfName`),
+and the rich text editor's font notice does not report it as missing.
+
+### The keys
+
+With the list open: **Up**, **Down**, **Page Up**, **Page Down**, **Home**,
+**End** move over the rows (the captions are stepped over); **Return**
+chooses; **Right** opens the highlighted family's styles and **Left** closes
+them; **Escape** closes the styles, then the list - one per press, as the
+window closes any popup on Escape (`PopupElementSettings::closeByEscapeKey`),
+the key's release closing nothing. Letters typed go to the
+first family of *All fonts* whose name starts with them - typed within a
+second of each other they build one name ("ubuntu m"), the same letter again
+steps on, **Backspace** takes the last one back. With `SetAcceptsFocus(false)`
+(a toolbar's list, which leaves the keyboard with the document) the open list
+still gets the keys typed.
+
+### Speed
+
+The rows are virtual (an `UltraCanvasListView` in a popup): only the rows on
+screen are drawn, however many fonts there are. Each name's picture - its
+layout in its own font - is made once and kept. Loading a font is the dear
+part (a few milliseconds the first time), so the pictures are prepared ahead in
+slices of about 6 ms every 15 ms on the UI thread's timer once the box is on
+screen: first the rows the list opens on, then the rest, as
+`UltraCanvasDropdown` prepares its font previews. A row not prepared when it
+scrolls into view is prepared as it is drawn. This is the UI thread on
+purpose: the text engine (Pango and its font map) is not thread-safe, and the
+framework has no worker that may shape text.
+
+## The installed fonts
+
+`GetInstalledFontCatalogue()` (`UltraCanvasInstalledFonts.h`) is what the list
+shows: every installed family, A to Z regardless of case, each with
+
+- `styles` - every style the font has, named as the font names it, with its
+  `weight` (CSS 100 to 1000), `slant` and `stretch` (per cent of the normal
+  width), the `format` and `file`, and the face's own family name
+  (`faceFamily`); narrow to wide, light to heavy, upright before italic;
+- `format` (`FontFileFormat` of `UltraCanvasFontFile.h`: `OpenType`, `TrueType`, `Type1`, `BitmapFont`, `WOFF`), its
+  regular style's; `scalable`, `monospace`, `variable`;
+- `symbol` and `sample` for a font whose letters cannot spell its name.
+
+<!-- doc-check: std::string family; -->
+```cpp
+auto fonts = GetInstalledFontCatalogue();     // kept until the fonts change
+const InstalledFontStyle* face = nullptr;
+if (const InstalledFontFamily* found = FindInstalledFontFamilyOfName(*fonts, family, &face)) {
+    for (const InstalledFontStyle& style : found->styles) {
+        (void)style;   // style.name, style.weight, style.slant, style.format
+    }
+}
+bool knows = IsInstalledFontName("Segoe UI Semibold");   // a family, or a face's own name
+(void)knows;
+```
+
+It is made once and kept until `GetFontSetGeneration()` moves - a font
+registered with `RegisterFontFile`, the system fonts arriving after a cold start
+on Windows - and the list follows: it compares the count when the windows are
+laid out again after such a change. `GetInstalledFontFamilies()`
+(`UltraCanvasApplication.h`) is the names of the same enumeration, with the
+engine's generic names ("Sans", "Serif", "Monospace").
+
+Left out, as other programs leave them out: Windows' vertical families (a name
+starting with `@`), macOS' private system families (a name starting with `.`)
+and LastResort (`IsHiddenFontFamilyName`), the generic names the engine adds
+(their faces are all synthesized), a face the engine only synthesizes (an
+italic slanted from the upright: not a style of the font), and a family with no
+characters at all.
+
+### Per platform
+
+There is one enumeration, the text engine's own - Pango's default font map -
+so every name in the list is one the renderer draws. What Pango's list lacks
+(the format, the file, the face's own family name, the characters) is filled in
+from the engine underneath it (`FillNativeFontDetails`):
+
+| Platform | Families and styles | Formats, files, characters |
+|---|---|---|
+| Linux, the BSDs, Android, the browser | Pango over fontconfig | fontconfig's records (`FcFontList`: `FC_FONTFORMAT`, `FC_FILE`, `FC_CHARSET`, the second `FC_FAMILY` name), read from its cache - no font file is opened |
+| Windows | Pango over fontconfig, the framework's text backend there: its fonts.conf names the system's font folder and the user's own (`%LOCALAPPDATA%\Microsoft\Windows\Fonts`), the two DirectWrite reads, so a font installed for one user is in the list | fontconfig's records, as above; the face's own family name is the one GDI and Word use ("Segoe UI Semibold") |
+| macOS | Pango over CoreText | CoreText's font descriptors (`kCTFontFormatAttribute`, `kCTFontURLAttribute`, `kCTFontCharacterSetAttribute`, the symbolic class), `OS/MacOS/UltraCanvasMacOSInstalledFonts.mm`; no face family names |
+
+The format comes from the outlines: CFF outlines (or an `.otf` / `.otc` file)
+are OpenType, TrueType outlines in a `.ttf` / `.ttc` TrueType, Adobe Type 1
+(`.pfb`, `.t1`, CID-keyed) Type 1, and `.pcf` / `.bdf` / `.fon` (fixed sizes)
+bitmap. Where one style comes as two files - fonts-urw-base35 ships each face
+as `.otf` and `.t1` - it is one style, and the better format is shown.
+
+A family is a **symbol font** when its regular face cannot spell its name, has
+nothing beyond Latin-1 but the symbol page (a symbol character map or a custom
+encoding hands fontconfig its pictures as Latin-1 letters: Zapf Dingbats as
+Type 1, Wingdings), is in the list of known ones (`IsKnownSymbolFontFamily`:
+Wingdings, Webdings, Symbol, Marlett, the Segoe icon fonts ...), or - on macOS -
+is in CoreText's symbolic class. Its sample (`ChooseFontSample`) is from the
+symbol page (U+F041 on), else its pictographs, else its first letters beyond
+Latin-1, else its first characters.
+
+## Where it is used
+
+UltraOffice's document *Home* font list, its presentation *Text* tab's font
+list, the Settings window's font for new documents, and the font of the
+framework's Styles dialog (`ShowStylesDialog`, `UltraCanvasRichTextEditDialogs.h`),
+and the Font list of the text bar (`UltraCanvasTextFormatBar`) that UltraPaint,
+ArtCreator and UltraVideo show with their text tool.
+
+## Version history
+
+- 1.0.1 - Escape is the window's (one popup per press), not the list's own;
+  `SetFamilies` makes the names' pictures again.
+- 1.0.0 - the font list, and the installed fonts' catalogue under it.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFontViewer.md
@@ -54965,7 +55172,10 @@ The menu system handles the following events:
 - **Enter/Space**: Execute selected item
 - **Escape**: Close menu (when `PopupElementSettings::closeByEscapeKey` is set, the default).
   The application closes the topmost popup before the key reaches any element,
-  so an open submenu closes first and its parent stays open.
+  so an open submenu closes first and its parent stays open. It does so on the
+  key's press, one popup per press; the release closes nothing - not the
+  parent menu, and not the window under the last popup, where a window closes
+  on an Escape's release (the settings pages).
 
 ## Usage Examples
 
@@ -68268,6 +68478,33 @@ text out this way. `TextAttributeFactory::CreateFontFeatures` sets OpenType
 features over a range, spelled as CSS `font-feature-settings` does
 (`"kern=0"`, `"liga=0"`).
 
+A line spacing factor puts the lines `factor` times their fonts' height
+apart, baseline to baseline - the font's ascent, descent and the line gap its
+designer gave it (1.2 em for Palatino, of which 0.2 is gap). The layout
+itself still ends at its last line's descent, so that line is shorter than
+the others by the factor's room. `GetLineExtents()` gives each line that
+height as `LayoutLineExtent::fontHeight`, which is what a document view adds
+below the last line to make a paragraph as tall as its lines:
+
+```cpp
+const std::vector<LayoutLineExtent> lines = layout->GetLineExtents();
+double height = layout->GetLayoutHeight();
+if (!lines.empty() && lines.back().fontHeight > 0.0f) {
+    const double lastLine = height - lines.back().top;
+    height += std::max(0.0, layout->GetLineSpacing() * lines.back().fontHeight - lastLine);
+}
+```
+
+Such a layout's lines are seldom a whole number of pixels apart (DejaVu Serif
+at 12 pt: 18.625 px). `GetCursorPos` gives the cursor in whole pixels, cut
+toward zero, so the second line's cursor reads 18 and the third 37; place a
+caret, or measure a line, with `GetCursorRect`, the strong cursor where the
+layout puts it:
+
+```cpp
+const Rect2Df caret = layout->GetCursorRect(byteIndex);   // y 18.625 on the second line
+```
+
 ## Centring text on its capitals
 
 ```cpp
@@ -70461,9 +70698,10 @@ Review tabs, and UltraTexter's word-processing tab from its context menu.
 
 `RichTextEditStyle::FromTheme` puts the framework theme's roles
 (`UltraCanvasTheme.md`) over a base style's typography and metrics: the
-well for the text and the page (the element role `rich-text.page` where a
-theme wants paper of another colour, white on a dark window say), the
-panel for the desk, ink and the caret in ink, the soft accent for the
+well for the text; in page view the paper is the lighter of the well and the
+panel (white in the light theme) and the desk a shade darker than the panel,
+so the page stands out on it (the element roles `rich-text.page` and
+`rich-text.desk` where a theme wants other colours); ink and the caret in ink, the soft accent for the
 selection, the accent for links, muted ink for quotes and list markers,
 the panel with hairlines for code, control-border rules and table grids,
 hairline guides. The comment, tracked-change and font-notice colours keep
@@ -70900,7 +71138,10 @@ cell's lines are its paragraphs, empty ones included, and the room between two
 of them (the one's space after and the other's before) is an empty line of
 exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
 below the last it is part of the cell's padding. Lines are a font's own
-height apart, its line gap included, and letters are pair-kerned - unless the
+height apart, its line gap included - the last line of a paragraph or a cell
+as tall as the others, so a one-line paragraph in Palatino at single spacing
+is 1.2 em and at Word's 1.15 is 1.38 em, as in Word and Writer, and an empty
+paragraph is a line of its paragraph mark's font - and letters are pair-kerned - unless the
 document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
 Word's files are unkerned, older Writer files have no line gap). A cell's
 lines can have a set height (`RichTableCell::lineHeightPt`, exactly or - with
@@ -70914,7 +71155,10 @@ font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
 picture lower than a line of its run's font stands in such a line. A table can
 start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and
 a column whose width the document states is kept however narrow. A picture is
-stretched to the size its document gives it.
+stretched to the size its document gives it - a picture alone in its
+paragraph too (an Image block, which a .docx picture on a line of its own and
+an ODT frame become), which also keeps its paragraph's indent, out into the
+margin in page view where that is negative.
 
 **Columns that give way to their content.** With `RichDocBlock::tableAutoFit`
 (Word's "autofit" table layout, its default; `w:tblLayout w:type="fixed"`
@@ -70951,7 +71195,9 @@ Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
 otherwise), with page number and page count fields
 (`RichTextRun::field`) filled in for that page. The body starts below the
 top margin, or below the header when the header is taller than the margin
-leaves room for; the footer likewise.
+leaves room for; the footer likewise. Between them lies Writer's 0.25 cm, or
+the document's own room (`RichPageSetup::furnitureSpacingPt`): none in a
+.docx, where Word starts the text right below the header.
 
 A heading is set in the size and font its document's style gives it
 (`paragraphFontSizePt`, `paragraphFontFamily`), the document's first paragraph
@@ -71083,6 +71329,8 @@ editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
 editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
 editor->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);   // or PageWidth
+editor->ZoomToWidthShare(0.6f);   // the page is 60 % of the view's width, centred
+float share = editor->GetZoomWidthShare();   // 0.6
 ```
 
 `SetZoomFit` makes the zoom follow the element's size in page view, like a
@@ -71091,6 +71339,16 @@ width) and "Whole page" (all of the page is in view). It is worked out again
 whenever the element is resized; `SetZoom`, Ctrl+wheel and `ZoomFit::Off`
 end it, and printing and PDF export stay at 100 %. Outside page view there is
 no page to fit and the zoom stays as it is.
+
+`ZoomToWidthShare(share)` is the third fit, `ZoomFit::WidthShare`: the page
+itself - not the desk beside it - is `share` of the view's width (0.1 to 1;
+0.6 until another is chosen), centred on the desk, so a page on a wide
+screen keeps a comfortable reading width instead of filling it. Like the
+other two it keeps fitting as the element is resized, and
+`SetZoomFit(ZoomFit::WidthShare)` returns to it with the share last chosen
+(`GetZoomWidthShare`). The view's width is the element's less its padding,
+the vertical scrollbar (always kept, so the fit does not jump as the
+scrollbar comes and goes) and the comment pane while it shows.
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
 rewraps to the zoomed width; in page view the page is simply larger, and when
@@ -75764,10 +76022,12 @@ std::shared_ptr<SlideShowWindows> show = StartSlideShow(deck, 0);
 show->onEnd = []() { /* the windows are closed: drop `show`, focus the editor */ };
 ```
 
-`StartSlideShow(deck, fromSlide, presenterView)` lists the monitors with
-`UltraCanvasDesktopShell::ListScreens()` (the primary first). With two or
-more it opens the show full screen on the second and, with `presenterView`,
-the presenter view full screen on the first; with one, the show alone, full
+`StartSlideShow(deck, fromSlide, presenterView, showOnSecondScreen)` lists
+the monitors with `UltraCanvasDesktopShell::ListScreens()` (the primary
+first). With two or more it opens the show full screen on the second and,
+with `presenterView`, the presenter view full screen on the first - with
+`showOnSecondScreen` false (it is true unless given), the show on the first
+and the presenter view on the second; with one monitor, the show alone, full
 screen. Each window is moved onto its monitor (`SetWindowPosition`, in the
 screen pixels `ListScreens` gives) before it goes full screen, so full screen
 fills that monitor. The windows close when the show ends - Escape, on from
@@ -84533,7 +84793,10 @@ FILE: Docs/UltraCanvas/UltraCanvasTextFormatBar.md
 ## What it is
 
 The bar a program shows over text the user sets on a canvas, a page or a video
-frame: **Font** (every installed family, each shown in itself), **Size**,
+frame: **Font** (an [UltraCanvasFontPicker](UltraCanvasFontPicker.md): the
+fonts the text uses, the ones chosen last and every installed family, each
+shown in itself, with the styles beyond bold and italic beside a family that
+has them), **Size**,
 **Bold**, **Italic**, **Underline**, **Strikethrough**, **Align** left / centre
 / right, **Line spacing** (% of the size) and **Letter spacing**, in one row.
 ArtCreator, UltraPaint and UltraVideo show it while their text tool is active.
@@ -84621,22 +84884,62 @@ default).
 
 ## The Font list
 
-Every family `GetInstalledFontFamilies()` reports, after the generic "Sans",
-"Serif" and "Monospace", each drawn in itself (`DropdownItem::fontFamily`). The
-dropdown prepares those previews lazily: once the bar is on screen, in small
-idle slices, the rows the list opens on first - see *A font list* in
-[UltraCanvasDropDownExamples.md](UltraCanvasDropDownExamples.md). A format
-naming a font this computer lacks shows it at the top of the list, marked as
-not installed. `RefreshFonts()` reads the installed fonts again, and the bar does
-that itself when the fonts the text engine knows change
-(`GetFontSetGeneration()`): a font file registered, or on Windows the system
-fonts arriving after a start with a cold font cache - the list made with the
-window held the bundled fonts alone until then.
+The Font list is an [UltraCanvasFontPicker](UltraCanvasFontPicker.md)
+(`GetFontPicker()`), the closed box showing the text's family in itself. Open,
+it is wider than the box and has three sections:
+
+- **In this document** - the families the host's document uses, which it
+  hands over in `onFontListOpening` with `SetDocumentFonts`.
+  `AddTextFormatFonts(families, base, words)` gathers them, one text after
+  another: a text's own family and the ones its words set. A family this
+  computer lacks is marked so, in grey italics; the text's own family is
+  there too when it is not installed.
+- **Recent** - the fonts chosen last, newest first. The host reads them from
+  its settings once (`SetRecentFonts`) and saves them in
+  `onRecentFontsChanged`, so each program keeps its own.
+- **All fonts** - the generic "Sans", "Serif" and "Monospace", then every
+  installed family A to Z (`GetInstalledFontCatalogue()`), each drawn in
+  itself with a small icon for its format. The pictures are made in idle
+  slices once the list opens.
+
+Typing with the list open jumps to the family whose name starts with what was
+typed. The keyboard focus stays with the text being typed meanwhile, so the
+selected words stay selected (`HasKeyboardFocus()` is true while the list is
+open).
+
+A family with styles bold and italic cannot reach - Light, SemiBold,
+Condensed, Black - has an arrow to its styles. The bar has a Bold and an
+Italic button but no weight of its own, so a style chosen there is turned
+into what a text with bold and italic keeps: the face's own family name where
+the text engine reaches the face by it ("Ubuntu Light", "Ubuntu Thin", with
+Bold on where that name's bold is the face), else the family with Bold for a
+weight of 600 or more; Italic from the style's slant. It reaches
+`onFormatChanged` as a `Font` change followed by `Bold` and `Italic` where
+those changed, one call each. A family of Regular, Bold, Italic and Bold
+Italic alone has no arrow: the B and I buttons are its styles.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasTextFormatBar> bar; std::vector<std::shared_ptr<const UCRichDocument>> texts; std::vector<std::string> savedRecentFonts; void SaveRecentFonts(const std::vector<std::string>& fonts); -->
+```cpp
+bar->onFontListOpening = [&]() {
+    std::vector<std::string> fonts;
+    for (const auto& words : texts) AddTextFormatFonts(fonts, "Sans", words.get());
+    bar->SetDocumentFonts(fonts);
+};
+bar->SetRecentFonts(savedRecentFonts);              // from the program's settings
+bar->onRecentFontsChanged = [](const std::vector<std::string>& fonts) { SaveRecentFonts(fonts); };
+```
+
+`RefreshFonts()` reads the installed fonts again, and the bar does that itself
+when the fonts the text engine knows change (`GetFontSetGeneration()`): a font
+file registered, or on Windows the system fonts arriving after a start with a
+cold font cache - the list made with the window held the bundled fonts alone
+until then. `GetFontFamilies()` names what "All fonts" lists.
 
 ## Narrow places
 
-The controls take about 860 pixels. In a narrower place the Font list gives up
-width first, down to 90 pixels, so every other control stays in reach.
+The controls take about 860 pixels; the Font list's closed box 210 of them. In
+a narrower place the box gives up width first, down to 90 pixels, so every
+other control stays in reach; the list it opens stays as wide as a name needs.
 
 ## Look
 
@@ -86332,7 +86635,8 @@ border), a columns tree's section header (`columns-tree.group-header`,
 `filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`),
 the colour picker's markers (`color-picker.marker`,
 `color-picker.marker-outline`, white and black), the rich text edit's
-paper (`rich-text.page`, the well), the busy indicator's second arc
+paper and desk (`rich-text.page`, the lighter of the well and the panel;
+`rich-text.desk`, the panel a shade darker), the busy indicator's second arc
 (`busy-indicator.second-arc`, its orange), the recorder's pulse
 (`audio-recorder.pulse`, its red), the video player's, recorder's and
 tile's dark stages and bars (`video-player.stage`,
@@ -91956,7 +92260,8 @@ from an external "Show password" checkbox. See
 | Checkbox | `UltraCanvasCheckbox` | `UltraCanvasCheckbox.h` |
 | Radio button / group | `UltraCanvasRadio`, `UltraCanvasRadioGroup` | `UltraCanvasRadio.h` |
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
-| Pick one of a list (a row can be drawn in a font of its own: a font list, `DropdownItem::fontFamily`) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
+| Pick one of a list (a row can be drawn in a font of its own: `DropdownItem::fontFamily`; for a font list use the font picker below) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
+| **Pick a font**: a word processor's font list - the box in the current font, every installed family drawn in itself with its format icon (OpenType, TrueType, Type 1, bitmap), the document's and the recent fonts on top, a family's styles (Light, SemiBold, Condensed ...) beside it, type-ahead ([doc](UltraCanvasFontPicker.md)); the fonts themselves are `GetInstalledFontCatalogue` (`UltraCanvasInstalledFonts.h`) | `UltraCanvasFontPicker` | `UltraCanvasFontPicker.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | Pick one of many choices shown as live pictures in titled sections - a chart gallery, styles, templates: a click or the arrow keys pick a tile, Enter takes it; tall content scrolls in its container | `UltraCanvasGalleryPicker` | `UltraCanvasGalleryPicker.h` |
 | Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
@@ -118214,6 +118519,30 @@ Listed so the next session does not rediscover them:
   `PaintFilterCatalogue()` without recompiling the app.
 
 ==============================================================================
+FILE: Docs/UltraPaint/changelog.d/text-bar-font-picker.md
+==============================================================================
+
+- **The text bar's font list is the framework's font picker.** It lists the
+  fonts the image's text layers use under *In this document*, the fonts chosen
+  last under *Recent* (kept in UltraPaint's settings, `text.recentfonts`), then
+  every installed font, each drawn in itself with its format's icon; a family
+  with Light, Condensed or Black styles opens them beside it, and the one
+  chosen sets the font with Bold and Italic. One Escape closes one list
+  (framework, *One Escape closed two menus*).
+
+==============================================================================
+FILE: Docs/ArtCreator/changelog.d/text-bar-font-picker.md
+==============================================================================
+
+- **The text bar's font list is the framework's font picker.** It lists the
+  fonts the drawing's texts use under *In this document*, the fonts chosen last
+  under *Recent* (kept in ArtCreator's settings, `text.recentfonts`), then every
+  installed font, each drawn in itself with its format's icon; a family with
+  Light, Condensed or Black styles opens them beside it, and the one chosen
+  sets the font with Bold and Italic. One Escape closes one list or submenu
+  (framework, *One Escape closed two menus*).
+
+==============================================================================
 FILE: Docs/DeviceExplorer/README.md
 ==============================================================================
 
@@ -122200,7 +122529,10 @@ the title lane) and the words lie over the picture where the title shows, at
 the viewer's scale, in its font and colour; the title leaves the frame
 meanwhile. The **text bar** over the viewer - the framework's
 `UltraCanvasTextFormatBar`, the one ArtCreator and UltraPaint show - sets the
-font (every installed font, each shown in itself), size (pixels of the
+font (the framework's font list: the project's title fonts, the ones
+chosen last - kept in UltraVideo's settings - then every installed font,
+each shown in itself, with a family's Light, Condensed or Black styles
+beside it), size (pixels of the
 project's frame), bold, italic, underline, strikethrough, alignment, line
 spacing and letter spacing: of the selected words, else of the whole title;
 with no title being typed, of the selected title as one undo step. Escape,
@@ -122371,6 +122703,18 @@ headless, the player part skips itself without GStreamer plugins).
 ## Not yet
 
 The proposal's roadmap (§11) has the order.
+
+==============================================================================
+FILE: Docs/UltraVideo/changelog.d/text-bar-font-picker.md
+==============================================================================
+
+- **The text bar's font list is the framework's font picker.** It lists the
+  fonts the project's titles use under *In this document*, the fonts chosen
+  last under *Recent* (kept in UltraVideo's `settings.json`,
+  `text.recentFonts`), then every installed font, each drawn in itself with
+  its format's icon; a family with Light, Condensed or Black styles opens them
+  beside it, and the one chosen sets the font with Bold and Italic. One Escape
+  closes one list (framework, *One Escape closed two menus*).
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md
