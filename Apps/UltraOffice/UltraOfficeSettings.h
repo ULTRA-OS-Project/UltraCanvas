@@ -6,13 +6,16 @@
 // with Save(). No window or display is needed, so the model is tested on its
 // own (Tests/UltraOfficeSettingsTest.cpp).
 //
+// Version: 0.4.0 - the Start tab's note on where the tools went, once dismissed ("toolPanelsNoteDismissed")
+// Version: 0.3.0 - the tools: panels at the left (the default) or the toolbar at the top, the icon rail;
+//                  each kind's panels (their order, which are open) and the column's width
 // Version: 0.2.0 - the font lists: every installed font (FontChoices gone), the recent fonts kept
 //                  (GetRecentFonts / RememberRecentFonts)
 // Version: 0.1.0 - the Settings window's model: General (name, language, theme, recent files, reopening),
 //                  Saving (format, autosave, recovery copies, interval), Documents (font, size, page,
 //                  navigator, fit and width share), Spreadsheets (gridlines), Presentations (slide size,
 //                  which monitor the show goes to, presenter view)
-// Last Modified: 2026-11-26
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -33,6 +36,9 @@ enum class PageSizeChoice { A4, Letter };
 enum class DocumentFit { Actual, PageWidth, WholePage, WidthShare };
 // The slides of a new presentation: 16:9 or 4:3.
 enum class SlideSizeChoice { Widescreen, Standard };
+// Where a tab's tools are: in panels at the left of the document (the
+// default), or the command tabs with their toolbar at the top.
+enum class ToolLayout { Panels, Toolbar };
 
 class OfficeSettings {
 public:
@@ -72,6 +78,30 @@ public:
     void SetReopenFiles(bool reopen);
     std::vector<std::string> GetOpenFiles() const;
     void SetOpenFiles(const std::vector<std::string>& paths);
+    // The tools: panels at the left (the default) or the toolbar at the
+    // top; every open tab follows a change at once.
+    ToolLayout GetToolLayout() const;
+    void SetToolLayout(ToolLayout layout);
+    // The panels folded into the icon rail whatever the window's width (a
+    // window narrower than kAutoRailWidth folds them anyway).
+    static constexpr int kAutoRailWidth = 1100;
+    bool GetToolRail() const;
+    void SetToolRail(bool rail);
+    // The Start tab's note that the tools are in the panels at the left,
+    // shown until it is dismissed. Not a setting: Restore defaults keeps it.
+    bool GetToolsNoteDismissed() const;
+    void SetToolsNoteDismissed(bool dismissed);
+    // Each kind's panels: their order and which are open
+    // (UltraCanvasToolPanelStack::SaveState, as one line), and the column's
+    // width (kMinPanelWidth to kMaxPanelWidth). Empty: the kind's defaults.
+    // Not settings: Restore defaults keeps them, as it keeps the recent files.
+    static constexpr int kMinPanelWidth = 160;
+    static constexpr int kMaxPanelWidth = 400;
+    static constexpr int kDefaultPanelWidth = 286;
+    std::string GetPanelState(OfficeKind kind) const;
+    void SetPanelState(OfficeKind kind, const std::string& state);
+    int GetPanelWidth(OfficeKind kind) const;
+    void SetPanelWidth(OfficeKind kind, int width);
 
     // ===== SAVING =====
     SaveFormat GetSaveFormat() const;

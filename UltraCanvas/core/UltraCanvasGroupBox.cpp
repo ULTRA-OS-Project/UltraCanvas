@@ -5,15 +5,19 @@
 // border line, padding and caption strip are kept in sync through
 // RecalculatePadding() so the inherited container lays the children out
 // inside the visible frame, below the caption.
+// Version: 1.5.0 - the tool panel's header: the "…" button, the chip, the header as a focus stop
+//                 (Enter / Space, Shift+F10 / Menu, the focus ring), dragging by the header, a
+//                 right-click on it; the Header strip clipped to the rounded frame
 // Version: 1.3.0 - the close button (SetCloseButton / onCloseClicked)
 // Version: 1.4.0 - SectionCard(theme) / SectionPageColor(theme): dark under a dark theme
 // Version: 1.2.0 - the SectionCard preset (Colors::SectionCard*)
 // Version: 1.1.1 - the help tooltip is anchored at the info icon's top edge (tooltips
 //                 now sit above the spot passed)
 // Version: 1.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 #include "UltraCanvasGroupBox.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
@@ -25,6 +29,9 @@ namespace UltraCanvas {
     static inline UltraCanvasUIElement* asUI(const std::shared_ptr<CSSLayout::Element>& c) {
         return static_cast<UltraCanvasUIElement*>(c.get());
     }
+
+    // How far a press on the title bar moves before it is a drag.
+    static constexpr int kHeaderDragThreshold = 4;
 
     GroupBoxVisualStyle GroupBoxVisualStyle::Default() {
         GroupBoxVisualStyle s;
@@ -239,6 +246,76 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+// ===== MORE BUTTON / CHIP =====
+    void UltraCanvasGroupBox::SetMoreButton(bool show) {
+        if (showMoreButton == show) return;
+        showMoreButton = show;
+        if (!show) moreHovered = false;
+        RecalculatePadding();
+        RequestRedraw();
+    }
+
+    void UltraCanvasGroupBox::SetHeaderChip(const std::string& text) {
+        if (headerChip == text) return;
+        headerChip = text;
+        RecalculatePadding();
+        RequestRedraw();
+    }
+
+// ===== HEADER FOCUS / DRAG =====
+    void UltraCanvasGroupBox::SetHeaderFocusable(bool focusable) {
+        if (headerFocusable == focusable) return;
+        headerFocusable = focusable;
+        if (!focusable && IsFocused()) SetFocus(false);
+        RequestRedraw();
+    }
+
+    void UltraCanvasGroupBox::SetHeaderDraggable(bool draggable) {
+        if (headerDraggable == draggable) return;
+        if (!draggable) CancelHeaderDrag();
+        headerDraggable = draggable;
+    }
+
+    void UltraCanvasGroupBox::CancelHeaderDrag() {
+        if (!headerPressPending) return;
+        EndHeaderPress(headerPressStart, true);
+    }
+
+    void UltraCanvasGroupBox::EndHeaderPress(const Point2Di& windowPos, bool cancelled) {
+        const bool wasDragging = headerDragging;
+        headerPressPending = false;
+        headerDragging = false;
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            if (app->GetCapturedElement() == this) app->ReleaseMouse();
+        }
+        SetMouseCursor(UCMouseCursor::Default);
+        if (wasDragging) {
+            if (onHeaderDragEnded) onHeaderDragEnded(windowPos, cancelled);
+        } else if (!cancelled) {
+            ToggleFromHeader();
+        }
+        RequestRedraw();
+    }
+
+    void UltraCanvasGroupBox::ToggleFromHeader() {
+        if (collapsible) {
+            SetCollapsed(!collapsed);
+        } else if (checkable) {
+            SetChecked(!checked);
+        }
+    }
+
+    std::string UltraCanvasGroupBox::GetAccessibleActionName() const {
+        if (!collapsible) return "";
+        return collapsed ? Tr("Open") : Tr("Close");
+    }
+
+    bool UltraCanvasGroupBox::DoAccessibleAction() {
+        if (!collapsible || IsDisabled()) return false;
+        SetCollapsed(!collapsed);
+        return true;
+    }
+
 // ===== COLLAPSIBLE =====
     void UltraCanvasGroupBox::SetCollapsible(bool value) {
         if (collapsible == value) return;
@@ -271,7 +348,8 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasGroupBox::HasTitleContent() const {
-        return !title.empty() || checkable || collapsible || showInfoIcon || showCloseButton;
+        return !title.empty() || checkable || collapsible || showInfoIcon || showCloseButton ||
+               showMoreButton || !headerChip.empty();
     }
 
     float UltraCanvasGroupBox::TitleAreaHeight() const {
@@ -370,6 +448,15 @@ namespace UltraCanvas {
             tl.closeRect = Rect2Df(rx, vcenter(cs), cs, cs);
             rx -= spacing;
         }
+        if (showMoreButton) {
+            // The close button's size.
+            const float ms = std::min(th - 2.0f, std::round(indSize * 1.35f));
+            if (!showCloseButton) rx = std::min(rx, w - bw - 4.0f);
+            rx -= ms;
+            tl.hasMore = true;
+            tl.moreRect = Rect2Df(rx, vcenter(ms), ms, ms);
+            rx -= spacing;
+        }
         if (checkable && activatorSide == GroupBoxIndicatorSide::Right) {
             rx -= actSize.width;
             tl.hasActivator = true;
@@ -380,6 +467,21 @@ namespace UltraCanvas {
             rx -= indSize;
             tl.hasInfo = true;
             tl.infoRect = Rect2Df(rx, vcenter(indSize), indSize, indSize);
+            rx -= spacing;
+        }
+        if (!headerChip.empty()) {
+            FontStyle chipFont = visualStyle.titleFont;
+            chipFont.fontSize = visualStyle.chipFontSize;
+            chipFont.fontWeight = FontWeight::Normal;
+            ctx->SetFontStyle(chipFont);
+            const Size2Di chipText = ctx->GetTextLineDimensions(headerChip);
+            const float chipH = std::min(th - 4.0f, std::ceil(static_cast<float>(chipText.height) + 4.0f));
+            // Never wider than half the bar: the caption keeps its room.
+            const float chipW = std::min(std::ceil(static_cast<float>(chipText.width) + 12.0f),
+                                         std::max(0.0f, (rx - lx) * 0.5f));
+            rx -= chipW;
+            tl.hasChip = chipW > 0.0f;
+            tl.chipRect = Rect2Df(rx, vcenter(chipH), chipW, chipH);
             rx -= spacing;
         }
 
@@ -422,6 +524,8 @@ namespace UltraCanvas {
             if (tl.hasActivator) addGap(tl.activatorRect.x, tl.activatorRect.Right());
             if (tl.hasInfo)      addGap(tl.infoRect.x, tl.infoRect.Right());
             if (tl.hasClose)     addGap(tl.closeRect.x, tl.closeRect.Right());
+            if (tl.hasMore)      addGap(tl.moreRect.x, tl.moreRect.Right());
+            if (tl.hasChip)      addGap(tl.chipRect.x, tl.chipRect.Right());
             if (textW > 0)       addGap(textX, textX + textW);
         }
         return tl;
@@ -473,10 +577,17 @@ namespace UltraCanvas {
         // ----- Header strip background (Header style) -----
         if (frameStyle == GroupBoxFrameStyle::Header && tl.hasContent &&
             visualStyle.headerBackgroundColor.a > 0) {
+            // Clipped to the frame: a square strip under rounded corners
+            // poked out past them.
+            ctx->PushState();
+            if (r > 0.0f) {
+                ctx->ClipRoundedRectangle(Rect2Dd(frameLeft, frameTop, frameW, frameH), r, r, r, r);
+            }
             ctx->SetFillPaint(visualStyle.headerBackgroundColor);
             ctx->FillRectangle(Rect2Dd(frameLeft + half, frameTop + half,
                                        std::max(0.0f, frameW - bw),
                                        std::max(0.0f, th - bw)));
+            ctx->PopState();
         }
 
         // ----- Border -----
@@ -576,11 +687,79 @@ namespace UltraCanvas {
         if (tl.hasClose) {
             DrawCloseButton(ctx, tl.closeRect);
         }
+        if (tl.hasMore) {
+            DrawMoreButton(ctx, tl.moreRect);
+        }
+        if (tl.hasChip) {
+            DrawChip(ctx, tl.chipRect);
+        }
         if (!title.empty()) {
             ctx->SetFontStyle(visualStyle.titleFont);
             ctx->SetTextPaint(titleColor);
-            ctx->DrawText(title, Point2Dd(tl.textPos.x, tl.textPos.y));
+            // Kept clear of the right cluster: a long title stops before it.
+            float textRight = GetWidth() - EffectiveBorderWidth();
+            if (tl.hasChip) textRight = std::min(textRight, tl.chipRect.x - 2.0f);
+            if (tl.hasInfo && infoIconSide == GroupBoxIndicatorSide::Right) textRight = std::min(textRight, tl.infoRect.x - 2.0f);
+            if (tl.hasMore) textRight = std::min(textRight, tl.moreRect.x - 2.0f);
+            if (tl.hasClose) textRight = std::min(textRight, tl.closeRect.x - 2.0f);
+            if (tl.hasChip || tl.hasMore) {
+                ctx->PushState();
+                ctx->ClipRect(Rect2Dd(0, 0, std::max(0.0f, textRight), TitleAreaHeight()));
+                ctx->DrawText(title, Point2Dd(tl.textPos.x, tl.textPos.y));
+                ctx->PopState();
+            } else {
+                ctx->DrawText(title, Point2Dd(tl.textPos.x, tl.textPos.y));
+            }
         }
+        if (headerFocusable && IsFocused()) {
+            DrawFocusRing(ctx);
+        }
+    }
+
+    void UltraCanvasGroupBox::DrawMoreButton(IRenderContext* ctx, const Rect2Df& rect) {
+        if (moreHovered) {
+            ctx->SetFillPaint(visualStyle.closeHoverBackgroundColor);
+            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, rect.width, rect.height),
+                                      std::min(4.0f, rect.width * 0.25f));
+        }
+        const Color color = moreHovered ? visualStyle.closeIconHoverColor
+                                        : visualStyle.closeIconColor;
+        // Three dots across the middle: the "…" of an entry that opens a dialog.
+        ctx->SetFillPaint(color);
+        const float dot = std::max(1.2f, rect.width * 0.075f);
+        const float cy = rect.y + rect.height * 0.5f;
+        const float step = rect.width * 0.22f;
+        const float cx = rect.x + rect.width * 0.5f;
+        for (int i = -1; i <= 1; ++i) {
+            ctx->FillCircle(Point2Dd(cx + i * step, cy), dot);
+        }
+    }
+
+    void UltraCanvasGroupBox::DrawChip(IRenderContext* ctx, const Rect2Df& rect) {
+        ctx->SetFillPaint(visualStyle.chipBackgroundColor);
+        ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, rect.width, rect.height), rect.height * 0.5f);
+        FontStyle chipFont = visualStyle.titleFont;
+        chipFont.fontSize = visualStyle.chipFontSize;
+        chipFont.fontWeight = FontWeight::Normal;
+        ctx->SetFontStyle(chipFont);
+        ctx->SetTextPaint(visualStyle.chipTextColor);
+        const Size2Di textSize = ctx->GetTextLineDimensions(headerChip);
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(rect.x + 3, rect.y, std::max(0.0f, rect.width - 6), rect.height));
+        ctx->DrawText(headerChip, Point2Dd(rect.x + std::max(6.0f, (rect.width - textSize.width) * 0.5f),
+                                           rect.y + (rect.height - textSize.height) * 0.5f));
+        ctx->PopState();
+    }
+
+    void UltraCanvasGroupBox::DrawFocusRing(IRenderContext* ctx) {
+        const float inset = 1.5f;
+        const Rect2Df bar = TitleBarRect();
+        ctx->SetStrokePaint(visualStyle.focusRingColor);
+        ctx->SetStrokeWidth(2.0f);
+        ctx->DrawRoundedRectangle(Rect2Dd(bar.x + inset, bar.y + inset,
+                                          std::max(0.0f, bar.width - 2 * inset),
+                                          std::max(0.0f, bar.height - 2 * inset)),
+                                  std::max(0.0f, visualStyle.cornerRadius - inset));
     }
 
     void UltraCanvasGroupBox::DrawCheckIndicator(IRenderContext* ctx, const Rect2Df& rect) {
@@ -706,7 +885,58 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasGroupBox::OnEvent(const UCEvent& event) {
+        // A press on the title bar that may become a drag (SetHeaderDraggable):
+        // the moves and the release are the press's, wherever they go.
+        if (headerPressPending) {
+            if (event.type == UCEventType::MouseMove) {
+                const Point2Di at = event.pointerWindow;
+                if (!headerDragging) {
+                    const int dx = at.x - headerPressStart.x;
+                    const int dy = at.y - headerPressStart.y;
+                    if (dx * dx + dy * dy >= kHeaderDragThreshold * kHeaderDragThreshold) {
+                        headerDragging = true;
+                        SetMouseCursor(UCMouseCursor::SizeNS);
+                        if (onHeaderDragStarted) onHeaderDragStarted(headerPressStart);
+                    }
+                }
+                if (headerDragging && onHeaderDragMoved) onHeaderDragMoved(at);
+                return true;
+            }
+            if (event.type == UCEventType::MouseUp && event.button == UCMouseButton::Left) {
+                EndHeaderPress(event.pointerWindow, false);
+                return true;
+            }
+            if (event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::Escape) {
+                CancelHeaderDrag();
+                return true;
+            }
+        }
+
+        // The focused header's keys (SetHeaderFocusable).
+        if (headerFocusable && event.type == UCEventType::KeyDown && IsFocused()) {
+            if ((event.virtualKey == UCKeys::Return || event.virtualKey == UCKeys::Space) &&
+                !event.ctrl && !event.alt && !event.meta) {
+                if (collapsible || checkable) {
+                    ToggleFromHeader();
+                    return true;
+                }
+            }
+            if ((event.virtualKey == UCKeys::F10 && event.shift) || event.virtualKey == UCKeys::Menu) {
+                if (onHeaderContextMenu) {
+                    const Point2Df winPos = GetPositionInWindow();
+                    onHeaderContextMenu(Point2Di(static_cast<int>(winPos.x + visualStyle.titleIndent),
+                                                 static_cast<int>(winPos.y + TitleAreaHeight())));
+                    return true;
+                }
+            }
+        }
+
         if (event.type == UCEventType::MouseLeave) {
+            if (moreHovered) {
+                moreHovered = false;
+                UltraCanvasTooltipManager::HideTooltip();
+                RequestRedraw();
+            }
             if (closeHovered) {
                 closeHovered = false;
                 UltraCanvasTooltipManager::HideTooltip();
@@ -744,6 +974,28 @@ namespace UltraCanvas {
                                 Point2Di(static_cast<int>(winPos.x + p.x),
                                          static_cast<int>(winPos.y + p.y)));
                     } else if (!overClose) {
+                        UltraCanvasTooltipManager::HideTooltip();
+                    }
+                    RequestRedraw();
+                }
+            }
+
+            if (showMoreButton) {
+                IRenderContext* ctx = GetRenderContext();
+                bool overMore = false;
+                if (ctx) {
+                    TitleLayout tl = ComputeTitleLayout(ctx);
+                    overMore = tl.hasMore && tl.moreRect.Contains(p);
+                }
+                if (overMore != moreHovered) {
+                    moreHovered = overMore;
+                    if (overMore && GetWindow()) {
+                        Point2Df winPos = GetPositionInWindow();
+                        UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                                GetWindow(), moreTooltip.empty() ? Tr("Options") : moreTooltip,
+                                Point2Di(static_cast<int>(winPos.x + p.x),
+                                         static_cast<int>(winPos.y + p.y)));
+                    } else if (!overMore) {
                         UltraCanvasTooltipManager::HideTooltip();
                     }
                     RequestRedraw();
@@ -794,6 +1046,23 @@ namespace UltraCanvas {
                     if (onCloseClicked) onCloseClicked();
                     return true;
                 }
+                if (tl.hasMore && tl.moreRect.Contains(p)) {
+                    moreHovered = false;
+                    UltraCanvasTooltipManager::HideTooltip();
+                    RequestRedraw();
+                    if (onMoreClicked) onMoreClicked();
+                    return true;
+                }
+            }
+
+            // A draggable header folds on the release, so that a press that
+            // moves can be a drag instead.
+            if (headerDraggable && TitleBarRect().Contains(p)) {
+                headerPressPending = true;
+                headerDragging = false;
+                headerPressStart = event.pointerWindow;
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+                return true;
             }
 
             if ((collapsible || checkable) && TitleBarRect().Contains(p)) {
@@ -804,6 +1073,13 @@ namespace UltraCanvas {
                 }
                 return true;
             }
+        }
+
+        if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Right &&
+            onHeaderContextMenu && HasTitleContent() &&
+            TitleBarRect().Contains(Point2Df(event.pointer.x, event.pointer.y))) {
+            onHeaderContextMenu(event.pointerWindow);
+            return true;
         }
 
         return UltraCanvasContainer::OnEvent(event);
@@ -831,6 +1107,10 @@ namespace UltraCanvas {
         s.closeIconColor = r.inkMuted;
         s.closeIconHoverColor = r.ink;
         s.closeHoverBackgroundColor = r.hover;
+        s.chipBackgroundColor = r.ground;
+        s.chipTextColor = r.inkMuted;
+        s.chipFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Small));
+        s.focusRingColor = r.focus;
         return s;
     }
 } // namespace UltraCanvas

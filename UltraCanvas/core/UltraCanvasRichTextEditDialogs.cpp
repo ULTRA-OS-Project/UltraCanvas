@@ -4,9 +4,10 @@
 // element's calls, so each change is one undo step where the editor keeps one
 // - and the form that shows them, built of the framework's own elements
 // (UltraCanvasFormLayout in an UltraCanvasModalDialog).
+// Version: 1.1.1 - the Picture dialog shows a picture of its own size at that size (GetImageDisplaySize), not 0 x 0
 // Version: 1.1.0 - the Styles dialog's font from every installed font (UltraCanvasFontPicker), not nine
 // Version: 1.0.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEditDialogs.h"
@@ -189,9 +190,13 @@ RichPictureDialogValues ReadPictureDialogValues(const UltraCanvasRichTextEdit& e
     RichTextAlign align = RichTextAlign::Left;
     edit.GetSelectedImageWrap(values.wrap, align);
     values.align = align == RichTextAlign::Default ? RichTextAlign::Left : align;
-    std::string alt;
-    int media = -1;
-    edit.GetEditor().GetImageInfo(edit.GetSelectedImage(), values.widthPt, values.heightPt, alt, media);
+    // The size it is laid out at: a picture of its own size (0 in the
+    // document) shows that size, not 0 x 0.
+    if (!edit.GetImageDisplaySize(edit.GetSelectedImage(), values.widthPt, values.heightPt)) {
+        std::string alt;
+        int media = -1;
+        edit.GetEditor().GetImageInfo(edit.GetSelectedImage(), values.widthPt, values.heightPt, alt, media);
+    }
     return values;
 }
 

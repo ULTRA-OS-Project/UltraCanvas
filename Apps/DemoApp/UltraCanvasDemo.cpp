@@ -948,6 +948,16 @@ namespace UltraCanvas {
                 .AddVariant("collapsiblepanel", Tr("Header buttons"))
                 .AddVariant("collapsiblepanel", Tr("Bottom dock, resizable"));
 
+        basicBuilder.AddItem("toolpanelstack", Tr("Tool Panel Stack"),
+                             Tr("A column of tool panels beside a document: context panels, an order of the user's own, an icon rail with flyouts, editable value rows"),
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateToolPanelStackExamples(); },
+                             "DemoApp/UltraCanvasToolPanelStackExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasToolPanelStack.md")
+                .AddVariant("toolpanelstack", Tr("Panels and value rows"))
+                .AddVariant("toolpanelstack", Tr("Context panel"))
+                .AddVariant("toolpanelstack", Tr("Icon rail and flyouts"));
+
         basicBuilder.AddItem("sidebarnav", Tr("Sidebar Navigation"),
                              Tr("The navigation column of a window: sections of items with icon, label and badge; keyboard; compact mode"),
                              ImplementationStatus::FullyImplemented,

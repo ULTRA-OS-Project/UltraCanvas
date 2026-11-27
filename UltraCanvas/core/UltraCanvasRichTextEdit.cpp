@@ -7,8 +7,14 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
-// Version: 1.23.1 - the caret where the layout puts it, to the fraction of a pixel (ITextLayout::GetCursorRect):
+// Version: 1.25.1 - the caret where the layout puts it, to the fraction of a pixel (ITextLayout::GetCursorRect):
 //                   a paragraph's second line in DejaVu Serif showed its caret 0.6 px above the line
+// Version: 1.25.0 - GetEffectiveParagraphFormat, GetEffectiveTableProperties, lists and cell shading; a paragraph
+//                   stating no spacing has its style's; a cell's fill on the view's grid too
+// Version: 1.24.1 - a Windows metafile picture of its own size is laid out (and tiled in a fill) at that
+//                   size, not at the twice as large pixels it is drawn in (PictureOwnSizePx)
+// Version: 1.24.0 - GetImageDisplaySize, GetImageNaturalSize: a picture's size through the layout's own
+//                   resolution (PictureLayoutSize), its own pixels where it states 0
 // Version: 1.23.0 - the font report names every family the document uses (FontReport::namedFamilies)
 // Version: 1.22.0 - FromTheme: the page the lighter of well and panel, the desk a shade darker
 // Version: 1.21.0 - a paragraph's last line is as tall as its others: a line spacing factor times its fonts'
@@ -64,7 +70,7 @@
 // Version: 1.3.0 - the font report and its notice: the fonts the document needs that the
 //                  computer lacks, each a link to its download page
 // Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
@@ -89,6 +95,7 @@
 #include <ctime>
 #include <cmath>
 #include <fstream>
+#include <optional>
 
 namespace UltraCanvas {
 
@@ -107,21 +114,30 @@ namespace {
 constexpr float kPixelsPerPoint = 96.0f / 72.0f;
 inline float Px(float points) { return points * kPixelsPerPoint; }
 
+// The scale a Windows metafile picture is drawn at: twice its own size, so
+// it stays sharp at 200 %. Its own size is its pixels divided by this.
+constexpr float kMetafilePictureScale = 2.0f;
+
+// "emf" or "wmf" for a Windows metafile (by its type or its bytes), else "".
+std::string MetafileKind(const RichDocMedia& media) {
+    const std::vector<uint8_t>& d = media.data;
+    if (media.mimeType == "image/x-emf" || (d.size() > 44 && d[40] == ' ' && d[41] == 'E' && d[42] == 'M' && d[43] == 'F'))
+        return "emf";
+    if (media.mimeType == "image/x-wmf" || (d.size() > 4 && d[0] == 0xD7 && d[1] == 0xCD && d[2] == 0xC6 && d[3] == 0x9A))
+        return "wmf";
+    return "";
+}
+
 // A document's picture as pixels. PNG, JPEG, GIF and the rest load
 // directly; a Windows metafile (EMF, WMF - Word 97's and its writers'
 // pictures and fills) is read by the vector readers a registered plugin
-// lends core and drawn at twice its own size, so it stays sharp at 200%.
-// Null when nothing can draw it.
+// lends core and drawn at kMetafilePictureScale times its own size (at most
+// 2048 px on its longer side), so it stays sharp at 200 % - its own size is
+// PictureOwnSizePx's, not its pixels. Null when nothing can draw it.
 std::shared_ptr<UCImage> LoadDocumentPicture(const RichDocMedia& media) {
     if (media.data.empty()) return nullptr;
-    std::string kind;
+    const std::string kind = MetafileKind(media);
     const std::vector<uint8_t>& d = media.data;
-    if (media.mimeType == "image/x-emf" || (d.size() > 44 && d[40] == ' ' && d[41] == 'E' && d[42] == 'M' && d[43] == 'F')) {
-        kind = "emf";
-    } else if (media.mimeType == "image/x-wmf"
-               || (d.size() > 4 && d[0] == 0xD7 && d[1] == 0xCD && d[2] == 0xC6 && d[3] == 0x9A)) {
-        kind = "wmf";
-    }
     if (kind.empty()) {
         auto image = UCImage::LoadFromMemory(media.data);
         return image && image->GetWidth() > 0 ? image : nullptr;
@@ -134,7 +150,7 @@ std::shared_ptr<UCImage> LoadDocumentPicture(const RichDocMedia& media) {
     const double fit = std::min(1.0, 2048.0 / std::max(width, height));
     const int w = std::max(1, static_cast<int>(std::lround(width * fit)));
     const int h = std::max(1, static_cast<int>(std::lround(height * fit)));
-    auto pixmap = RenderVectorDocumentPixmap(*drawing, w, h, 2.0f);
+    auto pixmap = RenderVectorDocumentPixmap(*drawing, w, h, kMetafilePictureScale);
     if (!pixmap || pixmap->GetWidth() <= 0 || pixmap->GetHeight() <= 0) return nullptr;
     const int pw = pixmap->GetWidth(), ph = pixmap->GetHeight();
     std::vector<uint8_t> rgba(static_cast<size_t>(pw) * static_cast<size_t>(ph) * 4);
@@ -157,6 +173,31 @@ std::shared_ptr<UCImage> LoadDocumentPicture(const RichDocMedia& media) {
     mz_free(png);
     auto image = UCImage::LoadFromMemory(bytes);
     return image && image->GetWidth() > 0 ? image : nullptr;
+}
+
+// A decoded document picture's own size in pixels, one to each 1/96 inch:
+// its pixels, a metafile's divided by the scale it was drawn at. Nullopt
+// with no picture.
+std::optional<Size2Df> PictureOwnSizePx(const RichDocMedia& media, const UCImage* image) {
+    if (!image || image->GetWidth() <= 0 || image->GetHeight() <= 0) return std::nullopt;
+    const float scale = MetafileKind(media).empty() ? 1.0f : kMetafilePictureScale;
+    return Size2Df(static_cast<float>(image->GetWidth()) / scale, static_cast<float>(image->GetHeight()) / scale);
+}
+std::optional<Size2Df> PictureOwnSizePx(const UCRichDocument& document, int mediaIndex, const UCImage* image) {
+    if (mediaIndex < 0 || mediaIndex >= static_cast<int>(document.media.size())) return std::nullopt;
+    return PictureOwnSizePx(document.media[static_cast<size_t>(mediaIndex)], image);
+}
+
+// The size a picture is laid out at, in pixels, before its line or column
+// narrows it: the size it states (points) on each side that states one; on a
+// side stated as 0 ("its own size", as Word and ODF files leave some), the
+// decoded picture's own size (PictureOwnSizePx: one pixel to each 1/96 inch -
+// the resolution every context draws at), and `fallback` when nothing could
+// decode it. The layout and GetImageDisplaySize both ask this, so they
+// cannot disagree.
+Size2Df PictureLayoutSize(float widthPt, float heightPt, const std::optional<Size2Df>& ownPx, const Size2Df& fallback) {
+    return Size2Df(widthPt > 0.0f ? Px(widthPt) : (ownPx ? ownPx->width : fallback.width),
+                   heightPt > 0.0f ? Px(heightPt) : (ownPx ? ownPx->height : fallback.height));
 }
 // resizeHandle's value while a float is dragged whole rather than resized.
 constexpr int kMoveHandle = 8;
@@ -1658,11 +1699,14 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
                 ctx->ClipPath();
                 std::shared_ptr<IPaintPattern> pattern;
                 if (shape.fillPictureTiled) {
-                    auto pixmap = image->GetPixmap(image->GetWidth(), image->GetHeight(), ImageFitMode::Fill,
-                                                   ctx->GetDeviceScale());
+                    // A tile of the picture's own size (a metafile's, not the
+                    // twice as large pixels it is drawn in).
+                    const Size2Df tile = PictureOwnSizePx(media, image.get()).value_or(Size2Df(1.0f, 1.0f));
+                    const int tileW = std::max(1, static_cast<int>(std::lround(tile.width)));
+                    const int tileH = std::max(1, static_cast<int>(std::lround(tile.height)));
+                    auto pixmap = image->GetPixmap(tileW, tileH, ImageFitMode::Fill, ctx->GetDeviceScale());
                     if (pixmap) {
-                        pattern = ctx->CreatePixmapPattern(*pixmap, Rect2Dd(x, y, image->GetWidth(), image->GetHeight()),
-                                                           PatternExtend::Repeat);
+                        pattern = ctx->CreatePixmapPattern(*pixmap, Rect2Dd(x, y, tileW, tileH), PatternExtend::Repeat);
                     }
                 }
                 if (pattern) {
@@ -2154,9 +2198,22 @@ float UltraCanvasRichTextEdit::GapAfterBlock(const std::vector<RichDocBlock>& bl
     if (index < 0 || index + 1 >= count) return 0.0f;
     const RichDocBlock& block = blocks[static_cast<size_t>(index)];
     const RichDocBlock& next = blocks[static_cast<size_t>(index) + 1];
-    float gap = (block.spaceAfterPt < 0.0f && next.spaceBeforePt < 0.0f)
-            ? style.blockSpacing
-            : Px(std::max(0.0f, block.spaceAfterPt) + std::max(0.0f, next.spaceBeforePt));
+    // A paragraph that states no spacing has its style's, where the style
+    // states some (a heading made with the style list); readers state it
+    // on every paragraph, so this is a document edited here.
+    const std::shared_ptr<UCRichDocument>& document = editor.GetDocument();
+    auto styled = [&document](const RichDocBlock& b, bool after) {
+        const float own = after ? b.spaceAfterPt : b.spaceBeforePt;
+        const bool text = b.type == RichBlockType::Paragraph || b.type == RichBlockType::Heading ||
+                          b.type == RichBlockType::ListItem || b.type == RichBlockType::BlockQuote;
+        if (own >= 0.0f || !text || !document || document->styles.empty()) return own;
+        const RichStyleParagraph fromStyle = document->ParagraphStyleOf(b);
+        const std::optional<float>& value = after ? fromStyle.spaceAfterPt : fromStyle.spaceBeforePt;
+        return value ? *value : own;
+    };
+    const float after = styled(block, true), before = styled(next, false);
+    float gap = (after < 0.0f && before < 0.0f) ? style.blockSpacing
+                                                : Px(std::max(0.0f, after) + std::max(0.0f, before));
     // A paragraph frame takes room of its own, as in a word processor: its
     // padding and line width below the last paragraph of a box and above the
     // first. Paragraphs within one box keep their plain spacing.
@@ -2355,10 +2412,11 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt) : ColumnWidth() * 0.5f;
                 height = Px(std::max(0.0f, run.imageHeightPt));
             } else {
-                width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt)
-                      : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
-                height = run.imageHeightPt > 0.0f ? Px(run.imageHeightPt)
-                       : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
+                const Size2Df size = PictureLayoutSize(run.imageWidthPt, run.imageHeightPt,
+                                                       PictureOwnSizePx(document, run.mediaIndex, image.get()),
+                                                       Size2Df(16.0f, 16.0f));
+                width = size.width;
+                height = size.height;
                 // Never wider than the column - unless it is placed on the
                 // page, not in the column: a banner across the whole sheet
                 // keeps its size, and the page's edge cuts it.
@@ -2460,10 +2518,11 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             if (run.mediaIndex >= 0 && run.mediaIndex < static_cast<int>(document.media.size())) {
                 image = LoadDocumentPicture(document.media[static_cast<size_t>(run.mediaIndex)]);
             }
-            float width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt)
-                        : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
-            float height = run.imageHeightPt > 0.0f ? Px(run.imageHeightPt)
-                         : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
+            const Size2Df size = PictureLayoutSize(run.imageWidthPt, run.imageHeightPt,
+                                                   PictureOwnSizePx(document, run.mediaIndex, image.get()),
+                                                   Size2Df(16.0f, 16.0f));
+            float width = size.width;
+            float height = size.height;
             // Never wider than the line it sits in (a quoted or indented
             // paragraph's is narrower than the column); keep the aspect ratio.
             const double lineWidth = layout->GetExplicitWidth();
@@ -3111,10 +3170,11 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                 && block.mediaIndex < static_cast<int>(document.media.size())) {
                 bl.image = LoadDocumentPicture(document.media[static_cast<size_t>(block.mediaIndex)]);
             }
-            float width = block.imageWidthPt > 0 ? Px(block.imageWidthPt)
-                                                 : (bl.image ? static_cast<float>(bl.image->GetWidth()) : 160.0f);
-            float height = block.imageHeightPt > 0 ? Px(block.imageHeightPt)
-                                                   : (bl.image ? static_cast<float>(bl.image->GetHeight()) : 120.0f);
+            const Size2Df size = PictureLayoutSize(block.imageWidthPt, block.imageHeightPt,
+                                                   PictureOwnSizePx(document, block.mediaIndex, bl.image.get()),
+                                                   Size2Df(160.0f, 120.0f));
+            float width = size.width;
+            float height = size.height;
             // Set out into the margin where its paragraph's left indent is
             // negative (a letterhead's logo), as far as the page's edge.
             if (pageView && block.leftIndentPt < 0.0f) {
@@ -3952,7 +4012,12 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
                 if (block.tableBordersFromDocument && modelCell) {
                     DrawDocumentCellFrame(ctx, *modelCell, cellRect);
                 } else {
-                    ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
+                    // The view's grid: the cell's own fill (a panel's cell
+                    // shading) under it.
+                    const Color fill = modelCell && !modelCell->backgroundColor.empty()
+                                           ? DocumentColor(modelCell->backgroundColor, Colors::Transparent)
+                                           : Colors::Transparent;
+                    ctx->DrawFilledRectangle(cellRect, fill, 1.0f, style.tableBorderColor);
                 }
                 for (const RichDocPosition& selected : selectedCells) {
                     if (selected.cellRow == bl.cellRows[i] && selected.cellColumn == bl.cellColumns[i]) {
@@ -4346,6 +4411,44 @@ bool UltraCanvasRichTextEdit::SetSelectedImageSize(float widthPt, float heightPt
     if (readOnly || !HasSelectedImage()) return false;
     if (!editor.SetImageSize(selectedImage, widthPt, heightPt)) return false;
     AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::GetImageDisplaySize(const RichDocPosition& image, float& widthPt, float& heightPt) const {
+    float statedWidth = 0.0f, statedHeight = 0.0f;
+    std::string alt;
+    int media = -1;
+    if (!editor.GetImageInfo(image, statedWidth, statedHeight, alt, media)) return false;
+    if (statedWidth > 0.0f && statedHeight > 0.0f) {
+        widthPt = statedWidth;
+        heightPt = statedHeight;
+        return true;
+    }
+    // A side of its own size: the picture decoded as the layout decodes it
+    // (the image cache keeps it, keyed by its bytes), sized as it sizes it.
+    const UCRichDocument* document = editor.GetDocument().get();
+    if (!document || media < 0 || media >= static_cast<int>(document->media.size())) return false;
+    const auto picture = LoadDocumentPicture(document->media[static_cast<size_t>(media)]);
+    if (!picture) return false;
+    const Size2Df size = PictureLayoutSize(statedWidth, statedHeight, PictureOwnSizePx(*document, media, picture.get()),
+                                           Size2Df(0.0f, 0.0f));
+    widthPt = size.width / kPixelsPerPoint;
+    heightPt = size.height / kPixelsPerPoint;
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::GetImageNaturalSize(const RichDocPosition& image, float& widthPt, float& heightPt) const {
+    float statedWidth = 0.0f, statedHeight = 0.0f;
+    std::string alt;
+    int media = -1;
+    if (!editor.GetImageInfo(image, statedWidth, statedHeight, alt, media)) return false;
+    const UCRichDocument* document = editor.GetDocument().get();
+    if (!document || media < 0 || media >= static_cast<int>(document->media.size())) return false;
+    const auto picture = LoadDocumentPicture(document->media[static_cast<size_t>(media)]);
+    if (!picture) return false;
+    const Size2Df size = PictureLayoutSize(0.0f, 0.0f, PictureOwnSizePx(*document, media, picture.get()), Size2Df(0.0f, 0.0f));
+    widthPt = size.width / kPixelsPerPoint;
+    heightPt = size.height / kPixelsPerPoint;
     return true;
 }
 
@@ -6070,6 +6173,43 @@ bool UltraCanvasRichTextEdit::GetTableProperties(RichTableProperties& out) const
 bool UltraCanvasRichTextEdit::SetTableProperties(const RichTableProperties& properties) {
     const RichDocPosition caret = editor.GetCaret();
     if (readOnly || !caret.InCell() || !editor.SetTableProperties(caret.blockIndex, properties)) return false;
+    AfterEdit();
+    return true;
+}
+
+RichParagraphFormatState UltraCanvasRichTextEdit::GetEffectiveParagraphFormat() const {
+    // What the layout does with a paragraph that states nothing: the view's
+    // block spacing after it (GapAfterBlock), none before, single lines.
+    RichParagraphFormat unstated;
+    unstated.align = RichTextAlign::Left;
+    unstated.spaceBeforePt = 0.0f;
+    unstated.spaceAfterPt = style.blockSpacing / kPixelsPerPoint;
+    unstated.lineSpacing = 1.0f;
+    return editor.GetEffectiveParagraphFormat(unstated);
+}
+
+bool UltraCanvasRichTextEdit::GetEffectiveTableProperties(RichTableProperties& out) const {
+    if (!GetTableProperties(out)) return false;
+    // The view's own grid: a one-pixel line; its padding 4 px at the sides.
+    if (out.borderWidthPt < 0.0f) out.borderWidthPt = 1.0f / kPixelsPerPoint;
+    if (out.cellPaddingPt < 0.0f) out.cellPaddingPt = 4.0f / kPixelsPerPoint;
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetCellShading(const std::string& colour) {
+    if (readOnly || !editor.SetCellShading(colour)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetListMarker(const RichListMarker& marker) {
+    if (readOnly || !editor.SetListMarker(marker)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::EndList() {
+    if (readOnly || !editor.EndList()) return false;
     AfterEdit();
     return true;
 }

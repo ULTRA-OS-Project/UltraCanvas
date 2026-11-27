@@ -735,6 +735,11 @@ if(TARGET UltraCanvas)
     target_include_directories(RichTextEditElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(RichTextEditElementTest PRIVATE cxx_std_20)
     target_link_libraries(RichTextEditElementTest PRIVATE UltraCanvas)
+    # The vector readers draw a metafile picture (a synthetic EMF of its own size).
+    if(TARGET UltraCanvasVectorPlugin)
+        target_link_libraries(RichTextEditElementTest PRIVATE UltraCanvasVectorPlugin)
+        target_compile_definitions(RichTextEditElementTest PRIVATE RTE_TEST_HAS_VECTOR_PLUGIN=1)
+    endif()
     set_target_properties(RichTextEditElementTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -1923,6 +1928,25 @@ if(TARGET UltraCanvas)
     set_target_properties(FontPickerElementTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME FontPickerElementTest COMMAND FontPickerElementTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: FontPickerElementTest")
+endif()
+
+# ===== TOOL PANEL STACK ELEMENT TEST =====
+# UltraCanvasToolPanelStack on a window, driven through the application: open
+# and closed panels, the order (SetOrder, a dragged header, Ctrl+Up/Down),
+# the saved state, context panels that do not move the panel under the
+# pointer, the rail and its flyout (Escape one level), the keyboard and the
+# tool rows' setters. ULTRACANVAS_SCREENSHOT_DIR=<dir> writes PPM screenshots.
+# Skips itself without a DISPLAY; CI runs it under Xvfb (the framework window
+# tests).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolPanelStackElementTest...")
+    add_executable(ToolPanelStackElementTest ${CMAKE_CURRENT_SOURCE_DIR}/ToolPanelStackElementTest.cpp)
+    target_include_directories(ToolPanelStackElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(ToolPanelStackElementTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolPanelStackElementTest PRIVATE UltraCanvas)
+    set_target_properties(ToolPanelStackElementTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME ToolPanelStackElementTest COMMAND ToolPanelStackElementTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolPanelStackElementTest")
 endif()
 
 # ===== TEXT METRICS SCREENSHOT TEST =====
@@ -5746,6 +5770,53 @@ if(BUILD_ULTRAOFFICE AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     add_test(NAME UltraOfficeSettingsWindowTest COMMAND UltraOfficeSettingsWindowTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraOfficeSettingsWindowTest")
+
+    # The tool tables (Apps/UltraOffice/UltraOfficeTools.h): every tool of
+    # the command tabs' bars and the view group in the table, a panel for
+    # each entry, unique ids, the value entries' getters and setters round-
+    # tripping on a document, a sheet and a deck. Opens a window.
+    message(STATUS "  Building UltraOfficeToolTableTest...")
+    add_executable(UltraOfficeToolTableTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraOfficeToolTableTest.cpp
+        ${_ultraOfficeSources}
+    )
+    target_include_directories(UltraOfficeToolTableTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/Apps/UltraOffice ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(UltraOfficeToolTableTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraOfficeToolTableTest PRIVATE UltraCanvas)
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraOfficeToolTableTest PRIVATE fmt::fmt)
+    endif()
+    set_target_properties(UltraOfficeToolTableTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOfficeToolTableTest COMMAND UltraOfficeToolTableTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraOfficeToolTableTest")
+
+    # The tool panels (Apps/UltraOffice/UltraOfficePanels.h) in the window:
+    # the default layout, the top row, every tool in its panel, values edited
+    # in place, the context panels, a reorder saved and restored after a
+    # restart, the toolbar as a setting, the icon rail and its flyout, F6.
+    # Opens a window.
+    message(STATUS "  Building UltraOfficePanelsWindowTest...")
+    add_executable(UltraOfficePanelsWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraOfficePanelsWindowTest.cpp
+        ${_ultraOfficeSources}
+    )
+    target_include_directories(UltraOfficePanelsWindowTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/Apps/UltraOffice ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(UltraOfficePanelsWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraOfficePanelsWindowTest PRIVATE UltraCanvas)
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraOfficePanelsWindowTest PRIVATE fmt::fmt)
+    endif()
+    set_target_properties(UltraOfficePanelsWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOfficePanelsWindowTest COMMAND UltraOfficePanelsWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraOfficePanelsWindowTest")
 endif()
 
 # ===== SPREADSHEET WORKBOOK ROUND-TRIP TEST =====

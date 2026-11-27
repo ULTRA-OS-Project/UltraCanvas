@@ -18,6 +18,13 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.27.0 - what the tool panels show and set: GetEffectiveParagraphFormat (the values as they
+//                   apply: the paragraph's, its style's, the view's own spacing), GetEffectiveTableProperties
+//                   (the view's grid line and padding where the document states none), GetListMarker /
+//                   SetListMarker / EndList, GetCellShading / SetCellShading; a paragraph's spacing taken
+//                   from its style where it states none, a cell's fill drawn on the view's grid too
+// Version: 1.26.0 - GetImageDisplaySize, GetImageNaturalSize: a picture's size as laid out, in points
+//                   (its own pixel size where it states 0), and at 100 %
 // Version: 1.25.0 - FontReport::namedFamilies: every family the document names, for a font list's
 //                   "in this document" section (UltraCanvasFontPicker)
 // Version: 1.24.0 - ZoomFit::WidthShare, ZoomToWidthShare: the page fills a share of the view's width,
@@ -478,6 +485,20 @@ public:
     // sits (UCRichDocumentEditor::SetImageWrap). One undo step.
     bool GetSelectedImageWrap(RichTextRun::ImageWrap& wrap, RichTextAlign& align) const;
     bool SetSelectedImageWrap(RichTextRun::ImageWrap wrap, RichTextAlign align = RichTextAlign::Left);
+    // The size the picture at `image` is laid out at, in points: the size it
+    // states (UCRichDocumentEditor::GetImageInfo) where it states one, else -
+    // on a side stated as 0, "its own size", which Word and ODF files use for
+    // some pictures - its decoded pixels at one to each 1/96 inch, exactly as
+    // the layout sizes it. A line or column narrower than that still draws it
+    // narrower, keeping its proportions; this is the size the document holds
+    // it at. False when nothing is there, or its size is its own and its
+    // media cannot be decoded (or it is a text frame or drawing that states
+    // no size).
+    bool GetImageDisplaySize(const RichDocPosition& image, float& widthPt, float& heightPt) const;
+    // Its size at 100 %: its decoded pixels at one to each 1/96 inch,
+    // whatever size it states. False when nothing is there or it has no
+    // media that decodes (a text frame, a drawing).
+    bool GetImageNaturalSize(const RichDocPosition& image, float& widthPt, float& heightPt) const;
 
     // ===== PARAGRAPH LAYOUT =====
     // The caret paragraph's indents, spacing, line spacing, alignment and tab
@@ -485,6 +506,21 @@ public:
     // undo step; see UCRichDocumentEditor::SetParagraphFormat).
     RichParagraphFormat GetParagraphFormat() const { return editor.GetParagraphFormat(); }
     bool SetParagraphFormat(const RichParagraphFormat& format);
+    // The same as it is laid out, for a panel that shows the values in
+    // effect: what the paragraph states, else its style's, else the view's
+    // (UCRichDocumentEditor::GetEffectiveParagraphFormat) - a paragraph that
+    // states no spacing has the view's block spacing after it and none
+    // before, and single lines. The flags name what the selection's
+    // paragraphs disagree on.
+    RichParagraphFormatState GetEffectiveParagraphFormat() const;
+
+    // ===== LISTS =====
+    // The caret paragraph's list marker (false: no list item; `mixed`: the
+    // selection's paragraphs differ), and every paragraph the selection
+    // touches given one, or made plain paragraphs again: one undo step each.
+    bool GetListMarker(RichListMarker& out, bool& mixed) const { return editor.GetListMarker(out, mixed); }
+    bool SetListMarker(const RichListMarker& marker);
+    bool EndList();
 
     // ===== TABLES =====
     // Structural table editing, addressed from the caret: a menu item says
@@ -517,12 +553,21 @@ public:
     // into one. False without such a selection.
     bool HasCellSelection() const { return editor.HasCellSelection(); }
     bool MergeSelectedCells();
-        bool CanSplitCurrentCell() const;
+    bool CanSplitCurrentCell() const;
     bool SplitCurrentCell();
     // The caret's table's width, alignment, header row, borders and cell
     // padding (RichTableProperties); false when the caret is not in a table.
     bool GetTableProperties(RichTableProperties& out) const;
     bool SetTableProperties(const RichTableProperties& properties);
+    // The same as the table is drawn: where the document states no lines
+    // (borderWidthPt < 0) the width of the view's own grid line, where it
+    // states no cell padding the view's default, in points.
+    bool GetEffectiveTableProperties(RichTableProperties& out) const;
+    // The fill of the caret's cell, or of every selected cell ("#RRGGBB",
+    // "" for none; false outside a table or for cells that differ), and
+    // the same given to them: one undo step.
+    bool GetCellShading(std::string& colour) const { return editor.GetCellShading(colour); }
+    bool SetCellShading(const std::string& colour);
 
     // ===== AUTOFORMAT AS YOU TYPE =====
     // On by default: typed quotes become “curly”, "--" a dash, "..." an

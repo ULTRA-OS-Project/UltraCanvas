@@ -325,6 +325,40 @@ format.tabStops = {{144.0f, RichTabKind::Right}};
 editor->SetParagraphFormat(format);             // false when nothing changed
 ```
 
+`GetParagraphFormat` says what the paragraph itself states. A tool panel
+shows what applies instead: `GetEffectiveParagraphFormat` gives each value as
+the paragraph is laid out - its own, else its paragraph style's
+(`UCRichDocument::ParagraphStyleOf`: Normal's for a paragraph naming none, a
+heading's level style), else the view's (no space before, the view's block
+spacing after, single lines) - and flags the values the paragraphs of the
+selection disagree on, the only ones to show as "-". A paragraph that states
+no spacing is laid out with its style's, so a heading made with
+`SetHeadingLevel` has Heading 1's 12 pt above it:
+
+```cpp
+const RichParagraphFormatState now = editor->GetEffectiveParagraphFormat();
+if (!now.spaceBeforeMixed) {
+    float before = now.format.spaceBeforePt;    // never "not stated" here
+    (void)before;
+}
+```
+
+A list's marker - a number in a format, a bullet, a check list's box - is a
+`RichListMarker`; `SetListMarker` makes the selection's paragraphs list items
+with it (one undo step), `EndList` makes them plain paragraphs again:
+
+```cpp
+RichListMarker lettered;
+lettered.ordered = true;
+lettered.numberFormat = RichNumberFormat::LowerLetter;   // a. b. c.
+editor->SetListMarker(lettered);
+RichListMarker marker;
+bool mixed = false;
+const bool inList = editor->GetListMarker(marker, mixed);   // false: no list item
+(void)inList;
+editor->EndList();
+```
+
 Tracking - extra room between every two letters of the whole text, as a drawing
 program's letter spacing - is part of the element's style, in pixels at 100%
 (ArtCreator sets it for the text typed on its page):
@@ -571,6 +605,27 @@ vertical alignment. A border of the document's own (`borderWidthPt >= 0`) sets
 `tableBordersFromDocument`, so the cells' lines are drawn instead of the
 editor's grid.
 
+`GetEffectiveTableProperties` gives the same as the table is drawn: where
+the document states no lines, the width of the view's grid line (0.75 pt),
+and where it states no padding, the view's. A cell's fill - the caret's
+cell, or every selected cell - is `GetCellShading` / `SetCellShading`
+(`"#RRGGBB"`, `""` for none; one undo step), drawn whether the table's lines
+are the document's or the view's grid, and written by the DOCX and ODT
+writers either way:
+
+```cpp
+RichTableProperties drawn;
+if (editor->GetEffectiveTableProperties(drawn)) {
+    float line = drawn.borderWidthPt;            // 0.75 on the view's own grid
+    (void)line;
+}
+editor->SetCellShading("#FFC000");
+std::string fill;
+if (editor->GetCellShading(fill)) {              // false: no table, or cells that differ
+    // fill == "#FFC000"
+}
+```
+
 #### Selecting a block of cells
 
 Drag (or Shift+arrow) from one cell into another and the selection becomes a
@@ -632,6 +687,34 @@ text goes round a picture; `GetSelectedImageWrap` reads it. A picture of its
 own paragraph (a `RichBlockType::Image` block) that is made to float becomes
 the one picture in the line of a paragraph, at the same position (`{block,
 0}`), so it stays selected and one undo gives the block back.
+
+**A picture's size.** The editing core's `GetImageInfo` gives the size a
+picture *states*, in points, and 0 means "its own pixel size" - Word and ODF
+files leave some pictures so - which the core, holding no decoder, cannot
+turn into a number. The element decodes pictures to draw them, so it answers
+for them: `GetImageDisplaySize` is the size the picture is laid out at, in
+points - the stated size on each side that states one, else the decoded
+picture's pixels at one to each 1/96 inch (a 64 x 32 px PNG is 48 x 24 pt),
+through the very code the layout sizes it with. A Windows metafile (EMF,
+WMF) is drawn at twice its size so it stays sharp at 200 %, but laid out and
+reported at its own - the size its frame gives - not at those pixels. A line or column narrower
+than that still draws it narrower, in proportion; this is the size the
+document holds. `GetImageNaturalSize` is its size at 100 %, whatever it
+states. Both return false when nothing is at the position or, for a picture
+of its own size, when its media cannot be decoded (a text frame or drawing
+has no media: only a stated size answers there).
+
+```cpp
+float widthPt = 0, heightPt = 0;
+if (editor->HasSelectedImage()
+    && editor->GetImageDisplaySize(editor->GetSelectedImage(), widthPt, heightPt)) {
+    // Twice as wide, in proportion: one undo step.
+    editor->SetSelectedImageSize(widthPt * 2, heightPt * 2);
+}
+float naturalW = 0, naturalH = 0;
+if (editor->GetImageNaturalSize(editor->GetSelectedImage(), naturalW, naturalH))
+    editor->SetSelectedImageSize(naturalW, naturalH);   // back to 100 %
+```
 
 ### Floating pictures
 
@@ -962,7 +1045,7 @@ elements in an `UltraCanvasModalDialog`, modal over the element's window:
 | Paragraph | `ShowParagraphDialog` | `RichParagraphFormat` | `SetParagraphFormat` |
 | Styles | `ShowStylesDialog` | `RichStylesDialogValues` (apply, change, new from the selection) | `ApplyParagraphStyle` / `ApplyCharacterStyle`, `UpdateStyle`, `NewStyleFromCaret` |
 | Table properties | `ShowTablePropertiesDialog` | `RichTableProperties` | `SetTableProperties` |
-| Picture | `ShowPictureDialog` | `RichPictureDialogValues` (alt text, wrapping, position, size) | `SetSelectedImageAltText`, `SetSelectedImageSize`, `SetSelectedImageWrap` |
+| Picture | `ShowPictureDialog` | `RichPictureDialogValues` (alt text, wrapping, position, size - a picture of its own size read at that size, `GetImageDisplaySize`) | `SetSelectedImageAltText`, `SetSelectedImageSize`, `SetSelectedImageWrap` |
 | Table of contents | `ShowContentsDialog` | `RichContentsDialogValues` (levels, rebuild the existing) | `InsertTableOfContents` / `UpdateTableOfContents` |
 | Caption | `ShowCaptionDialog` | `RichCaptionDialogValues` (label, text) | `InsertCaption` |
 | Cross-reference | `ShowCrossReferenceDialog` | `RichCrossReferenceDialogValues` (a target from `RichCrossReferenceTargets`, text or page) | `InsertCrossReference` |

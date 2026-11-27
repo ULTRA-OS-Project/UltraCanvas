@@ -1,5 +1,8 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.12.0 - SetKeyboardFocusOnRequest / FocusTabStrip: the strip takes the keyboard when asked
+//                   (an application's F6), never from a click, and draws a focus ring round the open tab
+//                   while it has it (focusRingColor, the theme's focus role)
 // Version: 2.11.0 - ApplyTheme sets the titles' size (the caption size); the constructor tail
 // Version: 2.10.0 - ApplyTheme
 // Version: 2.9.0 - the Modern style's indicator line has a colour and a thickness of its own
@@ -7,7 +10,7 @@
 // Version: 2.7.0 - a truncated title fills its width, one X weight, the open tab's own X colour
 // Version: 2.6.0 - TabStyle::Pill, capsule tabs floating in the bar
 // Version: 2.5.0 - a tab list to screen readers, named after the open tab
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -194,6 +197,11 @@ namespace UltraCanvas {
         Color hoveredTabBorderColor = Colors::Transparent;
         // The line under (beside) the open tab in TabStyle::Modern.
         Color activeTabIndicatorColor = Color(33, 150, 243);
+        // The ring round the open tab while the strip has the keyboard
+        // (SetKeyboardFocusOnRequest).
+        Color focusRingColor = Color(0, 120, 215);
+        bool focusOnRequest = false;
+        bool focusRequested = false;
         int activeTabIndicatorThickness = 2;
         Color activeTabTextColor = Colors::Black;
         Color inactiveTabTextColor = Color(80, 80, 80);
@@ -389,6 +397,22 @@ namespace UltraCanvas {
         void SetActiveTabIndicatorColor(const Color& c) { activeTabIndicatorColor = c; RequestRedraw(); }
         Color GetActiveTabIndicatorColor() const { return activeTabIndicatorColor; }
         void SetActiveTabIndicatorThickness(int px) { activeTabIndicatorThickness = std::max(1, px); RequestRedraw(); }
+
+        // ===== THE KEYBOARD =====
+        // A strip that takes the keyboard only when asked - FocusTabStrip(),
+        // as an application's F6 does going from pane to pane - and never
+        // from a click, so a click on a tab leaves the keyboard in the page.
+        // While it has it, Left and Right go from tab to tab and a focus ring
+        // is drawn round the open tab. Off by default: the strip never takes
+        // the keyboard.
+        void SetKeyboardFocusOnRequest(bool on) { focusOnRequest = on; if (!on) focusRequested = false; }
+        bool IsKeyboardFocusOnRequest() const { return focusOnRequest; }
+        // Gives the strip the keyboard; false when it is not on request, or
+        // cannot take it (hidden, disabled).
+        bool FocusTabStrip();
+        bool AcceptsFocus() const override { return focusOnRequest && focusRequested; }
+        void SetFocusRingColor(const Color& c) { focusRingColor = c; RequestRedraw(); }
+        Color GetFocusRingColor() const { return focusRingColor; }
         int GetActiveTabIndicatorThickness() const { return activeTabIndicatorThickness; }
         void SetActiveTabBorderColor(const Color& c) { activeTabBorderColor = c; RequestRedraw(); }
         Color GetActiveTabBorderColor() const { return activeTabBorderColor; }

@@ -2,6 +2,7 @@
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
 // The history is in the header (include/UltraCanvasDropdown.h).
+// Version: 1.4.2 - SetSelectedIndex redraws the box: a choice set from outside showed the old one until another redraw
 // Version: 1.4.1 - the open list's scroll bar follows the theme (DropdownStyle::FromTheme)
 // Version: 1.4.0 - icons as masks in the item's text colour (DropdownItem::iconAsMask, SetIconsAsMask)
 // Version: 1.3.0 - DropdownItem::fontFamily, prepared in idle slices before the list opens
@@ -362,6 +363,10 @@ namespace UltraCanvas {
         if (index >= -1 && index < (int)items.size()) {
             if (selectedIndex != index) {
                 selectedIndex = index;
+                // The box shows the new choice: a choice set from outside
+                // (a tool panel following the caret) was drawn only with the
+                // next redraw something else asked for.
+                RequestRedraw();
                 NotifyAccessibility(AccessibilityEventType::ValueChanged);
 
                 if (index >= 0 && runNotifications) {

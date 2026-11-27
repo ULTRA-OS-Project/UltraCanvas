@@ -15,6 +15,10 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
+// Version: 1.8.0 - what the tool panels show and set: GetEffectiveParagraphFormat (RichParagraphFormatState:
+//                  each value as it applies - the paragraph's, its style's, the view's - and where the
+//                  selection's paragraphs differ); GetListMarker / SetListMarker / EndList (RichListMarker,
+//                  a list style); GetCellShading / SetCellShading; each set one undo step
 // Version: 1.7.0 - heading sections, what a navigator moves: HeadingSectionEnd, MoveHeadingSection,
 //                  MoveHeadingSectionUp / Down, ChangeHeadingSectionLevel (promote, demote), each
 //                  one undo step; SiblingHeading
@@ -209,6 +213,28 @@ struct RichParagraphFormat {
     bool lineHeightAtLeast = false;
     std::vector<RichTabStop> tabStops;  // kept sorted by position
     bool operator==(const RichParagraphFormat& other) const = default;
+};
+
+// A paragraph's layout with every value as it applies
+// (UCRichDocumentEditor::GetEffectiveParagraphFormat), and which of them the
+// paragraphs the selection touches do not agree on: a tool panel shows a
+// value, and "-" only where the selection holds several.
+struct RichParagraphFormatState {
+    RichParagraphFormat format;
+    bool alignMixed = false;
+    bool leftIndentMixed = false, rightIndentMixed = false, firstLineIndentMixed = false;
+    bool spaceBeforeMixed = false, spaceAfterMixed = false;
+    bool lineSpacingMixed = false;      // the multiple, or the height in points
+};
+
+// The marker of a list paragraph, as a list style chooses it: a number in a
+// format, a bullet, or a check list's box.
+struct RichListMarker {
+    bool ordered = false;
+    RichNumberFormat numberFormat = RichNumberFormat::Decimal;   // ordered
+    std::string bulletText;             // unordered: the bullet (UTF-8); empty = the view's for the level
+    bool checkbox = false;              // unordered: a check list's box
+    bool operator==(const RichListMarker& other) const = default;
 };
 
 // A table's properties, as a table dialog shows them (RichDocBlock's table
@@ -441,9 +467,37 @@ public:
     // The caret paragraph's layout (its cell's alignment and line spacing in
     // a table).
     RichParagraphFormat GetParagraphFormat() const;
+    // The same as it applies: each value the paragraph's own where it states
+    // one, else its paragraph style's (UCRichDocument::ParagraphStyleOf:
+    // Normal's for none), else `unstated`'s - what the view does with a
+    // value nobody states (its own spacing, single lines). A spacing < 0 and
+    // a line multiple of 0 are not stated; the indents always are. In a
+    // table, the caret's cell (no spacing, no indents). The flags name the
+    // values the paragraphs (or cells) the selection touches disagree on.
+    RichParagraphFormatState GetEffectiveParagraphFormat(const RichParagraphFormat& unstated) const;
     // Gives every paragraph the selection touches (every selected cell, in a
     // table) that layout: one undo step. False when nothing changed.
     bool SetParagraphFormat(const RichParagraphFormat& format);
+
+    // ===== LIST STYLE, CELL SHADING (what the tool panels set) =====
+    // The caret paragraph's list marker; false when it is no list item.
+    // `mixed`: the paragraphs the selection touches are not all list items
+    // with this marker.
+    bool GetListMarker(RichListMarker& out, bool& mixed) const;
+    // Every text paragraph the selection touches a list item with `marker`,
+    // keeping its level (a paragraph that was none starts at the top
+    // level): one undo step. False in a table cell or when nothing changed.
+    bool SetListMarker(const RichListMarker& marker);
+    // Every list item the selection touches a plain paragraph again: one
+    // undo step. False when there was none.
+    bool EndList();
+    // The fill of the caret's cell, or of every selected cell ("#RRGGBB";
+    // empty for none). False when the caret is in no table, or the selected
+    // cells have different fills.
+    bool GetCellShading(std::string& colour) const;
+    // Fills the caret's cell, or every selected cell ("" for none): one undo
+    // step. False outside a table or when nothing changed.
+    bool SetCellShading(const std::string& colour);
     // The document's page: size, margins and where the header and footer
     // start. One undo step (the page is part of it); false when the same.
     bool SetPageSetup(const RichPageSetup& page);

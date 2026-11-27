@@ -2,6 +2,7 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.11.0 - ParagraphStyleOf
 // Version: 1.10.0 - ApplyPreset: connectors (bent, curved), double and notched arrows, stars of 6 to 32 points,
 //                   hepta-, deca- and dodecagons, snipped and rounded rectangles, callouts, more flowchart shapes
 // Version: 1.9.1 - ChartAsShapes: bubble, radar and stock charts
@@ -2850,6 +2851,18 @@ RichStyle UCRichDocument::ResolveStyle(const std::string& id) const {
         resolved.paragraph.Overlay((*it)->paragraph);
     }
     return resolved;
+}
+
+RichStyleParagraph UCRichDocument::ParagraphStyleOf(const RichDocBlock& block) const {
+    if (styles.empty()) return RichStyleParagraph{};
+    // The id the style system reads (UCRichDocumentEditor's EffectiveStyleId):
+    // none is Normal, a heading naming none its level's heading style.
+    std::string id = block.styleId;
+    if (id.empty())
+        id = block.type == RichBlockType::Heading ? "Heading" + std::to_string(std::clamp(block.headingLevel, 1, 6))
+                                                  : std::string("Normal");
+    if (!FindStyle(id)) id = "Normal";
+    return ResolveStyle(id).paragraph;
 }
 
 bool UCRichDocument::StyleDerivesFrom(const std::string& id, const std::string& ancestorId) const {

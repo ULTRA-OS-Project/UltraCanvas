@@ -1,5 +1,6 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.12.0 - FocusTabStrip, the focus ring round the open tab while the strip has the keyboard
 // Version: 2.11.1 - tab titles and the drag ghost's title are centred on their capitals
 // Version: 2.11.0 - ApplyTheme: the tabs from the theme roles
 // Version: 2.10.0 - the overflow list opens anchored to its button: above it when there
@@ -665,6 +666,19 @@ namespace UltraCanvas {
             RenderTab(i, ctx);
         }
 
+        // The keyboard is on the strip: a ring round the open tab.
+        if (focusOnRequest && IsFocused() && activeTabIndex >= 0 && activeTabIndex < (int)tabs.size() &&
+            tabs[activeTabIndex]->visible) {
+            const Rect2Di tab = GetTabBounds(activeTabIndex);
+            if (tab.width > 4 && tab.height > 4) {
+                ctx->PushState();
+                ctx->SetStrokePaint(focusRingColor);
+                ctx->SetStrokeWidth(2.0f);
+                ctx->DrawRoundedRectangle(Rect2Dd(tab.x + 2.0, tab.y + 2.0, tab.width - 4.0, tab.height - 4.0), 3.0);
+                ctx->PopState();
+            }
+        }
+
         if (isDraggingTab && dragInsertionIndex >= 0) {
             RenderDragInsertionIndicator(ctx);
         }
@@ -1017,6 +1031,18 @@ namespace UltraCanvas {
                 if (HandleKeyDown(event)) return true;
                 break;
 
+            // The ring round the open tab comes and goes with the keyboard;
+            // once it has gone, only FocusTabStrip brings it back.
+            case UCEventType::FocusGained:
+                if (focusOnRequest) RequestRedraw();
+                break;
+            case UCEventType::FocusLost:
+                if (focusOnRequest) {
+                    focusRequested = false;
+                    RequestRedraw();
+                }
+                break;
+
             case UCEventType::MouseDown:
             // A rapid second click arrives as a double-click instead of a
             // MouseDown; the tab scroll arrows and close buttons must react
@@ -1296,6 +1322,17 @@ namespace UltraCanvas {
                 return true;
             }
         }
+        return false;
+    }
+
+    bool UltraCanvasTabbedContainer::FocusTabStrip() {
+        if (!focusOnRequest) return false;
+        focusRequested = true;
+        if (SetFocus(true)) {
+            RequestRedraw();
+            return true;
+        }
+        focusRequested = false;
         return false;
     }
 
@@ -2673,6 +2710,7 @@ namespace UltraCanvas {
         newTabButtonIconColor = r.inkMuted;
         dragInsertionColor = r.accent;
         dragGhostBorderColor = r.accent.WithAlpha(120);
+        focusRingColor = r.focus;
         // the titles at the caption size
         fontSize = static_cast<int>(std::lround(theme.FontSize(ThemeTextRole::Caption)));
         RequestRedraw();

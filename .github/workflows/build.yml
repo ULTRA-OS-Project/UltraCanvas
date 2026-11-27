@@ -2673,9 +2673,11 @@ jobs:
             TextAreaMarkdownCaretLineTest TextAreaMarkdownSelectionTest
             TextAreaSearchHighlightTest TextAreaSpellCheckTest
             TextAreaSyntaxStateTest TextMetricsScreenshotTest
-            TimecodeFieldElementTest ToolGroupButtonTest TooltipOwnWindowTest
+            TimecodeFieldElementTest ToolGroupButtonTest
+            ToolPanelStackElementTest TooltipOwnWindowTest
             VideoTimelineElementTest WindowCurrentDesktopTest
             UltraOfficeTemplateWindowTest UltraOfficeSettingsWindowTest
+            UltraOfficeToolTableTest UltraOfficePanelsWindowTest
           )
           regex="^($(IFS='|'; echo "${tests[*]}"))\$"
           registered=$(ctest -N -R "$regex" | grep -cE '^ *Test +#' || true)

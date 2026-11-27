@@ -6,11 +6,13 @@
 // the slide show) for presentations - so the window never asks "and which
 // kind is this?" (Docs/Research/UltraOfficeDesignProposal.md, §4.2).
 //
+// Version: 0.4.0 - GetTools: the kind's tool table (UltraOfficeTools.h), which its command tabs, its view
+//                  group and the tool panels are built from
 // Version: 0.3.0 - GetViewToolbar (the view group at the right of the toolbar), ZoomIn / ZoomOut /
 //                  ZoomToActualSize (Ctrl++, Ctrl+-, Ctrl+0), ApplySettings (the Settings window)
 // Version: 0.2.0 - AttachSettings (what a kind remembers: the document's navigator), HandleShortcut (F5)
 // Version: 0.1.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -41,6 +43,8 @@ struct CommandTab {
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> toolbar;
 };
 
+struct ToolTable;   // UltraOfficeTools.h
+
 class OfficeHost {
 public:
     virtual ~OfficeHost() = default;
@@ -48,7 +52,10 @@ public:
     virtual OfficeKind GetKind() const = 0;
     // The element the tab shows under its toolbar; it grows to fill the tab.
     virtual std::shared_ptr<UltraCanvas::UltraCanvasUIElement> GetContent() = 0;
-    // The command tabs and their toolbars, built once.
+    // Every tool of the kind, described once (UltraOfficeTools.h): the
+    // command tabs, the view group and the tool panels are built from it.
+    virtual const ToolTable& GetTools() const = 0;
+    // The command tabs and their toolbars, built once from the tools.
     virtual const std::vector<CommandTab>& GetCommandTabs() = 0;
     // The view group: how the document is looked at - its fits, its zoom,
     // its panes - at the right end of the toolbar, whichever command tab is

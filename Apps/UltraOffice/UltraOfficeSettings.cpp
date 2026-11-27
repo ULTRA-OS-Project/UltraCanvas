@@ -1,9 +1,12 @@
 // Apps/UltraOffice/UltraOfficeSettings.cpp
 // See the header.
 //
+// Version: 0.4.0 - the Start tab's tools note dismissed ("toolPanelsNoteDismissed")
+// Version: 0.3.0 - the tools ("toolLayout", "toolRail") and each kind's panels ("documentPanels",
+//                  "spreadsheetPanels", "presentationPanels") and their width ("...PanelWidth")
 // Version: 0.2.0 - the recent fonts ("recentFonts")
 // Version: 0.1.0
-// Last Modified: 2026-11-26
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeSettings.h"
 
@@ -42,6 +45,15 @@ const char* kGridlinesKey = "sheetGridlines";
 const char* kSlideSizeKey = "slideSize";
 const char* kSecondScreenKey = "showOnSecondScreen";
 const char* kPresenterKey = "presenterView";
+const char* kToolLayoutKey = "toolLayout";
+const char* kToolRailKey = "toolRail";
+const char* kToolsNoteKey = "toolPanelsNoteDismissed";   // not a setting: kept by RestoreDefaults
+
+// A kind's panels and their width: "documentPanels", "documentPanelWidth" ...
+std::string PanelKeyOf(OfficeKind kind, const char* what) {
+    const char* name = kind == OfficeKind::Spreadsheet ? "spreadsheet" : kind == OfficeKind::Presentation ? "presentation" : "document";
+    return std::string(name) + what;
+}
 
 constexpr int kDefaultRecent = 8;
 constexpr float kDefaultFontSize = 12.0f;
@@ -53,7 +65,7 @@ void OfficeSettings::RestoreDefaults() {
     for (const char* key : {kAuthorKey, kLanguageKey, kThemeKey, kRecentCountKey, kReopenKey, kFormatKey, kAutosaveKey,
                             kRecoveryKey, kAutosaveMinutesKey, kDocumentFontKey, kDocumentFontSizeKey, kPageSizeKey,
                             kNavigatorKey, kDocumentFitKey, kWidthShareKey, kGridlinesKey, kSlideSizeKey,
-                            kSecondScreenKey, kPresenterKey})
+                            kSecondScreenKey, kPresenterKey, kToolLayoutKey, kToolRailKey})
         store_.Remove(key);
 }
 
@@ -121,6 +133,26 @@ bool OfficeSettings::GetReopenFiles() const { return store_.GetBool(kReopenKey, 
 void OfficeSettings::SetReopenFiles(bool reopen) { store_.Set(kReopenKey, reopen); }
 std::vector<std::string> OfficeSettings::GetOpenFiles() const { return store_.GetList(kOpenFilesKey); }
 void OfficeSettings::SetOpenFiles(const std::vector<std::string>& paths) { store_.Set(kOpenFilesKey, paths); }
+
+ToolLayout OfficeSettings::GetToolLayout() const {
+    return store_.GetString(kToolLayoutKey, "panels") == "toolbar" ? ToolLayout::Toolbar : ToolLayout::Panels;
+}
+void OfficeSettings::SetToolLayout(ToolLayout layout) {
+    store_.Set(kToolLayoutKey, std::string(layout == ToolLayout::Toolbar ? "toolbar" : "panels"));
+}
+bool OfficeSettings::GetToolRail() const { return store_.GetBool(kToolRailKey, false); }
+void OfficeSettings::SetToolRail(bool rail) { store_.Set(kToolRailKey, rail); }
+bool OfficeSettings::GetToolsNoteDismissed() const { return store_.GetBool(kToolsNoteKey, false); }
+void OfficeSettings::SetToolsNoteDismissed(bool dismissed) { store_.Set(kToolsNoteKey, dismissed); }
+
+std::string OfficeSettings::GetPanelState(OfficeKind kind) const { return store_.GetString(PanelKeyOf(kind, "Panels")); }
+void OfficeSettings::SetPanelState(OfficeKind kind, const std::string& state) { store_.Set(PanelKeyOf(kind, "Panels"), state); }
+int OfficeSettings::GetPanelWidth(OfficeKind kind) const {
+    return std::clamp(store_.GetInt(PanelKeyOf(kind, "PanelWidth"), kDefaultPanelWidth), kMinPanelWidth, kMaxPanelWidth);
+}
+void OfficeSettings::SetPanelWidth(OfficeKind kind, int width) {
+    store_.Set(PanelKeyOf(kind, "PanelWidth"), std::clamp(width, kMinPanelWidth, kMaxPanelWidth));
+}
 
 // ===== SAVING =====
 

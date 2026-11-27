@@ -1,5 +1,6 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.14.0 - Tab skips the elements inside a hidden container (a closed tool panel's controls)
 // Version: 1.13.0 - HandlePopupEscapeKey: one popup per Escape press; the release closes nothing
 // Version: 1.12.0 - a popup's own window is kept above its window only (its parent), not above every
 //                  window: another program's window put in front covers the menu too; above every
@@ -30,7 +31,7 @@
 // Version: 1.4.0 - popups composite at their opacity (SetPopupOpacity), mixed with
 //                  the window content beneath, so a popup can fade as a whole
 // Version: 1.3.3 - PerformClose() closes transient child windows so no orphaned modal survives its parent
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -441,9 +442,12 @@ namespace UltraCanvas {
 
         for (const auto& child : children) {
             UltraCanvasUIElement* element = child.get();
+            // What a hidden container holds is hidden with it: Tab went into
+            // the controls of a closed tool panel, which nobody could see.
+            if (!element || !element->IsVisible()) continue;
 
             // Check if element can be focused
-            if (element && element->CanReceiveFocus()) {
+            if (element->CanReceiveFocus()) {
                 elements.push_back(element);
             }
 

@@ -735,6 +735,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasChipGroup.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCollapsiblePanel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolPanelStack.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolRows.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSidebarNavigation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveSeparator.cpp

@@ -7,6 +7,8 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
+// Version: 1.8.0 - GetEffectiveParagraphFormat, GetListMarker / SetListMarker / EndList, GetCellShading / SetCellShading;
+//                  SplitTableCell fills every slot it frees (cells after the span no longer slide into them)
 // Version: 1.7.0 - heading sections: HeadingSectionEnd, SiblingHeading, MoveHeadingSection (up / down),
 //                  ChangeHeadingSectionLevel
 // Version: 1.6.0 - SetParagraphFormat, SetPageSetup (the page in the undo step), SetTableProperties,
@@ -2729,6 +2731,224 @@ bool UCRichDocumentEditor::SetParagraphFormat(const RichParagraphFormat& request
     return true;
 }
 
+// ===== THE VALUES IN EFFECT (what the tool panels show) =====
+
+namespace {
+
+const RichTableCell* CellOf(const UCRichDocument& doc, const RichDocPosition& at) {
+    if (at.blockIndex < 0 || at.blockIndex >= static_cast<int>(doc.blocks.size())) return nullptr;
+    const RichDocBlock& table = doc.blocks[static_cast<size_t>(at.blockIndex)];
+    if (at.cellRow < 0 || at.cellRow >= static_cast<int>(table.tableRows.size())) return nullptr;
+    const RichTableRow& row = table.tableRows[static_cast<size_t>(at.cellRow)];
+    if (at.cellColumn < 0 || at.cellColumn >= static_cast<int>(row.cells.size())) return nullptr;
+    return &row.cells[static_cast<size_t>(at.cellColumn)];
+}
+
+// One paragraph's layout as it applies: its own values, its style's where it
+// states none, `unstated`'s where neither does.
+RichParagraphFormat EffectiveFormatOf(const UCRichDocument& doc, const RichDocBlock& block,
+                                      const RichParagraphFormat& unstated) {
+    const RichStyleParagraph style = doc.ParagraphStyleOf(block);
+    RichParagraphFormat format;
+    format.align = block.align != RichTextAlign::Default ? block.align : style.align.value_or(unstated.align);
+    format.leftIndentPt = block.leftIndentPt;
+    format.rightIndentPt = block.rightIndentPt;
+    format.firstLineIndentPt = block.firstLineIndentPt;
+    format.spaceBeforePt = block.spaceBeforePt >= 0.0f ? block.spaceBeforePt
+                         : style.spaceBeforePt.value_or(unstated.spaceBeforePt);
+    format.spaceAfterPt = block.spaceAfterPt >= 0.0f ? block.spaceAfterPt
+                        : style.spaceAfterPt.value_or(unstated.spaceAfterPt);
+    format.lineHeightPt = block.lineHeightPt;
+    format.lineHeightAtLeast = block.lineHeightAtLeast;
+    if (block.lineHeightPt > 0.0f) format.lineSpacing = 0.0f;
+    else format.lineSpacing = block.lineSpacing > 0.0f ? block.lineSpacing : style.lineSpacing.value_or(unstated.lineSpacing);
+    format.tabStops = block.tabStops;
+    return format;
+}
+
+// A cell's: its alignment and line spacing; cells hold no spacing or indents.
+RichParagraphFormat EffectiveFormatOf(const RichTableCell& cell, const RichParagraphFormat& unstated) {
+    RichParagraphFormat format;
+    format.align = cell.align != RichTextAlign::Default ? cell.align : unstated.align;
+    format.spaceBeforePt = format.spaceAfterPt = 0.0f;
+    format.lineHeightPt = cell.lineHeightPt;
+    format.lineHeightAtLeast = cell.lineHeightAtLeast;
+    format.lineSpacing = cell.lineHeightPt > 0.0f ? 0.0f : (cell.lineSpacing > 0.0f ? cell.lineSpacing : unstated.lineSpacing);
+    return format;
+}
+
+// Marks in `state` what `other` disagrees with it on.
+void MarkDifferences(RichParagraphFormatState& state, const RichParagraphFormat& other) {
+    const RichParagraphFormat& f = state.format;
+    state.alignMixed = state.alignMixed || other.align != f.align;
+    state.leftIndentMixed = state.leftIndentMixed || other.leftIndentPt != f.leftIndentPt;
+    state.rightIndentMixed = state.rightIndentMixed || other.rightIndentPt != f.rightIndentPt;
+    state.firstLineIndentMixed = state.firstLineIndentMixed || other.firstLineIndentPt != f.firstLineIndentPt;
+    state.spaceBeforeMixed = state.spaceBeforeMixed || other.spaceBeforePt != f.spaceBeforePt;
+    state.spaceAfterMixed = state.spaceAfterMixed || other.spaceAfterPt != f.spaceAfterPt;
+    state.lineSpacingMixed = state.lineSpacingMixed || other.lineSpacing != f.lineSpacing ||
+                             other.lineHeightPt != f.lineHeightPt || other.lineHeightAtLeast != f.lineHeightAtLeast;
+}
+
+RichListMarker MarkerOf(const RichDocBlock& block) {
+    RichListMarker marker;
+    marker.ordered = block.orderedList;
+    if (block.orderedList) {
+        marker.numberFormat = block.numberFormat;
+    } else {
+        marker.bulletText = block.bulletText;
+        marker.checkbox = block.checkbox;
+    }
+    return marker;
+}
+
+} // namespace
+
+RichParagraphFormatState UCRichDocumentEditor::GetEffectiveParagraphFormat(const RichParagraphFormat& unstated) const {
+    RichParagraphFormatState state;
+    if (caret.blockIndex < 0 || caret.blockIndex >= GetBlockCount()) {
+        state.format = unstated;
+        return state;
+    }
+    if (caret.InCell()) {
+        const RichTableCell* own = CellOf(*doc, caret);
+        state.format = own ? EffectiveFormatOf(*own, unstated) : unstated;
+        if (HasCellSelection())
+            for (const RichDocPosition& at : SelectedCells())
+                if (const RichTableCell* cell = CellOf(*doc, at)) MarkDifferences(state, EffectiveFormatOf(*cell, unstated));
+        return state;
+    }
+    state.format = EffectiveFormatOf(*doc, doc->blocks[static_cast<size_t>(caret.blockIndex)], unstated);
+    if (!HasSelection()) return state;
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    last = std::min(last, GetBlockCount() - 1);
+    for (int b = std::max(0, first); b <= last; b++) {
+        const RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        if (!IsTextBlockType(block.type)) continue;
+        MarkDifferences(state, EffectiveFormatOf(*doc, block, unstated));
+    }
+    return state;
+}
+
+bool UCRichDocumentEditor::GetListMarker(RichListMarker& out, bool& mixed) const {
+    mixed = false;
+    if (caret.InCell() || caret.blockIndex < 0 || caret.blockIndex >= GetBlockCount()) return false;
+    const RichDocBlock& at = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+    const bool isList = at.type == RichBlockType::ListItem;
+    if (isList) out = MarkerOf(at);
+    if (HasSelection()) {
+        int first = 0, last = 0;
+        SelectedBlockRange(first, last);
+        last = std::min(last, GetBlockCount() - 1);
+        for (int b = std::max(0, first); b <= last; b++) {
+            const RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            if (!IsTextBlockType(block.type)) continue;
+            const bool blockIsList = block.type == RichBlockType::ListItem;
+            if (blockIsList != isList || (isList && !(MarkerOf(block) == out))) mixed = true;
+        }
+    }
+    return isList;
+}
+
+bool UCRichDocumentEditor::SetListMarker(const RichListMarker& marker) {
+    if (caret.InCell()) return false;
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    last = std::min(last, GetBlockCount() - 1);
+    auto changes = [&marker](const RichDocBlock& block) {
+        if (!IsTextBlockType(block.type) || block.type == RichBlockType::CodeBlock ||
+            block.type == RichBlockType::MathBlock)
+            return false;
+        return block.type != RichBlockType::ListItem || !(MarkerOf(block) == marker);
+    };
+    bool any = false;
+    for (int b = std::max(0, first); b <= last; b++) any = any || changes(doc->blocks[static_cast<size_t>(b)]);
+    if (!any) return false;
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = std::max(0, first); b <= last; b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            if (!changes(block)) continue;
+            if (block.type != RichBlockType::ListItem) {
+                block.type = RichBlockType::ListItem;
+                block.headingLevel = 0;
+                block.listLevel = 0;
+            }
+            block.orderedList = marker.ordered;
+            block.numberFormat = marker.ordered ? marker.numberFormat : RichNumberFormat::Decimal;
+            block.bulletText = marker.ordered ? std::string() : marker.bulletText;
+            block.checkbox = !marker.ordered && marker.checkbox;
+            if (!block.checkbox) block.checked = false;
+            if (!marker.ordered) block.numberTemplate.clear();
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::EndList() {
+    if (caret.InCell()) return false;
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    last = std::min(last, GetBlockCount() - 1);
+    bool any = false;
+    for (int b = std::max(0, first); b <= last; b++)
+        any = any || doc->blocks[static_cast<size_t>(b)].type == RichBlockType::ListItem;
+    if (!any) return false;
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = std::max(0, first); b <= last; b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            if (block.type != RichBlockType::ListItem) continue;
+            block.type = RichBlockType::Paragraph;
+            block.orderedList = false;
+            block.listLevel = 0;
+            block.checkbox = block.checked = false;
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::GetCellShading(std::string& colour) const {
+    if (!caret.InCell()) return false;
+    const RichTableCell* own = CellOf(*doc, caret);
+    if (!own) return false;
+    colour = own->backgroundColor;
+    if (HasCellSelection())
+        for (const RichDocPosition& at : SelectedCells())
+            if (const RichTableCell* cell = CellOf(*doc, at); cell && cell->backgroundColor != colour) return false;
+    return true;
+}
+
+bool UCRichDocumentEditor::SetCellShading(const std::string& colour) {
+    if (!caret.InCell()) return false;
+    const std::vector<RichDocPosition> cells =
+        HasCellSelection() ? SelectedCells() : std::vector<RichDocPosition>{caret};
+    bool differs = false;
+    for (const RichDocPosition& at : cells)
+        if (const RichTableCell* cell = CellOf(*doc, at); cell && cell->backgroundColor != colour) differs = true;
+    if (!differs) return false;
+    {
+        EditScope scope(*this, caret.blockIndex, 1);
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+        for (const RichDocPosition& at : cells) {
+            if (at.blockIndex != caret.blockIndex || at.cellRow < 0 ||
+                at.cellRow >= static_cast<int>(table.tableRows.size()))
+                continue;
+            RichTableRow& row = table.tableRows[static_cast<size_t>(at.cellRow)];
+            if (at.cellColumn < 0 || at.cellColumn >= static_cast<int>(row.cells.size())) continue;
+            row.cells[static_cast<size_t>(at.cellColumn)].backgroundColor = colour;
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
 bool UCRichDocumentEditor::SetPageSetup(const RichPageSetup& page) {
     if (!page.HasPage() || page == doc->page) return false;
     {
@@ -2877,7 +3097,9 @@ int CellInsertIndexForColumn(const RichTableGrid& grid, int row, int gridColumn)
     return index;
 }
 
-// Puts an empty 1x1 cell into the slot (row, gridColumn), which must be free.
+// Puts an empty 1x1 cell into row `row` before the row's cells that start at
+// or after `gridColumn`: into that slot when it is free, or - a span still
+// covering it, as SplitTableCell has it - where it lands once the span goes.
 void InsertFreshCellAt(RichDocBlock& table, int row, int gridColumn) {
     const RichTableGrid grid = BuildTableGrid(table);
     if (row < 0 || row >= static_cast<int>(table.tableRows.size())) return;
@@ -3319,19 +3541,20 @@ bool UCRichDocumentEditor::SplitTableCell(int blockIndex, int row, int cellIndex
     {
         EditScope scope(*this, blockIndex, 1);
         RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
-        table.tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)].rowSpan = 1;
-        table.tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)].columnSpan = 1;
-
-        // Every slot the cell gave up needs a cell of its own. The text stays
-        // with the top-left one, which is where it was written.
+        // Every slot the cell gives up needs a cell of its own. They are put
+        // in while the span still covers those slots: a row's cells fill the
+        // free slots in order, so with the span gone first the cells after it
+        // slid left into the freed slots, and the row came out a cell short
+        // at its end. The text stays with the top-left one, where it was
+        // written.
         for (int r = top; r < top + rowSpan; ++r) {
             for (int c = left; c < left + columnSpan; ++c) {
                 if (r == top && c == left) continue;
-                const RichTableGrid current = BuildTableGrid(table);
-                if (current.At(r, c).Occupied()) continue;
                 InsertFreshCellAt(table, r, c);
             }
         }
+        table.tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)].rowSpan = 1;
+        table.tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)].columnSpan = 1;
         caret = ClampPosition(caret);
         anchor = caret;
     }

@@ -24,11 +24,15 @@
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasClipboardDib.h"
 #include "UltraCanvasAccessibilityBridge.h"
 #include "UltraCanvasZipPackage.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "DisplayRequired.h"
 #include "../libspecific/Cairo/RenderContextCairo.h"
+#ifdef RTE_TEST_HAS_VECTOR_PLUGIN
+#include "Vector/UltraCanvasVectorFormatsPlugin.h"
+#endif
 
 #include <cairo/cairo.h>
 
@@ -1094,6 +1098,146 @@ int main() {
             window->UpdateAndRender();
             return editor.GetBlock(0).type != RichBlockType::Image;
         }());
+    }
+
+    // ===== A PICTURE'S SIZE AS LAID OUT =====
+    // A size of 0 is "its own pixel size" (Word and ODF leave some pictures
+    // so): GetImageDisplaySize gives what the layout makes of it, a 64 x 32 px
+    // PNG at 96 to the inch being 48 x 24 pt; a stated size reads as stated.
+    std::cerr << "\n--- Picture display size ---" << std::endl;
+    {
+        ClipboardDib::RgbaImage pixels;
+        pixels.width = 64;
+        pixels.height = 32;
+        pixels.pixels.assign(64 * 32 * 4, 0xFF);
+        std::vector<uint8_t> png;
+        TEST("A 64 x 32 px PNG is encoded", ClipboardDib::EncodePng(pixels, png) && !png.empty());
+        auto document = std::make_shared<UCRichDocument>();
+        const int media = document->AddMedia("wide.png", "image/png", png);
+        RichDocBlock ownSize;                      // block 0: no size of its own
+        ownSize.type = RichBlockType::Image;
+        ownSize.mediaIndex = media;
+        document->blocks.push_back(ownSize);
+        RichDocBlock stated = ownSize;             // block 1: 90 x 30 pt
+        stated.imageWidthPt = 90.0f;
+        stated.imageHeightPt = 30.0f;
+        document->blocks.push_back(stated);
+        RichDocBlock line;                         // block 2: "Logo " then a picture in the line
+        RichTextRun words;
+        words.text = "Logo ";
+        line.runs.push_back(words);
+        RichTextRun inlinePicture;
+        inlinePicture.text = RichTextRun::kObjectReplacement;
+        inlinePicture.mediaIndex = media;
+        line.runs.push_back(inlinePicture);
+        document->blocks.push_back(line);
+        RichDocBlock broken = ownSize;             // block 3: bytes that decode to nothing
+        broken.mediaIndex = document->AddMedia("broken.png", "image/png", {1, 2, 3, 4});
+        document->blocks.push_back(broken);
+        RichDocBlock halfStated = ownSize;         // block 4: a width, its own height
+        halfStated.imageWidthPt = 120.0f;
+        document->blocks.push_back(halfStated);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+
+        auto closeTo = [](float a, float b) { return std::abs(a - b) < 0.01f; };
+        auto size = [](float w, float h) { return std::to_string(w) + " x " + std::to_string(h); };
+        float w = -1.0f, h = -1.0f;
+        TEST("A picture of its own size: 48 x 24 pt as laid out, " + size(w, h),
+             edit->GetImageDisplaySize(RichDocPosition(0, 0), w, h) && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        float statedW = -1.0f, statedH = -1.0f;
+        std::string statedAlt;
+        int statedMedia = -1;
+        const bool stated0 = editor.GetImageInfo(RichDocPosition(0, 0), statedW, statedH, statedAlt, statedMedia);
+        TEST("...while the core still gives it as 0 x 0",
+             stated0 && statedW == 0.0f && statedH == 0.0f && statedMedia == media);
+        TEST("A stated size reads as stated", edit->GetImageDisplaySize(RichDocPosition(1, 0), w, h)
+             && closeTo(w, 90.0f) && closeTo(h, 30.0f));
+        TEST("...its size at 100 % is its own", edit->GetImageNaturalSize(RichDocPosition(1, 0), w, h)
+             && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        TEST("A picture of its own size in the line: 48 x 24 pt", edit->GetImageDisplaySize(RichDocPosition(2, 5), w, h)
+             && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        TEST("A stated width keeps it, the height is its own", edit->GetImageDisplaySize(RichDocPosition(4, 0), w, h)
+             && closeTo(w, 120.0f) && closeTo(h, 24.0f));
+        TEST("Media that does not decode has no size of its own", !edit->GetImageDisplaySize(RichDocPosition(3, 0), w, h)
+             && !edit->GetImageNaturalSize(RichDocPosition(3, 0), w, h));
+        TEST("Nothing there, no size", !edit->GetImageDisplaySize(RichDocPosition(2, 0), w, h)
+             && !edit->GetImageDisplaySize(RichDocPosition(40, 0), w, h));
+        // Selected and set, it holds that size; undone, its own again.
+        TEST("Set to a size, it reads that size", edit->SelectImage(RichDocPosition(0, 0))
+             && edit->SetSelectedImageSize(72.0f, 36.0f) && edit->GetImageDisplaySize(RichDocPosition(0, 0), w, h)
+             && closeTo(w, 72.0f) && closeTo(h, 36.0f));
+        TEST("...and one undo gives its own size back", edit->Undo() && edit->GetImageDisplaySize(RichDocPosition(0, 0), w, h)
+             && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        // A Windows metafile of its own size: drawn at twice its size for
+        // sharpness, laid out at its own. A synthetic EMF whose frame is
+        // 2 x 1 inch (5080 x 2540 in 0.01 mm) is 144 x 72 pt, not 288 x 144.
+        // The vector readers draw it: without them nothing can.
+#ifndef RTE_TEST_HAS_VECTOR_PLUGIN
+        std::cerr << "SKIP: a metafile of its own size (no vector plugin in this build)" << std::endl;
+#else
+        RegisterVectorFormatsPlugin();
+        {
+            std::vector<uint8_t> emf;
+            auto u32 = [&emf](uint32_t v) { for (int i = 0; i < 4; ++i) emf.push_back(static_cast<uint8_t>(v >> (8 * i))); };
+            u32(1); u32(88);                               // EMR_HEADER, its size
+            u32(0); u32(0); u32(191); u32(95);             // rclBounds, device pixels
+            u32(0); u32(0); u32(5080); u32(2540);          // rclFrame, 0.01 mm
+            u32(0x464D4520); u32(0x10000);                 // " EMF", version
+            u32(88 + 24 + 20); u32(3);                     // nBytes, nRecords
+            u32(1);                                        // nHandles (16 bits) and a reserved 16
+            u32(0); u32(0); u32(0);                        // description (count, offset), palette: none
+            u32(1920); u32(1080); u32(508); u32(286);      // szlDevice, szlMillimeters
+            u32(43); u32(24); u32(0); u32(0); u32(191); u32(95);   // EMR_RECTANGLE over the frame
+            u32(14); u32(20); u32(0); u32(16); u32(20);            // EMR_EOF
+            auto metafileDocument = std::make_shared<UCRichDocument>();
+            RichDocBlock metafile;
+            metafile.type = RichBlockType::Image;
+            metafile.mediaIndex = metafileDocument->AddMedia("frame.emf", "image/x-emf", emf);
+            metafileDocument->blocks.push_back(metafile);
+            metafileDocument->blocks.push_back(RichDocBlock());
+            edit->SetDocument(metafileDocument);
+            window->UpdateAndRender();
+            float mw = -1.0f, mh = -1.0f, nw = -1.0f, nh = -1.0f;
+            const bool shown = edit->GetImageDisplaySize(RichDocPosition(0, 0), mw, mh);
+            const bool natural = edit->GetImageNaturalSize(RichDocPosition(0, 0), nw, nh);
+            TEST("An EMF of its own size is laid out at it, 144 x 72 pt: " + size(mw, mh),
+                 shown && std::abs(mw - 144.0f) < 0.5f && std::abs(mh - 72.0f) < 0.5f);
+            TEST("...and that is its size at 100 %: " + size(nw, nh),
+                 natural && std::abs(nw - 144.0f) < 0.5f && std::abs(nh - 72.0f) < 0.5f);
+            // Its corner handle where 192 x 96 px put it (not 384 x 192):
+            // dragged 48 px right, it is 240 x 120 px = 180 x 90 pt.
+            edit->SelectImage(RichDocPosition(0, 0));
+            window->UpdateAndRender();
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 200, 104));
+            edit->OnEvent(MouseEvent(UCEventType::MouseMove, 224, 104));
+            edit->OnEvent(MouseEvent(UCEventType::MouseMove, 248, 104));
+            window->UpdateAndRender();
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 248, 104));
+            window->UpdateAndRender();
+            TEST("...and drawn at it: its corner handle dragged to 180 x 90 pt: "
+                 + size(editor.GetBlock(0).imageWidthPt, editor.GetBlock(0).imageHeightPt),
+                 std::abs(editor.GetBlock(0).imageWidthPt - 180.0f) < 1.0f
+                 && std::abs(editor.GetBlock(0).imageHeightPt - 90.0f) < 1.0f);
+            edit->SetDocument(document);
+            window->UpdateAndRender();
+        }
+#endif
+        // The layout draws it at that size: its bottom-right handle is at
+        // 64 x 32 px from its corner (the picture paragraph's at 8, 8, as in
+        // the resize above), and 32 px dragged right make it 96 x 48 px.
+        window->UpdateAndRender();
+        edit->SelectImage(RichDocPosition(0, 0));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 72, 40));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 90, 40));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 104, 40));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 104, 40));
+        window->UpdateAndRender();
+        TEST("...drawn at it: its corner handle where 64 x 32 px put it, dragged to 72 x 36 pt: "
+             + std::to_string(editor.GetBlock(0).imageWidthPt) + " x " + std::to_string(editor.GetBlock(0).imageHeightPt),
+             std::abs(editor.GetBlock(0).imageWidthPt - 72.0f) < 1.0f && std::abs(editor.GetBlock(0).imageHeightPt - 36.0f) < 1.0f);
     }
 
     // ===== FLOATING PICTURES =====

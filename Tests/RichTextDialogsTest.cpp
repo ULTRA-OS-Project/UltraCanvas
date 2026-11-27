@@ -10,6 +10,7 @@
 // The element is made but never shown, so no display is needed.
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasRichTextEditDialogs.h"
+#include "UltraCanvasClipboardDib.h"
 
 #include <cmath>
 #include <iostream>
@@ -301,6 +302,37 @@ void TestPicture() {
     Check(undone.type == RichBlockType::Image && undone.imageAltText == "A dot", "undo gives the picture back as it was");
 }
 
+// A picture the document gives no size of (0: its own pixel size, as Word
+// and ODF files leave some) opens at the size it is laid out at.
+void TestPictureOfItsOwnSize() {
+    std::cout << "\nPicture of its own size\n";
+    ClipboardDib::RgbaImage pixels;
+    pixels.width = 64;
+    pixels.height = 32;
+    pixels.pixels.assign(64 * 32 * 4, 0xC0);
+    std::vector<uint8_t> png;
+    Check(ClipboardDib::EncodePng(pixels, png), "a 64 x 32 px PNG");
+    auto document = std::make_shared<UCRichDocument>();
+    document->blocks.push_back(Paragraph("Before"));
+    RichDocBlock picture;
+    picture.type = RichBlockType::Image;
+    picture.mediaIndex = document->AddMedia("wide.png", "image/png", png);
+    document->blocks.push_back(picture);
+    auto edit = CreateRichTextEdit("DialogsTest", 0, 0, 700, 500);
+    edit->SetDocument(document);
+    Check(edit->SelectImage(RichDocPosition(1, 0)), "it is selected");
+    const RichPictureDialogValues values = ReadPictureDialogValues(*edit);
+    Check(Near(values.widthPt, 48.0f, 0.01f) && Near(values.heightPt, 24.0f, 0.01f),
+          "the dialog opens at its size, 48 x 24 pt: " + std::to_string(values.widthPt) + " x " + std::to_string(values.heightPt));
+    Check(!ApplyPictureDialogValues(*edit, values) && edit->GetDocument()->blocks[1].imageWidthPt == 0.0f,
+          "OK on what was shown leaves it of its own size");
+    RichPictureDialogValues bigger = values;
+    bigger.widthPt = 96.0f;
+    bigger.heightPt = 48.0f;
+    Check(ApplyPictureDialogValues(*edit, bigger) && Near(ReadPictureDialogValues(*edit).widthPt, 96.0f, 0.01f),
+          "a size set reads back");
+}
+
 void TestContentsCaptionCrossReference() {
     std::cout << "\nContents, caption and cross-reference\n";
     auto edit = MakeEdit({Paragraph("Intro", RichBlockType::Heading, 1), Paragraph("Text"),
@@ -452,11 +484,13 @@ void TestReview() {
 } // namespace
 
 int main() {
+    UCImage::InitializeImageSubsysterm("RichTextDialogsTest");   // a picture of its own size is decoded
     TestPageSetup();
     TestParagraph();
     TestStyles();
     TestTable();
     TestPicture();
+    TestPictureOfItsOwnSize();
     TestContentsCaptionCrossReference();
     TestNote();
     TestComments();

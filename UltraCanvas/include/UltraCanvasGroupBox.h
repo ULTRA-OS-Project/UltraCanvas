@@ -5,6 +5,12 @@
 // titled frame, an optional activator (checkbox or switch, on either side of
 // the title bar) that enables/disables the contents, an optional info icon
 // with help text, an optional close button, and optional collapsible behaviour.
+// Version: 1.7.0 - a tool panel's header: SetMoreButton / onMoreClicked (a "…" that opens the
+//                  topic's dialog), SetHeaderChip (a count or "in a table"), SetHeaderFocusable
+//                  (Enter / Space fold it, Shift+F10 or Menu runs onHeaderContextMenu, a focus
+//                  ring), SetHeaderDraggable (onHeaderDragStarted / Moved / Ended; a click still
+//                  folds), a right-click on the header (onHeaderContextMenu); the Header style's
+//                  strip is clipped to the frame's rounded corners
 // Version: 1.6.0 - SectionCard(theme): the card from the theme (a dark card on a dark page), SectionCard()
 //                  of the current one; SectionPageColor(theme): the page under it
 // Version: 1.5.0 - GroupBoxVisualStyle::FromTheme, ApplyTheme: the group box follows the theme; a SetVisualStyle
@@ -15,7 +21,7 @@
 //                  card on the light Colors::SectionPage (UltraMail's panes, UltraPaint's
 //                  side panel), shared instead of copied per app
 // Version: 1.2.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -83,10 +89,18 @@ namespace UltraCanvas {
         Color infoIconColor      = Color(120, 130, 150, 255);
         Color infoIconHoverColor = Color(60, 110, 220, 255);
 
-        // ----- Close button -----
+        // ----- Close button (and the "…" button, which shares its look) -----
         Color closeIconColor           = Color(120, 130, 150, 255);
         Color closeIconHoverColor      = Color(40, 40, 40, 255);
         Color closeHoverBackgroundColor = Color(0, 0, 0, 28);
+
+        // ----- Header chip (SetHeaderChip) -----
+        Color chipBackgroundColor = Color(228, 230, 235, 255);
+        Color chipTextColor       = Color(90, 95, 105, 255);
+        float chipFontSize        = 10.0f;
+
+        // ----- Focus ring around a focusable header (SetHeaderFocusable) -----
+        Color focusRingColor = Color(0, 120, 215, 255);
 
         // ----- Content -----
         float contentPadding = 8.0f;                      // padding inside the frame, around the children
@@ -218,6 +232,46 @@ namespace UltraCanvas {
         // user's language.
         void SetCloseButtonTooltip(const std::string& text) { closeTooltip = text; }
 
+        // ===== MORE BUTTON ("…") =====
+        // An optional "…" at the right of the title bar (left of the close
+        // button): the dialog that holds every setting of the box's topic -
+        // a tool panel's "Paragraph" opening the Paragraph dialog. A click
+        // runs onMoreClicked.
+        void SetMoreButton(bool show);
+        bool HasMoreButton() const { return showMoreButton; }
+        // Its tooltip - the dialog's name; empty (the default) is "Options".
+        void SetMoreButtonTooltip(const std::string& text) { moreTooltip = text; }
+
+        // ===== HEADER CHIP =====
+        // A small rounded label at the right of the title: a count ("8") or
+        // why the box is shown ("in a table"). Empty (the default) shows none.
+        // Its colours are chipBackgroundColor / chipTextColor.
+        void SetHeaderChip(const std::string& text);
+        const std::string& GetHeaderChip() const { return headerChip; }
+
+        // ===== THE HEADER AS A FOCUS STOP =====
+        // The box takes the keyboard focus for its title bar: Tab reaches it
+        // before its contents (a click does not take it, so the document
+        // keeps its caret). Enter or Space folds a collapsible box; Shift+F10
+        // or the Menu key runs onHeaderContextMenu below the title bar. A
+        // focus ring is drawn around the title bar while it has the focus.
+        void SetHeaderFocusable(bool focusable);
+        bool IsHeaderFocusable() const { return headerFocusable; }
+        bool AcceptsFocus() const override { return headerFocusable; }
+
+        // ===== DRAGGING BY THE HEADER =====
+        // A press on the title bar (not on its buttons) that moves a few
+        // pixels before its release is a drag: onHeaderDragStarted, then
+        // onHeaderDragMoved for every move and onHeaderDragEnded at the
+        // release, the pointer in window coordinates. A press released where
+        // it began still folds the box, on the release. The box does not move
+        // itself; its host (a tool panel stack) reorders.
+        void SetHeaderDraggable(bool draggable);
+        bool IsHeaderDraggable() const { return headerDraggable; }
+        bool IsHeaderDragging() const { return headerDragging; }
+        // Ends a drag under way without a drop: onHeaderDragEnded(.., true).
+        void CancelHeaderDrag();
+
         // ===== COLLAPSIBLE =====
         // A collapsible group box draws a disclosure arrow before its caption;
         // clicking the caption collapses the box down to just its title bar.
@@ -230,6 +284,21 @@ namespace UltraCanvas {
         std::function<void(bool)> onCheckedChanged;     // arg: new checked state
         std::function<void(bool)> onCollapsedChanged;   // arg: new collapsed state
         std::function<void()>     onCloseClicked;       // the close button was clicked
+        std::function<void()>     onMoreClicked;        // the "…" button was clicked
+        // A right-click on the title bar, or Shift+F10 / Menu on a focused
+        // header: where a menu goes, in window coordinates.
+        std::function<void(const Point2Di& windowPos)> onHeaderContextMenu;
+        std::function<void(const Point2Di& windowPos)> onHeaderDragStarted;
+        std::function<void(const Point2Di& windowPos)> onHeaderDragMoved;
+        std::function<void(const Point2Di& windowPos, bool cancelled)> onHeaderDragEnded;
+
+        // ===== ACCESSIBILITY ACTION =====
+        // A collapsible box opens or closes ("Open" / "Close").
+        std::string GetAccessibleActionName() const override;
+        bool DoAccessibleAction() override;
+
+        // The title bar, in the box's own coordinates.
+        Rect2Df GetTitleBarRect() const { return TitleBarRect(); }
 
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -255,6 +324,18 @@ namespace UltraCanvas {
         bool closeHovered    = false;
         std::string closeTooltip;   // empty: "Close", in the user's language
 
+        bool showMoreButton = false;
+        bool moreHovered    = false;
+        std::string moreTooltip;    // empty: "Options", in the user's language
+
+        std::string headerChip;
+
+        bool headerFocusable = false;
+        bool headerDraggable = false;
+        bool headerPressPending = false;   // a press on the title bar, not yet a click or a drag
+        bool headerDragging     = false;
+        Point2Di headerPressStart;
+
         bool collapsible = false;
         bool collapsed   = false;
         bool titleHovered = false;
@@ -278,10 +359,14 @@ namespace UltraCanvas {
             bool   hasActivator = false;
             bool   hasInfo = false;
             bool   hasClose = false;
+            bool   hasMore = false;
+            bool   hasChip = false;
             Rect2Df arrowRect;                    // disclosure arrow (collapsible)
             Rect2Df activatorRect;                // checkbox / switch
             Rect2Df infoRect;                     // info icon
             Rect2Df closeRect;                    // close button (rightmost)
+            Rect2Df moreRect;                     // "…" button, left of the close button
+            Rect2Df chipRect;                     // header chip, right of the caption
             Point2Df textPos;                     // caption text top-left
             Size2Di textSize;
             // Top-border gap intervals (Framed style) covering on-border items.
@@ -297,6 +382,11 @@ namespace UltraCanvas {
         void DrawInfoIcon(IRenderContext* ctx, const Rect2Df& rect);
         void DrawDisclosureArrow(IRenderContext* ctx, const Rect2Df& rect);
         void DrawCloseButton(IRenderContext* ctx, const Rect2Df& rect);
+        void DrawMoreButton(IRenderContext* ctx, const Rect2Df& rect);
+        void DrawChip(IRenderContext* ctx, const Rect2Df& rect);
+        void DrawFocusRing(IRenderContext* ctx);
+        void ToggleFromHeader();                  // what a click on the caption does
+        void EndHeaderPress(const Point2Di& windowPos, bool cancelled);
 
         // ----- State plumbing -----
         void RecalculatePadding();                // fold border + caption into box padding

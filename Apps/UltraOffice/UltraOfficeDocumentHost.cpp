@@ -13,6 +13,16 @@
 // chosen and the share. A new document starts with the Settings window's
 // font, size and page.
 //
+// Version: 0.9.0 - the panels show the values in effect (the paragraph's, its style's, the view's; the table's
+//                  grid line), "-" only for a selection that differs; the Page panel's orientation, page size,
+//                  margins (presets, Custom: Page setup) and columns; the Lists panel's list style; the Table
+//                  panel's merge, merge down, split and cell shading
+// Version: 0.8.0 - the Picture panel's width and height in cm (GetImageDisplaySize: a picture of its own
+//                  size shows it) and "Keep proportions", on by default
+// Version: 0.7.0 - the tools are one table (UltraOfficeTools.h) the command tabs and the view group are
+//                  built from, with no change to what they show; the panels' own tools in it too:
+//                  superscript, subscript, text colour, highlight, line spacing, space before and after,
+//                  the indents, and the table's rows, columns, header row and borders
 // Version: 0.6.0 - the font list is the framework's UltraCanvasFontPicker: every installed font, each
 //                  in itself, the document's fonts and the recent ones on top, a family's styles beside
 //                  it (a style sets bold and italic, a light or condensed one its face's family name)
@@ -29,11 +39,12 @@
 //                  cross-reference and footnote (Insert), page setup, table and picture
 //                  (Layout, a new tab), comments and tracked changes (Review, a new tab)
 // Version: 0.1.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeHost.h"
 #include "UltraOfficeSettings.h"
 #include "UltraOfficeToolbar.h"
+#include "UltraOfficeTools.h"
 
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"   // PrintDocumentWithDialog
 #include "UltraCanvasAppSettings.h"
@@ -54,6 +65,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <optional>
 
 namespace UltraOffice {
 
@@ -133,11 +145,9 @@ public:
         split_->onSplitterDragEnd = [this](size_t) { RememberNavigatorWidth(); };
         navigator_ = std::make_shared<UltraCanvasDocumentNavigator>("office-navigator", 0, 0, kNavigatorWidth, 600);
         navigator_->SetEdit(editor_);
-        BuildHome();
-        BuildInsert();
-        BuildLayout();
-        BuildReview();
-        BuildViewGroup();
+        BuildTools();
+        bars_.Build(tools_, window_);
+        SyncView();
         NewBlank();
     }
 
@@ -165,7 +175,7 @@ public:
         SyncView();
     }
 
-    std::shared_ptr<UltraCanvasToolbar> GetViewToolbar() override { return viewBar_; }
+    std::shared_ptr<UltraCanvasToolbar> GetViewToolbar() override { return bars_.ViewBar(); }
     void ZoomIn() override { editor_->SetZoom(std::min(5.0f, editor_->GetZoom() * 1.1f)); SyncView(); }
     void ZoomOut() override { editor_->SetZoom(std::max(0.25f, editor_->GetZoom() / 1.1f)); SyncView(); }
     void ZoomToActualSize() override { editor_->SetZoom(1.0f); SyncView(); }
@@ -176,7 +186,8 @@ public:
         ToggleNavigator();
         return true;
     }
-    const std::vector<CommandTab>& GetCommandTabs() override { return tabs_; }
+    const ToolTable& GetTools() const override { return tools_; }
+    const std::vector<CommandTab>& GetCommandTabs() override { return bars_.Tabs(); }
 
     // A new document: the page, the font and the size of the settings,
     // stated in the document (its page and its Normal style), so another
@@ -290,22 +301,11 @@ private:
     std::shared_ptr<UltraCanvasContainer> navigatorPane_;     // the split's right pane while it is shown
     UltraCanvasAppSettings* settings_ = nullptr;              // the window's
     bool navigatorShown_ = false;
-    UltraCanvasButton* navigatorButton_ = nullptr;
-    std::vector<CommandTab> tabs_;
-    // Raw: the toolbars own them, and the host owns the toolbars.
-    UltraCanvasButton* bold_ = nullptr;
-    UltraCanvasButton* italic_ = nullptr;
-    UltraCanvasButton* underline_ = nullptr;
-    UltraCanvasButton* strike_ = nullptr;
-    UltraCanvasButton* pageView_ = nullptr;
-    // The view group, at the toolbar's right end.
-    std::shared_ptr<UltraCanvasToolbar> viewBar_;
-    UltraCanvasButton* fitWidth_ = nullptr;
-    UltraCanvasButton* fitPage_ = nullptr;
-    UltraCanvasButton* fitShare_ = nullptr;
-    UltraCanvasDropdown* shareBox_ = nullptr;
-    UltraCanvasDropdown* zoomBox_ = nullptr;
-    std::vector<int> shareChoices_;
+    bool keepPictureProportions_ = true;   // the Picture panel's width and height scale each other
+    static constexpr double kPointsPerCm = 72.0 / 2.54;
+    // The tools, and the command tabs' bars and the view group built from them.
+    ToolTable tools_;
+    ToolBars bars_;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);   // a task posted to the UI thread checks it
     bool zoomSyncPending_ = false;
     float share_ = 0.6f;   // the width share's, until the settings give theirs
@@ -319,12 +319,7 @@ private:
         editor_->SetStyle(style);
         editor_->SetFollowTheme(true);
     }
-    UltraCanvasButton* trackChanges_ = nullptr;
-    UltraCanvasButton* showComments_ = nullptr;
-    UltraCanvasDropdown* style_ = nullptr;
-    UltraCanvasFontPicker* font_ = nullptr;
-    UltraCanvasDropdown* size_ = nullptr;
-    std::vector<float> sizes_ = kSizes;
+    std::vector<float> sizes_ = kSizes;   // the size list's: kSizes and the sizes the document uses
 
     // Every tool acts on the document and then brings the toolbar into step:
     // a format armed at a collapsed caret raises no change of its own.
@@ -340,131 +335,599 @@ private:
         return [this, edit, show]() { show(*edit, [this](bool) { Sync(); }); };
     }
 
-    void BuildHome() {
-        auto bar = MakeToolbar("office-document-home");
-        AddTool(*bar, "doc-cut", "", "menu/cut.svg", Tr("Cut (Ctrl+X)"), Act([](auto& e) { e.Cut(); }));
-        AddTool(*bar, "doc-copy", "", "menu/copy.svg", Tr("Copy (Ctrl+C)"), Act([](auto& e) { e.Copy(); }));
-        AddTool(*bar, "doc-paste", "", "menu/paste.svg", Tr("Paste (Ctrl+V)"), Act([](auto& e) { e.Paste(); }));
-        bar->AddSeparator();
-
+    // ===== THE TOOLS =====
+    // Every tool of a document, once (UltraOfficeTools.h): the command tabs'
+    // bars and the view group are built from it, and the tool panels will be.
+    void BuildTools() {
+        using P = ToolPanel;
+        tools_.kind = OfficeKind::Document;
         UltraCanvasRichTextEdit* edit = editor_.get();
-        auto style = bar->AddDropdownButton("doc-style", "",
-            {Tr("Body text"), Tr("Heading 1"), Tr("Heading 2"), Tr("Heading 3"), Tr("Heading 4")}, nullptr);
-        style->SetTooltip(Tr("Paragraph style"));
-        style->size.width = CSSLayout::Dimension::Px(120);
-        style->onSelectionChanged = [this, edit](int index, const DropdownItem&) {
-            edit->SetHeadingLevel(std::max(0, index));
-            Sync();
-            edit->SetFocus(true);
+        tools_.inContext = [edit](ToolContext context) {
+            switch (context) {
+                case ToolContext::InTable: return edit->IsCaretInTable();
+                case ToolContext::PictureSelected: return edit->HasSelectedImage();
+                default: return false;
+            }
         };
-        style_ = style.get();
-        // Every installed font, each in itself; on top the fonts this
-        // document uses and the ones chosen last (the window's settings).
-        auto font = AddFontList(*bar, "doc-font", [this]() { return settings_; },
-                                [edit]() { return edit->GetFontReport().namedFamilies; });
-        font->SetDefaultFontEntry(Tr("Default font"));
-        font->onFontChosen = [this, edit](const FontPickerChoice& choice) {
-            ApplyFontChoice(*edit, choice);
-            Sync();
-            edit->SetFocus(true);
-        };
-        font_ = font.get();
-        std::vector<std::string> sizes;
-        for (float s : kSizes) sizes.push_back(SizeText(s));
-        auto size = bar->AddDropdownButton("doc-size", "", sizes, nullptr);
-        size->SetTooltip(Tr("Font size"));
-        size->size.width = CSSLayout::Dimension::Px(56);
-        size->onSelectionChanged = [this, edit](int index, const DropdownItem&) {
-            if (index >= 0 && index < static_cast<int>(sizes_.size())) edit->SetFontSize(sizes_[static_cast<size_t>(index)]);
-            Sync();
-            edit->SetFocus(true);
-        };
-        size_ = size.get();
-        bar->AddSeparator();
+        auto state = [edit]() { return edit->GetFormatState(); };
+        ToolWriter w(tools_);
 
-        bold_ = AddToggleTool(*bar, "doc-bold", "", "textformat/bold.svg", Tr("Bold (Ctrl+B)"), Act([](auto& e) { e.ToggleBold(); })).get();
-        italic_ = AddToggleTool(*bar, "doc-italic", "", "textformat/italic.svg", Tr("Italic (Ctrl+I)"), Act([](auto& e) { e.ToggleItalic(); })).get();
-        underline_ = AddToggleTool(*bar, "doc-underline", "", "textformat/underline.svg", Tr("Underline (Ctrl+U)"), Act([](auto& e) { e.ToggleUnderline(); })).get();
-        strike_ = AddToggleTool(*bar, "doc-strike", "", "textformat/strike.svg", Tr("Strikethrough"), Act([](auto& e) { e.ToggleStrikethrough(); })).get();
-        bar->AddSeparator();
-
+        // Home: the clipboard | style, font and size | B I U S | lists and
+        // alignment | the paragraph and styles dialogs.
+        w.Tab("home", Tr("Home"), "office-document-home");
+        w.Button("doc-cut", "menu/cut.svg", Tr("Cut"), Tr("Cut (Ctrl+X)"), P::Clipboard, Act([](auto& e) { e.Cut(); }));
+        w.Button("doc-copy", "menu/copy.svg", Tr("Copy"), Tr("Copy (Ctrl+C)"), P::Clipboard, Act([](auto& e) { e.Copy(); }));
+        w.Button("doc-paste", "menu/paste.svg", Tr("Paste"), Tr("Paste (Ctrl+V)"), P::Clipboard, Act([](auto& e) { e.Paste(); }));
+        w.NextGroup();
+        {
+            ToolEntry& style = w.List("doc-style", Tr("Paragraph style"), Tr("Paragraph style"), P::Style);
+            style.barWidth = 120;
+            style.list.items = [] {
+                return std::vector<std::string>{Tr("Body text"), Tr("Heading 1"), Tr("Heading 2"), Tr("Heading 3"), Tr("Heading 4")};
+            };
+            style.list.choose = [this, edit](int index) {
+                edit->SetHeadingLevel(std::max(0, index));
+                Sync();
+                edit->SetFocus(true);
+            };
+            style.list.selected = [edit]() {
+                const int level = edit->GetCurrentHeadingLevel();
+                return level >= 0 && level <= 4 ? level : 0;
+            };
+        }
+        {
+            // Every installed font, each in itself; on top the fonts this
+            // document uses and the ones chosen last (the window's settings).
+            ToolEntry& font = w.List("doc-font", Tr("Font"), Tr("Font"), P::Font, ToolListStyle::Font);
+            font.list.settings = [this]() { return settings_; };
+            font.list.documentFonts = [edit]() { return edit->GetFontReport().namedFamilies; };
+            font.list.defaultFontEntry = Tr("Default font");
+            font.list.chooseFont = [this, edit](const FontPickerChoice& choice) {
+                ApplyFontChoice(*edit, choice);
+                Sync();
+                edit->SetFocus(true);
+            };
+            // Several fonts show none; text with none of its own shows the
+            // editor's base font.
+            font.list.currentFont = [edit]() -> std::optional<std::string> {
+                const RichCharFormatState now = edit->GetFormatState();
+                if (now.fontFamilyMixed) return std::nullopt;
+                return now.fontFamily.empty() ? edit->GetStyle().baseFont.fontFamily : now.fontFamily;
+            };
+        }
+        {
+            ToolEntry& size = w.List("doc-size", Tr("Font size"), Tr("Font size"), P::Font);
+            size.barWidth = 56;
+            size.list.items = [this]() {
+                std::vector<std::string> names;
+                for (float s : sizes_) names.push_back(SizeText(s));
+                return names;
+            };
+            size.list.choose = [this, edit](int index) {
+                if (index < static_cast<int>(sizes_.size())) edit->SetFontSize(sizes_[static_cast<size_t>(index)]);
+                Sync();
+                edit->SetFocus(true);
+            };
+            // A size the list lacks joins it; several sizes show none. Text
+            // with none of its own shows the base size in body text (a
+            // heading scales it).
+            size.list.selected = [this, edit]() {
+                const RichCharFormatState now = edit->GetFormatState();
+                float sizePt = now.fontSizePt;
+                if (sizePt <= 0.0f && !now.fontSizeMixed && edit->GetCurrentHeadingLevel() == 0)
+                    sizePt = static_cast<float>(edit->GetStyle().baseFont.fontSize);
+                if (now.fontSizeMixed || sizePt <= 0.0f) return -1;
+                auto it = std::find(sizes_.begin(), sizes_.end(), sizePt);
+                if (it == sizes_.end()) it = sizes_.insert(std::upper_bound(sizes_.begin(), sizes_.end(), sizePt), sizePt);
+                return static_cast<int>(it - sizes_.begin());
+            };
+        }
+        w.NextGroup();
+        w.Toggle("doc-bold", "textformat/bold.svg", Tr("Bold"), Tr("Bold (Ctrl+B)"), P::Font, Act([](auto& e) { e.ToggleBold(); }),
+                 [state]() { return RichCharFormatState::IsOn(state().bold); });
+        w.Toggle("doc-italic", "textformat/italic.svg", Tr("Italic"), Tr("Italic (Ctrl+I)"), P::Font,
+                 Act([](auto& e) { e.ToggleItalic(); }), [state]() { return RichCharFormatState::IsOn(state().italic); });
+        w.Toggle("doc-underline", "textformat/underline.svg", Tr("Underline"), Tr("Underline (Ctrl+U)"), P::Font,
+                 Act([](auto& e) { e.ToggleUnderline(); }), [state]() { return RichCharFormatState::IsOn(state().underline); });
+        w.Toggle("doc-strike", "textformat/strike.svg", Tr("Strikethrough"), Tr("Strikethrough"), P::Font,
+                 Act([](auto& e) { e.ToggleStrikethrough(); }), [state]() { return RichCharFormatState::IsOn(state().strikethrough); });
+        w.NextGroup();
         // The lists and the alignment: one slot each, doing the tool picked
         // last; resting the pointer on it shows the others.
-        AddActionGroup(*bar, "doc-lists", {
-            {"doc-bullets", "ultramail/list-bullets.svg", Tr("Bulleted list"), Act([](auto& e) { e.ToggleBulletList(); })},
-            {"doc-numbers", "ultramail/list-numbers.svg", Tr("Numbered list"), Act([](auto& e) { e.ToggleNumberedList(); })},
-            {"doc-outdent", "office/outdent.svg", Tr("Decrease indent (Shift+Tab)"), Act([](auto& e) { e.OutdentList(); })},
-            {"doc-indent", "office/indent.svg", Tr("Increase indent (Tab)"), Act([](auto& e) { e.IndentList(); })}});
-        AddActionGroup(*bar, "doc-align", {
-            {"doc-left", "textformat/align-left.svg", Tr("Align left"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Left); })},
-            {"doc-centre", "textformat/align-centre.svg", Tr("Centre"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Center); })},
-            {"doc-right", "textformat/align-right.svg", Tr("Align right"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Right); })},
-            {"doc-justify", "office/justify.svg", Tr("Justify"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Justify); })}});
-        bar->AddSeparator();
-        AddTool(*bar, "doc-paragraph", "", "textformat/line-spacing.svg",
-                Tr("Paragraph: indents, spacing, line spacing, alignment and tab stops"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowParagraphDialog(e, std::move(done)); }));
-        AddTool(*bar, "doc-styles", "", "menu/palette.svg",
-                Tr("Styles: apply, change or make a named style"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowStylesDialog(e, std::move(done)); }));
-        tabs_.push_back({Tr("Home"), bar});
+        w.ActionGroup("doc-lists", Tr("Lists"), P::Lists, {
+            {"doc-bullets", "ultramail/list-bullets.svg", Tr("Bulleted list"), Tr("Bulleted list"), Act([](auto& e) { e.ToggleBulletList(); })},
+            {"doc-numbers", "ultramail/list-numbers.svg", Tr("Numbered list"), Tr("Numbered list"), Act([](auto& e) { e.ToggleNumberedList(); })},
+            {"doc-outdent", "office/outdent.svg", Tr("Decrease indent"), Tr("Decrease indent (Shift+Tab)"), Act([](auto& e) { e.OutdentList(); })},
+            {"doc-indent", "office/indent.svg", Tr("Increase indent"), Tr("Increase indent (Tab)"), Act([](auto& e) { e.IndentList(); })}});
+        w.ActionGroup("doc-align", Tr("Alignment"), P::Paragraph, {
+            {"doc-left", "textformat/align-left.svg", Tr("Align left"), Tr("Align left"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Left); })},
+            {"doc-centre", "textformat/align-centre.svg", Tr("Centre"), Tr("Centre"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Center); })},
+            {"doc-right", "textformat/align-right.svg", Tr("Align right"), Tr("Align right"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Right); })},
+            {"doc-justify", "office/justify.svg", Tr("Justify"), Tr("Justify"), Act([](auto& e) { e.SetAlignment(RichTextAlign::Justify); })}});
+        w.NextGroup();
+        w.Button("doc-paragraph", "textformat/line-spacing.svg", Tr("Paragraph"),
+                 Tr("Paragraph: indents, spacing, line spacing, alignment and tab stops"), P::Paragraph,
+                 Dialog([](auto& e, RichDialogClosed done) { ShowParagraphDialog(e, std::move(done)); }));
+        w.Button("doc-styles", "menu/palette.svg", Tr("Styles"), Tr("Styles: apply, change or make a named style"), P::Style,
+                 Dialog([](auto& e, RichDialogClosed done) { ShowStylesDialog(e, std::move(done)); }));
+
+        // Insert: table, picture, link | page break | notes, contents,
+        // captions and cross-references.
+        w.Tab("insert", Tr("Insert"), "office-document-insert");
+        w.Button("doc-table", "table.svg", Tr("Table"), Tr("Table: insert a table of three rows and three columns"), P::Insert,
+                 Act([](auto& e) { e.InsertTable(3, 3, true); }));
+        w.Button("doc-picture", "image.svg", Tr("Picture"), Tr("Picture: insert a picture from a file"), P::Insert,
+                 [this]() { InsertPicture(); });
+        w.Button("doc-link", "link.svg", Tr("Link"), Tr("Link: make the selection a link"), P::Insert, [this]() { InsertLink(); });
+        w.NextGroup();
+        w.Button("doc-pagebreak", "", Tr("Page break"), Tr("Start a new page here"), P::Insert,
+                 Act([](auto& e) { e.InsertPageBreak(); })).labelOnBar = true;
+        w.NextGroup();
+        w.Button("doc-footnote", "superscript.svg", Tr("Footnote"), Tr("Insert a footnote or an endnote at the caret"), P::Insert,
+                 Dialog([](auto& e, RichDialogClosed done) { ShowNoteDialog(e, std::move(done)); })).labelOnBar = true;
+        w.Button("doc-toc", "list-tree.svg", Tr("Contents"), Tr("Insert or rebuild a table of contents of the headings"), P::Insert,
+                 Dialog([](auto& e, RichDialogClosed done) { ShowContentsDialog(e, std::move(done)); })).labelOnBar = true;
+        w.Button("doc-caption", "add_text.svg", Tr("Caption"), Tr("A numbered caption under the picture or table"), P::Insert,
+                 Dialog([](auto& e, RichDialogClosed done) { ShowCaptionDialog(e, std::move(done)); })).labelOnBar = true;
+        w.Button("doc-crossref", "menu/book.svg", Tr("Cross-reference"), Tr("Refer to a caption or a bookmark by its text or its page"),
+                 P::Insert, Dialog([](auto& e, RichDialogClosed done) { ShowCrossReferenceDialog(e, std::move(done)); })).labelOnBar = true;
+
+        // Layout: page setup | the table's and the picture's properties.
+        w.Tab("layout", Tr("Layout"), "office-document-layout");
+        w.Button("doc-pagesetup", "document.svg", Tr("Page setup"), Tr("Paper, orientation, margins, header and footer"), P::Page,
+                 Dialog([](auto& e, RichDialogClosed done) { ShowPageSetupDialog(e, std::move(done)); })).labelOnBar = true;
+        w.NextGroup();
+        {
+            ToolEntry& table = w.Button("doc-tableprops", "table.svg", Tr("Table"),
+                                        Tr("The width, alignment, header row and borders of the table"), P::Table,
+                                        Dialog([](auto& e, RichDialogClosed done) { ShowTablePropertiesDialog(e, std::move(done)); }));
+            table.labelOnBar = true;
+            table.context = ToolContext::InTable;
+        }
+        {
+            ToolEntry& picture = w.Button("doc-pictureprops", "image.svg", Tr("Picture"),
+                                          Tr("The alt text, wrapping and size of the selected picture"), P::Picture,
+                                          Dialog([](auto& e, RichDialogClosed done) { ShowPictureDialog(e, std::move(done)); }));
+            picture.labelOnBar = true;
+            picture.context = ToolContext::PictureSelected;
+        }
+
+        // Review: comments | tracked changes.
+        w.Tab("review", Tr("Review"), "office-document-review");
+        w.Button("doc-comment", "clipboard/edit.svg", Tr("Comment"), Tr("Comment: comment on the selection"), P::Review,
+                 Dialog([](auto& e, RichDialogClosed done) { ShowCommentDialog(e, -1, std::move(done)); }));
+        w.Button("doc-prevcomment", "texter/angle-left.svg", Tr("Previous comment"), Tr("Previous comment"), P::Review,
+                 Act([](auto& e) { e.GoToPreviousComment(); }));
+        w.Button("doc-nextcomment", "texter/angle-right.svg", Tr("Next comment"), Tr("Next comment"), P::Review,
+                 Act([](auto& e) { e.GoToNextComment(); }));
+        w.Button("doc-comments", "list.svg", Tr("All comments"),
+                 Tr("All comments: the comments of the document: go to, edit, resolve or delete one"), P::Review,
+                 Dialog([](auto& e, RichDialogClosed done) { ShowCommentsDialog(e, std::move(done)); }));
+        w.Toggle("doc-showcomments", "", Tr("Show comments"), Tr("Show the comments and their pane"), P::Review,
+                 Act([](auto& e) { e.SetShowComments(!e.IsShowingComments()); }),
+                 [edit]() { return edit->IsShowingComments(); }).labelOnBar = true;
+        w.NextGroup();
+        w.Toggle("doc-track", "edit.svg", Tr("Track changes"), Tr("Mark what is typed and deleted"), P::Review,
+                 Act([](auto& e) { e.SetTrackChanges(!e.IsTrackingChanges()); }),
+                 [edit]() { return edit->IsTrackingChanges(); }).labelOnBar = true;
+        w.Button("doc-prevchange", "arrow-left.svg", Tr("Previous change"), Tr("Previous change"), P::Review,
+                 Act([](auto& e) { e.GoToPreviousChange(); }));
+        w.Button("doc-nextchange", "arrow-right.svg", Tr("Next change"), Tr("Next change"), P::Review,
+                 Act([](auto& e) { e.GoToNextChange(); }));
+        w.Button("doc-accept", "ultramail/check.svg", Tr("Accept"), Tr("Accept: accept the change at the caret, or those selected"),
+                 P::Review, Act([](auto& e) { e.AcceptChangeAtCaret(); }));
+        w.Button("doc-reject", "delete.svg", Tr("Reject"), Tr("Reject: reject the change at the caret, or those selected"),
+                 P::Review, Act([](auto& e) { e.RejectChangeAtCaret(); }));
+        w.Button("doc-acceptall", "", Tr("Accept all"), Tr("Accept every change"), P::Review,
+                 Act([](auto& e) { e.AcceptAllChanges(); })).labelOnBar = true;
+        w.Button("doc-rejectall", "", Tr("Reject all"), Tr("Reject every change"), P::Review,
+                 Act([](auto& e) { e.RejectAllChanges(); })).labelOnBar = true;
+
+        // The view group: navigator, pages | page width, whole page, text
+        // width [share] | zoom out, [zoom], zoom in.
+        using Fit = UltraCanvasRichTextEdit::ZoomFit;
+        w.ViewGroup("office-document-view");
+        w.Toggle("doc-navigator", "menu/sidebar.svg", Tr("Navigator"),
+                 Tr("Navigator: show the headings, tables, pictures and comments beside the document (F5)"), P::ViewGroup,
+                 [this]() { ToggleNavigator(); }, [this]() { return navigatorShown_; });
+        w.Toggle("doc-pageview", "office/view-pages.svg", Tr("Pages"), Tr("Pages: show the document as pages"), P::ViewGroup,
+                 Act([](auto& e) { e.SetPageView(!e.IsPageView()); }), [edit]() { return edit->IsPageView(); });
+        w.NextGroup();
+        w.Toggle("doc-fitwidth", "office/fit-page-width.svg", Tr("Page width"), Tr("Page width: zoom to the width of the page"),
+                 P::ViewGroup, [this]() { ChooseFit(DocumentFit::PageWidth); },
+                 [edit]() { return edit->GetZoomFit() == Fit::PageWidth; });
+        w.Toggle("doc-fitpage", "office/fit-whole-page.svg", Tr("Whole page"), Tr("Whole page: zoom to show the whole page"),
+                 P::ViewGroup, [this]() { ChooseFit(DocumentFit::WholePage); },
+                 [edit]() { return edit->GetZoomFit() == Fit::WholePage; });
+        w.Toggle("doc-fitshare", "office/fit-width-share.svg", Tr("Text width"),
+                 Tr("Text width: the page fills the share of the width chosen beside it"), P::ViewGroup,
+                 [this]() { ChooseFit(DocumentFit::WidthShare); }, [edit]() { return edit->GetZoomFit() == Fit::WidthShare; });
+        {
+            ToolEntry& share = w.List("doc-share", Tr("Text width"), Tr("Share of the width for Text width"), P::ViewGroup,
+                                      ToolListStyle::Percent);
+            for (float choice : OfficeSettings::WidthShareChoices()) share.list.percents.push_back(static_cast<int>(std::lround(choice * 100.0f)));
+            share.list.minimum = 10;
+            share.list.maximum = 100;
+            share.list.askTitle = Tr("Text width");
+            share.list.choosePercent = [this](int percent) { ChooseShare(static_cast<float>(percent) / 100.0f); };
+            share.list.currentPercent = [this]() { return static_cast<int>(std::lround(share_ * 100.0f)); };
+        }
+        w.NextGroup();
+        w.Button("doc-zoomout", "menu/zoom-out.svg", Tr("Zoom out"), Tr("Zoom out (Ctrl+-)"), P::ViewGroup,
+                 [this]() { ZoomOut(); Refocus(); });
+        {
+            ToolEntry& zoom = w.List("doc-zoom", Tr("Zoom"), Tr("Zoom level (Ctrl+0: 100 %)"), P::ViewGroup, ToolListStyle::Percent);
+            zoom.list.percents = ZoomLevelChoices();
+            zoom.list.minimum = 25;
+            zoom.list.maximum = 500;
+            zoom.list.askTitle = Tr("Zoom");
+            zoom.list.choosePercent = [this](int percent) {
+                editor_->SetZoom(static_cast<float>(percent) / 100.0f);
+                SyncView();
+                Refocus();
+            };
+            zoom.list.currentPercent = [edit]() { return static_cast<int>(std::lround(edit->GetZoom() * 100.0f)); };
+        }
+        w.Button("doc-zoomin", "menu/zoom-in.svg", Tr("Zoom in"), Tr("Zoom in (Ctrl++)"), P::ViewGroup,
+                 [this]() { ZoomIn(); Refocus(); });
+
+        // The panels' own: what the bars leave to the dialogs, a value each.
+        w.PanelsOnly();
+        w.Toggle("doc-superscript", "superscript.svg", Tr("Superscript"), Tr("Superscript"), P::Font,
+                 Act([](auto& e) { e.ToggleSuperscript(); }), [state]() { return RichCharFormatState::IsOn(state().superscript); });
+        w.Toggle("doc-subscript", "subscript.svg", Tr("Subscript"), Tr("Subscript"), P::Font,
+                 Act([](auto& e) { e.ToggleSubscript(); }), [state]() { return RichCharFormatState::IsOn(state().subscript); });
+        w.Colour("doc-textcolour", Tr("Text colour"), P::Font, [state]() { return TextColour(state().color, state().colorMixed); },
+                 [this, edit](const Color& colour) { edit->SetTextColor(colour.ToHexString()); Sync(); });
+        w.Colour("doc-highlight", Tr("Highlight"), P::Font,
+                 [state]() { return TextColour(state().highlightColor, state().highlightMixed); },
+                 [this, edit](const Color& colour) { edit->SetHighlightColor(colour.ToHexString()); Sync(); });
+        // The caret paragraph's spacing and indents as they apply - its own,
+        // else its style's, else the view's (GetEffectiveParagraphFormat) -
+        // in points, "-" only for a selection of paragraphs that differ (the
+        // selection's paragraphs take what is set); line spacing as a
+        // multiple of single.
+        using Mixed = bool RichParagraphFormatState::*;
+        auto spacing = [this, edit](float RichParagraphFormat::*field, Mixed mixed) {
+            ToolValue value;
+            value.get = [edit, field, mixed]() -> std::optional<double> {
+                const RichParagraphFormatState now = edit->GetEffectiveParagraphFormat();
+                if (now.*mixed) return std::nullopt;
+                return now.format.*field;
+            };
+            value.set = [this, edit, field](double to) {
+                RichParagraphFormat format = edit->GetParagraphFormat();
+                format.*field = static_cast<float>(to);
+                edit->SetParagraphFormat(format);
+                Sync();
+            };
+            return value;
+        };
+        {
+            ToolEntry& line = w.Number("doc-linespacing", Tr("Line spacing"), Tr("lines"), 0.5, 5.0, 0.05, 2, P::Paragraph,
+                     [edit]() -> std::optional<double> {
+                         const RichParagraphFormatState now = edit->GetEffectiveParagraphFormat();
+                         // A height in points is no multiple: describe says it.
+                         if (now.lineSpacingMixed || now.format.lineHeightPt > 0.0f) return std::nullopt;
+                         return now.format.lineSpacing > 0.0f ? now.format.lineSpacing : 1.0f;
+                     },
+                     [this, edit](double to) {
+                         RichParagraphFormat format = edit->GetParagraphFormat();
+                         format.lineSpacing = static_cast<float>(to);
+                         format.lineHeightPt = 0.0f;
+                         format.lineHeightAtLeast = false;
+                         edit->SetParagraphFormat(format);
+                         Sync();
+                     });
+            line.value.describe = [edit]() {
+                const RichParagraphFormatState now = edit->GetEffectiveParagraphFormat();
+                if (now.lineSpacingMixed || now.format.lineHeightPt <= 0.0f) return std::string();
+                const std::string points = SizeText(std::round(now.format.lineHeightPt * 10.0f) / 10.0f);
+                return now.format.lineHeightAtLeast ? TrF("at least {0} pt", points) : TrF("exactly {0} pt", points);
+            };
+        }
+        struct Spacing { const char* id; std::string label; float RichParagraphFormat::*field; double minimum; Mixed mixed; };
+        const Spacing spacings[] = {
+            {"doc-spacebefore", Tr("Space before"), &RichParagraphFormat::spaceBeforePt, 0.0, &RichParagraphFormatState::spaceBeforeMixed},
+            {"doc-spaceafter", Tr("Space after"), &RichParagraphFormat::spaceAfterPt, 0.0, &RichParagraphFormatState::spaceAfterMixed},
+            {"doc-indentleft", Tr("Indent left"), &RichParagraphFormat::leftIndentPt, 0.0, &RichParagraphFormatState::leftIndentMixed},
+            {"doc-indentright", Tr("Indent right"), &RichParagraphFormat::rightIndentPt, 0.0, &RichParagraphFormatState::rightIndentMixed},
+            {"doc-indentfirst", Tr("First line"), &RichParagraphFormat::firstLineIndentPt, -288.0,
+             &RichParagraphFormatState::firstLineIndentMixed}};
+        for (const Spacing& s : spacings) {
+            const ToolValue value = spacing(s.field, s.mixed);
+            w.Number(s.id, s.label, Tr("pt"), s.minimum, 288.0, 1.0, 1, P::Paragraph, value.get, value.set);
+        }
+        // The table the caret is in.
+        auto inTable = [](ToolEntry& entry) { entry.context = ToolContext::InTable; };
+        inTable(w.Button("doc-row-above", "", Tr("Row above"), Tr("A row above this cell"), P::Table,
+                         Act([](auto& e) { e.InsertRowAbove(); })));
+        inTable(w.Button("doc-row-below", "", Tr("Row below"), Tr("A row below this cell"), P::Table,
+                         Act([](auto& e) { e.InsertRowBelow(); })));
+        inTable(w.Button("doc-col-left", "", Tr("Column left"), Tr("A column left of this cell"), P::Table,
+                         Act([](auto& e) { e.InsertColumnLeft(); })));
+        inTable(w.Button("doc-col-right", "", Tr("Column right"), Tr("A column right of this cell"), P::Table,
+                         Act([](auto& e) { e.InsertColumnRight(); })));
+        inTable(w.Button("doc-row-delete", "", Tr("Delete row"), Tr("Delete this cell's row"), P::Table,
+                         Act([](auto& e) { e.DeleteCurrentRow(); })));
+        inTable(w.Button("doc-col-delete", "", Tr("Delete column"), Tr("Delete this cell's column"), P::Table,
+                         Act([](auto& e) { e.DeleteCurrentColumn(); })));
+        // Merging: the selected cells, else this one with the one at its
+        // right; splitting a merged cell back into its own.
+        {
+            ToolEntry& merge = w.Button("doc-cell-merge", "", Tr("Merge cells"),
+                                        Tr("Merge the selected cells, or this cell with the one at its right"), P::Table,
+                                        Act([](auto& e) { if (!e.HasCellSelection() || !e.MergeSelectedCells()) e.MergeWithCellRight(); }));
+            inTable(merge);
+            ToolEntry& down = w.Button("doc-cell-merge-down", "", Tr("Merge down"), Tr("Merge this cell with the one below it"),
+                                       P::Table, Act([](auto& e) { e.MergeWithCellBelow(); }));
+            inTable(down);
+            ToolEntry& split = w.Button("doc-cell-split", "", Tr("Split cell"), Tr("Split a merged cell into the cells it covers"),
+                                        P::Table, Act([](auto& e) { e.SplitCurrentCell(); }));
+            split.isEnabled = [edit]() { return edit->CanSplitCurrentCell(); };
+            inTable(split);
+        }
+        inTable(w.Toggle("doc-table-header", "", Tr("Header row"), Tr("The first row is a header row"), P::Table,
+                         Act([](auto& e) {
+                             RichTableProperties table;
+                             if (!e.GetTableProperties(table)) return;
+                             table.headerRow = !table.headerRow;
+                             e.SetTableProperties(table);
+                         }),
+                         [edit]() {
+                             RichTableProperties table;
+                             return edit->GetTableProperties(table) && table.headerRow;
+                         }));
+        inTable(w.Number("doc-table-border", Tr("Borders"), Tr("pt"), 0.0, 12.0, 0.25, 2, P::Table,
+                         [edit]() -> std::optional<double> {
+                             // As drawn: the document's lines, else the view's grid line.
+                             RichTableProperties table;
+                             if (!edit->GetEffectiveTableProperties(table)) return std::nullopt;
+                             return table.borderWidthPt;
+                         },
+                         [this, edit](double to) {
+                             RichTableProperties table;
+                             if (!edit->GetTableProperties(table)) return;
+                             table.borderWidthPt = static_cast<float>(to);
+                             edit->SetTableProperties(table);
+                             Sync();
+                         }));
+        // The fill of this cell, or of the selected cells; "No shading" takes it away.
+        inTable(w.Colour("doc-cell-shading", Tr("Cell shading"), P::Table,
+                         [edit]() -> std::optional<Color> {
+                             std::string hex;
+                             if (!edit->GetCellShading(hex) || hex.empty()) return std::nullopt;
+                             return ParseColor(hex);
+                         },
+                         [this, edit](const Color& colour) {
+                             edit->SetCellShading(colour.ToHexString());
+                             Sync();
+                         }));
+        inTable(w.Button("doc-cell-noshading", "", Tr("No shading"), Tr("Take the fill away from this cell or the selected cells"),
+                         P::Table, Act([](auto& e) { e.SetCellShading(std::string()); })));
+        // The selected picture's size in cm, as it is laid out (its own pixel
+        // size where the file gives it none); set, the other side follows in
+        // proportion while "Keep proportions" is on. One undo step each.
+        auto onPicture = [](ToolEntry& entry) { entry.context = ToolContext::PictureSelected; };
+        auto pictureSide = [this, edit](bool width) {
+            ToolValue value;
+            value.get = [edit, width]() -> std::optional<double> {
+                float nowW = 0.0f, nowH = 0.0f;
+                if (!edit->HasSelectedImage() || !edit->GetImageDisplaySize(edit->GetSelectedImage(), nowW, nowH)) return std::nullopt;
+                return (width ? nowW : nowH) / kPointsPerCm;
+            };
+            value.set = [this, edit, width](double cm) {
+                float nowW = 0.0f, nowH = 0.0f;
+                if (!edit->HasSelectedImage() || !edit->GetImageDisplaySize(edit->GetSelectedImage(), nowW, nowH)) return;
+                const float to = static_cast<float>(cm * kPointsPerCm);
+                if (!(to > 0.0f)) return;
+                float newW = width ? to : nowW, newH = width ? nowH : to;
+                if (keepPictureProportions_ && nowW > 0.0f && nowH > 0.0f) {
+                    if (width) newH = nowH * to / nowW;
+                    else newW = nowW * to / nowH;
+                }
+                edit->SetSelectedImageSize(newW, newH);
+                Sync();
+            };
+            return value;
+        };
+        {
+            const ToolValue width = pictureSide(true), height = pictureSide(false);
+            onPicture(w.Number("doc-picture-width", Tr("Width"), Tr("cm"), 0.01, 200.0, 0.1, 2, P::Picture, width.get, width.set));
+            onPicture(w.Number("doc-picture-height", Tr("Height"), Tr("cm"), 0.01, 200.0, 0.1, 2, P::Picture, height.get, height.set));
+        }
+        onPicture(w.Toggle("doc-picture-proportions", "", Tr("Keep proportions"),
+                           Tr("Setting the width or the height scales the other side with it"), P::Picture,
+                           [this]() { keepPictureProportions_ = !keepPictureProportions_; Sync(); },
+                           [this]() { return keepPictureProportions_; }));
+
+        // The list style of the caret's list (or of the selection's
+        // paragraphs, which become list items with it); None ends the list.
+        {
+            ToolEntry& list = w.List("doc-liststyle", Tr("List style"), Tr("The marker of the list: a bullet or a numbering"),
+                                     P::Lists);
+            list.list.items = []() {
+                std::vector<std::string> names;
+                for (const ListStyleChoice& choice : ListStyleChoices()) names.push_back(choice.name);
+                return names;
+            };
+            list.list.placeholder = "-";
+            list.list.choose = [this, edit](int index) {
+                const std::vector<ListStyleChoice> choices = ListStyleChoices();
+                if (index < 0 || index >= static_cast<int>(choices.size())) return;
+                if (index == 0) edit->EndList();
+                else edit->SetListMarker(choices[static_cast<size_t>(index)].marker);
+                Sync();
+                edit->SetFocus(true);
+            };
+            list.list.selected = [edit]() {
+                RichListMarker marker;
+                bool mixed = false;
+                const bool isList = edit->GetListMarker(marker, mixed);
+                if (mixed) return -1;
+                if (!isList) return 0;
+                const std::vector<ListStyleChoice> choices = ListStyleChoices();
+                for (size_t i = 1; i < choices.size(); ++i)
+                    if (choices[i].marker == marker) return static_cast<int>(i);
+                return -1;   // a marker of the document's own
+            };
+        }
+
+        // The page: its orientation, size, margins and columns (Page setup,
+        // the panel's "…", for the rest).
+        auto page = [edit]() { return edit->GetEffectivePageSetup(); };
+        auto orient = [this, edit](bool landscape) {
+            RichPageSetup now = edit->GetEffectivePageSetup();
+            if ((now.widthPt > now.heightPt) != landscape) {
+                std::swap(now.widthPt, now.heightPt);
+                edit->SetPageSetup(now);
+            }
+            Sync();
+        };
+        w.Toggle("doc-portrait", "", Tr("Portrait"), Tr("The page upright"), P::Page, [orient]() { orient(false); },
+                 [page]() { const RichPageSetup p = page(); return p.heightPt >= p.widthPt; });
+        w.Toggle("doc-landscape", "", Tr("Landscape"), Tr("The page on its side"), P::Page, [orient]() { orient(true); },
+                 [page]() { const RichPageSetup p = page(); return p.widthPt > p.heightPt; });
+        {
+            ToolEntry& size = w.List("doc-pagesize", Tr("Page size"), Tr("The paper the document is laid out on"), P::Page);
+            // The sizes, and the document's own when it is none of them.
+            size.list.items = [page]() {
+                std::vector<std::string> names;
+                for (const PageSizeChoiceEntry& choice : PageSizeChoices()) names.push_back(choice.name);
+                if (PageSizeIndex(page()) < 0) names.push_back(Tr("Custom"));
+                return names;
+            };
+            size.list.choose = [this, edit](int index) {
+                const std::vector<PageSizeChoiceEntry> choices = PageSizeChoices();
+                if (index < 0 || index >= static_cast<int>(choices.size())) return;
+                RichPageSetup now = edit->GetEffectivePageSetup();
+                const bool landscape = now.widthPt > now.heightPt;
+                now.widthPt = choices[static_cast<size_t>(index)].widthPt;
+                now.heightPt = choices[static_cast<size_t>(index)].heightPt;
+                if (landscape) std::swap(now.widthPt, now.heightPt);
+                edit->SetPageSetup(now);
+                Sync();
+            };
+            size.list.selected = [page]() {
+                const int index = PageSizeIndex(page());
+                return index >= 0 ? index : static_cast<int>(PageSizeChoices().size());
+            };
+        }
+        {
+            // The presets, and Custom: the Page setup dialog, which is also
+            // what a document's own margins show.
+            ToolEntry& margins = w.List("doc-margins", Tr("Margins"), TrF("The room round the text: a preset, or {0} in {1}", Tr("Custom"), Tr("Page setup")),
+                                        P::Page);
+            margins.list.items = []() {
+                std::vector<std::string> names;
+                for (const MarginChoice& choice : MarginChoices()) names.push_back(choice.name);
+                names.push_back(Tr("Custom"));
+                return names;
+            };
+            margins.list.choose = [this, edit](int index) {
+                const std::vector<MarginChoice> choices = MarginChoices();
+                if (index >= static_cast<int>(choices.size())) {
+                    ShowPageSetupDialog(*edit, [this](bool) { Sync(); });
+                    return;
+                }
+                if (index < 0) return;
+                RichPageSetup now = edit->GetEffectivePageSetup();
+                const MarginChoice& choice = choices[static_cast<size_t>(index)];
+                now.marginTopPt = now.marginBottomPt = choice.topBottomPt;
+                now.marginLeftPt = now.marginRightPt = choice.sidesPt;
+                edit->SetPageSetup(now);
+                Sync();
+            };
+            margins.list.selected = [page]() {
+                const RichPageSetup p = page();
+                const std::vector<MarginChoice> choices = MarginChoices();
+                auto closeTo = [](float a, float b) { return std::fabs(a - b) < 0.5f; };
+                for (size_t i = 0; i < choices.size(); ++i)
+                    if (closeTo(p.marginTopPt, choices[i].topBottomPt) && closeTo(p.marginBottomPt, choices[i].topBottomPt) &&
+                        closeTo(p.marginLeftPt, choices[i].sidesPt) && closeTo(p.marginRightPt, choices[i].sidesPt))
+                        return static_cast<int>(i);
+                return static_cast<int>(choices.size());   // Custom
+            };
+        }
+        w.Number("doc-columns", Tr("Columns"), "", 1.0, 6.0, 1.0, 0, P::Page,
+                 [edit]() -> std::optional<double> { return std::max(1, edit->GetCurrentSection().columns); },
+                 [this, edit](double to) {
+                     edit->SetSectionColumns(static_cast<int>(std::lround(to)), edit->GetCurrentSection().columnGapPt);
+                     Sync();
+                 });
     }
 
-    void BuildInsert() {
-        auto bar = MakeToolbar("office-document-insert");
-        AddTool(*bar, "doc-table", "", "table.svg", Tr("Table: insert a table of three rows and three columns"),
-                Act([](auto& e) { e.InsertTable(3, 3, true); }));
-        AddTool(*bar, "doc-picture", "", "image.svg", Tr("Picture: insert a picture from a file"), [this]() { InsertPicture(); });
-        AddTool(*bar, "doc-link", "", "link.svg", Tr("Link: make the selection a link"), [this]() { InsertLink(); });
-        bar->AddSeparator();
-        AddTool(*bar, "doc-pagebreak", Tr("Page break"), "", Tr("Start a new page here"), Act([](auto& e) { e.InsertPageBreak(); }));
-        bar->AddSeparator();
-        AddTool(*bar, "doc-footnote", Tr("Footnote"), "superscript.svg", Tr("Insert a footnote or an endnote at the caret"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowNoteDialog(e, std::move(done)); }));
-        AddTool(*bar, "doc-toc", Tr("Contents"), "list-tree.svg", Tr("Insert or rebuild a table of contents of the headings"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowContentsDialog(e, std::move(done)); }));
-        AddTool(*bar, "doc-caption", Tr("Caption"), "add_text.svg", Tr("A numbered caption under the picture or table"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowCaptionDialog(e, std::move(done)); }));
-        AddTool(*bar, "doc-crossref", Tr("Cross-reference"), "menu/book.svg",
-                Tr("Refer to a caption or a bookmark by its text or its page"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowCrossReferenceDialog(e, std::move(done)); }));
-        tabs_.push_back({Tr("Insert"), bar});
+    // ===== LISTS AND PAGES, AS THE PANELS OFFER THEM =====
+    struct ListStyleChoice {
+        std::string name;
+        RichListMarker marker;
+    };
+    // None (no list), then the bullets and the numberings.
+    static std::vector<ListStyleChoice> ListStyleChoices() {
+        auto bullet = [](const std::string& text, bool box) {
+            RichListMarker m;
+            m.bulletText = text;
+            m.checkbox = box;
+            return m;
+        };
+        auto numbered = [](RichNumberFormat format) {
+            RichListMarker m;
+            m.ordered = true;
+            m.numberFormat = format;
+            return m;
+        };
+        return {{Tr("None"), RichListMarker{}},
+                {"\xE2\x80\xA2 " + Tr("Bullets"), bullet("", false)},
+                {"\xE2\x80\x93 " + Tr("Dashes"), bullet("\xE2\x80\x93", false)},
+                {"\xE2\x98\x90 " + Tr("Check boxes"), bullet("", true)},
+                {"1. 2. 3.", numbered(RichNumberFormat::Decimal)},
+                {"a. b. c.", numbered(RichNumberFormat::LowerLetter)},
+                {"A. B. C.", numbered(RichNumberFormat::UpperLetter)},
+                {"i. ii. iii.", numbered(RichNumberFormat::LowerRoman)},
+                {"I. II. III.", numbered(RichNumberFormat::UpperRoman)}};
     }
 
-    void BuildLayout() {
-        auto bar = MakeToolbar("office-document-layout");
-        AddTool(*bar, "doc-pagesetup", Tr("Page setup"), "document.svg", Tr("Paper, orientation, margins, header and footer"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowPageSetupDialog(e, std::move(done)); }));
-        bar->AddSeparator();
-        AddTool(*bar, "doc-tableprops", Tr("Table"), "table.svg", Tr("The width, alignment, header row and borders of the table"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowTablePropertiesDialog(e, std::move(done)); }));
-        AddTool(*bar, "doc-pictureprops", Tr("Picture"), "image.svg", Tr("The alt text, wrapping and size of the selected picture"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowPictureDialog(e, std::move(done)); }));
-        tabs_.push_back({Tr("Layout"), bar});
+    struct PageSizeChoiceEntry {
+        std::string name;
+        float widthPt;
+        float heightPt;
+    };
+    // Upright; a landscape page is the same turned.
+    static std::vector<PageSizeChoiceEntry> PageSizeChoices() {
+        return {{"A3", 841.89f, 1190.55f}, {"A4", 595.28f, 841.89f}, {"A5", 419.53f, 595.28f},
+                {Tr("Letter"), 612.0f, 792.0f}, {Tr("Legal"), 612.0f, 1008.0f}};
+    }
+    // The choice `page` is (either way up); -1 for none.
+    static int PageSizeIndex(const RichPageSetup& page) {
+        const float shortSide = std::min(page.widthPt, page.heightPt), longSide = std::max(page.widthPt, page.heightPt);
+        const std::vector<PageSizeChoiceEntry> choices = PageSizeChoices();
+        for (size_t i = 0; i < choices.size(); ++i)
+            if (std::fabs(shortSide - choices[i].widthPt) < 1.5f && std::fabs(longSide - choices[i].heightPt) < 1.5f)
+                return static_cast<int>(i);
+        return -1;
     }
 
-    void BuildReview() {
-        auto bar = MakeToolbar("office-document-review");
-        AddTool(*bar, "doc-comment", "", "clipboard/edit.svg", Tr("Comment: comment on the selection"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowCommentDialog(e, -1, std::move(done)); }));
-        AddTool(*bar, "doc-prevcomment", "", "texter/angle-left.svg", Tr("Previous comment"), Act([](auto& e) { e.GoToPreviousComment(); }));
-        AddTool(*bar, "doc-nextcomment", "", "texter/angle-right.svg", Tr("Next comment"), Act([](auto& e) { e.GoToNextComment(); }));
-        AddTool(*bar, "doc-comments", "", "list.svg", Tr("All comments: the comments of the document: go to, edit, resolve or delete one"),
-                Dialog([](auto& e, RichDialogClosed done) { ShowCommentsDialog(e, std::move(done)); }));
-        showComments_ = AddToggleTool(*bar, "doc-showcomments", Tr("Show comments"), "", Tr("Show the comments and their pane"),
-                                      Act([](auto& e) { e.SetShowComments(!e.IsShowingComments()); })).get();
-        bar->AddSeparator();
-        trackChanges_ = AddToggleTool(*bar, "doc-track", Tr("Track changes"), "edit.svg", Tr("Mark what is typed and deleted"),
-                                      Act([](auto& e) { e.SetTrackChanges(!e.IsTrackingChanges()); })).get();
-        AddTool(*bar, "doc-prevchange", "", "arrow-left.svg", Tr("Previous change"), Act([](auto& e) { e.GoToPreviousChange(); }));
-        AddTool(*bar, "doc-nextchange", "", "arrow-right.svg", Tr("Next change"), Act([](auto& e) { e.GoToNextChange(); }));
-        AddTool(*bar, "doc-accept", "", "ultramail/check.svg", Tr("Accept: accept the change at the caret, or those selected"),
-                Act([](auto& e) { e.AcceptChangeAtCaret(); }));
-        AddTool(*bar, "doc-reject", "", "delete.svg", Tr("Reject: reject the change at the caret, or those selected"),
-                Act([](auto& e) { e.RejectChangeAtCaret(); }));
-        AddTool(*bar, "doc-acceptall", Tr("Accept all"), "", Tr("Accept every change"), Act([](auto& e) { e.AcceptAllChanges(); }));
-        AddTool(*bar, "doc-rejectall", Tr("Reject all"), "", Tr("Reject every change"), Act([](auto& e) { e.RejectAllChanges(); }));
-        tabs_.push_back({Tr("Review"), bar});
+    struct MarginChoice {
+        std::string name;
+        float topBottomPt;
+        float sidesPt;
+    };
+    // Narrow 1.27 cm, Normal 2 cm (a new A4 document's), Moderate 2.54 cm
+    // (a new Letter one's: an inch), Wide 2.54 cm above and below, 5.08 cm
+    // at the sides.
+    static std::vector<MarginChoice> MarginChoices() {
+        constexpr float cm = static_cast<float>(kPointsPerCm);
+        return {{Tr("Narrow"), 1.27f * cm, 1.27f * cm},
+                {Tr("Normal"), 2.0f * cm, 2.0f * cm},
+                {Tr("Moderate"), 2.54f * cm, 2.54f * cm},
+                {Tr("Wide"), 2.54f * cm, 5.08f * cm}};
+    }
+
+    // A colour of the format state ("#RRGGBB"): none when there is none, or
+    // the selection has several.
+    static std::optional<Color> TextColour(const std::string& hex, bool mixed) {
+        if (mixed || hex.empty()) return std::nullopt;
+        return ParseColor(hex);
     }
 
     // ===== THE NAVIGATOR =====
@@ -490,7 +953,7 @@ private:
             OfficeSettings(*settings_).SetShowNavigator(show);
             settings_->Save();
         }
-        if (navigatorButton_) navigatorButton_->SetPressed(navigatorShown_);
+        bars_.SyncTool("doc-navigator");
     }
 
     void ToggleNavigator() {
@@ -507,43 +970,6 @@ private:
     }
 
     // ===== THE VIEW GROUP =====
-    // navigator | pages | page width | whole page | text width [share] |
-    // zoom out | [zoom] | zoom in
-    void BuildViewGroup() {
-        viewBar_ = MakeViewToolbar("office-document-view");
-        viewBar_->AddSeparator();
-        navigatorButton_ = AddToggleTool(*viewBar_, "doc-navigator", "", "menu/sidebar.svg",
-                                         Tr("Navigator: show the headings, tables, pictures and comments beside the document (F5)"),
-                                         [this]() { ToggleNavigator(); }).get();
-        pageView_ = AddToggleTool(*viewBar_, "doc-pageview", "", "office/view-pages.svg",
-                                  Tr("Pages: show the document as pages"),
-                                  Act([](auto& e) { e.SetPageView(!e.IsPageView()); })).get();
-        viewBar_->AddSeparator();
-        fitWidth_ = AddToggleTool(*viewBar_, "doc-fitwidth", "", "office/fit-page-width.svg",
-                                  Tr("Page width: zoom to the width of the page"),
-                                  [this]() { ChooseFit(DocumentFit::PageWidth); }).get();
-        fitPage_ = AddToggleTool(*viewBar_, "doc-fitpage", "", "office/fit-whole-page.svg",
-                                 Tr("Whole page: zoom to show the whole page"),
-                                 [this]() { ChooseFit(DocumentFit::WholePage); }).get();
-        fitShare_ = AddToggleTool(*viewBar_, "doc-fitshare", "", "office/fit-width-share.svg",
-                                  Tr("Text width: the page fills the share of the width chosen beside it"),
-                                  [this]() { ChooseFit(DocumentFit::WidthShare); }).get();
-        for (float share : OfficeSettings::WidthShareChoices()) shareChoices_.push_back(static_cast<int>(std::lround(share * 100.0f)));
-        shareBox_ = AddPercentBox(*viewBar_, "doc-share", shareChoices_, 10, 100,
-                                  Tr("Share of the width for Text width"), Tr("Text width"), window_,
-                                  [this](int percent) { ChooseShare(static_cast<float>(percent) / 100.0f); }).get();
-        viewBar_->AddSeparator();
-        AddTool(*viewBar_, "doc-zoomout", "", "menu/zoom-out.svg", Tr("Zoom out (Ctrl+-)"), [this]() { ZoomOut(); Refocus(); });
-        zoomBox_ = AddPercentBox(*viewBar_, "doc-zoom", ZoomLevelChoices(), 25, 500,
-                                 Tr("Zoom level (Ctrl+0: 100 %)"), Tr("Zoom"), window_, [this](int percent) {
-                                     editor_->SetZoom(static_cast<float>(percent) / 100.0f);
-                                     SyncView();
-                                     Refocus();
-                                 }).get();
-        AddTool(*viewBar_, "doc-zoomin", "", "menu/zoom-in.svg", Tr("Zoom in (Ctrl++)"), [this]() { ZoomIn(); Refocus(); });
-        SyncView();
-    }
-
     void Refocus() { editor_->SetFocus(true); }
 
     // A fit the editor keeps as the window is resized; 100 % is none.
@@ -581,17 +1007,7 @@ private:
     }
 
     // The view group as the editor is.
-    void SyncView() {
-        using Fit = UltraCanvasRichTextEdit::ZoomFit;
-        const Fit fit = editor_->GetZoomFit();
-        if (pageView_) pageView_->SetPressed(editor_->IsPageView());
-        if (navigatorButton_) navigatorButton_->SetPressed(navigatorShown_);
-        if (fitWidth_) fitWidth_->SetPressed(fit == Fit::PageWidth);
-        if (fitPage_) fitPage_->SetPressed(fit == Fit::WholePage);
-        if (fitShare_) fitShare_->SetPressed(fit == Fit::WidthShare);
-        if (shareBox_) ShowPercent(*shareBox_, shareChoices_, static_cast<int>(std::lround(share_ * 100.0f)));
-        if (zoomBox_) ShowPercent(*zoomBox_, ZoomLevelChoices(), static_cast<int>(std::lround(editor_->GetZoom() * 100.0f)));
-    }
+    void SyncView() { bars_.SyncTab(kViewGroupTab); }
 
     void InsertPicture() {
         FileDialogOptions opts;
@@ -625,46 +1041,7 @@ private:
     }
 
     // The toolbar shows what the caret or the selection has.
-    void Sync() {
-        const RichCharFormatState state = editor_->GetFormatState();
-        if (bold_) bold_->SetPressed(RichCharFormatState::IsOn(state.bold));
-        if (italic_) italic_->SetPressed(RichCharFormatState::IsOn(state.italic));
-        if (underline_) underline_->SetPressed(RichCharFormatState::IsOn(state.underline));
-        if (strike_) strike_->SetPressed(RichCharFormatState::IsOn(state.strikethrough));
-        SyncView();
-        if (trackChanges_) trackChanges_->SetPressed(editor_->IsTrackingChanges());
-        if (showComments_) showComments_->SetPressed(editor_->IsShowingComments());
-        if (style_) {
-            const int level = editor_->GetCurrentHeadingLevel();
-            style_->SetSelectedIndex(level >= 0 && level <= 4 ? level : 0, false);   // read out, not applied again
-        }
-        // A selection with more than one font or size shows none; text with
-        // none of its own shows the editor's base font, and in body text its
-        // size (a heading scales the base size).
-        const FontStyle& base = editor_->GetStyle().baseFont;
-        std::string family = state.fontFamily;
-        if (family.empty() && !state.fontFamilyMixed) family = base.fontFamily;
-        float sizePt = state.fontSizePt;
-        if (sizePt <= 0.0f && !state.fontSizeMixed && editor_->GetCurrentHeadingLevel() == 0)
-            sizePt = static_cast<float>(base.fontSize);
-        if (font_) {
-            if (state.fontFamilyMixed) font_->SetMixed();
-            else font_->SetCurrentFont(family);
-        }
-        if (size_) {
-            int index = -1;
-            if (!state.fontSizeMixed && sizePt > 0.0f) {
-                auto it = std::find(sizes_.begin(), sizes_.end(), sizePt);
-                if (it == sizes_.end()) {
-                    it = sizes_.insert(std::upper_bound(sizes_.begin(), sizes_.end(), sizePt), sizePt);
-                    size_->ClearItems();
-                    for (float s : sizes_) size_->AddItem(SizeText(s));
-                }
-                index = static_cast<int>(it - sizes_.begin());
-            }
-            size_->SetSelectedIndex(index, false);
-        }
-    }
+    void Sync() { bars_.Sync(); }
 };
 
 } // namespace

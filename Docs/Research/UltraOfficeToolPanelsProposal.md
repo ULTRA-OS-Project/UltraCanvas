@@ -1,18 +1,53 @@
 # UltraOffice — tool panels at the left instead of toolbars at the top (Proposal)
 
+## Decisions
+
+Taken on 2026-11-27; they replace the suggestions of §8 where they differ.
+
+1. **The panels are the default; the toolbars remain a setting.** One
+   toolbar for the general functions stays at the top in both layouts:
+   File, Undo, Redo, Save, then the other general functions, and **the view
+   group last** (navigator, pages, the fits, zoom) at the toolbar's right
+   end. The view group is never a panel. The tool panels at the left are
+   the default layout; the command tabs (Home, Insert …) with their toolbar
+   remain as a setting (*Tools: panels at the left / toolbar at the top*).
+2. **Values are edited in the panels.** Line spacing, space before and
+   after, indents, a shape's size and position, colours and the like are
+   shown with their labels and changed in place; the dialogs stay for what a
+   panel does not hold.
+3. **Panels can be reordered from the start**, by dragging a panel's
+   header, and the order is saved (per kind, in `UltraOffice/settings.json`)
+   for the next start, with which panels are open.
+
+Phases 1 to 5 (§6) are built. `Apps/UltraOffice/UltraOfficeTools.h` holds
+each kind's tools, and both layouts are built from it: the command tabs' bars
+and the view group, and the tool panels (`Apps/UltraOffice/UltraOfficePanels.h`)
+in an `UltraCanvasToolPanelStack`, the default layout, with the toolbar at the
+top a setting (Settings, General, *Tools*). One row stays at the top: File,
+Undo, Redo, Save, and the view group last. The panels' values are edited in
+place, context panels come with the caret and the selection, the order, the
+open panels and the column's width are kept per kind in `settings.json`, the
+pivot field list is in the Pivot table panel, a window narrower than 1100 px
+(or the *Icon rail* setting) folds the column into the rail, and F6 goes from
+the tab strip to the toolbar, the panels and the document
+(`Docs/UltraOffice/README.md`, *The tool panels*;
+`Tests/UltraOfficePanelsWindowTest.cpp`). What is left is listed under §6.
+
 ## 1. Recommendation
 
-Offer a second way of presenting UltraOffice's tools: instead of the command
-tabs (Home, Insert, Layout, Review …) and the one toolbar row each shows,
-a **column of tool panels at the left of the document**, one panel per topic
+Present UltraOffice's tools by default as a **column of tool panels at the
+left of the document** instead of the command tabs (Home, Insert, Layout,
+Review …) and the one toolbar row each shows: one panel per topic
 (Clipboard, Font, Paragraph, Lists, Insert, Table, Picture, Review …), each a
 collapsible `UltraCanvasGroupBox` in its **Header** frame style. The column
-scrolls, panels open and close independently and remember it, and panels that
-only make sense for the selection (Table, Picture, Chart, Shape) appear when
-they apply. The slim command row stays at the top (File, Undo, Redo, Save and
-the view group); the navigator stays at the right. The current toolbars stay
-too, as a setting (*Tools: toolbar at the top / panels at the left*), so
-nobody loses the layout they know.
+scrolls, panels open and close independently and remember it, the user
+reorders them by dragging their headers and the order is kept, and panels
+that only make sense for the selection (Table, Picture, Chart, Shape) appear
+when they apply. Values are edited in the panels. One toolbar stays at the
+top for the general functions (File, Undo, Redo, Save), with the view group
+last, at its right end; the navigator stays at the right. The command tabs
+with their toolbars stay too, as a setting (*Tools: panels at the left /
+toolbar at the top*), so nobody loses the layout they know.
 
 Why:
 
@@ -77,9 +112,10 @@ page its full height and still has 300 px at the left for tools.
     a value is seen and changed in place instead of through a dialog;
   - full-width lists (paragraph style, font with the font picker, number
     format).
-- **The command row** keeps File, Undo, Redo, Save, and the view group at the
-  right, as today; the command tab buttons (Home, Insert …) are gone in this
-  mode, since the panels replace them.
+- **The command row** keeps File, Undo, Redo, Save and the other general
+  functions, and the view group last, at its right end, as today; the command
+  tab buttons (Home, Insert …) are gone in this mode, since the panels
+  replace them.
 - **Narrow windows:** below about 1100 px the column folds into an **icon
   rail** (40 px, one icon per panel); a click on an icon opens that panel as a
   flyout over the document's edge, and Escape or a click elsewhere closes it.
@@ -125,6 +161,7 @@ the column, opened.
 
 | Panel | Contents | Shown |
 |---|---|---|
+| Clipboard | Cut, Copy, Paste | always |
 | Slide | new slide, layout list, duplicate, delete, hide, background | always |
 | Insert | text box, shapes (grid), picture, table, chart | always |
 | Text | font, size, B I U S, colour, alignment, bullets, numbering, level | text or a text shape selected |
@@ -139,13 +176,17 @@ the column, opened.
 ## 4. Behaviour
 
 - **State is remembered** per kind in `UltraOffice/settings.json`: which
-  panels are open, the column width, rail or column, and the order if the
-  user moves panels (dragging a panel's header up or down; a later step).
+  panels are open, the column width, rail or column, and the order when the
+  user moves panels (dragging a panel's header up or down), from the first
+  release of the panels on. A saved order names the panels by key
+  (`PanelKey`); a panel it leaves out - one added later - takes its default
+  place.
 - **Context panels** come and go with the selection without moving the panel
   under the pointer: they are inserted above the fixed panels and the column
   keeps its scroll position relative to the panel the pointer is over.
 - **The format state** (bold on, alignment centred, spacing 1.15) is shown in
-  the panels exactly as the toolbar shows it today, from the same `Sync()`;
+  the panels exactly as the toolbar shows it today, from the same getters of
+  the tool table (a toggle's `isOn`, a list's `selected`, a value's `get`);
   in a panel more of it is visible (values, not just toggles).
 - **Keyboard:** F6 moves the focus between the tab strip, the panels and the
   document; inside the column, Up/Down go from panel header to panel header,
@@ -167,7 +208,7 @@ the column, opened.
 |---|---|---|
 | Framework | **`UltraCanvasToolPanelStack`** (new element): a scrolling vertical stack of collapsible group boxes, with open/closed state get/set (for saving), context panels shown and hidden without a jump, the icon-rail mode with flyouts, F6 / arrow-key navigation, theme roles | built on `UltraCanvasGroupBox` (Header, collapsible, info icon, close/"…" button), `UltraCanvasContainer` scrolling, the popup stack for flyouts; documented with a catalogue row and a demo page |
 | Framework | **`ToolRow`** helpers: a wrapping row of icon toggles and a labelled value row (label + spinner / dropdown / swatch) | small; the dialogs' form rows (`UltraCanvasFormLayout`) are reused for labelled values |
-| Framework | `UltraCanvasGroupBox`: a header action button ("…"), a drag handle for reordering (later) | small additions |
+| Framework | `UltraCanvasGroupBox`: a header action button ("…"), a drag handle for reordering (from the first release of the panels) | small additions |
 | App | the tool table per host (§4) and a builder for each layout | the refactor that makes both layouts possible |
 | App | the setting *Tools: toolbar at the top / panels at the left / icon rail* (Settings → General), and panel state in settings.json | |
 | App | context conditions (in a table, picture selected, …) from the hosts' existing selection state | |
@@ -176,11 +217,52 @@ the column, opened.
 
 | Phase | Scope | Size (new or changed lines) |
 |---|---|---|
-| 1 | The tool table per host, the current toolbars built from it (no visible change); tests that every tool is in the table | ~900 app |
-| 2 | `UltraCanvasToolPanelStack` and the row helpers, with element tests and a demo page | ~1,400 framework |
-| 3 | Panels for documents (§3.1) behind the setting; value rows (spacing, indents) wired to the editor; state saved | ~700 app |
-| 4 | Spreadsheets and presentations (§3.2, §3.3); context panels; the pivot field list moved into a panel | ~900 app |
-| 5 | Icon rail and flyouts, keyboard navigation, accessibility roles, reordering by drag | ~600 framework, ~150 app |
+| 1 | The tool table per host, the current toolbars built from it (no visible change); tests that every tool is in the table (**built**: `UltraOfficeTools.h`, `UltraOfficeToolTableTest`) | ~900 app |
+| 2 | `UltraCanvasToolPanelStack` and the row helpers, with reordering by dragging a header, element tests and a demo page | ~1,500 framework |
+| 3 | Panels for documents (§3.1), the default layout, the toolbar a setting; value rows (spacing, indents) wired to the editor; open panels and their order saved (**built**: `UltraOfficePanels.h`, the window's layout, `UltraOfficePanelsWindowTest`) | ~750 app |
+| 4 | Spreadsheets and presentations (§3.2, §3.3); context panels; the pivot field list moved into a panel (**built**) | ~900 app |
+| 5 | Icon rail and flyouts, keyboard navigation, accessibility roles (**built**: the stack's rail, flyouts, header keys and roles; the window's automatic rail below 1100 px, the *Icon rail* setting and F6) | ~500 framework, ~100 app |
+
+**Left to do** after phases 3 to 5 - each a row of the table or a small
+change, none a change of design:
+
+- Tools §3 names that the table does not hold yet, so no panel shows them:
+  the document table's border style (`RichTableProperties` has no line
+  style yet: a field, the Table properties dialog's row and both writers'
+  handling of it, framework work before a panel row), a grid picker for a
+  new table (a new element: a hover-to-size grid popup), a document chart's
+  panel (a chart in a document has no selection state the panels can ask
+  for - `ChartSelected` is a sheet's and a slide's); a sheet's percent and
+  currency buttons and its picture insert; a slide's chart and table
+  insert, a table's cell fill and a chart's type. The first three need
+  framework work first; the sheet's and the slide's are their hosts' next
+  rows of the table.
+- The panels' layout under a layout audit with pseudo-localised texts:
+  UltraOffice has no `--audit-layout` of its own (the demo's audits its
+  pages only), so the panels were checked by hand in German and Finnish
+  and in the dark look (2026-11-27); an audit mode for an application's
+  window is a framework change of its own.
+
+Done on 2026-11-27: the values in effect (a paragraph's style's, the
+view's, a table's grid line), "-" only for a selection that differs; the
+Page panel's orientation, page size, margin presets (Custom: Page setup) and
+columns; the Lists panel's list style; the Table panel's merge, merge down,
+split and cell shading; the Slide panel's background colour; the Start tab's
+one-time note with Settings; the tab strip's focus ring when F6 reaches it
+(`UltraCanvasTabbedContainer::SetKeyboardFocusOnRequest`).
+
+**The table (phase 1).** A row (`ToolEntry`) has the command id (also its
+widget's id), icon, label, tooltip with the shortcut, kind (`Button`,
+`Toggle`, `ActionGroup`, `List` - a choice, the font list or a percentage -,
+`Value` - a number with its unit and range, or a colour -, `Custom`), the
+panel, the command tab it is on today with its group on that bar (a
+separator between groups), a context (`AlwaysShown`, `InTable`,
+`PictureSelected`, `ChartSelected`, `ShapeSelected`, `TextSelected`,
+`TableSelected`, `PivotCell`) and its callbacks: `execute`, and the state
+getters `isOn`, `isEnabled`, a list's `selected` / `currentFont` /
+`currentPercent`, a value's `get` and `set`. The view group's rows are on
+the view tab and in no panel. Rows on no tab are the panels' own: the values
+the toolbars leave to the dialogs.
 
 About **4,600 lines**, half framework. Phase 1 is worth doing whatever is
 decided: it removes the hand-built toolbars' duplication and gives one place
@@ -197,21 +279,24 @@ to add a tool.
 - **Long columns.** Panels are closed by default except Font and Paragraph
   (documents), Cell and Number (spreadsheets), Slide and Text (presentations);
   context panels open themselves and close when their selection goes.
-- **Familiarity.** The toolbar layout stays, and is the default for the first
-  release of the panels; the Start tab offers the choice once ("Try the tool
-  panels"), and the setting switches back at once.
+- **Familiarity.** The panels are the default (see *Decisions*), so the
+  toolbar layout stays one setting away: the Start tab says once where the
+  tools went and offers the toolbar ("Use the toolbar at the top"), and the
+  setting switches at once, either way.
 
 ## 8. Decisions for the user
 
-1. **Default layout:** keep the toolbar as the default and offer panels as a
-   setting (*suggested*), or make the panels the default.
-2. **Where the view group lives** in panel mode: in the command row as today
-   (*suggested*), or as a "View" panel at the bottom of the column.
-3. **Value rows** (spacing, indents, sizes) editable in the panels
-   (*suggested*), or panels with only the toolbar's buttons and the dialogs for
-   values.
-4. **Panel order** fixed per kind (*suggested for the first release*), or
-   reorderable by dragging from the start.
+All four were decided on 2026-11-27 (*Decisions*, at the top):
+
+1. **Default layout:** the panels are the default; the toolbar with its
+   command tabs is a setting. (The suggestion had been the other way round.)
+2. **Where the view group lives** in panel mode: in the one top toolbar, as
+   its last group at the right end, after File, Undo, Redo, Save and the
+   other general functions; never a panel.
+3. **Value rows** (spacing, indents, sizes) are editable in the panels.
+4. **Panel order** is reorderable by dragging from the start, and the order
+   is saved for the next start. (The suggestion had been a fixed order for
+   the first release.)
 
 ## 9. References
 

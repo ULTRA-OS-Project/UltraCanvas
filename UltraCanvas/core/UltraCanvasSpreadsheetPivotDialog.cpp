@@ -5,8 +5,11 @@
 // into a value; the field list panel (UltraCanvasSpreadsheetPivotPanel.h)
 // and the dialog around it (ShowSpreadsheetPivotDialog), built from the
 // framework's own elements.
+// Version: 1.0.1 - the field list one above the other: the four add buttons two by two, and Remove,
+//                  Move up and Move down each as wide as its name, so a narrow panel (UltraOffice's
+//                  Pivot table tool panel) shows them whole
 // Version: 1.0.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheet.h"
@@ -526,7 +529,9 @@ void UltraCanvasSpreadsheetPivotPanel::Build(bool wide) {
         AddField(row, made.summary == PivotSummary::Sum ? Area::Values : Area::Rows);
     };
     left->AddChild(fields);
+    // In a row in the dialog; two by two in the panel, which may be narrow.
     auto addRow = Fixed(Box(GetIdentifier() + "-add", CSSLayout::FlexDirection::Row, 4.0f), kRow);
+    auto addRowTwo = wide ? addRow : Fixed(Box(GetIdentifier() + "-add2", CSSLayout::FlexDirection::Row, 4.0f), kRow);
     const std::pair<Area, std::string> adds[] = {{Area::Rows, Tr("Rows")}, {Area::Columns, Tr("Columns")},
                                                  {Area::Values, Tr("Values")}, {Area::Filters, Tr("Filters")}};
     const char* addIds[] = {"rows", "columns", "values", "filters"};
@@ -538,9 +543,10 @@ void UltraCanvasSpreadsheetPivotPanel::Build(bool wide) {
             const int field = SelectedSourceField();
             if (field >= 0) AddField(field, area);
         };
-        addRow->AddChild(button);
+        (i < 2 ? addRow : addRowTwo)->AddChild(button);
     }
     left->AddChild(addRow);
+    if (!wide) left->AddChild(addRowTwo);
 
     // The picked field's items: a tick for each one shown.
     left->AddChild(Heading(GetIdentifier() + "-items-title", Tr("Items shown")));
@@ -578,6 +584,13 @@ void UltraCanvasSpreadsheetPivotPanel::Build(bool wide) {
     up->onClick = [this]() { MovePicked(-1); };
     auto down = Share(SmallButton(GetIdentifier() + "-down", Tr("Move down"), Tr("Move the picked field after the one below it")));
     down->onClick = [this]() { MovePicked(1); };
+    // In a narrow panel each as wide as its name, the room left shared out.
+    if (!wide)
+        for (auto* button : {remove.get(), up.get(), down.get()}) {
+            button->size.width = CSSLayout::Dimension::Auto();
+            button->SetPadding(0, 4, 0, 4);
+            button->layoutItem.SetFlexBasis(CSSLayout::Dimension::Auto());
+        }
     moveRow->AddChild(remove);
     moveRow->AddChild(up);
     moveRow->AddChild(down);
