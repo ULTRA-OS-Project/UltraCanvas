@@ -24,6 +24,7 @@
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasClipboardDib.h"
 #include "UltraCanvasAccessibilityBridge.h"
 #include "UltraCanvasZipPackage.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -1093,6 +1094,92 @@ int main() {
             window->UpdateAndRender();
             return editor.GetBlock(0).type != RichBlockType::Image;
         }());
+    }
+
+    // ===== A PICTURE'S SIZE AS LAID OUT =====
+    // A size of 0 is "its own pixel size" (Word and ODF leave some pictures
+    // so): GetImageDisplaySize gives what the layout makes of it, a 64 x 32 px
+    // PNG at 96 to the inch being 48 x 24 pt; a stated size reads as stated.
+    std::cerr << "\n--- Picture display size ---" << std::endl;
+    {
+        ClipboardDib::RgbaImage pixels;
+        pixels.width = 64;
+        pixels.height = 32;
+        pixels.pixels.assign(64 * 32 * 4, 0xFF);
+        std::vector<uint8_t> png;
+        TEST("A 64 x 32 px PNG is encoded", ClipboardDib::EncodePng(pixels, png) && !png.empty());
+        auto document = std::make_shared<UCRichDocument>();
+        const int media = document->AddMedia("wide.png", "image/png", png);
+        RichDocBlock ownSize;                      // block 0: no size of its own
+        ownSize.type = RichBlockType::Image;
+        ownSize.mediaIndex = media;
+        document->blocks.push_back(ownSize);
+        RichDocBlock stated = ownSize;             // block 1: 90 x 30 pt
+        stated.imageWidthPt = 90.0f;
+        stated.imageHeightPt = 30.0f;
+        document->blocks.push_back(stated);
+        RichDocBlock line;                         // block 2: "Logo " then a picture in the line
+        RichTextRun words;
+        words.text = "Logo ";
+        line.runs.push_back(words);
+        RichTextRun inlinePicture;
+        inlinePicture.text = RichTextRun::kObjectReplacement;
+        inlinePicture.mediaIndex = media;
+        line.runs.push_back(inlinePicture);
+        document->blocks.push_back(line);
+        RichDocBlock broken = ownSize;             // block 3: bytes that decode to nothing
+        broken.mediaIndex = document->AddMedia("broken.png", "image/png", {1, 2, 3, 4});
+        document->blocks.push_back(broken);
+        RichDocBlock halfStated = ownSize;         // block 4: a width, its own height
+        halfStated.imageWidthPt = 120.0f;
+        document->blocks.push_back(halfStated);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+
+        auto closeTo = [](float a, float b) { return std::abs(a - b) < 0.01f; };
+        auto size = [](float w, float h) { return std::to_string(w) + " x " + std::to_string(h); };
+        float w = -1.0f, h = -1.0f;
+        TEST("A picture of its own size: 48 x 24 pt as laid out, " + size(w, h),
+             edit->GetImageDisplaySize(RichDocPosition(0, 0), w, h) && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        float statedW = -1.0f, statedH = -1.0f;
+        std::string statedAlt;
+        int statedMedia = -1;
+        const bool stated0 = editor.GetImageInfo(RichDocPosition(0, 0), statedW, statedH, statedAlt, statedMedia);
+        TEST("...while the core still gives it as 0 x 0",
+             stated0 && statedW == 0.0f && statedH == 0.0f && statedMedia == media);
+        TEST("A stated size reads as stated", edit->GetImageDisplaySize(RichDocPosition(1, 0), w, h)
+             && closeTo(w, 90.0f) && closeTo(h, 30.0f));
+        TEST("...its size at 100 % is its own", edit->GetImageNaturalSize(RichDocPosition(1, 0), w, h)
+             && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        TEST("A picture of its own size in the line: 48 x 24 pt", edit->GetImageDisplaySize(RichDocPosition(2, 5), w, h)
+             && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        TEST("A stated width keeps it, the height is its own", edit->GetImageDisplaySize(RichDocPosition(4, 0), w, h)
+             && closeTo(w, 120.0f) && closeTo(h, 24.0f));
+        TEST("Media that does not decode has no size of its own", !edit->GetImageDisplaySize(RichDocPosition(3, 0), w, h)
+             && !edit->GetImageNaturalSize(RichDocPosition(3, 0), w, h));
+        TEST("Nothing there, no size", !edit->GetImageDisplaySize(RichDocPosition(2, 0), w, h)
+             && !edit->GetImageDisplaySize(RichDocPosition(40, 0), w, h));
+        // Selected and set, it holds that size; undone, its own again.
+        TEST("Set to a size, it reads that size", edit->SelectImage(RichDocPosition(0, 0))
+             && edit->SetSelectedImageSize(72.0f, 36.0f) && edit->GetImageDisplaySize(RichDocPosition(0, 0), w, h)
+             && closeTo(w, 72.0f) && closeTo(h, 36.0f));
+        TEST("...and one undo gives its own size back", edit->Undo() && edit->GetImageDisplaySize(RichDocPosition(0, 0), w, h)
+             && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        // The layout draws it at that size: its bottom-right handle is at
+        // 64 x 32 px from its corner (the picture paragraph's at 8, 8, as in
+        // the resize above), and 32 px dragged right make it 96 x 48 px.
+        window->UpdateAndRender();
+        edit->SelectImage(RichDocPosition(0, 0));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 72, 40));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 90, 40));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 104, 40));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 104, 40));
+        window->UpdateAndRender();
+        TEST("...drawn at it: its corner handle where 64 x 32 px put it, dragged to 72 x 36 pt: "
+             + std::to_string(editor.GetBlock(0).imageWidthPt) + " x " + std::to_string(editor.GetBlock(0).imageHeightPt),
+             std::abs(editor.GetBlock(0).imageWidthPt - 72.0f) < 1.0f && std::abs(editor.GetBlock(0).imageHeightPt - 36.0f) < 1.0f);
     }
 
     // ===== FLOATING PICTURES =====

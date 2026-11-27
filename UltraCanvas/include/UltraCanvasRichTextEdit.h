@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.26.0 - GetImageDisplaySize, GetImageNaturalSize: a picture's size as laid out, in points
+//                   (its own pixel size where it states 0), and at 100 %
 // Version: 1.25.0 - FontReport::namedFamilies: every family the document names, for a font list's
 //                   "in this document" section (UltraCanvasFontPicker)
 // Version: 1.24.0 - ZoomFit::WidthShare, ZoomToWidthShare: the page fills a share of the view's width,
@@ -478,6 +480,20 @@ public:
     // sits (UCRichDocumentEditor::SetImageWrap). One undo step.
     bool GetSelectedImageWrap(RichTextRun::ImageWrap& wrap, RichTextAlign& align) const;
     bool SetSelectedImageWrap(RichTextRun::ImageWrap wrap, RichTextAlign align = RichTextAlign::Left);
+    // The size the picture at `image` is laid out at, in points: the size it
+    // states (UCRichDocumentEditor::GetImageInfo) where it states one, else -
+    // on a side stated as 0, "its own size", which Word and ODF files use for
+    // some pictures - its decoded pixels at one to each 1/96 inch, exactly as
+    // the layout sizes it. A line or column narrower than that still draws it
+    // narrower, keeping its proportions; this is the size the document holds
+    // it at. False when nothing is there, or its size is its own and its
+    // media cannot be decoded (or it is a text frame or drawing that states
+    // no size).
+    bool GetImageDisplaySize(const RichDocPosition& image, float& widthPt, float& heightPt) const;
+    // Its size at 100 %: its decoded pixels at one to each 1/96 inch,
+    // whatever size it states. False when nothing is there or it has no
+    // media that decodes (a text frame, a drawing).
+    bool GetImageNaturalSize(const RichDocPosition& image, float& widthPt, float& heightPt) const;
 
     // ===== PARAGRAPH LAYOUT =====
     // The caret paragraph's indents, spacing, line spacing, alignment and tab
