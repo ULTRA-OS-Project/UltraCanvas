@@ -82373,6 +82373,9 @@ void SetCloseButtonHoverColor(const Color& c);
 void SetCloseButtonStrokeWidth(float width);         // Default: 1
 void SetActiveTabIndicatorColor(const Color& c);     // TabStyle::Modern; default Color(33, 150, 243)
 void SetActiveTabIndicatorThickness(int px);         // TabStyle::Modern; default 2
+void SetIconSize(int size);                          // Default: 16
+void SetIconAfterTitle(bool after);                  // Default: false - true puts the icon at the
+                                                     // tab's right end, after the title
 ```
 
 #### Pill Style (TabStyle::Pill only)
@@ -90483,8 +90486,8 @@ struct TreeNodeIcon {
 A black line icon (an outline with no colours of its own - a cloud, a
 server) drawn as it is stays black, which vanishes on a dark theme. Set
 `drawnInTextColor` and the tree draws it as a mask in the row's text colour:
-the theme's ink, the selection text colour on the selected row, a node's own
-`textColor` where it has one. Leave it off for a coloured icon - every colour
+the selection text colour on the selected row, else a node's own `textColor`
+where it has one, else the theme's ink. Leave it off for a coloured icon - every colour
 in it would become the ink.
 
 ```cpp
@@ -91237,9 +91240,11 @@ Sets various color properties for the tree view. `SetBackgroundColor` is
 inherited from `UltraCanvasUIElement`.
 
 `SetSelectionTextColor` is the text of a selected row (every cell of it in
-Columns mode); `Colors::Transparent`, the default, keeps the row's own text
-colour, and a node or cell coloured by hand keeps its colour either way. A
-light theme sets the colour that reads on the accent (`onAccent`); a dark
+Columns mode, a node or cell coloured by hand included, so the whole row
+reads on the selection). `Colors::Transparent`, the default, picks white -
+or black on a selection too light for white text (under 3:1); the default
+blue selection gets white. `SelectedRowTextColor()` returns the colour in
+use. A light theme sets the colour that reads on the accent (`onAccent`); a dark
 one selects with the soft accent and ink on it (below).
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
@@ -91447,7 +91452,7 @@ user went to, an entry that is only there because a search found it - can
 read as secondary with `TreeNodeData::dimmed`. Its label is drawn in the
 tree's dimmed text colour (`SetDimmedTextColor`; under a theme its muted ink,
 so it follows a switch to dark), not the text colour. A `textColor` of the
-node's own and the selection text on a selected row still take precedence.
+node's own still takes precedence, and on a selected row the selection text.
 
 ```cpp
 TreeNodeData config("/home/me/.config", ".config");
