@@ -1,3 +1,12 @@
+#### 2026-11-27 *0.7.11*
+- **The text bar's font list is the framework's font picker.** It lists the
+  fonts the project's titles use under *In this document*, the fonts chosen
+  last under *Recent* (kept in UltraVideo's `settings.json`,
+  `text.recentFonts`), then every installed font, each drawn in itself with
+  its format's icon; a family with Light, Condensed or Black styles opens them
+  beside it, and the one chosen sets the font with Bold and Italic. One Escape
+  closes one list (framework, *One Escape closed two menus*).
+
 #### 2026-11-12 *0.7.10*
 - **A new app icon.** UltraVideo's icon is now a film frame of four colour
   fields (green, pink, yellow, cyan) with a pencil across it, in place of the
