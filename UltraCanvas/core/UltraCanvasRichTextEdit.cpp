@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.24.1 - a Windows metafile picture of its own size is laid out (and tiled in a fill) at that
+//                   size, not at the twice as large pixels it is drawn in (PictureOwnSizePx)
 // Version: 1.24.0 - GetImageDisplaySize, GetImageNaturalSize: a picture's size through the layout's own
 //                   resolution (PictureLayoutSize), its own pixels where it states 0
 // Version: 1.23.0 - the font report names every family the document uses (FontReport::namedFamilies)
@@ -89,6 +91,7 @@
 #include <ctime>
 #include <cmath>
 #include <fstream>
+#include <optional>
 
 namespace UltraCanvas {
 
@@ -107,21 +110,30 @@ namespace {
 constexpr float kPixelsPerPoint = 96.0f / 72.0f;
 inline float Px(float points) { return points * kPixelsPerPoint; }
 
+// The scale a Windows metafile picture is drawn at: twice its own size, so
+// it stays sharp at 200 %. Its own size is its pixels divided by this.
+constexpr float kMetafilePictureScale = 2.0f;
+
+// "emf" or "wmf" for a Windows metafile (by its type or its bytes), else "".
+std::string MetafileKind(const RichDocMedia& media) {
+    const std::vector<uint8_t>& d = media.data;
+    if (media.mimeType == "image/x-emf" || (d.size() > 44 && d[40] == ' ' && d[41] == 'E' && d[42] == 'M' && d[43] == 'F'))
+        return "emf";
+    if (media.mimeType == "image/x-wmf" || (d.size() > 4 && d[0] == 0xD7 && d[1] == 0xCD && d[2] == 0xC6 && d[3] == 0x9A))
+        return "wmf";
+    return "";
+}
+
 // A document's picture as pixels. PNG, JPEG, GIF and the rest load
 // directly; a Windows metafile (EMF, WMF - Word 97's and its writers'
 // pictures and fills) is read by the vector readers a registered plugin
-// lends core and drawn at twice its own size, so it stays sharp at 200%.
-// Null when nothing can draw it.
+// lends core and drawn at kMetafilePictureScale times its own size (at most
+// 2048 px on its longer side), so it stays sharp at 200 % - its own size is
+// PictureOwnSizePx's, not its pixels. Null when nothing can draw it.
 std::shared_ptr<UCImage> LoadDocumentPicture(const RichDocMedia& media) {
     if (media.data.empty()) return nullptr;
-    std::string kind;
+    const std::string kind = MetafileKind(media);
     const std::vector<uint8_t>& d = media.data;
-    if (media.mimeType == "image/x-emf" || (d.size() > 44 && d[40] == ' ' && d[41] == 'E' && d[42] == 'M' && d[43] == 'F')) {
-        kind = "emf";
-    } else if (media.mimeType == "image/x-wmf"
-               || (d.size() > 4 && d[0] == 0xD7 && d[1] == 0xCD && d[2] == 0xC6 && d[3] == 0x9A)) {
-        kind = "wmf";
-    }
     if (kind.empty()) {
         auto image = UCImage::LoadFromMemory(media.data);
         return image && image->GetWidth() > 0 ? image : nullptr;
@@ -134,7 +146,7 @@ std::shared_ptr<UCImage> LoadDocumentPicture(const RichDocMedia& media) {
     const double fit = std::min(1.0, 2048.0 / std::max(width, height));
     const int w = std::max(1, static_cast<int>(std::lround(width * fit)));
     const int h = std::max(1, static_cast<int>(std::lround(height * fit)));
-    auto pixmap = RenderVectorDocumentPixmap(*drawing, w, h, 2.0f);
+    auto pixmap = RenderVectorDocumentPixmap(*drawing, w, h, kMetafilePictureScale);
     if (!pixmap || pixmap->GetWidth() <= 0 || pixmap->GetHeight() <= 0) return nullptr;
     const int pw = pixmap->GetWidth(), ph = pixmap->GetHeight();
     std::vector<uint8_t> rgba(static_cast<size_t>(pw) * static_cast<size_t>(ph) * 4);
@@ -159,15 +171,29 @@ std::shared_ptr<UCImage> LoadDocumentPicture(const RichDocMedia& media) {
     return image && image->GetWidth() > 0 ? image : nullptr;
 }
 
+// A decoded document picture's own size in pixels, one to each 1/96 inch:
+// its pixels, a metafile's divided by the scale it was drawn at. Nullopt
+// with no picture.
+std::optional<Size2Df> PictureOwnSizePx(const RichDocMedia& media, const UCImage* image) {
+    if (!image || image->GetWidth() <= 0 || image->GetHeight() <= 0) return std::nullopt;
+    const float scale = MetafileKind(media).empty() ? 1.0f : kMetafilePictureScale;
+    return Size2Df(static_cast<float>(image->GetWidth()) / scale, static_cast<float>(image->GetHeight()) / scale);
+}
+std::optional<Size2Df> PictureOwnSizePx(const UCRichDocument& document, int mediaIndex, const UCImage* image) {
+    if (mediaIndex < 0 || mediaIndex >= static_cast<int>(document.media.size())) return std::nullopt;
+    return PictureOwnSizePx(document.media[static_cast<size_t>(mediaIndex)], image);
+}
+
 // The size a picture is laid out at, in pixels, before its line or column
 // narrows it: the size it states (points) on each side that states one; on a
 // side stated as 0 ("its own size", as Word and ODF files leave some), the
-// decoded picture's own pixels, one to each 1/96 inch - the resolution every
-// context draws at - and `fallback` when nothing could decode it. The layout
-// and GetImageDisplaySize both ask this, so they cannot disagree.
-Size2Df PictureLayoutSize(float widthPt, float heightPt, const UCImage* image, const Size2Df& fallback) {
-    return Size2Df(widthPt > 0.0f ? Px(widthPt) : (image ? static_cast<float>(image->GetWidth()) : fallback.width),
-                   heightPt > 0.0f ? Px(heightPt) : (image ? static_cast<float>(image->GetHeight()) : fallback.height));
+// decoded picture's own size (PictureOwnSizePx: one pixel to each 1/96 inch -
+// the resolution every context draws at), and `fallback` when nothing could
+// decode it. The layout and GetImageDisplaySize both ask this, so they
+// cannot disagree.
+Size2Df PictureLayoutSize(float widthPt, float heightPt, const std::optional<Size2Df>& ownPx, const Size2Df& fallback) {
+    return Size2Df(widthPt > 0.0f ? Px(widthPt) : (ownPx ? ownPx->width : fallback.width),
+                   heightPt > 0.0f ? Px(heightPt) : (ownPx ? ownPx->height : fallback.height));
 }
 // resizeHandle's value while a float is dragged whole rather than resized.
 constexpr int kMoveHandle = 8;
@@ -1662,11 +1688,14 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
                 ctx->ClipPath();
                 std::shared_ptr<IPaintPattern> pattern;
                 if (shape.fillPictureTiled) {
-                    auto pixmap = image->GetPixmap(image->GetWidth(), image->GetHeight(), ImageFitMode::Fill,
-                                                   ctx->GetDeviceScale());
+                    // A tile of the picture's own size (a metafile's, not the
+                    // twice as large pixels it is drawn in).
+                    const Size2Df tile = PictureOwnSizePx(media, image.get()).value_or(Size2Df(1.0f, 1.0f));
+                    const int tileW = std::max(1, static_cast<int>(std::lround(tile.width)));
+                    const int tileH = std::max(1, static_cast<int>(std::lround(tile.height)));
+                    auto pixmap = image->GetPixmap(tileW, tileH, ImageFitMode::Fill, ctx->GetDeviceScale());
                     if (pixmap) {
-                        pattern = ctx->CreatePixmapPattern(*pixmap, Rect2Dd(x, y, image->GetWidth(), image->GetHeight()),
-                                                           PatternExtend::Repeat);
+                        pattern = ctx->CreatePixmapPattern(*pixmap, Rect2Dd(x, y, tileW, tileH), PatternExtend::Repeat);
                     }
                 }
                 if (pattern) {
@@ -2359,7 +2388,8 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt) : ColumnWidth() * 0.5f;
                 height = Px(std::max(0.0f, run.imageHeightPt));
             } else {
-                const Size2Df size = PictureLayoutSize(run.imageWidthPt, run.imageHeightPt, image.get(),
+                const Size2Df size = PictureLayoutSize(run.imageWidthPt, run.imageHeightPt,
+                                                       PictureOwnSizePx(document, run.mediaIndex, image.get()),
                                                        Size2Df(16.0f, 16.0f));
                 width = size.width;
                 height = size.height;
@@ -2464,7 +2494,8 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             if (run.mediaIndex >= 0 && run.mediaIndex < static_cast<int>(document.media.size())) {
                 image = LoadDocumentPicture(document.media[static_cast<size_t>(run.mediaIndex)]);
             }
-            const Size2Df size = PictureLayoutSize(run.imageWidthPt, run.imageHeightPt, image.get(),
+            const Size2Df size = PictureLayoutSize(run.imageWidthPt, run.imageHeightPt,
+                                                   PictureOwnSizePx(document, run.mediaIndex, image.get()),
                                                    Size2Df(16.0f, 16.0f));
             float width = size.width;
             float height = size.height;
@@ -3115,7 +3146,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                 && block.mediaIndex < static_cast<int>(document.media.size())) {
                 bl.image = LoadDocumentPicture(document.media[static_cast<size_t>(block.mediaIndex)]);
             }
-            const Size2Df size = PictureLayoutSize(block.imageWidthPt, block.imageHeightPt, bl.image.get(),
+            const Size2Df size = PictureLayoutSize(block.imageWidthPt, block.imageHeightPt,
+                                                   PictureOwnSizePx(document, block.mediaIndex, bl.image.get()),
                                                    Size2Df(160.0f, 120.0f));
             float width = size.width;
             float height = size.height;
@@ -4369,7 +4401,8 @@ bool UltraCanvasRichTextEdit::GetImageDisplaySize(const RichDocPosition& image, 
     if (!document || media < 0 || media >= static_cast<int>(document->media.size())) return false;
     const auto picture = LoadDocumentPicture(document->media[static_cast<size_t>(media)]);
     if (!picture) return false;
-    const Size2Df size = PictureLayoutSize(statedWidth, statedHeight, picture.get(), Size2Df(0.0f, 0.0f));
+    const Size2Df size = PictureLayoutSize(statedWidth, statedHeight, PictureOwnSizePx(*document, media, picture.get()),
+                                           Size2Df(0.0f, 0.0f));
     widthPt = size.width / kPixelsPerPoint;
     heightPt = size.height / kPixelsPerPoint;
     return true;
@@ -4384,7 +4417,7 @@ bool UltraCanvasRichTextEdit::GetImageNaturalSize(const RichDocPosition& image, 
     if (!document || media < 0 || media >= static_cast<int>(document->media.size())) return false;
     const auto picture = LoadDocumentPicture(document->media[static_cast<size_t>(media)]);
     if (!picture) return false;
-    const Size2Df size = PictureLayoutSize(0.0f, 0.0f, picture.get(), Size2Df(0.0f, 0.0f));
+    const Size2Df size = PictureLayoutSize(0.0f, 0.0f, PictureOwnSizePx(*document, media, picture.get()), Size2Df(0.0f, 0.0f));
     widthPt = size.width / kPixelsPerPoint;
     heightPt = size.height / kPixelsPerPoint;
     return true;

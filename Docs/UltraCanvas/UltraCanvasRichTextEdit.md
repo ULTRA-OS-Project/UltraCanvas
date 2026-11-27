@@ -640,7 +640,9 @@ turn into a number. The element decodes pictures to draw them, so it answers
 for them: `GetImageDisplaySize` is the size the picture is laid out at, in
 points - the stated size on each side that states one, else the decoded
 picture's pixels at one to each 1/96 inch (a 64 x 32 px PNG is 48 x 24 pt),
-through the very code the layout sizes it with. A line or column narrower
+through the very code the layout sizes it with. A Windows metafile (EMF,
+WMF) is drawn at twice its size so it stays sharp at 200 %, but laid out and
+reported at its own - the size its frame gives - not at those pixels. A line or column narrower
 than that still draws it narrower, in proportion; this is the size the
 document holds. `GetImageNaturalSize` is its size at 100 %, whatever it
 states. Both return false when nothing is at the position or, for a picture
@@ -988,7 +990,7 @@ elements in an `UltraCanvasModalDialog`, modal over the element's window:
 | Paragraph | `ShowParagraphDialog` | `RichParagraphFormat` | `SetParagraphFormat` |
 | Styles | `ShowStylesDialog` | `RichStylesDialogValues` (apply, change, new from the selection) | `ApplyParagraphStyle` / `ApplyCharacterStyle`, `UpdateStyle`, `NewStyleFromCaret` |
 | Table properties | `ShowTablePropertiesDialog` | `RichTableProperties` | `SetTableProperties` |
-| Picture | `ShowPictureDialog` | `RichPictureDialogValues` (alt text, wrapping, position, size) | `SetSelectedImageAltText`, `SetSelectedImageSize`, `SetSelectedImageWrap` |
+| Picture | `ShowPictureDialog` | `RichPictureDialogValues` (alt text, wrapping, position, size - a picture of its own size read at that size, `GetImageDisplaySize`) | `SetSelectedImageAltText`, `SetSelectedImageSize`, `SetSelectedImageWrap` |
 | Table of contents | `ShowContentsDialog` | `RichContentsDialogValues` (levels, rebuild the existing) | `InsertTableOfContents` / `UpdateTableOfContents` |
 | Caption | `ShowCaptionDialog` | `RichCaptionDialogValues` (label, text) | `InsertCaption` |
 | Cross-reference | `ShowCrossReferenceDialog` | `RichCrossReferenceDialogValues` (a target from `RichCrossReferenceTargets`, text or page) | `InsertCrossReference` |
