@@ -78,6 +78,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(contentContainer);
 
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("pmTabs", 20, 20, 860, 670);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         contentContainer->AddChild(tabbedContainer);
 

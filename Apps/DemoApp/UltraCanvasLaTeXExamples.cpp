@@ -334,7 +334,7 @@ namespace {
         // Vertical tab bar on the left: one tab per .tex file, titled by filename.
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("LaTeXTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Left);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(26);
         // The example set is large — the tab column scrolls when it does not fit

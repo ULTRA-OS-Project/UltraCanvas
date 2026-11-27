@@ -150,6 +150,7 @@ namespace UltraCanvas {
         // ===== TABS =====
         auto diagramCard = DemoKit::AddCard(contentContainer, "tlDiagramCard", "", "", 690);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("tlTabs", 0, 0, 660, 580);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(diagramCard, tabbedContainer);
 

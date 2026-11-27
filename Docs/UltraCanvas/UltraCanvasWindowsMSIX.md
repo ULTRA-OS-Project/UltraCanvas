@@ -9,6 +9,10 @@ The zip and the installer that `package-win.sh` builds stay as they are. The
 MSIX is built from the same `dist/` folder, so all three ship the same files.
 The MSIX adds a manifest and the logos.
 
+One application can also be a package of its own, for a product of its own in
+the Store: `./package-win-msix.sh --app Texter` builds UltraTexter's. See
+*One application on its own* below.
+
 ## Which route to the Store
 
 The Microsoft Store takes a Win32 application in two shapes, and both are
@@ -89,6 +93,67 @@ Center's identity in its Actions **variables**:
 These values are public: they are written into every package. Keep them in
 variables, not secrets.
 
+### One application on its own
+
+The suite is one package (see *What is in the package*), with one exception:
+an application that is a product of its own in the Microsoft Store.
+UltraTexter is the first.
+
+```bash
+./package-win.sh --no-sign                    # builds dist/, as for the suite
+./package-win-msix.sh --app Texter            # --mode test, the default
+```
+
+`--app` takes the program's name as `dist/` has it, without `.exe`. The
+package lands in `dist-msix/` as
+`UltraTexter-Windows-<version>-<arch>[-test|-store].msix`. The three modes
+work as for the suite. What differs:
+
+| | The suite | `--app Texter` |
+|---|---|---|
+| Files | everything in `dist/` | `Texter.exe` and what it loads (below) |
+| Start menu | one entry for each application | one entry, **UltraTexter** |
+| Version | the framework's (`Docs/UltraCanvas/CHANGELOG.md`) | the application's own (`Docs/Texter/CHANGELOG.md`): 1.94 becomes 1.94.0.0 |
+| Identity | `ULTRAOSDevelopment.UltraCanvas`, or the suite product's from Partner Center | `ULTRAOSDevelopment.UltraTexter`, or the UltraTexter product's from Partner Center |
+| Package name | UltraCanvas | UltraTexter (`MSIX_DISPLAY_NAME` for another) |
+
+What it loads is cut out of `dist/` by `scripts/make_msix_layout.py --app`,
+the way `scripts/package-store-app.sh` cuts an application out for
+UltraStore:
+
+- the program, and its console companion (`Texter.com`);
+- the DLLs its import table reaches inside `dist/`, and theirs in turn
+  (`scripts/pe_imports.py`);
+- every plug-in family under `Plugins/` except UltraIM, which is ChatCube's,
+  with the DLLs they import;
+- `lib/` and `etc/`: the modules that libraries open at run time and no
+  import table names (the LaTeX module, libvips' loaders, ImageMagick's
+  coders and their configuration), with the DLLs they import;
+- `Resources/media/`: `fonts`, `icons`, `appicon`, `lib`, `locale`, `emoji`,
+  `microtex` and `docs` (`APP_MEDIA` in the script). The demo's samples,
+  videos and 3D scenes stay out, and so does `Resources/Docs`;
+- `cacert.pem` and `UltraCanvas-Package.ini`.
+
+The other programs are not in it. An application that starts another program
+of the suite does not find it in a package of its own. Texter starts none.
+
+Two packages are two sets of settings: a packaged program's writes to
+`%APPDATA%` stay with its package, so UltraTexter from its own package and
+Texter from the suite package do not see each other's settings when both are
+installed.
+
+Adding a second application means nothing in the scripts, unless the Store
+is to list it under another name than its program's: that name goes into the
+`case` beside Texter's in `package-win-msix.sh`.
+
+CI builds UltraTexter's test package on every packaged Windows run, into the
+same `UltraCanvas-Windows-MSIX-<version>-<arch>` artifact. A release build
+also builds its Store package once the repository has the UltraTexter
+product's *Package/Identity/Name* in the Actions variable
+`MSIX_TEXTER_IDENTITY_NAME`. The publisher and its display name belong to the
+Partner Center account, not to the product, so `MSIX_PUBLISHER` and
+`MSIX_PUBLISHER_DISPLAY_NAME` serve both.
+
 ## Into the Store
 
 1. In Partner Center, create the app and reserve its name. Copy the three
@@ -101,6 +166,34 @@ variables, not secrets.
    this one: these are desktop (Win32) applications.
 5. Each later submission needs a higher version. The framework version rises
    with every release, so this happens without extra steps.
+
+### UltraTexter as its own product
+
+1. In Partner Center, create a second product (*MSIX or PWA app*) and reserve
+   the name **UltraTexter**. The package carries that name, and Partner
+   Center refuses a package whose name is not one the product has reserved.
+   For another name, build with `MSIX_DISPLAY_NAME` set to it.
+2. Open the product's *Product identity* page. Locally, build the package
+   with its three values:
+
+   ```bash
+   export MSIX_IDENTITY_NAME="<Package/Identity/Name>"
+   export MSIX_PUBLISHER="<Package/Identity/Publisher>"
+   export MSIX_PUBLISHER_DISPLAY_NAME="<Package/Properties/PublisherDisplayName>"
+   ./package-win.sh --no-sign
+   ./package-win-msix.sh --app Texter --mode store
+   ```
+
+   Or put the name into the Actions variable `MSIX_TEXTER_IDENTITY_NAME`
+   (the other two are set for the suite already) and take
+   `UltraTexter-Windows-<version>-x86_64-store.msix` and the `arm64` one from
+   a release build's `UltraCanvas-Windows-MSIX-<version>-<arch>` artifacts.
+3. Upload both in the submission's *Packages* page, and give the
+   *runFullTrust* reason as for the suite.
+4. Each later submission needs a higher version, and here the version is
+   UltraTexter's own: it does not rise when only the framework changed. To
+   resubmit such a build, set `MSIX_VERSION` to a higher `x.y.z`, for example
+   `MSIX_VERSION=1.94.1` after 1.94.
 
 ## What changes inside a package
 
@@ -177,7 +270,10 @@ Two more points:
 The whole suite is one package, because the applications share the same
 hundreds of DLLs. A package per application would carry its own copy of all
 of them. The macOS suite folder was made one shared folder for the same
-reason (see *Packaging a new app for macOS* in `AGENTS.md`).
+reason (see *Packaging a new app for macOS* in `AGENTS.md`). The exception is
+an application published in the Store as a product of its own, which
+`--app` cuts out with only what it loads (*One application on its own*
+above); it is never a replacement for the suite package.
 
 ### Adding an application
 

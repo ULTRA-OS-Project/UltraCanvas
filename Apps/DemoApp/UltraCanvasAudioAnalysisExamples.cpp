@@ -257,7 +257,7 @@ namespace UltraCanvas {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
                 "AnaTabs", 0, 0, INNER_W, 680);
-        tabs->SetTabStyle(TabStyle::Rounded);
+        DemoKit::StyleTabs(tabs);
         tabs->SetTabHeight(30);
         tabs->SetTabCornerRadius(8.0f);
 

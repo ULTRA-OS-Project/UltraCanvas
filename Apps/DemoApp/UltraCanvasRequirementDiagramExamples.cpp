@@ -950,7 +950,7 @@ refunds - derives -> card_payments
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ReqTabs");
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetTabMaxWidth(300);
 
         tabs->AddTab(Tr("HybridSUV (compartments)"),   MakeHybridSuvTab(statusLabel));

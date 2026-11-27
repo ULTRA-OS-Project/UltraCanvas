@@ -169,7 +169,7 @@ namespace UltraCanvas {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("CDRTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Left);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(28);
 

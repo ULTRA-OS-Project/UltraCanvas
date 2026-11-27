@@ -956,7 +956,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFlowChar
     DemoKit::Add(page, card, 1);
     
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("FlowChartTabs", 0, 0, 0, 0);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     

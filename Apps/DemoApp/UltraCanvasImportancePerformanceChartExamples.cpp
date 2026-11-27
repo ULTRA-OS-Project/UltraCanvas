@@ -61,6 +61,7 @@ namespace UltraCanvas {
         // ===== TABS (the two forms of Slack's zones) =====
         auto chartCard = DemoKit::AddCard(row, "ipcChartCard");
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ipcTabs", 0, 0, 860, 670);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(chartCard, tabbedContainer);
 

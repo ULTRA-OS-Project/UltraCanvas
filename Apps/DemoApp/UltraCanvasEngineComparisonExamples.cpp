@@ -68,7 +68,7 @@ std::shared_ptr<UltraCanvasContainer> MakeFamilyTabs(const std::string& id,
 
     auto inner = std::make_shared<UltraCanvasTabbedContainer>(id + "Tabs", 0, 0, 0, 0);
     inner->SetTabPosition(TabPosition::Top);
-    inner->SetTabStyle(TabStyle::Classic);
+    DemoKit::StyleTabs(inner);
     inner->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     for (const ComparisonTab& tab : tabs) inner->AddTab(tab.title, tab.build());
@@ -157,7 +157,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChartEng
 
     auto families = std::make_shared<UltraCanvasTabbedContainer>("EngineCompareFamilies", 0, 0, 0, 0);
     families->SetTabPosition(TabPosition::Top);
-    families->SetTabStyle(TabStyle::Modern);
+    DemoKit::StyleTabs(families);
     families->AddTab(Tr("Lines & Points"), MakeFamilyTabs("EngineCompareLines", LineFamilyTabs()));
     families->AddTab(Tr("Bars & Flows"), MakeFamilyTabs("EngineCompareBars", BarFamilyTabs()));
     families->AddTab(Tr("Finance & Mosaics"), MakeFamilyTabs("EngineCompareFinance", FinanceAndGridTabs()));

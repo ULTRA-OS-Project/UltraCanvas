@@ -395,7 +395,7 @@ namespace UltraCanvas {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ChordTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         tabs->AddTab(Tr("Global Merchandise Trade"), MakeTradeTab());

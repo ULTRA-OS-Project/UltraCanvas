@@ -1,6 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 2.12.0 - FocusTabStrip, the focus ring round the open tab while the strip has the keyboard
+// Version: 2.13.0 - FocusTabStrip, the focus ring round the open tab while the strip has the keyboard
+// Version: 2.12.0 - SetIconAfterTitle: the icon drawn at the tab's right end, after the title
 // Version: 2.11.1 - tab titles and the drag ghost's title are centred on their capitals
 // Version: 2.11.0 - ApplyTheme: the tabs from the theme roles
 // Version: 2.10.0 - the overflow list opens anchored to its button: above it when there
@@ -711,6 +712,12 @@ namespace UltraCanvas {
 
         Rect2Di tabBounds = GetTabBounds(index);
         int iconX = tabBounds.x + tabPadding;
+        if (iconAfterTitle) {
+            // At the right end of the tab, left of a badge and the X.
+            iconX = tabBounds.x + tabBounds.width - tabPadding - iconSize;
+            if (ShouldShowCloseButton(tab)) iconX -= closeButtonSize + closeButtonMargin;
+            if (tab->showBadge) iconX -= tab->badgeWidth + iconPadding;
+        }
         int iconY = tabBounds.y + (tabBounds.height - iconSize) / 2;
 
         // An animated icon (e.g. a loading spinner) takes precedence: draw its current frame.
@@ -2407,7 +2414,7 @@ namespace UltraCanvas {
 
         if (tab->hasIcon) {
             RenderTabIcon(index, ctx);
-            xOffset += iconSize + iconPadding;
+            if (!iconAfterTitle) xOffset += iconSize + iconPadding;
             contentArea.width -= (iconSize + iconPadding);
         }
 

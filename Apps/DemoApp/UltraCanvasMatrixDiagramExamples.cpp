@@ -142,6 +142,7 @@ namespace UltraCanvas {
                                            800 + 2 * DemoKit::kCardPadding + 2);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
                 "matrixTabs", 0, 0, 800, 566);
+        DemoKit::StyleTabs(tabbedContainer);
         DemoKit::AddFixed(centerCard, tabbedContainer);
 
         struct TabSpec {

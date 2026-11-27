@@ -852,7 +852,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarChart
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("BarChartTabs", 0, 0, 0, 0);
     tabs->SetTabPosition(TabPosition::Top);
-    tabs->SetTabStyle(TabStyle::Modern);
+    DemoKit::StyleTabs(tabs);
 
     tabs->AddTab(Tr("Vertical & Horizontal"), MakeOrientationTab());
     tabs->AddTab(Tr("Clustered"),             MakeClusteredTab());

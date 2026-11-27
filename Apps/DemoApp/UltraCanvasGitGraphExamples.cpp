@@ -421,6 +421,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
     DemoKit::Add(page, card, 1);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GitGraphTabs");
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabPosition(TabPosition::Top);
     DemoKit::Add(card, tabs, 1);
 

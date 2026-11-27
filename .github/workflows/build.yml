@@ -3036,6 +3036,25 @@ jobs:
             ./package-win-msix.sh --mode store
           fi
 
+      # UltraTexter as an MSIX of its own (package-win-msix.sh --app Texter),
+      # for its own product in the Microsoft Store: Texter and what it loads,
+      # cut out of the same dist/. The test package on every run, as above. A
+      # release build also builds the Store package once the repository holds
+      # that product's identity name in MSIX_TEXTER_IDENTITY_NAME (Partner
+      # Center > UltraTexter > Product identity); the publisher and its
+      # display name are the account's, the same as the suite's.
+      - name: Package UltraTexter as an MSIX of its own (Windows)
+        if: runner.os == 'Windows' && env.SKIP_WINDOWS_PACKAGE != 'true'
+        env:
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_TEXTER_IDENTITY_NAME }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          ./package-win-msix.sh --app Texter --mode test
+          if [ "$RELEASE_BUILD" = "true" ] && [ -n "$MSIX_IDENTITY_NAME" ] && [ -n "$MSIX_PUBLISHER" ]; then
+            ./package-win-msix.sh --app Texter --mode store
+          fi
+
       # Release builds only, so a pull request never decodes the signing
       # certificate onto a runner it does not need it on.
       - name: Import code signing certificate (macOS)

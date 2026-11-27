@@ -1,3 +1,188 @@
+#### 2026-11-27 *0.9.612*
+- **One Escape closed two menus.** With a submenu open (or any popup over
+  another: a styles list beside a font list, a palette editor over the
+  palette manager), one Escape closed the submenu and then its menu: the
+  window closed the topmost popup on every keyboard event carrying the key -
+  its press and its release. A press closes one popup now and its release
+  closes nothing, on every platform (the backends each send one press and one
+  release; the check was the window's). The release of the press that closed
+  the last popup is taken too, so a window that closes on an Escape's release
+  (the settings pages, the image viewer) no longer closes with the dropdown
+  that was open in it. The logic moved to the window:
+  `UltraCanvasWindowBase::HandlePopupEscapeKey`, which
+  `UltraCanvasApplication::DispatchEvent` hands every key first.
+  `UltraCanvasFontPicker` handled Escape itself to get round this; that is
+  gone, its lists close on Escape like every popup (the styles list first,
+  then the list). Tests: `MenuAndTabBehaviourTest` (a menu with its submenu
+  open, one Escape press and release), `FontPickerElementTest` (Escape
+  through the application).
+- **A font list in the WYSIWYG style: `UltraCanvasFontPicker`.** A closed box
+  that shows the current family in its own font, and a list that opens wider
+  than the box (300 px) with the document's fonts (`SetDocumentFonts`; one the
+  computer lacks in grey italics, *(not installed)* or *(shown in Arial)*), the
+  recent fonts (`SetRecentFonts`, `onRecentFontsChanged`), a divider and *All
+  fonts*: every installed family A to Z, each name drawn in itself at one size,
+  with an icon for its format - O OpenType, TT TrueType, a Type 1, a pixel A
+  bitmap (`media/icons/fonts/`). A symbol or dingbat font (Wingdings, Symbol,
+  Zapf Dingbats, an emoji font) is named in the interface's font with a few of
+  its own characters. A family with styles bold and italic cannot reach (Light,
+  SemiBold, Condensed, Black) has an arrow: resting on it or Right opens its
+  styles beside the list, each drawn in itself, and choosing one gives the
+  family, weight, slant, width and the face's own family name
+  (`FontPickerChoice`); a family of Regular, Bold and the italics alone has none
+  (`SetStylesSubmenu` changes the rule). Typing jumps to the first family
+  starting with the letters typed; Up, Down, Page Up / Down, Home, End, Return,
+  Right, Left and Escape work. The rows are virtual and each name's picture is
+  made once, prepared ahead in idle slices. Doc:
+  `Docs/UltraCanvas/UltraCanvasFontPicker.md`; tests: `InstalledFontsTest`,
+  `FontPickerElementTest` (a window test, run under Xvfb in CI).
+- **The installed fonts with their styles and formats:
+  `GetInstalledFontCatalogue()`** (`UltraCanvasInstalledFonts.h`). Every family
+  the text engine draws - Pango's font map, so the names are the renderer's -
+  with each style's name, CSS weight, slant, width, format (the font file
+  module's `FontFileFormat`), file and own family name ("Ubuntu Thin", with
+  whether the engine reaches the face by it with bold or without), and
+  whether it is a symbol font, filled in from fontconfig's records on Linux,
+  Windows (which reads the system's and the user's own font folder,
+  `%LOCALAPPDATA%\Microsoft\Windows\Fonts`), Android and the browser, and from
+  CoreText's descriptors on macOS (`OS/MacOS/UltraCanvasMacOSInstalledFonts.mm`).
+  Windows' `@` vertical families, macOS' `.` private ones, LastResort, the
+  engine's generic names, synthesized faces and fonts without characters are
+  left out. Kept until `GetFontSetGeneration()` moves.
+  `GetInstalledFontFamilies()` is now the names of the same enumeration (the
+  hidden families left out); `FindInstalledFontFamilyOfName` and
+  `IsInstalledFontName` know a face's own family name.
+- **The rich text editor's font report names every family the document uses**
+  (`FontReport::namedFamilies`), for a font list's top section, and no longer
+  reports a face's own family name ("Segoe UI Semibold", "Ubuntu Thin") as a
+  missing font.
+- **The Styles dialog's font is the font picker**: every installed font, each
+  in itself, instead of nine fixed names; a style from its list sets bold and
+  italic too.
+- **The rich text view's caret stands where its line is, to the fraction of
+  a pixel.** It was placed from `ITextLayout::GetCursorPos`, whose rectangle
+  is in whole pixels cut toward zero, so in a font whose line is not a whole
+  number of pixels the caret on a paragraph's second line and after it stood
+  up to a pixel above its line - in DejaVu Serif at 12 pt (18.625 px a line)
+  at 18, 37 and 55 px instead of 18.6, 37.3 and 55.9 - and scrolling the
+  caret into view used the same rounded rectangle. The layout's lines were
+  right; the caret was not. `ITextLayout::GetCursorRect` gives the strong
+  cursor in fractional pixels (`UltraCanvasRenderContext.h` 2.15.0), and
+  `UltraCanvasRichTextEdit` places and scrolls to the caret with it. The
+  editor test measures its line heights in DejaVu Serif too where it is
+  installed, with hinted font metrics off and on.
+- **A white page on a grey desk.** In page view the light theme drew the page
+  in the well's light grey on the panel's white - the paper darker than the
+  desk around it. `RichTextEditStyle::FromTheme` now takes the lighter of the
+  well and the panel for the page (white in the light theme) and the panel a
+  shade darker for the desk (a mid-light grey; darker still in a dark
+  theme), so the page stands out as paper does. A theme can set either
+  through the element roles `rich-text.page` and the new `rich-text.desk`.
+- **A third fitting zoom for the rich text editor: a share of the width.**
+  `UltraCanvasRichTextEdit::ZoomToWidthShare(share)` (`ZoomFit::WidthShare`)
+  makes the page itself `share` of the view's width (0.1 to 1, 0.6 unless
+  chosen), centred on the desk, and keeps it so as the element is resized,
+  like *Page width* and *Whole page* do; `GetZoomWidthShare` reads it back.
+  A page on a wide screen keeps a reading width instead of filling it.
+- **The slide show can play on the first monitor.** `StartSlideShow` takes a
+  fourth argument, `showOnSecondScreen` (true unless given): with false and
+  two monitors the show goes full screen on the first and the presenter view
+  on the second.
+- **The text bar's Font list is the font picker.** `UltraCanvasTextFormatBar`
+  shows an `UltraCanvasFontPicker` in place of its plain dropdown, in the same
+  210 pixels (down to 90 in a narrow place): every family drawn in itself with
+  its format's icon after the generic Sans, Serif and Monospace; *In this
+  document* from the host (`SetDocumentFonts` in `onFontListOpening`;
+  `AddTextFormatFonts` gathers a text's families); *Recent* kept by the host
+  in its settings (`SetRecentFonts`, `onRecentFontsChanged`); and the styles
+  list beside a family with styles bold and italic cannot reach. The bar has
+  Bold and Italic but no weight, so a style chosen there sets the family - the
+  face's own name where the engine reaches it by that ("Ubuntu Light") - and
+  Bold and Italic, reported as a Font change followed by Bold and Italic where
+  they changed. The keyboard stays with the text while the list is open
+  (`HasKeyboardFocus` says so). `GetFontPicker()` reaches the list. Doc:
+  `Docs/UltraCanvas/UltraCanvasTextFormatBar.md`; test:
+  `FontPickerElementTest`.
+- **A paragraph's last line is as tall as its others, so a Word document's
+  page is as long as in Word and Writer.** Lines are spaced by a factor of
+  their fonts' height - ascent, descent and the line gap the font's designer
+  gave it - but the text layout ends at the last line's descent, so every
+  paragraph lacked one line's share: a one-line paragraph in Palatino (1.2 em
+  a line, a fifth of it gap) was laid out 1.0 em tall at single spacing and
+  1.0 instead of 1.38 at Word's 1.15. A one-page form in Palatino ended
+  about 20 mm higher than in Word, and the signature lines anchored to an
+  empty paragraph landed on the captions under them. The rich text
+  view (`UltraCanvasRichTextEdit`, so UltraOffice and UltraTexter) now gives
+  the last line of a paragraph and of a table cell the same room below its
+  text, and an empty paragraph a line of its paragraph mark's font; the line
+  an empty line of a set height is scaled from, a cell's stated multiple and
+  an "at least" line height are measured the same way (the last no longer
+  from 1.2 times the font size). `LayoutLineExtent::fontHeight` gives each
+  laid-out line that height (`UltraCanvasRenderContext.h` 2.14.0).
+- **A picture fills the frame its document gives it.** A picture alone in its
+  paragraph - a .docx's `wp:inline` on a line of its own, an ODT `draw:frame`
+  the same - became a picture block, which was drawn in its own proportions
+  in the middle of its frame: a 4:1 logo in a 4.5:1 frame came out 10 mm
+  narrower than in Word. It is stretched to the frame now, as pictures in a
+  line and floating ones already were; the picture dialog's "keep
+  proportions" still decides what a resize in the editor does. Such a picture
+  also keeps its paragraph's indents, alignment and spacing from a .docx,
+  read and written - a letterhead's logo set out into the margin by a
+  negative indent is drawn there in page view.
+- **A .docx's text starts right below a header taller than the top margin,**
+  as in Word: the view kept Writer's 0.25 cm between the two for every
+  document, and a page whose header pushed the text down ran 2.5 mm low. The
+  room is the document's now (`RichPageSetup::furnitureSpacingPt`, 0 from a
+  .docx; unset, Writer's 0.25 cm as before).
+
+#### 2026-11-27 *0.9.611*
+- **TabbedContainer: `SetIconAfterTitle`** puts a tab's icon at the tab's right
+  end, after its title (left of a badge or the close button), instead of
+  leading the title.
+- **DemoApp OpenGL showcase: the tabs read as tabs.** The Modern style with an
+  accent underline under the open tab, and a coloured thumbnail of each tab's
+  content (the torus knot, the fire shader, the Zarch terrain) at the right of
+  its title.
+- **DemoApp: every page's tabs in that one look.** `DemoKit::StyleTabs` (the
+  Modern style, a 3 px accent underline under the open tab) replaces the mix
+  of Rounded, Classic, Modern and default tab bars on the 53 pages with tabs;
+  the Tabs page keeps its tour of every style.
+- **DemoApp OpenGL showcase: a Z-up model stands upright in the 3D Models
+  tab.** The tab now rotates a mesh by the file's own up axis, as the
+  framework's viewers do, so the COLLADA aircraft no longer lies on its side.
+- **TreeView: a selected row reads on the blue.** A tree not following a theme
+  (the DemoApp's category tree among them) drew a selected row's label in its
+  normal black on the default blue selection. With no selection text colour
+  set the label is now white, or black only on a selection too light for white
+  (under 3:1); `SelectedRowTextColor()` returns the colour in use. On a
+  selected row the selection text colour now also wins over a node's or a
+  cell's own colour (Columns mode too), so the whole row stays readable.
+- **DemoApp: the category tree's item icons turn white with the label** on the
+  selected row (and follow a dark theme's ink): the document, clock and
+  settings line icons are drawn in the row's text colour (`drawnInTextColor`).
+
+#### 2026-11-27 *0.9.610*
+- **Windows: one application as an MSIX package of its own, for a product of
+  its own in the Microsoft Store** - `./package-win-msix.sh --app Texter`
+  builds UltraTexter's (`dist-msix/UltraTexter-Windows-<version>-<arch>[-test|-store].msix`).
+  - The package holds the program and what it loads, cut out of `dist/` by
+    `scripts/make_msix_layout.py --app`: the DLLs the import tables reach from
+    the program, the plug-ins and the run-time modules in `lib/`
+    (`scripts/pe_imports.py`), the plug-in families but UltraIM, `lib/`,
+    `etc/`, the media the framework reads and `cacert.pem` - not the other
+    programs, their DLLs, or the demo's samples.
+  - Its version is the application's own, line 1 of its changelog; a
+    two-part version becomes four parts (1.94 -> 1.94.0.0). `MSIX_VERSION`
+    sets another, for a Store resubmission when only the framework changed.
+    `MSIX_DISPLAY_NAME` and `MSIX_DESCRIPTION` set the package's name and
+    description (the suite's too).
+  - CI builds UltraTexter's test package on every packaged Windows run, and
+    its Store package on a release build once the Actions variable
+    `MSIX_TEXTER_IDENTITY_NAME` holds the product's identity name from
+    Partner Center.
+  - The suite package is unchanged. `Docs/UltraCanvas/UltraCanvasWindowsMSIX.md`,
+    *One application on its own* and *UltraTexter as its own product*.
+
 #### 2026-11-26 *0.9.609*
 - **Render contexts made on several threads at once no longer corrupt the heap.** Every Cairo render context adds itself to one list of live contexts when it is made and takes itself off when it is destroyed (`RenderContextCairo::g_Instances`), and the list had no lock. A thumbnail worker making an offscreen context while the UI thread or another worker made or destroyed one grew and shrank the vector at once: an element written past its end, a buffer freed twice. It showed as an abort inside `malloc` - "unaligned tcache chunk detected", "double free or corruption" - somewhere later, which is how `TextRenderThreadsTest` failed on CI now and then. The list is locked now, also while a change of the text font options walks it. The test makes and destroys contexts on eight threads as well; unlocked, that part aborted in about every second run of six seconds.
 

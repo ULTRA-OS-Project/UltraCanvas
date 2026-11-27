@@ -793,7 +793,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GanttTabs", 0, 0, 0, 0);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(30);
     tabs->SetTabCornerRadius(8.0f);
     tabs->SetTabMaxWidth(180);

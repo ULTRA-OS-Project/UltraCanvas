@@ -300,7 +300,7 @@ namespace {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("LayoutExamplesTabs");
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->AddTab(Tr("Box / Grid / Flex"), CreateBoxGridFlexLayoutTab());
         tabs->AddTab(Tr("Label placement"), CreateLabelPlacementLayoutTab());
         DemoKit::Add(card, tabs, 1);

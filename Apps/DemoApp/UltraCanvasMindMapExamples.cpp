@@ -511,7 +511,7 @@ UltraCanvasDemoApplication::CreateMindMapExamples() {
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("MindMapTabs");
     tabs->SetTabPosition(TabPosition::Top);
-    tabs->SetTabStyle(TabStyle::Modern);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabMaxWidth(300);
 
     tabs->AddTab(Tr("Editable map"),        MakeEditableTab(statusLabel));
