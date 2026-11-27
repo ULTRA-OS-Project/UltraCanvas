@@ -4,13 +4,14 @@
 // config.ini - ~/.config/UltraCanvas/UltraPaint/config.ini on Linux). The
 // settings window (UltraPaintSettingsDialog) applies a change to the running
 // editor at once and saves it right away, so there is no OK / Cancel.
+// Version: 1.5.0 - the text bar's recent fonts (text.recentfonts)
 // Version: 1.4.0 - the palettes made with "Add palette" (picker.userpalettes)
 // Version: 1.3.0 - the colour palettes under the picker (picker.palettes)
 // Version: 1.2.1 - the designs' names are the framework's (ColorPickerWheelStyleName)
 // Version: 1.2.0 - the colour picker's design and whether its channels are open
 // Version: 1.1.0 - Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -25,6 +26,7 @@
 #include <map>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -103,6 +105,20 @@ public:
         return onDisk.Save();
     }
 
+    // ===== TEXT =====
+    // The fonts chosen last in the text bar's font list, newest first
+    // (text.recentfonts, the names separated by commas, which no family
+    // name has). Saved as they change.
+    std::vector<std::string> recentFonts;
+
+    // Only the recent fonts go into the file, as SavePicker does.
+    bool SaveRecentFonts() const {
+        UltraPaintSettings onDisk;
+        onDisk.Load();
+        onDisk.recentFonts = recentFonts;
+        return onDisk.Save();
+    }
+
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
     static std::filesystem::path ConfigFolder() {
@@ -153,6 +169,8 @@ public:
         if (it != kv.end()) palettes = it->second;
         it = kv.find("picker.userpalettes");
         if (it != kv.end()) userPalettes = it->second;
+        it = kv.find("text.recentfonts");
+        if (it != kv.end()) recentFonts = SplitNames(it->second);
         return true;
     }
 
@@ -173,10 +191,32 @@ public:
         file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
         if (!palettes.empty()) file << "picker.palettes = " << palettes << "\n";
         if (!userPalettes.empty()) file << "picker.userpalettes = " << userPalettes << "\n";
+        if (!recentFonts.empty()) file << "text.recentfonts = " << JoinNames(recentFonts) << "\n";
         return file.good();
     }
 
 private:
+    static std::vector<std::string> SplitNames(const std::string& s) {
+        std::vector<std::string> out;
+        size_t start = 0;
+        while (start <= s.size()) {
+            const size_t comma = s.find(',', start);
+            const std::string name = Trim(s.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
+            if (!name.empty()) out.push_back(name);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        return out;
+    }
+    static std::string JoinNames(const std::vector<std::string>& names) {
+        std::string out;
+        for (const auto& name : names) {
+            if (name.empty() || name.find_first_of(",\n") != std::string::npos) continue;
+            if (!out.empty()) out += ", ";
+            out += name;
+        }
+        return out;
+    }
     static std::string Trim(const std::string& s) {
         const size_t a = s.find_first_not_of(" \t");
         if (a == std::string::npos) return {};

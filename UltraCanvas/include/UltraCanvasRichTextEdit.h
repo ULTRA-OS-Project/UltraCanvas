@@ -18,6 +18,14 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.25.0 - FontReport::namedFamilies: every family the document names, for a font list's
+//                   "in this document" section (UltraCanvasFontPicker)
+// Version: 1.24.0 - ZoomFit::WidthShare, ZoomToWidthShare: the page fills a share of the view's width,
+//                   centred, and keeps fitting as the element is resized
+// Version: 1.23.0 - page view: a white page on a grey desk in the light theme (FromTheme: the paper
+//                   the lighter of well and panel, the desk a shade darker; role "rich-text.desk")
+// Version: 1.22.1 - a paragraph's last line as tall as its others (its fonts' height times the line
+//                   spacing, line gap included); "at least" measured against the font's own line
 // Version: 1.22.0 - what a navigator needs (UltraCanvasDocumentNavigator.h): AddDocumentObserver /
 //                   RemoveDocumentObserver, more than one listener to edits and caret moves;
 //                   GoToPosition, GoToRange; MoveHeadingSection, MoveHeadingSectionUp / Down,
@@ -168,8 +176,9 @@ struct RichTextEditStyle {
     Color fontNoticeTextColor = Color(110, 70, 0);
 
     // The theme's roles over a base's own typography and metrics: the well
-    // for the text and the page (the element role "rich-text.page" where a
-    // theme wants paper of another colour), the panel for the desk, ink and
+    // for the text; in page view the lighter of the well and the panel for the
+    // page and the panel a shade darker for the desk (the element roles
+    // "rich-text.page" and "rich-text.desk" where a theme wants others), ink and
     // the caret in ink, the soft accent for the selection, the accent for
     // links, muted ink for quotes and list markers, the panel with hairlines
     // for code, control-border rules and table grids, hairline guides; the
@@ -605,12 +614,20 @@ public:
     void SetZoomRange(float minimum, float maximum);
     // Zoom that follows the element's size, as a word processor's "Page
     // width" and "Whole page": the page (with the desk either side) fills the
-    // width, or the whole page fits in the view. It is worked out again
+    // width, or the whole page fits in the view. WidthShare makes the page
+    // itself a share of the view's width (GetZoomWidthShare, 0.6 unless
+    // ZoomToWidthShare chose another), centred on the desk - a page of
+    // comfortable reading width on a wide screen. It is worked out again
     // whenever the element is resized; SetZoom, Ctrl+wheel and Off end it.
     // Only page view has a page to fit; outside it the zoom stays as it is.
-    enum class ZoomFit { Off, PageWidth, WholePage };
+    // The view's width is the element's less its padding, the vertical
+    // scrollbar and the comment pane while it is shown.
+    enum class ZoomFit { Off, PageWidth, WholePage, WidthShare };
     void SetZoomFit(ZoomFit fit);
     ZoomFit GetZoomFit() const { return zoomFit; }
+    // ZoomFit::WidthShare with `share` of the view's width (0.1 to 1).
+    void ZoomToWidthShare(float share);
+    float GetZoomWidthShare() const { return zoomWidthShare; }
     std::function<void(float zoom)> onZoomChanged;
 
     // ===== SCROLLING =====
@@ -646,6 +663,12 @@ public:
     struct FontReport {
         std::vector<std::string> missingFamilies;
         std::vector<MissingScriptFont> missingScripts;
+        // Every family the document's text names, installed or not, each
+        // once in the order it first appears - the "in this document"
+        // section of a font list (UltraCanvasFontPicker::SetDocumentFonts).
+        // Not part of IsEmpty: a document set in installed fonts has
+        // nothing to report.
+        std::vector<std::string> namedFamilies;
         bool IsEmpty() const { return missingFamilies.empty() && missingScripts.empty(); }
         bool operator==(const FontReport& other) const;
     };
@@ -1096,6 +1119,9 @@ private:
     // (RichTextRun::emptyLineHeightPt) is scaled from.
     mutable std::map<std::string, float> lineUnitCache;
     mutable float emptyLineUnitPx = 0.0f;
+    // The natural line of the paragraph being laid out "at least" so high
+    // (its largest font's, line gap included), in pixels; 0 = not measured.
+    mutable float layoutNaturalLinePx = 0.0f;
     mutable bool layoutStatedLines = false;       // the layout being made is a cell's with set line heights
     mutable bool layoutHasBox = false;            // the layout being made has a box standing in a line
     // The paragraphs of the frames standing in a table cell's lines, by
@@ -1252,6 +1278,7 @@ private:
     float hScrollOffset = 0.0f;       // document pixels, page view only
     float zoom = 1.0f;
     ZoomFit zoomFit = ZoomFit::Off;
+    float zoomWidthShare = 0.6f;      // ZoomFit::WidthShare's share of the view's width
     // The zoom zoomFit asks for at the element's present size (0 = none).
     float FitZoom() const;
     float minZoom = 0.25f;

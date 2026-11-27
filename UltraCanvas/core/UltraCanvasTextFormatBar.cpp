@@ -1,18 +1,21 @@
 // core/UltraCanvasTextFormatBar.cpp
 // The text formatting bar: see include/UltraCanvasTextFormatBar.h.
+// Version: 1.2.0 - the Font list is an UltraCanvasFontPicker: the document's fonts, the recent
+//                  ones, every family with its format icon, the styles list; a style chosen
+//                  is the family (its face's own name) with Bold and Italic; AddTextFormatFonts
 // Version: 1.1.0 - letter spacing to and from the selected words (TextFormatCharDelta,
 //                  TextFormatAtCaret); HasKeyboardFocus; the Font list made again when the
 //                  fonts change (GetFontSetGeneration)
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextFormatBar.h"
 
-#include "UltraCanvasApplication.h"     // GetInstalledFontFamilies, PostToUIThread
+#include "UltraCanvasApplication.h"     // GetFontSetGeneration, PostToUIThread
 #include "UltraCanvasButton.h"
 #include "UltraCanvasConfig.h"          // GetResourcesDir
-#include "UltraCanvasDropdown.h"
+#include "UltraCanvasFontPicker.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSeparator.h"
@@ -22,6 +25,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace UltraCanvas {
 
@@ -32,6 +36,30 @@ namespace {
     std::string IconPath(const std::string& file) {
         return NormalizePath(GetResourcesDir() + "media/icons/textformat/" + file);
     }
+
+    std::string Lower(std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return s;
+    }
+
+    bool HasFamily(const std::vector<std::string>& list, const std::string& family) {
+        const std::string key = Lower(family);
+        return std::any_of(list.begin(), list.end(), [&key](const std::string& f) { return Lower(f) == key; });
+    }
+
+    // The names a text names that the text engine resolves itself: first in
+    // the list, as the dropdown before the picker had them.
+    constexpr const char* kGenericFamilies[] = { "Sans", "Serif", "Monospace" };
+}
+
+void AddTextFormatFonts(std::vector<std::string>& families, const std::string& base, const UCRichDocument* words) {
+    auto add = [&families](const std::string& family) {
+        if (!family.empty() && !HasFamily(families, family)) families.push_back(family);
+    };
+    add(base);
+    if (!words) return;
+    for (const auto& block : words->blocks)
+        for (const auto& run : block.runs) add(run.fontFamily);
 }
 
 // ===== EDITOR HELPERS =====
@@ -71,6 +99,8 @@ TextFormat TextFormatAtCaret(const RichCharFormatState& state, const TextFormat&
 // ===== THE BAR =====
 
 bool UltraCanvasTextFormatBar::HasKeyboardFocus() const {
+    // The open list takes the keys typed while the focus stays with the text.
+    if (fontBox && fontBox->IsListOpen()) return true;
     UltraCanvasWindowBase* win = GetWindow();
     UltraCanvasUIElement* focused = win ? win->GetFocusedElement() : nullptr;
     return focused && focused != this && focused->IsDescendantOf(this);
@@ -102,25 +132,36 @@ void UltraCanvasTextFormatBar::Build(float height) {
     };
 
     // ----- Font -----
-    fontBox = CreateDropdown(GetIdentifier() + "-font", 0, 0, 210, kField);
-    DropdownStyle fontStyle = fontBox->GetStyle();
-    fontStyle.maxVisibleItems = 18;
-    fontStyle.itemHeight = 26.0f;
+    // The font list: the text's fonts and the recent ones above every
+    // installed family, each in itself. Its styles list (a family's Light,
+    // Condensed, Black - what B and I cannot reach) sets the family and the
+    // B and I below: the bar has no weight of its own to set.
+    fontBox = CreateFontPicker(GetIdentifier() + "-font", 0, 0, 210, kField);
+    FontPickerStyle fontStyle = fontBox->GetStyle();
+    fontStyle.maxVisibleRows = 18;
+    fontStyle.rowHeight = 26.0f;
     fontStyle.fontSize = 12.0f;
     fontBox->SetStyle(fontStyle);
+    // A toolbar's list: the keyboard stays with the text being typed (the
+    // open list still takes the keys typed), so the selected words stay
+    // selected for the font chosen.
+    fontBox->SetAcceptsFocus(false);
     // The one control that gives up width when the bar is narrower than its
     // controls (a program's narrow column): down to a name's first letters,
-    // so every other control stays in reach.
+    // so every other control stays in reach. The open list is wider.
     fontBox->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     CSSLayout::BoxConstraints fontLimits = fontBox->boxConstraints.value_or(CSSLayout::BoxConstraints{});
     fontLimits.minWidth = CSSLayout::Dimension::Px(90.0f);
     fontBox->boxConstraints = fontLimits;
-    fontBox->onSelectionChanged = [this](int, const DropdownItem& item) {
-        if (showing || item.value.empty()) return;
-        format.fontFamily = item.value;
-        Changed(TextFormatAttribute::Font);
+    fontBox->onFontChosen = [this](const FontPickerChoice& choice) { FontChosen(choice); };
+    fontBox->onListOpening = [this]() {
+        if (onFontListOpening) onFontListOpening();
+        PassDocumentFonts();
     };
-    fontBox->onDropdownClosed = [this]() { ControlDone(); };
+    fontBox->onRecentFontsChanged = [this](const std::vector<std::string>& recent) {
+        if (onRecentFontsChanged) onRecentFontsChanged(recent);
+    };
+    fontBox->onListClosed = [this]() { ControlDone(); };
     AddChild(fontBox);
     RefreshFonts();
 
@@ -236,36 +277,93 @@ void UltraCanvasTextFormatBar::Build(float height) {
 
 void UltraCanvasTextFormatBar::RefreshFonts() {
     fontGeneration = GetFontSetGeneration();
-    families = GetInstalledFontFamilies();
-    // The generic names first: a text that names one finds it.
-    for (const char* generic : { "Monospace", "Serif", "Sans" }) {
-        if (std::find(families.begin(), families.end(), generic) == families.end())
-            families.insert(families.begin(), generic);
+    // The generic names first (a text that names one finds it), then the
+    // installed families with their styles and formats.
+    auto installed = GetInstalledFontCatalogue();
+    auto list = std::make_shared<std::vector<InstalledFontFamily>>();
+    list->reserve((installed ? installed->size() : 0) + 3);
+    for (const char* generic : kGenericFamilies) {
+        if (installed && FindInstalledFontFamily(*installed, generic)) continue;
+        InstalledFontFamily family;
+        family.name = generic;
+        InstalledFontStyle regular;
+        regular.name = "Regular";
+        family.styles.push_back(regular);   // one style: no styles list
+        list->push_back(std::move(family));
     }
-    missingFamily.clear();
-    FillFontList();
+    if (installed) list->insert(list->end(), installed->begin(), installed->end());
+    families.clear();
+    families.reserve(list->size());
+    for (const auto& family : *list) families.push_back(family.name);
+    if (fontBox) {
+        fontBox->SetFamilies(list);
+        fontBox->SetTooltip(TrF("Font ({0} installed) - type its first letters to find one", families.size()));
+    }
     ShowFormat();
 }
 
-void UltraCanvasTextFormatBar::FillFontList() {
+void UltraCanvasTextFormatBar::SetDocumentFonts(const std::vector<std::string>& list) {
+    documentFonts.clear();
+    for (const auto& family : list)
+        if (!family.empty() && !HasFamily(documentFonts, family)) documentFonts.push_back(family);
+    PassDocumentFonts();
+}
+
+void UltraCanvasTextFormatBar::PassDocumentFonts() {
     if (!fontBox) return;
-    showing = true;
-    fontBox->ClearItems();
-    // A font this computer lacks (a file from elsewhere) is named all the
-    // same, at the top.
-    if (!missingFamily.empty()) {
-        DropdownItem item(missingFamily, missingFamily);
-        item.fontFamily = missingFamily;
-        item.tooltip = Tr("Drawn in a substitute: this font is not installed on this computer");
-        fontBox->AddItem(item);
+    // The text's own family is the document's too - named there when this
+    // computer lacks it, as the list before the picker named it at its top.
+    std::vector<std::string> shown = documentFonts;
+    const std::string family = format.fontFamily.empty() ? std::string("Sans") : format.fontFamily;
+    if (!fontBox->IsCurrentInstalled() && !HasFamily(shown, family)) shown.insert(shown.begin(), family);
+    fontBox->SetDocumentFonts(shown);
+}
+
+void UltraCanvasTextFormatBar::SetRecentFonts(const std::vector<std::string>& list) {
+    if (fontBox) fontBox->SetRecentFonts(list);
+}
+
+const std::vector<std::string>& UltraCanvasTextFormatBar::GetRecentFonts() const {
+    static const std::vector<std::string> none;
+    return fontBox ? fontBox->GetRecentFonts() : none;
+}
+
+void UltraCanvasTextFormatBar::FontChosen(const FontPickerChoice& choice) {
+    if (showing) return;
+    std::string family = choice.family.empty() ? std::string("Sans") : choice.family;
+    bool bold = format.bold, italic = format.italic;
+    if (choice.fromStyles) {
+        // The bar has bold and italic, no weight: a style is its face's own
+        // family name where the text engine reaches the face by it ("Ubuntu
+        // Light", with bold where that name's bold is the face), else the
+        // family with bold from the style's weight; italic from its slant.
+        if (!choice.faceFamily.empty()) {
+            family = choice.faceFamily;
+            bold = choice.faceFamilyBold;
+        } else {
+            bold = choice.weight >= 600;
+        }
+        italic = choice.slant != FontSlant::Normal;
     }
-    for (const auto& family : families) {
-        DropdownItem item(family, family);
-        item.fontFamily = family;          // shown in itself
-        fontBox->AddItem(item);
+    const bool boldChanged = bold != format.bold, italicChanged = italic != format.italic;
+    format.fontFamily = family;
+    format.bold = bold;
+    format.italic = italic;
+    ShowFormat();
+    // One call each. A host shows the text's format again after each
+    // (SetFormat), still without the bold or italic the next call brings:
+    // each is put back before its own call.
+    Changed(TextFormatAttribute::Font);
+    if (boldChanged) {
+        format.bold = bold;
+        Changed(TextFormatAttribute::Bold);
     }
-    fontBox->SetTooltip(TrF("Font ({0} installed) - type its first letters to find one", families.size()));
-    showing = false;
+    if (italicChanged) {
+        format.bold = bold;
+        format.italic = italic;
+        Changed(TextFormatAttribute::Italic);
+    }
+    ShowFormat();
 }
 
 void UltraCanvasTextFormatBar::SetFormat(const TextFormat& f) {
@@ -274,19 +372,8 @@ void UltraCanvasTextFormatBar::SetFormat(const TextFormat& f) {
 }
 
 void UltraCanvasTextFormatBar::ShowFormat() {
-    if (fontBox) {
-        const std::string family = format.fontFamily.empty() ? std::string("Sans") : format.fontFamily;
-        auto it = std::find(families.begin(), families.end(), family);
-        if (it == families.end() && family != missingFamily) {
-            missingFamily = family;
-            FillFontList();
-        }
-        showing = true;
-        const int offset = missingFamily.empty() ? 0 : 1;
-        fontBox->SetSelectedIndex(it == families.end() ? 0 : static_cast<int>(it - families.begin()) + offset, false);
-        showing = false;
-    }
     showing = true;
+    if (fontBox) fontBox->SetCurrentFont(format.fontFamily.empty() ? std::string("Sans") : format.fontFamily);
     if (sizeBox) sizeBox->SetValue(format.size);
     if (boldButton) boldButton->SetPressed(format.bold);
     if (italicButton) italicButton->SetPressed(format.italic);
@@ -395,7 +482,7 @@ void UltraCanvasTextFormatBar::SetLetterSpacingUnit(const std::string& suffix, d
 void UltraCanvasTextFormatBar::ApplyTheme(const UltraCanvasTheme& theme) {
     const ThemeRoles& r = theme.roles;
     SetBackgroundColor(r.panel);
-    if (fontBox) fontBox->SetStyle(DropdownStyle::FromTheme(theme, fontBox->GetStyle()));
+    if (fontBox) fontBox->SetStyle(FontPickerStyle::FromTheme(theme, fontBox->GetStyle()));
     for (auto* b : { boldButton.get(), italicButton.get(), underlineButton.get(), strikeButton.get() }) {
         if (!b) continue;
         ButtonStyle st = ButtonStyle::FromTheme(theme, b->GetStyle(), ButtonVariant::Standard);

@@ -659,6 +659,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckBackendHunspell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDropdown.cpp
+        # The installed fonts' catalogue (families, styles, formats) and the
+        # font list that shows it, each name in its own font.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasInstalledFonts.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDatePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAutoComplete.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageAnimation.cpp

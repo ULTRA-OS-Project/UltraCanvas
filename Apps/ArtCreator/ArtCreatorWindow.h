@@ -11,6 +11,7 @@
 // start's files all add a tab rather than a window. The class also holds the
 // registry of open windows - File > New Window opens another - and the
 // application exits with the last of them.
+// Version: 1.17.0 - DocumentFonts: the drawing's fonts for the text bar's font list
 // Version: 1.16.0 - several drawings per window, in tabs: DrawingTab holds a drawing's
 //                   document, canvas, selection, history and file; document / canvas /
 //                   selection / history are the active tab's (SwitchToTab); New, Open, a
@@ -404,8 +405,9 @@ private:
     // A dashed frame round the words being typed, over the canvas.
     void DrawTextEditFrame(IRenderContext* ctx);
     // The text bar (the framework's UltraCanvasTextFormatBar), in the
-    // transform bar's place while the Text tool is active: Font (every
-    // installed family, each shown in itself), Size, Bold, Italic, Underline,
+    // transform bar's place while the Text tool is active: Font (the
+    // drawing's fonts, the recent ones and every installed family, each
+    // shown in itself, with the styles beyond bold and italic), Size, Bold, Italic, Underline,
     // Strikethrough, Align left / centre / right, Line spacing and Letter
     // spacing. While a text is typed, the character attributes (font, size,
     // bold, italic, underline, strikethrough) go to the selected words - or,
@@ -420,6 +422,10 @@ private:
     // of the text being typed, else of the first selected text, else the
     // ones a new text starts in.
     void SyncTextBar();
+    // The fonts the drawing's texts use - the one being typed, every text
+    // on every layer, its words' own - for the font list's "In this
+    // document".
+    std::vector<std::string> DocumentFonts() const;
     // An attribute of the bar changed ("font", "size", "bold", "italic",
     // "underline", "strike", "align", "line-spacing", "letter-spacing").
     void ApplyTextAttribute(const std::string& attribute);

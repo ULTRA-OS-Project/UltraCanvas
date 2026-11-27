@@ -1,5 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.19.2 - GetInstalledFontFamilies on the installed fonts' catalogue's enumeration
+//                  (UltraCanvasInstalledFonts.h)
 // Version: 1.19.1 - iOS: the UIKit backend in OS/iOS; fontconfig paths compiled for iOS too
 // Version: 1.19.0 - Appearance.conf over the host, the settings watcher (a change reaches a running application)
 // Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
@@ -100,8 +102,13 @@ namespace UltraCanvas {
     // any added with RegisterFontFile, as the text engine sees them (Pango:
     // fontconfig on Linux and Windows, CoreText on macOS). Scalable families
     // only - a family that has bitmaps alone cannot be drawn at any size -
-    // sorted regardless of case, each name once. For a font picker; it is
-    // asked afresh on every call, so a font installed meanwhile is in it.
+    // sorted regardless of case, each name once, with the engine's generic
+    // names ("Sans", "Serif", "Monospace") and without the families font
+    // lists hide (IsHiddenFontFamilyName: Windows' '@' vertical families,
+    // macOS' '.' private ones). Asked afresh on every call, so a font
+    // installed meanwhile is in it. The names of the same enumeration as
+    // GetInstalledFontCatalogue (UltraCanvasInstalledFonts.h), which has each
+    // family's styles and formats too - what a font list wants.
     std::vector<std::string> GetInstalledFontFamilies();
 
     // Pins hinting / antialias / autohint / lcdfilter defaults for the bundled

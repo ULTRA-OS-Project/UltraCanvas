@@ -232,6 +232,33 @@ text out this way. `TextAttributeFactory::CreateFontFeatures` sets OpenType
 features over a range, spelled as CSS `font-feature-settings` does
 (`"kern=0"`, `"liga=0"`).
 
+A line spacing factor puts the lines `factor` times their fonts' height
+apart, baseline to baseline - the font's ascent, descent and the line gap its
+designer gave it (1.2 em for Palatino, of which 0.2 is gap). The layout
+itself still ends at its last line's descent, so that line is shorter than
+the others by the factor's room. `GetLineExtents()` gives each line that
+height as `LayoutLineExtent::fontHeight`, which is what a document view adds
+below the last line to make a paragraph as tall as its lines:
+
+```cpp
+const std::vector<LayoutLineExtent> lines = layout->GetLineExtents();
+double height = layout->GetLayoutHeight();
+if (!lines.empty() && lines.back().fontHeight > 0.0f) {
+    const double lastLine = height - lines.back().top;
+    height += std::max(0.0, layout->GetLineSpacing() * lines.back().fontHeight - lastLine);
+}
+```
+
+Such a layout's lines are seldom a whole number of pixels apart (DejaVu Serif
+at 12 pt: 18.625 px). `GetCursorPos` gives the cursor in whole pixels, cut
+toward zero, so the second line's cursor reads 18 and the third 37; place a
+caret, or measure a line, with `GetCursorRect`, the strong cursor where the
+layout puts it:
+
+```cpp
+const Rect2Df caret = layout->GetCursorRect(byteIndex);   // y 18.625 on the second line
+```
+
 ## Centring text on its capitals
 
 ```cpp

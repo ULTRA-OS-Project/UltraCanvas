@@ -11,6 +11,7 @@
 // second start hands over add a tab rather than a window. The class also
 // holds the registry of open windows - File > New Window still opens one -
 // and the application exits with the last of them.
+// Version: 2.6.0 - DocumentFonts: the image's fonts for the text bar's font list
 // Version: 2.5.0 - closing the window and Quit ask Save / Don't save / Cancel for each unsaved
 //                  image in turn (ReviewUnsavedTabs); files dropped on the start page open
 // Version: 2.4.0 - closing a tab with unsaved changes asks Save / Don't save / Cancel
@@ -435,6 +436,9 @@ private:
     // The bar shows the caret's attributes, else the active text layer's,
     // else what a new text starts in.
     void SyncTextBar();
+    // The fonts the image's texts use - the one being typed, every text
+    // layer's - for the font list's "In this document".
+    std::vector<std::string> DocumentFonts() const;
     // The text being typed keeps its line spacing on every paragraph.
     void StampTextLineSpacing();
     // The topmost visible text layer whose box holds (x, y), or -1.

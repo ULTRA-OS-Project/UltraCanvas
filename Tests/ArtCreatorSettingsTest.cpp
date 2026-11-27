@@ -10,14 +10,16 @@
 //
 // It also keeps the rotation handle's look (handles.rotation) and the
 // transform bar's centre fields (transform.centre), and two windows that
-// change different settings through Update keep each other's changes.
+// change different settings through Update keep each other's changes. The
+// text bar's recent fonts (text.recentfonts) go to the file and back.
 //
 // The settings folder is pointed at a scratch folder first, so the user's own
 // settings are never read or written. Headless.
+// Version: 1.2.0 - the text bar's recent fonts
 // Version: 1.1.0 - the rotation keys; Update keeps another window's changes; no
 //                  temporary file is left behind
 // Version: 1.0.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorSettings.h"
@@ -222,6 +224,19 @@ int main() {
         TEST("a later change by the first keeps the second's",
              loaded.pickerDesign == ColorPickerWheelStyle::Bar && loaded.centreRelative &&
              loaded.rotationHandle == VectorRotationHandleStyle::Stem);
+    }
+
+    // ===== The text bar's recent fonts =====
+    {
+        std::filesystem::remove(path);
+        ArtCreatorSettings window;
+        window.Load();
+        const std::vector<std::string> fonts = {"Ubuntu Thin", "Liberation Serif"};
+        window.Update([&fonts](ArtCreatorSettings& s) { s.recentFonts = fonts; });
+        ArtCreatorSettings loaded;
+        loaded.Load();
+        TEST("the recent fonts come back in their order", loaded.recentFonts == fonts);
+        TEST("and the rest of the file has its defaults", loaded.rotationHandle == VectorRotationHandleStyle::Dial);
     }
 
     std::filesystem::remove_all(scratch);

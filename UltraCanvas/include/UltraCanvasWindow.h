@@ -1,5 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.17.0 - HandlePopupEscapeKey: Escape closes one popup per press, and its release
+//                   closes nothing (it closed the next popup, a submenu's parent menu, too)
 // Version: 2.16.0 - WindowType::Popup with a parentWindow is kept above that window only;
 //                   PopupsAboveEveryWindow says which windows' popups have none
 // Version: 2.15.0 - a popup in its own window closes when another window of the application comes to the
@@ -267,6 +269,8 @@ namespace UltraCanvas {
 
 
         std::list<PopupElement> popupElements = {};
+        // An Escape press closed a popup: its release is taken too (HandlePopupEscapeKey).
+        bool escapePressClosedPopup = false;
 
         // Drag overlay (see SetDragOverlay): drawn after the element tree of
         // every dirty rectangle it touches. The owner pointer is only ever
@@ -560,6 +564,16 @@ namespace UltraCanvas {
         bool ClosePopup(UltraCanvasUIElement& element, ClosePopupReason reason=ClosePopupReason::Manual);
         PopupElement* GetActivePopupElement();
         void CloseAllPopups();
+        // The Escape key for the popups; UltraCanvasApplication hands it
+        // every key of this window before any element sees it. A press
+        // closes the topmost popup, if that one closes on Escape
+        // (PopupElementSettings::closeByEscapeKey): one popup per press, so
+        // an open submenu goes and its menu stays. Its release closes
+        // nothing - not the popup under it, and not the window under the
+        // last one (a window that closes on an Escape's release, as the
+        // settings pages do): it is taken here too. True when the key was
+        // taken.
+        bool HandlePopupEscapeKey(const UCEvent& event);
 
         // How opaque an open popup is on screen, 0 (not seen) to 1 (the
         // default). Below 1 the popup - background, border, shadow, content,

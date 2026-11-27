@@ -7,6 +7,14 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.23.1 - the caret where the layout puts it, to the fraction of a pixel (ITextLayout::GetCursorRect):
+//                   a paragraph's second line in DejaVu Serif showed its caret 0.6 px above the line
+// Version: 1.23.0 - the font report names every family the document uses (FontReport::namedFamilies)
+// Version: 1.22.0 - FromTheme: the page the lighter of well and panel, the desk a shade darker
+// Version: 1.21.0 - a paragraph's last line is as tall as its others: a line spacing factor times its fonts'
+//                   height, line gap included (SpacedLayoutHeight) - a one-line paragraph in Palatino at
+//                   Word's single spacing was 1.0 em tall instead of 1.2, at 1.15 1.0 instead of 1.38;
+//                   a picture paragraph (Image block) fills its frame and keeps its paragraph's indent
 // Version: 1.20.0 - document observers; GoToPosition, GoToRange; heading sections moved and promoted
 // Version: 1.19.0 - SetPageSetup, SetParagraphFormat, Get/SetTableProperties, Get/SetSelectedImageWrap,
 //                   InsertNote with its text, GoToPreviousChange, GoToNextComment / GoToPreviousComment /
@@ -60,6 +68,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasInstalledFonts.h"   // IsInstalledFontName
 #include "UltraCanvasRichDocumentChart.h"
 #include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasUI.h"
@@ -155,6 +164,28 @@ constexpr int kMoveHandle = 8;
 // Room between a paragraph's text and its frame (and what the frame adds to
 // the space around the paragraph).
 constexpr float kParagraphFramePadding = 3.0f;
+
+// How tall a laid-out paragraph is, its last line spaced like the others.
+// A line spacing factor puts the lines `factor x their fonts' height` apart,
+// baseline to baseline - that height being the fonts' ascent, descent and the
+// line gap their designers gave them (1.2 em for Palatino, 1.22 for Calibri),
+// as Word and Writer space them - but the text layout ends at the last line's
+// descent. So the last line lacked that room: a paragraph of one line at
+// single spacing in Palatino was 1.0 em tall instead of 1.2, at Word's 1.15
+// 1.0 instead of 1.38, and a page of short paragraphs ran a sixth short. Word
+// and Writer give the last line its room below its text, which is where the
+// next paragraph then starts. A line taller than that already (a stated
+// height, a picture) keeps its own.
+static float SpacedLayoutHeight(ITextLayout& layout) {
+    const float height = static_cast<float>(layout.GetLayoutHeight());
+    const float factor = layout.GetLineSpacing();
+    if (factor <= 0.0f) return height;
+    const std::vector<LayoutLineExtent> lines = layout.GetLineExtents();
+    if (lines.empty() || lines.back().fontHeight <= 0.0f) return height;
+    const float lastLine = height - lines.back().top;
+    if (lastLine <= 0.0f) return height;
+    return height + std::max(0.0f, factor * lines.back().fontHeight - lastLine);
+}
 
 // A paragraph wrapped round a floating picture or frame for only some of its
 // lines: its first lines laid out narrow beside the float (`head`, the whole
@@ -273,6 +304,13 @@ public:
         pos.strongPos = Shift(pos.strongPos);
         pos.weakPos = Shift(pos.weakPos);
         return pos;
+    }
+    Rect2Df GetCursorRect(int index) const override {
+        if (index < split_) return head_->GetCursorRect(index);
+        Rect2Df rect = tail_->GetCursorRect(index - split_);
+        rect.x += tailDx_;
+        rect.y += tailTop_;
+        return rect;
     }
     UCCursorMoveResult MoveCursorVisually(bool strong, int oldIndex, int oldTrailing, int direction) const override {
         if (oldIndex < split_ || (oldIndex == split_ && direction < 0)) {
@@ -662,7 +700,9 @@ float UltraCanvasRichTextEdit::FitZoom() const {
     const float height = bounds.height - 2 * style.padding;
     if (width <= 1.0f || height <= 1.0f) return 0.0f;
     const RichPageSetup page = EffectivePageSetup();
-    float fit = width / (Px(page.widthPt) + 2.0f * style.pageGap);
+    // WidthShare: the page alone, not the desk, is the share of the width.
+    float fit = zoomFit == ZoomFit::WidthShare ? width * zoomWidthShare / Px(page.widthPt)
+                                               : width / (Px(page.widthPt) + 2.0f * style.pageGap);
     if (zoomFit == ZoomFit::WholePage) fit = std::min(fit, height / (Px(page.heightPt) + 2.0f * style.pageGap));
     return std::clamp(fit, minZoom, maxZoom);
 }
@@ -671,6 +711,12 @@ void UltraCanvasRichTextEdit::SetZoomFit(ZoomFit fit) {
     zoomFit = fit;
     visibleAreaDirty = true;
     RequestRedraw();
+}
+
+void UltraCanvasRichTextEdit::ZoomToWidthShare(float share) {
+    if (!(share > 0.0f)) return;
+    zoomWidthShare = std::clamp(share, 0.1f, 1.0f);
+    SetZoomFit(ZoomFit::WidthShare);
 }
 
 void UltraCanvasRichTextEdit::SetZoom(float factor) {
@@ -834,7 +880,9 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             : (document.firstPageDiffers && index == 0);
         frame.header = LayoutFurniture(ctx, furniture.header, index + 1, count);
         frame.footer = LayoutFurniture(ctx, furniture.footer, index + 1, count);
-        const float spacing = Px(7.0f);           // 0.25 cm, Writer's header spacing
+        // Writer's 0.25 cm between header and text, or the document's own
+        // (Word's none: RichPageSetup::furnitureSpacingPt).
+        const float spacing = Px(page.furnitureSpacingPt >= 0.0f ? page.furnitureSpacingPt : 7.0f);
         frame.headerTop = frame.top + Px(page.headerTopPt > 0.0f ? page.headerTopPt : page.marginTopPt * 0.5f);
         frame.bodyTop = frame.top + Px(page.marginTopPt);
         if (frame.header) frame.bodyTop = std::max(frame.bodyTop, frame.headerTop + frame.header->height + spacing);
@@ -1981,6 +2029,7 @@ float UltraCanvasRichTextEdit::BlockIndentFor(const RichDocBlock& block) const {
         case RichBlockType::Paragraph:
         case RichBlockType::Heading:
         case RichBlockType::MathBlock:
+        case RichBlockType::Image:          // a picture keeps its paragraph's indent
             return quote + documentIndent;
         default:
             return quote;
@@ -2137,16 +2186,17 @@ void UltraCanvasRichTextEdit::ApplyParagraphGeometry(ITextLayout* layout, const 
         // A height in points is the whole line: no multiple of the font's.
         layout->SetLineSpacing(0.0f);
         // "Exactly" is the height as given; "at least" never squeezes the
-        // text below its natural line height.
-        float height = block.lineHeightPt;
+        // text below its natural line height: its largest font's line, as
+        // lines are spaced (MakeRunsLayout measured it).
+        float height = Px(block.lineHeightPt);
         if (block.lineHeightAtLeast) {
             float fontSize = static_cast<float>(style.baseFont.fontSize);
             for (const RichTextRun& run : block.runs) {
                 if (run.fontSizePt > 0.0f) fontSize = std::max(fontSize, run.fontSizePt);
             }
-            height = std::max(height, fontSize * 1.2f);
+            height = std::max(height, layoutNaturalLinePx > 0.0f ? layoutNaturalLinePx : Px(fontSize * 1.2f));
         }
-        auto attribute = TextAttributeFactory::CreateAbsoluteLineHeight(Px(height));
+        auto attribute = TextAttributeFactory::CreateAbsoluteLineHeight(height);
         if (attribute) {
             attribute->SetRange(0, static_cast<int>(text.size()));
             layout->InsertAttribute(std::move(attribute));
@@ -2541,7 +2591,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             if (run.fontSizePt > 0.0f) font.fontSize = run.fontSizePt;
             if (!run.fontFamily.empty()) font.fontFamily = run.fontFamily;
             const auto known = lineUnitCache.find(font.fontFamily + "|" + std::to_string(font.fontSize)
-                                                  + (layoutLineGap ? "|gap" : ""));
+                                                  + (layoutLineGap ? "|gap" : "") + "|spaced");
             const float natural = known != lineUnitCache.end() ? known->second
                                                                : Px(static_cast<float>(font.fontSize)) * 1.2f;
             float height = 0.0f;
@@ -2838,13 +2888,15 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
                 || (run.imageWrap == RichTextRun::ImageWrap::Square && run.imageFloatAlign == RichTextAlign::Center));
         if (run.emptyLineHeightPt <= 0.0f && !ownLinePicture) continue;
         const FontStyle font = FontForBlock(block);
-        const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + (lineGap ? "|gap" : "");
+        // (The line as lines are spaced: its fonts' height, line gap included.)
+        const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + (lineGap ? "|gap" : "")
+                              + "|spaced";
         auto known = lineUnitCache.find(key);
         if (known == lineUnitCache.end()) {
             auto probe = ctx->CreateDocumentTextLayout("X");
             probe->SetFontStyle(font);
             probe->SetLineSpacing(lineGap ? 1.0f : 0.0f);
-            known = lineUnitCache.emplace(key, static_cast<float>(probe->GetLayoutHeight())).first;
+            known = lineUnitCache.emplace(key, SpacedLayoutHeight(*probe)).first;
         }
         emptyLineUnitPx = known->second;
         break;
@@ -2861,13 +2913,44 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
             FontStyle font = FontForBlock(block);
             if (run.fontSizePt > 0.0f) font.fontSize = run.fontSizePt;
             if (!run.fontFamily.empty()) font.fontFamily = run.fontFamily;
-            const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + (lineGap ? "|gap" : "");
+            // A picture stands in its font's line of text (ascent and
+            // descent); a cell's stated line is a multiple of its font's
+            // line as lines are spaced (line gap included).
+            const bool spaced = !run.IsInlineImage();
+            const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + (lineGap ? "|gap" : "")
+                                  + (spaced ? "|spaced" : "");
             if (lineUnitCache.count(key)) continue;
             auto probe = ctx->CreateDocumentTextLayout("X");
             probe->SetFontStyle(font);
             probe->SetLineSpacing(lineGap ? 1.0f : 0.0f);
-            lineUnitCache.emplace(key, static_cast<float>(probe->GetLayoutHeight()));
+            lineUnitCache.emplace(key, spaced ? SpacedLayoutHeight(*probe)
+                                              : static_cast<float>(probe->GetLayoutHeight()));
         }
+    }
+    // A paragraph's lines "at least" so tall: the natural line they never go
+    // below is its largest font's, line gap included.
+    layoutNaturalLinePx = 0.0f;
+    if (paragraphOriginX >= 0.0f && block.lineHeightPt > 0.0f && block.lineHeightAtLeast && !text.empty()) {
+        FontStyle font = FontForBlock(block);
+        float largest = 0.0f;
+        for (const RichTextRun& run : runs) {
+            if (run.IsInlineImage() || run.IsTextFrame() || run.text.empty()) continue;
+            const float size = run.fontSizePt > 0.0f ? run.fontSizePt : static_cast<float>(FontForBlock(block).fontSize);
+            if (size <= largest) continue;
+            largest = size;
+            font.fontSize = size;
+            font.fontFamily = run.fontFamily.empty() ? FontForBlock(block).fontFamily : run.fontFamily;
+        }
+        const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + (lineGap ? "|gap" : "")
+                              + "|spaced";
+        auto known = lineUnitCache.find(key);
+        if (known == lineUnitCache.end()) {
+            auto probe = ctx->CreateDocumentTextLayout("X");
+            probe->SetFontStyle(font);
+            probe->SetLineSpacing(lineGap ? 1.0f : 0.0f);
+            known = lineUnitCache.emplace(key, SpacedLayoutHeight(*probe)).first;
+        }
+        layoutNaturalLinePx = known->second;
     }
     if (paragraphOriginX >= 0.0f) {
         ApplyParagraphGeometry(layout.get(), block, text, paragraphOriginX, wrapWidth);
@@ -3032,8 +3115,13 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                                                  : (bl.image ? static_cast<float>(bl.image->GetWidth()) : 160.0f);
             float height = block.imageHeightPt > 0 ? Px(block.imageHeightPt)
                                                    : (bl.image ? static_cast<float>(bl.image->GetHeight()) : 120.0f);
+            // Set out into the margin where its paragraph's left indent is
+            // negative (a letterhead's logo), as far as the page's edge.
+            if (pageView && block.leftIndentPt < 0.0f) {
+                bl.textLeft = std::max(-Px(EffectivePageSetup().marginLeftPt), indent + Px(block.leftIndentPt));
+            }
             // Never wider than the text column; keep the aspect ratio.
-            const float room = std::max(8.0f, columnSpan - indent);
+            const float room = std::max(8.0f, columnSpan - bl.textLeft - Px(std::max(0.0f, block.rightIndentPt)));
             if (width > room && width > 0) {
                 height *= room / width;
                 width = room;
@@ -3256,7 +3344,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                                                   static_cast<int>(r), static_cast<int>(cellIndex));
                     ApplySelectionAttributes(cell->layout.get(), blockIndex,
                                              static_cast<int>(r), static_cast<int>(cellIndex));
-                    float textHeight = static_cast<float>(cell->layout->GetLayoutHeight());
+                    float textHeight = SpacedLayoutHeight(*cell->layout);
                     // A cell without words whose lines have a set height is
                     // one such line.
                     if (modelCell.lineHeightPt > 0.0f && UCRichDocument::ConcatenateRunText(modelCell.runs).empty()) {
@@ -3379,7 +3467,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
             }
             ApplySelectionAttributes(bl.layout.get(), blockIndex);
             bl.bounds.width = static_cast<float>(bl.layout->GetLayoutWidth());
-            bl.bounds.height = static_cast<float>(bl.layout->GetLayoutHeight()) + style.paragraphLeading;
+            bl.bounds.height = SpacedLayoutHeight(*bl.layout) + style.paragraphLeading;
             if (block.type == RichBlockType::ListItem) {
                 // The document's own label ("b)", "1.2.", "(iv)") or bullet
                 // when it has one; the view's otherwise.
@@ -3401,13 +3489,14 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
 
     // An empty block still needs a caret-sized box to click into: a line of
     // its own font (a paragraph that only anchors a picture is one line of
-    // its 10 pt, not of the view's font).
+    // its 10 pt, not of the view's font), at its line spacing (Word's 1.15).
     if (bl.bounds.height <= 0.0f) {
         const UCRichDocument* laidOut = editor.GetDocument().get();
         auto probe = ctx->CreateDocumentTextLayout("");
         probe->SetFontStyle(FontForBlock(block));
-        probe->SetLineSpacing((!laidOut || laidOut->fontLineGap) ? 1.0f : 0.0f);
-        bl.bounds.height = static_cast<float>(probe->GetLayoutHeight());
+        probe->SetLineSpacing(block.lineSpacing > 0.0f ? block.lineSpacing
+                              : (!laidOut || laidOut->fontLineGap) ? 1.0f : 0.0f);
+        bl.bounds.height = SpacedLayoutHeight(*probe);
         if (bl.bounds.height <= 0.0f) bl.bounds.height = static_cast<float>(style.baseFont.fontSize) * 1.3f;
     }
     // A paragraph without words whose lines have a set height is one such
@@ -3818,9 +3907,12 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
             return;
         }
         case RichBlockType::Image: {
+            // The picture fills its frame, as Word and Writer draw it: the
+            // size its document gives it is the frame, whatever the picture's
+            // own proportions (a 4:1 logo in a 4.5:1 frame is stretched).
             Rect2Dd target(textX, originY, bl.bounds.width, bl.bounds.height);
             if (bl.image) {
-                ctx->DrawImage(*bl.image, target, ImageFitMode::Contain);
+                ctx->DrawImage(*bl.image, target, ImageFitMode::Fill);
             } else {
                 // Missing or undecodable media: a framed box with the alt text,
                 // so the document's structure stays visible and editable.
@@ -4557,11 +4649,9 @@ Rect2Df UltraCanvasRichTextEdit::PositionRect(const RichDocPosition& position) c
         }
         int cellLength = static_cast<int>(cell->layout->GetText().size());
         int cellOffset = std::max(0, std::min(position.byteOffset, cellLength));
-        Rect2Di cursor = cell->layout->GetCursorPos(cellOffset).strongPos;
-        float cellHeight = cursor.height > 0 ? static_cast<float>(cursor.height)
-                                             : static_cast<float>(style.baseFont.fontSize) * 1.3f;
-        return Rect2Df(cellX + static_cast<float>(cursor.x),
-                       visibleArea.y + BlockToContentY(bl, cellTop + static_cast<float>(cursor.y)) - scrollOffset,
+        const Rect2Df cursor = cell->layout->GetCursorRect(cellOffset);
+        float cellHeight = cursor.height > 0 ? cursor.height : static_cast<float>(style.baseFont.fontSize) * 1.3f;
+        return Rect2Df(cellX + cursor.x, visibleArea.y + BlockToContentY(bl, cellTop + cursor.y) - scrollOffset,
                        2.0f, cellHeight);
     }
 
@@ -4571,12 +4661,12 @@ Rect2Df UltraCanvasRichTextEdit::PositionRect(const RichDocPosition& position) c
     }
     int length = static_cast<int>(bl.layout->GetText().size());
     int offset = std::max(0, std::min(position.byteOffset, length));
-    Rect2Di cursor = bl.layout->GetCursorPos(offset).strongPos;
-    float height = cursor.height > 0 ? static_cast<float>(cursor.height)
-                                     : static_cast<float>(style.baseFont.fontSize) * 1.3f;
+    // Where the layout puts the cursor, to the fraction of a pixel: lines
+    // 18.625 px apart must not show their caret at 18, 37, 55.
+    const Rect2Df cursor = bl.layout->GetCursorRect(offset);
+    float height = cursor.height > 0 ? cursor.height : static_cast<float>(style.baseFont.fontSize) * 1.3f;
     (void)y;
-    return Rect2Df(x + static_cast<float>(cursor.x),
-                   visibleArea.y + BlockToContentY(bl, static_cast<float>(cursor.y)) - scrollOffset, 2.0f, height);
+    return Rect2Df(x + cursor.x, visibleArea.y + BlockToContentY(bl, cursor.y) - scrollOffset, 2.0f, height);
 }
 
 // The laid-out cell a position addresses, or null when it addresses a block's
@@ -4777,14 +4867,14 @@ void UltraCanvasRichTextEdit::ScrollToCaret() {
         top = BlockToContentY(bl, cell->bounds.y);
         bottom = top + cell->bounds.height;
         if (cell->layout) {
-            Rect2Di cursor = cell->layout->GetCursorPos(caret.byteOffset).strongPos;
-            top = BlockToContentY(bl, cell->bounds.y + cell->textTop + static_cast<float>(cursor.y));
-            bottom = top + static_cast<float>(std::max(cursor.height, 4));
+            const Rect2Df cursor = cell->layout->GetCursorRect(caret.byteOffset);
+            top = BlockToContentY(bl, cell->bounds.y + cell->textTop + cursor.y);
+            bottom = top + std::max(cursor.height, 4.0f);
         }
     } else if (bl.layout) {
-        Rect2Di cursor = bl.layout->GetCursorPos(caret.byteOffset).strongPos;
-        top = BlockToContentY(bl, static_cast<float>(cursor.y));
-        bottom = top + static_cast<float>(std::max(cursor.height, 4));
+        const Rect2Df cursor = bl.layout->GetCursorRect(caret.byteOffset);
+        top = BlockToContentY(bl, cursor.y);
+        bottom = top + std::max(cursor.height, 4.0f);
     }
     const bool toTop = caretToTop;
     caretToTop = false;
@@ -7353,7 +7443,8 @@ int UltraCanvasRichTextEdit::CommentBoxAt(const Point2Di& elementPoint) const {
 // ===== FONTS THE DOCUMENT NEEDS =====
 
 bool UltraCanvasRichTextEdit::FontReport::operator==(const FontReport& other) const {
-    if (missingFamilies != other.missingFamilies || missingScripts.size() != other.missingScripts.size()) return false;
+    if (missingFamilies != other.missingFamilies || missingScripts.size() != other.missingScripts.size() ||
+        namedFamilies != other.namedFamilies) return false;
     for (size_t i = 0; i < missingScripts.size(); ++i) {
         const MissingScriptFont& a = missingScripts[i];
         const MissingScriptFont& b = other.missingScripts[i];
@@ -7437,14 +7528,17 @@ void UltraCanvasRichTextEdit::RefreshFontReport() {
             addBlocks(furniture->footer);
         }
 
+        report.namedFamilies = named;
         if (!named.empty()) {
             std::vector<std::string> installed = GetInstalledFontFamilies();
             for (std::string& family : installed) family = LowerAscii(family);
             for (const std::string& family : named) {
                 // Not installed, and nothing installed stands in for it by
-                // name (Helvetica is Arial on Windows, as in every program).
+                // name (Helvetica is Arial on Windows, as in every program),
+                // nor is it a face's own name ("Segoe UI Semibold", which
+                // Word writes for a weight).
                 if (std::find(installed.begin(), installed.end(), LowerAscii(family)) == installed.end()
-                    && FontFamilySubstitute(family).empty())
+                    && FontFamilySubstitute(family).empty() && !IsInstalledFontName(family))
                     report.missingFamilies.push_back(family);
             }
         }
@@ -7822,9 +7916,20 @@ RichTextEditStyle RichTextEditStyle::FromTheme(const UltraCanvasTheme& theme, co
     s.tableGuideColor = r.line;
     s.imagePlaceholderColor = r.inkFaint;
     s.borderColor = r.lineStrong;
-    s.deskColor = r.panel;
-    // the element's own role: paper of another colour than the well
-    s.pageColor = theme.Role("rich-text.page", r.well);
+    // Page view: the paper is the lighter of the well and the panel (white in
+    // the light theme, as on paper), the desk a shade darker than the panel so
+    // the page stands out on it - in the light theme a mid-light grey, in a
+    // dark one darker still. A theme may set either through the element's own
+    // roles ("rich-text.page", "rich-text.desk").
+    const bool wellLighter = UltraCanvasTheme::Luminance(r.well) > UltraCanvasTheme::Luminance(r.panel);
+    const Color paper = wellLighter ? r.well : r.panel;
+    const bool darkTheme = UltraCanvasTheme::Luminance(r.panel) < 0.18;
+    auto shade = [](const Color& c, float by) {
+        return Color(static_cast<uint8_t>(c.r * (1.0f - by)), static_cast<uint8_t>(c.g * (1.0f - by)),
+                     static_cast<uint8_t>(c.b * (1.0f - by)), c.a);
+    };
+    s.pageColor = theme.Role("rich-text.page", paper);
+    s.deskColor = theme.Role("rich-text.desk", shade(r.panel, darkTheme ? 0.35f : 0.12f));
     s.pageMarginGuideColor = r.line;
     return s;
 }

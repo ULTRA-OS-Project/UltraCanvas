@@ -4,11 +4,19 @@
 // document's tab holds its command row (File, Undo, Redo, Save and the
 // kind's command tabs), the toolbar of the command tab chosen, the document
 // itself and a status line - so the toolbar follows the tab that is open.
-// Every minute a copy of each document with unsaved changes goes to the
+// The toolbar's right end is the kind's view group (fits, zoom, panes), which
+// stays whichever command tab is chosen; a narrow window puts the command
+// tab's tools behind their chevron first. Every minute (the Settings window
+// sets how often) a copy of each document with unsaved changes goes to the
 // recovery folder; a run that ends without closing leaves them there, and
 // the next start offers them back. A template opens as a new, untitled
-// document (UltraOfficeTemplates.h).
+// document (UltraOfficeTemplates.h). The Settings window
+// (UltraOfficeSettingsDialog.h, File > Settings, Ctrl+,) sets what
+// UltraOfficeSettings.h names.
 //
+// Version: 0.5.0 - the view group at the toolbar's right end; the Settings window; Ctrl++, Ctrl+-,
+//                  Ctrl+0 zoom; autosave to the file, the recovery copies and their interval, the recent
+//                  files' count and the files reopened at the next start from the settings
 // Version: 0.4.0 - new from template (the Start tab's gallery, File > New from template) and
 //                  Save as template
 // Version: 0.3.0 - recovered documents offered on the Start tab, not in a dialog
@@ -19,6 +27,7 @@
 #pragma once
 
 #include "UltraOfficeHost.h"
+#include "UltraOfficeSettings.h"
 
 #include "UltraCanvasAppSettings.h"
 #include "UltraCanvasContainer.h"
@@ -66,6 +75,17 @@ public:
     // The user's templates folder (<settings folder>/UltraOffice/templates).
     std::filesystem::path OwnTemplatesFolder() const;
 
+    // ===== SETTINGS =====
+    // What the Settings window sets, saved in <settings folder>/UltraOffice/
+    // settings.json.
+    OfficeSettings& Settings() { return prefs_; }
+    // The Settings window (File > Settings..., Ctrl+, , the Start tab).
+    void ShowSettings();
+    // After a change in the Settings window: the theme, the autosave timer,
+    // the Start tab's recent files and each open tab follow at once.
+    void ApplySettings();
+    void ClearRecentFiles();
+
 
 private:
     bool HandleShortcut(const UltraCanvas::UCEvent& event);
@@ -77,7 +97,8 @@ private:
         std::unique_ptr<OfficeHost> host;
         std::shared_ptr<UltraCanvas::UltraCanvasContainer> pane;
         std::shared_ptr<UltraCanvas::UltraCanvasToolbar> commandRow;
-        std::shared_ptr<UltraCanvas::UltraCanvasContainer> toolbarSlot;
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> toolbarSlot;   // the command tab's bar, the view group
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> commandSlot;   // where the command tab's bar goes
         std::shared_ptr<UltraCanvas::UltraCanvasLabel> status;
         std::vector<UltraCanvas::UltraCanvasButton*> commandButtons;
         int commandTab = -1;
@@ -86,6 +107,7 @@ private:
     };
 
     UltraCanvas::UltraCanvasAppSettings settings_;
+    OfficeSettings prefs_{settings_};
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> startPane_;
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> menu_;
@@ -125,6 +147,9 @@ private:
     void Refresh(OpenDocument& doc);
     void UpdateTitle();
     void Remember(const std::string& path);
+    // The files open now, for "reopen at the next start".
+    void RememberOpenFiles();
+    void ApplyTheme();
     SaveFormat GetSaveFormat() const;
     void SetSaveFormat(SaveFormat format);
     void ShowError(const std::string& title, const std::string& message);
@@ -138,6 +163,7 @@ private:
     std::string runTag_;   // this run's copies are "<runTag>-<id>.<ext>", a crashed run's stay apart
     std::filesystem::path RecoveryFolder() const;
     void StartAutosave();
+    void RestartAutosave();
     void Autosave();
     void WriteRecovery(OpenDocument& doc);
     void RemoveRecovery(OpenDocument& doc);

@@ -293,7 +293,8 @@ border), a columns tree's section header (`columns-tree.group-header`,
 `filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`),
 the colour picker's markers (`color-picker.marker`,
 `color-picker.marker-outline`, white and black), the rich text edit's
-paper (`rich-text.page`, the well), the busy indicator's second arc
+paper and desk (`rich-text.page`, the lighter of the well and the panel;
+`rich-text.desk`, the panel a shade darker), the busy indicator's second arc
 (`busy-indicator.second-arc`, its orange), the recorder's pulse
 (`audio-recorder.pulse`, its red), the video player's, recorder's and
 tile's dark stages and bars (`video-player.stage`,

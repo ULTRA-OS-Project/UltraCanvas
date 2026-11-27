@@ -592,7 +592,10 @@ The menu system handles the following events:
 - **Enter/Space**: Execute selected item
 - **Escape**: Close menu (when `PopupElementSettings::closeByEscapeKey` is set, the default).
   The application closes the topmost popup before the key reaches any element,
-  so an open submenu closes first and its parent stays open.
+  so an open submenu closes first and its parent stays open. It does so on the
+  key's press, one popup per press; the release closes nothing - not the
+  parent menu, and not the window under the last popup, where a window closes
+  on an Escape's release (the settings pages).
 
 ## Usage Examples
 

@@ -6,6 +6,8 @@
 // the slide show) for presentations - so the window never asks "and which
 // kind is this?" (Docs/Research/UltraOfficeDesignProposal.md, §4.2).
 //
+// Version: 0.3.0 - GetViewToolbar (the view group at the right of the toolbar), ZoomIn / ZoomOut /
+//                  ZoomToActualSize (Ctrl++, Ctrl+-, Ctrl+0), ApplySettings (the Settings window)
 // Version: 0.2.0 - AttachSettings (what a kind remembers: the document's navigator), HandleShortcut (F5)
 // Version: 0.1.0
 // Last Modified: 2026-11-25
@@ -48,6 +50,14 @@ public:
     virtual std::shared_ptr<UltraCanvas::UltraCanvasUIElement> GetContent() = 0;
     // The command tabs and their toolbars, built once.
     virtual const std::vector<CommandTab>& GetCommandTabs() = 0;
+    // The view group: how the document is looked at - its fits, its zoom,
+    // its panes - at the right end of the toolbar, whichever command tab is
+    // chosen. Built once; null for none.
+    virtual std::shared_ptr<UltraCanvas::UltraCanvasToolbar> GetViewToolbar() { return nullptr; }
+    // The zoom keys: Ctrl++ / Ctrl+= , Ctrl+- and Ctrl+0.
+    virtual void ZoomIn() {}
+    virtual void ZoomOut() {}
+    virtual void ZoomToActualSize() {}
 
     // An empty document of this kind.
     virtual void NewBlank() = 0;
@@ -89,9 +99,14 @@ public:
     // Gives the keyboard to the document.
     virtual void Focus() = 0;
 
-    // The window's settings, for what a kind remembers between runs (the
-    // document's navigator, shown or not): given once, when its tab is added.
+    // The window's settings (UltraOfficeSettings.h), for what a kind
+    // remembers between runs (the document's navigator, the fit) and what a
+    // new document of the kind starts with (its font, page, slide size): given
+    // before NewBlank and again when its tab is added, so it may come twice.
     virtual void AttachSettings(UltraCanvas::UltraCanvasAppSettings* settings) { (void)settings; }
+    // The Settings window changed something: what applies to a document that
+    // is open already (the author name, the gridlines) applies now.
+    virtual void ApplySettings() {}
     // A key the window's own shortcuts leave alone, offered to the tab that
     // is open: true when the kind used it (F5 shows the document's navigator).
     virtual bool HandleShortcut(const UltraCanvas::UCEvent& event) { (void)event; return false; }

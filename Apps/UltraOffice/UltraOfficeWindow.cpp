@@ -2,6 +2,11 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.9.0 - the tab strip's + goes to the Start tab (it opened the File menu)
+// Version: 0.8.0 - the view group at the toolbar's right end; the Settings window (File > Settings...,
+//                  Ctrl+, , the Start tab); Ctrl++ / Ctrl+- / Ctrl+0; autosave to the file and the
+//                  recovery copies every few minutes as set; the recent files' count; reopening the files
+//                  open at the last close
 // Version: 0.7.0 - each tab gets the settings (AttachSettings) and the keys the window leaves alone (F5)
 // Version: 0.6.0 - PowerPoint 97-2003 decks (.ppt, .pps, .pot) are read, not written: Save asks for a name
 // Version: 0.5.0 - new from template: the Start tab's gallery, File > New from template, a template
@@ -13,6 +18,7 @@
 // Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeWindow.h"
+#include "UltraOfficeSettingsDialog.h"
 #include "UltraOfficeTemplates.h"
 #include "UltraOfficeToolbar.h"
 
@@ -36,9 +42,7 @@ namespace {
 
 constexpr int kStatusHeight = 26;
 constexpr int kStartPageWidth = 620;
-const char* kRecentKey = "recent";
-const char* kFormatKey = "saveFormat";
-constexpr unsigned kAutosaveMs = 60 * 1000;
+constexpr unsigned kMinuteMs = 60 * 1000;
 
 const char* KindName(OfficeKind kind) {
     switch (kind) {
@@ -101,6 +105,7 @@ UltraOfficeWindow::UltraOfficeWindow() : UltraCanvasWindow(), settings_("UltraOf
 }
 
 UltraOfficeWindow::~UltraOfficeWindow() {
+    if (GetSettingsDialog()) CloseSettingsDialog();   // its controls act on this window
     if (autosaveTimer_)
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(autosaveTimer_);
 }
@@ -132,9 +137,10 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
         return false;   // RequestCloseDocument removes the tab once it may go
     };
     tabs_->onNewTabRequest = [this, tabs]() {
-        // The new-tab button offers the kinds, as a menu under the strip.
+        // The new-tab button goes to the Start tab (always the first): new
+        // documents of each kind, templates, the recent files and Open.
         (void)tabs;
-        ShowFileMenu(nullptr);
+        if (startPane_) tabs_->SetActiveTab(0);
     };
     AddChild(tabs_);
 
@@ -144,10 +150,10 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
     onWindowClosing = [this]() -> bool {
         // A window that closes takes its recovery copies with it: only a run
         // that ends without closing leaves them.
-        if (closingConfirmed_) { RemoveAllRecovery(); return true; }
+        if (closingConfirmed_) { RememberOpenFiles(); RemoveAllRecovery(); return true; }
         int unsaved = 0;
         for (const auto& doc : documents_) if (doc->host->IsModified()) ++unsaved;
-        if (unsaved == 0) { RemoveAllRecovery(); return true; }
+        if (unsaved == 0) { RememberOpenFiles(); RemoveAllRecovery(); return true; }
         UltraCanvasDialogManager::ShowConfirmation(
             TrN("{n} document has unsaved changes. Close UltraOffice and lose them?",
                 "{n} documents have unsaved changes. Close UltraOffice and lose them?", unsaved),
@@ -156,8 +162,20 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
         return false;
     };
 
+    ApplyTheme();
     OfferRecovery();
-    OpenPaths(paths);
+    // The files open at the last close, when the settings say so and the
+    // start named none of its own.
+    if (paths.empty() && prefs_.GetReopenFiles()) {
+        std::vector<std::string> reopen;
+        for (const std::string& path : prefs_.GetOpenFiles()) {
+            std::error_code ec;
+            if (std::filesystem::exists(PathFromUtf8(path), ec)) reopen.push_back(path);
+        }
+        OpenPaths(reopen);
+    } else {
+        OpenPaths(paths);
+    }
     UpdateTitle();
     StartAutosave();
 }
@@ -168,7 +186,7 @@ void UltraOfficeWindow::BuildStartPage() {
     page->SetHint(Tr("Documents, spreadsheets and presentations in one window. Each opens in a tab of its own, "
                      "with the tools for its kind."));
     std::vector<std::string> recent;
-    for (const std::string& path : settings_.GetList(kRecentKey)) {
+    for (const std::string& path : prefs_.GetRecentFiles()) {
         std::error_code ec;
         if (std::filesystem::exists(PathFromUtf8(path), ec)) recent.push_back(path);
     }
@@ -190,7 +208,7 @@ void UltraOfficeWindow::BuildStartPage() {
         page->AddButton(Tr("Restore"), [this]() { RestoreAllRecovered(); });
         page->AddButton(Tr("Discard the copies"), [this]() { DiscardAllRecovered(); });
     }
-    page->SetRecent(Tr("Recent"), recent, [this](const std::string& path) { OpenPath(path); }, 8);
+    page->SetRecent(Tr("Recent"), recent, [this](const std::string& path) { OpenPath(path); }, prefs_.GetRecentCount());
     page->AddAction(Tr("Open a file..."), [this]() { ShowOpenDialog(); },
                     Tr("Word processing, spreadsheet and presentation files: ODF, Office Open XML, CSV and more."));
     page->AddSection(Tr("Start something new"));
@@ -208,6 +226,13 @@ void UltraOfficeWindow::BuildStartPage() {
     page->AddSection(Tr("Your templates"));
     page->AddNote(Tr("A document kept with File, Save as template is offered here with the others."), 30);
     page->AddButton(Tr("Open a template file"), [this]() { ShowTemplateOpenDialog(); });
+
+    // The Settings window, behind its gear, as File > Settings... is.
+    page->AddSection(Tr("Settings"));
+    page->AddNote(Tr("Your name, language, look, saving, and what new files start with."), 30);
+    auto gear = page->AddButton(Tr("Settings..."), [this]() { ShowSettings(); });
+    gear->SetIcon(IconPath("menu/settings.svg"));
+    gear->SetIconSize(18, 18);
 
     // The page is a fixed-width column: centred in the tab, scrolled when the
     // tab is shorter than it.
@@ -236,7 +261,7 @@ UltraOfficeWindow::OpenDocument* UltraOfficeWindow::AddDocument(std::unique_ptr<
     doc->name = name;
     doc->password = password;
     doc->host = std::move(host);
-    doc->host->AttachSettings(&settings_);
+    doc->host->AttachSettings(&settings_);   // again for a new one: harmless
     const int id = doc->id;
     doc->host->onChanged = [this, id]() {
         if (OpenDocument* d = FindById(id)) { d->changedSinceCopy = true; Refresh(*d); }
@@ -283,9 +308,21 @@ void UltraOfficeWindow::BuildPane(OpenDocument& doc) {
     }
     doc.pane->AddChild(doc.commandRow);
 
+    // The toolbar: the command tab's bar, which gives way - its tools behind
+    // its chevron - and the view group at the right end, which does not.
     doc.toolbarSlot = CreateContainer(id + "-toolbar");
-    doc.toolbarSlot->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    doc.toolbarSlot->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     doc.toolbarSlot->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(kToolbarHeight));
+    doc.commandSlot = CreateContainer(id + "-command-bar");
+    doc.commandSlot->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    doc.commandSlot->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    doc.commandSlot->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    doc.commandSlot->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(kToolbarHeight));
+    ContainerStyle plain;
+    plain.autoShowScrollbars = false;
+    doc.commandSlot->SetContainerStyle(plain);
+    doc.toolbarSlot->AddChild(doc.commandSlot);
+    if (auto view = doc.host->GetViewToolbar()) doc.toolbarSlot->AddChild(view);
     doc.pane->AddChild(doc.toolbarSlot);
 
     doc.pane->AddChild(doc.host->GetContent());
@@ -302,9 +339,9 @@ void UltraOfficeWindow::ShowCommandTab(OpenDocument& doc, int index) {
     const auto& commandTabs = doc.host->GetCommandTabs();
     if (index < 0 || index >= static_cast<int>(commandTabs.size())) return;
     if (doc.commandTab >= 0 && doc.commandTab < static_cast<int>(commandTabs.size()))
-        doc.toolbarSlot->RemoveChild(commandTabs[static_cast<size_t>(doc.commandTab)].toolbar);
+        doc.commandSlot->RemoveChild(commandTabs[static_cast<size_t>(doc.commandTab)].toolbar);
     doc.commandTab = index;
-    doc.toolbarSlot->AddChild(commandTabs[static_cast<size_t>(index)].toolbar);
+    doc.commandSlot->AddChild(commandTabs[static_cast<size_t>(index)].toolbar);
     for (size_t i = 0; i < doc.commandButtons.size(); ++i)
         if (doc.commandButtons[i]) doc.commandButtons[i]->SetPressed(static_cast<int>(i) == index);
     doc.host->Focus();
@@ -320,6 +357,7 @@ void UltraOfficeWindow::NewDocument(OfficeKind kind) {
         case OfficeKind::Presentation: host = CreatePresentationHost(this); break;
         default: return;
     }
+    host->AttachSettings(&settings_);   // a new one starts with the settings' font, page, slide size
     host->NewBlank();
     const int n = ++untitled_[KindSlot(kind)];
     const std::string name = kind == OfficeKind::Spreadsheet  ? TrF("Spreadsheet {0}", n)
@@ -370,7 +408,7 @@ void UltraOfficeWindow::OpenPath(const std::string& given) {
     }
     if (!std::filesystem::exists(PathFromUtf8(path), ec)) {
         ShowError(Tr("Open"), TrF("The file {0} does not exist.", path));
-        settings_.Forget(kRecentKey, path);
+        prefs_.ForgetRecentFile(path);
         settings_.Save();
         return;
     }
@@ -441,7 +479,7 @@ void UltraOfficeWindow::ShowFileMenu(UltraCanvasUIElement* anchor) {
     menu_->AddItem(MenuItemData::Submenu(Tr("New from template..."), fromTemplate));
     menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Open..."), "Ctrl+O", [this]() { ShowOpenDialog(); }));
     std::vector<MenuItemData> recent;
-    for (const std::string& path : settings_.GetList(kRecentKey))
+    for (const std::string& path : prefs_.GetRecentFiles())
         recent.push_back(MenuItemData::Action(FileNameOf(path), [this, path]() { OpenPath(path); }));
     if (!recent.empty()) menu_->AddItem(MenuItemData::Submenu(Tr("Open recent"), recent));
     if (doc) {
@@ -463,6 +501,7 @@ void UltraOfficeWindow::ShowFileMenu(UltraCanvasUIElement* anchor) {
                             [this]() { SetSaveFormat(SaveFormat::OfficeOpenXml); }),
         MenuItemData::Radio(Tr("OpenDocument (.odt, .ods, .odp)"), 1, format == SaveFormat::OpenDocument,
                             [this]() { SetSaveFormat(SaveFormat::OpenDocument); })}));
+    menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Settings..."), "Ctrl+,", [this]() { ShowSettings(); }));
     menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Quit"), "Ctrl+Q", [this]() { Close(); }));
 
     PopupElementSettings popup;
@@ -651,15 +690,37 @@ std::filesystem::path UltraOfficeWindow::RecoveryFolder() const {
 void UltraOfficeWindow::StartAutosave() {
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app || RecoveryFolder().empty()) return;
-    autosaveTimer_ = app->StartTimer(kAutosaveMs, true, [this](TimerId) { Autosave(); });
+    const unsigned interval = static_cast<unsigned>(prefs_.GetAutosaveMinutes()) * kMinuteMs;
+    autosaveTimer_ = app->StartTimer(interval, true, [this](TimerId) { Autosave(); });
+}
+
+void UltraOfficeWindow::RestartAutosave() {
+    if (autosaveTimer_)
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(autosaveTimer_);
+    autosaveTimer_ = 0;
+    StartAutosave();
 }
 
 void UltraOfficeWindow::Autosave() {
+    const bool toFile = prefs_.GetAutosave();
+    const bool copies = prefs_.GetRecoveryCopies();
     for (auto& doc : documents_) {
-        if (doc->host->IsModified()) {
+        // Autosave: back into its own file, when it has one it can be
+        // written to; quietly - a document it cannot write keeps its
+        // recovery copy, and Save says why.
+        if (toFile && doc->host->IsModified() && !doc->path.empty() && doc->host->CanSaveInPlace() &&
+            !IsReadOnlyFormat(doc->path)) {
+            std::string error;
+            if (doc->host->Save(doc->path, doc->password, error)) {
+                RemoveRecovery(*doc);
+                Refresh(*doc);
+                continue;
+            }
+        }
+        if (copies && doc->host->IsModified()) {
             if (doc->changedSinceCopy || doc->recoveryCopy.empty()) WriteRecovery(*doc);
         } else if (!doc->recoveryCopy.empty()) {
-            RemoveRecovery(*doc);   // undone back to the saved state
+            RemoveRecovery(*doc);   // undone back to the saved state, or no copies wanted
         }
     }
 }
@@ -823,7 +884,18 @@ bool UltraOfficeWindow::HandleShortcut(const UCEvent& event) {
         if (OpenDocument* doc = Active(); doc && doc->host->HandleShortcut(event)) return true;
     if (event.type == UCEventType::KeyDown && event.ctrl && !event.alt) {
         OpenDocument* doc = Active();
+        // The zoom of the tab open: Ctrl++ (or Ctrl+=, the same key), Ctrl+-,
+        // Ctrl+0.
+        if (doc) {
+            switch (event.virtualKey) {
+                case UCKeys::Plus: case UCKeys::Equal: case UCKeys::NumPadPlus: doc->host->ZoomIn(); return true;
+                case UCKeys::Minus: case UCKeys::NumPadMinus: doc->host->ZoomOut(); return true;
+                case UCKeys::Key0: if (!event.shift) { doc->host->ZoomToActualSize(); return true; } break;
+                default: break;
+            }
+        }
         switch (event.virtualKey) {
+            case UCKeys::Comma: ShowSettings(); return true;
             case UCKeys::N: NewDocument(event.shift ? OfficeKind::Spreadsheet : OfficeKind::Document); return true;
             case UCKeys::O: ShowOpenDialog(); return true;
             case UCKeys::S: if (doc) { Save(*doc, event.shift); return true; } break;
@@ -868,17 +940,54 @@ void UltraOfficeWindow::UpdateTitle() {
 }
 
 void UltraOfficeWindow::Remember(const std::string& path) {
-    settings_.Remember(kRecentKey, path, 12);
+    prefs_.RememberRecentFile(path);
     settings_.Save();
 }
 
-SaveFormat UltraOfficeWindow::GetSaveFormat() const {
-    return settings_.GetString(kFormatKey, "ooxml") == "odf" ? SaveFormat::OpenDocument : SaveFormat::OfficeOpenXml;
+void UltraOfficeWindow::RememberOpenFiles() {
+    std::vector<std::string> open;
+    for (const DocumentSummary& doc : GetDocuments())
+        if (!doc.path.empty()) open.push_back(doc.path);
+    prefs_.SetOpenFiles(open);
+    settings_.Save();
 }
+
+SaveFormat UltraOfficeWindow::GetSaveFormat() const { return prefs_.GetSaveFormat(); }
 
 void UltraOfficeWindow::SetSaveFormat(SaveFormat format) {
-    settings_.Set(kFormatKey, std::string(format == SaveFormat::OpenDocument ? "odf" : "ooxml"));
+    prefs_.SetSaveFormat(format);
     settings_.Save();
+}
+
+// ===== SETTINGS =====
+
+void UltraOfficeWindow::ShowSettings() { ShowSettingsDialog(*this); }
+
+void UltraOfficeWindow::ApplyTheme() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    const ThemeChoice theme = prefs_.GetTheme();
+    const ThemePolicy wanted = theme == ThemeChoice::Light ? ThemePolicy::Light
+                             : theme == ThemeChoice::Dark  ? ThemePolicy::Dark
+                                                           : ThemePolicy::FollowHost;
+    // Set only on a change: SetThemePolicy builds and applies the theme.
+    if (app->GetThemePolicy() != wanted) app->SetThemePolicy(wanted);
+}
+
+void UltraOfficeWindow::ApplySettings() {
+    ApplyTheme();
+    RestartAutosave();
+    for (auto& doc : documents_) {
+        doc->host->ApplySettings();
+        Refresh(*doc);
+    }
+    RebuildStartPageLater();   // the recent files' count
+}
+
+void UltraOfficeWindow::ClearRecentFiles() {
+    prefs_.ClearRecentFiles();
+    settings_.Save();
+    RebuildStartPageLater();
 }
 
 void UltraOfficeWindow::ShowError(const std::string& title, const std::string& message) {

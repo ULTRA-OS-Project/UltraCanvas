@@ -3,6 +3,8 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.6.0 - the text bar's font list (the framework's font picker): the fonts of the image's
+//                  text layers under "In this document", the recent fonts kept in the settings
 // Version: 2.5.0 - closing a tab with unsaved changes asks Save / Don't save / Cancel; Save
 //                  closes the tab once the image is written (Save As for an untitled one)
 // Version: 2.4.0 - the start page in place of a blank canvas while no image is open: Create new
@@ -2938,8 +2940,26 @@ void UltraPaintWindow::BuildTextBar() {
     textBar->onControlDone = [this]() {
         if (textSession && textEditor && textEditorHost && textEditorHost->IsVisible()) textEditor->SetFocus(true);
     };
+    // The font list: the image's fonts on top, then the ones chosen last
+    // (kept in the settings), then every installed font.
+    textBar->onFontListOpening = [this]() { textBar->SetDocumentFonts(DocumentFonts()); };
+    textBar->SetRecentFonts(settings.recentFonts);
+    textBar->onRecentFontsChanged = [this](const std::vector<std::string>& fonts) {
+        settings.recentFonts = fonts;
+        settings.SaveRecentFonts();
+    };
     textBar->SetVisible(false);
     window->AddChild(textBar);
+}
+
+std::vector<std::string> UltraPaintWindow::DocumentFonts() const {
+    std::vector<std::string> fonts;
+    if (textSession && textEditor) AddTextFormatFonts(fonts, textSession->content.fontFamily, textEditor->GetDocument().get());
+    if (document) {
+        for (const auto& layer : document->GetLayers())
+            if (layer && layer->text) AddTextFormatFonts(fonts, layer->text->fontFamily, layer->text->document.get());
+    }
+    return fonts;
 }
 
 void UltraPaintWindow::ShowTextBar(bool show) {
