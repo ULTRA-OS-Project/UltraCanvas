@@ -28,7 +28,7 @@ six phases, is
 
 | Part | What it does |
 |---|---|
-| The tabs | **Start**, then one tab per open file; the icon says its kind, a dot marks unsaved changes, **+** opens the File menu |
+| The tabs | **Start**, then one tab per open file; the icon says its kind, a dot marks unsaved changes, **+** goes to the Start tab |
 | The command row | **File** (the menu below), **Undo**, **Redo**, **Save**, then the command tabs of the file's kind |
 | The toolbar | The tools of the command tab chosen, and at its right end the kind's **view group** (below), which stays whichever command tab is chosen; in a narrow window the command tab's tools go behind a chevron menu first, and the view group stays whole. At 1280 px every command tab of every kind fits beside the view group: tools whose icon says them are icons (the tooltip names them), and the alignment, the lists and a slide's shape alignment each share one slot - it does the tool picked last, and resting the pointer on it folds out the others |
 | The status line | Where the caret is (documents), the cell and the sum, average and count of the selection (spreadsheets), the number of slides (presentations) |

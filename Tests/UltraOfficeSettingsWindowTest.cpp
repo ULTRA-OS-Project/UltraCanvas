@@ -29,6 +29,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasSettingsPageKit.h"
+#include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasToolbar.h"
@@ -179,6 +180,16 @@ int main() {
     std::printf("=== The view group of each kind ===\n");
     window->NewDocument(OfficeKind::Document);
     PumpUntil(app, *window, [] { return false; }, 300);
+    if (auto* strip = Find<UltraCanvasTabbedContainer>(window.get(), "office-tabs")) {
+        Check(strip->GetActiveTab() != 0, "a new document's tab is the active one");
+        if (strip->onNewTabRequest) strip->onNewTabRequest();
+        PumpUntil(app, *window, [] { return false; }, 100);
+        Check(strip->GetActiveTab() == 0, "the tab strip's + goes to the Start tab");
+        strip->SetActiveTab(strip->GetTabCount() - 1);
+        PumpUntil(app, *window, [] { return false; }, 100);
+    } else {
+        Check(false, "the tab strip is found");
+    }
     CheckViewGroup(*window, "document", "office-document-view",
                    {"doc-navigator", "doc-pageview", "doc-fitwidth", "doc-fitpage", "doc-fitshare", "doc-share", "doc-zoomout",
                     "doc-zoom", "doc-zoomin"});

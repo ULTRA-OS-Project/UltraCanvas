@@ -2,6 +2,7 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.9.0 - the tab strip's + goes to the Start tab (it opened the File menu)
 // Version: 0.8.0 - the view group at the toolbar's right end; the Settings window (File > Settings...,
 //                  Ctrl+, , the Start tab); Ctrl++ / Ctrl+- / Ctrl+0; autosave to the file and the
 //                  recovery copies every few minutes as set; the recent files' count; reopening the files
@@ -136,9 +137,10 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
         return false;   // RequestCloseDocument removes the tab once it may go
     };
     tabs_->onNewTabRequest = [this, tabs]() {
-        // The new-tab button offers the kinds, as a menu under the strip.
+        // The new-tab button goes to the Start tab (always the first): new
+        // documents of each kind, templates, the recent files and Open.
         (void)tabs;
-        ShowFileMenu(nullptr);
+        if (startPane_) tabs_->SetActiveTab(0);
     };
     AddChild(tabs_);
 
