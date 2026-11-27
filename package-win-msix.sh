@@ -7,7 +7,15 @@
 # CI runners and in the MSYS2 environment build.yml sets up.
 #
 # Usage:
-#   ./package-win-msix.sh [--mode test|store|signed]
+#   ./package-win-msix.sh [--mode test|store|signed] [--app <Program>]
+#
+# Without --app the package is the whole suite, one Start menu entry for each
+# application. --app <Program> packages one application on its own instead,
+# for a product of its own in the Microsoft Store: its .exe name in dist/
+# without .exe (Texter, which the package names UltraTexter), with the DLLs,
+# plug-ins, run-time modules and media it loads and nothing else of the
+# suite. Its version is the application's own (line 1 of its changelog), and
+# its Partner Center identity is its own too.
 #
 # The modes (Docs/UltraCanvas/UltraCanvasWindowsMSIX.md says more):
 #   test    (default) Not signed. The Publisher carries Microsoft's "unsigned
@@ -24,11 +32,22 @@
 #           store. MSIX_PUBLISHER must be exactly that certificate's subject.
 #
 # Output: dist-msix/UltraCanvas-Windows-<version>-<arch>[-test|-store].msix
+#         dist-msix/<Name>-Windows-<version>-<arch>[-test|-store].msix with --app
 #
 # Environment:
 #   MSIX_IDENTITY_NAME           default ULTRAOSDevelopment.UltraCanvas
+#                                (with --app: ULTRAOSDevelopment.<Name>)
 #   MSIX_PUBLISHER               default the subject SignUltraDemo.ps1 uses
 #   MSIX_PUBLISHER_DISPLAY_NAME  default ULTRA OS Development GmbH
+#   MSIX_DISPLAY_NAME            the package's name, and with --app the Start
+#                                menu entry's. The Store accepts only a name
+#                                reserved for the product in Partner Center.
+#                                Default UltraCanvas; with --app the
+#                                application's name (UltraTexter for Texter)
+#   MSIX_DESCRIPTION             the package's description
+#   MSIX_VERSION                 x.y.z in place of the changelog's: a Store
+#                                submission needs a higher version than the
+#                                last, also when only the framework changed
 #   MSIX_TIMESTAMP_URL           default http://timestamp.digicert.com
 #   MSIX_ALLOW_ELEVATION=1       declare allowElevation, so UltraFiler's "Delete
 #                                as administrator" works from the package. The
@@ -38,10 +57,13 @@
 set -euo pipefail
 
 MODE=test
+APP=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --mode)   MODE="${2:-}"; shift 2 ;;
         --mode=*) MODE="${1#--mode=}"; shift ;;
+        --app)    APP="${2:-}"; [ -n "$APP" ] || { echo "Error: --app needs a program's name (Texter)" >&2; exit 1; }; shift 2 ;;
+        --app=*)  APP="${1#--app=}"; [ -n "$APP" ] || { echo "Error: --app needs a program's name (Texter)" >&2; exit 1; }; shift ;;
         -h|--help) sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//;$d'; exit 0 ;;
         *) echo "Error: unknown argument $1" >&2; exit 1 ;;
     esac
@@ -55,7 +77,44 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 UC_CHANGELOG="Docs/UltraCanvas/CHANGELOG.md"
-VERSION=$(sed -nE '1s/^#### [0-9-]+ \*([0-9]+\.[0-9]+\.[0-9]+)\*.*/\1/p' "$UC_CHANGELOG")
+PACKAGE_NAME="UltraCanvas"
+if [ -n "$APP" ]; then
+    case "$APP" in
+        */*|*\\*|.*|*.exe) echo "Error: '$APP' is not a program's name (Texter, not Texter.exe)" >&2; exit 1 ;;
+    esac
+    if [ ! -f "dist/$APP.exe" ]; then
+        echo "Error: dist/$APP.exe is not there - --app takes a program's name as dist/ has it, after ./package-win.sh" >&2
+        exit 1
+    fi
+    # An application versions itself: line 1 of its own changelog, which is
+    # Docs/<Program>/ for most and these few otherwise (the table in
+    # scripts/package-store-app.sh, from cmake/UltraCanvasVersion.cmake).
+    case "$APP" in
+        UltraAIApp)               UC_CHANGELOG="Docs/UltraAI/CHANGELOG.md" ;;
+        UOS-Settings)             UC_CHANGELOG="Docs/UOSSettings/CHANGELOG.md" ;;
+        ultrafibu)                UC_CHANGELOG="Docs/UltraFIBU/CHANGELOG.md" ;;
+        ultrapress)               UC_CHANGELOG="Docs/UltraPress/CHANGELOG.md" ;;
+        UltraCanvasDemo|ultramsg) ;;
+        anchorpoint-cli)          UC_CHANGELOG="Docs/AnchorPoint/CHANGELOG.md" ;;
+        *)                        UC_CHANGELOG="Docs/$APP/CHANGELOG.md" ;;
+    esac
+    # The name the application has as a product of its own, where it is not
+    # its program's: the package's file name, its default identity, and (below)
+    # its name in the Store and the Start menu.
+    case "$APP" in
+        Texter) PACKAGE_NAME="UltraTexter" ;;
+        *)      PACKAGE_NAME="$APP" ;;
+    esac
+fi
+if [ -n "${MSIX_VERSION:-}" ]; then
+    VERSION="$MSIX_VERSION"
+elif [ ! -f "$UC_CHANGELOG" ]; then
+    echo "Error: no $UC_CHANGELOG to read the version from - set MSIX_VERSION" >&2
+    exit 1
+else
+    # x.y.z, or x.y (Texter's); the layout script makes four parts of either.
+    VERSION=$(sed -nE '1s/^#### [0-9-]+ \*([0-9]+\.[0-9]+(\.[0-9]+)?)\*.*/\1/p' "$UC_CHANGELOG")
+fi
 if [ -z "$VERSION" ]; then
     echo "Error: could not parse version from $UC_CHANGELOG (expected '#### YYYY-MM-DD *x.y.z*')" >&2
     exit 1
@@ -81,7 +140,7 @@ if [ "$MODE" = store ]; then
         fi
     done
 fi
-IDENTITY_NAME="${MSIX_IDENTITY_NAME:-ULTRAOSDevelopment.UltraCanvas}"
+IDENTITY_NAME="${MSIX_IDENTITY_NAME:-ULTRAOSDevelopment.$PACKAGE_NAME}"
 PUBLISHER="${MSIX_PUBLISHER:-$DEFAULT_PUBLISHER}"
 PUBLISHER_DISPLAY_NAME="${MSIX_PUBLISHER_DISPLAY_NAME:-ULTRA OS Development GmbH}"
 
@@ -138,21 +197,21 @@ winpath() { cygpath -w "$1"; }
 
 # ── Layout ──────────────────────────────────────────────────────────────────
 
-WORK_DIR="build-msix/$MODE"
+WORK_DIR="build-msix/$MODE${APP:+-$APP}"
 LAYOUT="$WORK_DIR/layout"
 PRI_ROOT="$WORK_DIR/pri"
 PRI_CONFIG="$WORK_DIR/priconfig.xml"
 OUT_DIR="dist-msix"
 SUFFIX=""
 [ "$MODE" != signed ] && SUFFIX="-$MODE"
-PACKAGE="$OUT_DIR/UltraCanvas-Windows-$VERSION-$ARCH_LABEL$SUFFIX.msix"
+PACKAGE="$OUT_DIR/$PACKAGE_NAME-Windows-$VERSION-$ARCH_LABEL$SUFFIX.msix"
 
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR" "$OUT_DIR"
 rm -f "$PACKAGE"
 
 echo ""
-echo "── MSIX layout ($MODE, $MSIX_ARCH, $VERSION) ──"
+echo "── MSIX layout (${APP:+$PACKAGE_NAME on its own, }$MODE, $MSIX_ARCH, $VERSION) ──"
 LAYOUT_ARGS=(
     --dist dist
     --layout "$LAYOUT"
@@ -165,6 +224,17 @@ LAYOUT_ARGS=(
     --publisher-display-name "$PUBLISHER_DISPLAY_NAME"
 )
 [ "$MODE" = test ] && LAYOUT_ARGS+=(--unsigned-test)
+if [ -n "$APP" ]; then
+    # One name for the package and its Start menu entry: the one the Store
+    # lists the product under.
+    APP_DISPLAY_NAME="${MSIX_DISPLAY_NAME:-}"
+    [ -z "$APP_DISPLAY_NAME" ] && [ "$PACKAGE_NAME" != "$APP" ] && APP_DISPLAY_NAME="$PACKAGE_NAME"
+    LAYOUT_ARGS+=(--app "$APP")
+    [ -n "$APP_DISPLAY_NAME" ] && LAYOUT_ARGS+=(--app-display-name "$APP_DISPLAY_NAME" --display-name "$APP_DISPLAY_NAME")
+elif [ -n "${MSIX_DISPLAY_NAME:-}" ]; then
+    LAYOUT_ARGS+=(--display-name "$MSIX_DISPLAY_NAME")
+fi
+[ -n "${MSIX_DESCRIPTION:-}" ] && LAYOUT_ARGS+=(--description "$MSIX_DESCRIPTION")
 [ "${MSIX_ALLOW_ELEVATION:-}" = 1 ] && LAYOUT_ARGS+=(--allow-elevation)
 PYTHON="$(command -v python3 || command -v python)"
 "$PYTHON" scripts/make_msix_layout.py "${LAYOUT_ARGS[@]}"

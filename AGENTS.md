@@ -727,7 +727,12 @@ framework on top. The rules:
 `package-win.sh` copies every `.exe` into `dist/`, and the zip, the installer
 and the MSIX (`package-win-msix.sh`) are all built from that one folder. The
 MSIX is one package for the whole suite. **Never give an app its own MSIX:**
-it would carry a copy of all the shared DLLs. An app gets its Start menu
+it would carry a copy of all the shared DLLs. The one exception is an app
+published in the Microsoft Store as a product of its own (UltraTexter):
+`./package-win-msix.sh --app <Program>` cuts it out of `dist/` with only what
+it loads, under the app's own version and Partner Center identity, beside the
+suite package and never in its place (*One application on its own* in
+`Docs/UltraCanvas/UltraCanvasWindowsMSIX.md`). An app gets its Start menu
 entry in the MSIX under the installer's rule, read from the same sources:
 its desktop entry (`Apps/<App>/<App>.desktop`: `Name=`, `Comment=`, `Icon=`)
 or, without one, a GUI-subsystem `.exe`. So a new app needs nothing added for
