@@ -1,5 +1,6 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.4.0 - GetCursorRect: the strong cursor in fractional pixels
 // Version: 1.3.0 - GetLineExtents gives each line's font height (LayoutLineExtent::fontHeight)
 // Version: 1.2.0 - a layout with glyph positions left unrounded (a document's text); CreateFontFeatures
 // Version: 1.1.8 - CreateLetterSpacing takes fractional pixels
@@ -1026,6 +1027,15 @@ namespace UltraCanvas {
         result.weakPos = Rect2Di(weak.x / PANGO_SCALE, weak.y / PANGO_SCALE,
                                  weak.width / PANGO_SCALE, weak.height / PANGO_SCALE);
         return result;
+    }
+
+    Rect2Df UCTextLayout::GetCursorRect(int byteIndex) const {
+        if (!layout) return {};
+        PangoRectangle strong;
+        pango_layout_get_cursor_pos(layout, byteIndex, &strong, nullptr);
+        const float scale = static_cast<float>(PANGO_SCALE);
+        return Rect2Df(static_cast<float>(strong.x) / scale, static_cast<float>(strong.y) / scale,
+                       static_cast<float>(strong.width) / scale, static_cast<float>(strong.height) / scale);
     }
 
     UCCursorMoveResult UCTextLayout::MoveCursorVisually(bool strongCursor, int oldIndex,

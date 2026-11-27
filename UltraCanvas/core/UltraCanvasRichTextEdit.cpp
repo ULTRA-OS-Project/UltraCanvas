@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.23.1 - the caret where the layout puts it, to the fraction of a pixel (ITextLayout::GetCursorRect):
+//                   a paragraph's second line in DejaVu Serif showed its caret 0.6 px above the line
 // Version: 1.23.0 - the font report names every family the document uses (FontReport::namedFamilies)
 // Version: 1.22.0 - FromTheme: the page the lighter of well and panel, the desk a shade darker
 // Version: 1.21.0 - a paragraph's last line is as tall as its others: a line spacing factor times its fonts'
@@ -302,6 +304,13 @@ public:
         pos.strongPos = Shift(pos.strongPos);
         pos.weakPos = Shift(pos.weakPos);
         return pos;
+    }
+    Rect2Df GetCursorRect(int index) const override {
+        if (index < split_) return head_->GetCursorRect(index);
+        Rect2Df rect = tail_->GetCursorRect(index - split_);
+        rect.x += tailDx_;
+        rect.y += tailTop_;
+        return rect;
     }
     UCCursorMoveResult MoveCursorVisually(bool strong, int oldIndex, int oldTrailing, int direction) const override {
         if (oldIndex < split_ || (oldIndex == split_ && direction < 0)) {
@@ -4640,11 +4649,9 @@ Rect2Df UltraCanvasRichTextEdit::PositionRect(const RichDocPosition& position) c
         }
         int cellLength = static_cast<int>(cell->layout->GetText().size());
         int cellOffset = std::max(0, std::min(position.byteOffset, cellLength));
-        Rect2Di cursor = cell->layout->GetCursorPos(cellOffset).strongPos;
-        float cellHeight = cursor.height > 0 ? static_cast<float>(cursor.height)
-                                             : static_cast<float>(style.baseFont.fontSize) * 1.3f;
-        return Rect2Df(cellX + static_cast<float>(cursor.x),
-                       visibleArea.y + BlockToContentY(bl, cellTop + static_cast<float>(cursor.y)) - scrollOffset,
+        const Rect2Df cursor = cell->layout->GetCursorRect(cellOffset);
+        float cellHeight = cursor.height > 0 ? cursor.height : static_cast<float>(style.baseFont.fontSize) * 1.3f;
+        return Rect2Df(cellX + cursor.x, visibleArea.y + BlockToContentY(bl, cellTop + cursor.y) - scrollOffset,
                        2.0f, cellHeight);
     }
 
@@ -4654,12 +4661,12 @@ Rect2Df UltraCanvasRichTextEdit::PositionRect(const RichDocPosition& position) c
     }
     int length = static_cast<int>(bl.layout->GetText().size());
     int offset = std::max(0, std::min(position.byteOffset, length));
-    Rect2Di cursor = bl.layout->GetCursorPos(offset).strongPos;
-    float height = cursor.height > 0 ? static_cast<float>(cursor.height)
-                                     : static_cast<float>(style.baseFont.fontSize) * 1.3f;
+    // Where the layout puts the cursor, to the fraction of a pixel: lines
+    // 18.625 px apart must not show their caret at 18, 37, 55.
+    const Rect2Df cursor = bl.layout->GetCursorRect(offset);
+    float height = cursor.height > 0 ? cursor.height : static_cast<float>(style.baseFont.fontSize) * 1.3f;
     (void)y;
-    return Rect2Df(x + static_cast<float>(cursor.x),
-                   visibleArea.y + BlockToContentY(bl, static_cast<float>(cursor.y)) - scrollOffset, 2.0f, height);
+    return Rect2Df(x + cursor.x, visibleArea.y + BlockToContentY(bl, cursor.y) - scrollOffset, 2.0f, height);
 }
 
 // The laid-out cell a position addresses, or null when it addresses a block's
@@ -4860,14 +4867,14 @@ void UltraCanvasRichTextEdit::ScrollToCaret() {
         top = BlockToContentY(bl, cell->bounds.y);
         bottom = top + cell->bounds.height;
         if (cell->layout) {
-            Rect2Di cursor = cell->layout->GetCursorPos(caret.byteOffset).strongPos;
-            top = BlockToContentY(bl, cell->bounds.y + cell->textTop + static_cast<float>(cursor.y));
-            bottom = top + static_cast<float>(std::max(cursor.height, 4));
+            const Rect2Df cursor = cell->layout->GetCursorRect(caret.byteOffset);
+            top = BlockToContentY(bl, cell->bounds.y + cell->textTop + cursor.y);
+            bottom = top + std::max(cursor.height, 4.0f);
         }
     } else if (bl.layout) {
-        Rect2Di cursor = bl.layout->GetCursorPos(caret.byteOffset).strongPos;
-        top = BlockToContentY(bl, static_cast<float>(cursor.y));
-        bottom = top + static_cast<float>(std::max(cursor.height, 4));
+        const Rect2Df cursor = bl.layout->GetCursorRect(caret.byteOffset);
+        top = BlockToContentY(bl, cursor.y);
+        bottom = top + std::max(cursor.height, 4.0f);
     }
     const bool toTop = caretToTop;
     caretToTop = false;

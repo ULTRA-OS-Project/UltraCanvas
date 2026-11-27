@@ -249,6 +249,16 @@ if (!lines.empty() && lines.back().fontHeight > 0.0f) {
 }
 ```
 
+Such a layout's lines are seldom a whole number of pixels apart (DejaVu Serif
+at 12 pt: 18.625 px). `GetCursorPos` gives the cursor in whole pixels, cut
+toward zero, so the second line's cursor reads 18 and the third 37; place a
+caret, or measure a line, with `GetCursorRect`, the strong cursor where the
+layout puts it:
+
+```cpp
+const Rect2Df caret = layout->GetCursorRect(byteIndex);   // y 18.625 on the second line
+```
+
 ## Centring text on its capitals
 
 ```cpp

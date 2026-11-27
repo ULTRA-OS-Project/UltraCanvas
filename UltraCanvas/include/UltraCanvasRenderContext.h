@@ -1,5 +1,7 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.15.0 - ITextLayout::GetCursorRect: the strong cursor in fractional pixels (GetCursorPos rounds
+//                   toward zero)
 // Version: 2.14.0 - LayoutLineExtent::fontHeight: the height of a line's fonts, line gap included, which a
 //                   line spacing factor multiplies
 // Version: 2.13.0 - CreateDocumentTextLayout (glyphs where the font puts them) and TextAttributeFactory::CreateFontFeatures
@@ -1158,6 +1160,17 @@ namespace UltraCanvas {
         virtual double IndexToBaseline(int byteIndex) const = 0;
         virtual UCLayoutLineXPos IndexToLineX(int byteIndex, bool trailing) const = 0;
         virtual UCCursorPos GetCursorPos(int byteIndex) const = 0;
+        // The strong cursor at `byteIndex` where the layout puts it, in
+        // fractional pixels. GetCursorPos gives whole pixels, cut toward zero:
+        // lines 18.625 px apart (DejaVu Serif at 12 pt) put the second line's
+        // cursor at 18 and the third at 37, so a caret, or anything measured
+        // from one, drifted up to a pixel off the line it stood on. The
+        // default is GetCursorPos's rectangle.
+        virtual Rect2Df GetCursorRect(int byteIndex) const {
+            const Rect2Di pos = GetCursorPos(byteIndex).strongPos;
+            return Rect2Df(static_cast<float>(pos.x), static_cast<float>(pos.y),
+                           static_cast<float>(pos.width), static_cast<float>(pos.height));
+        }
         virtual UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,
                                               int oldTrailing, int direction) const = 0;
 

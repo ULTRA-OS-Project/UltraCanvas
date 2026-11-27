@@ -28,6 +28,7 @@
 #include "UltraCanvasZipPackage.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "DisplayRequired.h"
+#include "../libspecific/Cairo/RenderContextCairo.h"
 
 #include <cairo/cairo.h>
 
@@ -3214,76 +3215,111 @@ int main() {
         };
 
         // --- Lines ---
-        // A font with a tall line where the machine has one (P052, the
-        // Palatino of the URW fonts: 1.2 em, a fifth of it line gap), else
-        // whatever the paragraph is drawn in: the multiples hold for any font.
-        std::string font;
+        // Measured in a font with a tall line where the machine has one (P052,
+        // the Palatino of the URW fonts: 1.2 em, a fifth of it line gap), and
+        // again in DejaVu Serif where it is installed: its line, 1.164 em, is
+        // 18.625 px at 12 pt, so a measure cut to whole pixels anywhere comes
+        // out short of the layout's own (18 against 18.625: a two-line
+        // paragraph 1.25 px off "two lines") where P052's 19.2 hid it. Each
+        // font with hinted metrics off (the default: fractional ascents and
+        // descents) and on (whole pixels). The multiples hold for any font.
+        std::vector<std::string> lineFonts;
         for (const char* candidate : {"P052", "Liberation Serif", "DejaVu Serif"}) {
-            if (IsFontFamilyAvailable(candidate)) { font = candidate; break; }
+            if (IsFontFamilyAvailable(candidate)) { lineFonts.push_back(candidate); break; }
         }
-        if (font.empty()) font = edit->GetStyle().baseFont.fontFamily;
-        std::cerr << "  (measured in " << font << ")" << std::endl;
-        // A paragraph at Word's line spacing `line` (240ths of single, "auto"),
-        // its text and its mark in `font` at `halfPoints`; "|" breaks the line.
-        auto paragraph = [&](const std::string& text, int line, int halfPoints) {
-            const std::string rPr = "<w:rPr><w:rFonts w:ascii=\"" + font + "\" w:hAnsi=\"" + font + "\"/><w:sz w:val=\""
-                                  + std::to_string(halfPoints) + "\"/></w:rPr>";
-            std::string xml = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"" + std::to_string(line)
-                            + "\" w:lineRule=\"auto\"/>" + rPr + "</w:pPr>";
-            size_t from = 0;
-            while (from <= text.size() && !text.empty()) {
-                const size_t bar = text.find('|', from);
-                const std::string piece = text.substr(from, bar == std::string::npos ? std::string::npos : bar - from);
-                xml += "<w:r>" + rPr + (from > 0 ? "<w:br/>" : "") + "<w:t>" + piece + "</w:t></w:r>";
-                if (bar == std::string::npos) break;
-                from = bar + 1;
-            }
-            return xml + "</w:p>";
-        };
-        auto lines = readDocx("rte-line-heights.docx",
-                              paragraph("One", 276, 24) + paragraph("Two", 276, 24) + paragraph("Three", 240, 24)
-                              + paragraph("Four|Five", 240, 24) + paragraph("", 240, 48) + paragraph("Big", 240, 48)
-                              + paragraph("Six", 240, 24) + paragraph("End", 240, 24), "");
-        TEST("A synthetic .docx is read", lines && lines->blocks.size() == 8);
-        if (lines && lines->blocks.size() == 8) {
-            TEST("...its empty paragraph keeps its mark's size and font",
-                 lines->blocks[4].runs.empty() && lines->blocks[4].paragraphFontSizePt == 24.0f
-                 && lines->blocks[4].paragraphFontFamily == font);
-            auto lineEdit = std::make_shared<UltraCanvasRichTextEdit>("Lines", 0, 0, 780, 560);
-            window->AddChild(lineEdit);
-            lineEdit->SetDocument(lines);
-            window->UpdateAndRender();
-            UCRichDocumentEditor& lineEditor = lineEdit->GetEditor();
-            auto top = [&](int block, int offset) {
-                lineEditor.SetCaret(RichDocPosition(block, offset));
+        if (IsFontFamilyAvailable("DejaVu Serif")
+            && std::find(lineFonts.begin(), lineFonts.end(), "DejaVu Serif") == lineFonts.end()) {
+            lineFonts.push_back("DejaVu Serif");
+        }
+        if (lineFonts.empty()) lineFonts.push_back(edit->GetStyle().baseFont.fontFamily);
+        const cairo_hint_metrics_t hintMetricsBefore = RenderContextCairo::GetTextHintMetrics();
+        for (const std::string& font : lineFonts) {
+            for (const cairo_hint_metrics_t hintMetrics : {CAIRO_HINT_METRICS_OFF, CAIRO_HINT_METRICS_ON}) {
+                RenderContextCairo::SetTextHintMetrics(hintMetrics);
+                const bool hinted = hintMetrics == CAIRO_HINT_METRICS_ON;
+                const std::string in = std::string(" [") + font + ", hint metrics " + (hinted ? "on" : "off") + "]";
+                std::cerr << "  (measured in " << font << ", hint metrics " << (hinted ? "on" : "off") << ")"
+                          << std::endl;
+                // A paragraph at Word's line spacing `line` (240ths of single,
+                // "auto"), its text and its mark in `font` at `halfPoints`;
+                // "|" breaks the line.
+                auto paragraph = [&](const std::string& text, int line, int halfPoints) {
+                    const std::string rPr = "<w:rPr><w:rFonts w:ascii=\"" + font + "\" w:hAnsi=\"" + font
+                                          + "\"/><w:sz w:val=\"" + std::to_string(halfPoints) + "\"/></w:rPr>";
+                    std::string xml = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\""
+                                    + std::to_string(line) + "\" w:lineRule=\"auto\"/>" + rPr + "</w:pPr>";
+                    size_t from = 0;
+                    while (from <= text.size() && !text.empty()) {
+                        const size_t bar = text.find('|', from);
+                        const std::string piece =
+                            text.substr(from, bar == std::string::npos ? std::string::npos : bar - from);
+                        xml += "<w:r>" + rPr + (from > 0 ? "<w:br/>" : "") + "<w:t>" + piece + "</w:t></w:r>";
+                        if (bar == std::string::npos) break;
+                        from = bar + 1;
+                    }
+                    return xml + "</w:p>";
+                };
+                auto lines = readDocx("rte-line-heights.docx",
+                                      paragraph("One", 276, 24) + paragraph("Two", 276, 24)
+                                      + paragraph("Three", 240, 24) + paragraph("Four|Five|Seven", 240, 24)
+                                      + paragraph("", 240, 48) + paragraph("Big", 240, 48)
+                                      + paragraph("Six", 240, 24) + paragraph("End", 240, 24), "");
+                TEST("A synthetic .docx is read" + in, lines && lines->blocks.size() == 8);
+                if (!lines || lines->blocks.size() != 8) continue;
+                TEST("...its empty paragraph keeps its mark's size and font" + in,
+                     lines->blocks[4].runs.empty() && lines->blocks[4].paragraphFontSizePt == 24.0f
+                     && lines->blocks[4].paragraphFontFamily == font);
+                auto lineEdit = std::make_shared<UltraCanvasRichTextEdit>("Lines", 0, 0, 780, 560);
+                window->AddChild(lineEdit);
+                lineEdit->SetDocument(lines);
                 window->UpdateAndRender();
-                return lineEdit->GetCaretRectForTest().y;
-            };
-            // The font's line: between the two lines of one paragraph at
-            // single spacing.
-            const float line = top(3, static_cast<int>(lineEditor.BlockText(3).find("Five"))) - top(3, 0);
-            const float bigLine = top(6, 0) - top(5, 0);
-            std::cerr << "  line " << line << " px, a line of twice the size " << bigLine << " px" << std::endl;
-            const float em = 12.0f * 96.0f / 72.0f;
-            TEST("A line is as tall as its font says (" + std::to_string(line / em) + " em)",
-                 line > em * 0.95f && line < em * 1.6f);
-            if (font == "P052") {
-                // Its ascent and descent are 1.0 em; its line gap makes 1.2.
-                TEST("...a tall font's line gap included", std::abs(line - em * 1.2f) <= 1.0f);
+                UCRichDocumentEditor& lineEditor = lineEdit->GetEditor();
+                auto top = [&](int block, int offset) {
+                    lineEditor.SetCaret(RichDocPosition(block, offset));
+                    window->UpdateAndRender();
+                    return lineEdit->GetCaretRectForTest().y;
+                };
+                auto at = [&](int block, const char* word) {
+                    return top(block, static_cast<int>(lineEditor.BlockText(block).find(word)));
+                };
+                auto values = [](float measured, float expected) {
+                    return ": " + std::to_string(measured) + " for " + std::to_string(expected);
+                };
+                // The font's line: between the first two lines of one
+                // paragraph at single spacing (and between its next two).
+                const float line = at(3, "Five") - top(3, 0);
+                const float nextLine = at(3, "Seven") - at(3, "Five");
+                const float bigLine = top(6, 0) - top(5, 0);
+                std::cerr << "  line " << line << " px (the next " << nextLine << "), a line of twice the size "
+                          << bigLine << " px" << std::endl;
+                const float em = 12.0f * 96.0f / 72.0f;
+                TEST("A line is as tall as its font says (" + std::to_string(line / em) + " em)" + in,
+                     line > em * 0.95f && line < em * 1.6f);
+                if (font == "P052") {
+                    // Its ascent and descent are 1.0 em; its line gap makes 1.2.
+                    TEST("...a tall font's line gap included" + values(line, em * 1.2f) + in,
+                         std::abs(line - em * 1.2f) <= 1.0f);
+                }
+                // Where the layout puts the lines, to a tenth of a pixel.
+                auto within = [](float a, float b) { return std::abs(a - b) <= 0.1f; };
+                TEST("A paragraph's lines are evenly spaced" + values(nextLine, line) + in, within(nextLine, line));
+                TEST("A one-line paragraph at 1.15 is 1.15 of its font's line"
+                     + values(top(1, 0) - top(0, 0), line * 1.15f) + in,
+                     within(top(1, 0) - top(0, 0), line * 1.15f));
+                TEST("...the next one too" + values(top(2, 0) - top(1, 0), line * 1.15f) + in,
+                     within(top(2, 0) - top(1, 0), line * 1.15f));
+                TEST("A one-line paragraph at single spacing is one line" + values(top(3, 0) - top(2, 0), line) + in,
+                     within(top(3, 0) - top(2, 0), line));
+                TEST("A three-line paragraph is three lines" + values(top(4, 0) - top(3, 0), 3.0f * line) + in,
+                     within(top(4, 0) - top(3, 0), 3.0f * line));
+                TEST("An empty paragraph is a line of its mark's font" + values(top(5, 0) - top(4, 0), bigLine) + in,
+                     within(top(5, 0) - top(4, 0), bigLine) && bigLine > line * 1.5f);
+                TEST("A one-line paragraph after a big one is one line" + values(top(7, 0) - top(6, 0), line) + in,
+                     within(top(7, 0) - top(6, 0), line));
+                window->RemoveChild(lineEdit);
             }
-            auto within = [](float a, float b) { return std::abs(a - b) <= 1.0f; };
-            TEST("A one-line paragraph at 1.15 is 1.15 of its font's line: "
-                 + std::to_string(top(1, 0) - top(0, 0)) + " for " + std::to_string(line * 1.15f),
-                 within(top(1, 0) - top(0, 0), line * 1.15f));
-            TEST("...the next one too", within(top(2, 0) - top(1, 0), line * 1.15f));
-            TEST("A one-line paragraph at single spacing is one line: "
-                 + std::to_string(top(3, 0) - top(2, 0)) + " for " + std::to_string(line),
-                 within(top(3, 0) - top(2, 0), line));
-            TEST("A two-line paragraph is two lines", within(top(4, 0) - top(3, 0), 2.0f * line));
-            TEST("An empty paragraph is a line of its mark's font: " + std::to_string(top(5, 0) - top(4, 0))
-                 + " for " + std::to_string(bigLine), within(top(5, 0) - top(4, 0), bigLine) && bigLine > line * 1.5f);
-            window->RemoveChild(lineEdit);
         }
+        RenderContextCairo::SetTextHintMetrics(hintMetricsBefore);
 
         // --- Pictures ---
         // The red square in a frame 2 x 0.5 inch: inline in the body, anchored
