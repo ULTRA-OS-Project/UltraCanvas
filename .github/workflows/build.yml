@@ -2676,6 +2676,7 @@ jobs:
             TimecodeFieldElementTest ToolGroupButtonTest TooltipOwnWindowTest
             VideoTimelineElementTest WindowCurrentDesktopTest
             UltraOfficeTemplateWindowTest UltraOfficeSettingsWindowTest
+            UltraOfficeToolTableTest
           )
           regex="^($(IFS='|'; echo "${tests[*]}"))\$"
           registered=$(ctest -N -R "$regex" | grep -cE '^ *Test +#' || true)

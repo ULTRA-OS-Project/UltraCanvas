@@ -10,6 +10,10 @@
 // toolbar's right end the view group: normal, the slide sorter, the notes,
 // the fitted slide and the zoom.
 //
+// Version: 0.11.0 - the tools are one table (UltraOfficeTools.h) the command tabs and the view group are
+//                   built from, with no change to what they show; the panels' own tools in it too: the
+//                   selected shapes' position, size, rotation, fill, outline colour and width, and the
+//                   transition's duration
 // Version: 0.10.0 - the Text tab's font list is the framework's UltraCanvasFontPicker: every installed
 //                   font, each in itself, the deck's fonts and the recent ones on top, a family's styles
 //                   beside it; it shows the selected text's font
@@ -31,11 +35,12 @@
 //                  columns)
 // Version: 0.2.0 - editing: UltraCanvasSlideEdit, text in place, the show, PDF and print
 // Version: 0.1.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraOfficeHost.h"
 #include "UltraOfficeSettings.h"
 #include "UltraOfficeToolbar.h"
+#include "UltraOfficeTools.h"
 
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"   // PrintDocumentWithDialog
 #include "UltraCanvasApplication.h"
@@ -59,6 +64,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace UltraOffice {
 
@@ -163,14 +169,9 @@ public:
         notes_->onLeave = [this]() { CommitNotes(); };
         text_->onFinish = [this](bool keep) { CloseText(keep); };
         text_->onSelectionChanged = [this]() { SyncText(); };
-        BuildHome();
-        BuildInsert();
-        BuildText();
-        BuildTable();
-        BuildArrange();
-        BuildFormat();
-        BuildShow();
-        BuildViewGroup();
+        BuildTools();
+        bars_.Build(tools_, window_);
+        SyncView();
     }
 
     ~PresentationHost() override {
@@ -182,8 +183,9 @@ public:
 
     OfficeKind GetKind() const override { return OfficeKind::Presentation; }
     std::shared_ptr<UltraCanvasUIElement> GetContent() override { return content_; }
-    const std::vector<CommandTab>& GetCommandTabs() override { return tabs_; }
-    std::shared_ptr<UltraCanvasToolbar> GetViewToolbar() override { return viewBar_; }
+    const ToolTable& GetTools() const override { return tools_; }
+    const std::vector<CommandTab>& GetCommandTabs() override { return bars_.Tabs(); }
+    std::shared_ptr<UltraCanvasToolbar> GetViewToolbar() override { return bars_.ViewBar(); }
     void AttachSettings(UltraCanvasAppSettings* settings) override { settings_ = settings; }
 
     // The slide's zoom: 100 % is the slide fitting the space.
@@ -288,30 +290,17 @@ private:
     std::vector<PptxParagraph> notesBefore_;
     bool committingNotes_ = false;
     std::shared_ptr<UltraCanvasMenu> menu_;
-    UltraCanvasButton* normalView_ = nullptr;
-    UltraCanvasButton* sorterView_ = nullptr;
-    UltraCanvasButton* notesTool_ = nullptr;
-    UltraCanvasButton* crop_ = nullptr;
     UltraCanvasAppSettings* settings_ = nullptr;   // the window's
-    std::shared_ptr<UltraCanvasToolbar> viewBar_;
-    UltraCanvasDropdown* zoomBox_ = nullptr;
     std::shared_ptr<InPlaceRichText> text_;
     int textShape_ = -1;      // the shape whose text is open; -1: none
     int textRow_ = -1, textCol_ = -1;   // a table's cell; -1: the shape's own text
     int textSlide_ = -1;
     std::vector<PptxParagraph> textBefore_;   // the paragraphs as they were, for what the editor does not hold
-    std::vector<CommandTab> tabs_;
-    UltraCanvasButton* hidden_ = nullptr;
-    UltraCanvasButton* bold_ = nullptr;
-    UltraCanvasFontPicker* font_ = nullptr;
-    UltraCanvasButton* italic_ = nullptr;
-    UltraCanvasButton* underline_ = nullptr;
-    UltraCanvasButton* strike_ = nullptr;
     int lastCellRow_ = -1, lastCellCol_ = -1;   // the table cell edited last
-    std::shared_ptr<UltraCanvasDropdown> layouts_;
-    std::shared_ptr<UltraCanvasDropdown> transition_;
-    bool syncing_ = false;   // the tools are being set from the deck, not by a person
     std::shared_ptr<SlideShowWindows> show_;
+    // The tools, and the command tabs' bars and the view group built from them.
+    ToolTable tools_;
+    ToolBars bars_;
 
     UCSlideDeckEditor& Editor() { return edit_->Editor(); }
 
@@ -425,12 +414,32 @@ private:
         SyncText();
     }
 
-    // ===== TOOLBARS =====
+    // ===== THE TOOLS =====
+    // Every tool of a presentation, once (UltraOfficeTools.h): the command
+    // tabs' bars and the view group are built from it, and the tool panels
+    // will be.
+    void BuildTools() {
+        using P = ToolPanel;
+        tools_.kind = OfficeKind::Presentation;
+        tools_.inContext = [this](ToolContext context) {
+            switch (context) {
+                case ToolContext::ShapeSelected: return !Editor().GetSelection().empty();
+                case ToolContext::TextSelected: return TextOpen() || SelectedShape([](const PptxShape& s) { return !s.paragraphs.empty(); });
+                case ToolContext::PictureSelected: return SelectedShape([](const PptxShape& s) { return s.kind == PptxShapeKind::Picture; });
+                case ToolContext::ChartSelected: return SelectedShape([](const PptxShape& s) { return s.kind == PptxShapeKind::Chart; });
+                case ToolContext::TableSelected: {
+                    int shape = -1, row = -1, col = -1;
+                    return TableCell(shape, row, col);
+                }
+                default: return false;
+            }
+        };
+        ToolWriter w(tools_);
 
-    void BuildHome() {
-        auto bar = MakeToolbar("office-slides-home");
-        // The shapes, and what other programs and the other kinds copied:
-        // cells as a table, a chart as a chart, text as a text box.
+        // Home: the shapes, and what other programs and the other kinds
+        // copied - cells as a table, a chart as a chart, text as a text box |
+        // the slides | the show.
+        w.Tab("home", Tr("Home"), "office-slides-home");
         auto clip = [this](void (UltraCanvasSlideEdit::*action)()) {
             return [this, action]() {
                 CloseText(true);
@@ -438,151 +447,492 @@ private:
                 edit_->SetFocus(true);
             };
         };
-        AddTool(*bar, "slides-cut", "", "menu/cut.svg", Tr("Cut (Ctrl+X)"), clip(&UltraCanvasSlideEdit::Cut));
-        AddTool(*bar, "slides-copy", "", "menu/copy.svg", Tr("Copy (Ctrl+C)"), clip(&UltraCanvasSlideEdit::Copy));
-        AddTool(*bar, "slides-paste", "", "menu/paste.svg", Tr("Paste (Ctrl+V)"), clip(&UltraCanvasSlideEdit::Paste));
-        bar->AddSeparator();
-        AddTool(*bar, "slides-new", Tr("New slide"), "", Tr("A new slide after this one (Ctrl+M)"),
-                Act([](UCSlideDeckEditor& e) { e.NewSlide(-1); }));
-        layouts_ = bar->AddDropdownButton("slides-layout", "", {}, nullptr);
-        layouts_->SetTooltip(Tr("A new slide from one of the deck's layouts"));
-        layouts_->onSelectionChanged = [this](int index, const DropdownItem&) {
-            if (index < 0) return;
-            CloseText(true);
-            Editor().NewSlide(index);
-            layouts_->SetSelectedIndex(-1, false);
-            edit_->SetFocus(true);
-        };
-        AddTool(*bar, "slides-duplicate", Tr("Duplicate slide"), "", Tr("A copy of this slide after it"),
-                Act([](UCSlideDeckEditor& e) { e.DuplicateSlide(e.GetCurrentSlide()); }));
-        AddTool(*bar, "slides-delete", Tr("Delete slide"), "", Tr("Delete this slide"),
-                Act([](UCSlideDeckEditor& e) { e.DeleteSlide(e.GetCurrentSlide()); }));
-        hidden_ = AddToggleTool(*bar, "slides-hide", Tr("Hide"), "", Tr("Leave this slide out of the show"),
-                                Act([](UCSlideDeckEditor& e) {
-                                    if (const PptxSlide* s = e.CurrentSlide()) e.SetSlideHidden(e.GetCurrentSlide(), !s->hidden);
-                                })).get();
-        bar->AddSeparator();
-        AddTool(*bar, "slides-present", Tr("Present"), "play.svg", Tr("Show the slides full screen, from the first"),
-                [this]() { Present(0); });
-        tabs_.push_back({Tr("Home"), bar});
-    }
+        w.Button("slides-cut", "menu/cut.svg", Tr("Cut"), Tr("Cut (Ctrl+X)"), P::Clipboard, clip(&UltraCanvasSlideEdit::Cut));
+        w.Button("slides-copy", "menu/copy.svg", Tr("Copy"), Tr("Copy (Ctrl+C)"), P::Clipboard, clip(&UltraCanvasSlideEdit::Copy));
+        w.Button("slides-paste", "menu/paste.svg", Tr("Paste"), Tr("Paste (Ctrl+V)"), P::Clipboard, clip(&UltraCanvasSlideEdit::Paste));
+        w.NextGroup();
+        w.Button("slides-new", "", Tr("New slide"), Tr("A new slide after this one (Ctrl+M)"), P::Slide,
+                 Act([](UCSlideDeckEditor& e) { e.NewSlide(-1); })).labelOnBar = true;
+        {
+            ToolEntry& layouts = w.List("slides-layout", Tr("Layout"), Tr("A new slide from one of the deck's layouts"), P::Slide);
+            // The deck's layouts, by name, for a new slide.
+            layouts.list.items = [this]() {
+                std::vector<std::string> names;
+                const auto& deck = Editor().GetDeck();
+                if (!deck) return names;
+                for (const PptxLayout& layout : deck->layouts) names.push_back(layout.name);
+                if (names.empty()) names.push_back(Tr("Title and Content"));
+                return names;
+            };
+            layouts.list.placeholder = Tr("Layout");
+            layouts.list.keepsChoice = false;
+            layouts.list.choose = [this](int index) {
+                CloseText(true);
+                Editor().NewSlide(index);
+                edit_->SetFocus(true);
+            };
+        }
+        w.Button("slides-duplicate", "", Tr("Duplicate slide"), Tr("A copy of this slide after it"), P::Slide,
+                 Act([](UCSlideDeckEditor& e) { e.DuplicateSlide(e.GetCurrentSlide()); })).labelOnBar = true;
+        w.Button("slides-delete", "", Tr("Delete slide"), Tr("Delete this slide"), P::Slide,
+                 Act([](UCSlideDeckEditor& e) { e.DeleteSlide(e.GetCurrentSlide()); })).labelOnBar = true;
+        w.Toggle("slides-hide", "", Tr("Hide"), Tr("Leave this slide out of the show"), P::Slide,
+                 Act([](UCSlideDeckEditor& e) {
+                     if (const PptxSlide* s = e.CurrentSlide()) e.SetSlideHidden(e.GetCurrentSlide(), !s->hidden);
+                 }),
+                 [this]() {
+                     const PptxSlide* slide = Editor().CurrentSlide();
+                     return slide && slide->hidden;
+                 }).labelOnBar = true;
+        w.NextGroup();
+        w.Button("slides-present", "play.svg", Tr("Present"), Tr("Show the slides full screen, from the first"), P::Show,
+                 [this]() { Present(0); }).labelOnBar = true;
 
-    void BuildInsert() {
-        auto bar = MakeToolbar("office-slides-insert");
-        AddTool(*bar, "slides-textbox", Tr("Text box"), "", Tr("A text box in the middle of the slide"), [this]() {
+        // Insert: a text box, a drawn shape, a picture.
+        w.Tab("insert", Tr("Insert"), "office-slides-insert");
+        w.Button("slides-textbox", "", Tr("Text box"), Tr("A text box in the middle of the slide"), P::Insert, [this]() {
             CloseText(true);
             const SlideBox box{Editor().SlideWidth() / 2 - 2 * kInch, Editor().SlideHeight() / 2 - kInch / 2, 4 * kInch, kInch};
             OpenText(Editor().InsertTextBox(box));
-        });
-        auto shapes = bar->AddDropdownButton("slides-shape", Tr("Shape"), GeometryNames(), nullptr);
-        shapes->SetTooltip(Tr("A drawn shape in the middle of the slide"));
-        shapes->SetPlaceholderText(Tr("Shape"));
-        shapes->SetSelectedIndex(-1, false);
-        UltraCanvasDropdown* dropdown = shapes.get();
-        shapes->onSelectionChanged = [this, dropdown](int index, const DropdownItem&) {
-            if (index < 0 || index >= static_cast<int>(std::size(kGeometries))) return;
-            CloseText(true);
-            const int64_t side = 2 * kInch;
-            Editor().InsertGeometry(SlideBox{Editor().SlideWidth() / 2 - side / 2, Editor().SlideHeight() / 2 - side / 2,
-                                             side, side},
-                                    kGeometries[index]);
-            dropdown->SetSelectedIndex(-1, false);
-            edit_->SetFocus(true);
+        }).labelOnBar = true;
+        {
+            ToolEntry& shapes = w.List("slides-shape", Tr("Shape"), Tr("A drawn shape in the middle of the slide"), P::Insert);
+            shapes.list.items = [] { return GeometryNames(); };
+            shapes.list.placeholder = Tr("Shape");
+            shapes.list.keepsChoice = false;
+            shapes.list.choose = [this](int index) {
+                if (index >= static_cast<int>(std::size(kGeometries))) return;
+                CloseText(true);
+                const int64_t side = 2 * kInch;
+                Editor().InsertGeometry(SlideBox{Editor().SlideWidth() / 2 - side / 2, Editor().SlideHeight() / 2 - side / 2,
+                                                 side, side},
+                                        kGeometries[index]);
+                edit_->SetFocus(true);
+            };
+        }
+        w.Button("slides-picture", "image.svg", Tr("Picture"), Tr("Insert a picture from a file"), P::Insert,
+                 [this]() { InsertPicture(); }).labelOnBar = true;
+
+        // Text: B I U S | font, size, larger and smaller, colour | alignment |
+        // lists and levels. Each acts on the text being edited in place, else
+        // on all the text of the selected shapes (one step).
+        w.Tab("text", Tr("Text"), "office-slides-text");
+        auto text = [](ToolEntry& entry) { entry.context = ToolContext::TextSelected; };
+        text(w.Toggle("slides-bold", "textformat/bold.svg", Tr("Bold"), Tr("Bold (Ctrl+B)"), P::Text,
+                      [this]() { ToggleRuns("Bold", &PptxRun::bold, &UltraCanvasRichTextEdit::ToggleBold); },
+                      [this]() { return TextHas(&PptxRun::bold, &RichCharFormatState::bold); }));
+        text(w.Toggle("slides-italic", "textformat/italic.svg", Tr("Italic"), Tr("Italic (Ctrl+I)"), P::Text,
+                      [this]() { ToggleRuns("Italic", &PptxRun::italic, &UltraCanvasRichTextEdit::ToggleItalic); },
+                      [this]() { return TextHas(&PptxRun::italic, &RichCharFormatState::italic); }));
+        text(w.Toggle("slides-underline", "textformat/underline.svg", Tr("Underline"), Tr("Underline (Ctrl+U)"), P::Text,
+                      [this]() { ToggleRuns("Underline", &PptxRun::underline, &UltraCanvasRichTextEdit::ToggleUnderline); },
+                      [this]() { return TextHas(&PptxRun::underline, &RichCharFormatState::underline); }));
+        text(w.Toggle("slides-strike", "textformat/strike.svg", Tr("Strikethrough"), Tr("Strikethrough"), P::Text,
+                      [this]() { ToggleRuns("Strikethrough", &PptxRun::strike, &UltraCanvasRichTextEdit::ToggleStrikethrough); },
+                      [this]() { return TextHas(&PptxRun::strike, &RichCharFormatState::strikethrough); }));
+        w.NextGroup();
+        {
+            // Every installed font, each in itself; on top the deck's fonts
+            // and the ones chosen last (the window's settings).
+            ToolEntry& font = w.List("slides-font", Tr("Font"), Tr("Font"), P::Text, ToolListStyle::Font);
+            text(font);
+            font.list.settings = [this]() { return settings_; };
+            font.list.documentFonts = [this]() { return DeckFonts(); };
+            font.list.chooseFont = [this](const FontPickerChoice& choice) {
+                const FontChoiceRun run = FontChoiceForRun(choice);
+                FormatText("Font", [choice](UltraCanvasRichTextEdit& e) { ApplyFontChoice(e, choice); },
+                           [run](PptxRun& r) {
+                               r.font = run.family;
+                               if (run.setsStyle) {
+                                   r.bold = run.bold;
+                                   r.italic = run.italic;
+                               }
+                           });
+            };
+            font.list.currentFont = [this]() { return SelectedFont(); };
+        }
+        {
+            ToolEntry& size = w.List("slides-size", Tr("Font size"), Tr("Font size"), P::Text);
+            text(size);
+            size.barWidth = 64;
+            size.list.placeholder = Tr("Size");
+            size.list.items = [] {
+                std::vector<std::string> names;
+                for (float pt : kSlideSizes) names.push_back(std::to_string(static_cast<int>(pt)));
+                return names;
+            };
+            size.list.choose = [this](int index) {
+                if (index >= static_cast<int>(std::size(kSlideSizes))) return;
+                const float pt = kSlideSizes[index];
+                FormatText("Font size", [pt](UltraCanvasRichTextEdit& e) { e.SetFontSize(pt); }, [pt](PptxRun& r) { r.sizePt = pt; });
+            };
+        }
+        auto shownText = [&text](ToolEntry& entry) { entry.labelOnBar = true; text(entry); };
+        shownText(w.Button("slides-grow", "", "A+", Tr("Larger text"), P::Text, [this]() { Grow(1.2f); }));
+        shownText(w.Button("slides-shrink", "", "A-", Tr("Smaller text"), P::Text, [this]() { Grow(1.0f / 1.2f); }));
+        {
+            ToolEntry& colour = w.List("slides-colour", Tr("Text colour"), Tr("Text colour"), P::Text);
+            text(colour);
+            colour.barWidth = 104;
+            colour.list.placeholder = Tr("Colour");
+            colour.list.keepsChoice = false;
+            colour.list.items = [] {
+                std::vector<std::string> names;
+                for (const auto& c : TextColours()) names.push_back(c.first);
+                return names;
+            };
+            colour.list.choose = [this](int index) {
+                const auto colours = TextColours();
+                if (index >= static_cast<int>(colours.size())) return;
+                const std::string hex = colours[static_cast<size_t>(index)].second;
+                FormatText("Text colour", [hex](UltraCanvasRichTextEdit& e) { e.SetTextColor("#" + hex); },
+                           [hex](PptxRun& r) { r.color = hex; });
+            };
+        }
+        w.NextGroup();
+        auto align = [this](RichTextAlign rich, PptxAlign pptx) {
+            return [this, rich, pptx]() {
+                FormatText("Alignment", [rich](UltraCanvasRichTextEdit& e) { e.SetAlignment(rich); }, nullptr,
+                           [pptx](PptxParagraph& p) { p.align = pptx; });
+            };
         };
-        AddTool(*bar, "slides-picture", Tr("Picture"), "image.svg", Tr("Insert a picture from a file"), [this]() { InsertPicture(); });
-        tabs_.push_back({Tr("Insert"), bar});
-    }
-
-    void BuildArrange() {
-        auto bar = MakeToolbar("office-slides-arrange");
-        AddTool(*bar, "slides-group", "", "artcreator/group.svg", Tr("Group: the selected shapes as one group (Ctrl+G)"),
-                Act([](UCSlideDeckEditor& e) { e.GroupSelection(); }));
-        AddTool(*bar, "slides-ungroup", "", "artcreator/ungroup.svg",
-                Tr("Ungroup: the selected group taken apart (Ctrl+Shift+G)"), Act([](UCSlideDeckEditor& e) { e.UngroupSelection(); }));
-        bar->AddSeparator();
-        // Lined up with each other, or with the slide when one is selected.
-        // One slot: the alignment picked last; resting the pointer on it
-        // shows every alignment and the two distributions.
-        AddActionGroup(*bar, "slides-align", {
-            {"slides-align-left", "artcreator/align-left.svg", Tr("Align left edges"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Left); })},
-            {"slides-align-centre", "artcreator/align-hcentre.svg", Tr("Align centres"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Centre); })},
-            {"slides-align-right", "artcreator/align-right.svg", Tr("Align right edges"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Right); })},
-            {"slides-align-top", "artcreator/align-top.svg", Tr("Align tops"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Top); })},
-            {"slides-align-middle", "artcreator/align-vcentre.svg", Tr("Align middles"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Middle); })},
-            {"slides-align-bottom", "artcreator/align-bottom.svg", Tr("Align bottoms"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Bottom); })},
-            {"slides-distribute-h", "artcreator/distribute-h.svg", Tr("Distribute horizontally"), Act([](UCSlideDeckEditor& e) { e.DistributeSelection(true); })},
-            {"slides-distribute-v", "artcreator/distribute-v.svg", Tr("Distribute vertically"), Act([](UCSlideDeckEditor& e) { e.DistributeSelection(false); })}});
-        bar->AddSeparator();
-        AddTool(*bar, "slides-front", Tr("Bring to front"), "", Tr("In front of every other shape"),
-                Act([](UCSlideDeckEditor& e) { e.BringToFront(); }));
-        AddTool(*bar, "slides-forward", Tr("Bring forward"), "", Tr("One shape further forward"),
-                Act([](UCSlideDeckEditor& e) { e.BringForward(); }));
-        AddTool(*bar, "slides-backward", Tr("Send backward"), "", Tr("One shape further back"),
-                Act([](UCSlideDeckEditor& e) { e.SendBackward(); }));
-        AddTool(*bar, "slides-back", Tr("Send to back"), "", Tr("Behind every other shape"),
-                Act([](UCSlideDeckEditor& e) { e.SendToBack(); }));
-        bar->AddSeparator();
-        AddTool(*bar, "slides-shape-duplicate", Tr("Duplicate"), "", Tr("A copy of the selected shapes (Ctrl+D)"),
-                Act([](UCSlideDeckEditor& e) { e.DuplicateSelection(); }));
-        AddTool(*bar, "slides-shape-delete", Tr("Delete"), "", Tr("Delete the selected shapes (Delete)"),
-                Act([](UCSlideDeckEditor& e) { e.DeleteSelection(); }));
-        tabs_.push_back({Tr("Arrange"), bar});
-    }
-
-    // Pictures and charts: the crop, and a chart's data.
-    void BuildFormat() {
-        auto bar = MakeToolbar("office-slides-format");
-        crop_ = AddToggleTool(*bar, "slides-crop", Tr("Crop"), "ultrapaint/crop.svg",
-                              Tr("Crop the selected picture with its handles (Enter: done)"), [this]() {
-                                  CloseText(true);
-                                  if (!edit_->SetCropMode(!edit_->IsCropping()))
-                                      UltraCanvasDialogManager::ShowMessage(Tr("Select a picture to crop it."), Tr("Crop"),
-                                                                            DialogType::Information, DialogButtons::OK,
-                                                                            nullptr, window_);
-                                  edit_->SetFocus(true);
-                                  Sync();
-                              }).get();
-        AddTool(*bar, "slides-crop-reset", Tr("Reset crop"), "", Tr("The whole picture again"), Act([](UCSlideDeckEditor& e) {
-            const PptxSlide* slide = e.CurrentSlide();
-            for (int i : e.GetSelection())
-                if (slide && slide->shapes[static_cast<size_t>(i)].kind == PptxShapeKind::Picture) e.ResetPictureCrop(i);
+        text(w.Button("slides-left", "textformat/align-left.svg", Tr("Align left"), Tr("Align left"), P::Text,
+                      align(RichTextAlign::Left, PptxAlign::Left)));
+        text(w.Button("slides-centre", "textformat/align-centre.svg", Tr("Centre"), Tr("Centre"), P::Text,
+                      align(RichTextAlign::Center, PptxAlign::Center)));
+        text(w.Button("slides-right", "textformat/align-right.svg", Tr("Align right"), Tr("Align right"), P::Text,
+                      align(RichTextAlign::Right, PptxAlign::Right)));
+        text(w.Button("slides-justify", "office/justify.svg", Tr("Justify"), Tr("Justify"), P::Text,
+                      align(RichTextAlign::Justify, PptxAlign::Justify)));
+        w.NextGroup();
+        text(w.Button("slides-bullets", "ultramail/list-bullets.svg", Tr("Bulleted list"), Tr("Bulleted list"), P::Text, [this]() {
+            const bool all = AllParagraphs([](const PptxParagraph& p) { return p.bullet && !p.numbered; });
+            FormatText("Bullets", [](UltraCanvasRichTextEdit& e) { e.ToggleBulletList(); }, nullptr,
+                       [all](PptxParagraph& p) { p.bullet = !all; p.numbered = false; });
         }));
-        bar->AddSeparator();
-        AddTool(*bar, "slides-chart-data", Tr("Chart data"), "chart.svg", Tr("Edit the selected chart's data"), [this]() {
-            const PptxSlide* slide = Editor().CurrentSlide();
-            for (int i : Editor().GetSelection())
-                if (slide && slide->shapes[static_cast<size_t>(i)].kind == PptxShapeKind::Chart) { EditChartData(i); return; }
-            UltraCanvasDialogManager::ShowMessage(Tr("Select a chart to edit its data."), Tr("Chart data"),
-                                                  DialogType::Information, DialogButtons::OK, nullptr, window_);
-        });
-        tabs_.push_back({Tr("Format"), bar});
+        text(w.Button("slides-numbers", "ultramail/list-numbers.svg", Tr("Numbered list"), Tr("Numbered list"), P::Text, [this]() {
+            const bool all = AllParagraphs([](const PptxParagraph& p) { return p.numbered; });
+            FormatText("Numbering", [](UltraCanvasRichTextEdit& e) { e.ToggleNumberedList(); }, nullptr, [all](PptxParagraph& p) {
+                p.numbered = !all;
+                p.bullet = !all;
+                if (p.numbered && p.numberScheme.empty()) p.numberScheme = "arabicPeriod";
+            });
+        }));
+        text(w.Button("slides-outdent", "office/outdent.svg", Tr("Up a level"), Tr("Up a level"), P::Text, [this]() {
+            FormatText("Level", [](UltraCanvasRichTextEdit& e) { e.OutdentList(); }, nullptr,
+                       [](PptxParagraph& p) { p.level = std::max(0, p.level - 1); });
+        }));
+        text(w.Button("slides-indent", "office/indent.svg", Tr("Down a level"), Tr("Down a level"), P::Text, [this]() {
+            FormatText("Level", [](UltraCanvasRichTextEdit& e) { e.IndentList(); }, nullptr,
+                       [](PptxParagraph& p) { p.level = std::min(8, p.level + 1); });
+        }));
+
+        // Table: a new table | rows and columns in | rows and columns out.
+        w.Tab("table", Tr("Table"), "office-slides-table");
+        {
+            ToolEntry& insert = w.List("slides-table", Tr("Insert table"), Tr("A table in the middle of the slide"), P::Insert);
+            insert.list.placeholder = Tr("Insert table");
+            insert.list.keepsChoice = false;
+            insert.list.items = [] {
+                std::vector<std::string> names;
+                for (const auto& size : TableSizes()) names.push_back(TrF("{0} rows, {1} columns", size.first, size.second));
+                return names;
+            };
+            insert.list.choose = [this](int index) {
+                const auto sizes = TableSizes();
+                if (index >= static_cast<int>(sizes.size())) return;
+                CloseText(true);
+                const int rows = sizes[static_cast<size_t>(index)].first, cols = sizes[static_cast<size_t>(index)].second;
+                const int64_t width = Editor().SlideWidth() * 7 / 10, height = rows * (kInch * 2 / 5);
+                Editor().InsertTable(SlideBox{(Editor().SlideWidth() - width) / 2, (Editor().SlideHeight() - height) / 2, width, height},
+                                     rows, cols);
+                edit_->SetFocus(true);
+            };
+        }
+        w.NextGroup();
+        auto table = [](ToolEntry& entry) {
+            entry.labelOnBar = true;
+            entry.context = ToolContext::TableSelected;
+        };
+        table(w.Button("slides-row-above", "", Tr("Row above"), Tr("A row above this cell"), P::Table,
+                       TableAct([](UCSlideDeckEditor& e, int s, int r, int) { e.InsertTableRow(s, r, false); })));
+        table(w.Button("slides-row-below", "", Tr("Row below"), Tr("A row below this cell"), P::Table,
+                       TableAct([](UCSlideDeckEditor& e, int s, int r, int) { e.InsertTableRow(s, r, true); })));
+        table(w.Button("slides-col-left", "", Tr("Column left"), Tr("A column left of this cell"), P::Table,
+                       TableAct([](UCSlideDeckEditor& e, int s, int, int c) { e.InsertTableColumn(s, c, false); })));
+        table(w.Button("slides-col-right", "", Tr("Column right"), Tr("A column right of this cell"), P::Table,
+                       TableAct([](UCSlideDeckEditor& e, int s, int, int c) { e.InsertTableColumn(s, c, true); })));
+        w.NextGroup();
+        table(w.Button("slides-row-delete", "", Tr("Delete row"), Tr("Delete this cell's row"), P::Table,
+                       TableAct([](UCSlideDeckEditor& e, int s, int r, int) { e.DeleteTableRow(s, r); })));
+        table(w.Button("slides-col-delete", "", Tr("Delete column"), Tr("Delete this cell's column"), P::Table,
+                       TableAct([](UCSlideDeckEditor& e, int s, int, int c) { e.DeleteTableColumn(s, c); })));
+
+        // Arrange: group | align and distribute (one slot: the alignment
+        // picked last; resting the pointer on it shows every alignment and
+        // the two distributions), lined up with each other, or with the slide
+        // when one is selected | the order | duplicate and delete.
+        w.Tab("arrange", Tr("Arrange"), "office-slides-arrange");
+        auto arrange = [](ToolEntry& entry) { entry.context = ToolContext::ShapeSelected; };
+        arrange(w.Button("slides-group", "artcreator/group.svg", Tr("Group"), Tr("Group: the selected shapes as one group (Ctrl+G)"),
+                         P::Arrange, Act([](UCSlideDeckEditor& e) { e.GroupSelection(); })));
+        arrange(w.Button("slides-ungroup", "artcreator/ungroup.svg", Tr("Ungroup"),
+                         Tr("Ungroup: the selected group taken apart (Ctrl+Shift+G)"), P::Arrange,
+                         Act([](UCSlideDeckEditor& e) { e.UngroupSelection(); })));
+        w.NextGroup();
+        arrange(w.ActionGroup("slides-align", Tr("Align"), P::Arrange, {
+            {"slides-align-left", "artcreator/align-left.svg", Tr("Align left edges"), Tr("Align left edges"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Left); })},
+            {"slides-align-centre", "artcreator/align-hcentre.svg", Tr("Align centres"), Tr("Align centres"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Centre); })},
+            {"slides-align-right", "artcreator/align-right.svg", Tr("Align right edges"), Tr("Align right edges"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Right); })},
+            {"slides-align-top", "artcreator/align-top.svg", Tr("Align tops"), Tr("Align tops"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Top); })},
+            {"slides-align-middle", "artcreator/align-vcentre.svg", Tr("Align middles"), Tr("Align middles"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Middle); })},
+            {"slides-align-bottom", "artcreator/align-bottom.svg", Tr("Align bottoms"), Tr("Align bottoms"), Act([](UCSlideDeckEditor& e) { e.AlignSelection(SlideAlignment::Bottom); })},
+            {"slides-distribute-h", "artcreator/distribute-h.svg", Tr("Distribute horizontally"), Tr("Distribute horizontally"), Act([](UCSlideDeckEditor& e) { e.DistributeSelection(true); })},
+            {"slides-distribute-v", "artcreator/distribute-v.svg", Tr("Distribute vertically"), Tr("Distribute vertically"), Act([](UCSlideDeckEditor& e) { e.DistributeSelection(false); })}}));
+        w.NextGroup();
+        auto ordered = [&arrange](ToolEntry& entry) { entry.labelOnBar = true; arrange(entry); };
+        ordered(w.Button("slides-front", "", Tr("Bring to front"), Tr("In front of every other shape"), P::Arrange,
+                         Act([](UCSlideDeckEditor& e) { e.BringToFront(); })));
+        ordered(w.Button("slides-forward", "", Tr("Bring forward"), Tr("One shape further forward"), P::Arrange,
+                         Act([](UCSlideDeckEditor& e) { e.BringForward(); })));
+        ordered(w.Button("slides-backward", "", Tr("Send backward"), Tr("One shape further back"), P::Arrange,
+                         Act([](UCSlideDeckEditor& e) { e.SendBackward(); })));
+        ordered(w.Button("slides-back", "", Tr("Send to back"), Tr("Behind every other shape"), P::Arrange,
+                         Act([](UCSlideDeckEditor& e) { e.SendToBack(); })));
+        w.NextGroup();
+        ordered(w.Button("slides-shape-duplicate", "", Tr("Duplicate"), Tr("A copy of the selected shapes (Ctrl+D)"), P::Arrange,
+                         Act([](UCSlideDeckEditor& e) { e.DuplicateSelection(); })));
+        ordered(w.Button("slides-shape-delete", "", Tr("Delete"), Tr("Delete the selected shapes (Delete)"), P::Arrange,
+                         Act([](UCSlideDeckEditor& e) { e.DeleteSelection(); })));
+
+        // Format: pictures and charts - the crop | a chart's data.
+        w.Tab("format", Tr("Format"), "office-slides-format");
+        {
+            ToolEntry& crop = w.Toggle("slides-crop", "ultrapaint/crop.svg", Tr("Crop"),
+                                       Tr("Crop the selected picture with its handles (Enter: done)"), P::Picture,
+                                       [this]() {
+                                           CloseText(true);
+                                           if (!edit_->SetCropMode(!edit_->IsCropping()))
+                                               UltraCanvasDialogManager::ShowMessage(Tr("Select a picture to crop it."), Tr("Crop"),
+                                                                                     DialogType::Information, DialogButtons::OK,
+                                                                                     nullptr, window_);
+                                           edit_->SetFocus(true);
+                                           Sync();
+                                       },
+                                       [this]() { return edit_->IsCropping(); });
+            crop.labelOnBar = true;
+            crop.context = ToolContext::PictureSelected;
+        }
+        {
+            ToolEntry& reset = w.Button("slides-crop-reset", "", Tr("Reset crop"), Tr("The whole picture again"), P::Picture,
+                                        Act([](UCSlideDeckEditor& e) {
+                                            const PptxSlide* slide = e.CurrentSlide();
+                                            for (int i : e.GetSelection())
+                                                if (slide && slide->shapes[static_cast<size_t>(i)].kind == PptxShapeKind::Picture)
+                                                    e.ResetPictureCrop(i);
+                                        }));
+            reset.labelOnBar = true;
+            reset.context = ToolContext::PictureSelected;
+        }
+        w.NextGroup();
+        {
+            ToolEntry& data = w.Button("slides-chart-data", "chart.svg", Tr("Chart data"), Tr("Edit the selected chart's data"), P::Chart,
+                                       [this]() {
+                                           const PptxSlide* slide = Editor().CurrentSlide();
+                                           for (int i : Editor().GetSelection())
+                                               if (slide && slide->shapes[static_cast<size_t>(i)].kind == PptxShapeKind::Chart) {
+                                                   EditChartData(i);
+                                                   return;
+                                               }
+                                           UltraCanvasDialogManager::ShowMessage(Tr("Select a chart to edit its data."), Tr("Chart data"),
+                                                                                 DialogType::Information, DialogButtons::OK, nullptr,
+                                                                                 window_);
+                                       });
+            data.labelOnBar = true;
+            data.context = ToolContext::ChartSelected;
+        }
+
+        // Slide show: from the first slide or this one | how this slide
+        // comes on in the show.
+        w.Tab("show", Tr("Slide show"), "office-slides-show");
+        w.Button("slides-show-first", "play.svg", Tr("From the beginning"), Tr("Show the slides full screen, from the first"),
+                 P::Show, [this]() { Present(0); }).labelOnBar = true;
+        w.Button("slides-show-here", "", Tr("From this slide"), Tr("Show the slides full screen, from this one"), P::Show,
+                 [this]() { Present(std::max(0, Editor().GetCurrentSlide())); }).labelOnBar = true;
+        w.NextGroup();
+        {
+            ToolEntry& transition = w.List("slides-transition", Tr("Transition"), Tr("How this slide comes on in the show"),
+                                           P::Transitions);
+            transition.list.items = [] {
+                return std::vector<std::string>{Tr("No transition"), Tr("Fade"), Tr("Push"), Tr("Wipe"),
+                                                Tr("Split"), Tr("Cover"), Tr("Zoom")};
+            };
+            transition.list.choose = [this](int index) {
+                const auto kind = static_cast<PptxTransitionKind>(index);
+                const PptxSlide* slide = Editor().CurrentSlide();
+                if (!slide || slide->transition.kind == kind) return;
+                Editor().ChangeSlide("Transition", [kind](PptxSlide& s) {
+                    s.transition.kind = kind;
+                    if (s.transition.durationSec <= 0) s.transition.durationSec = 0.7;
+                });
+                edit_->SetFocus(true);
+            };
+            transition.list.selected = [this]() {
+                const PptxSlide* slide = Editor().CurrentSlide();
+                return slide ? static_cast<int>(slide->transition.kind) : -1;
+            };
+        }
+        w.Button("slides-transition-all", "", Tr("Apply to all slides"), Tr("Every slide comes on as this one does"), P::Transitions,
+                 [this]() {
+                     const PptxSlide* slide = Editor().CurrentSlide();
+                     if (!slide) return;
+                     const PptxTransition transition = slide->transition;
+                     const int current = Editor().GetCurrentSlide();
+                     // One step per slide changed, the last one shown again.
+                     for (int i = 0; i < Editor().GetSlideCount(); ++i) {
+                         if (i == current) continue;
+                         Editor().SetCurrentSlide(i);
+                         Editor().ChangeSlide("Transition", [transition](PptxSlide& s) { s.transition = transition; });
+                     }
+                     Editor().SetCurrentSlide(current);
+                     edit_->SetFocus(true);
+                 }).labelOnBar = true;
+
+        // The view group: normal, slide sorter, notes | fit the slide, zoom
+        // out, [zoom], zoom in.
+        w.ViewGroup("office-slides-view");
+        w.Toggle("slides-view-normal", "office/view-normal.svg", Tr("Normal"), Tr("Normal: the slide being edited, the slides beside it"),
+                 P::ViewGroup, [this]() { SetView(SlideEditView::Normal); },
+                 [this]() { return edit_->GetView() != SlideEditView::Sorter; });
+        w.Toggle("slides-view-sorter", "artcreator/grid.svg", Tr("Slide sorter"),
+                 Tr("Slide sorter: every slide in a grid, to order, duplicate, hide and delete them"), P::ViewGroup,
+                 [this]() { SetView(SlideEditView::Sorter); }, [this]() { return edit_->GetView() == SlideEditView::Sorter; });
+        w.Toggle("slides-view-notes", "office/notes.svg", Tr("Notes"), Tr("Notes: the speaker notes under the slide"), P::ViewGroup,
+                 [this]() {
+                     notesWanted_ = !notesWanted_;
+                     SyncView();
+                 },
+                 [this]() { return notesWanted_; });
+        w.NextGroup();
+        w.Button("slides-fit", "office/fit-slide.svg", Tr("Fit the slide"), Tr("Fit the slide (Ctrl+0)"), P::ViewGroup,
+                 [this]() { SetSlideZoom(1.0); });
+        w.Button("slides-zoomout", "menu/zoom-out.svg", Tr("Zoom out"), Tr("Zoom out (Ctrl+-)"), P::ViewGroup, [this]() { ZoomOut(); });
+        {
+            ToolEntry& zoom = w.List("slides-zoom", Tr("Zoom"), Tr("Zoom level: 100 % is the slide fitting the space"), P::ViewGroup,
+                                     ToolListStyle::Percent);
+            zoom.list.percents = ZoomLevelChoices();
+            zoom.list.minimum = 25;
+            zoom.list.maximum = 800;
+            zoom.list.askTitle = Tr("Zoom");
+            zoom.list.choosePercent = [this](int percent) { SetSlideZoom(percent / 100.0); };
+            zoom.list.currentPercent = [this]() { return static_cast<int>(std::lround(edit_->GetZoom() * 100.0)); };
+        }
+        w.Button("slides-zoomin", "menu/zoom-in.svg", Tr("Zoom in"), Tr("Zoom in (Ctrl++)"), P::ViewGroup, [this]() { ZoomIn(); });
+
+        // The panels' own: the selected shapes' place, size, turn, fill and
+        // outline; how long this slide's transition takes.
+        w.PanelsOnly();
+        struct Side { const char* id; std::string label; int64_t SlideBox::*field; double minimum; };
+        const Side sides[] = {
+            {"slides-x", Tr("Horizontal position"), &SlideBox::x, -100.0},
+            {"slides-y", Tr("Vertical position"), &SlideBox::y, -100.0},
+            {"slides-width", Tr("Width"), &SlideBox::width, 0.01},
+            {"slides-height", Tr("Height"), &SlideBox::height, 0.01}};
+        for (const Side& side : sides) {
+            int64_t SlideBox::*field = side.field;
+            w.Number(side.id, side.label, Tr("cm"), side.minimum, 200.0, 0.1, 2, P::Shape,
+                     [this, field]() -> std::optional<double> {
+                         if (Editor().GetSelection().empty()) return std::nullopt;
+                         return static_cast<double>(Editor().SelectionBox().*field) / kEmuPerCm;
+                     },
+                     [this, field](double cm) {
+                         if (Editor().GetSelection().empty()) return;
+                         CloseText(true);
+                         const SlideBox from = Editor().SelectionBox();
+                         SlideBox to = from;
+                         to.*field = static_cast<int64_t>(std::llround(cm * kEmuPerCm));
+                         if (Editor().GetSelection().size() == 1) Editor().SetShapeBox(Editor().GetSelection().front(), to);
+                         else Editor().SetSelectionBox(from, to);
+                     }).context = ToolContext::ShapeSelected;
+        }
+        w.Number("slides-rotation", Tr("Rotation"), "°", -360.0, 360.0, 1.0, 1, P::Shape,
+                 [this]() { return SelectedField(&PptxShape::rotationDeg); },
+                 [this](double degrees) {
+                     ChangeSelectedShapes("Rotate", [degrees](PptxShape& s) { s.rotationDeg = degrees; });
+                 }).context = ToolContext::ShapeSelected;
+        w.Colour("slides-fill", Tr("Fill colour"), P::Shape, [this]() { return SelectedColour(&PptxShape::fill); },
+                 [this](const Color& colour) {
+                     const std::string hex = colour.ToHexString().substr(1);
+                     ChangeSelectedShapes("Fill", [hex](PptxShape& s) { s.fill = hex; });
+                 }).context = ToolContext::ShapeSelected;
+        w.Colour("slides-line", Tr("Line colour"), P::Shape, [this]() { return SelectedColour(&PptxShape::line); },
+                 [this](const Color& colour) {
+                     const std::string hex = colour.ToHexString().substr(1);
+                     ChangeSelectedShapes("Line", [hex](PptxShape& s) { s.line = hex; });
+                 }).context = ToolContext::ShapeSelected;
+        w.Number("slides-line-width", Tr("Line width"), Tr("pt"), 0.0, 100.0, 0.25, 2, P::Shape,
+                 [this]() { return SelectedField(&PptxShape::lineWidthPt); },
+                 [this](double pt) { ChangeSelectedShapes("Line width", [pt](PptxShape& s) { s.lineWidthPt = pt; }); })
+            .context = ToolContext::ShapeSelected;
+        w.Number("slides-transition-duration", Tr("Duration"), Tr("seconds"), 0.1, 10.0, 0.1, 1, P::Transitions,
+                 [this]() -> std::optional<double> {
+                     const PptxSlide* slide = Editor().CurrentSlide();
+                     if (!slide || slide->transition.kind == PptxTransitionKind::NoTransition) return std::nullopt;
+                     return slide->transition.durationSec;
+                 },
+                 [this](double seconds) {
+                     if (!Editor().CurrentSlide()) return;
+                     Editor().ChangeSlide("Transition", [seconds](PptxSlide& s) { s.transition.durationSec = seconds; });
+                 });
     }
 
-    // ===== THE VIEW GROUP =====
-    // normal | slide sorter | notes | fit the slide | zoom out | [zoom] | zoom in
-    void BuildViewGroup() {
-        viewBar_ = MakeViewToolbar("office-slides-view");
-        viewBar_->AddSeparator();
-        normalView_ = AddToggleTool(*viewBar_, "slides-view-normal", "", "office/view-normal.svg",
-                                    Tr("Normal: the slide being edited, the slides beside it"),
-                                    [this]() { SetView(SlideEditView::Normal); }).get();
-        sorterView_ = AddToggleTool(*viewBar_, "slides-view-sorter", "", "artcreator/grid.svg",
-                                    Tr("Slide sorter: every slide in a grid, to order, duplicate, hide and delete them"),
-                                    [this]() { SetView(SlideEditView::Sorter); }).get();
-        notesTool_ = AddToggleTool(*viewBar_, "slides-view-notes", "", "office/notes.svg",
-                                   Tr("Notes: the speaker notes under the slide"), [this]() {
-                                       notesWanted_ = !notesWanted_;
-                                       SyncView();
-                                   }).get();
-        viewBar_->AddSeparator();
-        AddTool(*viewBar_, "slides-fit", "", "office/fit-slide.svg", Tr("Fit the slide (Ctrl+0)"),
-                [this]() { SetSlideZoom(1.0); });
-        AddTool(*viewBar_, "slides-zoomout", "", "menu/zoom-out.svg", Tr("Zoom out (Ctrl+-)"), [this]() { ZoomOut(); });
-        zoomBox_ = AddPercentBox(*viewBar_, "slides-zoom", ZoomLevelChoices(), 25, 800,
-                                 Tr("Zoom level: 100 % is the slide fitting the space"), Tr("Zoom"), window_,
-                                 [this](int percent) { SetSlideZoom(percent / 100.0); }).get();
-        AddTool(*viewBar_, "slides-zoomin", "", "menu/zoom-in.svg", Tr("Zoom in (Ctrl++)"), [this]() { ZoomIn(); });
-        SyncView();
+    static constexpr double kEmuPerCm = 360000.0;
+    static constexpr float kSlideSizes[] = {10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 54, 60, 72, 96};
+
+    // The text colours the Text tab offers, by name.
+    static std::vector<std::pair<std::string, std::string>> TextColours() {
+        return {{Tr("Black"), "000000"}, {Tr("Dark grey"), "404040"}, {Tr("White"), "FFFFFF"}, {Tr("Red"), "C00000"},
+                {Tr("Orange"), "ED7D31"}, {Tr("Green"), "70AD47"}, {Tr("Blue"), "4472C4"}, {Tr("Purple"), "7030A0"}};
+    }
+    // The tables Insert table offers: rows, columns.
+    static std::vector<std::pair<int, int>> TableSizes() { return {{2, 2}, {3, 3}, {4, 4}, {3, 5}, {5, 3}, {6, 4}}; }
+
+    // Whether a selected shape passes `test`.
+    bool SelectedShape(const std::function<bool(const PptxShape&)>& test) const {
+        const PptxSlide* slide = edit_->Editor().CurrentSlide();
+        if (!slide) return false;
+        for (int i : edit_->Editor().GetSelection())
+            if (i >= 0 && i < static_cast<int>(slide->shapes.size()) && test(slide->shapes[static_cast<size_t>(i)])) return true;
+        return false;
+    }
+    // The selected shapes' `field` when every one has the same; nothing
+    // selected, or several values, is none.
+    template <typename T>
+    std::optional<T> SelectedField(T PptxShape::*field) const {
+        const PptxSlide* slide = edit_->Editor().CurrentSlide();
+        const auto& selection = edit_->Editor().GetSelection();
+        if (!slide || selection.empty()) return std::nullopt;
+        const T& first = slide->shapes[static_cast<size_t>(selection.front())].*field;
+        for (int i : selection)
+            if (!(slide->shapes[static_cast<size_t>(i)].*field == first)) return std::nullopt;
+        return first;
+    }
+    // The selected shapes' fill or outline colour ("RRGGBB"): none for none,
+    // or several.
+    std::optional<Color> SelectedColour(std::string PptxShape::*field) const {
+        const std::optional<std::string> hex = SelectedField(field);
+        if (!hex || hex->size() != 6) return std::nullopt;
+        return ParseColor("#" + *hex);
+    }
+    // `change` on every selected shape, as one step; the selection stays.
+    void ChangeSelectedShapes(const char* description, const std::function<void(PptxShape&)>& change) {
+        const std::vector<int> picked = Editor().GetSelection();
+        if (picked.empty()) return;
+        CloseText(true);
+        Editor().ChangeSlide(description, [&picked, &change](PptxSlide& s) {
+            for (int i : picked)
+                if (i >= 0 && i < static_cast<int>(s.shapes.size())) change(s.shapes[static_cast<size_t>(i)]);
+        }, &picked);
     }
 
     void SetSlideZoom(double zoom) {
@@ -601,13 +951,9 @@ private:
 
     // The tools and the notes pane as the view is.
     void SyncView() {
-        const bool sorter = edit_->GetView() == SlideEditView::Sorter;
-        if (normalView_) normalView_->SetPressed(!sorter);
-        if (sorterView_) sorterView_->SetPressed(sorter);
-        if (notesTool_) notesTool_->SetPressed(notesWanted_);
-        if (crop_) crop_->SetPressed(edit_->IsCropping());
-        if (zoomBox_) ShowPercent(*zoomBox_, ZoomLevelChoices(), static_cast<int>(std::lround(edit_->GetZoom() * 100.0)));
-        ShowNotes(notesWanted_ && !sorter);
+        bars_.SyncTab(kViewGroupTab);
+        bars_.SyncTool("slides-crop");
+        ShowNotes(notesWanted_ && edit_->GetView() != SlideEditView::Sorter);
     }
 
     // ===== NOTES =====
@@ -800,103 +1146,6 @@ private:
                    [flag, all](PptxRun& r) { r.*flag = !all; });
     }
 
-    void BuildText() {
-        auto bar = MakeToolbar("office-slides-text");
-        bold_ = AddToggleTool(*bar, "slides-bold", "", "textformat/bold.svg", Tr("Bold (Ctrl+B)"),
-                              [this]() { ToggleRuns("Bold", &PptxRun::bold, &UltraCanvasRichTextEdit::ToggleBold); }).get();
-        italic_ = AddToggleTool(*bar, "slides-italic", "", "textformat/italic.svg", Tr("Italic (Ctrl+I)"),
-                                [this]() { ToggleRuns("Italic", &PptxRun::italic, &UltraCanvasRichTextEdit::ToggleItalic); }).get();
-        underline_ = AddToggleTool(*bar, "slides-underline", "", "textformat/underline.svg", Tr("Underline (Ctrl+U)"),
-                                   [this]() { ToggleRuns("Underline", &PptxRun::underline, &UltraCanvasRichTextEdit::ToggleUnderline); }).get();
-        strike_ = AddToggleTool(*bar, "slides-strike", "", "textformat/strike.svg", Tr("Strikethrough"),
-                                [this]() { ToggleRuns("Strikethrough", &PptxRun::strike, &UltraCanvasRichTextEdit::ToggleStrikethrough); }).get();
-        bar->AddSeparator();
-        // Every installed font, each in itself; on top the deck's fonts and
-        // the ones chosen last (the window's settings).
-        auto font = AddFontList(*bar, "slides-font", [this]() { return settings_; }, [this]() { return DeckFonts(); });
-        font->onFontChosen = [this](const FontPickerChoice& choice) {
-            const FontChoiceRun run = FontChoiceForRun(choice);
-            FormatText("Font", [choice](UltraCanvasRichTextEdit& e) { ApplyFontChoice(e, choice); },
-                       [run](PptxRun& r) {
-                           r.font = run.family;
-                           if (run.setsStyle) {
-                               r.bold = run.bold;
-                               r.italic = run.italic;
-                           }
-                       });
-        };
-        font_ = font.get();
-        const std::vector<float> sizes = {10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 54, 60, 72, 96};
-        std::vector<std::string> sizeNames;
-        for (float size : sizes) sizeNames.push_back(std::to_string(static_cast<int>(size)));
-        auto size = bar->AddDropdownButton("slides-size", "", sizeNames, nullptr);
-        size->SetTooltip(Tr("Font size"));
-        size->SetPlaceholderText(Tr("Size"));
-        size->size.width = CSSLayout::Dimension::Px(64);
-        size->onSelectionChanged = [this, sizes](int index, const DropdownItem&) {
-            if (index < 0 || index >= static_cast<int>(sizes.size())) return;
-            const float pt = sizes[static_cast<size_t>(index)];
-            FormatText("Font size", [pt](UltraCanvasRichTextEdit& e) { e.SetFontSize(pt); }, [pt](PptxRun& r) { r.sizePt = pt; });
-        };
-        AddTool(*bar, "slides-grow", "A+", "", Tr("Larger text"), [this]() { Grow(1.2f); });
-        AddTool(*bar, "slides-shrink", "A-", "", Tr("Smaller text"), [this]() { Grow(1.0f / 1.2f); });
-        const std::vector<std::pair<std::string, std::string>> colours = {
-            {Tr("Black"), "000000"}, {Tr("Dark grey"), "404040"}, {Tr("White"), "FFFFFF"}, {Tr("Red"), "C00000"},
-            {Tr("Orange"), "ED7D31"}, {Tr("Green"), "70AD47"}, {Tr("Blue"), "4472C4"}, {Tr("Purple"), "7030A0"}};
-        std::vector<std::string> colourNames;
-        for (const auto& c : colours) colourNames.push_back(c.first);
-        auto colour = bar->AddDropdownButton("slides-colour", "", colourNames, nullptr);
-        colour->SetTooltip(Tr("Text colour"));
-        colour->SetPlaceholderText(Tr("Colour"));
-        colour->size.width = CSSLayout::Dimension::Px(104);
-        UltraCanvasDropdown* colourBox = colour.get();
-        colour->onSelectionChanged = [this, colours, colourBox](int index, const DropdownItem&) {
-            if (index < 0 || index >= static_cast<int>(colours.size())) return;
-            const std::string hex = colours[static_cast<size_t>(index)].second;
-            FormatText("Text colour", [hex](UltraCanvasRichTextEdit& e) { e.SetTextColor("#" + hex); },
-                       [hex](PptxRun& r) { r.color = hex; });
-            colourBox->SetSelectedIndex(-1, false);
-        };
-        bar->AddSeparator();
-        auto align = [this](const char* id, const char* icon, const std::string& tip, RichTextAlign rich, PptxAlign pptx) {
-            return [this, rich, pptx]() {
-                FormatText("Alignment", [rich](UltraCanvasRichTextEdit& e) { e.SetAlignment(rich); }, nullptr,
-                           [pptx](PptxParagraph& p) { p.align = pptx; });
-            };
-        };
-        AddTool(*bar, "slides-left", "", "textformat/align-left.svg", Tr("Align left"),
-                align("", "", "", RichTextAlign::Left, PptxAlign::Left));
-        AddTool(*bar, "slides-centre", "", "textformat/align-centre.svg", Tr("Centre"),
-                align("", "", "", RichTextAlign::Center, PptxAlign::Center));
-        AddTool(*bar, "slides-right", "", "textformat/align-right.svg", Tr("Align right"),
-                align("", "", "", RichTextAlign::Right, PptxAlign::Right));
-        AddTool(*bar, "slides-justify", "", "office/justify.svg", Tr("Justify"),
-                align("", "", "", RichTextAlign::Justify, PptxAlign::Justify));
-        bar->AddSeparator();
-        AddTool(*bar, "slides-bullets", "", "ultramail/list-bullets.svg", Tr("Bulleted list"), [this]() {
-            const bool all = AllParagraphs([](const PptxParagraph& p) { return p.bullet && !p.numbered; });
-            FormatText("Bullets", [](UltraCanvasRichTextEdit& e) { e.ToggleBulletList(); }, nullptr,
-                       [all](PptxParagraph& p) { p.bullet = !all; p.numbered = false; });
-        });
-        AddTool(*bar, "slides-numbers", "", "ultramail/list-numbers.svg", Tr("Numbered list"), [this]() {
-            const bool all = AllParagraphs([](const PptxParagraph& p) { return p.numbered; });
-            FormatText("Numbering", [](UltraCanvasRichTextEdit& e) { e.ToggleNumberedList(); }, nullptr, [all](PptxParagraph& p) {
-                p.numbered = !all;
-                p.bullet = !all;
-                if (p.numbered && p.numberScheme.empty()) p.numberScheme = "arabicPeriod";
-            });
-        });
-        AddTool(*bar, "slides-outdent", "", "office/outdent.svg", Tr("Up a level"), [this]() {
-            FormatText("Level", [](UltraCanvasRichTextEdit& e) { e.OutdentList(); }, nullptr,
-                       [](PptxParagraph& p) { p.level = std::max(0, p.level - 1); });
-        });
-        AddTool(*bar, "slides-indent", "", "office/indent.svg", Tr("Down a level"), [this]() {
-            FormatText("Level", [](UltraCanvasRichTextEdit& e) { e.IndentList(); }, nullptr,
-                       [](PptxParagraph& p) { p.level = std::min(8, p.level + 1); });
-        });
-        tabs_.push_back({Tr("Text"), bar});
-    }
-
     bool AllParagraphs(const std::function<bool(const PptxParagraph&)>& test) const {
         const PptxSlide* slide = edit_->Editor().CurrentSlide();
         if (!slide || edit_->Editor().GetSelection().empty()) return false;
@@ -947,17 +1196,14 @@ private:
         return families;
     }
 
-    // The font list shows the selected text's font: one family, or blank
-    // for several (or none).
-    void SyncFont() {
-        if (!font_) return;
+    // The selected text's font: one family, or none for several (or none).
+    std::optional<std::string> SelectedFont() {
         if (TextOpen()) {
             const RichCharFormatState state = text_->GetFormatState();
             std::string family = state.fontFamily;
             if (family.empty() && !state.fontFamilyMixed) family = text_->GetStyle().baseFont.fontFamily;
-            if (state.fontFamilyMixed || family.empty()) font_->SetMixed();
-            else font_->SetCurrentFont(family);
-            return;
+            if (state.fontFamilyMixed || family.empty()) return std::nullopt;
+            return family;
         }
         std::string first;
         bool any = false;
@@ -965,28 +1211,19 @@ private:
             if (!any) { first = r.font; any = true; }
             return r.font == first;
         });
-        if (any && same && !first.empty()) font_->SetCurrentFont(first);
-        else font_->SetMixed();
+        if (any && same && !first.empty()) return first;
+        return std::nullopt;
+    }
+
+    // Whether the text has `flag` on: the text being edited, else every run
+    // of the selected shapes.
+    bool TextHas(bool PptxRun::*flag, RichCharFormatState::Tri RichCharFormatState::*tri) {
+        if (TextOpen()) return RichCharFormatState::IsOn(text_->GetFormatState().*tri);
+        return Editor().AllSelectedText([flag](const PptxRun& r) { return r.*flag; });
     }
 
     // The text tools show what the text has.
-    void SyncText() {
-        auto set = [](UltraCanvasButton* button, bool on) { if (button) button->SetPressed(on); };
-        SyncFont();
-        if (TextOpen()) {
-            const RichCharFormatState state = text_->GetFormatState();
-            set(bold_, RichCharFormatState::IsOn(state.bold));
-            set(italic_, RichCharFormatState::IsOn(state.italic));
-            set(underline_, RichCharFormatState::IsOn(state.underline));
-            set(strike_, RichCharFormatState::IsOn(state.strikethrough));
-            return;
-        }
-        const auto& editor = edit_->Editor();
-        set(bold_, editor.AllSelectedText([](const PptxRun& r) { return r.bold; }));
-        set(italic_, editor.AllSelectedText([](const PptxRun& r) { return r.italic; }));
-        set(underline_, editor.AllSelectedText([](const PptxRun& r) { return r.underline; }));
-        set(strike_, editor.AllSelectedText([](const PptxRun& r) { return r.strike; }));
-    }
+    void SyncText() { bars_.SyncTab("text"); }
 
     // ===== TABLES =====
 
@@ -1017,81 +1254,6 @@ private:
             Editor().Select({shape});
             edit_->SetFocus(true);
         };
-    }
-
-    void BuildTable() {
-        auto bar = MakeToolbar("office-slides-table");
-        const std::vector<std::pair<int, int>> sizes = {{2, 2}, {3, 3}, {4, 4}, {3, 5}, {5, 3}, {6, 4}};
-        std::vector<std::string> names;
-        for (const auto& size : sizes) names.push_back(TrF("{0} rows, {1} columns", size.first, size.second));
-        auto insert = bar->AddDropdownButton("slides-table", "", names, nullptr);
-        insert->SetTooltip(Tr("A table in the middle of the slide"));
-        insert->SetPlaceholderText(Tr("Insert table"));
-        UltraCanvasDropdown* insertBox = insert.get();
-        insert->onSelectionChanged = [this, sizes, insertBox](int index, const DropdownItem&) {
-            if (index < 0 || index >= static_cast<int>(sizes.size())) return;
-            CloseText(true);
-            const int rows = sizes[static_cast<size_t>(index)].first, cols = sizes[static_cast<size_t>(index)].second;
-            const int64_t width = Editor().SlideWidth() * 7 / 10, height = rows * (kInch * 2 / 5);
-            Editor().InsertTable(SlideBox{(Editor().SlideWidth() - width) / 2, (Editor().SlideHeight() - height) / 2, width, height},
-                                 rows, cols);
-            insertBox->SetSelectedIndex(-1, false);
-            edit_->SetFocus(true);
-        };
-        bar->AddSeparator();
-        AddTool(*bar, "slides-row-above", Tr("Row above"), "", Tr("A row above this cell"),
-                TableAct([](UCSlideDeckEditor& e, int s, int r, int) { e.InsertTableRow(s, r, false); }));
-        AddTool(*bar, "slides-row-below", Tr("Row below"), "", Tr("A row below this cell"),
-                TableAct([](UCSlideDeckEditor& e, int s, int r, int) { e.InsertTableRow(s, r, true); }));
-        AddTool(*bar, "slides-col-left", Tr("Column left"), "", Tr("A column left of this cell"),
-                TableAct([](UCSlideDeckEditor& e, int s, int, int c) { e.InsertTableColumn(s, c, false); }));
-        AddTool(*bar, "slides-col-right", Tr("Column right"), "", Tr("A column right of this cell"),
-                TableAct([](UCSlideDeckEditor& e, int s, int, int c) { e.InsertTableColumn(s, c, true); }));
-        bar->AddSeparator();
-        AddTool(*bar, "slides-row-delete", Tr("Delete row"), "", Tr("Delete this cell's row"),
-                TableAct([](UCSlideDeckEditor& e, int s, int r, int) { e.DeleteTableRow(s, r); }));
-        AddTool(*bar, "slides-col-delete", Tr("Delete column"), "", Tr("Delete this cell's column"),
-                TableAct([](UCSlideDeckEditor& e, int s, int, int c) { e.DeleteTableColumn(s, c); }));
-        tabs_.push_back({Tr("Table"), bar});
-    }
-
-    void BuildShow() {
-        auto bar = MakeToolbar("office-slides-show");
-        AddTool(*bar, "slides-show-first", Tr("From the beginning"), "play.svg", Tr("Show the slides full screen, from the first"),
-                [this]() { Present(0); });
-        AddTool(*bar, "slides-show-here", Tr("From this slide"), "", Tr("Show the slides full screen, from this one"),
-                [this]() { Present(std::max(0, Editor().GetCurrentSlide())); });
-        bar->AddSeparator();
-        // How this slide comes on in the show.
-        transition_ = bar->AddDropdownButton("slides-transition", "",
-            {Tr("No transition"), Tr("Fade"), Tr("Push"), Tr("Wipe"), Tr("Split"), Tr("Cover"), Tr("Zoom")}, nullptr);
-        transition_->SetTooltip(Tr("How this slide comes on in the show"));
-        transition_->onSelectionChanged = [this](int index, const DropdownItem&) {
-            if (index < 0 || syncing_) return;
-            const auto kind = static_cast<PptxTransitionKind>(index);
-            const PptxSlide* slide = Editor().CurrentSlide();
-            if (!slide || slide->transition.kind == kind) return;
-            Editor().ChangeSlide("Transition", [kind](PptxSlide& s) {
-                s.transition.kind = kind;
-                if (s.transition.durationSec <= 0) s.transition.durationSec = 0.7;
-            });
-            edit_->SetFocus(true);
-        };
-        AddTool(*bar, "slides-transition-all", Tr("Apply to all slides"), "", Tr("Every slide comes on as this one does"), [this]() {
-            const PptxSlide* slide = Editor().CurrentSlide();
-            if (!slide) return;
-            const PptxTransition transition = slide->transition;
-            const int current = Editor().GetCurrentSlide();
-            // One step per slide changed, the last one shown again.
-            for (int i = 0; i < Editor().GetSlideCount(); ++i) {
-                if (i == current) continue;
-                Editor().SetCurrentSlide(i);
-                Editor().ChangeSlide("Transition", [transition](PptxSlide& s) { s.transition = transition; });
-            }
-            Editor().SetCurrentSlide(current);
-            edit_->SetFocus(true);
-        });
-        tabs_.push_back({Tr("Slide show"), bar});
     }
 
     void InsertPicture() {
@@ -1142,33 +1304,7 @@ private:
         };
     }
 
-    void Sync() {
-        SyncText();
-        if (crop_) crop_->SetPressed(edit_->IsCropping());
-        if (zoomBox_) ShowPercent(*zoomBox_, ZoomLevelChoices(), static_cast<int>(std::lround(edit_->GetZoom() * 100.0)));
-        const auto& editor = Editor();
-        if (hidden_) {
-            const PptxSlide* slide = editor.CurrentSlide();
-            hidden_->SetPressed(slide && slide->hidden);
-        }
-        if (transition_) {
-            const PptxSlide* slide = editor.CurrentSlide();
-            syncing_ = true;
-            transition_->SetSelectedIndex(slide ? static_cast<int>(slide->transition.kind) : -1, false);
-            syncing_ = false;
-        }
-        // The deck's layouts, by name, for a new slide.
-        if (layouts_) {
-            std::vector<std::string> names;
-            for (const PptxLayout& layout : editor.GetDeck()->layouts) names.push_back(layout.name);
-            if (names.empty()) names.push_back(Tr("Title and Content"));
-            if (layouts_->GetItemCount() != static_cast<int>(names.size())) {
-                layouts_->ClearItems();
-                for (const auto& name : names) layouts_->AddItem(name);
-                layouts_->SetPlaceholderText(Tr("Layout"));
-            }
-        }
-    }
+    void Sync() { bars_.Sync(); }
 };
 
 } // namespace

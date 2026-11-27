@@ -5746,6 +5746,29 @@ if(BUILD_ULTRAOFFICE AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     add_test(NAME UltraOfficeSettingsWindowTest COMMAND UltraOfficeSettingsWindowTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraOfficeSettingsWindowTest")
+
+    # The tool tables (Apps/UltraOffice/UltraOfficeTools.h): every tool of
+    # the command tabs' bars and the view group in the table, a panel for
+    # each entry, unique ids, the value entries' getters and setters round-
+    # tripping on a document, a sheet and a deck. Opens a window.
+    message(STATUS "  Building UltraOfficeToolTableTest...")
+    add_executable(UltraOfficeToolTableTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraOfficeToolTableTest.cpp
+        ${_ultraOfficeSources}
+    )
+    target_include_directories(UltraOfficeToolTableTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/Apps/UltraOffice ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(UltraOfficeToolTableTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraOfficeToolTableTest PRIVATE UltraCanvas)
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraOfficeToolTableTest PRIVATE fmt::fmt)
+    endif()
+    set_target_properties(UltraOfficeToolTableTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOfficeToolTableTest COMMAND UltraOfficeToolTableTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraOfficeToolTableTest")
 endif()
 
 # ===== SPREADSHEET WORKBOOK ROUND-TRIP TEST =====
