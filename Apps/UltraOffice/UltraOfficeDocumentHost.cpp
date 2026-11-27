@@ -13,6 +13,8 @@
 // chosen and the share. A new document starts with the Settings window's
 // font, size and page.
 //
+// Version: 0.8.0 - the Picture panel's width and height in cm (GetImageDisplaySize: a picture of its own
+//                  size shows it) and "Keep proportions", on by default
 // Version: 0.7.0 - the tools are one table (UltraOfficeTools.h) the command tabs and the view group are
 //                  built from, with no change to what they show; the panels' own tools in it too:
 //                  superscript, subscript, text colour, highlight, line spacing, space before and after,
@@ -295,6 +297,8 @@ private:
     std::shared_ptr<UltraCanvasContainer> navigatorPane_;     // the split's right pane while it is shown
     UltraCanvasAppSettings* settings_ = nullptr;              // the window's
     bool navigatorShown_ = false;
+    bool keepPictureProportions_ = true;   // the Picture panel's width and height scale each other
+    static constexpr double kPointsPerCm = 72.0 / 2.54;
     // The tools, and the command tabs' bars and the view group built from them.
     ToolTable tools_;
     ToolBars bars_;
@@ -655,6 +659,41 @@ private:
                              edit->SetTableProperties(table);
                              Sync();
                          }));
+        // The selected picture's size in cm, as it is laid out (its own pixel
+        // size where the file gives it none); set, the other side follows in
+        // proportion while "Keep proportions" is on. One undo step each.
+        auto onPicture = [](ToolEntry& entry) { entry.context = ToolContext::PictureSelected; };
+        auto pictureSide = [this, edit](bool width) {
+            ToolValue value;
+            value.get = [edit, width]() -> std::optional<double> {
+                float nowW = 0.0f, nowH = 0.0f;
+                if (!edit->HasSelectedImage() || !edit->GetImageDisplaySize(edit->GetSelectedImage(), nowW, nowH)) return std::nullopt;
+                return (width ? nowW : nowH) / kPointsPerCm;
+            };
+            value.set = [this, edit, width](double cm) {
+                float nowW = 0.0f, nowH = 0.0f;
+                if (!edit->HasSelectedImage() || !edit->GetImageDisplaySize(edit->GetSelectedImage(), nowW, nowH)) return;
+                const float to = static_cast<float>(cm * kPointsPerCm);
+                if (!(to > 0.0f)) return;
+                float newW = width ? to : nowW, newH = width ? nowH : to;
+                if (keepPictureProportions_ && nowW > 0.0f && nowH > 0.0f) {
+                    if (width) newH = nowH * to / nowW;
+                    else newW = nowW * to / nowH;
+                }
+                edit->SetSelectedImageSize(newW, newH);
+                Sync();
+            };
+            return value;
+        };
+        {
+            const ToolValue width = pictureSide(true), height = pictureSide(false);
+            onPicture(w.Number("doc-picture-width", Tr("Width"), Tr("cm"), 0.01, 200.0, 0.1, 2, P::Picture, width.get, width.set));
+            onPicture(w.Number("doc-picture-height", Tr("Height"), Tr("cm"), 0.01, 200.0, 0.1, 2, P::Picture, height.get, height.set));
+        }
+        onPicture(w.Toggle("doc-picture-proportions", "", Tr("Keep proportions"),
+                           Tr("Setting the width or the height scales the other side with it"), P::Picture,
+                           [this]() { keepPictureProportions_ = !keepPictureProportions_; Sync(); },
+                           [this]() { return keepPictureProportions_; }));
     }
 
     // A colour of the format state ("#RRGGBB"): none when there is none, or

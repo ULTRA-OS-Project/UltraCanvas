@@ -633,6 +633,32 @@ own paragraph (a `RichBlockType::Image` block) that is made to float becomes
 the one picture in the line of a paragraph, at the same position (`{block,
 0}`), so it stays selected and one undo gives the block back.
 
+**A picture's size.** The editing core's `GetImageInfo` gives the size a
+picture *states*, in points, and 0 means "its own pixel size" - Word and ODF
+files leave some pictures so - which the core, holding no decoder, cannot
+turn into a number. The element decodes pictures to draw them, so it answers
+for them: `GetImageDisplaySize` is the size the picture is laid out at, in
+points - the stated size on each side that states one, else the decoded
+picture's pixels at one to each 1/96 inch (a 64 x 32 px PNG is 48 x 24 pt),
+through the very code the layout sizes it with. A line or column narrower
+than that still draws it narrower, in proportion; this is the size the
+document holds. `GetImageNaturalSize` is its size at 100 %, whatever it
+states. Both return false when nothing is at the position or, for a picture
+of its own size, when its media cannot be decoded (a text frame or drawing
+has no media: only a stated size answers there).
+
+```cpp
+float widthPt = 0, heightPt = 0;
+if (editor->HasSelectedImage()
+    && editor->GetImageDisplaySize(editor->GetSelectedImage(), widthPt, heightPt)) {
+    // Twice as wide, in proportion: one undo step.
+    editor->SetSelectedImageSize(widthPt * 2, heightPt * 2);
+}
+float naturalW = 0, naturalH = 0;
+if (editor->GetImageNaturalSize(editor->GetSelectedImage(), naturalW, naturalH))
+    editor->SetSelectedImageSize(naturalW, naturalH);   // back to 100 %
+```
+
 ### Floating pictures
 
 A picture run with `imageWrap` other than `Inline` floats: its placeholder stays

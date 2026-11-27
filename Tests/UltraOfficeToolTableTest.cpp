@@ -13,7 +13,9 @@
 //   - the value entries' getters and setters round-trip on a sample
 //     document, sheet and deck: line spacing, spacing, indents, colours, a
 //     table's borders; a cell's font, size, colours and borders; a shape's
-//     place, size, turn, fill and outline, a transition's duration;
+//     place, size, turn, fill and outline, a transition's duration; a
+//     picture's width and height, one of no stated size reading its own
+//     (GetImageDisplaySize) before it is set;
 //   - a toggle's state shows on its bar (Sync).
 //
 // Opens a window (the hosts' elements are laid out in it): skips without a
@@ -30,6 +32,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasClipboardDib.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRichTextEdit.h"
@@ -369,6 +372,46 @@ int main() {
         if (const ToolEntry* toggle = Entry(*document, "doc-table-header")) toggle->execute();
         Check(IsOn(*document, "doc-table-header") != header, "doc-table-header: its toggle changes the header row");
         Check(!tools.Applies(ToolContext::PictureSelected), "the Picture panel does not apply with no picture selected");
+        // A picture the file gives no size of (0: its own pixel size): the
+        // Picture panel shows its own size, 64 x 32 px at 96 to the inch,
+        // then what is set, the other side in proportion while "Keep
+        // proportions" is on.
+        ClipboardDib::RgbaImage pixels;
+        pixels.width = 64;
+        pixels.height = 32;
+        pixels.pixels.assign(64 * 32 * 4, 0x80);
+        std::vector<uint8_t> png;
+        Check(ClipboardDib::EncodePng(pixels, png), "a 64 x 32 px PNG is encoded");
+        auto pictured = std::make_shared<UCRichDocument>();
+        RichDocBlock picture;
+        picture.type = RichBlockType::Image;
+        picture.mediaIndex = pictured->AddMedia("wide.png", "image/png", png);
+        pictured->blocks.push_back(picture);
+        pictured->blocks.push_back(RichDocBlock());
+        edit->SetDocument(pictured);
+        Pump(app, *window, 100);
+        Check(edit->SelectImage(RichDocPosition(0, 0)) && tools.Applies(ToolContext::PictureSelected),
+              "the Picture panel applies with a picture selected");
+        const double cmPerPt = 2.54 / 72.0;
+        auto reads = [&](const std::string& id, double cm) {
+            const ToolEntry* entry = Entry(*document, id);
+            const std::optional<double> now = entry && entry->value.get ? entry->value.get() : std::nullopt;
+            Check(now && std::fabs(*now - cm) < 1e-3,
+                  id + " reads " + std::to_string(cm) + " cm: " + (now ? std::to_string(*now) : std::string("none")));
+        };
+        reads("doc-picture-width", 48.0 * cmPerPt);
+        reads("doc-picture-height", 24.0 * cmPerPt);
+        Check(IsOn(*document, "doc-picture-proportions"), "doc-picture-proportions is on to begin with");
+        RoundTrip(*document, "doc-picture-width", 4.0);
+        reads("doc-picture-height", 2.0);
+        Check(edit->GetEditor().GetBlock(0).imageWidthPt > 0.0f, "...and the picture states its size now");
+        Check(edit->Undo() && edit->SelectImage(RichDocPosition(0, 0)), "one undo step");
+        reads("doc-picture-width", 48.0 * cmPerPt);
+        if (const ToolEntry* keep = Entry(*document, "doc-picture-proportions")) keep->execute();
+        Check(!IsOn(*document, "doc-picture-proportions"), "doc-picture-proportions turns off");
+        RoundTrip(*document, "doc-picture-height", 3.0);
+        reads("doc-picture-width", 48.0 * cmPerPt);
+        if (const ToolEntry* keep = Entry(*document, "doc-picture-proportions")) keep->execute();
     } else {
         Check(false, "the document's editor");
     }
