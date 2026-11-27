@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.30 - the category tree's item icons drawn in the row's text colour (white when selected)
 // Version: 1.0.29 - Widgets > Profile Picture (UltraCanvasProfilePicture)
 // Version: 1.0.28 - the shell follows the theme: header, legend, page area and scrollbars take a
 //                  dark (or high-contrast) theme's roles and change with it; the light look is kept
@@ -2665,6 +2666,10 @@ namespace UltraCanvas {
                 } else {
                     itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
                 }
+                // One-colour line icons: drawn in the row's text colour, so the
+                // selected row's icon is white on the blue like its label, and
+                // the icons follow a dark theme's ink.
+                itemData.leftIcon.drawnInTextColor = true;
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }
