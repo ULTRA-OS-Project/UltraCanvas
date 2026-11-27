@@ -1,12 +1,17 @@
 // Apps/UltraOffice/UltraOfficeWindow.h
 // The UltraOffice window: one tab strip for every open document, whatever its
 // kind, each tab marked with its kind's icon; a Start tab first. Each
-// document's tab holds its command row (File, Undo, Redo, Save and the
-// kind's command tabs), the toolbar of the command tab chosen, the document
-// itself and a status line - so the toolbar follows the tab that is open.
-// The toolbar's right end is the kind's view group (fits, zoom, panes), which
-// stays whichever command tab is chosen; a narrow window puts the command
-// tab's tools behind their chevron first. Every minute (the Settings window
+// document's tab holds one toolbar at the top - File, Undo, Redo, Save, and
+// the kind's view group (fits, zoom, panes) last, at its right end - the
+// document itself and a status line. The tools are, by default, in tool
+// panels at the left of the document (UltraOfficePanels.h): a column with a
+// splitter whose width is kept, panels the user reorders, opens and closes,
+// kept per kind in the settings, context panels for the selection, and an
+// icon rail in a window narrower than 1100 px or when chosen. The Settings
+// window's other choice is the command tabs (Home, Insert ...) in the top
+// row with the chosen tab's toolbar under it; a narrow window puts its
+// tools behind their chevron first. F6 goes from the tab strip to the
+// toolbar, the panels and the document. Every minute (the Settings window
 // sets how often) a copy of each document with unsaved changes goes to the
 // recovery folder; a run that ends without closing leaves them there, and
 // the next start offers them back. A template opens as a new, untitled
@@ -14,6 +19,9 @@
 // (UltraOfficeSettingsDialog.h, File > Settings, Ctrl+,) sets what
 // UltraOfficeSettings.h names.
 //
+// Version: 0.6.0 - the tool panels at the left (the default), the toolbar a setting; one top toolbar with the
+//                  view group last; panel order, open panels and the column's width kept per kind; the icon
+//                  rail; F6 between the tab strip, the toolbar, the panels and the document
 // Version: 0.5.0 - the view group at the toolbar's right end; the Settings window; Ctrl++, Ctrl+-,
 //                  Ctrl+0 zoom; autosave to the file, the recovery copies and their interval, the recent
 //                  files' count and the files reopened at the next start from the settings
@@ -27,12 +35,14 @@
 #pragma once
 
 #include "UltraOfficeHost.h"
+#include "UltraOfficePanels.h"
 #include "UltraOfficeSettings.h"
 
 #include "UltraCanvasAppSettings.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasSplitPane.h"
 #include "UltraCanvasStartPage.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTimer.h"
@@ -86,6 +96,13 @@ public:
     void ApplySettings();
     void ClearRecentFiles();
 
+    // ===== THE TOOLS =====
+    // The tool panels of the tab open; null on the Start tab or in toolbar
+    // mode. For tests.
+    ToolPanels* GetToolPanels();
+    // F6: the focus to the next of the tab strip, the toolbar, the panels
+    // (panel mode) and the document; Shift+F6 the other way.
+    void CycleFocus(bool backwards);
 
 private:
     bool HandleShortcut(const UltraCanvas::UCEvent& event);
@@ -101,6 +118,11 @@ private:
         std::shared_ptr<UltraCanvas::UltraCanvasContainer> commandSlot;   // where the command tab's bar goes
         std::shared_ptr<UltraCanvas::UltraCanvasLabel> status;
         std::vector<UltraCanvas::UltraCanvasButton*> commandButtons;
+        UltraCanvas::UltraCanvasButton* fileButton = nullptr;            // raw: the command row owns it
+        std::shared_ptr<UltraCanvas::UltraCanvasSplitPane> panelSplit;  // panel mode: the panels | the document
+        std::unique_ptr<ToolPanels> panels;                              // panel mode
+        ToolLayout layout = ToolLayout::Panels;                          // the one built
+        bool railShown = false;                                          // the panels as the icon rail now
         int commandTab = -1;
         std::filesystem::path recoveryCopy;   // its copy in the recovery folder; empty: none
         bool changedSinceCopy = true;         // the copy is behind the document
@@ -120,6 +142,15 @@ private:
     OpenDocument* AddDocument(std::unique_ptr<OfficeHost> host, const std::string& path, const std::string& name,
                               const std::string& password);
     void BuildPane(OpenDocument& doc);
+    // The tab's tools as the settings say: the panels at the left, or the
+    // command tabs and their toolbar; built again when the setting changes.
+    void LayoutTools(OpenDocument& doc);
+    void BuildCommandRow(OpenDocument& doc, bool withTabs);
+    void BuildPanels(OpenDocument& doc);
+    // The panel column's splitter as wide as the column, or the rail.
+    void FitPanelSplit(OpenDocument& doc);
+    // A kind's panels kept in the settings, and given to its other tabs.
+    void SavePanels(OpenDocument& doc);
     void ShowCommandTab(OpenDocument& doc, int index);
     void OpenPath(const std::string& path);
     void ShowOpenDialog();

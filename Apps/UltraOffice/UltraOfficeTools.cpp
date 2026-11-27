@@ -1,6 +1,7 @@
 // Apps/UltraOffice/UltraOfficeTools.cpp
 // The tool table's panels and the toolbars built from it.
 //
+// Version: 0.2.0 - ToolWriter::Custom; ToolBars tells the table's onSynced when it has read the getters
 // Version: 0.1.0 - ToolBars (the command tabs' bars and the view group's), ToolsByPanel, the panels' order
 // Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
@@ -114,6 +115,14 @@ ToolEntry& ToolWriter::Colour(const std::string& id, const std::string& label, T
     entry.value.type = ToolValueType::Colour;
     entry.value.getColour = std::move(get);
     entry.value.setColour = std::move(set);
+    return entry;
+}
+
+ToolEntry& ToolWriter::Custom(const std::string& id, const std::string& label, const std::string& tooltip,
+                              ToolPanel panel,
+                              std::function<std::shared_ptr<UltraCanvasUIElement>(bool inPanel)> panelElement) {
+    ToolEntry& entry = Row(ToolKind::Custom, id, std::string(), label, tooltip, panel);
+    entry.panelElement = std::move(panelElement);
     return entry;
 }
 
@@ -278,6 +287,7 @@ void ToolBars::Add(UltraCanvasToolbar& bar, const ToolEntry& entry, UltraCanvasW
 }
 
 void ToolBars::Build(const ToolTable& table, UltraCanvasWindowBase* window) {
+    table_ = &table;
     tabs_.clear();
     bound_.clear();
     // Each bar's tools in the table's order, a separator between two groups.
@@ -347,13 +357,21 @@ void ToolBars::SyncBound(Bound& bound) {
     }
 }
 
+void ToolBars::NotifySynced() const {
+    if (table_ && table_->onSynced) table_->onSynced();
+}
+
 void ToolBars::Sync(const std::function<bool(const ToolEntry&)>& which) {
     for (Bound& bound : bound_)
         if (!which || which(*bound.entry)) SyncBound(bound);
+    if (!which) NotifySynced();   // every tool: the caret or the selection moved, the document changed
 }
 
 void ToolBars::SyncTab(const std::string& tab) {
     Sync([&tab](const ToolEntry& entry) { return entry.tab == tab; });
+    // A command tab's tools (the text being edited in place on a slide):
+    // the panels follow; the view group's are no panel's.
+    if (tab != kViewGroupTab) NotifySynced();
 }
 
 void ToolBars::SyncTool(const std::string& id) {

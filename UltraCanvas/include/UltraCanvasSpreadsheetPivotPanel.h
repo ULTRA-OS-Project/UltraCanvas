@@ -23,8 +23,10 @@
 //         g->SetPivotTable(sheetIndex, pivotIndex, changed);
 //     };
 //
+// Version: 1.0.1 - one above the other (not `wide`), the add buttons go two by two: a narrow panel
+//                  shows them whole
 // Version: 1.0.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 #pragma once
 

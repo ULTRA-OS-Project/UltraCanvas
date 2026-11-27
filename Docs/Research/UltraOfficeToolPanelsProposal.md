@@ -19,10 +19,19 @@ Taken on 2026-11-27; they replace the suggestions of §8 where they differ.
    header, and the order is saved (per kind, in `UltraOffice/settings.json`)
    for the next start, with which panels are open.
 
-Phase 1 (§6), the tool table, is built: `Apps/UltraOffice/UltraOfficeTools.h`
-holds each kind's tools, the command tabs' bars and the view group are built
-from it, and `ToolsByPanel` gives the tools by panel, in the default order or
-a saved one, for the panel stack.
+Phases 1 to 5 (§6) are built. `Apps/UltraOffice/UltraOfficeTools.h` holds
+each kind's tools, and both layouts are built from it: the command tabs' bars
+and the view group, and the tool panels (`Apps/UltraOffice/UltraOfficePanels.h`)
+in an `UltraCanvasToolPanelStack`, the default layout, with the toolbar at the
+top a setting (Settings, General, *Tools*). One row stays at the top: File,
+Undo, Redo, Save, and the view group last. The panels' values are edited in
+place, context panels come with the caret and the selection, the order, the
+open panels and the column's width are kept per kind in `settings.json`, the
+pivot field list is in the Pivot table panel, a window narrower than 1100 px
+(or the *Icon rail* setting) folds the column into the rail, and F6 goes from
+the tab strip to the toolbar, the panels and the document
+(`Docs/UltraOffice/README.md`, *The tool panels*;
+`Tests/UltraOfficePanelsWindowTest.cpp`). What is left is listed under §6.
 
 ## 1. Recommendation
 
@@ -210,9 +219,26 @@ the column, opened.
 |---|---|---|
 | 1 | The tool table per host, the current toolbars built from it (no visible change); tests that every tool is in the table (**built**: `UltraOfficeTools.h`, `UltraOfficeToolTableTest`) | ~900 app |
 | 2 | `UltraCanvasToolPanelStack` and the row helpers, with reordering by dragging a header, element tests and a demo page | ~1,500 framework |
-| 3 | Panels for documents (§3.1), the default layout, the toolbar a setting; value rows (spacing, indents) wired to the editor; open panels and their order saved | ~750 app |
-| 4 | Spreadsheets and presentations (§3.2, §3.3); context panels; the pivot field list moved into a panel | ~900 app |
-| 5 | Icon rail and flyouts, keyboard navigation, accessibility roles | ~500 framework, ~100 app |
+| 3 | Panels for documents (§3.1), the default layout, the toolbar a setting; value rows (spacing, indents) wired to the editor; open panels and their order saved (**built**: `UltraOfficePanels.h`, the window's layout, `UltraOfficePanelsWindowTest`) | ~750 app |
+| 4 | Spreadsheets and presentations (§3.2, §3.3); context panels; the pivot field list moved into a panel (**built**) | ~900 app |
+| 5 | Icon rail and flyouts, keyboard navigation, accessibility roles (**built**: the stack's rail, flyouts, header keys and roles; the window's automatic rail below 1100 px, the *Icon rail* setting and F6) | ~500 framework, ~100 app |
+
+**Left to do** after phases 3 to 5 - each a row of the table or a small
+change, none a change of design:
+
+- Tools §3 names that the table does not hold yet, so no panel shows them:
+  the document's page size, orientation, margin presets and columns (the
+  Page panel is *Page setup* alone), the list style, the table's merge and
+  split, cell shading and border style, a grid picker for a new table, a
+  document chart's panel; a sheet's percent and currency buttons and its
+  picture insert; a slide's background, chart and table insert, a table's
+  cell fill and a chart's type. The picture's width, height and keep
+  proportions are being added to the document's Picture panel separately.
+- The Start tab's one-time note on where the tools went, with *Use the
+  toolbar at the top* (§7, *Familiarity*).
+- The panels' layout under the demo's layout audit with pseudo-localised
+  texts (a long caption narrows a value row's control), and a dark-look
+  screenshot pass.
 
 **The table (phase 1).** A row (`ToolEntry`) has the command id (also its
 widget's id), icon, label, tooltip with the shortcut, kind (`Button`,

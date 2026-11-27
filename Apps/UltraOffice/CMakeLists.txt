@@ -3,6 +3,7 @@
 # the framework's elements: UltraCanvasRichTextEdit, UltraCanvasSpreadsheet
 # and UltraCanvasMediaViewer (Docs/UltraOffice/README.md).
 #
+# Version: 0.5.0 - UltraOfficePanels.cpp (the tool panels built from the tool table)
 # Version: 0.4.0 - UltraOfficeTools.cpp (the tool table, the toolbars built from it)
 # Version: 0.3.0 - UltraOfficeSettings.cpp (the settings' model), UltraOfficeSettingsDialog.cpp (the Settings window)
 # Version: 0.2.0 - UltraOfficeTemplates.cpp (new from template); the shipped templates are media/templates/office,
@@ -20,6 +21,7 @@ add_executable(UltraOffice
     UltraOfficeWindow.cpp
     UltraOfficeHost.cpp
     UltraOfficeTools.cpp
+    UltraOfficePanels.cpp
     UltraOfficeTemplates.cpp
     UltraOfficeSettings.cpp
     UltraOfficeSettingsDialog.cpp

@@ -26,6 +26,9 @@
 // view tab (kViewGroupTab) and in no panel (ToolPanel::ViewGroup): it stays
 // at the right end of the one top toolbar in both layouts.
 //
+// Version: 0.2.0 - the panels built from the table (UltraOfficePanels.h): ToolEntry::panelElement (an
+//                  element a panel shows across its width, the pivot field list), ToolWriter::Custom,
+//                  ToolTable::onSynced (the bars' getters read again: the panels follow)
 // Version: 0.1.0 - the tool table, the toolbars built from it, the tools grouped by panel
 // Last Modified: 2026-11-27
 // Author: UltraCanvas Framework / ULTRA OS
@@ -185,6 +188,11 @@ struct ToolEntry {
     // Custom: the widget, added to `bar` (and returned); brought into step.
     std::function<std::shared_ptr<UltraCanvas::UltraCanvasUIElement>(UltraCanvas::UltraCanvasToolbar& bar)> addToBar;
     std::function<void(UltraCanvas::UltraCanvasUIElement&)> syncWidget;
+    // Custom in a panel: an element of the host's that the panel shows
+    // across its width (the pivot field list). panelElement(true) hands it
+    // over, out of where the host keeps it; panelElement(false) - the panels
+    // going - gives it back, and returns null.
+    std::function<std::shared_ptr<UltraCanvas::UltraCanvasUIElement>(bool inPanel)> panelElement;
 };
 
 // A command tab: its key (ToolEntry::tab), the name on its button, the id of
@@ -204,6 +212,11 @@ struct ToolTable {
     std::vector<ToolEntry> entries;    // in the order of the bars, then of the panels
     // Whether a context holds now (AlwaysShown always does).
     std::function<bool(ToolContext)> inContext;
+    // Called when the host has brought its tools into step (ToolBars::Sync
+    // of every tool, or of a command tab's): the panels built from the
+    // table (UltraOfficePanels.h) read their getters then too. Set by the
+    // panels, cleared when they go.
+    mutable std::function<void()> onSynced;
 
     const ToolEntry* Find(const std::string& id) const;
     bool Applies(ToolContext context) const {
@@ -240,6 +253,9 @@ public:
     ToolEntry& Colour(const std::string& id, const std::string& label, ToolPanel panel,
                       std::function<std::optional<UltraCanvas::Color>()> get,
                       std::function<void(const UltraCanvas::Color&)> set);
+    // An element of the host's own in a panel (ToolEntry::panelElement).
+    ToolEntry& Custom(const std::string& id, const std::string& label, const std::string& tooltip, ToolPanel panel,
+                      std::function<std::shared_ptr<UltraCanvas::UltraCanvasUIElement>(bool inPanel)> panelElement);
 
 private:
     static constexpr size_t kRoom = 256;
@@ -308,7 +324,9 @@ private:
     };
     void Add(UltraCanvas::UltraCanvasToolbar& bar, const ToolEntry& entry, UltraCanvas::UltraCanvasWindowBase* window);
     static void SyncBound(Bound& bound);
+    void NotifySynced() const;
 
+    const ToolTable* table_ = nullptr;
     std::vector<CommandTab> tabs_;
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> viewBar_;
     std::vector<Bound> bound_;

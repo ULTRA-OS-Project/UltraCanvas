@@ -29,9 +29,81 @@ six phases, is
 | Part | What it does |
 |---|---|
 | The tabs | **Start**, then one tab per open file; the icon says its kind, a dot marks unsaved changes, **+** goes to the Start tab |
-| The command row | **File** (the menu below), **Undo**, **Redo**, **Save**, then the command tabs of the file's kind |
-| The toolbar | The tools of the command tab chosen, and at its right end the kind's **view group** (below), which stays whichever command tab is chosen; in a narrow window the command tab's tools go behind a chevron menu first, and the view group stays whole. At 1280 px every command tab of every kind fits beside the view group: tools whose icon says them are icons (the tooltip names them), and the alignment, the lists and a slide's shape alignment each share one slot - it does the tool picked last, and resting the pointer on it folds out the others |
+| The toolbar | One row at the top: **File** (the menu below), **Undo**, **Redo**, **Save**, and last, at its right end, the kind's **view group** (below), which is never a panel |
+| The tool panels | At the left of the document, sheet or slides: the kind's tools in a column of panels (*The tool panels*, below), a splitter between them and the document; the navigator stays at the document's right |
 | The status line | Where the caret is (documents), the cell and the sum, average and count of the selection (spreadsheets), the number of slides (presentations) |
+
+That is the default layout. Settings, General, *Tools: Toolbar at the top*
+gives the command tabs instead, which every open tab follows at once: the
+top row holds File, Undo, Redo, Save and the kind's command tabs (Home,
+Insert ...), and the row under it the tools of the command tab chosen with
+the view group at its right end, which stays whichever command tab is
+chosen; in a narrow window the command tab's tools go behind a chevron menu
+first, and the view group stays whole. At 1280 px every command tab of every
+kind fits beside the view group: tools whose icon says them are icons (the
+tooltip names them), and the alignment, the lists and a slide's shape
+alignment each share one slot - it does the tool picked last, and resting
+the pointer on it folds out the others.
+
+**F6** moves the keyboard from the tab strip (Left and Right then choose a
+tab) to the toolbar (File; Enter opens the menu), the tool panels (the first
+panel's header) and the document, and Shift+F6 the other way. Every shortcut
+works in both layouts.
+
+### The tool panels
+
+Each kind's tools are described once, in a table (`UltraOfficeTools.h`), and
+both layouts are built from it: the command tabs' bars, and the panels
+(`UltraOfficePanels.h`), a column of
+[`UltraCanvasToolPanelStack`](../UltraCanvas/UltraCanvasToolPanelStack.md)
+panels. In a panel:
+
+- buttons and toggles are 28 px icon tools in a row that wraps (a tool with
+  no icon shows its name), with the name and the key as the tooltip; an
+  action group of the bar - the alignments, the lists, a slide's shape
+  alignment - is a button for each of its tools, since a panel has the room;
+- a list is a dropdown, across the panel when it is the panel's first tool
+  (the paragraph style, the number format), else with its label; the font is
+  the font picker across the panel, with the size beside it;
+- a value is edited in place: a number is a spinner with its unit (line
+  spacing in lines, space before and after and the indents in points, a
+  shape's position and size in centimetres, its rotation in degrees), blank
+  where the selection has none or several; a colour is a row of swatches
+  under its label;
+- a topic with a dialog has it as the "…" button in the panel's header -
+  *Paragraph*, *Styles*, *Page setup*, *Table properties*, *Picture*, *Chart
+  properties*, *All comments* - and the header's info icon names it and the
+  panel's keys.
+
+Every value follows the caret and the selection, read from the table's
+getters whenever the document's toolbars would be. A **context panel**
+comes, open and framed in the accent, at the top of the column while its
+selection holds, and goes with it:
+
+| Kind | Panels, in their first order | Open at first | Context panels (when) |
+|---|---|---|---|
+| Document | Clipboard, Style, Font, Paragraph, Lists, Insert, Page, Review | Font, Paragraph | Table (the caret in a table), Picture (a picture selected) |
+| Spreadsheet | Clipboard, Cell, Alignment, Number, Data, Insert, Page | Cell, Number | Chart (a chart selected), Pivot table (a pivot table's cell active: its tools and the field list) |
+| Presentation | Clipboard, Slide, Insert, Transitions, Slide show | Slide (and Text when shown) | Text (text, or a shape with text, selected), Arrange and Shape (shapes selected: position, size, rotation, fill, line colour and width), Picture, Table, Chart |
+
+A panel opens and closes with a click on its header (or Enter, Space).
+**Drag a panel by its header** to put it elsewhere - a line shows where it
+goes - or use its header's menu (a right-click: *Move up*, *Move down*) or
+Ctrl+Up / Ctrl+Down on a focused header. The order and the open panels are
+kept per kind for the next start and given to the kind's other open tabs; a
+panel a later version adds takes its default place. The splitter sets the
+column's width, 160 to 400 px (286 at first), kept per kind too.
+
+The pivot table's **field list** is in the Pivot table panel (one above the
+other: the fields and their add buttons, the items shown, the four areas,
+and the picked field's settings), and beside the grid with the toolbar.
+
+In a window narrower than 1100 px the column folds into the **icon rail**,
+a 44 px strip of the panels' icons (each its main tool's); a click opens the
+panel as a flyout beside it, which Escape or a click elsewhere closes.
+Settings, General, *Icon rail* chooses the rail at any width.
+
+### The view group and the command tabs
 
 The view group, at the right end of the toolbar, holds how the file is
 looked at - one group per kind, each tool an icon whose tooltip names it and
@@ -57,7 +129,7 @@ presentation). The icons are `media/icons/menu/` (navigator, zoom) and
 were each kind's *View* command tab before; everything that tab held is in
 the group, so the tab is gone.
 
-The command tabs:
+The command tabs (Settings, *Tools: Toolbar at the top*; the same tools are in the panels):
 
 - **Documents** - *Home*: cut, copy, paste, paragraph style, font, size,
   bold, italic, underline, strikethrough, bullets, numbering, indent,
@@ -351,6 +423,8 @@ and each page says when it applies.
 | | Look | as the desktop, light or dark (`ThemePolicy`) | at once |
 | | Recent files kept | none, 4, 8 (the default), 12, 20 or 30; *Clear recent files* empties the list | at once |
 | | Reopen the files open at the last close | off by default; a start with files of its own opens those | the next start |
+| | Tools | *Panels at the left* (the default) or *Toolbar at the top*, the command tabs | at once, every tab |
+| | Icon rail | the panels as a strip of icons at any width (they are one anyway below 1100 px) | at once, every tab |
 | Saving | New files are saved as | Office Open XML or OpenDocument (as the File menu's choice, also *Save as template*'s type) | at once |
 | | Autosave documents into their own files | each document with a file it can write saved into it | at once |
 | | Keep recovery copies of unsaved changes | the copies of *Autosave and recovery* (on by default) | at once |
@@ -387,18 +461,26 @@ folder (`UltraCanvasAppSettings`), read and written through the model in
 | `documentFit`, `documentWidthShare` | `pageWidth`, `wholePage`, `widthShare` or `actual`; 0.1 to 1 |
 | `sheetGridlines` | shown or not |
 | `slideSize`, `showOnSecondScreen`, `presenterView` | `16:9` or `4:3`; on or off; on or off |
+| `toolLayout`, `toolRail` | `panels` (the default) or `toolbar`; the icon rail chosen or not |
+| `documentPanels`, `spreadsheetPanels`, `presentationPanels` | a kind's panels: their order, the open ones and the rail, as `UltraCanvasToolPanelStack::SaveState` writes them (`order=style,font,paragraph,clipboard,...;open=font,paragraph;rail=0`); empty: the defaults; not reset by *Restore defaults* |
+| `documentPanelWidth`, `spreadsheetPanelWidth`, `presentationPanelWidth` | the column's width in pixels, 160 to 400 (286) |
 
 The user's templates are in `UltraOffice/templates/` beside it.
 `Tests/UltraOfficeSettingsTest.cpp` holds the model to its defaults, ranges
 and a save and load; `Tests/UltraOfficeSettingsWindowTest.cpp` opens the
-window, the view groups and the fits in the real window.
+window, the view groups and the fits in the real window;
+`Tests/UltraOfficePanelsWindowTest.cpp` the tool panels: the default layout,
+the top row, every tool in its panel, values edited in place, the context
+panels, a reorder kept after a restart, the toolbar setting and the rail.
 
 ## Files
 
 | File | Role |
 |---|---|
 | `Apps/UltraOffice/main.cpp` | the command line, one copy per user |
-| `Apps/UltraOffice/UltraOfficeWindow.h`, `.cpp` | the window: tabs, command row, File menu, Start tab, open, save, close, autosave and recovery |
+| `Apps/UltraOffice/UltraOfficeWindow.h`, `.cpp` | the window: tabs, the top row, the tool panels or the command tabs, File menu, Start tab, open, save, close, autosave and recovery, F6 |
+| `Apps/UltraOffice/UltraOfficeTools.h`, `.cpp` | each kind's tool table, the command tabs' bars built from it, the tools by panel |
+| `Apps/UltraOffice/UltraOfficePanels.h`, `.cpp` | the tool panels built from a tool table |
 | `Apps/UltraOffice/UltraOfficeSettings.h`, `.cpp` | the settings' model: every value, its default and range, by name |
 | `Apps/UltraOffice/UltraOfficeSettingsDialog.h`, `.cpp` | the Settings window |
 | `Apps/UltraOffice/UltraOfficeTemplates.h`, `.cpp` | the templates offered (shipped and the user's) and the Start tab's gallery |
