@@ -735,6 +735,11 @@ if(TARGET UltraCanvas)
     target_include_directories(RichTextEditElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(RichTextEditElementTest PRIVATE cxx_std_20)
     target_link_libraries(RichTextEditElementTest PRIVATE UltraCanvas)
+    # The vector readers draw a metafile picture (a synthetic EMF of its own size).
+    if(TARGET UltraCanvasVectorPlugin)
+        target_link_libraries(RichTextEditElementTest PRIVATE UltraCanvasVectorPlugin)
+        target_compile_definitions(RichTextEditElementTest PRIVATE RTE_TEST_HAS_VECTOR_PLUGIN=1)
+    endif()
     set_target_properties(RichTextEditElementTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )

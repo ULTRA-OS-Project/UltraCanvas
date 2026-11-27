@@ -28,9 +28,10 @@
 //     ApplyParagraphDialogValues(*edit, format);     // one undo step
 //     ShowParagraphDialog(*edit, [](bool applied) { (void)applied; });
 //
+// Version: 1.0.1 - RichPictureDialogValues read a picture of its own size at that size, not 0 x 0
 // Version: 1.0.0 - page setup, paragraph, styles, table properties, picture, contents, caption,
 //                  cross-reference, footnote, comment and comments dialogs
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -116,7 +117,9 @@ struct RichPictureDialogValues {
     std::string altText;
     RichTextRun::ImageWrap wrap = RichTextRun::ImageWrap::Inline;
     RichTextAlign align = RichTextAlign::Left;   // where a floating picture sits across the column
-    float widthPt = 0.0f;                        // 0 = its own size
+    // Read: the size it is laid out at (GetImageDisplaySize), its own size
+    // where the document states 0. Applied: 0 leaves the size as it is.
+    float widthPt = 0.0f;
     float heightPt = 0.0f;
 };
 // The selected picture's; Show says to select one when none is.

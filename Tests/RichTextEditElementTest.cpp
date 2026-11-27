@@ -29,6 +29,9 @@
 #include "UltraCanvasZipPackage.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "DisplayRequired.h"
+#ifdef RTE_TEST_HAS_VECTOR_PLUGIN
+#include "Vector/UltraCanvasVectorFormatsPlugin.h"
+#endif
 
 #include <cairo/cairo.h>
 
@@ -1165,6 +1168,60 @@ int main() {
              && closeTo(w, 72.0f) && closeTo(h, 36.0f));
         TEST("...and one undo gives its own size back", edit->Undo() && edit->GetImageDisplaySize(RichDocPosition(0, 0), w, h)
              && closeTo(w, 48.0f) && closeTo(h, 24.0f));
+        // A Windows metafile of its own size: drawn at twice its size for
+        // sharpness, laid out at its own. A synthetic EMF whose frame is
+        // 2 x 1 inch (5080 x 2540 in 0.01 mm) is 144 x 72 pt, not 288 x 144.
+        // The vector readers draw it: without them nothing can.
+#ifndef RTE_TEST_HAS_VECTOR_PLUGIN
+        std::cerr << "SKIP: a metafile of its own size (no vector plugin in this build)" << std::endl;
+#else
+        RegisterVectorFormatsPlugin();
+        {
+            std::vector<uint8_t> emf;
+            auto u32 = [&emf](uint32_t v) { for (int i = 0; i < 4; ++i) emf.push_back(static_cast<uint8_t>(v >> (8 * i))); };
+            u32(1); u32(88);                               // EMR_HEADER, its size
+            u32(0); u32(0); u32(191); u32(95);             // rclBounds, device pixels
+            u32(0); u32(0); u32(5080); u32(2540);          // rclFrame, 0.01 mm
+            u32(0x464D4520); u32(0x10000);                 // " EMF", version
+            u32(88 + 24 + 20); u32(3);                     // nBytes, nRecords
+            u32(1);                                        // nHandles (16 bits) and a reserved 16
+            u32(0); u32(0); u32(0);                        // description (count, offset), palette: none
+            u32(1920); u32(1080); u32(508); u32(286);      // szlDevice, szlMillimeters
+            u32(43); u32(24); u32(0); u32(0); u32(191); u32(95);   // EMR_RECTANGLE over the frame
+            u32(14); u32(20); u32(0); u32(16); u32(20);            // EMR_EOF
+            auto metafileDocument = std::make_shared<UCRichDocument>();
+            RichDocBlock metafile;
+            metafile.type = RichBlockType::Image;
+            metafile.mediaIndex = metafileDocument->AddMedia("frame.emf", "image/x-emf", emf);
+            metafileDocument->blocks.push_back(metafile);
+            metafileDocument->blocks.push_back(RichDocBlock());
+            edit->SetDocument(metafileDocument);
+            window->UpdateAndRender();
+            float mw = -1.0f, mh = -1.0f, nw = -1.0f, nh = -1.0f;
+            const bool shown = edit->GetImageDisplaySize(RichDocPosition(0, 0), mw, mh);
+            const bool natural = edit->GetImageNaturalSize(RichDocPosition(0, 0), nw, nh);
+            TEST("An EMF of its own size is laid out at it, 144 x 72 pt: " + size(mw, mh),
+                 shown && std::abs(mw - 144.0f) < 0.5f && std::abs(mh - 72.0f) < 0.5f);
+            TEST("...and that is its size at 100 %: " + size(nw, nh),
+                 natural && std::abs(nw - 144.0f) < 0.5f && std::abs(nh - 72.0f) < 0.5f);
+            // Its corner handle where 192 x 96 px put it (not 384 x 192):
+            // dragged 48 px right, it is 240 x 120 px = 180 x 90 pt.
+            edit->SelectImage(RichDocPosition(0, 0));
+            window->UpdateAndRender();
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 200, 104));
+            edit->OnEvent(MouseEvent(UCEventType::MouseMove, 224, 104));
+            edit->OnEvent(MouseEvent(UCEventType::MouseMove, 248, 104));
+            window->UpdateAndRender();
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 248, 104));
+            window->UpdateAndRender();
+            TEST("...and drawn at it: its corner handle dragged to 180 x 90 pt: "
+                 + size(editor.GetBlock(0).imageWidthPt, editor.GetBlock(0).imageHeightPt),
+                 std::abs(editor.GetBlock(0).imageWidthPt - 180.0f) < 1.0f
+                 && std::abs(editor.GetBlock(0).imageHeightPt - 90.0f) < 1.0f);
+            edit->SetDocument(document);
+            window->UpdateAndRender();
+        }
+#endif
         // The layout draws it at that size: its bottom-right handle is at
         // 64 x 32 px from its corner (the picture paragraph's at 8, 8, as in
         // the resize above), and 32 px dragged right make it 96 x 48 px.
