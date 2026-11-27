@@ -2,6 +2,9 @@
 // The UltraOffice window: tabs, the Start tab, the per-document panes, the
 // File menu, opening, saving, closing, and the recovery copies.
 //
+// Version: 0.10.0 - the tools in panels at the left by default (UltraOfficePanels.h), the toolbar a setting
+//                   switched at once; one top row with the view group last; the panel column's splitter and
+//                   each kind's panel order, open panels and width kept; the icon rail; F6 / Shift+F6
 // Version: 0.9.0 - the tab strip's + goes to the Start tab (it opened the File menu)
 // Version: 0.8.0 - the view group at the toolbar's right end; the Settings window (File > Settings...,
 //                  Ctrl+, , the Start tab); Ctrl++ / Ctrl+- / Ctrl+0; autosave to the file and the
@@ -96,6 +99,23 @@ int KindSlot(OfficeKind kind) {
     }
 }
 
+// The tab strip, which takes the keyboard when F6 brings it there (Left /
+// Right go from tab to tab) and not from a click, so the document keeps it.
+class OfficeTabStrip : public UltraCanvasTabbedContainer {
+public:
+    using UltraCanvasTabbedContainer::UltraCanvasTabbedContainer;
+    bool AcceptsFocus() const override { return keyboardWanted; }
+    bool OnEvent(const UCEvent& event) override {
+        if (event.type == UCEventType::FocusLost) keyboardWanted = false;
+        return UltraCanvasTabbedContainer::OnEvent(event);
+    }
+    bool keyboardWanted = false;
+};
+
+bool IsInside(const UltraCanvasUIElement* element, const UltraCanvasContainer* container) {
+    return element && container && (element == container || element->IsDescendantOf(container));
+}
+
 } // namespace
 
 UltraOfficeWindow::UltraOfficeWindow() : UltraCanvasWindow(), settings_("UltraOffice") {
@@ -117,7 +137,7 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
     InstallEventFilter("office-shortcuts", [this](const UCEvent& event) { return HandleShortcut(event); },
                        {UCEventType::KeyDown});
 
-    tabs_ = std::make_shared<UltraCanvasTabbedContainer>("office-tabs");
+    tabs_ = std::make_shared<OfficeTabStrip>("office-tabs");
     tabs_->SetTabStyle(TabStyle::Modern);
     tabs_->SetCloseMode(TabCloseMode::ClosableExceptFirst);
     tabs_->SetShowNewTabButton(true);
@@ -127,7 +147,10 @@ void UltraOfficeWindow::Initialize(const std::vector<std::string>& paths) {
     tabs_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     UltraCanvasTabbedContainer* tabs = tabs_.get();
     tabs_->onTabChange = [this](int, int) {
-        if (OpenDocument* doc = Active()) doc->host->Focus();
+        // A tab chosen with the keyboard on the strip (F6, then Left / Right)
+        // leaves the keyboard there.
+        const bool onStrip = GetFocusedElement() == tabs_.get();
+        if (OpenDocument* doc = Active(); doc && !onStrip) doc->host->Focus();
         UpdateTitle();
     };
     tabs_->onTabClose = [this](int index) {
@@ -283,13 +306,23 @@ void UltraOfficeWindow::BuildPane(OpenDocument& doc) {
     doc.pane = CreateContainer(id);
     doc.pane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     doc.pane->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    doc.status = std::make_shared<UltraCanvasLabel>(id + "-status");
+    doc.status->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(kStatusHeight));
+    doc.status->SetPadding(0, 10, 0, 10);
+    LayoutTools(doc);
+}
 
-    // The command row: the File menu, the quick actions, the kind's command tabs.
+void UltraOfficeWindow::BuildCommandRow(OpenDocument& doc, bool withTabs) {
+    // The general functions: the File menu, Undo, Redo, Save; in toolbar
+    // mode the kind's command tabs after them.
+    const std::string id = "office-doc-" + std::to_string(doc.id);
     doc.commandRow = MakeToolbar(id + "-commands");
     const int docId = doc.id;
-    UltraCanvasButton* fileButton = nullptr;
     auto file = AddTool(*doc.commandRow, id + "-file", Tr("File"), "menu/chevron-down.svg", Tr("Open, save, export, print"), nullptr);
-    fileButton = file.get();
+    UltraCanvasButton* fileButton = file.get();
+    doc.fileButton = fileButton;
+    // F6 comes here: the File button takes the keyboard (Enter or Space opens the menu).
+    file->SetAcceptsFocus(true);
     file->onClick = [this, fileButton]() { ShowFileMenu(fileButton); };
     AddTool(*doc.commandRow, id + "-undo", "", "menu/undo.svg", Tr("Undo (Ctrl+Z)"),
             [this, docId]() { if (OpenDocument* d = FindById(docId)) { d->host->Undo(); Refresh(*d); } });
@@ -297,6 +330,8 @@ void UltraOfficeWindow::BuildPane(OpenDocument& doc) {
             [this, docId]() { if (OpenDocument* d = FindById(docId)) { d->host->Redo(); Refresh(*d); } });
     AddTool(*doc.commandRow, id + "-save", "", "menu/save.svg", Tr("Save (Ctrl+S)"),
             [this, docId]() { if (OpenDocument* d = FindById(docId)) Save(*d, false); });
+    doc.commandButtons.clear();
+    if (!withTabs) return;
     doc.commandRow->AddSeparator();
     const auto& commandTabs = doc.host->GetCommandTabs();
     for (size_t i = 0; i < commandTabs.size(); ++i) {
@@ -306,33 +341,175 @@ void UltraOfficeWindow::BuildPane(OpenDocument& doc) {
                                     [this, docId, index]() { if (OpenDocument* d = FindById(docId)) ShowCommandTab(*d, index); });
         doc.commandButtons.push_back(button.get());
     }
-    doc.pane->AddChild(doc.commandRow);
+}
 
-    // The toolbar: the command tab's bar, which gives way - its tools behind
-    // its chevron - and the view group at the right end, which does not.
+void UltraOfficeWindow::LayoutTools(OpenDocument& doc) {
+    const std::string id = "office-doc-" + std::to_string(doc.id);
+    const ToolLayout layout = prefs_.GetToolLayout();
+    const auto& commandTabs = doc.host->GetCommandTabs();
+    std::shared_ptr<UltraCanvasToolbar> view = doc.host->GetViewToolbar();
+    std::shared_ptr<UltraCanvasUIElement> content = doc.host->GetContent();
+
+    // Taken apart first: the panels go, giving the host back the elements
+    // of its own they hold while the tree they are in is whole; the host's
+    // bars and its document go into the new layout.
+    doc.panels.reset();
+    if (doc.commandSlot && doc.commandTab >= 0 && doc.commandTab < static_cast<int>(commandTabs.size()))
+        doc.commandSlot->RemoveChild(commandTabs[static_cast<size_t>(doc.commandTab)].toolbar);
+    doc.commandTab = -1;
+    if (view)
+        if (auto* parent = view->GetParentContainer()) parent->RemoveChild(view);
+    if (auto* parent = content->GetParentContainer()) parent->RemoveChild(content);
+    doc.pane->ClearChildren();
+    doc.panelSplit.reset();
+    doc.toolbarSlot.reset();
+    doc.commandSlot.reset();
+    doc.fileButton = nullptr;
+    doc.layout = layout;
+
+    if (layout == ToolLayout::Toolbar) {
+        // The command row with the command tabs, and under it the command
+        // tab's bar, which gives way - its tools behind its chevron - and
+        // the view group at the right end, which does not.
+        BuildCommandRow(doc, true);
+        doc.pane->AddChild(doc.commandRow);
+        doc.toolbarSlot = CreateContainer(id + "-toolbar");
+        doc.toolbarSlot->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        doc.toolbarSlot->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(kToolbarHeight));
+        doc.commandSlot = CreateContainer(id + "-command-bar");
+        doc.commandSlot->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        doc.commandSlot->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        doc.commandSlot->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        doc.commandSlot->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(kToolbarHeight));
+        ContainerStyle plain;
+        plain.autoShowScrollbars = false;
+        doc.commandSlot->SetContainerStyle(plain);
+        doc.toolbarSlot->AddChild(doc.commandSlot);
+        if (view) doc.toolbarSlot->AddChild(view);
+        doc.pane->AddChild(doc.toolbarSlot);
+        doc.pane->AddChild(content);
+        doc.pane->AddChild(doc.status);
+        ShowCommandTab(doc, 0);
+        return;
+    }
+
+    // One row: the general functions, and the view group last at its right
+    // end; the panels at the left of the document, a splitter between.
+    BuildCommandRow(doc, false);
     doc.toolbarSlot = CreateContainer(id + "-toolbar");
     doc.toolbarSlot->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     doc.toolbarSlot->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(kToolbarHeight));
-    doc.commandSlot = CreateContainer(id + "-command-bar");
-    doc.commandSlot->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    doc.commandSlot->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    doc.commandSlot->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    doc.commandSlot->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(kToolbarHeight));
     ContainerStyle plain;
     plain.autoShowScrollbars = false;
-    doc.commandSlot->SetContainerStyle(plain);
-    doc.toolbarSlot->AddChild(doc.commandSlot);
-    if (auto view = doc.host->GetViewToolbar()) doc.toolbarSlot->AddChild(view);
+    doc.toolbarSlot->SetContainerStyle(plain);
+    doc.commandRow->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(kToolbarHeight));
+    doc.commandRow->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    doc.commandRow->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    doc.toolbarSlot->AddChild(doc.commandRow);
+    if (view) doc.toolbarSlot->AddChild(view);
     doc.pane->AddChild(doc.toolbarSlot);
-
-    doc.pane->AddChild(doc.host->GetContent());
-
-    doc.status = std::make_shared<UltraCanvasLabel>(id + "-status");
-    doc.status->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(kStatusHeight));
-    doc.status->SetPadding(0, 10, 0, 10);
+    BuildPanels(doc);
     doc.pane->AddChild(doc.status);
+}
 
-    ShowCommandTab(doc, 0);
+void UltraOfficeWindow::BuildPanels(OpenDocument& doc) {
+    const std::string id = "office-doc-" + std::to_string(doc.id);
+    const OfficeKind kind = doc.host->GetKind();
+    doc.panels = std::make_unique<ToolPanels>(doc.host->GetTools(), id + "-panels");
+    UltraCanvasToolPanelStack& stack = *doc.panels->Stack();
+    // The kind's order and open panels as kept; a panel the state leaves
+    // out (one added since) takes its default place. The rail is the
+    // Settings window's choice, and a narrow window's.
+    stack.RestoreState(ToolPanelStackState::FromString(prefs_.GetPanelState(kind)));
+    stack.SetRailMode(prefs_.GetToolRail());
+    stack.SetAutoRailBelowWidth(static_cast<float>(OfficeSettings::kAutoRailWidth));
+    stack.SetColumnWidth(static_cast<float>(prefs_.GetPanelWidth(kind)));
+    const int docId = doc.id;
+    stack.onOrderChanged = [this, docId](const std::vector<std::string>&) {
+        if (OpenDocument* d = FindById(docId)) SavePanels(*d);
+    };
+    stack.onPanelOpenChanged = [this, docId](const std::string&, bool) {
+        if (OpenDocument* d = FindById(docId)) SavePanels(*d);
+    };
+    stack.onRailModeChanged = [this, docId](bool) {
+        if (OpenDocument* d = FindById(docId)) FitPanelSplit(*d);
+    };
+
+    doc.panelSplit = std::make_shared<UltraCanvasSplitPane>(id + "-panel-split", SplitOrientation::Horizontal);
+    doc.panelSplit->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    doc.panelSplit->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto fill = [](const std::shared_ptr<UltraCanvasContainer>& pane, const std::shared_ptr<UltraCanvasUIElement>& element) {
+        pane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        ContainerStyle plain;
+        plain.autoShowScrollbars = false;
+        pane->SetContainerStyle(plain);
+        pane->SetFollowTheme(true);
+        pane->AddChild(element);
+        element->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        element->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    };
+    fill(doc.panelSplit->AddPane(0.0), doc.panels->Stack());
+    fill(doc.panelSplit->AddPane(1.0), doc.host->GetContent());
+    // The width the splitter is dragged to is the column's, and kept.
+    doc.panelSplit->onSplitterDragEnd = [this, docId](size_t) {
+        OpenDocument* d = FindById(docId);
+        if (!d || !d->panelSplit || !d->panels || d->railShown) return;
+        const int width = d->panelSplit->GetPaneFixedSize(0);
+        if (width <= 0) return;
+        const OfficeKind dragged = d->host->GetKind();
+        prefs_.SetPanelWidth(dragged, width);
+        settings_.Save();
+        // This tab's column, and the kind's other tabs'.
+        for (auto& other : documents_) {
+            if (!other->panels || other->host->GetKind() != dragged) continue;
+            other->panels->Stack()->SetColumnWidth(static_cast<float>(prefs_.GetPanelWidth(dragged)));
+            FitPanelSplit(*other);
+        }
+    };
+    FitPanelSplit(doc);
+    doc.pane->AddChild(doc.panelSplit);
+}
+
+void UltraOfficeWindow::FitPanelSplit(OpenDocument& doc) {
+    if (!doc.panelSplit || !doc.panels) return;
+    UltraCanvasToolPanelStack& stack = *doc.panels->Stack();
+    doc.railShown = stack.IsRailMode();
+    if (doc.railShown) {
+        // The rail is as wide as it is: nothing to drag.
+        const int rail = static_cast<int>(std::lround(stack.GetStyle().railWidth));
+        doc.panelSplit->SetPaneMinSize(0, rail);
+        doc.panelSplit->SetPaneMaxSize(0, rail);
+        doc.panelSplit->SetPaneFixedSize(0, rail);
+    } else {
+        const int width = std::clamp(static_cast<int>(std::lround(stack.GetColumnWidth())), OfficeSettings::kMinPanelWidth,
+                                     OfficeSettings::kMaxPanelWidth);
+        doc.panelSplit->SetPaneMaxSize(0, OfficeSettings::kMaxPanelWidth);
+        doc.panelSplit->SetPaneMinSize(0, OfficeSettings::kMinPanelWidth);
+        doc.panelSplit->SetPaneFixedSize(0, width);
+    }
+    doc.panelSplit->InvalidateLayout();
+    doc.panelSplit->RequestRedraw();
+}
+
+void UltraOfficeWindow::SavePanels(OpenDocument& doc) {
+    if (!doc.panels) return;
+    const OfficeKind kind = doc.host->GetKind();
+    const ToolPanelStackState state = doc.panels->Stack()->SaveState();
+    prefs_.SetPanelState(kind, state.ToString());
+    settings_.Save();
+    // The kind's other tabs: the same order and open panels.
+    for (auto& other : documents_) {
+        if (other->id == doc.id || !other->panels || other->host->GetKind() != kind) continue;
+        UltraCanvasToolPanelStack& stack = *other->panels->Stack();
+        if (stack.SaveState() == state) continue;
+        stack.RestoreState(state);
+        stack.SetRailMode(prefs_.GetToolRail());
+    }
+}
+
+ToolPanels* UltraOfficeWindow::GetToolPanels() {
+    OpenDocument* doc = Active();
+    return doc ? doc->panels.get() : nullptr;
 }
 
 void UltraOfficeWindow::ShowCommandTab(OpenDocument& doc, int index) {
@@ -879,6 +1056,11 @@ void UltraOfficeWindow::RestoreRecovered(const std::vector<std::filesystem::path
 // A filter, not OnEvent: the window's own keys come before the element with
 // the keyboard, which would otherwise take Ctrl+S or Ctrl+N for itself.
 bool UltraOfficeWindow::HandleShortcut(const UCEvent& event) {
+    // F6 / Shift+F6: the tab strip, the toolbar, the panels, the document.
+    if (event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::F6 && !event.ctrl && !event.alt) {
+        CycleFocus(event.shift);
+        return true;
+    }
     // The tab's own keys first (F5: the document's navigator).
     if (event.type == UCEventType::KeyDown)
         if (OpenDocument* doc = Active(); doc && doc->host->HandleShortcut(event)) return true;
@@ -906,6 +1088,41 @@ bool UltraOfficeWindow::HandleShortcut(const UCEvent& event) {
         }
     }
     return false;
+}
+
+void UltraOfficeWindow::CycleFocus(bool backwards) {
+    OpenDocument* doc = Active();
+    auto* strip = static_cast<OfficeTabStrip*>(tabs_.get());
+    UltraCanvasUIElement* focused = GetFocusedElement();
+    // Where the keyboard is: 0 the tab strip, 1 the toolbar, 2 the panels, 3 the document.
+    int at = 3;
+    if (focused == tabs_.get()) at = 0;
+    else if (doc && doc->toolbarSlot && IsInside(focused, doc->toolbarSlot.get())) at = 1;
+    else if (doc && doc->panels && IsInside(focused, doc->panels->Stack().get())) at = 2;
+    else if (doc && doc->panels && doc->panels->Stack()->IsFlyoutOpen()) at = 2;
+    else if (!doc) at = 0;   // the Start tab: from the strip to its page and back
+    for (int step = 1; step <= 4; ++step) {
+        const int next = ((at + (backwards ? -step : step)) % 4 + 4) % 4;
+        switch (next) {
+            case 0:
+                strip->keyboardWanted = true;
+                if (tabs_->SetFocus(true)) return;
+                strip->keyboardWanted = false;
+                break;
+            case 1:
+                if (doc && doc->fileButton && doc->fileButton->SetFocus(true)) return;
+                break;
+            case 2:
+                if (doc && doc->panels && doc->panels->Stack()->FocusFirst()) return;
+                break;
+            default:
+                if (doc) {
+                    doc->host->Focus();
+                    return;
+                }
+                break;
+        }
+    }
 }
 
 // ===== BOOKKEEPING =====
@@ -979,6 +1196,14 @@ void UltraOfficeWindow::ApplySettings() {
     RestartAutosave();
     for (auto& doc : documents_) {
         doc->host->ApplySettings();
+        // The tools: panels or the toolbar, at once; the rail as chosen.
+        if (doc->layout != prefs_.GetToolLayout()) {
+            LayoutTools(*doc);
+            if (doc.get() == Active()) doc->host->Focus();
+        } else if (doc->panels) {
+            doc->panels->Stack()->SetRailMode(prefs_.GetToolRail());
+            FitPanelSplit(*doc);
+        }
         Refresh(*doc);
     }
     RebuildStartPageLater();   // the recent files' count

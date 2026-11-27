@@ -64,6 +64,9 @@ int main() {
         Check(s.GetShowGridlines(), "gridlines shown");
         Check(s.GetSlideSize() == SlideSizeChoice::Widescreen && s.GetShowOnSecondScreen() && s.GetPresenterView(),
               "16:9 slides, the show on the second monitor with the presenter view");
+        Check(s.GetToolLayout() == ToolLayout::Panels && !s.GetToolRail(), "the tools in panels at the left, no rail");
+        Check(s.GetPanelState(OfficeKind::Document).empty() && s.GetPanelWidth(OfficeKind::Spreadsheet) == 286,
+              "no panels kept yet; the column 286 px wide");
     }
 
     std::printf("\n=== Set, saved, loaded again ===\n");
@@ -90,6 +93,11 @@ int main() {
         s.SetSlideSize(SlideSizeChoice::Standard);
         s.SetShowOnSecondScreen(false);
         s.SetPresenterView(false);
+        s.SetToolLayout(ToolLayout::Toolbar);
+        s.SetToolRail(true);
+        s.SetPanelState(OfficeKind::Document, "order=font,clipboard;open=font;rail=0");
+        s.SetPanelState(OfficeKind::Presentation, "order=slide;open=;rail=0");
+        s.SetPanelWidth(OfficeKind::Spreadsheet, 330);
         for (int i = 0; i < 12; ++i) s.RememberRecentFile("/tmp/file" + std::to_string(i) + ".odt");
         Check(s.GetRecentFiles().size() == 8 && s.GetRecentFiles().front() == "/tmp/file11.odt",
               "eight recent files kept, the last opened first");
@@ -116,6 +124,16 @@ int main() {
         Check(s.GetSlideSize() == SlideSizeChoice::Standard && !s.GetShowOnSecondScreen() && !s.GetPresenterView(),
               "the slides and the monitors");
         Check(s.GetRecentCount() == 4 && s.GetRecentFiles().size() == 4, "the recent files' count");
+        Check(s.GetToolLayout() == ToolLayout::Toolbar && s.GetToolRail(), "the tools: the toolbar, the rail");
+        Check(s.GetPanelState(OfficeKind::Document) == "order=font,clipboard;open=font;rail=0" &&
+                  s.GetPanelState(OfficeKind::Presentation) == "order=slide;open=;rail=0" &&
+                  s.GetPanelState(OfficeKind::Spreadsheet).empty(),
+              "each kind's panels, apart");
+        Check(s.GetPanelWidth(OfficeKind::Spreadsheet) == 330 && s.GetPanelWidth(OfficeKind::Document) == 286,
+              "each kind's column width");
+        Check(store.GetString("toolLayout") == "toolbar" && !store.GetString("documentPanels").empty() &&
+                  store.GetInt("spreadsheetPanelWidth", 0) == 330,
+              "the keys toolLayout, documentPanels, spreadsheetPanelWidth");
         // The keys the file had before the Settings window, as the window
         // wrote them.
         Check(store.GetString("saveFormat") == "odf" && store.GetBool("documentNavigator", false),
@@ -148,6 +166,10 @@ int main() {
         Check(s.GetDocumentFit() == DocumentFit::PageWidth, "an unknown fit reads as page width");
         s.SetLanguage("");
         Check(s.GetLanguage() == "system", "an empty language is the system's");
+        s.SetPanelWidth(OfficeKind::Document, 20);
+        Check(s.GetPanelWidth(OfficeKind::Document) == OfficeSettings::kMinPanelWidth, "a column at least 160 px wide");
+        s.SetPanelWidth(OfficeKind::Document, 2000);
+        Check(s.GetPanelWidth(OfficeKind::Document) == OfficeSettings::kMaxPanelWidth, "...and at most 400");
     }
 
     std::printf("\n=== Clear recent files, restore defaults ===\n");
@@ -165,6 +187,8 @@ int main() {
                   s.GetDocumentFit() == DocumentFit::PageWidth && s.GetShowGridlines() && !s.GetAutosave(),
               "every setting back to its default");
         Check(s.GetOpenFiles() == std::vector<std::string>{"/tmp/still.odt"}, "...the files to reopen are no setting");
+        Check(s.GetToolLayout() == ToolLayout::Panels && !s.GetToolRail(), "...the tools back in panels");
+        Check(!s.GetPanelState(OfficeKind::Document).empty(), "...the panels' order kept, as the recent files are");
     }
 
     fs::remove_all(folder, ec);

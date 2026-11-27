@@ -171,6 +171,10 @@ int main() {
         std::printf("%s: the window could not be created\n", DisplayTest::DisplayRequired() ? "FAIL" : "SKIP");
         return DisplayTest::DisplayRequired() ? 1 : 0;
     }
+    // The command tabs and their bars: the toolbar layout (Settings, Tools:
+    // toolbar at the top); the panels' layout, the default, is checked at
+    // the end and in UltraOfficePanelsWindowTest.
+    window->Settings().SetToolLayout(UltraOffice::ToolLayout::Toolbar);
     window->Initialize({});
     window->Show();
     // A short timer, so a turn of the loop never waits long for the display.
@@ -355,6 +359,25 @@ int main() {
     auto* paneFive = Find<UltraCanvasContainer>(window.get(), "office-doc-5");
     auto* sheetFive = Find<UltraCanvasSpreadsheet>(paneFive, "office-spreadsheet");
     Check(sheetFive && !sheetFive->GetShowGridlines(), "a new spreadsheet has no gridlines");
+
+    std::printf("\n=== The view group with the tool panels ===\n");
+    window->Settings().SetToolLayout(UltraOffice::ToolLayout::Panels);
+    window->ApplySettings();
+    PumpUntil(app, *window, [] { return false; }, 300);
+    if (auto* strip = Find<UltraCanvasTabbedContainer>(window.get(), "office-tabs")) {
+        const std::vector<std::pair<std::string, std::vector<std::string>>> views = {
+            {"office-document-view", {"doc-navigator", "doc-pageview", "doc-zoomin"}},
+            {"office-sheet-view", {"sheet-freeze", "sheet-zoomin"}},
+            {"office-slides-view", {"slides-view-normal", "slides-zoomin"}}};
+        for (int tab = 1; tab <= 3; ++tab) {
+            strip->SetActiveTab(tab);
+            PumpUntil(app, *window, [] { return false; }, 300);
+            const auto& view = views[static_cast<size_t>(tab - 1)];
+            CheckViewGroup(*window, "panels, tab " + std::to_string(tab), view.first, view.second);
+            Check(Find<UltraCanvasContainer>(window.get(), "office-doc-" + std::to_string(tab) + "-panels") != nullptr,
+                  "panels, tab " + std::to_string(tab) + ": the tool panels at the left");
+        }
+    }
 
     app.StopTimer(tick);
     window->Close();

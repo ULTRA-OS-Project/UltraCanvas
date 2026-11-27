@@ -5793,6 +5793,30 @@ if(BUILD_ULTRAOFFICE AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     add_test(NAME UltraOfficeToolTableTest COMMAND UltraOfficeToolTableTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraOfficeToolTableTest")
+
+    # The tool panels (Apps/UltraOffice/UltraOfficePanels.h) in the window:
+    # the default layout, the top row, every tool in its panel, values edited
+    # in place, the context panels, a reorder saved and restored after a
+    # restart, the toolbar as a setting, the icon rail and its flyout, F6.
+    # Opens a window.
+    message(STATUS "  Building UltraOfficePanelsWindowTest...")
+    add_executable(UltraOfficePanelsWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraOfficePanelsWindowTest.cpp
+        ${_ultraOfficeSources}
+    )
+    target_include_directories(UltraOfficePanelsWindowTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/Apps/UltraOffice ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(UltraOfficePanelsWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraOfficePanelsWindowTest PRIVATE UltraCanvas)
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraOfficePanelsWindowTest PRIVATE fmt::fmt)
+    endif()
+    set_target_properties(UltraOfficePanelsWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraOfficePanelsWindowTest COMMAND UltraOfficePanelsWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraOfficePanelsWindowTest")
 endif()
 
 # ===== SPREADSHEET WORKBOOK ROUND-TRIP TEST =====

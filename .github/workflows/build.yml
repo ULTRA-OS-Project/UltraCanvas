@@ -2677,7 +2677,7 @@ jobs:
             ToolPanelStackElementTest TooltipOwnWindowTest
             VideoTimelineElementTest WindowCurrentDesktopTest
             UltraOfficeTemplateWindowTest UltraOfficeSettingsWindowTest
-            UltraOfficeToolTableTest
+            UltraOfficeToolTableTest UltraOfficePanelsWindowTest
           )
           regex="^($(IFS='|'; echo "${tests[*]}"))\$"
           registered=$(ctest -N -R "$regex" | grep -cE '^ *Test +#' || true)

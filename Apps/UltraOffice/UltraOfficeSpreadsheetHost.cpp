@@ -5,10 +5,12 @@
 // file types and password prompts through UltraCanvasFileLoader. Command
 // tabs - Home, Insert, Data, Review, Page - with the view group at the
 // toolbar's right end (freeze panes, unfreeze, gridlines, the zoom), and a
-// status line with the sum, average and count of the selection. Beside the grid, a pivot table's
-// field list (UltraCanvasSpreadsheetPivotPanel) while one of its cells is
-// active; each change in it is applied to the pivot at once.
+// status line with the sum, average and count of the selection. A pivot table's field list
+// (UltraCanvasSpreadsheetPivotPanel) while one of its cells is active - in the Pivot table panel
+// with the tool panels, beside the grid with the toolbar; each change in it is applied to the
+// pivot at once.
 //
+// Version: 0.10.0 - the pivot field list moves into the Pivot table panel while the tools are panels
 // Version: 0.9.0 - the tools are one table (UltraOfficeTools.h) the command tabs and the view group are
 //                  built from, with no change to what they show; the panels' own tools in it too: the
 //                  cell's font, size, text and fill colour, borders, vertical alignment and merging
@@ -523,6 +525,12 @@ private:
                  Act([](auto& s) { s.SetSelectionAlignment(s.GetActiveCellHAlign(), VerticalAlignment::Middle); }));
         w.Button("sheet-bottom", "artcreator/align-bottom.svg", Tr("Align bottom"), Tr("Align bottom"), P::Alignment,
                  Act([](auto& s) { s.SetSelectionAlignment(s.GetActiveCellHAlign(), VerticalAlignment::Bottom); }));
+        // The pivot table's field list, in the Pivot table panel while the
+        // tools are panels; beside the grid with the toolbar.
+        w.Custom("sheet-pivot-field-list", Tr("Pivot table fields"),
+                 Tr("The pivot table's fields: what goes down the side, across the top, into the values and the filters"),
+                 P::Pivot, [this](bool inPanel) { return HandOverPivotPanel(inPanel); })
+            .context = ToolContext::PivotCell;
         w.Toggle("sheet-merge", "", Tr("Merge cells"), Tr("Merge the selected cells into one, or split a merged cell"), P::Alignment,
                  Act([](auto& s) {
                      const CellAddress active = s.GetActiveCell();
@@ -533,6 +541,30 @@ private:
                      const CellAddress active = sheet->GetActiveCell();
                      return sheet->IsCellMerged(active.row, active.col);
                  });
+    }
+
+    // The field list into a tool panel (out of the row beside the grid), or
+    // back beside the grid.
+    std::shared_ptr<UltraCanvasUIElement> HandOverPivotPanel(bool inPanel) {
+        if (auto* parent = pivotPanel_->GetParentContainer()) parent->RemoveChild(pivotPanel_);
+        // In a panel the column scrolls: the list is as tall as it is; beside
+        // the grid it is the grid's height and scrolls itself.
+        ContainerStyle scroll = pivotPanel_->GetContainerStyle();
+        scroll.autoShowScrollbars = !inPanel;
+        scroll.autoShowVerticalScrollbar = !inPanel;
+        pivotPanel_->SetContainerStyle(scroll);
+        pivotPanel_->size.height = CSSLayout::Dimension::Auto();
+        if (inPanel) {
+            pivotPanel_->size.width = CSSLayout::Dimension::Auto();
+            pivotPanel_->SetPadding(0, 0, 0, 0);
+            root_->InvalidateLayout();
+            return pivotPanel_;
+        }
+        pivotPanel_->size.width = CSSLayout::Dimension::Px(340.0f);
+        pivotPanel_->SetPadding(8, 8, 8, 8);
+        root_->AddChild(pivotPanel_);
+        root_->InvalidateLayout();
+        return nullptr;
     }
 
     // Whether the active cell is one of a pivot table this grid can change.
@@ -588,6 +620,7 @@ private:
         }
         if (pivotPanel_->IsVisible() != show) {
             pivotPanel_->SetVisible(show);
+            if (auto* parent = pivotPanel_->GetParentContainer()) parent->InvalidateLayout();   // beside the grid, or a panel
             root_->InvalidateLayout();
         }
     }

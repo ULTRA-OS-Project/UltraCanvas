@@ -3,6 +3,7 @@
 // the framework's UltraCanvasSettingsPageKit; the controls are the
 // framework's elements (a text field, lists, checkboxes, buttons).
 //
+// Version: 0.3.0 - General: the tools (panels at the left, the default, or the toolbar at the top) and the icon rail
 // Version: 0.2.0 - a new document's font from every installed font (UltraCanvasFontPicker), the
 //                  recent fonts on top
 // Version: 0.1.1 - the format list on Saving wide enough for its names
@@ -66,6 +67,8 @@ struct DialogState : public UltraCanvasSettingsWindow {
     std::shared_ptr<UltraCanvasDropdown> theme;
     std::shared_ptr<UltraCanvasDropdown> recentCount;
     std::shared_ptr<UltraCanvasCheckbox> reopen;
+    std::shared_ptr<UltraCanvasDropdown> tools;
+    std::shared_ptr<UltraCanvasCheckbox> rail;
 
     std::shared_ptr<UltraCanvasDropdown> format;
     std::shared_ptr<UltraCanvasCheckbox> autosave;
@@ -133,6 +136,11 @@ void Refresh(DialogState* d) {
         else { d->recentCount->SetSelectedIndex(-1, false); d->recentCount->SetPlaceholderText(std::to_string(s.GetRecentCount())); }
     }
     if (d->reopen) d->reopen->SetChecked(s.GetReopenFiles());
+    if (d->tools) d->tools->SetSelectedIndex(s.GetToolLayout() == ToolLayout::Toolbar ? 1 : 0, false);
+    if (d->rail) {
+        d->rail->SetChecked(s.GetToolRail());
+        d->rail->SetDisabled(s.GetToolLayout() == ToolLayout::Toolbar);   // the panels' alone
+    }
     if (d->format) d->format->SetSelectedIndex(s.GetSaveFormat() == SaveFormat::OpenDocument ? 1 : 0, false);
     if (d->autosave) d->autosave->SetChecked(s.GetAutosave());
     if (d->recovery) d->recovery->SetChecked(s.GetRecoveryCopies());
@@ -229,6 +237,18 @@ std::shared_ptr<UltraCanvasContainer> BuildGeneral(DialogState* d) {
     });
     parts.body->AddChild(MakeLabelledRow("office-set-theme-row", Tr("Look:"), d->theme, kCaptionWidth));
 
+    // Where the tools are: every open tab follows at once.
+    d->tools = MakeList("office-set-tools", {Tr("Panels at the left"), Tr("Toolbar at the top")}, [d](int index) {
+        if (d->syncing) return;
+        d->Settings().SetToolLayout(index == 1 ? ToolLayout::Toolbar : ToolLayout::Panels);
+        Changed(d);
+        Refresh(d);   // the rail's box with it
+    });
+    parts.body->AddChild(MakeLabelledRow("office-set-tools-row", Tr("Tools:"), d->tools, kCaptionWidth));
+    d->rail = Box(d, "office-set-rail", Tr("Icon rail: the panels as a strip of icons"),
+                  [](OfficeSettings& s, bool on) { s.SetToolRail(on); });
+    parts.body->AddChild(d->rail);
+
     std::vector<std::string> counts;
     for (int count : kRecentCounts) counts.push_back(count == 0 ? Tr("None") : std::to_string(count));
     d->recentCount = MakeList("office-set-recent", counts, [d](int index) {
@@ -251,12 +271,17 @@ std::shared_ptr<UltraCanvasContainer> BuildGeneral(DialogState* d) {
             Tr("Your name signs comments and tracked changes; if empty, your login name is used."));
     AddNote(parts, "office-set-general-note2",
             Tr("The language takes effect at the next start; everything else at once."));
+    AddNote(parts, "office-set-general-note3",
+            Tr("The panels fold into the icon rail by themselves in a window narrower than 1100 pixels. "
+               "Drag a panel by its header to move it; the order is kept for the next start."));
     AddReset(d, kSettingsGeneral, [](OfficeSettings& s) {
         s.SetAuthorName("");
         s.SetLanguage("system");
         s.SetTheme(ThemeChoice::System);
         s.SetRecentCount(8);
         s.SetReopenFiles(false);
+        s.SetToolLayout(ToolLayout::Panels);
+        s.SetToolRail(false);
     });
     return parts.page;
 }
