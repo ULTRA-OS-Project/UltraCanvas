@@ -18,6 +18,7 @@
   - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
   - [Switch-activated section with an info icon](#switch-activated-section-with-an-info-icon)
   - [A panel the user closes](#a-panel-the-user-closes)
+  - [A tool panel's header](#a-tool-panels-header)
   - [Collapsible card](#collapsible-card)
   - [Sections of a window as cards](#sections-of-a-window-as-cards)
 - [Demo](#demo)
@@ -30,7 +31,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.5.0 - `SectionCard(theme)` / `SectionPageColor(theme)`: the section card from the theme, dark under a dark one
+**Version:** 1.7.0 - a tool panel's header: the "…" button, a chip, the header as a focus stop, dragging by the header
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -59,6 +60,15 @@ interactive behaviour.
   (`SetCloseButton`, `onCloseClicked`) for a box that is a panel the user
   dismisses.
 - **Collapsible**: a disclosure arrow collapses the box down to its title bar.
+- **A tool panel's header** (what `UltraCanvasToolPanelStack` builds its
+  panels with): a "…" button that opens the topic's dialog
+  (`SetMoreButton`, `onMoreClicked`), a chip at the right of the title - a
+  count or "in a table" (`SetHeaderChip`) -, the header as a focus stop
+  (`SetHeaderFocusable`: Enter / Space fold the box, Shift+F10 or the Menu
+  key and a right-click run `onHeaderContextMenu`, a focus ring), and the
+  header as a drag handle (`SetHeaderDraggable`: `onHeaderDragStarted` /
+  `Moved` / `Ended`, a click still folds the box). See
+  [UltraCanvasToolPanelStack.md](UltraCanvasToolPanelStack.md).
 - **Standard Container**: children are added with `AddChild()` and laid out by the
   CSS layout engine inside the frame, below the caption.
 
@@ -120,6 +130,15 @@ void SetCloseButtonTooltip(const std::string& text);    // "Close" (in the user'
 void SetCollapsible(bool collapsible);
 void SetCollapsed(bool collapsed);
 bool IsCollapsed() const;
+
+void SetMoreButton(bool show);                          // a "…" left of the close button
+void SetMoreButtonTooltip(const std::string& text);     // "Options" (in the user's language) by default
+void SetHeaderChip(const std::string& text);            // a count or a context at the title's right; "" hides it
+void SetHeaderFocusable(bool focusable);                // the title bar takes the focus (Tab, a host's F6)
+void SetHeaderDraggable(bool draggable);                // a press that moves is a drag of the box
+bool IsHeaderDragging() const;
+void CancelHeaderDrag();
+Rect2Df GetTitleBarRect() const;                        // the title bar, in the box's coordinates
 ```
 
 ### Callbacks
@@ -128,6 +147,11 @@ bool IsCollapsed() const;
 std::function<void(bool)> onCheckedChanged;     // new checked state
 std::function<void(bool)> onCollapsedChanged;   // new collapsed state
 std::function<void()>     onCloseClicked;       // the close button was clicked
+std::function<void()>     onMoreClicked;        // the "…" button was clicked
+std::function<void(const Point2Di& windowPos)> onHeaderContextMenu;   // right-click, Shift+F10, Menu
+std::function<void(const Point2Di& windowPos)> onHeaderDragStarted;
+std::function<void(const Point2Di& windowPos)> onHeaderDragMoved;
+std::function<void(const Point2Di& windowPos, bool cancelled)> onHeaderDragEnded;
 ```
 
 ## Following the theme
@@ -209,6 +233,37 @@ panel->SetFrameStyle(GroupBoxFrameStyle::Header);
 panel->SetCloseButton(true);
 panel->SetCloseButtonTooltip("Close (Esc)");
 panel->onCloseClicked = [box = panel.get()] { box->SetVisible(false); };
+```
+
+### A tool panel's header
+
+A box in the `Header` style with `SetCollapsible(true)` is one tool panel of a
+column (`UltraCanvasToolPanelStack` does all of this for its panels). The
+header carries a "…" button for the topic's dialog, a chip for a count or
+the context the panel is shown for, and takes the keyboard: with
+`SetHeaderFocusable(true)` Tab reaches the title bar before the contents (a
+click does not take the focus, so a document keeps its caret), Enter or Space
+fold the box, and a ring is drawn around the title bar. With
+`SetHeaderDraggable(true)` a press on the title bar that moves four pixels
+before its release is a drag: the box reports it and its host moves it, and a
+press released in place still folds the box - on the release. The chip's
+colours are `chipBackgroundColor` / `chipTextColor` (`chipFontSize`), the
+ring's `focusRingColor`; the "…" button shares the close button's colours.
+The header strip of the `Header` style is clipped to the frame's rounded
+corners.
+
+```cpp
+auto paragraph = CreateGroupBox("paragraph", 0, 0, 270, 0, "Paragraph");
+paragraph->SetFrameStyle(GroupBoxFrameStyle::Header);
+paragraph->SetCollapsible(true);
+paragraph->SetMoreButton(true);
+paragraph->SetMoreButtonTooltip("Paragraph (Ctrl+Shift+P)");
+paragraph->onMoreClicked = [] { /* open the Paragraph dialog */ };
+paragraph->SetHeaderChip("1.15");
+paragraph->SetHeaderFocusable(true);
+paragraph->SetHeaderDraggable(true);
+paragraph->onHeaderDragMoved = [](const Point2Di& at) { (void)at; /* show where it goes */ };
+paragraph->onHeaderDragEnded = [](const Point2Di& at, bool cancelled) { (void)at; (void)cancelled; };
 ```
 
 ### Collapsible card

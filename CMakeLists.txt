@@ -1255,6 +1255,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasChipGroupExamples.cpp
             Apps/DemoApp/UltraCanvasCardExamples.cpp
             Apps/DemoApp/UltraCanvasCollapsiblePanelExamples.cpp
+            Apps/DemoApp/UltraCanvasToolPanelStackExamples.cpp
             Apps/DemoApp/UltraCanvasSidebarNavigationExamples.cpp
             Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
