@@ -11,8 +11,16 @@
 // The main thread and four workers each draw the same words, in the same
 // fonts, into offscreen contexts of their own, for a few seconds, measuring
 // and drawing as a tile and a page do. Passes by finishing. Headless.
+//
+// Then eight threads make and destroy contexts and do nothing else. Every
+// context adds itself to one list of live contexts and takes itself off
+// again; the list had no lock, so two threads grew and shrank it at once and
+// the heap was corrupted - this test aborted in malloc now and then, on CI
+// too ("malloc(): unaligned tcache chunk detected"). Unlocked, this part
+// aborted in about every second run of six seconds.
+// Version: 1.1.0 - contexts made and destroyed on eight threads at once
 // Version: 1.0.0
-// Last Modified: 2026-11-25
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRenderContext.h"
@@ -85,6 +93,27 @@ int main() {
     for (std::thread& w : workers) w.join();
 
     std::cout << "  " << rounds.load() << " rounds of text drawn on 5 threads at once\n";
+    if (failed) {
+        std::cout << "FAIL: a render context could not be made\n";
+        return 1;
+    }
+
+    // Contexts made and destroyed, nothing drawn: the list of live contexts
+    // is all these threads share.
+    const auto churnUntil = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    std::atomic<long> made{0};
+    std::vector<std::thread> churners;
+    for (int t = 0; t < 8; ++t) {
+        churners.emplace_back([&] {
+            while (std::chrono::steady_clock::now() < churnUntil) {
+                std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(16, 16), nullptr);
+                if (!ctx) { failed = true; return; }
+                ++made;
+            }
+        });
+    }
+    for (std::thread& c : churners) c.join();
+    std::cout << "  " << made.load() << " contexts made and destroyed on 8 threads at once\n";
     if (failed) {
         std::cout << "FAIL: a render context could not be made\n";
         return 1;

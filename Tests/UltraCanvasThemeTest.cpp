@@ -3,7 +3,8 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
-// Version: 1.18.0 - the rich text page the lighter of well and panel, the desk darker (rich-text.desk)
+// Version: 1.19.0 - the rich text page the lighter of well and panel, the desk darker (rich-text.desk)
+// Version: 1.18.0 - DeriveAccent: white text on Windows blue and the mid-tone accents
 // Version: 1.17.0 - ForDarkLook / ForThisLook; the gauge's dark look
 // Version: 1.16.0 - the dialog's destructive outline answer and the Filer's operation list under a
 //                  dark theme; a dialog given type sizes keeps following the theme and its sizes
@@ -1012,6 +1013,18 @@ int main() {
         const ThemeRoles blue = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, Color(0x00, 0x78, 0xd4), false);
         CHECK(Same(blue.accent, Color(0x00, 0x78, 0xd4, 255)) && Same(blue.onAccent, Colors::White) && Same(blue.focus, blue.accent),
               "Windows' blue stays itself: white reads on it, it is the focus ring");
+        // 0,120,215 measures 4.499:1 with white and 4.67:1 with black: the
+        // text stays white and the blue darkens a step, on Light and on Dark
+        for (const bool dk : {false, true}) {
+            const ThemeRoles base = dk ? UltraCanvasTheme::Dark().roles : UltraCanvasTheme::Light().roles;
+            const ThemeRoles win = UltraCanvasTheme::DeriveAccent(base, Color(0, 120, 215), dk);
+            CHECK(Same(win.onAccent, Colors::White) && Contrast(win.onAccent, win.accent) >= 4.5 && win.accent.b > 180,
+                  dk ? "Windows blue on Dark: white text, still blue" : "Windows blue on Light: white text, still blue");
+        }
+        for (const Color& mid : {Color(0xe6, 0x2d, 0x42), Color(0x91, 0x41, 0xac), Color(0xed, 0x5b, 0x00)}) {
+            const ThemeRoles m = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, mid, false);
+            CHECK(Same(m.onAccent, Colors::White), "a mid-tone red, purple or orange takes white text, never black");
+        }
         const ThemeRoles yellow = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, Color(255, 255, 0), false);
         CHECK(Same(yellow.onAccent, UltraCanvasTheme::Light().roles.ink) && Contrast(yellow.focus, UltraCanvasTheme::Light().roles.ground) >= 3.0,
               "a yellow accent takes the dark ink, and a focus ring that shows on the ground");

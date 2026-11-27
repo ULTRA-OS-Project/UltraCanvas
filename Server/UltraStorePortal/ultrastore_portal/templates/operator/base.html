@@ -14,7 +14,7 @@
           <a class="nav-link{% if name == 'orders' or name == 'order' %} active{% endif %}" href="{% url 'operator:orders' %}">Orders</a>
           <a class="nav-link{% if name == 'payouts' or name == 'payout' %} active{% endif %}" href="{% url 'operator:payouts' %}">Payouts</a>
           <a class="nav-link{% if name == 'tax' %} active{% endif %}" href="{% url 'operator:tax' %}">Tax</a>
-          {% if affiliates_on %}<a class="nav-link{% if name == 'affiliates' or name == 'affiliate' %} active{% endif %}" href="{% url 'operator:affiliates' %}">Affiliates</a>{% endif %}
+          {% if affiliates_on %}<a class="nav-link{% if name == 'affiliates' or name == 'affiliate' or name == 'affiliate_payouts' or name == 'affiliate_payout' %} active{% endif %}" href="{% url 'operator:affiliates' %}">Affiliates</a>{% endif %}
           <a class="nav-link{% if name == 'promote' %} active{% endif %}" href="{% url 'operator:promote' %}">Advertising</a>
           <a class="nav-link{% if name == 'audit' %} active{% endif %}" href="{% url 'operator:audit' %}">Audit log</a>
           <div class="sub">Records</div>

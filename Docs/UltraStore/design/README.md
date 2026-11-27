@@ -66,6 +66,14 @@ over these.
 | `TradeSupplier.dc.html` | a supplier's profile (a verified manufacturer): the record (response time, on-time delivery, orders, escrow volume, disputes), what the operator verified (register, VAT id, factory visit, ISO certificates), main products, capabilities, recent orders through the store, an inquiry form | page |
 | `TradeRFQ.dc.html` | the buyer desk: the requests for quotation, one request's quotes compared in a table sorted by landed cost, unit price, lead time or minimum order (the sort works in the script), *Ask back* and *Award*, the award turning into an order with the five escrow steps, the orders in escrow | page |
 | `TradePhoneHome.dc.html` | sourcing on a phone: search, the categories, the request-for-quotation card with the quotes in, ready-to-ship products with the price band and the minimum order, the bottom tab bar (source, quotes, orders, messages) | 390 × 844 |
+| `AffiliateDashboard.dc.html` | UltraAffiliates, the affiliate's dashboard in the web shop's chrome with a rail of its own: the period switch (7, 30, 90 days, the year) works in the script and changes the tiles (clicks, sales, new customers, earned); *Your money today* (balance with the next payout, held back with the next release, pending, paid); earnings by week as stacked bars by source (links, customers' later purchases, the share of affiliates brought in); where it came from; campaigns with clicks, sales and rate; what sold; the latest commissions with the rate, what is held back of each and the state | page |
+| `AffiliateLinks.dc.html` | the link maker: where the link leads (the shop, a product, becoming an affiliate), the product, the campaign as a field and as chips - all working in the script - then the link with *Copy*, what it earns, and its QR code with a colour, a caption, *Save as SVG* and PNG at two sizes; the links in use with clicks, sales and what they earned. **The QR code drawn is the real code of the link shown**: the script holds the portal's `qr.py` in small (byte mode, level Q, versions 1 to 10), compared with it path for path | page |
+| `AffiliateProducts.dc.html` | products to promote: how a commission is made (5 % from the store, a boost of 1 to 45 % from the seller, 90 days), then the catalogue across the shops with a working search, shop chips with counts, *Boosted only* and three sorts (state in the script); a card says what a link earns in percent and about per sale, the parts of it, a boost with its last day, and - for goods - a fixed amount per piece; *Get the link* and *QR* | page |
+| `AffiliatePayouts.dc.html` | payouts and statements: the way of a commission in four tiles (pending, the balance, held back, paid), the next payout with where it goes, what is released when, the payouts with their references, one statement opened line by line (commission, held back, in this payout) with its sums and *Save as PDF / CSV*, and where the affiliate is paid | page |
+| `AffiliateApply.dc.html` | becoming an affiliate: a panel with what the programme pays, and the four steps working in the script - you (the name in links, where you advertise, the terms), the phone number with its six digits, the identity check (how the document is shown, what the store writes down, no picture kept), done and waiting for the review | page |
+| `AffiliatePhoneHome.dc.html`, `AffiliatePhoneLink.dc.html` | the affiliate on a phone: the balance card with held back and pending, four tiles, *Make a link and its QR code*, the latest commissions, a tab bar (dashboard, links, products, payouts); and a link with its QR code - the product, the campaign chips (working, the code follows), the code large, *Copy the link*, *Share*, *Save the code* | 390 × 844 |
+| `AdminAffiliates.dc.html` | the merchant's Affiliates page in the admin backend's look: what affiliates brought and what it cost, *Add a boost* (on one app, a category or everything; a slider from 1 to 45 that works and redraws what a sale of 100.00 leaves the merchant, the affiliate and the store; from, until, renewals), the boosts in force, what a link to each product earns today, the affiliates who sold - never who bought - with *Report* | page |
+| `SuperAffiliates.dc.html` | the operator's Affiliates page: applications waiting, payouts to pay, blocked and banned, the month's commissions by who paid them; the affiliates by state (the filter and the selection work in the script) with the review of one - what the identity document says, written down, no picture kept; the payouts to pay with the transfer's reference; the record of a block (the rule, what happened, the evidence, the money, what the affiliate said); the programme's numbers | page |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -148,6 +156,20 @@ for the layout. The store shows no star ratings because the catalog has no
 rating field. VAT by country and the statements archive on the Finance
 page are proposals beyond the admin backend's README; the rest of the admin
 pages follow its *The window* table.
+
+The UltraAffiliates screens draw the programme of
+[its design](../../Research/UltraAffiliatesDesignProposal.md) with the
+owner's decisions in it: the rules and numbers on them (5 %, the boost, 90
+days, 30 days pending, 5 % held back for six months, a payout a month from
+25.00, 10 % for whoever brought an affiliate in) are the programme's own.
+`Server/UltraStorePortal` has them built in a plainer form (0.10.0 to
+0.12.0): its pages are the reference for what exists, these for what they
+should look like. Beyond what is built: the charts and the period switch,
+results by campaign, the catalogue across several shops with its filters, a
+QR code's colour and caption, saving a statement as PDF or CSV, and the
+merchant's *Report*. Every affiliate, sale, amount and payout on them is
+sample data; the products outside the app store (a game, a book, headphones)
+stand for shops that do not sell through the portal yet.
 
 The `Games*` pages are the **games shop variant** of the same design: the
 shop's chrome, type and shapes with the accent violet `#7C3AED` (the

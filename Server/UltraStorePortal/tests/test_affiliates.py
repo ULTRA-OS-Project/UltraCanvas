@@ -1,22 +1,26 @@
-"""UltraAffiliates, phase 1: becoming an affiliate, a link to a product,
-what a sale earns from the store's fee and from the publisher's boost, the
-superaffiliate's share, what a refund takes back, a block and a ban."""
+"""UltraAffiliates: becoming an affiliate, a link to a product, what a sale
+earns from the store's fee and from the publisher's boost, the
+superaffiliate's share, what a refund takes back, a block and a ban; the
+customer's binding; the holdback, the monthly payout and its statement."""
 
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import io
+import re
 from decimal import Decimal
 
 from django.core.management import call_command
 from django.test import override_settings
 from django.utils import timezone
 
+from ultrastore_portal import qr
 from ultrastore_portal.accounts import closure
 from ultrastore_portal.accounts.models import User
 from ultrastore_portal.affiliates import services, texts
 from ultrastore_portal.affiliates.models import (AffiliatePayout, AffiliateProfile, Attribution, Binding, Boost, Click, ClickDay, Commission,
-                                                OrderVisit, Sanction)
+                                                Holdback, OrderVisit, Sanction)
 from ultrastore_portal.billing import payouts
 from ultrastore_portal.billing import services as billing
 from ultrastore_portal.identity import provider
@@ -31,12 +35,29 @@ D = Decimal
 BORN = dt.date(1990, 5, 17)
 
 
-@override_settings(AFFILIATES=True)
+# The cases below run with nothing held back and a payout from one cent, so
+# that each says what it is about; MoneyRulesTests runs with the programme's
+# own numbers - 5 % for six months, and 25.00.
+@override_settings(AFFILIATES=True, AFFILIATE_HOLDBACK_PERCENT=Decimal("0"), AFFILIATE_PAYOUT_MINIMUM=Decimal("0.01"))
 class AffiliateCase(BillingCase):
     def setUp(self):
         super().setUp()
         texts.outbox.clear()
         self.anna = self.affiliate("anna")
+
+    def approve(self) -> int:
+        """The approval period is over for everything pending."""
+        Commission.objects.filter(state="pending").update(approve_after=timezone.localdate())
+        return services.approve_due()
+
+    def money(self, profile: AffiliateProfile | None = None, currency: str = "EUR") -> tuple:
+        """Pending, held back, the balance, in a payout to pay, paid."""
+        row = next((r for r in services.sums(profile or self.anna) if r["currency"] == currency), None)
+        return tuple(row[name] for name in ("pending", "held", "balance", "to_pay", "paid")) if row else ()
+
+    def pay(self, profile: AffiliateProfile | None = None, reference: str = "SEPA 1") -> list[AffiliatePayout]:
+        """The payouts for what is due today, made and marked paid."""
+        return [services.mark_paid(payout, self.operator, reference) for payout in services.build(timezone.localdate(), self.operator, profile or self.anna)]
 
     def affiliate(self, handle: str, *, active: bool = True, recruiter: str = "") -> AffiliateProfile:
         user = User.objects.create_user(f"{handle}@example.org", PASSWORD, name=handle.title(), email_verified=True)
@@ -278,21 +299,26 @@ class MoneyTests(AffiliateCase):
     def test_pending_then_approved_then_paid(self):
         self.follow()
         self.buy()
-        self.assertEqual(services.sums(self.anna), [{"currency": "EUR", "pending": D("1.00"), "balance": D("0.00"), "paid": D("0.00")}])
-        with self.assertRaises(services.AffiliateError):
-            services.pay(self.anna, "EUR", self.operator, "ref")                                   # pending is not owed yet
         today = timezone.localdate()
+        self.assertEqual(self.money(), (D("1.00"), D("0.00"), D("0.00"), D("0.00"), D("0.00")))
+        self.assertEqual(services.build(today, self.operator), [])                                # pending is not owed yet
         self.assertEqual(services.approve_due(today + dt.timedelta(days=29)), 0)
-        self.assertEqual(services.approve_due(today + dt.timedelta(days=30)), 1)
-        self.assertEqual(services.sums(self.anna)[0]["balance"], D("1.00"))
+        self.assertEqual(self.approve(), 1)
+        self.assertEqual((Commission.objects.get().approved_on, self.money()), (today, (D("0.00"), D("0.00"), D("1.00"), D("0.00"), D("0.00"))))
         with self.assertRaises(services.AffiliateError):
-            services.pay(self.anna, "EUR", self.operator, "  ")                                    # no reference, no payout
-        payout = services.pay(self.anna, "EUR", self.operator, "SEPA 17", "November")
-        self.assertEqual((payout.amount, payout.details, payout.reference), (D("1.00"), "IBAN of anna", "SEPA 17"))
-        self.assertEqual(services.sums(self.anna), [{"currency": "EUR", "pending": D("0.00"), "balance": D("0.00"), "paid": D("1.00")}])
+            services.build(today + dt.timedelta(days=1), self.operator)                           # not for days that have not come
+        payout, = services.build(today, self.operator)
+        self.assertEqual((payout.amount, payout.details, payout.state, payout.until, payout.regardless), (D("1.00"), "IBAN of anna", "open", today, False))
+        self.assertEqual(self.money(), (D("0.00"), D("0.00"), D("0.00"), D("1.00"), D("0.00")))
+        self.assertEqual(services.build(today, self.operator), [])                                # nothing is in two payouts
         with self.assertRaises(services.AffiliateError):
-            services.pay(self.anna, "EUR", self.operator, "again")                                 # nothing is owed twice
-        self.assertEqual(AuditEntry.objects.filter(action="affiliate.paid").count(), 1)
+            services.mark_paid(payout, self.operator, "  ")                                       # no reference, not paid
+        paid = services.mark_paid(payout, self.operator, "SEPA 17", "November")
+        self.assertEqual((paid.state, paid.reference, paid.note, paid.paid_by), ("paid", "SEPA 17", "November", self.operator))
+        self.assertEqual(self.money(), (D("0.00"), D("0.00"), D("0.00"), D("0.00"), D("1.00")))
+        with self.assertRaises(services.AffiliateError):
+            services.mark_paid(payout, self.operator, "again")                                    # nothing is paid twice
+        self.assertEqual((AuditEntry.objects.filter(action="affiliate.payout_made").count(), AuditEntry.objects.filter(action="affiliate.paid").count()), (1, 1))
 
     def test_the_command(self):
         self.follow()
@@ -301,11 +327,19 @@ class MoneyTests(AffiliateCase):
         Click.objects.update(at=timezone.now() - dt.timedelta(days=120))
         out = io.StringIO()
         call_command("affiliates", "maintain", stdout=out)
-        self.assertIn("1 commission(s) approved, 0 block(s) ended, 1 click(s) counted and removed", out.getvalue())
+        self.assertIn("1 commission(s) approved, 0 holdback(s) released, 0 block(s) ended, 1 click(s) counted and removed", out.getvalue())
         self.assertEqual((Click.objects.count(), ClickDay.objects.get().clicks), (0, 1))
         out = io.StringIO()
         call_command("affiliates", "owed", stdout=out)
-        self.assertIn("anna\t1.00 EUR", out.getvalue())
+        self.assertIn("anna\t1.00 EUR\theld back 0.00", out.getvalue())
+        out = io.StringIO()
+        call_command("affiliates", "payouts", "--until", timezone.localdate().isoformat(), stdout=out)
+        payout = AffiliatePayout.objects.get()
+        self.assertIn(f"{payout.pk}\tanna\t1.00 EUR\tuntil {timezone.localdate()}\n1 payout(s) made", out.getvalue())
+        out = io.StringIO()
+        call_command("affiliates", "payouts", stdout=out)                       # by default up to the end of last month
+        self.assertIn("0 payout(s) made", out.getvalue())
+        self.assertEqual(services.default_until(dt.date(2027, 3, 15)), dt.date(2027, 2, 28))
         out = io.StringIO()
         call_command("affiliates", "cost", stdout=out)
         self.assertIn("EUR\t1.00\tfrom the store's fee 1.00\tfrom publishers' boosts 0.00", out.getvalue())
@@ -344,12 +378,15 @@ class ReversalTests(AffiliateCase):
         token = services.record_click(self.anna, self.app).token
         order = self.checkout(ref=token)
         self.report(order["order_id"])
-        services.approve_due(timezone.localdate() + dt.timedelta(days=30))
-        services.pay(self.anna, "EUR", self.operator, "SEPA 1")
+        self.approve()
+        self.pay()
         self.report(order["order_id"], status="-3")
-        self.assertEqual(services.sums(self.anna), [{"currency": "EUR", "pending": D("0.00"), "balance": D("-1.00"), "paid": D("1.00")}])
-        with self.assertRaises(services.AffiliateError):
-            services.pay(self.anna, "EUR", self.operator, "SEPA 2")   # nothing is owed; the next sale makes it up
+        self.assertEqual(self.money(), (D("0.00"), D("0.00"), D("-1.00"), D("0.00"), D("1.00")))
+        self.assertEqual(self.pay(), [])                                         # nothing is owed; the next sale makes it up
+        again = self.checkout(ref=services.record_click(self.anna, self.app).token)
+        self.report(again["order_id"], mb_transaction_id="900300")
+        self.approve()
+        self.assertEqual((self.money()[2], self.pay()), (D("0.00"), []))
 
 
 class IdentityTests(AffiliateCase):
@@ -449,8 +486,7 @@ class SanctionTests(AffiliateCase):
         self.buy()
         self.assertEqual((Click.objects.count(), Commission.objects.count()), (1, 1))                    # no new click, no new commission
         self.assertEqual(services.approve_due(timezone.localdate() + dt.timedelta(days=60)), 0)         # what it earned is held
-        with self.assertRaises(services.AffiliateError):
-            services.pay(self.anna, "EUR", self.operator, "ref")
+        self.assertEqual(services.build(timezone.localdate(), self.operator), [])
         self.sign_in("anna@example.org")
         page = self.client.get("/affiliate/")
         self.assertContains(page, "Your affiliate profile is blocked until")
@@ -491,13 +527,28 @@ class SanctionTests(AffiliateCase):
     def test_the_operator_pays_from_the_page(self):
         self.follow()
         self.buy()
-        services.approve_due(timezone.localdate() + dt.timedelta(days=30))
+        self.approve()
         self.sign_in("operator@example.org")
         self.assertContains(self.client.get("/operator/affiliates/?state=active"), "1.00 EUR")
-        self.client.post(f"/operator/affiliates/{self.anna.pk}/", {"action": "pay", "currency": "EUR", "reference": "SEPA 99"})
+        self.client.post(f"/operator/affiliates/{self.anna.pk}/", {"action": "payout"})
+        payout = AffiliatePayout.objects.get()
+        self.assertEqual((payout.state, payout.amount, payout.created_by), ("open", D("1.00"), self.operator))
+        self.assertContains(self.client.get("/operator/affiliates/?state=active"), "Payouts - 1 to pay")
+        self.assertContains(self.client.get("/operator/affiliates/payouts/"), "IBAN of anna", count=0)
+        page = self.client.get(f"/operator/affiliates/payouts/{payout.pk}/")
+        self.assertContains(page, "IBAN of anna")
+        self.assertContains(page, "Mark as paid")
+        self.client.post(f"/operator/affiliates/payouts/{payout.pk}/", {"reference": "SEPA 99"})
         self.assertEqual(AffiliatePayout.objects.get().reference, "SEPA 99")
+        self.assertContains(self.client.get("/operator/affiliates/payouts/?state=paid"), "SEPA 99")
         self.sign_in("anna@example.org")
         self.assertContains(self.client.get("/affiliate/"), "SEPA 99")
+        statement = self.client.get(f"/affiliate/payouts/{payout.pk}/")
+        self.assertContains(statement, "not a tax document")
+        self.assertContains(statement, "SEPA 99")
+        self.sign_in("dev@example.org")                                          # nobody else's
+        self.assertEqual(self.client.get(f"/affiliate/payouts/{payout.pk}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/operator/affiliates/payouts/{payout.pk}/").status_code, 403)
 
 
 class AccountTests(AffiliateCase):
@@ -780,3 +831,285 @@ class BoundRenewalTests(BindingCase):
         self.report(order.public_id, amount="4.00", url="/v1/skrill/recurring", mb_transaction_id="900102")
         last = Commission.objects.order_by("-id").first()
         self.assertEqual((last.affiliate, last.basis, last.amount, last.payment.kind), (self.bert, "bound_customer", D("0.20"), "renewal"))
+
+
+@override_settings(**SKRILL, AFFILIATES=True, AFFILIATE_HOLDBACK_PERCENT=Decimal("5"), AFFILIATE_PAYOUT_MINIMUM=Decimal("25.00"))
+class MoneyRulesTests(AffiliateCase):
+    """Phase 3 with the programme's own numbers: 5 % of an approved
+    commission held back for six months from the sale, and a payout a month
+    from 25.00 per currency."""
+    provider = SKRILL
+
+    def setUp(self):
+        super().setUp()
+        for app_id, price in (("org.acme.suite", "600.00"), ("org.acme.tool", "200.00")):
+            self.make_release(self.make_app(self.publisher, app_id, name=app_id.rsplit(".", 1)[1].title(), pricing_model="one-time", price=price,
+                                            currency="EUR"))
+        self.number = 910000
+
+    def sale(self, app_id: str = "org.acme.suite", amount: str = "600.00", *, affiliate: AffiliateProfile | None = None, days_ago: int = 0) -> Order:
+        """A sale an affiliate's link brought, paid so many days ago."""
+        app = self.app.__class__.objects.get(app_id=app_id)
+        order = billing.create_order(app_id, email="buyer@example.org", ref=services.record_click(affiliate or self.anna, app).token)
+        self.number += 1
+        self.report(order.public_id, amount=amount, mb_transaction_id=str(self.number))
+        if days_ago:
+            Payment.objects.filter(order=order).update(at=timezone.now() - dt.timedelta(days=days_ago))
+        return order
+
+    def test_five_percent_are_held_for_six_months_from_the_sale(self):
+        order = self.sale("org.acme.tool", "200.00")                             # a commission of 10.00
+        self.assertEqual(self.money(), (D("10.00"), D("0.00"), D("0.00"), D("0.00"), D("0.00")))
+        self.assertEqual((self.approve(), Holdback.objects.count()), (1, 1))
+        held = Holdback.objects.get()
+        paid_on = timezone.localtime(Payment.objects.get(order=order).at).date()
+        self.assertEqual((held.amount, held.percent, held.release_on, held.released_on), (D("0.50"), D("5"), services.months_after(paid_on, 6), None))
+        # 9.50 in the balance, 0.50 held - and the statistics say when it comes.
+        row = services.sums(self.anna)[0]
+        self.assertEqual((row["balance"], row["held"], row["next_release"], row["next_release_amount"], row["payable"]),
+                         (D("9.50"), D("0.50"), held.release_on, D("0.50"), False))
+        self.assertEqual(services.release_due(held.release_on - dt.timedelta(days=1)), 0)
+        self.assertEqual(services.release_due(held.release_on), 1)
+        self.assertEqual(services.release_due(held.release_on), 0)
+        self.sign_in("anna@example.org")
+        page = self.client.get("/affiliate/")
+        self.assertContains(page, "Held back, EUR")
+        self.assertContains(page, "5 % are held back for 6 months")
+        self.assertContains(page, "Paid from 25.00; carried until then.")
+
+    def test_six_months_are_months(self):
+        self.assertEqual(services.months_after(dt.date(2026, 8, 31), 6), dt.date(2027, 2, 28))
+        self.assertEqual(services.months_after(dt.date(2026, 11, 26), 6), dt.date(2027, 5, 26))
+        self.assertEqual(services.months_before(dt.date(2027, 1, 15), 6), dt.date(2026, 7, 15))
+
+    def test_a_late_chargeback_comes_out_of_the_holdback_first(self):
+        order = self.sale("org.acme.tool", "200.00", days_ago=100)                # the fourth month
+        self.approve()
+        self.report(order.public_id, status="-3", amount="200.00", mb_transaction_id=str(self.number))
+        back = Commission.objects.get(state="reversal")
+        self.assertEqual((back.amount, back.from_holdback, back.payable, back.reverses, Holdback.objects.get().left),
+                         (D("-10.00"), D("0.50"), D("-9.50"), Commission.objects.get(state="approved"), D("0.00")))
+        self.assertEqual(self.money(), (D("0.00"), D("0.00"), D("0.00"), D("0.00"), D("0.00")))
+        Holdback.objects.update(release_on=timezone.localdate())
+        services.release_due()
+        self.assertEqual((self.money(), self.pay()), ((D("0.00"), D("0.00"), D("0.00"), D("0.00"), D("0.00")), []))   # nothing is left to release
+
+    def test_a_refund_in_part_takes_its_part_of_the_holdback(self):
+        order = self.sale(days_ago=40)                                            # 30.00: 28.50 and 1.50
+        self.approve()
+        found = Order.objects.get(pk=order.pk)
+        self.sign_in("operator@example.org")
+        self.answers += ["<response><sid>s1</sid></response>", "<response><mb_transaction_id>900200</mb_transaction_id><status>2</status></response>"]
+        self.client.post(f"/operator/orders/{found.pk}/", {"amount": "20.00"})    # a thirtieth: 1.00 of the commission
+        back = Commission.objects.get(state="reversal")
+        self.assertEqual((back.amount, back.from_holdback, Holdback.objects.get().left), (D("-1.00"), D("1.00"), D("0.50")))
+        self.assertEqual(self.money(), (D("0.00"), D("0.50"), D("28.50"), D("0.00"), D("0.00")))
+        self.answers += ["<response><sid>s2</sid></response>", "<response><mb_transaction_id>900201</mb_transaction_id><status>2</status></response>"]
+        self.client.post(f"/operator/orders/{found.pk}/", {"amount": "60.00"})    # 3.00 more: 0.50 from what is held, 2.50 off the balance
+        self.assertEqual(self.money(), (D("0.00"), D("0.00"), D("26.00"), D("0.00"), D("0.00")))
+
+    def test_a_refund_before_the_approval_leaves_less_to_hold(self):
+        order = self.sale()
+        self.sign_in("operator@example.org")
+        self.answers += ["<response><sid>s1</sid></response>", "<response><mb_transaction_id>900200</mb_transaction_id><status>2</status></response>"]
+        self.client.post(f"/operator/orders/{order.pk}/", {"amount": "300.00"})   # half
+        self.assertEqual(self.money(), (D("15.00"), D("0.00"), D("0.00"), D("0.00"), D("0.00")))    # pending together, not owed apart
+        self.approve()
+        self.assertEqual((Holdback.objects.get().amount, self.money()), (D("0.75"), (D("0.00"), D("0.75"), D("14.25"), D("0.00"), D("0.00"))))
+        self.answers += ["<response><sid>s2</sid></response>", "<response><mb_transaction_id>900201</mb_transaction_id><status>2</status></response>"]
+        self.client.post(f"/operator/orders/{order.pk}/", {"amount": "300.00"})   # the rest
+        self.assertEqual(self.money(), (D("0.00"), D("0.00"), D("0.00"), D("0.00"), D("0.00")))
+        self.assertEqual(sum(line.amount for line in Commission.objects.all()), D("0.00"))
+
+    def test_a_balance_under_the_minimum_is_carried_to_the_next_month(self):
+        self.sale("org.acme.tool", "200.00", days_ago=200)                        # 9.50 and 0.50
+        self.approve()
+        today = timezone.localdate()
+        self.assertEqual((services.build(today, self.operator), self.money()[2]), ([], D("9.50")))
+        self.assertEqual(services.owed()[self.anna.pk], [{"currency": "EUR", "sum": D("9.50"), "payable": False}])
+        self.sale("org.acme.tool", "200.00", days_ago=40)
+        self.approve()
+        self.assertEqual(self.money()[2], D("19.00"))
+        self.assertEqual(services.build(today, self.operator), [])               # two months' worth, still under it
+        self.assertEqual(services.release_due(), 1)                              # the first sale's 0.50, six months on
+        self.sale("org.acme.tool", "200.00", days_ago=35)
+        self.approve()
+        row = services.sums(self.anna)[0]
+        self.assertEqual((row["balance"], row["held"], row["payable"]), (D("29.00"), D("1.00"), True))
+        payout, = services.build(today, self.operator)
+        self.assertEqual((payout.amount, payout.lines.count(), payout.releases.count()), (D("29.00"), 3, 1))
+        self.assertEqual(self.money(), (D("0.00"), D("1.00"), D("0.00"), D("29.00"), D("0.00")))
+        said = services.statement(payout)
+        self.assertEqual((said["commissions"], said["held"], said["taken_back"], said["released"]), (D("30.00"), D("1.50"), D("0.00"), D("0.50")))
+        self.sign_in("anna@example.org")
+        page = self.client.get(f"/affiliate/payouts/{payout.pk}/")
+        self.assertContains(page, "Held back of them")
+        self.assertContains(page, "released")
+        self.assertContains(self.client.get("/affiliate/"), f"In payout {payout.pk}")
+
+    def test_a_payout_holds_what_was_due_on_its_day_and_no_more(self):
+        self.sale(days_ago=70)
+        self.approve()
+        Commission.objects.update(approved_on=timezone.localdate() - dt.timedelta(days=40))
+        self.sale(days_ago=35)
+        self.approve()                                                           # approved today
+        month_end = timezone.localdate() - dt.timedelta(days=10)
+        payout, = services.build(month_end, self.operator)
+        self.assertEqual((payout.amount, payout.until, payout.lines.count()), (D("28.50"), month_end, 1))
+        self.assertEqual(self.money(), (D("0.00"), D("3.00"), D("28.50"), D("28.50"), D("0.00")))
+
+    def test_the_superaffiliates_share_is_held_like_its_commission(self):
+        rita = self.affiliate("rita", recruiter="anna")
+        self.sale(affiliate=rita)
+        self.approve()
+        held = {row.affiliate.handle: row.amount for row in Holdback.objects.all()}
+        self.assertEqual(held, {"rita": D("1.50"), "anna": D("0.15")})
+        self.assertEqual((self.money(rita), self.money()), ((D("0.00"), D("1.50"), D("28.50"), D("0.00"), D("0.00")),
+                                                           (D("0.00"), D("0.15"), D("2.85"), D("0.00"), D("0.00"))))
+
+    def test_an_affiliate_who_leaves_is_paid_whatever_is_owed(self):
+        self.sale("org.acme.tool", "200.00", days_ago=40)
+        self.approve()
+        today = timezone.localdate()
+        self.assertEqual(services.build(today, self.operator), [])
+        closure.request_deletion(self.anna.user)                                  # on the way out: the minimum does not hold
+        self.anna.refresh_from_db()
+        self.assertTrue(services.sums(self.anna)[0]["payable"])
+        payout, = services.build(today, self.operator)
+        self.assertEqual((payout.amount, payout.regardless), (D("9.50"), True))
+        # The holdback is paid as it is released, the same way.
+        Holdback.objects.update(release_on=today)
+        services.release_due()
+        late, = services.build(today, self.operator)
+        self.assertEqual((late.amount, late.regardless, late.releases.count()), (D("0.50"), True, 1))
+
+    def test_a_blocked_affiliates_money_waits(self):
+        self.sale(days_ago=200)
+        self.approve()
+        payout, = services.build(timezone.localdate(), self.operator)
+        self.sale(days_ago=200)
+        services.sanction(self.anna, self.operator, Sanction.BLOCK, rule="Terms 4", facts="Under review.")
+        with self.assertRaises(services.AffiliateError):
+            services.mark_paid(payout, self.operator, "SEPA 5")                   # made before the block, not paid in it
+        self.assertEqual((self.approve(), services.release_due(), services.build(timezone.localdate(), self.operator)), (0, 0, []))
+        self.assertNotIn(self.anna.pk, services.owed())
+        services.lift(self.anna, self.operator)
+        self.assertEqual((self.approve(), services.release_due()), (1, 2))
+        services.mark_paid(payout, self.operator, "SEPA 5")
+        self.assertEqual(self.money(), (D("0.00"), D("0.00"), D("31.50"), D("0.00"), D("28.50")))
+
+    def test_the_operators_payout_page_makes_the_months_payouts(self):
+        self.sale(days_ago=40)
+        self.approve()
+        self.sign_in("operator@example.org")
+        page = self.client.get("/operator/affiliates/payouts/")
+        self.assertContains(page, "A balance under 25.00 is carried")
+        self.client.post("/operator/affiliates/payouts/", {"until": "not a day"})
+        self.assertEqual(AffiliatePayout.objects.count(), 0)
+        self.client.post("/operator/affiliates/payouts/", {"until": timezone.localdate().isoformat()})
+        payout = AffiliatePayout.objects.get()
+        self.assertEqual((payout.amount, payout.state), (D("28.50"), "open"))
+        page = self.client.get(f"/operator/affiliates/{self.anna.pk}/")
+        self.assertContains(page, "In a payout to pay")
+        self.assertContains(page, f"In payout {payout.pk}")
+
+
+class QrTests(AffiliateCase):
+    """A QR code drawn by the portal itself (qr.py), and a link's code as a
+    picture beside the link."""
+
+    @staticmethod
+    def print_of(modules) -> str:
+        return hashlib.sha256("".join("1" if cell else "0" for row in modules for cell in row).encode()).hexdigest()
+
+    def test_the_code_is_the_one_every_reader_knows(self):
+        # Compared module for module with a second generator, for every mask, version 1 to 40 and all four
+        # levels, and read back by a decoder, when qr.py was written; these two are from that run.
+        shop = qr.encode("https://store.ultraos.eu/r/anna/", "M")
+        self.assertEqual((len(shop), self.print_of(shop)), (29, "157c09e7a753563ef18bac49cf635001a64be8cc7ab926fac2e08d30d257418a"))
+        product = qr.encode("https://store.ultraos.eu/r/anna/org.acme.paid/?s=newsletter", "Q")
+        self.assertEqual((len(product), self.print_of(product)), (37, "8b39f05284262677eb326159f5e3a51512b749a8b4db4ee3fa6c6ad861fba148"))
+
+    def test_what_every_code_has(self):
+        for text, level in (("", "L"), ("a", "H"), ("x" * 300, "M"), ("Grüße, 世界", "Q"), ("y" * 1500, "L")):
+            modules = qr.encode(text, level)
+            size = len(modules)
+            self.assertEqual(((size - 17) % 4, {len(row) for row in modules}), (0, {size}))
+            for x, y in ((0, 0), (size - 7, 0), (0, size - 7)):                  # the three finders: dark ring, light ring, dark core
+                self.assertEqual([modules[y + 3][x + i] for i in range(7)], [True, False, True, True, True, False, True])
+                self.assertEqual([modules[y][x + i] for i in range(7)], [True] * 7)
+            self.assertEqual([modules[6][i] for i in range(8, size - 8)], [i % 2 == 0 for i in range(8, size - 8)])   # the timing pattern
+            self.assertTrue(modules[size - 8][8])                                # the module that is always dark
+        self.assertEqual(len(qr.encode("x" * qr.capacity("L"), "L")), 177)        # version 40, the largest there is
+        with self.assertRaises(qr.TooLong):
+            qr.encode("x" * (qr.capacity("L") + 1), "L")
+        with self.assertRaises(ValueError):
+            qr.encode("a", "X")
+        self.assertNotEqual(qr.encode("a", "M", mask=0), qr.encode("a", "M", mask=1))
+        self.assertIn(qr.encode("a", "M"), [qr.encode("a", "M", mask=mask) for mask in range(8)])
+
+    def test_the_pictures_hold_the_modules(self):
+        modules = qr.encode("https://store.example/r/anna/", "Q")
+        size, border = len(modules), qr.QUIET_ZONE
+        drawn = qr.svg(modules, size=300, title='The link of "anna" <b>')
+        self.assertIn(f'viewBox="0 0 {size + 8} {size + 8}" width="300" height="300"', drawn)
+        self.assertIn("The link of &quot;anna&quot; &lt;b&gt;", drawn)
+        back = [[False] * size for _ in range(size)]
+        for x, y, run in re.findall(r"M(\d+),(\d+)h(\d+)v1", drawn):
+            for i in range(int(run)):
+                back[int(y) - border][int(x) - border + i] = True
+        self.assertEqual(back, modules)
+        self.assertIn('fill="#000000"', qr.svg(modules, dark="red; drop"))           # a colour is six hex digits or the default
+        self.assertIn('fill="#1d4ed8"', qr.svg(modules, dark="#1D4ED8"))
+        from PIL import Image
+        picture = Image.open(io.BytesIO(qr.png(modules, scale=5))).convert("L")
+        self.assertEqual(picture.size, ((size + 8) * 5, (size + 8) * 5))
+        seen = [[picture.getpixel(((x + border) * 5 + 2, (y + border) * 5 + 2)) < 128 for x in range(size)] for y in range(size)]
+        self.assertEqual(seen, modules)
+        self.assertEqual(picture.getpixel((2, 2)), 255)                           # the light border
+
+    def test_a_links_code_is_a_picture_beside_the_link(self):
+        clicks = Click.objects.count()
+        shop = self.client.get("/r/anna/qr.svg")
+        self.assertEqual((shop.status_code, shop["Content-Type"], shop["Cache-Control"]), (200, "image/svg+xml", "public, max-age=86400"))
+        self.assertIn("http://testserver/r/anna/".replace("http://testserver", services.settings.BASE_URL), shop.content.decode())
+        product = self.client.get("/r/anna/org.acme.paid/qr.svg?s=news letter!")
+        self.assertIn(f"{services.settings.BASE_URL}/r/anna/org.acme.paid/?s=news-letter", product.content.decode())   # the campaign, made safe
+        saved = self.client.get("/r/anna/org.acme.paid/qr.png?size=1200&download=1&s=may")
+        self.assertEqual((saved["Content-Type"], saved["Content-Disposition"]), ("image/png", 'attachment; filename="anna-org.acme.paid-may.png"'))
+        from PIL import Image
+        wide = Image.open(io.BytesIO(saved.content)).size[0]
+        self.assertTrue(1000 <= wide <= 1400, wide)
+        small = Image.open(io.BytesIO(self.client.get("/r/anna/qr.png?size=5").content)).size[0]
+        self.assertTrue(80 <= small <= 200, small)                                # never a picture too small to read
+        self.assertEqual(self.client.get("/affiliate/join/anna/qr.svg").status_code, 200)
+        self.assertEqual(Click.objects.count(), clicks)                           # a picture asked for is no link followed
+        for gone in ("/r/nobody/qr.svg", "/r/anna/org.acme.nothere/qr.svg", "/affiliate/join/nobody/qr.png"):
+            self.assertEqual(self.client.get(gone).status_code, 404, gone)
+        services.sanction(self.anna, self.operator, Sanction.BLOCK, rule="Terms 4", facts="Under review.")
+        self.assertEqual(self.client.get("/r/anna/qr.svg").status_code, 404)      # a blocked affiliate's links are no links
+        with override_settings(AFFILIATES=False):
+            self.assertEqual(self.client.get("/r/anna/qr.svg").status_code, 404)
+        self.assertEqual(self.client.get("/r/anna/").status_code, 302)            # and the link itself still goes on
+
+    def test_the_link_maker(self):
+        self.sign_in("anna@example.org")
+        page = self.client.get("/affiliate/links/")
+        self.assertContains(page, f'value="{services.settings.BASE_URL}/r/anna/"')
+        self.assertContains(page, 'src="/r/anna/qr.svg"')
+        page = self.client.get("/affiliate/links/?to=org.acme.paid&s=news letter")
+        self.assertContains(page, f'value="{services.settings.BASE_URL}/r/anna/org.acme.paid/?s=news-letter"')
+        self.assertContains(page, 'src="/r/anna/org.acme.paid/qr.svg?s=news-letter"')
+        self.assertContains(page, "/r/anna/org.acme.paid/qr.png?s=news-letter&amp;size=600&amp;download=1")
+        self.assertContains(page, "<b>5 %</b>", html=True)
+        self.boost("10")
+        self.assertContains(self.client.get("/affiliate/links/?to=org.acme.paid"), "5 % from the store and 10 % the publisher adds")
+        page = self.client.get("/affiliate/links/?to=join&s=ignored")
+        self.assertContains(page, f'value="{services.settings.BASE_URL}/affiliate/join/anna/"')
+        self.assertContains(page, 'src="/affiliate/join/anna/qr.svg"')
+        self.assertContains(self.client.get("/affiliate/"), "Make a link and its QR code")
+        self.assertContains(self.client.get("/affiliate/products/"), "/affiliate/links/?to=org.acme.paid")
+        new = self.affiliate("newbie", active=False)
+        self.sign_in("newbie@example.org")
+        self.assertRedirects(self.client.get("/affiliate/links/"), "/affiliate/", fetch_redirect_response=False)   # links come with the active profile
+        self.assertEqual(new.state, "applied")

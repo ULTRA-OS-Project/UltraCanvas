@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStoreAdmin - Affiliates and boosts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 60px; box-sizing: border-box">
+<a href="AdminDashboard.dc.html" aria-label="UltraStoreAdmin overview" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 30px; height: 30px; border-radius: 8px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.02em">UltraStoreAdmin</span>
+</a>
+<span style="display: inline-flex; align-items: center; gap: 8px; color: #475569; font-size: 13px"><span style="font-weight: 600; color: #0f172a">ULTRA OS Store</span>· store.ultraos.eu/v1</span>
+<span style="flex: 1 1 auto"></span>
+<button type="button" aria-label="Account: Alex" style="width: 36px; height: 36px; border-radius: 999px; border: 0; background: #0f172a; color: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">AK</button>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: flex-start">
+
+<nav aria-label="Admin" style="flex: 1 1 220px; max-width: 260px; min-width: 0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Store</span>
+<a href="AdminDashboard.dc.html" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Overview</a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Apps and components</a>
+<a href="AdminSales.dc.html" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Sales</a>
+<a href="AdminFinance.dc.html" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Finance</a>
+<a href="AdminAffiliates.dc.html" aria-current="page" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #dbeafe; color: #1d4ed8; font-weight: 700">Affiliates</a>
+<a href="AdminPublish.dc.html" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Publish</a>
+<a href="AdminMarketplace.dc.html" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Marketplace</a>
+<a href="#settings" style="display: flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Settings</a>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Affiliates</h1>
+<span style="color: #64748b">Every product you sell is advertised by the store's affiliates. It costs you nothing - unless you add a boost.</span>
+</div>
+
+<section aria-label="Last 30 days" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 18px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-size: 12px; color: #64748b; font-weight: 600">Sales an affiliate brought</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums">46</span><span style="font-size: 12px; color: #64748b">18 % of your sales, last 30 days</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 18px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-size: 12px; color: #64748b; font-weight: 600">Their net value</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums">1,084.20 EUR</span><span style="font-size: 12px; color: #64748b">Before the store's fee</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 18px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-size: 12px; color: #64748b; font-weight: 600">Your boosts cost you</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums">37.80 EUR</span><span style="font-size: 12px; color: #64748b">Taken from the proceeds of those sales</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 18px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-size: 12px; color: #64748b; font-weight: 600">The store paid for you</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums">54.21 EUR</span><span style="font-size: 12px; color: #64748b">The 5 % on every sale, out of its own fee</span></div>
+</section>
+
+<section aria-labelledby="boost-title" style="display: flex; flex-wrap: wrap; gap: 24px; padding: 22px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h2 id="boost-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800">Add a boost</h2>
+<span style="color: #64748b; font-size: 13px">More for the affiliate whose link sells the product, from your proceeds of that sale. Only the owner sets it.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 13px; font-weight: 600; color: #475569">On</span>
+<div role="group" aria-label="What the boost is on" style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{scopes}}" as="s" hint-placeholder-count="3">
+<button type="button" onClick="{{s.pick}}" aria-pressed="{{s.selected}}" style="{{s.style}}">{{s.label}}</button>
+</sc-for>
+</div>
+<sc-if value="{{isApp}}" hint-placeholder-val="{{true}}">
+<label for="boost-app" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">The app</label>
+<select id="boost-app" style="height: 44px; max-width: 320px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>UltraPaint</option><option>UltraMail</option><option>UltraFiler</option><option>ArtCreator</option></select>
+</sc-if>
+<sc-if value="{{isCategory}}" hint-placeholder-val="{{false}}">
+<label for="boost-cat" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">The category</label>
+<select id="boost-cat" style="height: 44px; max-width: 320px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>Graphics</option><option>Office</option><option>Internet</option><option>Utilities</option></select>
+</sc-if>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="percent" style="font-size: 13px; font-weight: 600; color: #475569">Boost, in percent of the net price</label>
+<div style="display: flex; align-items: center; gap: 14px">
+<input id="percent" type="range" min="1" max="45" step="1" value="{{percent}}" onInput="{{setPercent}}" style="flex: 1 1 auto; min-width: 0; height: 44px; accent-color: {{accent}}">
+<span style="min-width: 76px; text-align: right; font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums">+{{percent}} %</span>
+</div>
+<span style="font-size: 12px; color: #64748b">From 1 to 45. Software takes a percentage; goods may take a fixed amount per piece.</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="from" style="font-size: 13px; font-weight: 600; color: #475569">From</label><input id="from" type="date" value="2026-12-01" style="height: 44px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; color: #0f172a"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="until" style="font-size: 13px; font-weight: 600; color: #475569">Until <span style="font-weight: 400">or open</span></label><input id="until" type="date" value="2026-12-31" style="height: 44px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; color: #0f172a"></div>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer"><input type="checkbox" style="width: 18px; height: 18px">Also on a subscription's renewals</label>
+<button type="button" style="align-self: flex-start; height: 44px; padding: 0 22px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Save the boost</button>
+</div>
+
+<div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 14px; background: #f8fafc">
+<span style="font-weight: 700">A sale of 100.00 EUR net, brought by an affiliate's link</span>
+<div role="img" aria-label="{{splitLabel}}" style="display: flex; height: 28px; border-radius: 8px; overflow: hidden">
+<span style="{{keepStyle}}"></span><span style="{{boostStyle}}"></span><span style="display: block; height: 100%; width: 5%; background: #f59e0b"></span><span style="display: block; height: 100%; width: 10%; background: #94a3b8"></span>
+</div>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 3px; background: #0f172a"></span>You keep</dt><dd style="margin: 0; font-weight: 800; font-variant-numeric: tabular-nums">{{keep}} EUR</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 3px; background: {{accent}}"></span>Your boost, to the affiliate</dt><dd style="margin: 0; font-variant-numeric: tabular-nums">{{boost}} EUR</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 3px; background: #f59e0b"></span>The store's 5 %, to the affiliate</dt><dd style="margin: 0; font-variant-numeric: tabular-nums">5.00 EUR</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 3px; background: #94a3b8"></span>The rest of the store's fee of 15 %</dt><dd style="margin: 0; font-variant-numeric: tabular-nums">10.00 EUR</dd></div>
+</dl>
+<span style="padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #334155">The affiliate earns <b>{{affiliate}} EUR</b>. A sale with no affiliate's link leaves you 85.00, boost or no boost; so does a purchase by an affiliate's customer who followed no link.</span>
+</div>
+</section>
+
+<section aria-labelledby="boosts-title" style="display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="boosts-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800">Your boosts</h2>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 720px; border-collapse: collapse; font-size: 13px">
+<thead><tr style="color: #64748b">
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">On</th>
+<th scope="col" style="text-align: right; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Boost</th>
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Renewals</th>
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">In force</th>
+<th scope="col" style="text-align: right; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Sales with it</th>
+<th scope="col" style="text-align: right; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Cost you</th>
+<th scope="col" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Remove</span></th>
+</tr></thead>
+<tbody>
+<sc-for list="{{boosts}}" as="b" hint-placeholder-count="3">
+<tr>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; font-weight: 600">{{b.on}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700">{{b.percent}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155">{{b.renewals}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9"><span style="{{b.stateStyle}}">{{b.when}}</span></td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums">{{b.sales}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums">{{b.cost}}</td>
+<td style="padding: 6px 10px; border-bottom: 1px solid #f1f5f9; text-align: right"><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Remove</button></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<span style="font-size: 12px; color: #64748b">Where two boosts meet, the most specific counts: an app's before a category's before everything's. A boost changed or removed later leaves the sales already made as they were.</span>
+</section>
+
+<section style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800">What a link to each product earns today</h2>
+<sc-for list="{{apps}}" as="a" hint-placeholder-count="6">
+<div style="display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f1f5f9">
+<img src="{{a.icon}}" alt="" style="width: 32px; height: 32px; border-radius: 8px; flex: 0 0 auto">
+<span style="flex: 1 1 auto; min-width: 0; font-weight: 600">{{a.name}}</span>
+<span style="font-size: 12px; color: #64748b; font-variant-numeric: tabular-nums">{{a.parts}}</span>
+<span style="min-width: 48px; text-align: right; font-weight: 800; font-variant-numeric: tabular-nums">{{a.total}}</span>
+</div>
+</sc-for>
+</div>
+<div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800">Affiliates who sold your products</h2>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px">
+<thead><tr style="color: #64748b">
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Affiliate</th>
+<th scope="col" style="text-align: right; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Sales</th>
+<th scope="col" style="text-align: right; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Your boost paid</th>
+<th scope="col" style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Report</span></th>
+</tr></thead>
+<tbody>
+<sc-for list="{{sellers}}" as="s" hint-placeholder-count="4">
+<tr>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 600">{{s.handle}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums">{{s.sales}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums">{{s.boost}}</td>
+<td style="padding: 6px 10px; border-bottom: 1px solid #f1f5f9; text-align: right"><button type="button" style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer">Report</button></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<span style="font-size: 12px; color: #64748b">You see which affiliate sold how often - never who bought. You cannot decline a commission; an affiliate who breaks the terms is reported, and the store decides.</span>
+</div>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { scope: 'app', percent: 10 };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#2563eb';
+    const s = this.state;
+    const percent = Math.min(45, Math.max(1, Number(s.percent) || 1));
+    const SCOPES = [['app', 'One app'], ['category', 'A category'], ['all', 'Everything you sell']];
+    const scopes = SCOPES.map(([id, label]) => ({
+      label, selected: s.scope === id, pick: () => this.setState({ scope: id }),
+      style: 'height: 44px; padding: 0 16px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; ' +
+        (s.scope === id ? 'border: 1px solid #0f172a; background: #0f172a; color: #ffffff' : 'border: 1px solid #cbd5e1; background: #ffffff; color: #334155')
+    }));
+    const CHIP = 'display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; ';
+    const BOOSTS = [
+      ['UltraVideo', '+10 %', 'Not on renewals', 'Until 31 Dec 2026', 'on', '14', '35.20 EUR'], ['Texter', '+3 %', 'Not on renewals', 'Open', 'on', '7', '2.60 EUR'],
+      ['ArtCreator', '+5 %', 'Not on renewals', 'From 1 Dec 2026', 'later', '-', '-']
+    ];
+    const boosts = BOOSTS.map(([on, pct, renewals, when, state, sales, cost]) => ({
+      on, percent: pct, renewals, when, sales, cost, stateStyle: CHIP + (state === 'on' ? 'background: #dcfce7; color: #166534' : 'background: #f1f5f9; color: #334155')
+    }));
+    const B = '/_blob/';
+    const APPS = [
+      ['UltraVideo', '023cd138f38912c764ae7c221c087db6', 10], ['Texter', '693816119a6f2ec456eb26c1c05fd97a', 3], ['UltraPaint', '451050dafeeb42579ba048b1a08f78fa', 0],
+      ['ArtCreator', '0d8f1d55bd369843755da72b7a7fbd33', 0], ['UltraMail', 'bafbc6e21d0bfb6f2d3d60d6d272ad66', 0], ['UltraFiler', '0339854b95aaa1785eff13f10f2fce1c', 0]
+    ];
+    const apps = APPS.map(([name, icon, boost]) => ({ name, icon: B + icon, parts: boost ? '5 % store + ' + boost + ' % you' : '5 % store', total: (5 + boost) + ' %' }));
+    const sellers = [['@anna', '14', '21.10 EUR'], ['@rita', '11', '9.40 EUR'], ['@techblog', '9', '5.20 EUR'], ['@jonas', '5', '2.10 EUR']].map(([handle, sales, boost]) => ({ handle, sales, boost }));
+    const keep = 85 - percent;
+    return {
+      accent, scopes, boosts, apps, sellers, percent, isApp: s.scope === 'app', isCategory: s.scope === 'category',
+      setPercent: (event) => this.setState({ percent: event.target.value }),
+      keep: keep.toFixed(2), boost: percent.toFixed(2), affiliate: (5 + percent).toFixed(2),
+      keepStyle: 'display: block; height: 100%; width: ' + keep + '%; background: #0f172a', boostStyle: 'display: block; height: 100%; width: ' + percent + '%; background: ' + accent,
+      splitLabel: 'Of 100.00: you keep ' + keep.toFixed(2) + ', your boost ' + percent.toFixed(2) + ', the store 15.00 of which 5.00 go to the affiliate'
+    };
+  }
+}
+</script>
+</body>
+</html>

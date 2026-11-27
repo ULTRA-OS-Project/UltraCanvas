@@ -1,3 +1,20 @@
+#### 2026-11-26 *0.9.609*
+- **Render contexts made on several threads at once no longer corrupt the heap.** Every Cairo render context adds itself to one list of live contexts when it is made and takes itself off when it is destroyed (`RenderContextCairo::g_Instances`), and the list had no lock. A thumbnail worker making an offscreen context while the UI thread or another worker made or destroyed one grew and shrank the vector at once: an element written past its end, a buffer freed twice. It showed as an abort inside `malloc` - "unaligned tcache chunk detected", "double free or corruption" - somewhere later, which is how `TextRenderThreadsTest` failed on CI now and then. The list is locked now, also while a change of the text font options walks it. The test makes and destroys contexts on eight threads as well; unlocked, that part aborted in about every second run of six seconds.
+
+#### 2026-11-26 *0.9.608*
+- **Black text on the blue buttons and selections, hard to read in every
+  app.** `UltraCanvasTheme::DeriveAccent` (the host theme every app follows)
+  picked white or black by WCAG 2 contrast alone; on the Windows accent blue
+  `0,120,215` white measures 4.499:1 - a hair under 4.5 - and black 4.67:1,
+  so primary buttons (the file dialog's *Open*), selected tree / list rows,
+  segmented controls and every other `onAccent` text turned black on dark
+  blue. Text on the accent is now white on any accent white already reaches
+  3:1 on (blues, reds, purples, oranges, mid greens), the accent darkened a
+  few percent until white reaches 4.5:1 (7:1 high contrast) - that blue
+  becomes `0,113,202`; the dark ink is kept only for light accents (yellow,
+  light cyan, pastels). `UltraCanvasThemeTest` checks the Windows blue on
+  Light and Dark and the mid-tone accents.
+
 #### 2026-11-26 *0.9.607*
 - **A wiki for the whole framework: `Docs/Wiki/`.** One place that starts at
   the beginning - an introduction, a feature overview, getting started, and

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraAffiliates - Become an affiliate</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap">
+<a href="Main.dc.html" aria-label="UltraStore home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+</a>
+<button type="button" aria-label="Account menu: Anna K." style="display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 6px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; cursor: pointer"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px">AK</span><span style="font-weight: 700; font-size: 14px; padding-right: 8px">Anna K.</span></button>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 40px 32px 0; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 32px; align-items: stretch">
+
+<section aria-labelledby="why-title" style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 22px; padding: 36px; border-radius: 24px; background: #0f172a; color: #ffffff">
+<span style="align-self: flex-start; height: 26px; padding: 0 10px; border-radius: 6px; background: #1e293b; color: #cbd5e1; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; letter-spacing: 0.04em">ULTRAAFFILIATES</span>
+<h1 id="why-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 40px; line-height: 1.1; font-weight: 800; letter-spacing: -0.03em; text-wrap: balance">Recommend what the shops sell, and earn when it is bought.</h1>
+<p style="margin: 0; color: #cbd5e1; font-size: 16px">Free for you and free for the sellers. Every product of every shop is in: apps, games, books, goods.</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 16px">
+<li style="display: flex; gap: 14px; align-items: flex-start"><span style="flex: 0 0 auto; min-width: 74px; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800">5 %</span><span style="color: #e2e8f0">of the net price of every sale your link brings, paid by the store out of its own fee</span></li>
+<li style="display: flex; gap: 14px; align-items: flex-start"><span style="flex: 0 0 auto; min-width: 74px; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; color: #fcd34d">+ 45 %</span><span style="color: #e2e8f0">at most on top, where a seller adds a boost to a product</span></li>
+<li style="display: flex; gap: 14px; align-items: flex-start"><span style="flex: 0 0 auto; min-width: 74px; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800">Yours</span><span style="color: #e2e8f0">Whoever is new and comes through your link stays your customer: 5 % of everything they buy later</span></li>
+<li style="display: flex; gap: 14px; align-items: flex-start"><span style="flex: 0 0 auto; min-width: 74px; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800">10 %</span><span style="color: #e2e8f0">of what an affiliate you brought in earns, on top of theirs</span></li>
+</ul>
+<p style="margin: auto 0 0; padding-top: 18px; border-top: 1px solid #334155; color: #cbd5e1; font-size: 13px">Paid once a month from 25.00 per currency. A commission is pending for 30 days; 5 % of it is held back for six months against a late refund.</p>
+</section>
+
+<section aria-labelledby="apply-title" style="flex: 1.3 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 36px; border-radius: 24px; border: 1px solid #e2e8f0; background: #ffffff">
+<ol aria-label="Steps" style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+<li style="{{s.style}}"><span style="{{s.dotStyle}}">{{s.no}}</span>{{s.label}}</li>
+</sc-for>
+</ol>
+
+<sc-if value="{{isYou}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="apply-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; letter-spacing: -0.02em">Your affiliate name, and where you advertise</h2>
+<p style="margin: 0; color: #64748b">You apply with the account you are signed in to. An affiliate is eighteen or older.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="handle" style="font-weight: 600; font-size: 14px">Your name in links</label>
+<div style="display: flex; align-items: center; height: 48px; border-radius: 12px; border: 1px solid #cbd5e1; overflow: hidden">
+<span style="display: inline-flex; align-items: center; height: 100%; padding: 0 12px; background: #f1f5f9; color: #475569; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; white-space: nowrap">store.ultraos.eu/r/</span>
+<input id="handle" type="text" value="{{handle}}" onInput="{{setHandle}}" maxlength="32" style="flex: 1 1 auto; min-width: 0; height: 100%; padding: 0 12px; border: 0; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: #0f172a; outline: none">
+</div>
+<span style="font-size: 13px; color: #64748b">3 to 32 letters, digits, dots or underscores. It is in every link you share, and cannot be changed later.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="where" style="font-weight: 600; font-size: 14px">Where and how you will advertise</label>
+<textarea id="where" rows="3" style="padding: 12px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; color: #0f172a; resize: vertical">A blog about office software, a monthly newsletter, and a video channel.</textarea>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="legal" style="font-weight: 600; font-size: 14px">The name your payouts go to</label><input id="legal" type="text" value="Anna Kessler" style="height: 48px; padding: 0 12px; box-sizing: border-box; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; color: #0f172a"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="vat" style="font-weight: 600; font-size: 14px">VAT id <span style="font-weight: 400; color: #64748b">if you have one</span></label><input id="vat" type="text" style="height: 48px; padding: 0 12px; box-sizing: border-box; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; color: #0f172a"></div>
+</div>
+<label style="display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 14px; background: #f8fafc; cursor: pointer"><input type="checkbox" checked="{{accepted}}" onChange="{{toggleAccepted}}" style="width: 20px; height: 20px; margin-top: 2px; flex: 0 0 auto"><span style="font-size: 14px">I accept the <a href="#terms" style="font-weight: 600">affiliate terms</a>: I say that it is advertising wherever I put a link, I do not bid on a seller's name in search advertising, and I am eighteen or older.</span></label>
+</div>
+</sc-if>
+
+<sc-if value="{{isPhone}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; letter-spacing: -0.02em">Prove your phone number</h2>
+<p style="margin: 0; color: #64748b">The store texts you six digits. The code is good for ten minutes and five tries.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end">
+<div style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px"><label for="phone" style="font-weight: 600; font-size: 14px">Mobile number, with the country's code</label><input id="phone" type="tel" value="+49 170 1234567" style="height: 48px; padding: 0 12px; box-sizing: border-box; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; color: #0f172a"></div>
+<button type="button" onClick="{{sendCode}}" style="height: 48px; padding: 0 20px; border-radius: 999px; border: 1px solid #0f172a; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">{{sendLabel}}</button>
+</div>
+<sc-if value="{{codeSent}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="code" style="font-weight: 600; font-size: 14px">The six digits</label>
+<input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" value="{{code}}" onInput="{{setCode}}" placeholder="------" style="width: 220px; max-width: 100%; height: 56px; padding: 0 16px; box-sizing: border-box; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; letter-spacing: 0.3em; color: #0f172a">
+<span style="font-size: 13px; color: #64748b">Sent to +49 170 1234567. No text after a minute? Ask again - three an hour.</span>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{isIdentity}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; letter-spacing: -0.02em">The store checks who you are</h2>
+<p style="margin: 0; color: #64748b">An affiliate is a person the store knows: it pays you money, and one person has one profile. Choose how you show an identity document.</p>
+</div>
+<div role="group" aria-label="How you show the document" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px">
+<sc-for list="{{ways}}" as="w" hint-placeholder-count="2">
+<button type="button" onClick="{{w.pick}}" aria-pressed="{{w.selected}}" style="{{w.style}}"><span style="font-weight: 700">{{w.label}}</span><span style="font-size: 13px; color: #475569; font-weight: 400">{{w.note}}</span></button>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 16px; background: #f8fafc">
+<span style="font-weight: 700">What the store writes down, and nothing else</span>
+<ul style="margin: 0; padding-left: 20px; color: #334155; display: flex; flex-direction: column; gap: 4px">
+<li>Your name as on the document, and your date of birth</li>
+<li>The kind of document, the country that issued it, and until when it is valid</li>
+<li>Who checked it, and when</li>
+</ul>
+<span style="font-size: 14px; font-weight: 600; color: #166534">No picture of the document is kept.</span>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isDone}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 16px; align-items: flex-start">
+<span aria-hidden="true" style="width: 64px; height: 64px; border-radius: 999px; background: #dcfce7; color: #166534; display: inline-flex; align-items: center; justify-content: center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 26px; font-weight: 800; letter-spacing: -0.02em">Your application is in</h2>
+<p style="margin: 0; color: #334155">Your phone number is proven. The store writes to <b>anna@example.org</b> about the identity check, usually within two working days. Your links count from the moment your profile is active.</p>
+<dl style="margin: 0; width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 14px; border-radius: 14px; background: #f8fafc"><dt style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">Your link to the shop</dt><dd style="margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all">store.ultraos.eu/r/{{handle}}/</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 14px; border-radius: 14px; background: #f8fafc"><dt style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em">State</dt><dd style="margin: 0; font-weight: 700; color: #92400e">Waiting for the review</dd></div>
+</dl>
+<a href="AffiliateProducts.dc.html" style="display: inline-flex; align-items: center; height: 48px; padding: 0 22px; border-radius: 999px; border: 1px solid #cbd5e1; color: #0f172a; text-decoration: none; font-weight: 700">Look at what you can promote</a>
+</div>
+</sc-if>
+
+<sc-if value="{{hasButtons}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin-top: auto; padding-top: 8px">
+<button type="button" onClick="{{back}}" style="{{backStyle}}">Back</button>
+<button type="button" onClick="{{next}}" style="height: 52px; padding: 0 28px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">{{nextLabel}}</button>
+</div>
+</sc-if>
+</section>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px"><img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px"><span style="font-weight: 600; color: #0f172a">UltraStore</span><span>· UltraAffiliates</span></div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px"><a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Affiliate terms</a><a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a><a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a><a href="#imprint" style="color: #475569; text-decoration: none; font-weight: 500">Imprint</a></nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 0, handle: 'anna', accepted: true, codeSent: false, code: '', way: 'call' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#2563eb';
+    const s = this.state;
+    const LABELS = ['You', 'Phone', 'Identity', 'Done'];
+    const steps = LABELS.map((label, i) => ({
+      no: i + 1, label,
+      style: 'display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 6px; border-radius: 999px; font-size: 13px; font-weight: 700; ' +
+        (i === s.step ? 'background: #0f172a; color: #ffffff' : i < s.step ? 'background: #dcfce7; color: #166534' : 'background: #f1f5f9; color: #475569'),
+      dotStyle: 'display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; font-size: 12px; ' +
+        (i === s.step ? 'background: #ffffff; color: #0f172a' : i < s.step ? 'background: #166534; color: #ffffff' : 'background: #ffffff; color: #475569')
+    }));
+    const WAYS = [
+      { id: 'call', label: 'In a short video call', note: 'You hold the document to the camera; nothing is recorded' },
+      { id: 'copy', label: 'A copy, deleted after the check', note: 'You send a copy marked as one; the store deletes it when it has written the facts down' }
+    ];
+    const ways = WAYS.map((w) => ({
+      label: w.label, note: w.note, selected: s.way === w.id, pick: () => this.setState({ way: w.id }),
+      style: 'display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left; min-height: 84px; padding: 14px 16px; border-radius: 16px; font: inherit; cursor: pointer; color: #0f172a; ' +
+        (s.way === w.id ? 'border: 2px solid #0f172a; background: #f8fafc' : 'border: 1px solid #cbd5e1; background: #ffffff')
+    }));
+    return {
+      accent, steps, ways, handle: s.handle, accepted: s.accepted, code: s.code, codeSent: s.codeSent,
+      isYou: s.step === 0, isPhone: s.step === 1, isIdentity: s.step === 2, isDone: s.step === 3, hasButtons: s.step < 3,
+      setHandle: (event) => this.setState({ handle: event.target.value.replace(/[^A-Za-z0-9._]/g, '').slice(0, 32) }),
+      toggleAccepted: () => this.setState({ accepted: !s.accepted }),
+      sendCode: () => this.setState({ codeSent: true }), sendLabel: s.codeSent ? 'Text me again' : 'Text me the code',
+      setCode: (event) => this.setState({ code: event.target.value.replace(/[^0-9]/g, '').slice(0, 6) }),
+      next: () => this.setState({ step: Math.min(3, s.step + 1) }), back: () => this.setState({ step: Math.max(0, s.step - 1) }),
+      nextLabel: ['Apply', 'Confirm the code', 'Ask for the check'][s.step] || '',
+      backStyle: 'height: 52px; padding: 0 22px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer; visibility: ' + (s.step === 0 ? 'hidden' : 'visible')
+    };
+  }
+}
+</script>
+</body>
+</html>

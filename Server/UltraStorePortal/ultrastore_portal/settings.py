@@ -1,6 +1,7 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.12.0 - the affiliates' holdback and payout minimum (AFFILIATE_HOLDBACK_..., _PAYOUT_MINIMUM)
 Version: 0.11.0 - the binding's win-back (AFFILIATE_WINBACK_MONTHS, _WINBACK_DAYS)
 Version: 0.10.0 - affiliates (AFFILIATES, AFFILIATE_..., TEXT_GATEWAY_...)
 Version: 0.9.0 - tax and payouts (SELLER_..., INVOICE_PREFIX, PAYOUT_HOLD_DAYS, PAYOUT_MINIMUM)
@@ -399,6 +400,18 @@ AFFILIATE_WINBACK_MONTHS = int(env("AFFILIATE_WINBACK_MONTHS", "6"))
 AFFILIATE_WINBACK_DAYS = int(env("AFFILIATE_WINBACK_DAYS", "14"))
 if AFFILIATE_WINBACK_MONTHS < 1 or AFFILIATE_WINBACK_DAYS < 1:
     raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_WINBACK_MONTHS and _WINBACK_DAYS are at least 1")
+# The money (phase 3): of every approved commission this many percent are
+# held back for this many months from the sale, against a refund or a
+# chargeback that comes late; a balance under the minimum is carried to the
+# next month's payout.
+try:
+    AFFILIATE_HOLDBACK_PERCENT = Decimal(env("AFFILIATE_HOLDBACK_PERCENT", "5"))
+    AFFILIATE_PAYOUT_MINIMUM = Decimal(env("AFFILIATE_PAYOUT_MINIMUM", "25.00"))
+except InvalidOperation as error:
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_HOLDBACK_PERCENT and _PAYOUT_MINIMUM are numbers") from error
+AFFILIATE_HOLDBACK_MONTHS = int(env("AFFILIATE_HOLDBACK_MONTHS", "6"))
+if not 0 <= AFFILIATE_HOLDBACK_PERCENT <= 50 or AFFILIATE_HOLDBACK_MONTHS < 1 or AFFILIATE_PAYOUT_MINIMUM < Decimal("0.01"):
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_HOLDBACK_PERCENT is from 0 to 50, _HOLDBACK_MONTHS at least 1, _PAYOUT_MINIMUM 0.01 or more")
 if not 0 <= AFFILIATE_BASE_PERCENT <= STORE_FEE_PERCENT:
     raise ImproperlyConfigured("ULTRASTORE_PORTAL_AFFILIATE_BASE_PERCENT comes out of the store's fee: from 0 to ULTRASTORE_PORTAL_STORE_FEE_PERCENT")
 if not 0 <= AFFILIATE_SUPER_PERCENT <= 50 or AFFILIATE_LINK_DAYS < 1 or AFFILIATE_APPROVAL_DAYS < 0:

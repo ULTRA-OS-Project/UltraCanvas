@@ -1,7 +1,7 @@
 {% extends "operator/base.html" %}
 {% block title %}Affiliates - Operator{% endblock %}
 {% block content %}
-<div class="page-head"><h1>Affiliates</h1><span class="text-secondary">{{ rows|length }}</span></div>
+<div class="page-head"><h1>Affiliates</h1><span class="text-secondary">{{ rows|length }}</span><a class="btn btn-outline-secondary ms-auto" href="{% url 'operator:affiliate_payouts' %}">Payouts{% if open_payouts %} - {{ open_payouts }} to pay{% endif %}</a></div>
 {% if not can_text %}<div class="alert alert-warning">The store cannot send text messages (no ULTRASTORE_PORTAL_TEXT_GATEWAY_URL): confirm an applicant's phone number yourself at the review.</div>{% endif %}
 <div class="panels">
 {% if cost %}<div><div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-3">
@@ -14,13 +14,13 @@
   </nav>
   <div class="table-responsive">
   <table class="table align-middle">
-    <thead><tr><th>Affiliate</th><th>Account</th><th>State</th><th>Phone</th><th>Identity</th><th>Brought in by</th><th class="text-end">To pay</th><th></th></tr></thead>
+    <thead><tr><th>Affiliate</th><th>Account</th><th>State</th><th>Phone</th><th>Identity</th><th>Brought in by</th><th class="text-end">Balance</th><th></th></tr></thead>
     <tbody>
     {% for row in rows %}
     <tr><td class="font-monospace">{{ row.profile.handle }}</td><td>{{ row.profile.user.email }}</td><td>{{ row.profile.get_state_display }}</td>
       <td>{{ row.profile.phone_verified_at|yesno:"proven,not proven" }}</td><td>{{ row.profile.id_checked_at|yesno:"checked,not checked" }}</td>
       <td class="font-monospace">{{ row.profile.superaffiliate.handle|default:"" }}</td>
-      <td class="text-end">{% for sum in row.owed %}{{ sum.sum }} {{ sum.currency }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td class="text-end">{% for sum in row.owed %}{{ sum.sum }} {{ sum.currency }}{% if not sum.payable %} <span class="small text-secondary">carried</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
       <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'operator:affiliate' row.profile.pk %}">Open</a></td></tr>
     {% empty %}<tr><td colspan="8" class="text-secondary">Nobody here.</td></tr>
     {% endfor %}

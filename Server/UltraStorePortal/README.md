@@ -39,8 +39,9 @@ is the account for every service; 0.5.0 is advertising's first phase and
 0.6.0 the first half of its second; 0.7.0 splits a sale between the store
 and the publisher; 0.8.0 lets a person close or delete the account; 0.9.0
 reckons VAT, writes invoices and makes the publishers' payouts; 0.10.0 is
-the affiliate programme's first phase and 0.11.0 its second, the customer's
-binding; *What comes next* names the rest.
+the affiliate programme's first phase, 0.11.0 its second, the customer's
+binding, and 0.12.0 the first part of its third, the money - the holdback
+and the monthly payouts; *What comes next* names the rest.
 
 ## Decisions
 
@@ -576,9 +577,10 @@ on the way back, gone with the erasure.
 ## Affiliates
 
 UltraAffiliates, phases 1 and 2 of
-[its design](../../Docs/Research/UltraAffiliatesDesignProposal.md)
-(`affiliates/`): **product links** (0.10.0) and **the customer's binding**
-(0.11.0). A person the store knows advertises what the store sells; when
+[its design](../../Docs/Research/UltraAffiliatesDesignProposal.md) and the
+first part of phase 3 (`affiliates/`): **product links** (0.10.0), **the
+customer's binding** (0.11.0) and **the money** - the holdback and the
+monthly payouts (0.12.0). A person the store knows advertises what the store sells; when
 their link to a product brings its sale, they earn - and a new customer they
 brought stays theirs, earning them the base on whatever that customer buys
 later.
@@ -645,6 +647,22 @@ anyone anything.
   who is not active.
 - **Only a person following a link counts.** A page fetched as a picture, a
   script or a frame (`Sec-Fetch-Dest`) records no click.
+- **Every link has its QR code, as a picture beside it** (0.12.0):
+  `/r/<handle>/qr.svg` and `qr.png`, `/r/<handle>/<app>/qr.svg` and
+  `qr.png`, `/affiliate/join/<handle>/qr.svg` and `qr.png`. `?s=<campaign>`
+  is carried into the link the code holds; `size` is a PNG's width in
+  pixels (about 120 to 2000), `level` the error correction (`L`, `M`, `Q`,
+  `H`; `Q` unless said, which survives a quarter of the code being
+  damaged), `download=1` makes it a file to save. A picture asked for is
+  no link followed: nothing is counted. It exists for an active affiliate
+  and a public app, and is a 404 otherwise. **One address, whoever asks** -
+  a web page, a poster's designer, the native store. The portal draws the
+  code itself (`qr.py`, a port of the generator the framework bundles for
+  its own QR plugin; the PNG is written with Pillow), so the three
+  dependencies stay three; it was compared module for module with a second
+  generator and read back by a decoder when it was written.
+- **A campaign's name** in a link (`?s=`) is letters, digits, dots, dashes
+  and underscores, 32 at most; anything else becomes a dash.
 - **The superaffiliate.** Whoever's recruiting link
   (`/affiliate/join/<handle>/`) brought an affiliate in - or, before any
   such link, **whoever the new affiliate is bound to as a customer** -
@@ -659,6 +677,26 @@ anyone anything.
   the publisher's boost alike - so a sale refunded in parts nets to nothing
   for everybody. Given back after a payout, it leaves the affiliate owing,
   and the next sale makes it up.
+- **Five percent are held back for six months** (0.12.0). When a commission
+  is approved, `AFFILIATE_HOLDBACK_PERCENT` (**5**) of what is left of it -
+  what a refund took in the meantime is off it - goes into the **holdback**,
+  until `AFFILIATE_HOLDBACK_MONTHS` (**6**) after the sale was paid; the
+  rest is in the balance. Of a commission of 10.00, 9.50 are in the balance
+  after 30 days and 0.50 follow six months after the sale. What is given
+  back in that time **comes out of the holdback first**, then off the
+  balance. On its day what is left is released into the balance. The
+  superaffiliate's share is held like the commission it is a share of. The
+  affiliate's page shows the amount held per currency and the next release
+  with its day, beside pending, balance and paid, and what is held of each
+  line.
+- **Paid monthly, per currency, from 25.00** (`AFFILIATE_PAYOUT_MINIMUM`).
+  A payout takes what is due on its day: the approved commissions less
+  their holdback, what was given back, and the holdbacks released. A
+  balance under the minimum makes no payout and is **carried** to the next
+  month. An affiliate whose **account is closed or being deleted is paid
+  whatever is owed**, and the holdback as it is released. A line is in one
+  payout and no more; a payout is the affiliate's **statement**, line by
+  line - a statement, not a tax document.
 - **Identified, not anonymous.** A profile is active once its phone number
   is proven - a six-digit code by text, good for ten minutes and five
   tries - and the operator has looked at an identity document and written
@@ -666,7 +704,8 @@ anyone anything.
   country. **No picture of a document is kept.** One person has one
   profile, and an affiliate is eighteen or older.
 - **Blocked or banned.** A blocked affiliate's links count nothing and what
-  they earned is held, until a day or until lifted; a banned one's
+  they earned is held - nothing is approved, released or paid, a payout
+  made before the block included - until a day or until lifted; a banned one's
   relations to other affiliates end, for good. Each has a **record** that
   is added to and never edited: the rule, what happened, the evidence, the
   money, and what the affiliate said to it. The affiliate sees the rule and
@@ -682,27 +721,44 @@ anyone anything.
   earned and a ban's record still name something.
 
 **The pages.** `/affiliate/` - apply, prove the phone number, then the
-links, what was earned and paid, the affiliates brought in;
+links, what was earned, held back and paid, the payouts, the affiliates
+brought in; `/affiliate/links/` - the link maker: where a link leads (the
+shop, a product, the application to become an affiliate) and the campaign
+it belongs to give the link, to copy, and its QR code, to save as SVG or
+PNG; `/affiliate/payouts/<no>/` - a payout's statement;
 `/affiliate/products/` - every paid app with what a link to it pays.
 `/console/affiliates/` - what a link to each of the publisher's apps earns
 today, the boosts, what affiliates sold. `/operator/affiliates/` - the
 applications, the review, block and ban with their record, an affiliate's
-share and the payout.
+share and money; `/operator/affiliates/payouts/` - the payouts, to make and
+to pay.
 
-**The portal moves no money.** *Mark as paid* on an affiliate's page writes
-the payout down with the transfer's reference; the operator pays at the bank
-or the provider.
+**The portal moves no money.** *Make the payouts* on
+`/operator/affiliates/payouts/` (or `ultrastore-portal affiliates payouts
+[--until YYYY-MM-DD]`, by default for the last day of last month) writes
+them; each says what to pay and where - the affiliate's payout details as
+they stood. The operator pays it at the bank or the provider and marks it
+paid with the transfer's reference, which is refused empty. An affiliate's
+own page makes that one affiliate's payout for what is due today, for the
+one who is leaving.
 
 **A text message** is one POST to `ULTRASTORE_PORTAL_TEXT_GATEWAY_URL`
 (`to`, `text`; the bearer token `TEXT_GATEWAY_TOKEN`). Without it the store
 cannot send one: the affiliate's page says so, and the operator confirms the
 number at the review.
 
-**The daily maintenance:** `ultrastore-portal affiliates maintain` approves
-what is due, lifts blocks whose time is over, and counts clicks older than
-the link's days by day before removing them. `affiliates owed` and
-`affiliates cost` say what is approved and unpaid, and what the programme
-cost the store's fee and the publishers' boosts.
+**The timers.** Daily, `ultrastore-portal affiliates maintain` lifts blocks
+whose time is over, approves what is due and sets its holdback aside,
+releases the holdbacks whose day has come, and counts clicks older than the
+link's days by day before removing them. Monthly, `affiliates payouts`.
+Without the first nothing is ever approved or released; without the second
+nothing is ever to pay. `affiliates owed` and `affiliates cost` say what no
+payout has taken and what is held back, and what the programme cost the
+store's fee and the publishers' boosts.
+
+**Moving from 0.11.0.** A payout written down before was paid when it was
+written: each is marked paid, up to its day. Commissions approved before
+have no holdback; those approved from now on do.
 
 **What the binding does not reach yet.** The native store neither signs in
 at the portal nor sends a link's token, so a purchase made in the app is
@@ -710,10 +766,14 @@ nobody's and binds nobody (*What comes next*, 3). With the account on a
 host of its own (`ACCOUNT_HOST`), a sign-up there does not see the link the
 store's session holds; the binding is then made at the first order.
 
-**Not built** (the design's phases 3 and 4): the 5 % holdback for six
-months; statements and self-billed credit notes; fixed boosts for hardware;
-affiliate codes; the native store's `ultrastore://r/` links; sales made
-outside the portal.
+**Not built** (the rest of the design's phase 3, and phase 4): the
+self-billed credit note a payout is to the affiliate, which waits for the
+tax adviser; paying a payout through the provider's interface; what a ban
+takes back and what it leaves to pay, which the operator writes on the
+record and settles by hand; fixed boosts for hardware and an approval
+counted from delivery, which wait for a shop that sells goods; affiliate
+codes; the native store's `ultrastore://r/` links; sales made outside the
+portal.
 
 ## Advertising
 
@@ -937,7 +997,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 | `LICENCE_SEED`, `GRACE_DAYS` (7) | the licence key, a subscription's grace |
 | `SELLER_NAME`, `SELLER_ADDRESS`, `SELLER_VAT_ID`, `SELLER_COUNTRY` | the store as the seller on every invoice: its name, its address (lines separated by `\|`), its VAT id, its country (two letters). Until all four are set no tax is reckoned and no invoice written |
 | `INVOICE_PREFIX` | what stands before an invoice's year and number (`UO-` gives `UO-2026-000001`) |
-| `AFFILIATES`, `AFFILIATE_BASE_PERCENT` (5), `AFFILIATE_SUPER_PERCENT` (10), `AFFILIATE_LINK_DAYS` (90), `AFFILIATE_APPROVAL_DAYS` (30), `AFFILIATE_WINBACK_MONTHS` (6), `AFFILIATE_WINBACK_DAYS` (14) | the affiliate programme on (`1`); the base commission in percent of the net price, out of the store's fee (so not above it); the superaffiliate's share of a commission; the days a link counts, for its product and for binding a new customer; the days a commission waits; the months without a payment after which a customer can be won back, and the days after a link in which they must buy |
+| `AFFILIATES`, `AFFILIATE_BASE_PERCENT` (5), `AFFILIATE_SUPER_PERCENT` (10), `AFFILIATE_LINK_DAYS` (90), `AFFILIATE_APPROVAL_DAYS` (30), `AFFILIATE_WINBACK_MONTHS` (6), `AFFILIATE_WINBACK_DAYS` (14), `AFFILIATE_HOLDBACK_PERCENT` (5), `AFFILIATE_HOLDBACK_MONTHS` (6), `AFFILIATE_PAYOUT_MINIMUM` (25.00) | the affiliate programme on (`1`); the base commission in percent of the net price, out of the store's fee (so not above it); the superaffiliate's share of a commission; the days a link counts, for its product and for binding a new customer; the days a commission waits; the months without a payment after which a customer can be won back, and the days after a link in which they must buy; the share of an approved commission held back (0 to 50; 0 holds nothing), for how many months from the sale; the balance from which a currency is paid out, a smaller one being carried |
 | `TEXT_GATEWAY_URL`, `TEXT_GATEWAY_TOKEN` | where a text message is sent (an https address taking `to` and `text`) and its bearer token; unset, the operator confirms an affiliate's phone number |
 | `PAYOUT_HOLD_DAYS` (30), `PAYOUT_MINIMUM` (0.01) | the days a sale waits before its share can be paid out, and the least a payout is made for |
 | `STORE_FEE_PERCENT` (15) | the store's fee: the percentage of what a buyer pays that the store keeps, from 0 to under 100 with at most two decimals; the rest is the publisher's share. Written on each payment, so a change applies to later sales |
@@ -950,6 +1010,7 @@ All `ULTRASTORE_PORTAL_…`, from the environment:
 ```
 ultrastore_portal/
   settings.py, urls.py, wsgi.py
+  qr.py            a QR code from a text: the modules, and a picture of them as SVG or PNG
   urls_account.py  the addresses of the account's own host
   accounts/        the person: email as the sign-in name, the mailed proof; closure.py: closed, deleting, erased
   identity/        signing in for other services: OpenID Connect
@@ -961,8 +1022,8 @@ ultrastore_portal/
     sessions.py    a sign-in as a record; the store's session ends with it
     sso.py         the store signing in through the account
     management/commands/oidc.py   clients, keys, cleanup
-  affiliates/      UltraAffiliates, phases 1 and 2: models.py (AffiliateProfile, Boost, Click, OrderVisit, Binding,
-                   Attribution, Commission, AffiliatePayout, Sanction), services.py (the rules), texts.py (a text message)
+  affiliates/      UltraAffiliates: models.py (AffiliateProfile, Boost, Click, OrderVisit, Binding, Attribution,
+                   Commission, Holdback, AffiliatePayout, Sanction), services.py (the rules), texts.py (a text message)
   promote/         advertising: UltraAds, phase 1
     models.py      Placement, Campaign, Balance, LedgerEntry, TopUp, DayCount, Click, Attribution,
                    Keyword, PlacementBid, TermCount, PolicyVersion, PolicyAcceptance

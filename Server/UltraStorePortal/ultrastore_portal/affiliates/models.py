@@ -2,6 +2,10 @@
 the affiliate, the merchant's boost, a click on an affiliate's link, the
 commission a sale earns, what was paid, and the record of a block or a ban.
 
+Version: 0.12.0 - phase 3, the money: Holdback; a payout is made for what is
+                  due up to a day and marked paid afterwards (state, until);
+                  a commission's approved_on, the line a reversal takes back
+                  and what of it the holdback covered
 Version: 0.11.0 - phase 2: Binding, OrderVisit; an Attribution's and a
                   Commission's basis may be the bound customer
 Version: 0.10.0
@@ -10,10 +14,12 @@ Version: 0.10.0
 from __future__ import annotations
 
 import secrets
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
+from django.utils import timezone
 
 from ..billing.models import Order, Payment
 from ..store import constants
@@ -192,20 +198,34 @@ class Attribution(models.Model):
 
 
 class AffiliatePayout(models.Model):
-    """What the store paid an affiliate, in one currency. The portal moves
-    no money: the operator pays and writes the transfer's reference."""
+    """What the store owes an affiliate for everything due up to a day, in
+    one currency, and whether it was paid: the affiliate's statement. The
+    portal moves no money: the operator pays, and says here that it is
+    done, with the transfer's reference."""
+
+    OPEN, PAID = "open", "paid"
+    STATES = [(OPEN, "To pay"), (PAID, "Paid")]
 
     affiliate = models.ForeignKey(AffiliateProfile, on_delete=models.PROTECT, related_name="payouts")
     currency = models.CharField(max_length=3)
+    until = models.DateField(null=True, blank=True, help_text="The last day whose commissions are in it.")
     amount = models.DecimalField(max_digits=11, decimal_places=2)
-    details = models.TextField(blank=True)
-    reference = models.CharField(max_length=120)
+    state = models.CharField(max_length=8, choices=STATES, default=OPEN, db_index=True)
+    # Made under the minimum because the affiliate's account is being left.
+    regardless = models.BooleanField(default=False)
+    details = models.TextField(blank=True, help_text="Where the affiliate is paid, as it stood when the payout was made.")
+    reference = models.CharField(max_length=120, blank=True)
     note = models.CharField(max_length=300, blank=True)
-    paid_at = models.DateTimeField(auto_now_add=True)
+    created = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    paid_at = models.DateTimeField(null=True, blank=True)
     paid_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         ordering = ["-id"]
+
+    def __str__(self) -> str:
+        return f"{self.affiliate} {self.amount} {self.currency} until {self.until}"
 
 
 class Commission(models.Model):
@@ -239,6 +259,12 @@ class Commission(models.Model):
     currency = models.CharField(max_length=3)
     state = models.CharField(max_length=16, choices=STATES, default=PENDING, db_index=True)
     approve_after = models.DateField(null=True, blank=True)
+    approved_on = models.DateField(null=True, blank=True)
+    # Of a line that takes back: the line it takes from, and how much of it
+    # that line's holdback covered (the rest comes off the balance).
+    reverses = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="reversals")
+    from_holdback = models.DecimalField(max_digits=9, decimal_places=2, default=0)
+    # The payout that paid it: of an approved line, all but its holdback.
     payout = models.ForeignKey(AffiliatePayout, null=True, blank=True, on_delete=models.PROTECT, related_name="lines")
     created = models.DateTimeField(auto_now_add=True)
 
@@ -249,6 +275,45 @@ class Commission(models.Model):
     @property
     def percent_text(self) -> str:
         return format((self.base_percent + self.boost_percent).normalize(), "f")
+
+    @property
+    def held(self) -> Decimal:
+        """What of an approved line was put into the holdback."""
+        row = getattr(self, "holdback", None) if self.state == self.APPROVED else None
+        return row.amount if row is not None else Decimal("0.00")
+
+    @property
+    def payable(self) -> Decimal:
+        """What the line adds to the balance: a commission less its
+        holdback; of what was taken back, the part the holdback did not cover."""
+        if self.state == self.REVERSAL:
+            return self.amount + self.from_holdback
+        return self.amount - self.held
+
+
+class Holdback(models.Model):
+    """The part of an approved commission the store keeps back against a
+    refund or a chargeback that comes late: a share of what was left of the
+    commission when it was approved, until a day counted from the sale. What
+    is taken back in that time comes out of it first; what is left on the
+    day is released into the balance, and paid with the next payout."""
+
+    commission = models.OneToOneField(Commission, on_delete=models.PROTECT, related_name="holdback")
+    affiliate = models.ForeignKey(AffiliateProfile, on_delete=models.PROTECT, related_name="holdbacks")
+    currency = models.CharField(max_length=3)
+    percent = models.DecimalField(max_digits=5, decimal_places=2)
+    amount = models.DecimalField(max_digits=9, decimal_places=2)
+    taken = models.DecimalField(max_digits=9, decimal_places=2, default=0)
+    release_on = models.DateField(db_index=True)
+    released_on = models.DateField(null=True, blank=True)
+    payout = models.ForeignKey(AffiliatePayout, null=True, blank=True, on_delete=models.PROTECT, related_name="releases")
+
+    class Meta:
+        ordering = ["release_on", "id"]
+
+    @property
+    def left(self) -> Decimal:
+        return self.amount - self.taken
 
 
 class Sanction(models.Model):
