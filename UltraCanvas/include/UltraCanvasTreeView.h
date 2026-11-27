@@ -1,5 +1,9 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.17.0 - 2026-11-27 - a selected row's text reads on the selection: with no selection
+//                   text colour set it is white (black only on a light selection, under 3:1
+//                   for white) - it was the row's black on the blue - and it wins over a
+//                   node's own text colour
 // Version: 1.16.0 - 2026-11-21 - TreeNodeIcon::drawnInTextColor: a one-colour line icon drawn in
 //                   the row's text colour, so a black icon reads on a dark theme
 // Version: 1.15.0 - 2026-11-16 - TreeNodeData::dimmed: a row drawn in the tree's muted text colour
@@ -368,9 +372,9 @@ private:
     // the row: white on the selection background, the selection colour on
     // any other row.
     Color focusRingColor = Colors::Transparent;
-    // The text of a selected row. Transparent (the default) keeps the row's
-    // own text colour, as before; the theme sets the colour that reads on
-    // the accent (ThemeRoles::onAccent).
+    // The text of a selected row. Transparent (the default) picks white,
+    // or black on a light selectionColor; the theme sets the colour
+    // that reads on the accent (ThemeRoles::onAccent).
     Color selectionTextColor = Colors::Transparent;
 
     // The node currently highlighted as a drag-and-drop target, if any.
@@ -689,6 +693,9 @@ public:
     // text colour (a node's own colour wins either way)
     void SetSelectionTextColor(const Color &color) { selectionTextColor = color; RequestRedraw(); }
     Color GetSelectionTextColor() const { return selectionTextColor; }
+    // The text colour a selected row is drawn in: the one set, else white,
+    // or black on a selection too light for white (under 3:1).
+    Color SelectedRowTextColor() const;
     void SetHoverColor(const Color &color) { hoverColor = color; }
     // The focus ring's colour; Colors::Transparent restores the automatic
     // choice (white on a selected row, the selection colour elsewhere).
@@ -887,12 +894,13 @@ protected:
 
     // Read-only access for subclass renderers.
     int   GetTextPadding() const { return textPadding; }
-    // The colour a node's label takes: the node's own, else the selection
-    // text colour on a selected row, else the muted colour on a dimmed row,
-    // else the tree's text colour
+    // The colour a node's label takes: on a selected row the selection text
+    // colour (SelectedRowTextColor), so it reads on the selection; else the
+    // node's own, else the muted colour on a dimmed row, else the tree's
+    // text colour
     Color NodeTextColor(const TreeNode* node) const {
+        if (node->selected) return SelectedRowTextColor();
         if (node->data.textColor != Colors::Black) return node->data.textColor;
-        if (node->selected && selectionTextColor.a > 0) return selectionTextColor;
         if (node->data.dimmed) return dimmedTextColor;
         return textColor;
     }

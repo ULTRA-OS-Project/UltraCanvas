@@ -187,11 +187,12 @@ namespace UltraCanvas {
                 const TreeCellData *cell = node->data.GetCell(col.id);
                 if (!cell || cell->text.empty()) continue;
                 text = cell->text;
-                // the cell's own colour, else the selection text colour on a
-                // selected row, else the column's, else the tree's text colour
-                color = cell->textColor != Colors::Transparent ? cell->textColor
-                      : (node->selected && GetSelectionTextColor().a > 0 ? GetSelectionTextColor()
-                         : col.textColor != Colors::Transparent ? col.textColor : GetTextColor());
+                // on a selected row the selection text colour, so every cell
+                // reads on the selection; else the cell's own colour, else the
+                // column's, else the tree's text colour
+                color = node->selected ? SelectedRowTextColor()
+                      : cell->textColor != Colors::Transparent ? cell->textColor
+                      : col.textColor != Colors::Transparent ? col.textColor : GetTextColor();
             }
 
             // Optional accent fill behind the cell (e.g. the Type column).
