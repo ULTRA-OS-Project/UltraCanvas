@@ -4944,17 +4944,42 @@ add_test(NAME ControlLimitsTest COMMAND ControlLimitsTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ControlLimitsTest")
 
+# ===== SPIRAL MODEL TEST =====
+# The spiral plot model: where a time lands on the spiral, the value range,
+# what each sample covers, validation and the samples. UI-free.
+message(STATUS "  Building SpiralModelTest...")
+add_executable(SpiralModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpiralModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasSpiralModel.cpp
+)
+target_include_directories(SpiralModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpiralModelTest PRIVATE cxx_std_20)
+set_target_properties(SpiralModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpiralModelTest COMMAND SpiralModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpiralModelTest")
+
 # ===== RIDGELINE MODEL TEST =====
 # The ridgeline model: quantiles, bandwidth rules, the kernel density (area,
 # bounds, binning), the x range, the scales, statistics, sorting, validation
-# and the samples. UI-free.
+# the samples, several series, the wrapping axis, tail cut, binned curves and
+# the JSON and CSV round trips. UI-free.
 message(STATUS "  Building RidgelineModelTest...")
 add_executable(RidgelineModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/RidgelineModelTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasRidgelineModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
-target_include_directories(RidgelineModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_include_directories(RidgelineModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
+)
 target_compile_features(RidgelineModelTest PRIVATE cxx_std_20)
+# The CSV reads and writes numbers through the locale-independent helpers.
+target_link_libraries(RidgelineModelTest PRIVATE UltraCanvasTextUtils)
 set_target_properties(RidgelineModelTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -7650,6 +7675,76 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: CurveHistogramTest")
 else()
     message(STATUS "  CurveHistogramTest skipped (UltraCanvas not present)")
+endif()
+
+# ===== SPIRAL CHART RENDER TEST =====
+# UltraCanvasSpiralChart drawn offscreen: the ribbon's colours on the right
+# rays, the band and the line, hit regions, the colour bar's room, a new
+# period and hover. With ULTRACANVAS_SCREENSHOT_DIR set, each case is
+# written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building SpiralChartRenderTest...")
+    add_executable(SpiralChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpiralChartRenderTest.cpp
+    )
+    target_include_directories(SpiralChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpiralChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(SpiralChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(SpiralChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpiralChartRenderTest COMMAND SpiralChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SpiralChartRenderTest")
+else()
+    message(STATUS "  SpiralChartRenderTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== MIND MAP RENDER TEST =====
+# The mind map's radial cluster marks drawn offscreen: the Ring connector
+# (an arc for a fan, a closed ring for a full ring), connector widths and
+# node sizes by depth, the triangle shape, and the JSON round trip and SVG
+# export of the new options. With ULTRACANVAS_SCREENSHOT_DIR set, each case
+# is written there as a PNG.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MindMapRenderTest...")
+    add_executable(MindMapRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MindMapRenderTest.cpp
+    )
+    target_include_directories(MindMapRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MindMapRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(MindMapRenderTest PRIVATE UltraCanvas)
+    set_target_properties(MindMapRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MindMapRenderTest COMMAND MindMapRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MindMapRenderTest")
+else()
+    message(STATUS "  MindMapRenderTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== HEATMAP HEXAGON RENDER TEST =====
+# The Hexagon cell shape of both heatmaps drawn offscreen: regular hexagons
+# whatever the plot's shape, odd rows shifted half a cell, empty corners, and
+# the engine heatmap's hit regions. With ULTRACANVAS_SCREENSHOT_DIR set, each
+# case is written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building HeatmapHexagonRenderTest...")
+    add_executable(HeatmapHexagonRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/HeatmapHexagonRenderTest.cpp
+    )
+    target_include_directories(HeatmapHexagonRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(HeatmapHexagonRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(HeatmapHexagonRenderTest PRIVATE UltraCanvas)
+    set_target_properties(HeatmapHexagonRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HeatmapHexagonRenderTest COMMAND HeatmapHexagonRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: HeatmapHexagonRenderTest")
+else()
+    message(STATUS "  HeatmapHexagonRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== RIDGELINE CHART RENDER TEST =====

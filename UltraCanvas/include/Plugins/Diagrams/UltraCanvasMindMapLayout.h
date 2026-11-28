@@ -1,7 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMindMapLayout.h
 // Mind map topic model and layout engine
-// Version: 1.0.0
-// Last Modified: 2026-07-30
+// Version: 1.1.0
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 //
 // CHANGELOG 1.0.0 (initial):
@@ -9,6 +9,10 @@
 //    that turns it into positioned boxes.
 //  - Structures: Balanced (root centred, branches split left/right), LogicRight,
 //    LogicLeft, OrgChartDown, OrgChartUp and Radial.
+//
+// 1.1.0 (2026-11-16): MindMapStructure::Balloon (children in a ring around
+//    their parent, full or fan, ring radii from the children's discs, main
+//    topics pushed out by balloonTrunkLength) and MindMapNodeShape::Triangle.
 //  - Deterministic non-overlap packing of variable-size subtrees via bottom-up
 //    extent accumulation (the "tidy tree" shape), so sibling subtrees never
 //    collide at any depth.
@@ -42,7 +46,16 @@ enum class MindMapStructure {
     OrgChartDown,  // Root at top, children below
     OrgChartUp,    // Root at bottom, children above
     Radial,        // Children distributed over a full 360 degrees
-    Manual         // Authored positions honoured; unset ones filled in (L13)
+    Manual,        // Authored positions honoured; unset ones filled in (L13)
+    Balloon        // Each topic's children in a ring around it: clusters of
+                   // clusters (radial cluster map, L1-L4)
+};
+
+// How a Balloon topic arranges its children around itself. The central topic
+// always uses a full ring.
+enum class MindMapBalloonRing {
+    Full,   // A whole circle; the parent's direction falls between two children
+    Fan     // An arc of balloonFanSweep degrees, opening away from the parent
 };
 
 enum class MindMapTopicSide {
@@ -69,7 +82,8 @@ enum class MindMapNodeShape {
     Cloud,
     Bang,
     Underline,   // Text with a rule beneath it, no box
-    NoShape      // Text only. Not named "None" - X11 defines None as a macro.
+    NoShape,     // Text only. Not named "None" - X11 defines None as a macro.
+    Triangle     // Point up; the label sits in its lower part (S2)
 };
 
 // =============================================================================
@@ -280,6 +294,15 @@ struct MindMapLayoutOptions {
     double radialSweep      = 2.0 * 3.14159265358979323846;   // Full circle
     double radialRingGap    = 130.0;
 
+    // Balloon structure (radial cluster map). Each topic's children sit on a
+    // ring around it whose radius is the smallest at which their discs (the
+    // circle each child's own subtree needs) do not overlap. The central
+    // topic's ring starts at radialStartAngle and spans radialSweep.
+    MindMapBalloonRing balloonRing = MindMapBalloonRing::Fan;
+    double balloonFanSweep    = 300.0;  // Degrees, Fan only
+    double balloonGap         = 8.0;    // Between neighbouring child discs
+    double balloonTrunkLength = 60.0;   // Extra distance from the centre to each main topic (L6)
+
     // Node sizing
     bool   sizeFromWeight = false;
     double weightSizeScale = 18.0;  // Extra pixels per unit of weight above 1
@@ -352,6 +375,9 @@ private:
     static void LayoutRadial(MindMapModel& model, const MindMapLayoutOptions& options,
                              const MindMapMeasureFn& measure, const MindMapStyleFn& styleOf,
                              MindMapLayoutResult& out);
+    static void LayoutBalloon(MindMapModel& model, const MindMapLayoutOptions& options,
+                              const MindMapMeasureFn& measure, const MindMapStyleFn& styleOf,
+                              MindMapLayoutResult& out);
 };
 
 } // namespace UltraCanvas

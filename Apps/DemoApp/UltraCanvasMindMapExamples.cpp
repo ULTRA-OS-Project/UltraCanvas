@@ -1,10 +1,12 @@
 // Apps/DemoApp/UltraCanvasMindMapExamples.cpp
 // Demo examples for UltraCanvasMindMap — mind map diagram
+// Version: 1.2.0 - the Radial cluster tab (Balloon structure, rings, sizes
+//                  and widths by depth, triangles) and Balloon in the gallery
 // Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
 //                  card that fills the area, every tab a column whose
 //                  description wraps above the map, buttons as wide as their text
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -242,6 +244,194 @@ std::shared_ptr<UltraCanvasContainer> MakeRadialTab(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAB — Radial cluster map: the Balloon structure with rings, sizes and widths
+// by depth, triangles for conditions, one branch as a list. The content is an
+// invented family emergency plan, written for this demo.
+// ─────────────────────────────────────────────────────────────────────────────
+std::shared_ptr<UltraCanvasContainer> MakeRadialClusterTab(
+        std::shared_ptr<UltraCanvasLabel> status) {
+    auto tab = MakeMapTab("MindMapClusterTab", "MindMapClusterDesc",
+            Tr("Balloon structure: every topic carries its children in a ring around "
+            "itself, so the map grows as clusters of clusters. Circles sized and shaded "
+            "by depth, thick trunks from the centre, a thin ring through each hub's "
+            "children, triangles for conditions, a dashed cross-reference, and one "
+            "branch (Documents) kept as a list."));
+
+    auto controls = DemoKit::AddRow(tab, "MindMapClusterRow", 4);
+
+    auto map = std::make_shared<UltraCanvasMindMap>("MindMapCluster", 0, 0, 990, 654);
+    map->SetTheme(MindMapTheme::Colorful);
+    map->SetBranchPalette({Color(214, 69, 65), Color(46, 134, 193), Color(39, 174, 96),
+                           Color(243, 156, 18), Color(142, 68, 173), Color(22, 160, 133),
+                           Color(211, 84, 0), Color(52, 73, 94), Color(192, 57, 43)});
+    map->SetControlsVisible(true);
+
+    // Invented content: a household's plan for a few days without services.
+    const std::vector<std::pair<int, std::string>> outline = {
+        {0, "Family emergency plan"},
+        {1, "Water"},
+            {2, "Storage"}, {3, "Bottled water"}, {3, "Jerrycans"}, {3, "Rain barrel"}, {3, "Fill the bath"},
+            {2, "Treatment"}, {3, "Boiling"}, {3, "Filter"}, {3, "Tablets"}, {3, "Bleach"},
+            {2, "4 L a day each"}, {2, "Rotate stock"}, {2, "Pet water"},
+        {1, "Documents"},
+            {2, "Copies"}, {3, "IDs"}, {3, "Insurance"}, {3, "Deeds"}, {3, "Medical records"},
+            {3, "Bank details"},
+            {2, "Kept in"}, {3, "Waterproof bag"}, {3, "USB stick"}, {3, "Cloud copy"},
+            {2, "Cash in small notes"}, {2, "Family photos"},
+        {1, "Food"},
+            {2, "Pantry"}, {3, "Rice"}, {3, "Pasta"}, {3, "Beans"}, {3, "Oats"}, {3, "Canned fish"},
+            {3, "Peanut butter"},
+            {2, "No cooking"}, {3, "Crackers"}, {3, "Nuts"}, {3, "Dried fruit"}, {3, "Energy bars"},
+            {2, "Cooking"}, {3, "Camp stove"}, {3, "Fuel"}, {3, "Matches"}, {3, "Pot"},
+            {2, "Can opener"}, {2, "Rotation list"}, {2, "Special diets"},
+        {1, "First aid"},
+            {2, "Kit"}, {3, "Plasters"}, {3, "Gauze"}, {3, "Tape"}, {3, "Antiseptic"}, {3, "Gloves"},
+            {3, "Scissors"}, {3, "Tweezers"}, {3, "Thermometer"},
+            {2, "Medicines"}, {3, "Pain relief"}, {3, "Allergy"}, {3, "Prescriptions"},
+            {3, "Rehydration salts"},
+            {2, "Course"}, {2, "Manual"},
+        {1, "Power & light"},
+            {2, "Light"}, {3, "Torches"}, {3, "Head lamps"}, {3, "Candles"}, {3, "Lanterns"},
+            {2, "Power"}, {3, "Power bank"}, {3, "Solar charger"}, {3, "Batteries"}, {3, "Car charger"},
+            {2, "Warmth"}, {3, "Blankets"}, {3, "Sleeping bags"}, {3, "Warm clothes"},
+        {1, "Contact"},
+            {2, "People"}, {3, "Family list"}, {3, "Out-of-area contact"}, {3, "Neighbours"},
+            {3, "Doctor"},
+            {2, "Devices"}, {3, "Wind-up radio"}, {3, "Phones"}, {3, "Walkie-talkies"}, {3, "Whistle"},
+            {2, "Meeting points"}, {3, "Near home"}, {3, "In town"}, {3, "Out of town"},
+            {2, "Text, do not call"},
+        {1, "Leaving"},
+            {2, "Go bag"}, {3, "Clothes"}, {3, "Toiletries"}, {3, "Snacks"}, {3, "Water bottle"},
+            {3, "Paper map"}, {3, "Charger"},
+            {2, "Routes"}, {3, "Main route"}, {3, "Second route"}, {3, "On foot"},
+            {2, "Transport"}, {3, "Tank half full"}, {3, "Bikes"}, {3, "Lift share"},
+            {2, "Pets"}, {3, "Carrier"}, {3, "Pet food"}, {3, "Vet records"},
+            {2, "Shut off"}, {3, "Gas"}, {3, "Mains water"}, {3, "Electricity"},
+        {1, "Staying home"},
+            {2, "Safe room"},
+            {2, "Sealing"}, {3, "Plastic sheet"}, {3, "Duct tape"},
+            {2, "Fire"}, {3, "Extinguisher"}, {3, "Smoke alarms"}, {3, "Fire blanket"},
+            {2, "Sanitation"}, {3, "Bucket toilet"}, {3, "Bin bags"}, {3, "Wipes"}, {3, "Hand gel"},
+            {2, "Tools"}, {3, "Multi-tool"}, {3, "Wrench"}, {3, "Work gloves"},
+        {1, "Practice"},
+            {2, "Drills"}, {3, "Fire drill"}, {3, "Leaving drill"}, {3, "Shelter drill"},
+            {2, "Check twice a year"}, {2, "Teach the children"}, {2, "Update the plan"},
+    };
+    map->BuildFromOutline(outline);
+
+    // Sizes, text and widths by depth: big hubs, small leaves, thick trunks.
+    const double fontSizes[] = {15.0, 12.0, 10.0, 8.5};
+    for (int level = 0; level <= 3; ++level) {
+        MindMapTopicStyle levelStyle = map->GetLevelStyle(level);
+        levelStyle.shape = MindMapNodeShape::Circle;
+        levelStyle.fontSize = fontSizes[level];
+        levelStyle.bold = level <= 1;
+        levelStyle.paddingX = 4.0;
+        levelStyle.paddingY = 2.0;
+        levelStyle.borderWidth = (level == 0) ? 3.0 : 1.5;
+        map->SetLevelStyle(level, levelStyle);
+    }
+    MindMapStyle& look = map->Style();
+    look.sizeByDepth = {130.0, 84.0, 54.0, 36.0};
+    look.connectorWidthByDepth = {11.0, 4.0, 2.0};
+    look.connectorStyle = MindMapConnectorStyle::Ring;
+    look.connectorColorMode = MindMapConnectorColorMode::InheritFromBranch;
+    look.depthLightenStep = 0.2;
+    look.showCollapseHandles = false;
+
+    MindMapLayoutOptions options = map->GetLayoutOptions();
+    options.structure = MindMapStructure::Balloon;
+    options.balloonRing = MindMapBalloonRing::Fan;
+    options.balloonGap = 6.0;
+    options.balloonTrunkLength = 90.0;
+    map->SetLayoutOptions(options);
+    // A poster-sized map: let the first fit show all of it.
+    map->Viewport().SetZoomRange(0.04, map->Viewport().GetMaxZoom());
+
+    // Conditions as small triangles beside the topic they qualify.
+    auto findTopic = [&map](const std::string& text, const std::string& parentText) {
+        std::string found;
+        map->Model().ForEachTopic([&](const MindMapTopic& topic) {
+            if (!found.empty() || topic.text != text) return;
+            const MindMapTopic* parent = map->GetTopic(topic.parentId);
+            if (parent && parent->text == parentText) found = topic.id;
+        });
+        return found;
+    };
+    MindMapTopicStyle condition = map->GetLevelStyle(3);
+    condition.shape = MindMapNodeShape::Triangle;
+    condition.fillColor = Color(250, 215, 80);
+    condition.borderColor = Color(170, 120, 0);
+    condition.textColor = Color(40, 35, 20);
+    condition.fontSize = 8.0;
+    condition.bold = false;
+    condition.paddingX = 2.0;
+    condition.paddingY = 1.0;
+    condition.maxWidth = 44.0;
+    condition.minWidth = 0.0;
+    condition.minHeight = 0.0;
+    const std::pair<const char*, const char*> conditions[] = {
+        {"Boiling", "Treatment"}, {"Camp stove", "Cooking"}, {"Course", "First aid"},
+    };
+    const char* const conditionText[] = {"Needs fuel", "Needs fuel", "Every 3 years"};
+    for (size_t i = 0; i < 3; ++i) {
+        std::string target = findTopic(conditions[i].first, conditions[i].second);
+        if (target.empty()) continue;
+        std::string id = map->AddTopic(target, conditionText[i]);
+        map->SetTopicStyle(id, condition);
+    }
+
+    // One branch kept as a list (a structure of its own inside the balloon).
+    std::string documents = findTopic("Documents", "Family emergency plan");
+    if (MindMapTopic* topic = map->GetTopic(documents)) {
+        topic->structureOverride = MindMapStructure::LogicRight;
+    }
+
+    // A cross-reference: the stove's fuel also boils the water.
+    std::string fuel = findTopic("Fuel", "Cooking");
+    std::string boiling = findTopic("Boiling", "Treatment");
+    if (!fuel.empty() && !boiling.empty()) {
+        map->AddRelationship("fuel_for_boiling", fuel, boiling, Tr("also for"));
+    }
+
+    struct RingButton { const char* key; std::string label; bool fan; };
+    const RingButton rings[] = {{"Fan", Tr("Fans"), true}, {"Full", Tr("Full rings"), false}};
+    for (const auto& entry : rings) {
+        auto button = MakeGalleryButton(std::string("MindMapCluster_") + entry.key, entry.label, 90);
+        const bool fan = entry.fan;
+        const std::string label = entry.label;
+        button->onClick = [map, status, fan, label]() {
+            MindMapLayoutOptions o = map->GetLayoutOptions();
+            o.balloonRing = fan ? MindMapBalloonRing::Fan : MindMapBalloonRing::Full;
+            map->SetLayoutOptions(o);
+            map->FitView();
+            status->SetText(TrF("Clusters: {0}", label));
+        };
+        DemoKit::Add(controls, button);
+    }
+    struct LinkButton { const char* key; std::string label; MindMapConnectorStyle connector; };
+    const LinkButton links[] = {
+        {"Ring", Tr("Rings"), MindMapConnectorStyle::Ring},
+        {"Straight", Tr("Spokes only"), MindMapConnectorStyle::Straight},
+        {"Tapered", Tr("Tapered"), MindMapConnectorStyle::TaperedBranch},
+    };
+    for (const auto& entry : links) {
+        auto button = MakeGalleryButton(std::string("MindMapCluster_") + entry.key, entry.label, 90);
+        const MindMapConnectorStyle value = entry.connector;
+        const std::string label = entry.label;
+        button->onClick = [map, status, value, label]() {
+            map->SetConnectorStyle(value);
+            status->SetText(TrF("Connector: {0}", label));
+        };
+        DemoKit::Add(controls, button);
+    }
+
+    AttachStatus(map, status);
+    AddMap(tab, map);
+    return tab;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB 4 — Cross-branch relationships (reference image 6)
 // ─────────────────────────────────────────────────────────────────────────────
 std::shared_ptr<UltraCanvasContainer> MakeRelationshipsTab(
@@ -344,6 +534,7 @@ std::shared_ptr<UltraCanvasContainer> MakeGalleryTab(
         {"Logic left", Tr("Logic left"),  MindMapStructure::LogicLeft},
         {"Org chart", Tr("Org chart"),   MindMapStructure::OrgChartDown},
         {"Radial", Tr("Radial"),      MindMapStructure::Radial},
+        {"Balloon", Tr("Balloon"),     MindMapStructure::Balloon},
     };
     // Structures and connectors share a line while it is wide enough.
     auto styleRow = DemoKit::AddRow(tab, "MindMapStyleRow", 24);
@@ -517,6 +708,7 @@ UltraCanvasDemoApplication::CreateMindMapExamples() {
     tabs->AddTab(Tr("Editable map"),        MakeEditableTab(statusLabel));
     tabs->AddTab(Tr("Logic chart"),         MakeLogicChartTab(statusLabel));
     tabs->AddTab(Tr("Radial"),              MakeRadialTab(statusLabel));
+    tabs->AddTab(Tr("Radial cluster"),      MakeRadialClusterTab(statusLabel));
     tabs->AddTab(Tr("Relationships"),       MakeRelationshipsTab(statusLabel));
     tabs->AddTab(Tr("Presentation"),        MakePresentationTab(statusLabel));
     tabs->AddTab(Tr("Themes & structures"), MakeGalleryTab(statusLabel));

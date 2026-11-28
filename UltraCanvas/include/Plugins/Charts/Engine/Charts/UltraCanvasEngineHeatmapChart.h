@@ -13,8 +13,9 @@
 // matches the cells. Hover outlines a cell and shows its row, column and
 // value through the engine's hit regions.
 //
+// Version: 1.1.0 - ChartHeatmapCellShape::Hexagon (hexagonal heatmap)
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -30,7 +31,12 @@ namespace UltraCanvas {
 enum class ChartHeatmapScale { Linear, Logarithmic };
 // Where data row 0 is shown: at the top (matrix order) or the bottom.
 enum class ChartHeatmapRowOrder { TopDown, BottomUp };
-enum class ChartHeatmapCellShape { Rectangle, RoundedRectangle, Circle };
+// Hexagon: regular pointy-top hexagons in an offset grid (odd rows shifted
+// right by half a cell), as large as fit the plot - a hexagonal heatmap or
+// self-organising-map look. The cells keep their shape whatever the plot's
+// aspect, so they do not follow the row and column axes, whose labels are
+// hidden (their titles stay).
+enum class ChartHeatmapCellShape { Rectangle, RoundedRectangle, Circle, Hexagon };
 // Show only part of a square matrix (correlation matrices).
 enum class ChartHeatmapMask { NoMask, Lower, LowerNoDiagonal, Upper, UpperNoDiagonal };
 
@@ -142,6 +148,7 @@ private:
     std::string FormatCell(double v) const;
     std::string ColumnLabel(int col) const;
     std::string RowLabel(int row) const;
+    void RenderHexCells(IRenderContext* ctx, const ChartEngineFrame& frame);
 };
 
 inline std::shared_ptr<UltraCanvasEngineHeatmapChart> CreateEngineHeatmapChart(

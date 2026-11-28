@@ -10,7 +10,7 @@ spread, and whether they have one hump or two.
 ```
 
 - Design: [`UltraCanvasRidgelineChartProposal.md`](UltraCanvasRidgelineChartProposal.md)
-  (this is Phase 1 of three)
+  (Phases 1 and 2 of three)
 
 ## Contents
 
@@ -19,8 +19,13 @@ spread, and whether they have one hump or two.
 - [Rows from values: the density](#rows-from-values-the-density)
 - [Rows from curves](#rows-from-curves)
 - [Scale, order and statistics](#scale-order-and-statistics)
+- [Several series per row](#several-series-per-row)
+- [A wrapping axis](#a-wrapping-axis)
+- [Tails and histograms](#tails-and-histograms)
 - [Appearance](#appearance)
+- [Marks and bands](#marks-and-bands)
 - [Reading the chart](#reading-the-chart)
+- [Files](#files)
 - [Demo](#demo)
 - [Tests](#tests)
 
@@ -136,6 +141,66 @@ A supplied curve's statistics are those of the distribution it draws: its
 weighted mean, its median and quartiles by area. `count` is 0. Rows without
 data sort last, and `Validate()` names them.
 
+## Several series per row
+
+Two or more series share each row, drawn over each other in series order -
+2019 against 2020, bedtimes against wake-up times. `series` names them and
+gives them their colours (alpha 0 = the theme's palette); a row holds the
+first series' data in `values` / `curve` and the others in `more`:
+
+```cpp
+model.series = {{"2019", Color(0, 0, 0, 0)}, {"2020", Color(230, 120, 30, 255)}};
+RidgelineRow row;
+row.name = "Berlin";
+row.SetValues(0, {31, 28, 35, 40});        // 2019
+row.SetValues(1, {22, 25, 19, 27});        // 2020
+model.rows.push_back(row);
+RidgelineRowStatistics later = model.Statistics(0, 1);
+```
+
+With two or more series every curve takes its series' colour (the
+colourings below are for one series), and a legend right of the plot names
+them; a click on an entry hides that series, as `SetSeriesVisible` does.
+The tooltip reads every shown series. Sorting and the value column use each
+row's first series with data. `RidgelineScale::RowPeak` scales a row's
+series together, so they keep their ratio to one another.
+
+## A wrapping axis
+
+Times of day, angles and months run in a circle. With a `period`, the axis
+runs one period from `xMin`, values outside it are moved by whole periods
+into it, and a density wraps across the ends instead of being cut there:
+
+```cpp
+model.xMin = 18.0;                 // 18:00 ...
+model.period = 24.0;               // ... to 18:00 the next day
+// A bedtime recorded as 0.5 (00:30) is drawn at 24.5, next to 23:30.
+double onAxis = model.Wrap(0.5);   // 24.5
+```
+
+Statistics are taken on the wrapped values, so the median bedtime of a
+group that goes to bed around midnight is 24.67 (00:40) and not a mean of
+23:30 and 00:30 that lands at noon. Bounds are not used with a period.
+
+## Tails and histograms
+
+A density never quite reaches zero, so every curve runs along its baseline
+to the edges. `density.tailCut` ends each curve where it falls below that
+share of its peak (0.02 is usually enough); a supplied curve's statistics
+are taken before the cut.
+
+`density.binned` counts the values in `density.bins` equal bins over the x
+range instead of smoothing them: a stepped outline whose area is 1, as the
+density's is, so the scales work unchanged. Whole-number data looks best
+with one bin per value, centred on it:
+
+```cpp
+model.density.binned = true;
+model.density.bins = 11;
+model.xMin = -0.5;                 // 0 .. 10, each answer its own bin
+model.xMax = 10.5;
+```
+
 ## Appearance
 
 ```cpp
@@ -160,6 +225,16 @@ The chart's title is the model's, and its subtitle is drawn under it. Lines
 across the plot (an average, a target) are the engine's limiters on axis 1
 (`AddLimiter`).
 
+## Marks and bands
+
+```cpp
+chart->SetMarks(RidgelineMarkMedian | RidgelineMarkQuartiles);   // or RidgelineMarkMean
+chart->SetQuantileBands(true);       // the middle half (Q1 to Q3) shaded darker
+```
+
+A mark is a rule from the baseline up to the curve at the statistic;
+quartile marks are thinner. Both are drawn for every shown series.
+
 ## Reading the chart
 
 ```cpp
@@ -172,26 +247,63 @@ double height = chart->RowHeightAt(2, 5.0);  // the curve above it at x = 5
 
 The tooltip, and `DescribeRow`, give the row, the x under the pointer, the
 curve's unscaled height there, and the row's count, mean and median (for a
-curve: where it peaks and its middle half). A hovered row's name turns bold
-and a thin rule marks the x on its curve.
+curve: where it peaks and its middle half), for every shown series. A
+hovered row's name turns bold and a thin rule marks the x on its curve.
+
+```cpp
+chart->SetHighlightOnHover(true);    // the other rows fade while one is hovered
+chart->onRowClick = [](int row) { /* pressed and released on the same row */ };
+```
+
+## Files
+
+The whole model goes to and from JSON, the data alone to and from CSV. The
+functions take and return text; the files themselves go through
+`UltraCanvasFileLoader`, as every user file does:
+
+```cpp
+std::string json = ExportRidgelineJson(model);
+UltraCanvasRidgelineModel loaded;
+std::string error;
+if (!ImportRidgelineJson(json, loaded, &error)) { /* error says why */ }
+
+std::string csv = ExportRidgelineCsv(model);      // row,series,value  or  row,series,x,y
+ImportRidgelineCsv("group,value\nA,1\nA,2.5\nB,3\n", model, &error);   // replaces the rows
+```
+
+A CSV line holds one value or one curve point; the row column may be called
+row, name, group or category, the series column is optional, and numbers
+are dot-decimal in every locale. Importing keeps every setting of the model
+and the colour of a series it already has. Both readers refuse a file they
+cannot read in full, leave the model untouched, and say which line or field
+is wrong.
 
 ## Demo
 
-**Charts > Ridgeline Chart** shows two invented samples:
+**Charts > Ridgeline Chart** shows three invented samples:
 `UltraCanvasRidgelineModel::WordRatings()`, how 300 people might rate 33
 words from *Abysmal* to *Perfect* on a scale of 0 to 10, coloured red to
-green by the average score; and `DailyActivities()`, when in the day people
-might do 16 activities, from 03:00 to 03:00, each to its own peak. The
-overlap, scale, order and colouring can be changed, and the row under the
-pointer is read out.
+green by the average score; `DailyActivities()`, when in the day people
+might do 16 activities, from 03:00 to 03:00, each to its own peak; and
+`Sleep()`, when people of seven age groups go to bed and wake up, two
+series on a 24-hour axis that wraps at 18:00. The overlap, scale, order,
+colouring, marks, middle-half shading, tail trim, histogram look and
+fading can be changed; the row under the pointer is read out and a click
+keeps a row's numbers. **Open JSON**, **Save JSON**, **Import CSV** and
+**Export CSV** go through `UltraCanvasFileLoader`.
 
 ## Tests
 
 `Tests/RidgelineModelTest.cpp` checks the quantiles, both bandwidth rules,
 the density (its area, a single value's peak, reflection at bounds, binning
 against the exact sum), the x range, the three scales, statistics from
-values and from curves, sorting, validation and the samples.
+values and from curves, sorting, validation and the samples; several series,
+the wrapping axis (a circular density with area 1 that meets itself at the
+ends), the tail cut, binned curves, and the JSON and CSV round trips with
+their refusals.
 `Tests/RidgelineChartRenderTest.cpp` draws the chart and checks the rows'
 colours on their baselines, the lower row in front where rows overlap, the
 tallest curve reaching the top, the hit strips and tooltips, the value
-column, the colourings and hover.
+column, the colourings and hover; two series in their colours with the
+legend switching one off, marks, the middle-half shading, the fading on
+hover, row clicks, the histogram steps and a clock-time axis.

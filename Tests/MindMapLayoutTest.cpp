@@ -6,8 +6,8 @@
 // matters most is L9: sibling subtrees must never overlap, at any depth, with
 // variable node sizes.
 //
-// Version: 1.0.0
-// Last Modified: 2026-07-30
+// Version: 1.1.0
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMindMapLayout.h"
@@ -829,6 +829,250 @@ static void TestBranchStructureOverride() {
     CHECK(CountOverlaps(collapsed) == 0, "no overlaps with a collapsed override");
 }
 
+// ---- Balloon (radial cluster map) -------------------------------------------
+
+static Point2Dd CentreOf(const Rect2Dd& box) {
+    return Point2Dd(box.x + box.width * 0.5, box.y + box.height * 0.5);
+}
+
+static double DistanceBetween(const Point2Dd& a, const Point2Dd& b) {
+    return std::hypot(a.x - b.x, a.y - b.y);
+}
+
+// The smallest difference between two angles, 0..pi.
+static double AngleBetween(double a, double b) {
+    const double d = std::remainder(a - b, 2.0 * 3.14159265358979323846);
+    return std::abs(d);
+}
+
+// Five main topics of different sizes, some with clusters of their own.
+static MindMapModel BalloonModel() {
+    MindMapModel model;
+    std::string root = model.SetCentralTopic("Family plan");
+    const int counts[] = {3, 8, 1, 5, 12};
+    for (int b = 0; b < 5; ++b) {
+        std::string branch = model.AddTopic(root, "Branch " + std::to_string(b + 1));
+        for (int c = 0; c < counts[b]; ++c) {
+            std::string child = model.AddTopic(branch, "Item " + std::to_string(c + 1));
+            if ((b + c) % 3 == 0) {
+                for (int g = 0; g < 4; ++g) model.AddTopic(child, "Detail " + std::to_string(g + 1));
+            }
+        }
+    }
+    return model;
+}
+
+// Checks every topic with children: its children sit at one distance from it.
+static bool ChildrenOnOneRing(const MindMapModel& model, const MindMapLayoutResult& result,
+                              const std::string& skipChildrenOf) {
+    bool ok = true;
+    model.ForEachTopic([&](const MindMapTopic& topic) {
+        if (topic.childIds.size() < 2 || topic.id == skipChildrenOf) return;
+        if (!result.Has(topic.id)) return;
+        Point2Dd c = CentreOf(result.Get(topic.id));
+        double first = DistanceBetween(c, CentreOf(result.Get(topic.childIds[0])));
+        for (const auto& childId : topic.childIds) {
+            if (!Near(DistanceBetween(c, CentreOf(result.Get(childId))), first, 1e-6)) ok = false;
+        }
+    }, true);
+    return ok;
+}
+
+static void TestBalloonLayout() {
+    std::printf("\n[balloon layout]\n");
+
+    MindMapModel model = BalloonModel();
+    MindMapLayoutOptions options;
+    options.structure = MindMapStructure::Balloon;
+
+    // ---- Fan (the default) ----
+    MindMapLayoutResult result = Run(model, options);
+    CHECK(result.bounds.size() == model.GetTopicCount(), "balloon: every topic is laid out");
+    CHECK(CountOverlaps(result) == 0, "balloon fan: no two nodes overlap anywhere");
+    CHECK(ChildrenOnOneRing(model, result, model.GetRootId()),
+          "balloon fan: a topic's children sit on one ring around it");
+
+    const std::string& root = model.GetRootId();
+    const MindMapTopic* rootTopic = model.GetTopic(root);
+    Point2Dd centre = CentreOf(result.Get(root));
+    CHECK(Near(centre.x, 0.0) && Near(centre.y, 0.0), "balloon: the central topic sits at the origin");
+    double mainDistance = DistanceBetween(centre, CentreOf(result.Get(rootTopic->childIds[0])));
+    bool mainOnRing = true;
+    for (const auto& id : rootTopic->childIds) {
+        if (!Near(DistanceBetween(centre, CentreOf(result.Get(id))), mainDistance, 1e-6)) mainOnRing = false;
+    }
+    CHECK(mainOnRing, "balloon: the main topics share one ring around the centre");
+
+    // Every fan opens away from its parent: no child is more than half the
+    // sweep from the parent-to-topic direction.
+    bool facesAway = true;
+    model.ForEachTopic([&](const MindMapTopic& topic) {
+        if (topic.depth < 1 || topic.childIds.empty()) return;
+        Point2Dd p = CentreOf(result.Get(topic.parentId));
+        Point2Dd c = CentreOf(result.Get(topic.id));
+        double away = std::atan2(c.y - p.y, c.x - p.x);
+        for (const auto& childId : topic.childIds) {
+            Point2Dd k = CentreOf(result.Get(childId));
+            if (AngleBetween(std::atan2(k.y - c.y, k.x - c.x), away) > 150.0 * 3.14159265358979323846 / 180.0 + 1e-9) {
+                facesAway = false;
+            }
+        }
+    }, true);
+    CHECK(facesAway, "balloon fan: children stay within 150 degrees of the direction away from the parent");
+
+    const MindMapTopic* deep = nullptr;
+    model.ForEachTopic([&](const MindMapTopic& topic) {
+        if (!deep && topic.depth == 3) deep = &topic;
+    }, true);
+    CHECK(deep && deep->branchIndex >= 0 && model.GetTopic(model.GetPath(deep->id)[1])->branchIndex == deep->branchIndex,
+          "balloon: depth and branch index are set down the tree");
+
+    // ---- Trunk length (L6) ----
+    MindMapLayoutOptions longer = options;
+    longer.balloonTrunkLength += 40.0;
+    MindMapLayoutResult pushed = Run(model, longer);
+    double pushedDistance = DistanceBetween(centre, CentreOf(pushed.Get(rootTopic->childIds[0])));
+    CHECK(Near(pushedDistance - mainDistance, 40.0, 1e-6), "balloon: a longer trunk pushes each main topic out by the difference");
+    const std::string firstMain = rootTopic->childIds[1];
+    const std::string firstLeaf = model.GetTopic(firstMain)->childIds[0];
+    Point2Dd before = CentreOf(result.Get(firstLeaf)) - CentreOf(result.Get(firstMain));
+    Point2Dd after = CentreOf(pushed.Get(firstLeaf)) - CentreOf(pushed.Get(firstMain));
+    CHECK(Near(before.x, after.x, 1e-6) && Near(before.y, after.y, 1e-6), "balloon: ... and its cluster moves with it, unchanged");
+
+    // ---- Full ring ----
+    MindMapLayoutOptions full = options;
+    full.balloonRing = MindMapBalloonRing::Full;
+    MindMapLayoutResult ringResult = Run(model, full);
+    CHECK(CountOverlaps(ringResult) == 0, "balloon full ring: no two nodes overlap anywhere");
+    CHECK(ChildrenOnOneRing(model, ringResult, root), "balloon full ring: children on one ring around their topic");
+    // A twelve-child hub uses the whole circle: its children span more than 300 degrees.
+    const MindMapTopic* big = model.GetTopic(rootTopic->childIds[4]);
+    Point2Dd hub = CentreOf(ringResult.Get(big->id));
+    std::vector<double> childAngles;
+    for (const auto& id : big->childIds) {
+        Point2Dd k = CentreOf(ringResult.Get(id));
+        childAngles.push_back(std::atan2(k.y - hub.y, k.x - hub.x));
+    }
+    std::sort(childAngles.begin(), childAngles.end());
+    double largestGap = childAngles.front() + 2.0 * 3.14159265358979323846 - childAngles.back();
+    for (size_t i = 1; i < childAngles.size(); ++i) largestGap = std::max(largestGap, childAngles[i] - childAngles[i - 1]);
+    CHECK(largestGap < 60.0 * 3.14159265358979323846 / 180.0, "balloon full ring: twelve children spread around the whole circle");
+
+    // A full ring of the same children needs no larger a radius than a fan.
+    double fanRing = DistanceBetween(CentreOf(result.Get(big->id)), CentreOf(result.Get(big->childIds[0])));
+    double fullRing = DistanceBetween(hub, CentreOf(ringResult.Get(big->childIds[0])));
+    CHECK(fullRing <= fanRing + 1e-9, "balloon: a full ring is no wider than a fan of the same children");
+
+    // ---- Ring radius from the discs (L3) ----
+    // Bigger children push their ring out.
+    MindMapModel tenSmall;
+    std::string sroot = tenSmall.SetCentralTopic("C");
+    std::string shub = tenSmall.AddTopic(sroot, "Hub");
+    for (int i = 0; i < 10; ++i) tenSmall.AddTopic(shub, "x");
+    MindMapModel wide = tenSmall;
+    for (auto& [id, topic] : wide.Topics()) if (topic.parentId == shub) topic.text = "A much longer label";
+    double smallRing = 0.0, wideRing = 0.0;
+    {
+        MindMapLayoutResult r = Run(tenSmall, options);
+        smallRing = DistanceBetween(CentreOf(r.Get(shub)), CentreOf(r.Get(tenSmall.GetTopic(shub)->childIds[0])));
+        MindMapLayoutResult w = Run(wide, options);
+        wideRing = DistanceBetween(CentreOf(w.Get(shub)), CentreOf(w.Get(wide.GetTopic(shub)->childIds[0])));
+        CHECK(CountOverlaps(w) == 0, "balloon: ten wide labels on one ring do not overlap");
+    }
+    CHECK(wideRing > smallRing * 1.5, "balloon: wider children get a larger ring");
+
+    // ---- Determinism ----
+    MindMapLayoutResult again = Run(model, options);
+    bool same = again.bounds.size() == result.bounds.size();
+    for (const auto& [id, box] : result.bounds) {
+        if (!again.Has(id)) { same = false; continue; }
+        Rect2Dd b = again.Get(id);
+        if (b.x != box.x || b.y != box.y || b.width != box.width || b.height != box.height) same = false;
+    }
+    CHECK(same, "balloon: the same model gives exactly the same layout twice");
+
+    // ---- Collapse and edge cases ----
+    MindMapModel collapsed = BalloonModel();
+    collapsed.GetTopic(collapsed.GetTopic(collapsed.GetRootId())->childIds[4])->collapsed = true;
+    MindMapLayoutResult c = Run(collapsed, options);
+    CHECK(c.bounds.size() == collapsed.GetTopicCount() - 12 - 4 * 4, "balloon: a collapsed hub hides its cluster");
+    CHECK(CountOverlaps(c) == 0, "balloon: ... and the rest still does not overlap");
+
+    MindMapModel single;
+    std::string only = single.SetCentralTopic("Alone");
+    MindMapLayoutResult s = Run(single, options);
+    CHECK(s.bounds.size() == 1 && Near(CentreOf(s.Get(only)).x, 0.0), "balloon: a lone central topic sits at the origin");
+    std::string one = single.AddTopic(only, "One");
+    single.AddTopic(one, "Leaf");
+    s = Run(single, options);
+    CHECK(s.bounds.size() == 3 && CountOverlaps(s) == 0, "balloon: a chain of single children does not overlap");
+
+    // ---- Per-topic structure override (L4) ----
+    // A list inside a balloon map: the branch keeps its spot on the ring, its
+    // children grow right as a list, and nothing overlaps.
+    MindMapModel mixed = BalloonModel();
+    const std::string listBranch = mixed.GetTopic(mixed.GetRootId())->childIds[1];
+    mixed.GetTopic(listBranch)->structureOverride = MindMapStructure::LogicRight;
+    MindMapLayoutResult m = Run(mixed, options);
+    CHECK(m.bounds.size() == mixed.GetTopicCount(), "balloon override: every topic is laid out");
+    CHECK(CountOverlaps(m) == 0, "balloon override: a list branch in a balloon map does not overlap");
+    bool growsRight = true;
+    Rect2Dd branchBox = m.Get(listBranch);
+    for (const auto& id : mixed.GetTopic(listBranch)->childIds) {
+        if (m.Get(id).x < branchBox.x + branchBox.width) growsRight = false;
+    }
+    CHECK(growsRight, "balloon override: the LogicRight branch's children sit to its right");
+    CHECK(Near(DistanceBetween(CentreOf(m.Get(mixed.GetRootId())), CentreOf(m.Get(listBranch))),
+               DistanceBetween(CentreOf(m.Get(mixed.GetRootId())),
+                               CentreOf(m.Get(mixed.GetTopic(mixed.GetRootId())->childIds[0]))), 1e-6),
+          "balloon override: the list branch stays on the main ring");
+
+    // Every list branch grows away from the centre, whichever side it is on,
+    // so none runs back over its own trunk.
+    MindMapModel lists = BalloonModel();
+    for (const auto& id : lists.GetTopic(lists.GetRootId())->childIds) {
+        lists.GetTopic(id)->structureOverride = MindMapStructure::LogicRight;
+    }
+    MindMapLayoutResult l = Run(lists, options);
+    bool outward = true, sawLeft = false;
+    for (const auto& id : lists.GetTopic(lists.GetRootId())->childIds) {
+        Point2Dd hubCentre = CentreOf(l.Get(id));
+        if (hubCentre.x < -1.0) sawLeft = true;
+        for (const auto& childId : lists.GetTopic(id)->childIds) {
+            if ((CentreOf(l.Get(childId)).x - hubCentre.x) * hubCentre.x < 0.0) outward = false;
+        }
+    }
+    CHECK(sawLeft && outward, "balloon override: a list branch on the left grows left, away from the centre");
+    CHECK(CountOverlaps(l) == 0, "balloon override: five list branches on the ring do not overlap");
+
+    // A balloon inside a balanced map.
+    MindMapModel inBalanced = BalloonModel();
+    const std::string balloonBranch = inBalanced.GetTopic(inBalanced.GetRootId())->childIds[4];
+    inBalanced.GetTopic(balloonBranch)->structureOverride = MindMapStructure::Balloon;
+    MindMapLayoutResult ib = Run(inBalanced, MindMapLayoutOptions());
+    CHECK(CountOverlaps(ib) == 0, "balanced map with a balloon branch: no overlaps");
+    Point2Dd bhub = CentreOf(ib.Get(balloonBranch));
+    double r0 = DistanceBetween(bhub, CentreOf(ib.Get(inBalanced.GetTopic(balloonBranch)->childIds[0])));
+    bool onRing = true;
+    for (const auto& id : inBalanced.GetTopic(balloonBranch)->childIds) {
+        if (!Near(DistanceBetween(bhub, CentreOf(ib.Get(id))), r0, 1e-6)) onRing = false;
+    }
+    CHECK(onRing, "balanced map with a balloon branch: its children ring the branch topic");
+
+    // ---- Triangle shape (S2) ----
+    MindMapTopic t("t", "Needs water");
+    MindMapTopicStyle rect;
+    MindMapTopicStyle tri;
+    tri.shape = MindMapNodeShape::Triangle;
+    Size2Dd rs = UltraCanvasMindMapLayout::MeasureTopic(t, rect, options, FixedMeasure);
+    Size2Dd ts = UltraCanvasMindMapLayout::MeasureTopic(t, tri, options, FixedMeasure);
+    CHECK(ts.width > rs.width * 1.6 && ts.height > rs.height * 2.0, "triangle: the box grows so the label fits inside");
+    // At the label's top edge (centred 0.62 down) the triangle is as wide as the label.
+    const double labelTop = 0.62 * ts.height - rs.height * 0.5;
+    CHECK(ts.width * labelTop / ts.height >= rs.width - 1e-9 && 0.62 * ts.height + rs.height * 0.5 <= ts.height,
+          "triangle: the label's box fits inside the triangle");
+}
+
 int main() {
     std::printf("UltraCanvasMindMap model & layout tests\n");
     std::printf("=======================================\n");
@@ -850,6 +1094,7 @@ int main() {
     TestAlignmentPasses();
     TestManualStructure();
     TestBranchStructureOverride();
+    TestBalloonLayout();
 
     std::printf("\n=======================================\n");
     if (g_failures == 0) {

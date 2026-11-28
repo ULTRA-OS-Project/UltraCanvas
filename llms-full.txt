@@ -45009,6 +45009,22 @@ heatmap->SetCellCornerRadius(4.0);  // px (RoundedRectangle; <=0 => auto)
 | `Rectangle` | Default matrix look. |
 | `RoundedRectangle` | Calendar / contribution-graph style. |
 | `Circle` | Dot heatmap. |
+| `Hexagon` | Hexagonal heatmap (a self-organising-map look): regular pointy-top hexagons in an offset grid, odd rows shifted right by half a cell. |
+
+`Hexagon` keeps the hexagons regular whatever the chart's shape, so the grid
+is as large as fits and centred, not stretched to the plot. It always draws
+cells (never the image mode), leaves out the row and column labels and the
+plot frame (they do not line up with a hex grid), and finds the hexagon under
+the pointer for the tooltip. `SetCellGap` shrinks each hexagon and
+`SetShowCellBorders(true)` draws the white outlines of the usual look:
+
+```cpp
+heatmap->SetCellShape(UltraCanvas::HeatmapCellShape::Hexagon);
+heatmap->SetShowCellBorders(true, UltraCanvas::Color(255, 255, 255, 255), 1.5f);
+```
+
+The engine heatmap has the same shape, `ChartHeatmapCellShape::Hexagon`, with
+hover and tooltips through its hit regions.
 
 ## Triangular masking
 
@@ -55780,6 +55796,7 @@ FILE: Docs/UltraCanvas/UltraCanvasMindMapExamples.md
   - [Per-branch structure](#per-branch-structure)
   - [Animated re-layout](#animated-re-layout)
   - [Manual placement](#manual-placement)
+  - [Radial cluster map (Balloon)](#radial-cluster-map-balloon)
 - [Styling](#styling)
   - [Style by level](#style-by-level)
   - [Branch colour cascade](#branch-colour-cascade)
@@ -55888,6 +55905,7 @@ map->SetStructure(MindMapStructure::Balanced);
 | `LogicRight` / `LogicLeft` | The whole tree grows to one side |
 | `OrgChartDown` / `OrgChartUp` | Top-down / bottom-up hierarchy |
 | `Radial` | Branches distributed over a full circle, one ring per generation |
+| `Balloon` | Every topic's children in a ring around it: clusters of clusters (see [Radial cluster map](#radial-cluster-map-balloon)) |
 | `Manual` | Authored positions honoured; anything unset is auto-placed |
 
 In `Balanced`, which side an `Auto` main topic lands on is decided by the balance
@@ -55946,7 +55964,8 @@ map->GetTopic(branchId)->structureOverride = MindMapStructure::OrgChartDown;
 The overridden branch is laid out locally first, and the main pass then reserves
 exactly the space its bounding box needs, so an overridden branch never collides
 with its siblings. Overrides apply to **depth-1 branches**; a nested override is
-ignored.
+ignored — except in a `Balloon` map, where any topic below the centre can be
+laid out in another structure (see below).
 
 ### Animated re-layout
 
@@ -55972,6 +55991,75 @@ Authored positions are stored on the topic and ignored by every other
 structure, so a map can be switched back and forth without losing them. In
 `Manual`, topics without an authored position keep the position the base pass
 computed.
+
+### Radial cluster map (Balloon)
+
+The `Balloon` structure draws a large tree around one centre as clusters of
+clusters: every topic carries its children on a ring around **itself**, not
+around the centre, so a deep branch simply makes a bigger cluster instead of
+crowding one ring per generation.
+
+```cpp
+MindMapLayoutOptions options = map->GetLayoutOptions();
+options.structure = MindMapStructure::Balloon;
+options.balloonRing = MindMapBalloonRing::Fan;   // or Full
+options.balloonFanSweep = 300.0;                 // degrees, Fan only
+options.balloonGap = 8.0;                        // between neighbouring subtrees
+options.balloonTrunkLength = 60.0;               // main topics pushed out from the centre
+map->SetLayoutOptions(options);
+
+MindMapStyle& look = map->Style();
+look.connectorStyle = MindMapConnectorStyle::Ring;     // a ring through each hub's children
+look.sizeByDepth = {130.0, 84.0, 54.0, 36.0};           // node diameters by depth
+look.connectorWidthByDepth = {11.0, 4.0, 2.0};          // thick trunks, thin twigs
+look.depthLightenStep = 0.2;                            // paler with depth
+```
+
+- **The rings.** A topic's children sit at one distance from it. The distance
+  is the smallest at which no child's subtree comes near the topic and the
+  wedges the children's subtrees cover, seen from the topic, fit in the ring's
+  sweep — so **siblings never overlap, at any depth** (`MindMapLayoutTest`
+  checks a tree of ragged clusters for overlaps in both ring kinds).
+- **Fan or full ring.** A `Fan` (the default) opens away from the parent over
+  `balloonFanSweep` degrees and keeps the side the trunk comes in from clear;
+  a `Full` ring uses the whole circle, the parent's direction falling between
+  its last and first child. The centre always uses a full ring, starting at
+  `radialStartAngle` and spanning `radialSweep`.
+- **Order.** Children keep their order, clockwise; the layout is
+  deterministic.
+- **Trunks.** `balloonTrunkLength` pushes every main topic further out from the
+  centre; each cluster moves with its topic, unchanged.
+- **A list inside a balloon.** A topic below the centre with a
+  `structureOverride` (say `LogicRight`) is laid out in that structure and
+  takes the room of the circle around it. A one-sided structure is mirrored to
+  grow away from the centre, so a list never runs back over its own trunk.
+- **Sizes by depth.** `MindMapStyle::sizeByDepth` makes a topic at depth *d*
+  at least `sizeByDepth[d]` wide and high (deeper topics take the last entry).
+  A circle's label wraps inside it — never narrower than its longest word —
+  and a longer label grows the circle. A per-topic style override is left as
+  set. Labels in circles and triangles are centred.
+- **Widths by depth.** `MindMapStyle::connectorWidthByDepth[d]` is the width
+  of a connector from depth *d* to *d + 1*; a `TaperedBranch` runs from entry
+  *d* to entry *d + 1*. Empty means `connectorWidth` (and the taper widths).
+- **Rings.** `MindMapConnectorStyle::Ring` draws a thin circle through each
+  balloon topic's children — an arc for a fan, open towards the parent — and
+  a straight spoke to each child. The centre's trunks, and any part laid out
+  in another structure, stay straight.
+- **Conditions.** `MindMapNodeShape::Triangle` (point up, label in its lower
+  part) marks small conditions such as "needs fuel"; dashed
+  [relationships](#relationships) make cross-references.
+- **Files.** `ToJson` / `FromJson` carry the Balloon options, the start angle
+  and sweep, `sizeByDepth`, `connectorWidthByDepth` and `depthLightenStep`;
+  the SVG export draws triangles (rings in SVG come with Phase 2 of the
+  [proposal](UltraCanvasRadialClusterMapProposal.md)).
+
+A map of a few hundred topics is poster-sized: fit it to show the whole, and
+let the reader zoom in. Set the viewport's lower zoom limit if the default
+(0.1) is not low enough for the first fit:
+
+```cpp
+map->Viewport().SetZoomRange(0.04, map->Viewport().GetMaxZoom());
+```
 
 ---
 
@@ -56018,7 +56106,8 @@ map->ClearTopicStyle(topicId);          // back to the cascade
 ### Shapes
 
 `RoundedRect`, `Rect`, `Pill`, `Circle`, `Ellipse`, `Diamond`, `Hexagon`,
-`Cloud`, `Bang`, `Underline` and `NoShape` (text only).
+`Cloud`, `Bang`, `Underline`, `NoShape` (text only) and `Triangle` (point up,
+the label centred in its lower part, the box grown so the label fits).
 
 > `NoShape` is spelled that way rather than `None` because X11's `Xlib.h`
 > defines `None` as a macro. The same applies to
@@ -56065,6 +56154,7 @@ map->SetConnectorStyle(MindMapConnectorStyle::TaperedBranch);
 | `Elbow` | Orthogonal, sharp corners |
 | `RoundedElbow` | Orthogonal with rounded corners |
 | `TaperedBranch` | Organic branch, thick at the parent and thin at the child |
+| `Ring` | A thin ring through each balloon topic's children, straight spokes (see [Radial cluster map](#radial-cluster-map-balloon)) |
 
 Connectors always terminate on the node's **perimeter**, computed per shape
 (ellipse, diamond and rectangle each have their own intersection), so a line
@@ -56075,6 +56165,7 @@ map->Style().connectorColorMode = MindMapConnectorColorMode::InheritFromBranch;
 map->Style().endDecoration = MindMapEndDecoration::Dot;   // or Arrow, Square
 map->Style().taperStartWidth = 7.0;
 map->Style().taperEndWidth = 1.5;
+map->Style().connectorWidthByDepth = {8.0, 3.0, 1.5};   // by the parent's depth
 ```
 
 ### Attachment and labels
@@ -56386,8 +56477,12 @@ and often span the visible region.
 
 ## Demo
 
-`Apps/DemoApp/UltraCanvasMindMapExamples.cpp` — six tabs: an editable map, a
-logic chart with ordinal badges, a radial map, cross-branch relationships, a
+`Apps/DemoApp/UltraCanvasMindMapExamples.cpp` — seven tabs: an editable map, a
+logic chart with ordinal badges, a radial map, a radial cluster map (an
+invented family emergency plan of about 150 topics in the `Balloon` structure,
+with rings, sizes and widths by depth, triangles for conditions, a dashed
+cross-reference, one branch kept as a list, and buttons for fans or full rings
+and the connector), cross-branch relationships, a
 presentation layout (aligned columns and rows, connector badges, shadows,
 background layer, callout cards, connector labels, note/link/marker
 indicators), and a gallery for switching theme, structure and connector style at
@@ -71411,7 +71506,7 @@ spread, and whether they have one hump or two.
 ```
 
 - Design: [`UltraCanvasRidgelineChartProposal.md`](UltraCanvasRidgelineChartProposal.md)
-  (this is Phase 1 of three)
+  (Phases 1 and 2 of three)
 
 ## Contents
 
@@ -71420,8 +71515,13 @@ spread, and whether they have one hump or two.
 - [Rows from values: the density](#rows-from-values-the-density)
 - [Rows from curves](#rows-from-curves)
 - [Scale, order and statistics](#scale-order-and-statistics)
+- [Several series per row](#several-series-per-row)
+- [A wrapping axis](#a-wrapping-axis)
+- [Tails and histograms](#tails-and-histograms)
 - [Appearance](#appearance)
+- [Marks and bands](#marks-and-bands)
 - [Reading the chart](#reading-the-chart)
+- [Files](#files)
 - [Demo](#demo)
 - [Tests](#tests)
 
@@ -71537,6 +71637,66 @@ A supplied curve's statistics are those of the distribution it draws: its
 weighted mean, its median and quartiles by area. `count` is 0. Rows without
 data sort last, and `Validate()` names them.
 
+## Several series per row
+
+Two or more series share each row, drawn over each other in series order -
+2019 against 2020, bedtimes against wake-up times. `series` names them and
+gives them their colours (alpha 0 = the theme's palette); a row holds the
+first series' data in `values` / `curve` and the others in `more`:
+
+```cpp
+model.series = {{"2019", Color(0, 0, 0, 0)}, {"2020", Color(230, 120, 30, 255)}};
+RidgelineRow row;
+row.name = "Berlin";
+row.SetValues(0, {31, 28, 35, 40});        // 2019
+row.SetValues(1, {22, 25, 19, 27});        // 2020
+model.rows.push_back(row);
+RidgelineRowStatistics later = model.Statistics(0, 1);
+```
+
+With two or more series every curve takes its series' colour (the
+colourings below are for one series), and a legend right of the plot names
+them; a click on an entry hides that series, as `SetSeriesVisible` does.
+The tooltip reads every shown series. Sorting and the value column use each
+row's first series with data. `RidgelineScale::RowPeak` scales a row's
+series together, so they keep their ratio to one another.
+
+## A wrapping axis
+
+Times of day, angles and months run in a circle. With a `period`, the axis
+runs one period from `xMin`, values outside it are moved by whole periods
+into it, and a density wraps across the ends instead of being cut there:
+
+```cpp
+model.xMin = 18.0;                 // 18:00 ...
+model.period = 24.0;               // ... to 18:00 the next day
+// A bedtime recorded as 0.5 (00:30) is drawn at 24.5, next to 23:30.
+double onAxis = model.Wrap(0.5);   // 24.5
+```
+
+Statistics are taken on the wrapped values, so the median bedtime of a
+group that goes to bed around midnight is 24.67 (00:40) and not a mean of
+23:30 and 00:30 that lands at noon. Bounds are not used with a period.
+
+## Tails and histograms
+
+A density never quite reaches zero, so every curve runs along its baseline
+to the edges. `density.tailCut` ends each curve where it falls below that
+share of its peak (0.02 is usually enough); a supplied curve's statistics
+are taken before the cut.
+
+`density.binned` counts the values in `density.bins` equal bins over the x
+range instead of smoothing them: a stepped outline whose area is 1, as the
+density's is, so the scales work unchanged. Whole-number data looks best
+with one bin per value, centred on it:
+
+```cpp
+model.density.binned = true;
+model.density.bins = 11;
+model.xMin = -0.5;                 // 0 .. 10, each answer its own bin
+model.xMax = 10.5;
+```
+
 ## Appearance
 
 ```cpp
@@ -71561,6 +71721,16 @@ The chart's title is the model's, and its subtitle is drawn under it. Lines
 across the plot (an average, a target) are the engine's limiters on axis 1
 (`AddLimiter`).
 
+## Marks and bands
+
+```cpp
+chart->SetMarks(RidgelineMarkMedian | RidgelineMarkQuartiles);   // or RidgelineMarkMean
+chart->SetQuantileBands(true);       // the middle half (Q1 to Q3) shaded darker
+```
+
+A mark is a rule from the baseline up to the curve at the statistic;
+quartile marks are thinner. Both are drawn for every shown series.
+
 ## Reading the chart
 
 ```cpp
@@ -71573,29 +71743,66 @@ double height = chart->RowHeightAt(2, 5.0);  // the curve above it at x = 5
 
 The tooltip, and `DescribeRow`, give the row, the x under the pointer, the
 curve's unscaled height there, and the row's count, mean and median (for a
-curve: where it peaks and its middle half). A hovered row's name turns bold
-and a thin rule marks the x on its curve.
+curve: where it peaks and its middle half), for every shown series. A
+hovered row's name turns bold and a thin rule marks the x on its curve.
+
+```cpp
+chart->SetHighlightOnHover(true);    // the other rows fade while one is hovered
+chart->onRowClick = [](int row) { /* pressed and released on the same row */ };
+```
+
+## Files
+
+The whole model goes to and from JSON, the data alone to and from CSV. The
+functions take and return text; the files themselves go through
+`UltraCanvasFileLoader`, as every user file does:
+
+```cpp
+std::string json = ExportRidgelineJson(model);
+UltraCanvasRidgelineModel loaded;
+std::string error;
+if (!ImportRidgelineJson(json, loaded, &error)) { /* error says why */ }
+
+std::string csv = ExportRidgelineCsv(model);      // row,series,value  or  row,series,x,y
+ImportRidgelineCsv("group,value\nA,1\nA,2.5\nB,3\n", model, &error);   // replaces the rows
+```
+
+A CSV line holds one value or one curve point; the row column may be called
+row, name, group or category, the series column is optional, and numbers
+are dot-decimal in every locale. Importing keeps every setting of the model
+and the colour of a series it already has. Both readers refuse a file they
+cannot read in full, leave the model untouched, and say which line or field
+is wrong.
 
 ## Demo
 
-**Charts > Ridgeline Chart** shows two invented samples:
+**Charts > Ridgeline Chart** shows three invented samples:
 `UltraCanvasRidgelineModel::WordRatings()`, how 300 people might rate 33
 words from *Abysmal* to *Perfect* on a scale of 0 to 10, coloured red to
-green by the average score; and `DailyActivities()`, when in the day people
-might do 16 activities, from 03:00 to 03:00, each to its own peak. The
-overlap, scale, order and colouring can be changed, and the row under the
-pointer is read out.
+green by the average score; `DailyActivities()`, when in the day people
+might do 16 activities, from 03:00 to 03:00, each to its own peak; and
+`Sleep()`, when people of seven age groups go to bed and wake up, two
+series on a 24-hour axis that wraps at 18:00. The overlap, scale, order,
+colouring, marks, middle-half shading, tail trim, histogram look and
+fading can be changed; the row under the pointer is read out and a click
+keeps a row's numbers. **Open JSON**, **Save JSON**, **Import CSV** and
+**Export CSV** go through `UltraCanvasFileLoader`.
 
 ## Tests
 
 `Tests/RidgelineModelTest.cpp` checks the quantiles, both bandwidth rules,
 the density (its area, a single value's peak, reflection at bounds, binning
 against the exact sum), the x range, the three scales, statistics from
-values and from curves, sorting, validation and the samples.
+values and from curves, sorting, validation and the samples; several series,
+the wrapping axis (a circular density with area 1 that meets itself at the
+ends), the tail cut, binned curves, and the JSON and CSV round trips with
+their refusals.
 `Tests/RidgelineChartRenderTest.cpp` draws the chart and checks the rows'
 colours on their baselines, the lower row in front where rows overlap, the
 tallest curve reaching the top, the hit strips and tooltips, the value
-column, the colourings and hover.
+column, the colourings and hover; two series in their colours with the
+legend switching one off, marks, the middle-half shading, the fading on
+hover, row clicks, the histogram steps and a clock-time axis.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSTLElement.md
@@ -78640,6 +78847,152 @@ count->SetFollowTheme(true);
   larger than 512 entries are not listed (the arrows / typing remain available).
   The list opens under the field, or above it when there is no room below -
   never over the field (`UltraCanvasMenu::OpenMenuAnchored`).
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSpiralChart.md
+==============================================================================
+
+# UltraCanvasSpiralChart
+
+A spiral plot: a time series wound along a spiral, one turn per period - a
+day, a week, a year. Times one period apart land on the same ray, one ring
+further out, so a rhythm lines up from the centre outward: every winter on
+one side, every weekday morning in one place.
+
+```cpp
+#include "Plugins/Charts/Engine/Charts/UltraCanvasSpiralChart.h"
+```
+
+- Design: [`UltraCanvasSpiralChartProposal.md`](UltraCanvasSpiralChartProposal.md)
+  (this is Phase 1 of three)
+
+## Contents
+
+- [Overview](#overview)
+- [Quick start](#quick-start)
+- [The spiral's geometry](#the-spirals-geometry)
+- [Displays](#displays)
+- [Labels and look](#labels-and-look)
+- [Reading the chart](#reading-the-chart)
+- [Demo](#demo)
+- [Tests](#tests)
+
+## Overview
+
+| Part | What it is |
+|---|---|
+| `UltraCanvasSpiralModel` | UI-free: the samples, the period, where a time lands on the spiral, the value range |
+| `UltraCanvasSpiralChart` | The chart on the chart engine: the ribbon, band or line along the spiral, spokes, labels, a colour bar, hover |
+
+Time is a plain number in any unit - days, hours, seconds - and a formatter
+turns it into text for the tooltip. The model maps a time to an angle and a
+radius; the chart draws everything on the spiral itself.
+
+## Quick start
+
+```cpp
+UltraCanvasSpiralModel model;
+model.title = "Visits per hour";
+model.period = 24.0;                                    // hours: a day per turn
+model.sectorLabels = {"00:00", "06:00", "12:00", "18:00"};
+for (int hour = 0; hour < 24 * 14; ++hour) {
+    model.samples.push_back({static_cast<double>(hour), 50.0 + 40.0 * std::sin(hour * 0.26), ""});
+}
+
+auto chart = CreateSpiralChart("visits", 0, 0, 640, 640);
+chart->SetModel(model);
+chart->SetDisplay(SpiralDisplay::Ribbon);
+chart->SetColormap(HeatmapColormap::Inferno);
+```
+
+## The spiral's geometry
+
+A time `t` is `u = (t - start) / period` turns along: its whole part is the
+ring (0 innermost), its fraction the angle. With `n` rings and an inner
+radius `r0`, each ring is `(1 - r0) / (n + 1)` wide, so the first turn's
+inner edge is at `r0` and the last turn's outer edge at the outer radius:
+
+```cpp
+model.start = 0.0;            // the time the first turn starts at (unset = the first sample)
+model.innerRadius = 0.18;     // the empty middle, 0..0.6
+model.startAngle = 90.0;      // degrees where every turn starts: 12 o'clock
+model.clockwise = true;
+SpiralPosition p = model.Position(400.0);        // angle (radians) and radius (0..1)
+SpiralPosition edge = model.Position(400.0, -0.5);   // the ring's inner edge
+int rings = model.TurnCount();
+```
+
+A sample covers the time to the next sample, so pieces neither gap nor
+overlap; where the next sample is more than three typical steps away, the
+sample covers one typical step and the rest stays empty. A value of NaN is
+a missing sample.
+
+The period is what the chart is for: wound to the right period, a cycle
+lines up on one ray; wound to a wrong one, it drifts into a slant.
+`chart->SetPeriod(p)` rewinds the spiral (the demo's slider does).
+
+## Displays
+
+| `SpiralDisplay` | Each sample is |
+|---|---|
+| `Ribbon` (default) | a piece of ribbon coloured by its value through `SetColormap`, with a colour bar under the spiral |
+| `Band` | a band from its ring's inner edge, as wide as its value (in `SetColor`) |
+| `Line` | a point on a line, as far out from the ring's inner edge as its value |
+
+Values are scaled to the data's range, or to `model.valueMin` /
+`model.valueMax` when set; a value outside them is clamped.
+
+## Labels and look
+
+```cpp
+model.sectorLabels = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};   // evenly around a turn, with spokes
+model.turnLabels = {"2021", "2022", "2023"};          // at each turn's start
+model.valueName = "Temperature";                      // the tooltip's and the colour bar's
+chart->SetColormap(HeatmapColormap::RdBu, true);      // reversed: low blue, high red
+chart->SetRibbonWidth(0.9f);                          // share of the ring the ribbon fills
+chart->SetShowGuide(true);                            // the rings' edge and the spokes
+chart->SetShowColorBar(true);
+chart->SetValueDecimals(1);
+```
+
+Sector labels sit outside the spiral, in the middle of their sector. A turn
+label sits on the start ray in its ring, on a light patch, and only while
+the ring is tall enough for it.
+
+## Reading the chart
+
+```cpp
+chart->SetTimeFormatter([](double day) { return "day " + std::to_string(static_cast<int>(day)); });
+chart->onSampleHover = [&chart](int index) {     // -1 when the pointer leaves the spiral
+    if (index >= 0) std::string text = chart->DescribeSample(index);
+};
+Point2Dd where = chart->ScreenPoint(400.0, 0.0);  // a time on screen, as of the last render
+```
+
+Each sample's piece of its ring, whatever the display, is its hit region:
+the tooltip gives the time through the formatter, the value and the
+sample's note, and the hovered piece is outlined.
+
+## Demo
+
+**Charts > Spiral Chart** shows two invented samples:
+`UltraCanvasSpiralModel::DailyTemperature()`, three years of daily
+temperatures, a year per turn, coloured blue to red; and `HourlyVisits()`,
+four weeks of hourly visits to a shop's website, a week per turn, with a
+sale on the third Thursday. The period slider rewinds the spiral (try 24
+hours on the visits); the display, the colours, the direction and the guide
+can be changed, and the sample under the pointer is read out.
+
+## Tests
+
+`Tests/SpiralModelTest.cpp` checks the geometry (turns, rings, angles,
+direction, start angle, the inner and outer edges), the value range, the
+samples' spans and gaps, the nearest sample, validation and both samples.
+`Tests/SpiralChartRenderTest.cpp` draws the chart and checks the spiral's
+circle, every January blue and every July red on opposite rays, each day's
+hit region and tooltip, the band's widths, the line, the colour bar's room,
+a new period (a day a turn puts 10:00 of every day on one ray) and hover.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSplashScreen.md
@@ -92410,6 +92763,7 @@ Each takes its data through setters and renders itself; most have a
 | Mixes of three parts that add up to 100 % - vote shares, soil texture, alloys - as points in a triangle (ternary plot) | `UltraCanvasTernaryChart` | `Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.h` |
 | A picture's histogram: how many pixels have each level of red, green and blue (overlaid or one channel) or luminosity, beside a photo | `UltraCanvasHistogramChart` | `Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.h` |
 | How a value is spread in each of many groups, as overlapping curves one row each - ratings per word, times of day per activity (a ridgeline chart or joyplot) | `UltraCanvasRidgelineChart` | `Plugins/Charts/Engine/Charts/UltraCanvasRidgelineChart.h` |
+| A time series wound one period per turn, so a daily, weekly or yearly rhythm lines up (a spiral plot) | `UltraCanvasSpiralChart` | `Plugins/Charts/Engine/Charts/UltraCanvasSpiralChart.h` |
 | Many measures per item: radar, or parallel coordinates | `UltraCanvasRadarChartElement`, `UltraCanvasParallelCoordinateChartElement` | `Plugins/Charts/UltraCanvasRadarChartElement.h`, `Plugins/Charts/UltraCanvasParallelCoordinateChart.h` |
 | Angle / radius space: polar series, radial bars, activity rings, ringed infographic | `UltraCanvasPolarChart`, `UltraCanvasRadialBarChart`, `UltraCanvasCircularProgressChart`, `UltraCanvasCircularInfoGraphic` | matching `Plugins/Charts/*.h` |
 | A matrix of values as colour: heatmap, hexbin, contribution calendar | `UltraCanvasHeatmapChartElement`, `UltraCanvasHexbinChartElement`, `UltraCanvasCalendarHeatmapElement` | `Plugins/Charts/UltraCanvasHeatmapChart.h`, `Plugins/Charts/UltraCanvasHexbinChart.h`, `Plugins/Charts/UltraCanvasCalendarHeatmap.h` |
@@ -118517,16 +118871,6 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
-
-==============================================================================
-FILE: Docs/ArtCreator/changelog.d/object-count-for-hosts.md
-==============================================================================
-
-- **A program that starts ArtCreator with a file can ask whether it was
-  read.** `ArtCreatorWindow::ObjectCountOf` gives the number of objects in
-  the drawing opened from a file, or says that no tab holds it - what
-  MobilePC logs after handing ArtCreator a drawing. Nothing changes in
-  ArtCreator itself.
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md

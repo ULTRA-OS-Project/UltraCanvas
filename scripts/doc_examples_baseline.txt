@@ -356,22 +356,22 @@ Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `Add
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AutoOrderAxes(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::use of undeclared identifier 'UpdateStatusBar'
 # signature Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md: 844aee959169040729c20d732a5e2dcba8d0e13c3c92c17d2878c4b332606126
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapLayoutOptions::balloonMetroTrunks' does not exist (no member named 'balloonMetroTrunks' in 'MindMapLayoutOptions')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapLayoutOptions::balloonRepairOverlaps' does not exist (no member named 'balloonRepairOverlaps' in 'MindMapLayoutOptions')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapStyle::branchLabelAlongTrunk' does not exist (no member named 'branchLabelAlongTrunk' in 'MindMapStyle')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapTopicStyle::arcNote' does not exist (no member named 'arcNote' in 'MindMapTopicStyle')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::prose names `DrawTextAlongPath(`, which no header declares
+# signature Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md: 12d4637823b135334a3fa436103b23e22c39a82eebc48f472b80f25e029bdcd8
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::cannot initialize a parameter of type 'RequirementTraceDirection' with an rvalue of type 'int'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetLayout' in 'UltraCanvasRequirementDiagram'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared identifier 'RequirementLayout'
 # signature Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md: c646c77dfc5758a2cd5d05f3a74eb0282649d38aea34d272d3a6ce6880f27ae8
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'RidgelineDensityOptions::tailCut' does not exist (no member named 'tailCut' in 'RidgelineDensityOptions')
 Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'RidgelineRow::entries' does not exist (no member named 'entries' in 'RidgelineRow')
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'UltraCanvasRidgelineModel::period' does not exist (no member named 'period' in 'UltraCanvasRidgelineModel')
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'UltraCanvasRidgelineModel::series' does not exist (no member named 'series' in 'UltraCanvasRidgelineModel')
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::no member named 'onRowClick' in 'UltraCanvasRidgelineChart'
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::prose names `SetMarks(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::prose names `SetObliqueView(`, which no header declares
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::signature differs: `RidgelineRowStatistics Statistics(size_t row, size_t series = 0) const` - the header has: RidgelineRowStatistics Statistics(size_t row) const;
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::signature differs: `double Bandwidth(size_t row, size_t series = 0) const` - the header has: double Bandwidth(size_t row) const;
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::signature differs: `std::vector<RidgelineCurvePoint> Curve(size_t row, size_t series = 0) const` - the header has: std::vector<RidgelineCurvePoint> Curve(size_t row) const;
-# signature Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md: 1e8cafc60d7da9bd6fda1cfd9298def9ab1c737fa28fe4c514946f20b22206a2
+# signature Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md: c94605c0bb5f8d99235d552ef7d2c2f2976015a6f65a3e247aecce037faed4a0
+Docs/UltraCanvas/UltraCanvasSpiralChartProposal.md::prose names `SuggestPeriods(`, which no header declares
+# signature Docs/UltraCanvas/UltraCanvasSpiralChartProposal.md: d34b15f56d941735e534dab7f4fd56524ba74c33f7e01da860cc0bc18ec9ac84
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryPoint::group' does not exist (no member named 'group' in 'TernaryPoint')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernarySeriesKind::Bubble' does not exist (no member named 'Bubble' in 'TernarySeriesKind')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::signature differs: `std::vector<TernaryPoint> SoilSamples()` - the header has: TernaryModel SoilSamples();

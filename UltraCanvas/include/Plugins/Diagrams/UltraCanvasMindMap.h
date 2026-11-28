@@ -1,8 +1,12 @@
 // include/Plugins/Diagrams/UltraCanvasMindMap.h
 // Interactive mind map element
-// Version: 1.0.0
-// Last Modified: 2026-07-30
+// Version: 1.1.0
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 1.1.0 (radial cluster map, Phase 1):
+//  - MindMapStructure::Balloon support, the Ring connector style, sizes and
+//    connector widths by depth, the Triangle node shape.
 //
 // CHANGELOG 1.0.0 (initial - MindMap proposal Phase 1):
 //  - Topic tree editing on a pan/zoom canvas: balanced, logic, org chart and
@@ -60,7 +64,10 @@ enum class MindMapConnectorStyle {
     Curve,          // Cubic bezier, the classic mind map look
     Elbow,          // Orthogonal, sharp corners
     RoundedElbow,   // Orthogonal with rounded corners
-    TaperedBranch   // Organic branch, thick at the parent and thin at the child
+    TaperedBranch,  // Organic branch, thick at the parent and thin at the child
+    Ring            // A thin circle around each balloon topic through its
+                    // children (an arc for a fan), with straight spokes; the
+                    // centre's trunks and non-balloon parts stay straight (R1)
 };
 
 // Where a connector takes its colour from.
@@ -131,6 +138,18 @@ struct MindMapStyle {
     // Per-depth lightening of the branch hue (image 9's cluster look).
     // 0 disables; 0.15 lightens each level by 15% towards white.
     double depthLightenStep = 0.0;
+
+    // ---- Radial cluster map (S1, R3) ----
+    // Node diameters by depth: entry d is the smallest width and height of a
+    // topic at depth d (deeper topics take the last entry); a circle's label
+    // wraps inside 0.8 of it (but never narrower than its longest word, so a
+    // word does not break) and a longer label grows the circle. Empty = off.
+    // Per-topic style overrides win.
+    std::vector<double> sizeByDepth;
+    // Connector widths by the parent's depth: entry d is the width from depth d
+    // to d + 1 (thick trunks, thin twigs). A tapered branch runs from entry d
+    // to entry d + 1. Empty = connectorWidth (and the taper widths).
+    std::vector<double> connectorWidthByDepth;
 
     // ---- Drop shadows (S8) ----
     bool   showShadows = false;
@@ -420,6 +439,10 @@ private:
     // ---- Rendering ----
     void RenderGrid(IRenderContext* ctx);
     void RenderConnectors(IRenderContext* ctx);
+    // The ring a Ring-style topic's children sit on (R1).
+    void RenderChildRing(IRenderContext* ctx, const MindMapTopic& parent);
+    // A connector's width from a parent at `parentDepth`, by connectorWidthByDepth.
+    double ConnectorWidthFor(int parentDepth, double fallback) const;
     void RenderConnector(IRenderContext* ctx, const MindMapTopic& parent,
                          const MindMapTopic& child);
     void RenderRelationships(IRenderContext* ctx);

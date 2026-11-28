@@ -148,6 +148,22 @@ heatmap->SetCellCornerRadius(4.0);  // px (RoundedRectangle; <=0 => auto)
 | `Rectangle` | Default matrix look. |
 | `RoundedRectangle` | Calendar / contribution-graph style. |
 | `Circle` | Dot heatmap. |
+| `Hexagon` | Hexagonal heatmap (a self-organising-map look): regular pointy-top hexagons in an offset grid, odd rows shifted right by half a cell. |
+
+`Hexagon` keeps the hexagons regular whatever the chart's shape, so the grid
+is as large as fits and centred, not stretched to the plot. It always draws
+cells (never the image mode), leaves out the row and column labels and the
+plot frame (they do not line up with a hex grid), and finds the hexagon under
+the pointer for the tooltip. `SetCellGap` shrinks each hexagon and
+`SetShowCellBorders(true)` draws the white outlines of the usual look:
+
+```cpp
+heatmap->SetCellShape(UltraCanvas::HeatmapCellShape::Hexagon);
+heatmap->SetShowCellBorders(true, UltraCanvas::Color(255, 255, 255, 255), 1.5f);
+```
+
+The engine heatmap has the same shape, `ChartHeatmapCellShape::Hexagon`, with
+hover and tooltips through its hit regions.
 
 ## Triangular masking
 

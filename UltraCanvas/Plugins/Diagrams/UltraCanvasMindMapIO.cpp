@@ -973,6 +973,12 @@ std::string UltraCanvasMindMapIO::ToSvg(const MindMapModel& model,
                     << box.x << "," << (box.y + box.height * 0.5) << "\"";
                 break;
             }
+            case MindMapNodeShape::Triangle:
+                out << "  <polygon points=\""
+                    << (box.x + box.width * 0.5) << "," << box.y << " "
+                    << (box.x + box.width) << "," << (box.y + box.height) << " "
+                    << box.x << "," << (box.y + box.height) << "\"";
+                break;
             case MindMapNodeShape::Underline:
             case MindMapNodeShape::NoShape:
                 out << "  <rect x=\"" << box.x << "\" y=\"" << box.y
