@@ -1,3 +1,10 @@
+#### 2026-11-28 *0.9.613*
+- **The MobilePC emulator test opens a drawing.** Besides starting
+  UltraPaint and UltraFiler on the second display, it now has ArtCreator
+  open an SVG the APK carries and fails unless the drawing was read with its
+  shapes - the first check, on every run, that the Vector plug-in reads
+  files on Android (`scripts/android-mobilepc-smoke.sh`).
+
 #### 2026-11-27 *0.9.612*
 - **One Escape closed two menus.** With a submenu open (or any popup over
   another: a styles list beside a font list, a palette editor over the
