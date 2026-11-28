@@ -1,3 +1,24 @@
+#### 2026-11-28 *0.8.20*
+- **A program that starts ArtCreator with a file can ask whether it was
+  read.** `ArtCreatorWindow::ObjectCountOf` gives the number of objects in
+  the drawing opened from a file, or says that no tab holds it - what
+  MobilePC logs after handing ArtCreator a drawing. Nothing changes in
+  ArtCreator itself.
+
+#### 2026-11-27 *0.8.19*
+- **The text bar's font list is the framework's font picker.** It lists the
+  fonts the drawing's texts use under *In this document*, the fonts chosen last
+  under *Recent* (kept in ArtCreator's settings, `text.recentfonts`), then every
+  installed font, each drawn in itself with its format's icon; a family with
+  Light, Condensed or Black styles opens them beside it, and the one chosen
+  sets the font with Bold and Italic. One Escape closes one list or submenu
+  (framework, *One Escape closed two menus*).
+
+#### 2026-11-26 *0.8.18*
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
+
 #### 2026-11-14 *0.8.17*
 - **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
 

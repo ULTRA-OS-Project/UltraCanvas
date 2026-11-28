@@ -84,7 +84,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     auto code = [&](const std::shared_ptr<UltraCanvasContainer>& parent, const std::string& id, const std::string& text) {
         auto label = DemoKit::AddText(parent, id, text);
         label->SetFont(mono, 12.0f);
-        label->SetTextColor(Color(80, 60, 140, 255));
+        label->SetTextColor(DemoKit::Themed(Color(80, 60, 140, 255)));
         return label;
     };
     // What the call gives, large, and under it which layer answered.
@@ -173,7 +173,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
         "scripts/check_locale_catalogues.py is the CI gate over every translation."),
         Tr("scripts/translate_catalogue.py drafts a language's sets through UltraAI (ultralocalisation-draft); "
         "a draft is marked \"@translated-by\" until a person reviews it."),
-        Tr("The localisation editor (Widgets > Localisation Editor, UOS-Settings > Language > Translations, "
+        Tr("The localisation editor (Widgets > Localisation Editor, the UOS-Localisation application, "
         "Help > Translate ... in an application) edits the sets of an application in one grid."),
         Tr("Docs/Modules/UltraLocalisation/README.md is the module's documentation, "
         "Docs/UltraCanvas/UltraCanvasLocalisationProposal.md its design."),

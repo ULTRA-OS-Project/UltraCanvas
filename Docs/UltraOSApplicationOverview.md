@@ -22,6 +22,7 @@ first lines as of 2026-10-18.
 | [UltraVideo](#ultravideo) | Video editor with timeline and one-button export | 0.7.0 | VideoFX |
 | [UltraViewer](#ultraviewer) | Universal media viewer | 1.0.7 | MediaViewer |
 | **Documents and files** | | | |
+| [UltraOffice](#ultraoffice) | Documents, spreadsheets and presentations in one window | 0.1.0 | RichTextEdit, Spreadsheet, SlideEdit, FileLoader |
 | [Texter](#texter) | Text, code and word-processing editor | 1.67 | TextArea, RichTextEdit, FileLoader |
 | [UltraFiler](#ultrafiler) | Windows Explorer-style file manager | 1.75.0 | FilerWidget, VirtualFS, UltraCloud |
 | [AnchorPoint](#anchorpoint) | Peer-to-peer file transfer | 0.2.4 | UltraCrypt |
@@ -32,6 +33,7 @@ first lines as of 2026-10-18.
 | [UltraMail](#ultramail) | Email client | 0.10.59 | UltraNet, UltraDatabase, UltraVault, UltraMessage |
 | [EmailCleaner](#emailcleaner) | Mailbox analysis and clean-up | 0.4.8 | UltraMail engine, UltraDatabase |
 | [UltraSocial](#ultrasocial) | Cross-posting to social networks | 0.2.2 | UltraNet, UltraDatabase, UltraVault |
+| [ChatCube](#chatcube) | Messenger: its own encrypted chats and calls, and nine networks in one window | 0.1.30 | UltraIM, UltraRTC, UltraNet, UltraVault |
 | **Security** | | | |
 | [UltraPassword](#ultrapassword) | Password vault | 0.1.4 | UltraCrypt |
 | [UltraAuthenticator](#ultraauthenticator) | TOTP / HOTP two-factor codes | 0.2.8 | UltraCrypt |
@@ -46,6 +48,7 @@ first lines as of 2026-10-18.
 | [UltraStoreAdmin](#ultrastoreadmin) | The store's admin backend: apps and settings, packages, the signing key, translations, the signed catalog | 0.1.0 | UltraStore core, UltraDatabase, UltraCrypt, UltraAI |
 | [UltraStoreOperator](#ultrastoreoperator) | The marketplace operator's window and command line: merchants, the app review and the catalog publish, reports, notices, terms, the audit log | 0.1.0 | UltraStoreAdmin core, UltraNet |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
+| [UOS-Localisation](#uos-localisation) | The translation editor: every set of an application's texts in one grid | 0.1.0 | core, UltraLocalisation |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
 | [UltraNetMonitor](#ultranetmonitor) | Which process holds which network connection | 0.17 | NetworkMonitor |
@@ -174,6 +177,27 @@ edits word-processing documents.
 **Built on:** TextArea, RichTextEdit, TabbedContainer, PDFView, FileLoader.
 **Version:** 1.67 (2026-10-14).
 **Docs:** [Apps/Texter/README.md](../Apps/Texter/README.md).
+
+### UltraOffice
+
+**Purpose:** one window for the office documents: text documents,
+spreadsheets and presentations, each in a tab marked with its kind.
+
+**Capabilities:**
+- Documents in page view (RichTextEdit): styles, fonts, lists, alignment,
+  tables, pictures, links, footnotes, contents; .odt and .docx read and
+  written, .doc, Markdown and LaTeX read; Export as PDF and Print.
+- Spreadsheets (Spreadsheet): number formats, sort, filter, fill, SUM,
+  freeze panes; .ods, .xlsx, .csv and .tsv read and written, .xls read.
+- Presentations (.pptx, .odp) edited in the slide editor (slides from
+  layouts, shapes moved, resized and turned, text in place, pictures),
+  presented full screen, exported as PDF and printed.
+- The toolbar follows the tab; a Start tab with the recent files; new
+  files saved as Office Open XML or OpenDocument.
+
+**Built on:** RichTextEdit, Spreadsheet, SlideEdit and FileLoader.
+**Version:** 0.1.0 (2026-11-25).
+**Docs:** [UltraOffice/README.md](UltraOffice/README.md).
 
 ### UltraFiler
 
@@ -333,6 +357,34 @@ mail, for cleaning up cluttered or spam-heavy accounts.
 **Version:** 0.2.2 (2026-10-12).
 **Notes:** Instagram, Reddit media, LinkedIn images and AI adaptation of
 drafts are still open.
+
+### ChatCube
+
+**Purpose:** the ULTRA OS messenger - its own end-to-end encrypted chats and
+calls, and the other messengers in the same window.
+
+**Capabilities:**
+- ChatCube Direct: an ID that is a key made on the computer, chats peer to
+  peer when both sides are online and through a relay otherwise, groups
+  (public ones too), voice and video calls, a password and authenticator
+  code to protect the ID, recovery by e-mail.
+- Eight more networks, each a module loaded only once it is used: Matrix
+  (encrypted rooms included), Telegram, Mastodon direct messages, the team
+  chats Mattermost and Zulip, Signal (as a linked device through
+  signal-cli), XMPP (TLS or WebSocket) and IRC (IRCv3, TLS).
+- Texts, replies, edits, deletes, pictures, videos, files, voice and video
+  messages with a progress bar; ticks, typing (in the list too, with names
+  in groups), search through a chat's history and filters for pictures,
+  videos, sound, files and links.
+- An address in *Add* goes to the network it belongs to, and asks which when
+  more than one could take it; a status line says where each network stands.
+
+**Built on:** UltraIM (the provider modules), UltraRTC (calls), UltraNet,
+UltraVault, FileLoader, the QR code element.
+**Version:** 0.1.30 (2026-11-18).
+**Notes:** Signal needs signal-cli installed; calls are ChatCube Direct's
+only. The relay server is `Server/ChatCubeRelay`. Docs:
+`Apps/ChatCube/README.md`, `Docs/Modules/UltraIM/README.md`.
 
 ---
 
@@ -594,6 +646,26 @@ the system rather than to one app.
 **Built on:** the UltraCanvas core and UltraDesktop's settings code.
 **Version:** 0.5.0 (2026-10-15).
 
+### UOS-Localisation
+
+**Purpose:** the ULTRA OS translation editor, for translating any
+application into any language.
+
+**Capabilities:**
+- Every set an application's texts come from (its own, its base sets, the
+  standard set) in one grid, with where each shown text comes from.
+- A panel beside the grid with the selected row whole and its edit; a
+  comparison language; search and filters (untranslated, drafts,
+  overrides, collisions, changed).
+- Takes base sets, promotes and demotes rows between the application and a
+  base; saves into the source tree or the settings folder; exports JSON or
+  gettext PO.
+- Formerly UOS-Settings' Language > Translations page.
+
+**Built on:** the UltraCanvas core (UltraCanvasLocalisationEditor) and
+UltraLocalisation.
+**Version:** 0.1.0 (2026-11-22).
+
 ### UltraClipboard
 
 **Purpose:** the full clipboard history viewer: find, reuse, edit, save or
@@ -627,6 +699,25 @@ search, open and dismiss.
 
 **Built on:** UltraMessage, UltraCanvasMessageCenter.
 **Version:** 0.1.0 (2026-11-06).
+
+### UltraToDo
+
+**Purpose:** the task list: tasks with a planned end, an estimated time, a
+description and attached files, the most urgent first.
+
+**Capabilities:**
+- A round + writes a task; each task is a pastel panel with round corners,
+  coloured by how urgent it is.
+- Ordered by the latest start (planned end minus estimated time), overdue
+  tasks first.
+- Files attached as to a mail, copied with the task and shown as
+  thumbnails.
+- A reminder before the latest start and an alarm at the planned end, as
+  desktop notifications and in the window; `--background` keeps them
+  running without the window.
+
+**Built on:** UltraMessage (notifications), FileLoader (the file dialogs).
+**Version:** 0.1.0 (2026-11-17).
 
 ### UltraCleaner
 

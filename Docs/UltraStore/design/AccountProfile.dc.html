@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore - Your account</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="Main.dc.html" aria-label="UltraStore home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+</a>
+<nav aria-label="Store sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Discover</a>
+<a href="Categories.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Categories</a>
+<a href="#installed" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Installed</a>
+<a href="#updates" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Updates <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700">3</span></a>
+</nav>
+<form role="search" style="flex: 1 1 240px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9; border: 1px solid transparent">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-acct" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search apps</label>
+<input id="search-acct" type="search" placeholder="Search apps, publishers, tags" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<button type="button" aria-label="Account menu: Anna K." style="display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 6px 0 6px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; cursor: pointer"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px">AK</span><span style="font-weight: 700; font-size: 14px; padding-right: 8px">Anna K.</span></button>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 32px 0; box-sizing: border-box; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 40px; align-items: flex-start">
+
+<nav aria-label="Account" style="display: flex; flex-direction: column; gap: 2px; position: sticky; top: 24px">
+<div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px 18px">
+<span aria-hidden="true" style="width: 56px; height: 56px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px; flex: 0 0 auto">AK</span>
+<span style="display: flex; flex-direction: column; min-width: 0; line-height: 1.25"><span style="font-weight: 700">Anna K.</span><span style="font-size: 12px; color: #64748b">@annak · since Nov 2026</span></span>
+</div>
+<a href="#profile" aria-current="page" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #1d4ed8; background: #dbeafe; font-weight: 700; font-size: 14px">Profile</a>
+<a href="#security" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Security and sign-in</a>
+<a href="#devices" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Devices</a>
+<a href="AccountBilling.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Payment methods</a>
+<a href="AccountBilling.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Subscriptions</a>
+<a href="AccountBilling.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Purchases and licences</a>
+<a href="AccountBilling.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Orders and invoices</a>
+<a href="#notifications" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Notifications</a>
+<a href="#privacy" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Privacy and data</a>
+<span style="height: 1px; background: #f1f5f9; margin: 8px 6px"></span>
+<a href="#signout" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #475569; font-weight: 600; font-size: 14px">Sign out</a>
+</nav>
+
+<div style="display: flex; flex-direction: column; gap: 36px; min-width: 0">
+
+<section id="profile" aria-labelledby="profile-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 id="profile-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.03em">Profile</h1>
+<p style="margin: 0; color: #64748b">What others see when you review an app, comment on a video or share a playlist. The email, the country and the year of birth are private.</p>
+</div>
+<form style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; padding: 24px; border-radius: 20px; border: 1px solid #e2e8f0">
+<div style="grid-column: 1 / -1; display: flex; align-items: center; gap: 18px">
+<span aria-hidden="true" style="width: 88px; height: 88px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 30px; flex: 0 0 auto">AK</span>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; font-weight: 700; color: #334155">Avatar</span><div style="display: flex; gap: 8px"><button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Upload a picture</button><button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 0; background: #f1f5f9; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Remove</button></div><span style="font-size: 12px; color: #64748b">PNG, JPEG or AVIF up to 4 MB; shown at 256 px at most.</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="p-name" style="font-size: 13px; font-weight: 700; color: #334155">Display name</label><input id="p-name" type="text" value="Anna K." style="height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="p-handle" style="font-size: 13px; font-weight: 700; color: #334155">Handle</label><div style="display: flex; align-items: center; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #cbd5e1; gap: 2px"><span style="color: #64748b">@</span><input id="p-handle" type="text" value="annak" style="flex: 1 1 auto; min-width: 0; border: 0; font: inherit; font-size: 15px; outline: none; background: transparent"></div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="p-email" style="font-size: 13px; font-weight: 700; color: #334155">Email <span style="font-weight: 600; color: #64748b">· private</span></label><div style="display: flex; align-items: center; height: 44px; padding: 0 6px 0 14px; border-radius: 12px; border: 1px solid #cbd5e1; gap: 8px"><input id="p-email" type="email" value="anna.k@example.org" style="flex: 1 1 auto; min-width: 0; border: 0; font: inherit; font-size: 15px; outline: none; background: transparent"><span style="height: 26px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center">Verified</span></div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="p-lang" style="font-size: 13px; font-weight: 700; color: #334155">Language of the store</label><select id="p-lang" style="height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 15px"><option>Deutsch</option><option>English</option><option>Français</option><option>Italiano</option></select></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="p-country" style="font-size: 13px; font-weight: 700; color: #334155">Country <span style="font-weight: 600; color: #64748b">· private, sets VAT and currency</span></label><select id="p-country" style="height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 15px"><option>Germany · EUR · 19 % VAT</option><option>Austria · EUR · 20 % VAT</option><option>Switzerland · CHF</option></select></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="p-birth" style="font-size: 13px; font-weight: 700; color: #334155">Year of birth <span style="font-weight: 600; color: #64748b">· private, for age ratings</span></label><input id="p-birth" type="text" inputmode="numeric" value="1991" style="height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; outline: none"></div>
+<div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px"><label for="p-bio" style="font-size: 13px; font-weight: 700; color: #334155">About you <span style="font-weight: 600; color: #64748b">· shown on reviews and public playlists</span></label><textarea id="p-bio" rows="2" style="padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; outline: none; resize: vertical">Edits video for a living, plays tactics games badly, listens to jazz loudly.</textarea></div>
+<div style="grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 6px; border-top: 1px solid #e2e8f0; flex-wrap: wrap">
+<span style="font-size: 13px; color: #64748b">Saved 3 minutes ago</span>
+<div style="display: flex; gap: 8px"><button type="button" style="height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Discard</button><button type="button" style="height: 44px; padding: 0 22px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Save changes</button></div>
+</div>
+</form>
+</section>
+
+<section id="security" aria-labelledby="security-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="security-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Security and sign-in</h2>
+<p style="margin: 0; color: #64748b">A purchase, a new device or a changed email always asks for the second factor.</p>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden">
+<li style="display: flex; align-items: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #f1f5f9">
+<span style="width: 40px; height: 40px; border-radius: 12px; background: #f1f5f9; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="12" r="4"></circle><path d="M12 12h9M18 12v3M21 12v2"></path></svg></span>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700">Password</span><span style="font-size: 13px; color: #64748b">Changed 16 Nov 2026 · 16 characters · not in any known breach</span></div>
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Change</button>
+</li>
+<li style="display: flex; align-items: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #f1f5f9">
+<span style="width: 40px; height: 40px; border-radius: 12px; background: #dcfce7; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></span>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700; display: flex; align-items: center; gap: 8px">Two-factor sign-in <span style="height: 22px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center">On</span></span><span style="font-size: 13px; color: #64748b">Time-based codes in UltraAuthenticator on Anna's phone · 8 recovery codes, 8 unused</span></div>
+<div style="display: flex; gap: 8px"><button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Recovery codes</button><button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Change app</button></div>
+</li>
+<li style="display: flex; align-items: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #f1f5f9">
+<span style="width: 40px; height: 40px; border-radius: 12px; background: #f1f5f9; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg></span>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700">Passkeys</span><span style="font-size: 13px; color: #64748b">1 passkey: "Anna's laptop", added 16 Nov 2026 · sign in without the password where the machine supports it</span></div>
+<div style="display: flex; gap: 8px"><button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Add a passkey</button></div>
+</li>
+<li style="display: flex; align-items: center; gap: 16px; padding: 18px 22px">
+<span style="width: 40px; height: 40px; border-radius: 12px; background: #f1f5f9; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7"></path><path d="M4 4v5h5"></path><path d="M12 8v4l3 2"></path></svg></span>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700">Sign-in history</span><span style="font-size: 13px; color: #64748b">Last: today 09:12, Berlin, this laptop · 6 sign-ins in 30 days, none refused</span></div>
+<a href="#history" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font-weight: 700; font-size: 13px; text-decoration: none; color: #0f172a">See all</a>
+</li>
+</ul>
+</section>
+
+<section id="devices" aria-labelledby="devices-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="devices-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Devices</h2>
+<p style="margin: 0; color: #64748b">Machines signed in to this account. A licence counts the machines it is installed on; signing a machine out frees its seat.</p>
+</div>
+<table style="border-collapse: separate; border-spacing: 0; width: 100%; font-size: 14px; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden">
+<thead>
+<tr style="background: #f8fafc; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em">
+<th scope="col" style="text-align: left; padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Device</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Last seen</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Licences in use</th>
+<th scope="col" style="text-align: right; padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #e2e8f0"> </th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; align-items: center; gap: 12px"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"></rect><path d="M8 21h8"></path></svg><div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Anna's laptop <span style="font-weight: 600; color: #15803d; font-size: 12px">· this device</span></span><span style="font-size: 12px; color: #64748b">ULTRA OS 0.10 · Linux x86_64 · UltraStore 0.1.21</span></div></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">Now · Berlin</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">UltraVideo, Skyline Siege, Music Premium</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Rename</button></td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; align-items: center; gap: 12px"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M11 18h2"></path></svg><div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Anna's phone</span><span style="font-size: 12px; color: #64748b">Android 15 · UltraStore Music 0.1</span></div></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">2 hours ago · Berlin</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">Music Premium</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Sign out</button></td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; align-items: center; gap: 12px"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"></rect><path d="M8 21h8"></path></svg><div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Kitchen Pi</span><span style="font-size: 12px; color: #64748b">ULTRA OS 0.10 · Raspberry Pi 5 · UltraStore 0.1.20</span></div></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">Yesterday · Berlin</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">Music Premium, Pixel Cadet</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Sign out</button></td></tr>
+<tr><td style="padding: 14px 20px"><div style="display: flex; align-items: center; gap: 12px"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"></rect><path d="M8 21h8"></path></svg><div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; color: #64748b">Office Windows PC</span><span style="font-size: 12px; color: #94a3b8">Windows 11 · UltraStore 0.1.17 · not seen for 40 days</span></div></div></td><td style="padding: 14px; color: #64748b">8 Oct 2026 · Hamburg</td><td style="padding: 14px; color: #64748b">UltraVideo (seat held)</td><td style="padding: 14px 20px; text-align: right"><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: #fee2e2; color: #991b1b; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Sign out and free the seat</button></td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="notifications" aria-labelledby="notif-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="notif-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Notifications</h2>
+<p style="margin: 0; color: #64748b">By email, or on the devices where the store runs. Security mails cannot be turned off.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; font-size: 14px; cursor: pointer"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">Security: new device, password, email</span><span style="font-size: 12px; color: #64748b">Always by email</span></span><span role="switch" aria-checked="true" aria-disabled="true" style="width: 40px; height: 22px; border-radius: 999px; background: #94a3b8; position: relative; display: inline-block; flex: 0 0 auto"><span style="position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff"></span></span></label>
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; font-size: 14px; cursor: pointer"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">Orders, invoices, deliveries</span><span style="font-size: 12px; color: #64748b">Email and devices</span></span><span role="switch" aria-checked="true" style="width: 40px; height: 22px; border-radius: 999px; background: #0f172a; position: relative; display: inline-block; flex: 0 0 auto"><span style="position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff"></span></span></label>
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; font-size: 14px; cursor: pointer"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">Updates of apps and games you own</span><span style="font-size: 12px; color: #64748b">Devices only</span></span><span role="switch" aria-checked="true" style="width: 40px; height: 22px; border-radius: 999px; background: #0f172a; position: relative; display: inline-block; flex: 0 0 auto"><span style="position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff"></span></span></label>
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; font-size: 14px; cursor: pointer"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">New videos and releases from channels and artists you follow</span><span style="font-size: 12px; color: #64748b">Devices only</span></span><span role="switch" aria-checked="true" style="width: 40px; height: 22px; border-radius: 999px; background: #0f172a; position: relative; display: inline-block; flex: 0 0 auto"><span style="position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff"></span></span></label>
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; font-size: 14px; cursor: pointer"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">Replies to your reviews and comments</span><span style="font-size: 12px; color: #64748b">Devices only</span></span><span role="switch" aria-checked="false" style="width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; display: inline-block; flex: 0 0 auto"><span style="position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff"></span></span></label>
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; font-size: 14px; cursor: pointer"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">Deals of the month</span><span style="font-size: 12px; color: #64748b">One email a month at most</span></span><span role="switch" aria-checked="false" style="width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; display: inline-block; flex: 0 0 auto"><span style="position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff"></span></span></label>
+</div>
+</section>
+
+<section id="privacy" aria-labelledby="privacy-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="privacy-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Privacy and data</h2>
+<p style="margin: 0; color: #64748b">What the account keeps, where, and how to take it with you or end it.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; font-size: 14px; cursor: pointer"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">Listening and watch history on the account</span><span style="font-size: 12px; color: #64748b">Off: each machine keeps its own, mixes are computed there</span></span><span role="switch" aria-checked="false" style="width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; display: inline-block; flex: 0 0 auto"><span style="position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff"></span></span></label>
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; font-size: 14px; cursor: pointer"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">Public profile</span><span style="font-size: 12px; color: #64748b">Reviews, comments and shared playlists show the name and the handle</span></span><span role="switch" aria-checked="true" style="width: 40px; height: 22px; border-radius: 999px; background: #0f172a; position: relative; display: inline-block; flex: 0 0 auto"><span style="position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff"></span></span></label>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; border: 1px solid #e2e8f0">
+<span style="font-weight: 700">Download your data</span>
+<span style="font-size: 13px; color: #64748b">Profile, orders and invoices, licences, library, reviews and comments, the history if it is on the account; one archive of JSON and PDF files, ready within a day, sent as a link to your email.</span>
+<button type="button" style="align-self: flex-start; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">Request the archive</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; border: 1px solid #fecaca; background: #fff5f5">
+<span style="font-weight: 700; color: #991b1b">Delete the account</span>
+<span style="font-size: 13px; color: #7f1d1d">Ends the subscriptions at their period's end, keeps the invoices for the ten years the law asks, and removes everything else within 30 days. Bought apps keep working on the machines they are on, without updates.</span>
+<button type="button" style="align-self: flex-start; height: 44px; padding: 0 18px; border-radius: 999px; border: 0; background: #dc2626; color: #ffffff; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">Delete my account</button>
+</div>
+</div>
+</section>
+
+</div>
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px"><img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px"><span style="font-weight: 600; color: #0f172a">UltraStore</span><span>· the ULTRA OS app store</span></div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px"><a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a><a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a><a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a><a href="#imprint" style="color: #475569; text-decoration: none; font-weight: 500">Imprint</a></nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":2460}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

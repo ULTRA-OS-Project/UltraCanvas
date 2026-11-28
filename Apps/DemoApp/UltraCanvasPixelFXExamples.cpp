@@ -557,7 +557,7 @@ namespace {
         root->layout.SetFlexColumn().SetFlexGap(8)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         root->SetPadding(10, 12, 10, 12);
-        root->SetBackgroundColor(Colors::White);
+        root->SetBackgroundColor(DemoKit::Themed(Colors::White));
 
         DemoKit::AddHeading(root, "PixelFXDemoTitle", Tr("PixelFX playground"))->SetFontSize(16);
 
@@ -594,7 +594,7 @@ namespace {
         imageFrame->layout.SetFlexColumn()
                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         imageFrame->SetBorders(1.0f, Color(200, 200, 205, 255), 4.0f);
-        imageFrame->SetBackgroundColor(Color(246, 246, 248, 255));
+        imageFrame->SetBackgroundColor(DemoKit::Themed(Color(246, 246, 248, 255)));
         imageFrame->SetPadding(6);
         imageFrame->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -609,7 +609,7 @@ namespace {
         // As tall as its wrapped lines
         auto status = DemoKit::AddText(leftCol, "PixelFXStatus", "");
         status->SetFontSize(11);
-        status->SetTextColor(Color(90, 90, 90, 255));
+        status->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
 
         // ----- Middle column: the processing-function tree -----
         auto treeCol = std::make_shared<UltraCanvasContainer>("PixelFXTreeCol", 0, 0, 250, 0);
@@ -870,7 +870,7 @@ namespace {
 
                 auto desc = DemoKit::AddText(optionsBox, "PixelFXOptDesc", fx.description);
                 desc->SetFontSize(11);
-                desc->SetTextColor(Color(110, 110, 110, 255));
+                desc->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
 
                 for (size_t i = 0; i < fx.params.size(); ++i) {
                     const EffectParam& param = fx.params[i];
@@ -1050,7 +1050,7 @@ namespace {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PixelFXTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));

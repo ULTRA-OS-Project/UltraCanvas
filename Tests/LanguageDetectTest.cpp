@@ -312,6 +312,9 @@ if __name__ == "__main__":
     ExpectCode("a C++ declaration", "std::vector<int> v;\n", "", "C++");
     ExpectCode("prose stays nothing on the lower bar", "just some words here\n", "", "");
     ExpectCode("the default overload is unchanged", "def f(x):\n    return x\n", "Python", "Python");
+    ExpectCode("echo $HOME is a shell command", "echo $HOME\n", "", "Shell Script");
+    ExpectCode("echo $x; is a PHP statement", "echo $name;\n", "", "PHP");
+    ExpectCode("echo of a quoted variable is shell", "echo \"$PATH\"\n", "", "Shell Script");
 
     std::cerr << std::endl << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

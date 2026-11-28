@@ -41,6 +41,15 @@ TEST(ExpandTokensRejectsUnresolvableTokens) {
     }
 }
 
+TEST(ProgramDataTokenResolvesOnlyOnWindows) {
+    const std::string expanded = ExpandTokens("{PROGRAMDATA}/Microsoft/Windows/WER");
+    if (CurrentPlatform() == CleanerPlatform::Windows) {
+        REQUIRE(!expanded.empty());
+    } else {
+        REQUIRE(expanded.empty());
+    }
+}
+
 TEST(GlobMatchHandlesStarsAndQuestionMarks) {
     REQUIRE(GlobMatch("thumbcache_256.db", "thumbcache_*.db"));
     REQUIRE(GlobMatch("core.1234", "core.[0-9]*"));

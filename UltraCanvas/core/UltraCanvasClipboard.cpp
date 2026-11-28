@@ -26,6 +26,9 @@
 #include "../OS/Linux/UltraCanvasLinuxClipboard.h"
 #elif _WIN32
 #include "../OS/MSWindows/UltraCanvasWindowsClipboard.h"
+#elif defined(ULTRACANVAS_IOS)
+// Before __APPLE__: UIPasteboard, not the AppKit pasteboard.
+#include "../OS/iOS/UltraCanvasiOSClipboard.h"
 #elif __APPLE__
 #include "../OS/MacOS/UltraCanvasMacOSClipboard.h"
 #include "UltraCanvasDebug.h"
@@ -107,6 +110,8 @@ bool UltraCanvasClipboard::Initialize() {
     return InitializeWithBackend(std::make_unique<UltraCanvasLinuxClipboard>());
 #elif _WIN32
     return InitializeWithBackend(std::make_unique<UltraCanvasWindowsClipboard>());
+#elif defined(ULTRACANVAS_IOS)
+    return InitializeWithBackend(std::make_unique<UltraCanvasiOSClipboard>());
 #elif __APPLE__
     return InitializeWithBackend(std::make_unique<UltraCanvasMacOSClipboard>());
 #else

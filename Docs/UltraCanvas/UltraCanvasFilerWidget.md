@@ -45,6 +45,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Per-format switches (the list of files)](#per-format-switches-the-list-of-files)
   - [Embedded preview bitmaps](#embedded-preview-bitmaps)
   - [E-book covers](#e-book-covers)
+  - [Document pages](#document-pages)
   - [File types the FileLoader knows](#file-types-the-fileloader-knows)
   - [Native application icons](#native-application-icons)
   - [Thumbnail memory](#thumbnail-memory)
@@ -77,6 +78,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [What the extension cannot say](#what-the-extension-cannot-say)
 - [Folder icons](#folder-icons)
 - [Favorite mark](#favorite-mark)
+  - [Favorite highlight](#favorite-highlight)
 - [Folder previews](#folder-previews)
 - [Selection access](#selection-access)
 - [Hover icon menu](#hover-icon-menu)
@@ -84,8 +86,8 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [File operations](#file-operations)
   - [Delete: to the Trash, or permanently](#delete-to-the-trash-or-permanently)
   - [Progress window (copy / move / delete)](#progress-window-copy--move--delete)
-  - [Activating files — running applications](#activating-files-—-running-applications)
-  - [Launch feedback — the busy pointer](#launch-feedback-—-the-busy-pointer)
+  - [Activating files — running applications](#activating-files--running-applications)
+  - [Launch feedback — the busy pointer](#launch-feedback--the-busy-pointer)
   - [Delete problems (locked / failing entries)](#delete-problems-locked--failing-entries)
   - [Selection after a delete](#selection-after-a-delete)
 - [Watching the shown folder](#watching-the-shown-folder)
@@ -101,6 +103,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Keyboard](#keyboard)
 - [Directory scanning](#directory-scanning)
 - [Folder modifications](#folder-modifications)
+  - [Operations in the background](#operations-in-the-background)
   - [Finished copies and moves](#finished-copies-and-moves)
 - [File list (search results)](#file-list-search-results)
   - [Growing a file list while it is produced](#growing-a-file-list-while-it-is-produced)
@@ -419,7 +422,12 @@ area, ink and muted ink for the names and their details, the panel for the
 header, the info bar and a bar's background with ink on it, hairlines for
 the grid, the hover fill, the soft accent for the selection with the accent
 round it, the accent for the bars and the loading bar, the well with the
-accent for the rename editor; the interface font at the body size, the
+accent for the rename editor; the muted ink on the hover and pressed fills
+for the hidden-items notice's gear (`toolGlyphColor`, `toolHoverColor`,
+`toolPressedColor`); the scroll bars as a veil over the well - the track a
+shade off it, the thumb the muted ink, the ink while it is dragged
+(`scrollbarTrackColor`, `scrollbarThumbColor`, `scrollbarThumbHeldColor`);
+the interface font at the body size, the
 small text at the caption size. The hover icon menu and the extension tag
 keep their dark overlays unless the theme names `filer.icon-menu`,
 `filer.on-icon-menu`, `filer.icon-menu-done`, `filer.extension-bar`,
@@ -464,6 +472,9 @@ Open with      >  clicking the entry opens the selection with the OS default
                   registers for the selected files (default app first), then
                   entries added via AddOpenWithApp(), then "Other
                   application…" (file dialog)
+(host entries)    what openMenuProvider returns for the selection — in the
+                  UltraFiler: "Edit in UltraPaint" on pictures, "Edit in
+                  ArtCreator" on drawings
 Extract and Run   (only on a program inside an archive — see below)
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
@@ -612,7 +623,19 @@ Notes:
   operations for programmatic use — `ExtractSelection()` asks (Keep both /
   Extract into the existing folder / Skip) when the destination folder name
   is already taken; `OpenExtractDialog()` opens the extract dialog the menu
-  uses.
+  uses, which asks the same when the folder named in it exists and one
+  archive is being extracted (several still go into numbered subfolders).
+  Under the question, a foldable **Options** panel says what *Extract into
+  existing* does with each file of the archive that is there already:
+  **Replace always** (the default), replace **only when the archive's file is
+  newer**, **older**, **bigger**, or **the files differ** (another size or
+  date - a ZIP's two-second times are allowed for), or **Skip identical files,
+  keep both for the rest** (an identical file stays; any other is written
+  beside it as *name (2).ext*). The files left as they were are listed when
+  the extract is through (*Extract finished · Existing files kept: 2*), each
+  with why. The choice, and whether the panel was open, last for the
+  session. The decision is made per file on the archive worker through
+  `UCVFSBridge::ExtractArchive`'s `onExistingFile`.
 - **Extract and Run** appears only when the one selected entry is a program
   inside an archive — see [Programs inside archives](#programs-inside-archives).
 - **Display > Thumbnails** switches thumbnails on and off per file kind, and
@@ -691,7 +714,8 @@ Needs the VirtualFS module (`ULTRACANVAS_HAS_VIRTUALFS`); without it
 
 A **content preview** is a tile rendered from the file itself instead of the
 generic category glyph. The PDF page, the e-book cover, the video poster frame
-and the Word / PowerPoint text come from the formats' preview providers
+the word-processing document's first page and the Word / PowerPoint text come
+from the formats' preview providers
 ([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)); a format registered
 there previews here without the widget knowing it. Two independent sets of switches decide what a file
 may show, and every kind is enabled in both by default:
@@ -719,11 +743,11 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$, odg, otg, fodg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, the OpenDocument drawings odg, otg and fodg, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on), the OpenDocument drawing packages (odg, otg - where no Vector plugin is registered) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
+| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, ppsm, potx, potm), odp (and otp, fodp), rtf, md, html, tex, and the e-book containers | a **word-processing document shows its first page** - odt, doc and docx laid out with their fonts, pictures, colours, header and footer, as they print (see [Document pages](#document-pages)); the others the same page of text, with tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint or OpenDocument deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md), [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -762,6 +786,12 @@ Notes:
   the Details and List rows keeps the type glyph, so a folder listing does not
   read every document in it, and a font specimen squeezed into an icon slot is
   not shown as a smear of ink.
+- The *Menu label* column is the kind's English name,
+  `UltraCanvasFilerWidget::PreviewTypeLabel(kind)` - a stable name for tests,
+  logs and element identifiers. What a person reads is
+  `UltraCanvasFilerWidget::PreviewTypeText(kind)`, the same name through `Tr`:
+  the Display submenus show it, and an application listing the kinds (UltraFiler's
+  Settings > Display > Thumbnails / Detail view) shows it too.
 - `FilerPreviewType` values are a bitmask; `GetThumbnailKinds()` /
   `GetDetailViewKinds()` return the current sets and `kFilerAllPreviewTypes` is
   the default of both. The preview kinds do not map one to one onto
@@ -832,10 +862,12 @@ the choice and mirrors it into its other file displays.
 ### Embedded preview bitmaps
 
 Most vector formats have no renderer that works without a window, so a
-background worker cannot rasterize them. Three families do not need one: Xara
+background worker cannot rasterize them. Four families do not need one: Xara
 documents (`.xar`, `.web`, `.wix`) store a GIF/JPEG/PNG preview among the first
 records of the file head, the ZIP-based CorelDRAW documents (`.cdr`, `.cdt`,
-X4 and newer) keep one as `previews/thumbnail.png`, and PostScript documents
+X4 and newer) keep one as `previews/thumbnail.png`, OpenDocument drawings
+(`.odg`, `.otg` - LibreOffice Draw's, and what the Vector plugin's ODG writer
+produces) as `Thumbnails/thumbnail.png`, and PostScript documents
 (`.eps`, `.epsf`, `.epsi`, `.ps` and the pre-CS2 `.ai` files, which are EPS)
 carry one either as the TIFF section of a DOS EPS binary header or as the
 hex-encoded EPSI preview in their comment block. The first two are ordinary
@@ -855,7 +887,8 @@ if (FormatCarriesEmbeddedPreview(path)) {               // asks about the format
 
 `ExtractEmbeddedPreviewBytes` returns an empty vector for a file that carries
 no preview (a plain ASCII EPS, for one — rendering that needs a PostScript
-interpreter), an older RIFF-based `.cdr`, or a document too damaged to parse —
+interpreter), an older RIFF-based `.cdr`, an ODF package written without a
+thumbnail (the flat-XML `.fodg` never has one), or a document too damaged to parse —
 it never throws, so a worker can hand it any file the user points at.
 
 `UltraCanvasMediaViewer` shows the same picture: a vector document it cannot
@@ -919,6 +952,27 @@ folder of books shows covers peeking out of its icon under Display > Folder
 previews. Display > Thumbnails > Docs turns them off with the other documents,
 and `SetThumbnailFormatEnabled("epub", false)` (or `"mobi"`, `"azw3"`, ... —
 UltraFiler: Settings > Display > Thumbnails) turns off one format's.
+
+### Document pages
+
+A word-processing document tile — `.odt`, `.docx`, `.doc` — shows the
+document's **first page as it looks**: its page size and margins, its fonts and
+sizes, pictures, colours, tables, header and footer, the way a PDF tile shows
+its first page. It used to be a page of the document's text lines in one small
+grey font, which told what a letter says but not what it looks like, and set a
+letterhead or a CV apart from a plain draft by nothing.
+
+The page is drawn on the thumbnail workers by the `word-processing` preview
+provider ([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)), which reads
+the document with `UCWordDocumentIO` and lays it out with
+`UltraCanvasRichTextEdit` — the same pages its PDF export and print give — on
+white paper whatever the theme. The tile then gets the shaded edge a book cover
+gets. A document whose page cannot be drawn falls back to the page of its text;
+a password-protected `.docx` can be neither and keeps its type glyph. Pages are
+cached like every other thumbnail, in memory and on disk, and Display >
+Thumbnails > Docs turns them off with the other documents
+(`SetThumbnailFormatEnabled("docx", false)` for one format). RTF, Markdown,
+HTML and LaTeX keep their page of text.
 
 ### File types the FileLoader knows
 
@@ -987,8 +1041,14 @@ stuck; failed ones mean the files would not decode, and the log names each of
 them. `workerCount`, `longestJobPath` and `longestJobSeconds` name the job
 that has kept a worker busy longest: one running past 20 s is taken to be
 stuck, and another worker is started beside it (up to eight extra), so a
-single file that never finishes cannot stop every other thumbnail. Rescanning
-the folder or changing the view drops everything.
+single file that never finishes cannot stop every other thumbnail. Opening
+another folder or changing the view drops everything. A rescan of the folder
+already shown - a file deleted, renamed, copied in, or the folder watch
+noticing a change - keeps what was made for every file whose name, size and
+modification time are unchanged, so deleting one file does not redraw the
+folder with type glyphs before the thumbnails come back. A file that changed
+is made again in the background, and its tile keeps the old thumbnail until
+the new one is in.
 
 ### Thumbnails between runs
 
@@ -1902,6 +1962,19 @@ filer->folderIconProvider = [](const FilerEntry& e) -> std::string {
 };
 ```
 
+An icon that is one-colour line art - a black outline with no colours of its
+own, such as a cloud for a synced folder - would stay black on a dark theme.
+`folderIconIsLineArt(iconPath)`, asked with the path the provider returned,
+says which: `true` draws that icon as a mask in the view's text colour
+(`FilerStyle::textColor`, the theme's ink), unset or `false` in its own
+colours.
+
+```cpp
+filer->folderIconIsLineArt = [](const std::string& icon) {
+    return icon == "media/icons/cloud.svg";   // OneDrive / Dropbox in the ink
+};
+```
+
 It is asked while the folder is painted, so it must be a lookup, not a disk
 walk or a platform query — cache whatever answering it costs. The images
 themselves are not a concern: they go through the shared image cache, keyed by
@@ -1947,6 +2020,29 @@ UltraFiler answers it with everything in its Favorites view (the heart
 button's Files / Folders / Apps tabs, `UltraFilerFavorites::IsFavorite`) — not
 with folders pinned only into the folder tree's *Pinned* section — and leaves
 the Favorites view's own pages without it, where every entry would carry one.
+
+### Favorite highlight
+
+Beside (or instead of) the heart, a favorite can stand out as a whole:
+
+```cpp
+filer->SetFavoriteHighlight(FilerFavoriteHighlight::Fill, Color(253, 226, 228, 255));
+filer->SetFavoriteHeartShown(false);      // the highlight alone, no heart
+```
+
+| `FilerFavoriteHighlight` | What a favorite gets |
+|---|---|
+| `NoHighlight` (default) | Nothing beyond the heart |
+| `Fill` | The whole tile or row filled in the colour; its name and details are drawn in white or dark, whichever reads on it (contrast 4.5 : 1) |
+| `Border` | A 2 px rounded border around the tile, row or treemap cell |
+| `Shade` | The colour at the top, fading out to the bottom of the tile or row |
+
+A selected favorite keeps the selection colour - `Fill` and `Shade` give way
+to it, `Border` is drawn over it. In the treemap only `Border` is drawn, the
+cells carry their own colours. The colour is used as given; the widget does
+not adapt it to the theme, the host does (UltraFiler tints its default for a
+dark theme). `SetFavoriteHeartShown(false)` drops the heart and, in the row
+views, its gutter; the provider still decides which entries are favorites.
 
 ## Folder previews
 
@@ -1999,8 +2095,9 @@ What it costs, and where it is drawn:
   on its way — or failed — shows as a blank sheet, so a folder never pops from
   "open" back to "closed".
 
-The listings are dropped with the thumbnail cache — on a rescan, so the folder
-watch's rescan after a change is what makes the previews current — and are
+The listings are dropped with the thumbnail cache — a subfolder's on a rescan
+that finds its modification time changed, so the folder watch's rescan after a
+change is what makes the previews current — and are
 capped at 4096 folders, past which everything outside the current frame goes.
 
 `FolderPreviewCardRects(box, count)` is the card geometry, public and pure so
@@ -2162,6 +2259,18 @@ a dialog for every copied text file is worse than one that shows none. (Packing,
 ["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
 open theirs immediately instead: none of those is ever the quick case, and the
 last one is waiting on a consent prompt the user has to answer.)
+
+The window shows the operation as its headline ("Copying"), the route as two
+chips (*ULTRA OS → Projekte*, *Downloads → Trash*), the file being handled, and
+a strip of **speed, time left, items and size** (a delete: items only; packing
+and unpacking: bytes only), with **Pause / Resume** beside Cancel. The worker
+counts what is done as it goes - one atomic add per file - and the totals come
+only from the counting it does anyway: a copy or delete of one entry counts it
+before starting on it, so "26 731 / 37 650" shows; several entries show what is
+done alone, since knowing their total would mean walking every tree first;
+moving to the Trash knows its total from the start (one move per entry). Pause
+holds the worker between files and between the chunks of a big file, and an
+archive job between its blocks; Cancel still gets through while paused.
 
 The window is the same for every route into these operations — Ctrl+V, the
 context menu, `Delete`, a drag & drop between panes, `Duplicate`,
@@ -2401,6 +2510,22 @@ split button lists exactly these. Each entry may name a
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
 
+The entry's `label` is the menu text and its `fileName` the new file's name
+without the extension (`New spreadsheet.ods`, numbered `New spreadsheet (2).ods`
+when taken). Both are what a person reads, so a host passes them translated -
+the name as a whole, through `TrC("file name", ...)`: "New " + a translated
+label is not how most languages name a new file ("Neue Tabelle", "Nouvelle
+feuille de calcul"). The defaults do this. An entry without a `fileName` falls
+back to `TrF("New {0}", label)`, which a translator can only reorder.
+
+```cpp
+filer->SetNewDocumentTypes({
+    {Tr("Spreadsheet"), "ods", "", TrC("file name", "New spreadsheet")},
+    {Tr("Presentation"), "odp", "/usr/share/templates/blank.odp",
+     TrC("file name", "New presentation")},
+});
+```
+
 The **New >** submenu opens with **Folder** — above the document kinds and set
 apart from them by a separator — bound to **Ctrl+F**. `CreateNewFolder()` is the
 same action programmatically: it creates `New folder` (numbered `New folder (2)`
@@ -2624,8 +2749,11 @@ the same size and date are called *identical*, and the default moves to Skip.
 The answers are the buttons:
 
 - **Keep both** (the default) — the pasted entry takes the next free " (2)"
-  style name, what a conflict-free paste always does
-- **Replace** — the existing file is removed first
+  style name, what a conflict-free paste always does: `photo.jpg` arrives
+  as `photo (2).jpg`, or `photo (3).jpg` when that is taken too; the
+  existing file is not touched
+- **Replace** — the existing file is removed first, on the condition the
+  replace options hold (below)
 - **Skip** — the entry is not pasted (and is listed in the summary)
 - **Stop** — keeps what was already pasted and drops the rest
 
@@ -2638,6 +2766,25 @@ in the existing folder; a move removes the emptied source folder at the end
 (an entry that was skipped keeps it). *Replace* deletes the existing folder
 first, with everything in it that the pasted one does not have, and the note
 says so with the count. `PasteConflictAction::Merge` is the enumerator.
+
+Under a file's question, a foldable **Options** panel says what *Replace*
+asks of the pasted file first (`PasteReplaceCondition`): **Replace always**
+(`Unconditionally`, the default), **only when the pasted file is newer**
+(`IfNewer`: modified later), **only when it is older** (`IfOlder`: an earlier
+version brought back from a backup), **only when it is bigger**
+(`IfLarger`), or **only when the files differ** - another size or another
+modified time (`IfDifferent`). A checkbox under them, **Keep both: skip
+files that are identical (same size and date)**, makes *Keep both* skip a
+pasted file the same as the one there (`PasteConflictAction::
+KeepBothUnlessIdentical`) - no duplicate of a file that is there, and
+nothing overwritten. Folded, the panel's header still names what is in force
+(*Options · replace when newer, keep both skips identical*). A file that does
+not win the comparison is left as it is and listed in the summary with why -
+*Kept: the existing file is not older*, *... not newer*, *... not smaller*,
+*Kept: same size and date*, *An identical file exists already*.
+With the scope checked the condition holds for the rest of the paste too, the
+files a folder merge brings in included; the panel opens with the last
+choice of the session, folded or open as it was left.
 
 The checkbox beside the buttons, **"Apply to all 7 remaining conflicts"**,
 counts the entries still to come whose name is taken (folders and files are
@@ -2668,10 +2815,19 @@ A paste or delete that ran to its end with entries left behind — skipped by
 hand, by a policy, or because they failed — ends on one **summary** instead of
 nothing: *Copied 137 of 140 items. 3 were skipped.*, the destination, and the
 skipped entries in a list with the reason beside each (*In use by another
-program*, *Skipped: the name is already taken*, *Skipped: write-protected*).
+program*, *File exists already*, *Kept: the existing file is not older*,
+*Skipped: write-protected*).
 **Close** is the default; **Copy skipped items again** (*Move …*, *Delete …*)
 runs the same operation for just those entries, grouped by the folder they
-were headed for. A Stop or a Cancel shows no summary — it already said what
+were headed for. When some were skipped because their name was taken, an
+open **Options for copying again** panel under the list says how the copy
+again answers them: **Ask about each file that exists already** (the
+default), **Keep both** (the copy gets a number, *photo (2).jpg*), **Skip
+identical files, keep both for the rest**, **Replace always**, or replace
+only when the pasted file is **newer**, **older**, **bigger** or the files
+**differ**. That choice stands in for the host's conflict policy
+for the copy again - under `FilerConflictPolicy::Skip` the copy again would
+otherwise skip every one of them again. A Stop or a Cancel shows no summary — it already said what
 happened — and neither does an operation where nothing was skipped.
 
 A **move, a rename and a delete** all need the file to themselves: a rename is
@@ -2912,6 +3068,20 @@ auto-scrolls at the viewport edge, Escape abandons it (the previous
 selection returns), and a press-and-release without movement keeps its old
 meaning — a plain click on empty space clears the selection (a Ctrl click
 leaves it alone).
+While the band is drawn, `onSelectionChanged` fires with every entry it takes
+in or lets go. A host that follows the selection with something that opens,
+closes or reflows - a preview pane beside the list - waits for the drag to
+end: `IsDragInProgress()` is true while a band is drawn or entries are
+dragged, and letting the band go fires `onSelectionChanged` once more with it
+false, so the host sees where the band ended.
+
+```cpp
+std::function<void(const std::vector<FilerEntry>&)> showInPreview;   // the host's preview
+filer->onSelectionChanged = [&](const std::vector<FilerEntry>& selected) {
+    if (filer->IsDragInProgress()) return;   // the band's last state comes on release
+    showInPreview(selected);
+};
+```
 Double-clicking an entry with the **left** button opens/activates it (folders
 and archives are entered, files fire `onFileActivated`); the right and middle
 buttons do not, although Windows reports a double-click for those too — a
@@ -3030,6 +3200,29 @@ UltraFiler's tree kept a deleted subfolder's row for good while it listened to
 ```cpp
 filer->onFolderModified      = [this](const std::string& f) { tree.Resync(f); history.Record(f); };
 filer->onFolderChangedOnDisk = [this](const std::string& f) { tree.Resync(f); };
+```
+
+### Operations in the background
+
+A host that sets `onBackgroundProgress` gets a **Run in background** button in
+the progress window of a copy, move, delete, pack or unpack. Pressed, the
+window closes and the work goes on; from then on the widget calls
+`onBackgroundProgress(progress)` on every tick (ten times a second) with a
+`FilerBackgroundProgress`: `active`, `title` ("Copying", "Extracting"), the
+route `from` / `to`, `fraction` (0..1; negative when no total is known),
+`currentFile`, the `figures` (`ProgressFigures`) and `paused`. Once more with
+`active == false` when the operation ends or its window is brought back.
+`HasBackgroundOperation()` tells whether one is running there;
+`BringOperationToFront()` opens its window again (paused work opens paused).
+The next archives of an extract queue start in the background too, until the
+queue is through. Without `onBackgroundProgress` the button is not offered.
+
+```cpp
+filer->onBackgroundProgress = [this](const FilerBackgroundProgress& p) {
+    statusGauge->SetVisible(p.active);
+    if (p.active) statusGauge->SetValue(p.fraction < 0 ? 0 : 100.0 * p.fraction);
+};
+showButton->onClick = [this]() { filer->BringOperationToFront(); };
 ```
 
 ### Finished copies and moves
@@ -3223,6 +3416,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderChangedOnDisk(folderPath)` | The folder watch saw the shown folder change on disk and the display re-listed it: another program's change, an entry deleted here that Windows listed until a program let go, or the folder itself gone (the display has moved up) — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
+| `onBackgroundProgress(progress)` | An operation sent to the background from its progress window: its progress on every tick, and once with `active == false` at its end - see [Operations in the background](#operations-in-the-background) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
@@ -3231,7 +3425,9 @@ reports what the system hides, not what the host asked for.
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)); a folder drawn as the shape shows the first pictures inside it (see [Folder previews](#folder-previews)) |
 | `SetFavoriteMarkProvider(fn(entry) -> bool)` | Per entry while it is drawn — `true` draws the red favorite heart at the entry's left (see [Favorite mark](#favorite-mark)) |
+| `SetFavoriteHighlight(look, colour)` / `SetFavoriteHeartShown(bool)` | How a favorite stands out besides the heart - background, border or shade - and whether the heart is drawn (see [Favorite highlight](#favorite-highlight)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
+| `openMenuProvider(targets) -> vector<MenuItemData>` | Called on every context-menu open of a file or selection, with the entries the menu acts on; the items go right after *Open with* - offer one only where it applies (UltraFiler's *Edit in UltraPaint* for pictures, *Edit in ArtCreator* for drawings). Not asked for the folder background's menu |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
 | `onOpenPath(entry)` | Open Path item (default: `SetPath(parent)`) |

@@ -31,6 +31,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasWindow.h"
 #include "UltraMailAccountBar.h"
+#include "../DisplayRequired.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -60,8 +61,7 @@ static int failCount = 0;
 // run for long enough already.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED"); \
-        if (required && std::string(required) == "1") {                       \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
             std::cerr << "FAIL: a display was required, and " << reason       \
                       << std::endl;                                           \
             return 1;                                                         \

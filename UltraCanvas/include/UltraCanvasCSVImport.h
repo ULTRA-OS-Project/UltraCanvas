@@ -3,6 +3,7 @@
 // Shared by the spreadsheet loader, the file-manager preview and the manual
 // "Text Import" options dialog. Header-only and dependency-free (std only) so
 // it can be reused by any module without pulling in the spreadsheet stack.
+// Version: 1.2.0 - CSVTryParseNumber: a number too large for a double (1e400) stays text, not 0
 // Version: 1.1.0 - CSVFormatRecord: one record of CSV/TSV text, quoted as the
 //                  export options say, for a writer that streams its rows
 // Version: 1.0.0
@@ -10,6 +11,8 @@
 #pragma once
 
 #include <string>
+#include <cmath>
+#include <limits>
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <vector>
 #include <set>
@@ -534,8 +537,11 @@ inline bool CSVTryParseNumber(const std::string& raw, const CSVImportOptions& op
     const char* begin = norm.data();
     const char* const end = norm.data() + norm.size();
     if (begin != end && *begin == '+') ++begin;
-    double v = 0.0;
-    if (begin == end || ParseFloatClassic(begin, end, v) != end) return false;
+    // NaN to start with: a number too large for a double is "read" without
+    // touching `v` (ParseFloatClassic), and 1e400 imported as 0. It stays
+    // text now, as does anything that is not finite.
+    double v = std::numeric_limits<double>::quiet_NaN();
+    if (begin == end || ParseFloatClassic(begin, end, v) != end || !std::isfinite(v)) return false;
     value = isPercent ? v / 100.0 : v;
     return true;
 }

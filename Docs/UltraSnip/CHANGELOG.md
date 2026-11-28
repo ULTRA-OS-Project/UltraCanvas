@@ -1,3 +1,50 @@
+#### 2026-11-25 *0.1.14*
+- **Started again from a terminal, UltraSnip answers in your language.**
+  "UltraSnip is already running: handed the request to it." and "... is
+  already running but did not answer: opening a window here." were English
+  whatever the language. They come from the framework's standard set now
+  (`UltraCanvasSingleInstance::HandOffMessage`).
+
+#### 2026-11-25 *0.1.13*
+- **Starting UltraSnip while it runs in the background no longer says
+  "UltraSnip is already running".** When the copy UltraDesktop keeps resident
+  could not be reached (a build without the UltraMessage bus), a start from
+  the applications showed that message and no window at all. It now opens
+  the bar itself, as a start without a running copy does; a `--background`
+  start still leaves the resident copy alone and shows nothing.
+- **The bar opens on the screen the mouse pointer is on.** At the top
+  centre of that monitor, over the dimmed screen, rather than always on the
+  primary one - also when a resident UltraSnip's closed window comes back.
+  On Wayland and macOS, which do not say where the pointer is, it stays the
+  primary screen.
+
+#### 2026-11-24 *0.1.12*
+- **The recording bar cut its time in every language.** At 280 px, an hour's
+  paused recording read "1:02:05 …" in English and "1:02:…" in German, and
+  the red dot shrank to "..". The bar is now as wide as its content at its
+  widest - the time with "paused", the longer of Pause and Resume - and is
+  placed with that width.
+
+#### 2026-11-23 *0.1.11*
+- **The selection over the screen is the framework's now.** UltraSnip's
+  overlay - the frozen, dimmed screen with the rectangle or the lit window -
+  moved into UltraCanvas (`UltraCanvasScreenAreaPicker`), so ChatCube's
+  screenshot button uses the same one. Nothing changes in how a snip is
+  taken. On a Mac the selection now opens, above the menu bar, now that the
+  framework captures the screen there.
+
+#### 2026-11-19 *0.1.10*
+- **The picture zooms and moves.** The mouse wheel zooms the snip shown in
+  the window about the cursor, up to forty times; once it is larger than the
+  pane, dragging moves it, as far as its edges and no further, and the cursor
+  shows four arrows only while there is somewhere to move it to. A
+  double-click shows it whole again. A snip smaller than the pane still
+  starts at its own size, as before, and its tooltip says how.
+- **Zoomed in, the pixels are sharp.** From 200 % on, each pixel of the snip
+  is drawn as a hard-edged square instead of being blurred into its
+  neighbours, so text and edges can be read pixel by pixel. Below 200 % the
+  picture stays smooth.
+
 #### 2026-11-14 *0.1.9*
 - **UltraSnip follows the light or dark look.** The bar, the ground under the
   snip, the rules and the status line were fixed light colours; they are now

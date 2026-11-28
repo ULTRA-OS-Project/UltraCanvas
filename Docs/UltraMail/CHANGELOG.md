@@ -1,3 +1,108 @@
+#### 2026-11-26 *0.10.101*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+- **Quitting during a transfer asked half in English.** The dialog joined
+  a translated opener ("A download is") to an English rest ("still running
+  - quit anyway?"), and its list of files was English throughout. Each line
+  is now one translated sentence, with each language's plural forms.
+
+#### 2026-11-25 *0.10.100*
+- **UltraMail in German.** A first German catalogue
+  (`media/locale/de/UltraMail.json`, 606 entries, marked as a machine draft
+  awaiting review): the menus, settings, dialogs, the warning strip, the
+  "Do you really want to open the link?" question and every reason the
+  scam/phishing scan gives. Words UltraMail shares with the other programs come
+  from the standard and Communication sets as before.
+- **The links of a plain-text mail look like links.** A web address, a
+  `mailto:` or a mail address written in a plain-text message (or an HTML
+  message read as plain text) opened in the browser when clicked, but was
+  drawn like the text around it, so nothing said it could be clicked - a
+  Microsoft account's "verify this alias" mail showed its links as grey
+  text. They are now drawn in the look's accent colour and underlined, the
+  colour following a change of the look; what is drawn as a link is exactly
+  what a click opens (`PlainLinkSpans`, the rules `PlainLinkAt` reads).
+- **The scan's reasons are in the reader's language.** Every reason the
+  scam/phishing scan gives - the warning strip's list, the sender badge's
+  tooltip, the "Do you really want to open the link?" question - and the
+  sender's verdict line ("New sender", "In your address book", ...) go through
+  `Tr` / `TrF`, so a UltraMail catalogue translates them; a reason that lists
+  several signs joins them with the language's own separators. The engine
+  links UltraLocalisation (its home is the shared core, so engine and
+  application share one loaded set). A message that warns has its stored
+  reasons written again in the current language when it is shown, from a
+  fresh scan that came to the same findings, so a change of language does not
+  leave old mail in the old one.
+- **A link of a suspicious message asks before it opens.** While the warning
+  strip warns of the message shown (a scam, phishing, parts that do not add
+  up), a click on one of its web links - in formatted or plain-text mail -
+  asks "Do you really want to open the link?" and says why: the strip's
+  verdict, where this link goes when that is not the sender's domain, the
+  domain mismatch and the scan's reasons. "Do not open" is the answer Return
+  and Escape give. A sender the reader only blocked, and the caution every
+  mail about crypto gets, do not ask; a `mailto:` link opens the composer as
+  before.
+
+#### 2026-11-23 *0.10.99*
+- **"Always trust" works for senders that put a code in their no-reply
+  address.** Claude's sign-in mails come from
+  `no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com`, the next one from
+  another code - so *Always trust this sender*, *Block this sender* and
+  *Show images – Always from this sender* only ever applied to the one
+  message they were chosen on. Such an address is now one sender
+  (`no-reply@mail.anthropic.com`): chosen once, it holds for all its mail.
+  The same goes for a "+tag" on a mailbox: `orders+Q7x2Lm@shop.example` is
+  `orders@shop.example`.
+- **A "Re:" or "Fw:" from someone you never wrote to is flagged as likely
+  fraud.** Fake invoices arrive as "WG: Rechnung 373115" forwarded by a
+  stranger, and sales spam as "Re: your sales" to a mail you never answered:
+  the prefix makes a first message look like part of a conversation. A
+  message whose subject starts with a reply or forward prefix (Re, AW, SV, VS,
+  Fw, Fwd, WG, TR, RV, ...; read past a tag such as "*** VIRUS ***" or
+  "[SPAM]") gets the *Likely spam* badge and a warning strip that says
+  *fraud* (`unsolicited-reply`) - more so when it names no message it
+  answers, when the thread it names is another company's, and when it is
+  about a bill. It counts only for strangers: everyone you write to is in
+  your address book, and a contact's replies are never flagged for it. The
+  warning strip has an **Add to contacts** button for a sender you do know;
+  once added, the message is shown again without the warning. A mailing
+  list's post (List-Id) is not flagged, nor a proven known service's help
+  desk. It has its own switch in *Settings > Warnings > Spam/scam warnings*.
+
+#### 2026-11-18 *0.10.98*
+- **Spam whose links are written `https:////host` is caught.** A link with
+  extra slashes after `https:` (or backslashes: `https:\\host`) still opens
+  the site in the browser, but the scan read it as a link with no site, so
+  none of the link checks applied to it. A "Rolex from $250" mail that did
+  this everywhere showed no warning at all. Those links now keep their site,
+  and writing a link that way is itself a warning (`link-disguised-address`,
+  under the phishing switch).
+- **Fake designer goods are told.** A mail selling a luxury watch or bag
+  (Rolex, Patek Philippe, Cartier, Louis Vuitton, a Birkin ...) for less than
+  any genuine one costs, or calling it a "replica", "1:1 copy" or "AAA
+  quality", is marked (`counterfeit-goods`), and the reading pane says
+  *counterfeit goods*, with advice not to order or pay. It has its own switch
+  in *Settings > Warnings > Spam/scam warnings*. Not for the brand's own
+  domain; a shop that proved its own domain, in its own bulk mail, only gets
+  a hint for a low price.
+- **SEO offers from strangers are marked as spam.** "I noticed a small SEO
+  issue on your website ... would you like the audit report?" - an offer of
+  search engine services for the reader's own website - gets the *Likely
+  spam* badge and a warning strip with advice not to answer
+  (`seo-solicitation`), more so from a free mailbox and as a "Re:" to a
+  mail never sent. A sender in the address book is not called spam for it
+  (the reader's own SEO agency), and a newsletter from a domain that proved
+  itself only gets a hint. It has its own switch in *Settings > Warnings >
+  Spam/scam warnings*. "SEO" counts in capitals only, so a friend called
+  Seo is not taken for a sales pitch.
+- **The settings window speaks your language on two more counts.** The
+  switches on *Spam/scam warnings* and the "Restore default" button of every
+  settings page were shown in English whatever the language; they are now
+  translated like the rest of the window.
+- Stored verdicts made before this change are scanned again, so mail already
+  in the inbox gets the new warnings.
+
 #### 2026-11-15 *0.10.97*
 - **A folder you collapse in the tree stays collapsed.** Every folder rescan -
   one follows each mail check - rebuilds the tree and expanded it in full, so a

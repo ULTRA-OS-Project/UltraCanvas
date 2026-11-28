@@ -61,6 +61,7 @@ namespace UltraCanvas {
         // ===== TABS (the two forms of Slack's zones) =====
         auto chartCard = DemoKit::AddCard(row, "ipcChartCard");
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ipcTabs", 0, 0, 860, 670);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(chartCard, tabbedContainer);
 
@@ -86,7 +87,7 @@ namespace UltraCanvas {
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     chart->GetIdentifier() + "Tab", 0, 0, 860, 632);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(chart);
             tabbedContainer->AddTab(smooth ? Tr("Slack zones (smooth)") : Tr("Slack zones (stepped)"), tabContent);
             charts.push_back(chart);
@@ -124,7 +125,7 @@ namespace UltraCanvas {
         // As tall as the zones and factors it lists: the card grows with it.
         auto listing = DemoKit::AddCaption(sidebar, "ipcListing", ZoneListing(*charts.front()));
         listing->SetTextColor(DemoKit::BodyText());
-        listing->SetBackgroundColor(Color(248, 249, 250, 255));
+        listing->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         listing->SetPadding(10);
 
         // ===== CALLBACKS (raw pointers: no cycle through the elements) =====

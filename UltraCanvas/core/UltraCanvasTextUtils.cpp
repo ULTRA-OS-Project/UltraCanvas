@@ -13,6 +13,7 @@
 #include "UltraCanvasTextUtils.h"
 
 #include <locale>
+#include <cmath>
 #include <sstream>
 #include <iomanip>
 
@@ -129,6 +130,17 @@ std::string FormatFloatClassic(double value, int precision) {
     out.imbue(std::locale::classic());   // '.' is the decimal point, always
     out << std::setprecision(precision) << value;
     return out.str();
+}
+
+std::string FormatFloatRoundTrip(double value) {
+    if (!std::isfinite(value)) return FormatFloatClassic(value, 17);
+    for (int precision = 15; precision < 17; ++precision) {
+        const std::string text = FormatFloatClassic(value, precision);
+        double back = 0.0;
+        if (ParseFloatClassic(text.data(), text.data() + text.size(), back) == text.data() + text.size() && back == value)
+            return text;
+    }
+    return FormatFloatClassic(value, 17);
 }
 
 std::string FormatFixedClassic(double value, int decimals, bool keepPoint) {

@@ -280,10 +280,10 @@ int main(int, char** argv) {
             }
         }
     }
-    auto near = [](uint32_t value, uint32_t want) { return value + 3 >= want && value <= want + 3; };
-    TEST("a 16-bit image's thumbnail keeps its colour", near((thumbPixel >> 16) & 0xFF, 0x3B) &&
-                                                         near((thumbPixel >> 8) & 0xFF, 0x82) &&
-                                                         near(thumbPixel & 0xFF, 0xF6));
+    auto closeTo = [](uint32_t value, uint32_t want) { return value + 3 >= want && value <= want + 3; };
+    TEST("a 16-bit image's thumbnail keeps its colour", closeTo((thumbPixel >> 16) & 0xFF, 0x3B) &&
+                                                         closeTo((thumbPixel >> 8) & 0xFF, 0x82) &&
+                                                         closeTo(thumbPixel & 0xFF, 0xF6));
     history.Remove(deepId);
     history.Prune();
 

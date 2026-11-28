@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.1.7*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-15 *0.1.6*
 - **The vault tree no longer jumps back to its first row when it is rebuilt.**
   Every change - a rename, a move, an entry added or deleted, a group opened -

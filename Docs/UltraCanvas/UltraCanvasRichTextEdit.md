@@ -31,8 +31,12 @@ state of the selection** rather than two asterisks in a buffer.
   - [Floating pictures](#floating-pictures)
   - [Check lists](#check-lists)
   - [Formulas](#formulas)
+  - [Charts](#charts)
   - [Structure](#structure)
+- [Document dialogs](#document-dialogs)
+- [Navigator](#navigator)
 - [Following the theme](#following-the-theme)
+  - [A document's colours on a dark page](#a-documents-colours-on-a-dark-page)
 - [Keyboard](#keyboard)
 - [Autoformat as you type](#autoformat-as-you-type)
 - [Input methods](#input-methods)
@@ -157,6 +161,14 @@ RichDocumentHTMLOptions out;
 out.imageSource = [](int mediaIndex) { return "cid:part" + std::to_string(mediaIndex); };
 std::string html = document->ToHTML(out);                // default: data: URIs
 ```
+
+Two more hooks of `RichDocumentHTMLOptions` make the HTML a web page's:
+`headingId` answers the `id` each heading carries, given its level and
+text, so a table of contents and a link's `#anchor` can reach it; and
+`codeBlock` writes a code block's whole HTML itself, given its fence
+language and text - highlighted, say. Unset, the output is unchanged.
+UltraSite's Markdown pages are written through both
+(`Docs/Modules/UltraSite/README.md`).
 
 | HTML | becomes |
 |---|---|
@@ -294,6 +306,25 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+A paragraph's whole layout - what a paragraph dialog shows - is one
+`RichParagraphFormat`: alignment, indents (`firstLineIndentPt` negative for a
+hanging indent), space before and after (below 0 = not stated: the view's own
+spacing), line spacing as a multiple or a fixed height (`lineHeightPt`, at
+least that with `lineHeightAtLeast`), and tab stops. `SetParagraphFormat`
+gives it to every paragraph the selection touches, as one undo step; in a
+table cell the alignment and the line spacing go to the cell (or to every
+selected cell):
+
+```cpp
+RichParagraphFormat format = editor->GetParagraphFormat();   // the caret's paragraph
+format.leftIndentPt = 36.0f;
+format.firstLineIndentPt = -18.0f;              // hanging
+format.spaceAfterPt = 6.0f;
+format.lineSpacing = 1.5f;
+format.tabStops = {{144.0f, RichTabKind::Right}};
+editor->SetParagraphFormat(format);             // false when nothing changed
+```
+
 Tracking - extra room between every two letters of the whole text, as a drawing
 program's letter spacing - is part of the element's style, in pixels at 100%
 (ArtCreator sets it for the text typed on its page):
@@ -403,7 +434,9 @@ its text; double-clicking calls `onCommentActivated`. In the model a comment
 is `UCRichDocument::comments` (`RichComment`: author, initials, date, text,
 resolved) and the runs it covers carry its index in `RichTextRun::commentIds`,
 so it moves and grows with its text; `RemoveComment` is one undo step, and a
-comment whose text is deleted disappears. Comments are not printed or
+comment whose text is deleted disappears. `GoToNextComment()` and
+`GoToPreviousComment()` select the next or previous comment's text in document
+order, wrapping round, and `GoToComment(index)` one comment's. Comments are not printed or
 exported to PDF. DOCX (`comments.xml`, ranges that may cross paragraphs) and
 ODT (`office:annotation`, with LibreOffice's resolved flag) read and write
 them; DOCX does not keep the resolved flag.
@@ -414,7 +447,7 @@ them; DOCX does not keep the resolved flag.
 editor->SetCommentAuthor("Ada Lovelace");        // signs comments and changes
 editor->SetTrackChanges(true);
 // ... typing is marked inserted, deleting marks text deleted ...
-editor->GoToNextChange();                        // selects it
+editor->GoToNextChange();                        // selects it; GoToPreviousChange() goes back
 editor->AcceptChangeAtCaret();                   // or RejectChangeAtCaret, AcceptAllChanges, RejectAllChanges
 ```
 
@@ -515,6 +548,29 @@ not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
 which cell occupies each slot, and is what both the layout and these operations
 use; positions keep addressing cells as `{row, index-within-row}`.
 
+#### A table's properties
+
+```cpp
+RichTableProperties table;
+if (editor->GetTableProperties(table)) {         // the caret's table
+    table.widthPercent = 60.0f;                  // of the column; widthPt for a fixed width
+    table.align = RichTextAlign::Center;
+    table.headerRow = true;
+    table.borderWidthPt = 0.5f;                  // < 0: the editor's own grid; 0: no lines
+    table.borderColor = "#808080";
+    table.cellPaddingPt = 4.0f;                  // < 0: the view's default
+    editor->SetTableProperties(table);           // one undo step
+}
+```
+
+`RichTableProperties` is what a table dialog shows: the table's width
+(`RichDocBlock::tableWidthPercent` / `tableWidthPt`), where a narrower one sits
+(`tableAlign`, `tableIndentPt`), `tableAutoFit`, whether the first row is a
+header row, and what every cell has in common - its lines, padding and
+vertical alignment. A border of the document's own (`borderWidthPt >= 0`) sets
+`tableBordersFromDocument`, so the cells' lines are drawn instead of the
+editor's grid.
+
 #### Selecting a block of cells
 
 Drag (or Shift+arrow) from one cell into another and the selection becomes a
@@ -563,11 +619,19 @@ editor->GetEditor().SetFloatOffset(RichDocPosition(block, placeholderOffset), /*
 if (editor->HasSelectedImage()) {
     editor->SetSelectedImageAltText("Quarterly revenue by region");
     editor->SetSelectedImageSize(/*widthPt*/ 240, /*heightPt*/ 160);
+    // The text beside it, the picture at the column's right (one undo step).
+    editor->SetSelectedImageWrap(RichTextRun::ImageWrap::Square, RichTextAlign::Right);
 }
 editor->SelectImage(RichDocPosition(imageBlock, 0));
 // Editing core: pictures are addressed by where they sit.
 editor->GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
 ```
+
+`SetSelectedImageWrap` (the editing core's `SetImageWrap`) changes how the
+text goes round a picture; `GetSelectedImageWrap` reads it. A picture of its
+own paragraph (a `RichBlockType::Image` block) that is made to float becomes
+the one picture in the line of a paragraph, at the same position (`{block,
+0}`), so it stays selected and one undo gives the block back.
 
 ### Floating pictures
 
@@ -585,12 +649,27 @@ says:
 | `TopAndBottom` (or a centred `Square`) | stops above it and resumes below |
 | `BehindText` / `InFrontOfText` | ignores it; it is drawn under / over the text |
 
+Text that stops above a picture goes on right below it, with no distance of
+its own, and a paragraph whose first line does not fit above the picture
+starts below it. Where nothing floats - in a text frame, in a table cell -
+such a picture stands on a line of its own, at the side or in the middle it
+is aligned to, with the paragraph's words below it; a paragraph of nothing
+else keeps its empty line under the picture.
+
 DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
 (`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
 write back out; HTML output floats them with CSS. A floating picture is
 selected, resized and described like any other. In a table cell it stays in
 the line.
+
+The offsets may be negative: a banner anchored in a page's first paragraph
+starts above it, at the sheet's top edge, and left of the text in the margin.
+A picture placed from the page (`floatHorizontalFrom` `Page`) keeps its size
+when it is wider than the column - a banner across the whole sheet - and in
+page view every floating object is cut at the edges of its paragraph's page,
+so one taller or wider than the sheet does not show on the next page or on
+the desk.
 
 **In a header or footer** a floating picture or frame floats too: on every
 page it is placed from that page (or from its header paragraph), drawn with
@@ -608,6 +687,65 @@ there and continues the paragraph below it. (Such a paragraph is laid out in
 two parts joined into one layout, so the caret, clicks and selection treat
 it as one.) A paragraph that would be left too narrow beside a picture
 starts below it instead.
+
+**In a table cell.** A picture, frame or drawing the text ignores (`BehindText`,
+`InFrontOfText`) floats from its cell: across from the left edge of the
+cell's text, down from the line it is anchored in, and over the rest of the
+table if it is bigger than the cell - a card's background picture, anchored in
+the first cell, lies under the whole card. It takes no room, and it is drawn
+but not picked up, moved or resized from the page. Any other frame or drawing
+in a cell stands in the cell's line, as wide and tall as it says (a frame at
+least as tall as its words; a drawing with room for its outline) - a photo
+drawn as the fill of a shape. (Square and
+top-and-bottom *pictures* in a cell stay in the line as before.)
+
+A **table nested in a table cell** is such a frame: its blocks are the inner
+table and `RichTextFrame::nestedTable` is set, so it has no box, padding or
+guide line of its own and is as wide as the cell's text where its run names no
+width. Its words are part of `ToPlainText()`. The DOCX reader makes one for
+every `w:tbl` inside a `w:tc`, the ODT reader for every `table:table` inside
+a `table:table-cell`; both writers write it back as a table in the cell. A
+double-click on it - or `EditFrame(frameIndex)` - opens it for editing in
+place, as a text frame's words are: the caret moves through its cells, rows
+and columns are added and removed as in any table, and the cell around it
+grows and shrinks with what is typed. A click outside, or
+`FinishHeaderFooterEditing()`, ends it.
+
+A **chart** in a DOCX (DrawingML, `c:chartSpace`) is read as such a drawing:
+columns (side by side, stacked or stacked to 100%), bars lying down, lines
+or a pie's slices for its series from the values the file keeps with it, a
+value axis with its grid, the categories beside it and a legend. It is a
+picture of the chart - saved again it is a drawing, not a chart. A .doc's
+chart is the metafile picture Word stored with it, drawn by the vector
+readers (`RegisterVectorFormatsPlugin()`).
+
+A **drawing set in a paragraph's line** (wrap `Inline`: Word's `wp:inline`
+shape, ODF's `as-char` one) stands in that line in the body too, where the
+paragraph's alignment puts it; it is no float.
+
+**Turned.** `RichTextRun::imageRotationDeg` turns a picture clockwise about
+its centre - a floating one where it is placed, one in the line in a line as
+tall as the turned picture (read and written by DOCX and ODT alike). A
+floating picture's size and offsets are those of the box before the turn
+(Word's `a:xfrm rot`, ODF's `draw:transform`), so a 150 x 389 pt picture
+turned three quarters covers 389 x 150 pt round the same centre.
+
+```cpp
+RichTextRun banner;
+banner.text = RichTextRun::kObjectReplacement;
+banner.mediaIndex = document->AddMedia("banner.jpg", "image/jpeg", bytes);
+banner.imageWidthPt = 150.0f;                       // before the turn
+banner.imageHeightPt = 389.0f;
+banner.imageWrap = RichTextRun::ImageWrap::BehindText;
+banner.imageFloatAlign = RichTextAlign::Default;    // at imageOffsetXPt
+banner.imageOffsetXPt = 113.0f;
+banner.imageOffsetYPt = -118.0f;
+banner.imageRotationDeg = 270.0f;                   // lies on its side
+```
+
+A picture or drawn shape standing in a line makes that line as tall as it is;
+alone in its line it stands on the line's foot, with no descent under it (a
+row of 14.4 pt icons is a 14.4 pt line, as in Word).
 
 **Placed from the page.** By default a float counts across from the text
 column and down from its paragraph. `floatHorizontalFrom` and
@@ -742,6 +880,47 @@ editing; move the caret away and it is typeset again. A `MathBlock` is typeset
 in display style and centred until the caret enters it. Without the LaTeX
 module, both show their source.
 
+### Charts
+
+A chart in a document is a frame with the chart's data
+(`RichTextFrame::chart`, a `RichChart`: its kind, categories, series of
+values, legend and title). The view draws it with the chart engine - the
+same charts an application uses as elements
+([`UltraCanvasEngineCharts.md`](UltraCanvasEngineCharts.md)):
+
+| `RichChart::Kind` | Drawn by |
+|---|---|
+| `Column`, `Bar` (side by side, `stacked`, `percent`) | `UltraCanvasEngineBarChart` |
+| `Line`, `Area` | `UltraCanvasEngineLineChart` (`smooth`: a curved line) |
+| `Pie`, `Doughnut` | `UltraCanvasEnginePieChart` |
+| `Scatter` | `UltraCanvasEngineScatterChart`, each series over its own x values; a series with a line is a joined group, `smooth` a curve through its points |
+| `Bubble` | `UltraCanvasEngineScatterChart` with its size channel (`RichChartSeries::sizes`) |
+| `Radar` | `UltraCanvasEngineRadarChart`, the categories its spokes on one range (`filled`: the shapes filled) |
+| `Stock` | `UltraCanvasEngineFinancialChart`: series in the order high, low, close - bars - or open, high, low, close - candles |
+
+The chart is laid out for the frame's own size and scaled into its place, so
+it prints and exports as vectors and keeps its proportions under zoom. It is
+shown, not edited: there is no dialog for its data yet.
+
+```cpp
+#include "UltraCanvasRichDocumentChart.h"
+
+// The same chart as a live element of an application's own:
+const RichTextFrame& frame = document->frames[frameIndex];
+if (frame.chart.IsChart()) {
+    auto element = CreateRichDocumentChart(frame.chart, 480, 300);
+    container->AddChild(element);
+}
+```
+
+The DOCX reader fills the data from the chart part (`c:chartSpace`) and the
+writer writes it back as one; the ODT reader fills it from the chart object
+(`Object N/content.xml`, a `chart:chart` over its own table - Writer's
+charts) and the writer writes one back. So the chart is still a chart in
+Word and in Writer, and through a conversion between the two formats. The
+frame also holds the chart as drawn shapes (`RichTextFrame::shapes`, made by
+`UCRichDocument::ChartAsShapes`): what a consumer without the UI stack has.
+
 ### Structure
 
 ```cpp
@@ -771,13 +950,92 @@ alone cannot tell them apart.
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
 
+## Document dialogs
+
+`UltraCanvasRichTextEditDialogs.h` has the dialogs a word processor puts over
+this element, each a form (`UltraCanvasFormLayout`) of the framework's
+elements in an `UltraCanvasModalDialog`, modal over the element's window:
+
+| Dialog | Show | Values | What OK does |
+|---|---|---|---|
+| Page setup | `ShowPageSetupDialog` | `RichPageSetupDialogValues` (paper from `RichPaperSizes()`, orientation, size, margins, header and footer distance) | `SetPageSetup` |
+| Paragraph | `ShowParagraphDialog` | `RichParagraphFormat` | `SetParagraphFormat` |
+| Styles | `ShowStylesDialog` | `RichStylesDialogValues` (apply, change, new from the selection) | `ApplyParagraphStyle` / `ApplyCharacterStyle`, `UpdateStyle`, `NewStyleFromCaret` |
+| Table properties | `ShowTablePropertiesDialog` | `RichTableProperties` | `SetTableProperties` |
+| Picture | `ShowPictureDialog` | `RichPictureDialogValues` (alt text, wrapping, position, size) | `SetSelectedImageAltText`, `SetSelectedImageSize`, `SetSelectedImageWrap` |
+| Table of contents | `ShowContentsDialog` | `RichContentsDialogValues` (levels, rebuild the existing) | `InsertTableOfContents` / `UpdateTableOfContents` |
+| Caption | `ShowCaptionDialog` | `RichCaptionDialogValues` (label, text) | `InsertCaption` |
+| Cross-reference | `ShowCrossReferenceDialog` | `RichCrossReferenceDialogValues` (a target from `RichCrossReferenceTargets`, text or page) | `InsertCrossReference` |
+| Footnote | `ShowNoteDialog` | `RichNoteDialogValues` (footnote or endnote, its text) | `InsertNote(kind, text)` |
+| Comment | `ShowCommentDialog(edit, index)` | `RichCommentDialogValues` (text, resolved) | `AddComment` / `SetCommentText`, `SetCommentResolved` |
+| Comments | `ShowCommentsDialog` | `RichCommentsDialogValues` (go to, resolve or reopen, delete; Edit opens the comment's own) | `GoToComment`, `SetCommentResolved`, `RemoveComment` |
+
+Each comes in three parts, so what it does is tested without a window
+(`Tests/RichTextDialogsTest.cpp`): `Read...DialogValues(edit)` is what the
+form opens with, `Apply...DialogValues(edit, values)` is what OK does - true
+when it changed the document, one undo step where the editor keeps one - and
+`Show...Dialog(edit, onClosed)` is the window, which reads, lets the values be
+changed and on OK applies them; Cancel changes nothing. `onClosed(applied)`
+runs either way. A dialog holds the element weakly: a tab closed while its
+dialog is open is not kept alive, and the dialog then does nothing. Lengths
+are shown in centimetres and spacing in points; the document keeps points.
+
+```cpp
+#include "UltraCanvasRichTextEditDialogs.h"
+
+ShowParagraphDialog(*editor, [](bool applied) { (void)applied; /* bring a toolbar into step */ });
+
+RichPageSetupDialogValues page = ReadPageSetupDialogValues(*editor);
+page.paper = 4;                    // RichPaperSizes()[4]: Letter
+page.landscape = true;
+ApplyPageSetupDialogValues(*editor, page);       // what the dialog's OK does
+```
+
+## Navigator
+
+`UltraCanvasDocumentNavigator` ([doc](UltraCanvasDocumentNavigator.md)) is
+the side panel a word processor puts beside this element: the headings as a
+tree by level (the caret's heading selected, following it), the tables,
+pictures, charts, comments, bookmarks, notes and tracked changes, a search
+box that filters them and lists the finds, and buttons that promote, demote
+and move a heading's section. It reads the model through
+`BuildRichDocumentOutline` (`UltraCanvasRichDocumentOutline.h`, UI-free) and
+uses what this element offers any such panel:
+
+| Call | What it does |
+|---|---|
+| `AddDocumentObserver(fn)` / `RemoveDocumentObserver(id)` | Any number of listeners besides the host's `onDocumentChanged` / `onSelectionChanged`: `fn(true)` after every edit (undo and a new document included), `fn(false)` after the caret or the selection moved |
+| `GoToPosition(pos)`, `GoToRange(range)` | The caret at a body position, or a body range selected, scrolled into view (a header or note being edited is finished first) |
+| `MoveHeadingSection(heading, beforeBlock)` | A heading with its text and subheadings moved before another block (`GetBlockCount()` = to the end), one undo step |
+| `MoveHeadingSectionUp(heading)` / `MoveHeadingSectionDown(heading)` | ...past the sibling heading of its level before or after it |
+| `ChangeHeadingSectionLevel(heading, delta)` | The heading and every heading in its section one level up (-1) or down (+1); a heading in its level's style takes the new level's style |
+
+The section rules are the editing core's, so they are tested without a
+display: `UCRichDocumentEditor::HeadingSectionEnd` (a heading's section ends
+at the next heading of its level or above) and `SiblingHeading`.
+
+```cpp
+#include "UltraCanvasDocumentNavigator.h"
+
+auto navigator = std::make_shared<UltraCanvasDocumentNavigator>("navigator", 0, 0, 260, 600);
+navigator->SetEdit(editor);                       // follows its document from now on
+const int id = editor->AddDocumentObserver([](bool documentChanged) { (void)documentChanged; /* a word count */ });
+editor->ChangeHeadingSectionLevel(0, +1);         // the first heading's chapter one level down
+editor->Undo();                                   // ...and back, in one step
+editor->RemoveDocumentObserver(id);
+```
+
+UltraOffice's document tab opens them from its Home, Insert, Layout and
+Review tabs, and UltraTexter's word-processing tab from its context menu.
+
 ## Following the theme
 
 `RichTextEditStyle::FromTheme` puts the framework theme's roles
 (`UltraCanvasTheme.md`) over a base style's typography and metrics: the
-well for the text and the page (the element role `rich-text.page` where a
-theme wants paper of another colour, white on a dark window say), the
-panel for the desk, ink and the caret in ink, the soft accent for the
+well for the text; in page view the paper is the lighter of the well and the
+panel (white in the light theme) and the desk a shade darker than the panel,
+so the page stands out on it (the element roles `rich-text.page` and
+`rich-text.desk` where a theme wants other colours); ink and the caret in ink, the soft accent for the
 selection, the accent for links, muted ink for quotes and list markers,
 the panel with hairlines for code, control-border rules and table grids,
 hairline guides. The comment, tracked-change and font-notice colours keep
@@ -792,6 +1050,30 @@ RichTextEditStyle serif = edit->GetStyle();
 serif.baseFont.fontFamily = "Georgia";
 edit->SetStyle(RichTextEditStyle::FromTheme(UltraCanvasTheme::Current(), serif));   // the roles over the document's font
 edit->SetFollowTheme(true);
+```
+
+### A document's colours on a dark page
+
+A document states its colours for white paper: black text, a pale grey table
+header, a white box. On a dark theme the page is dark and the view's ink
+light, so those colours are fitted to the page
+(`RichTextEditStyle::adaptDocumentColors`, on by default): a colour's
+lightness is turned over and set between the page's and the ink's, its hue
+kept. Black text reads in the ink, a white fill is the page, a pale grey cell
+a dark grey one with its text still readable on it, a dark red a lighter red.
+This covers text colour and highlight, paragraph and cell fills, borders,
+frames, drawn shapes and a chart's axes and words. Pictures are never
+changed, and printing and PDF export are on white paper in the document's own
+colours. The document itself is not touched: saved again, it has the colours
+it came with.
+
+```cpp
+RichTextEditStyle style = edit->GetStyle();
+style.adaptDocumentColors = false;      // always the document's own colours
+edit->SetStyle(style);
+
+// The same rule for an application's own drawing:
+Color shown = AdaptDocumentColorToPage(Color(0, 0, 0), style.pageColor, style.textColor);
 ```
 
 ## Keyboard
@@ -1153,7 +1435,17 @@ style.padding = 0.0f;            // the pages bring their own margins
 editor->SetStyle(style);
 editor->SetPageView(true);       // like Writer's print layout
 int pages = editor->GetPageCount();
+
+RichPageSetup page = editor->GetEffectivePageSetup();   // A4 with 2 cm margins when the document states none
+page.widthPt = 792.0f;           // US Letter, landscape
+page.heightPt = 612.0f;
+page.marginLeftPt = page.marginRightPt = 72.0f;
+editor->SetPageSetup(page);      // one undo step; laid out again at once
 ```
+
+`SetPageSetup` gives the document its page (`UCRichDocument::page`). The page
+is part of the undo step (`UCRichDocumentEditor::SetPageSetup`), so an undo
+puts the old size and margins back and the document is laid out on them again.
 
 Page view draws the document's pages (`UCRichDocument::page`: size,
 margins, header and footer distances - A4 with 2 cm margins when the
@@ -1163,7 +1455,66 @@ sized for the page's column fills it. Blocks go onto pages in order, and a
 page break starts a new one. A paragraph that does not fit in what is left of
 a page continues on the next, broken between lines with widow and orphan
 control (at least two lines stay together at the foot of one page and the
-top of the next; a paragraph of three lines or fewer moves whole). A table
+top of the next; a paragraph of three lines or fewer moves whole). A section may have a header and footer of its own
+(`RichSectionSetup::furniture`, an index into
+`UCRichDocument::sectionFurniture`; -1 = the document's) and its own room
+above and below the text (`marginTopPt`, `marginBottomPt`, `headerTopPt`,
+`footerBottomPt`; < 0 = the document's page): each page is framed by the
+section it begins in, the section's first page with its first-page header
+where it has one, and a double-click on a header edits the one that page
+shows. ODF master pages and Word sections with their own header references
+read into this and write back out. A row
+is as tall as its text, or as the document says (`RichTableRow::heightPt`: at
+least that, or exactly that with `heightExact` - Word's `w:trHeight`, ODF's
+`style:min-row-height` / `style:row-height`, a .doc's `sprmTDyaRowHeight`), so
+a letter laid out in a table keeps its address block where it was put. A
+cell's lines are its paragraphs, empty ones included, and the room between two
+of them (the one's space after and the other's before) is an empty line of
+exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
+below the last it is part of the cell's padding. Lines are a font's own
+height apart, its line gap included - the last line of a paragraph or a cell
+as tall as the others, so a one-line paragraph in Palatino at single spacing
+is 1.2 em and at Word's 1.15 is 1.38 em, as in Word and Writer, and an empty
+paragraph is a line of its paragraph mark's font - and letters are pair-kerned - unless the
+document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
+Word's files are unkerned, older Writer files have no line gap). A cell's
+lines can have a set height (`RichTableCell::lineHeightPt`, exactly or - with
+`lineHeightAtLeast` - at least that) or be a multiple of each font's own line
+(`RichTableCell::lineSpacing`, Word's 1.15); a picture in such a line keeps
+its own height. A paragraph of the cell set tighter or wider than the others
+- a heading at 70% - says so on its runs (`RichTextRun::lineSpacing`), which
+go before the cell's. A set height holds for a line without words too,
+whatever its font: "exactly 14 pt" makes an empty 1 pt paragraph 14 pt high. An empty first or last line of a cell is a line of its own
+font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
+picture lower than a line of its run's font stands in such a line. A table can
+start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and
+a column whose width the document states is kept however narrow. A picture is
+stretched to the size its document gives it - a picture alone in its
+paragraph too (an Image block, which a .docx picture on a line of its own and
+an ODT frame become), which also keeps its paragraph's indent, out into the
+margin in page view where that is negative.
+
+**Columns that give way to their content.** With `RichDocBlock::tableAutoFit`
+(Word's "autofit" table layout, its default; `w:tblLayout w:type="fixed"`
+turns it off) a column narrower than the longest word or the widest picture in
+it is widened to hold it. The room comes from the columns that have some to
+spare, each by its share, and then from the room beside the table; a table
+without it keeps its stated widths, and a word too long for its column is
+broken. A table's width in points is kept where it is a little wider than its
+column (it reaches into the margin, as in Word). Spaces a line ends with take
+no room, and - where `UCRichDocument::breakAfterSlash` is false, as for Word's
+documents - a line is not broken after a slash inside a word ("she/her/hers"
+stays whole).
+
+```cpp
+RichDocBlock table;
+table.type = RichBlockType::Table;    // ...its rows and cells
+table.tableColumnWidths = {60.0f, 400.0f};
+table.tableWidthPt = 460.0f;
+table.tableAutoFit = true;       // a long word in the first column widens it
+```
+
+A table
 continues between rows - never through a cell spanning rows - and its
 leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
 ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
@@ -1178,7 +1529,28 @@ Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
 otherwise), with page number and page count fields
 (`RichTextRun::field`) filled in for that page. The body starts below the
 top margin, or below the header when the header is taller than the margin
-leaves room for; the footer likewise.
+leaves room for; the footer likewise. Between them lies Writer's 0.25 cm, or
+the document's own room (`RichPageSetup::furnitureSpacingPt`): none in a
+.docx, where Word starts the text right below the header.
+
+A heading is set in the size and font its document's style gives it
+(`paragraphFontSizePt`, `paragraphFontFamily`), the document's first paragraph
+keeps its space above, a hanging first line starts left of the column where
+the paragraph's indent is smaller than the hang, and a paragraph whose picture
+or frame would reach past the foot of the page goes to the next page with it.
+
+**Column breaks.** `RichDocBlock::columnBreakBefore` starts the block in its
+section's next column, at the height the columns began at - or on the next
+page, from the last column or in a section of one column. It is Word's
+`w:br w:type="column"` and ODF's `fo:break-before="column"`, read and written
+by both formats.
+
+```cpp
+RichDocBlock heading;
+heading.runs = {title};
+heading.columnBreakBefore = true;       // top of the next column
+document->blocks.push_back(heading);
+```
 
 **Sections and columns.** `InsertSectionBreak(newPage)` starts a new section
 at the caret (`RichDocBlock::sectionStart`, its setup in
@@ -1266,6 +1638,10 @@ PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
                         CreateRichDocumentPrintPages(*editor));
 ```
 
+A print and an export are on white paper, whatever colour the screen's theme
+gives the page; under a dark theme, whose inks are light, they take the light
+style's inks.
+
 `CreateRichDocumentPrintPages` copies the document into an element of its own
 (the one on screen keeps its view) and returns an `IPrintPageSource`: the pages
 `ExportToPdf` writes, drawn straight into a printer page that has a render
@@ -1287,6 +1663,8 @@ editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
 editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
 editor->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);   // or PageWidth
+editor->ZoomToWidthShare(0.6f);   // the page is 60 % of the view's width, centred
+float share = editor->GetZoomWidthShare();   // 0.6
 ```
 
 `SetZoomFit` makes the zoom follow the element's size in page view, like a
@@ -1295,6 +1673,16 @@ width) and "Whole page" (all of the page is in view). It is worked out again
 whenever the element is resized; `SetZoom`, Ctrl+wheel and `ZoomFit::Off`
 end it, and printing and PDF export stay at 100 %. Outside page view there is
 no page to fit and the zoom stays as it is.
+
+`ZoomToWidthShare(share)` is the third fit, `ZoomFit::WidthShare`: the page
+itself - not the desk beside it - is `share` of the view's width (0.1 to 1;
+0.6 until another is chosen), centred on the desk, so a page on a wide
+screen keeps a comfortable reading width instead of filling it. Like the
+other two it keeps fitting as the element is resized, and
+`SetZoomFit(ZoomFit::WidthShare)` returns to it with the share last chosen
+(`GetZoomWidthShare`). The view's width is the element's less its padding,
+the vertical scrollbar (always kept, so the fit does not jump as the
+scrollbar comes and goes) and the comment pane while it shows.
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
 rewraps to the zoomed width; in page view the page is simply larger, and when

@@ -2,6 +2,10 @@
 // Formula engine implementation - parser, evaluator, and function library.
 // The Excel-compatible functions added in 1.1.0 live in
 // UltraCanvasSpreadsheetFormulaFunctions.cpp.
+// Version: 1.3.0 - arrays and spills: array constants, element-wise operators and functions, A1#,
+//                  @, LET / LAMBDA, omitted arguments; spills (#SPILL!) and fixed array formulas
+// Version: 1.2.0 - Recalculate follows changes to every formula that reads them, through chains and
+//                  across sheets (it recalculated only formulas already marked dirty)
 // Version: 1.1.0
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
@@ -18,6 +22,7 @@
 #include "UltraCanvasSpreadsheetCell.h"
 #include <cctype>
 #include <cmath>
+#include <unordered_map>
 #include <algorithm>
 #include <numeric>
 #include <random>
@@ -183,7 +188,7 @@ std::unique_ptr<FormulaNode> FormulaParser::ParsePower() {
 std::unique_ptr<FormulaNode> FormulaParser::ParseUnary() {
     if (Check(FormulaTokenType::Operator)) {
         const std::string& op = Current().text;
-        if (op == "+" || op == "-") {
+        if (op == "+" || op == "-" || op == "@") {   // @: implicit intersection
             Advance();
             auto operand = ParseUnary();
             if (!operand) return nullptr;
@@ -246,8 +251,28 @@ std::unique_ptr<FormulaNode> FormulaParser::ParsePrimary() {
             // with digits here. Where the tokenizer DOES hand us a Function
             // token (followed by '('), names with digits such as ATAN2 / LOG10
             // are handled correctly as function calls.
-            return ParseFunctionCall(name);
+            auto call = ParseFunctionCall(name);
+            // LAMBDA(x, x*2)(5): the LAMBDA called on the spot.
+            while (call && Check(FormulaTokenType::LeftParen)) {
+                Advance();
+                std::vector<std::unique_ptr<FormulaNode>> args;
+                args.push_back(std::move(call));
+                if (!ParseArguments(args)) return nullptr;
+                call = std::make_unique<FormulaNode>(FormulaNodeType::Invoke);
+                call->children = std::move(args);
+            }
+            return call;
         }
+
+        case FormulaTokenType::SpillRef: {
+            Advance();
+            auto node = FormulaNode::CellReference(token.cellRef);
+            node->nodeType = FormulaNodeType::SpillRef;
+            return node;
+        }
+
+        case FormulaTokenType::LeftBrace:
+            return ParseArrayLiteral();
 
         case FormulaTokenType::LeftParen: {
             Advance();
@@ -267,6 +292,33 @@ std::unique_ptr<FormulaNode> FormulaParser::ParsePrimary() {
     }
 }
 
+bool FormulaParser::ParseArguments(std::vector<std::unique_ptr<FormulaNode>>& args) {
+    auto isSeparator = [this]() {
+        return Check(FormulaTokenType::Comma) || Check(FormulaTokenType::Semicolon);
+    };
+    if (!Check(FormulaTokenType::RightParen)) {
+        while (true) {
+            // An argument left out - (3,,10), (1,) - is empty: the function
+            // takes its default for it.
+            if (isSeparator() || Check(FormulaTokenType::RightParen)) {
+                args.push_back(FormulaNode::Literal(FormulaValue::Empty()));
+            } else {
+                auto arg = ParseExpression();
+                if (!arg) return false;
+                args.push_back(std::move(arg));
+            }
+            if (!isSeparator()) break;
+            Advance();
+        }
+    }
+    if (!Check(FormulaTokenType::RightParen)) {
+        Error("Expected ')' to close function call");
+        return false;
+    }
+    Advance();  // consume ')'
+    return true;
+}
+
 std::unique_ptr<FormulaNode> FormulaParser::ParseFunctionCall(const std::string& name) {
     if (!Check(FormulaTokenType::LeftParen)) {
         Error("Expected '(' after function name");
@@ -275,111 +327,61 @@ std::unique_ptr<FormulaNode> FormulaParser::ParseFunctionCall(const std::string&
     Advance();  // consume '('
 
     std::vector<std::unique_ptr<FormulaNode>> args;
-
-    if (!Check(FormulaTokenType::RightParen)) {
-        auto first = ParseExpression();
-        if (!first) return nullptr;
-        args.push_back(std::move(first));
-
-        while (Check(FormulaTokenType::Comma) || Check(FormulaTokenType::Semicolon)) {
-            Advance();
-            auto arg = ParseExpression();
-            if (!arg) return nullptr;
-            args.push_back(std::move(arg));
-        }
-    }
-
-    if (!Check(FormulaTokenType::RightParen)) {
-        Error("Expected ')' to close function call");
-        return nullptr;
-    }
-    Advance();  // consume ')'
+    if (!ParseArguments(args)) return nullptr;
 
     // Function names are matched case-insensitively by the library; the inline
     // tokenizer preserves the original case, so leave the name as-is.
     return FormulaNode::Function(name, std::move(args));
 }
 
-// ============================================================================
-// SPREADSHEET FORMULA - non-inline methods
-// ============================================================================
-
-void SpreadsheetFormula::AdjustReferences(int startRow, int startCol, int rowDelta, int colDelta) {
-    // Re-tokenize/re-parse against the adjusted text so the AST and
-    // dependency lists stay consistent.
-    originalText_ = GetAdjustedText(rowDelta, colDelta);
-    // startRow/startCol describe the insertion/deletion point; the simple
-    // model here shifts all relative references uniformly (see GetAdjustedText).
-    (void)startRow;
-    (void)startCol;
-    Parse();
-}
-
-std::string SpreadsheetFormula::GetAdjustedText(int rowOffset, int colOffset) const {
-    // Rebuild the dependency references shifted by the given offsets. Only
-    // relative components move; absolute ($) components stay fixed.
-    if (!ast_) return originalText_;
-
-    // Helper to shift a single address according to its reference types.
-    auto shiftAddr = [rowOffset, colOffset](CellAddress addr) -> CellAddress {
-        bool rowAbs = (addr.rowRef == ReferenceType::Absolute ||
-                       addr.rowRef == ReferenceType::MixedRowAbs);
-        bool colAbs = (addr.colRef == ReferenceType::Absolute ||
-                       addr.colRef == ReferenceType::MixedColAbs);
-        if (!rowAbs) addr.row += rowOffset;
-        if (!colAbs) addr.col += colOffset;
-        return addr;
-    };
-
-    // Walk the AST and emit a textual representation with adjusted refs.
-    std::function<std::string(const FormulaNode*)> emit =
-        [&](const FormulaNode* node) -> std::string {
-        if (!node) return "";
-        switch (node->nodeType) {
-            case FormulaNodeType::Literal: {
-                const FormulaValue& v = node->literalValue;
-                if (v.IsText()) return "\"" + v.GetText() + "\"";
-                if (v.IsBoolean()) return v.GetBoolean() ? "TRUE" : "FALSE";
-                if (v.IsError()) return CellErrorToString(v.GetError());
-                std::ostringstream ss;
-                ss << v.GetNumber();
-                return ss.str();
-            }
-            case FormulaNodeType::CellRef:
-                return shiftAddr(node->cellRef).ToString();
-            case FormulaNodeType::RangeRef: {
-                CellRange r(shiftAddr(node->rangeRef.start), shiftAddr(node->rangeRef.end));
-                return r.ToString();
-            }
-            case FormulaNodeType::NamedRef:
-                return node->namedRef;
-            case FormulaNodeType::BinaryOp:
-                if (node->children.size() == 2) {
-                    return "(" + emit(node->children[0].get()) + node->op +
-                           emit(node->children[1].get()) + ")";
-                }
-                return "";
-            case FormulaNodeType::UnaryOp:
-                if (node->children.size() == 1) {
-                    if (node->op == "%") return "(" + emit(node->children[0].get()) + "%)";
-                    return "(" + node->op + emit(node->children[0].get()) + ")";
-                }
-                return "";
-            case FormulaNodeType::FunctionCall: {
-                std::string out = node->functionName + "(";
-                for (size_t i = 0; i < node->children.size(); ++i) {
-                    if (i) out += ",";
-                    out += emit(node->children[i].get());
-                }
-                out += ")";
-                return out;
-            }
-            default:
-                return "";
+std::unique_ptr<FormulaNode> FormulaParser::ParseArrayLiteral() {
+    Advance();  // consume '{'
+    auto node = std::make_unique<FormulaNode>(FormulaNodeType::Array);
+    int rows = 0, cols = -1, inRow = 0;
+    while (true) {
+        // One constant: a number (with a sign), text, TRUE / FALSE, an error.
+        bool negative = false;
+        while (Check(FormulaTokenType::Operator) && (Current().text == "-" || Current().text == "+")) {
+            if (Current().text == "-") negative = !negative;
+            Advance();
         }
-    };
-
-    return "=" + emit(ast_.get());
+        const FormulaToken& t = Current();
+        FormulaValue v;
+        switch (t.type) {
+            case FormulaTokenType::Number: v = FormulaValue::Number(negative ? -t.numValue : t.numValue); break;
+            case FormulaTokenType::String: v = FormulaValue::Text(t.text); break;
+            case FormulaTokenType::Boolean: v = FormulaValue::Boolean(t.boolValue); break;
+            case FormulaTokenType::Error: v = FormulaValue::Error(t.errorValue); break;
+            default:
+                Error("An array constant holds numbers, text, TRUE / FALSE or errors only");
+                return nullptr;
+        }
+        Advance();
+        node->children.push_back(FormulaNode::Literal(v));
+        ++inRow;
+        if (Check(FormulaTokenType::Comma)) {           // next column
+            Advance();
+            continue;
+        }
+        if (Check(FormulaTokenType::Semicolon) || Check(FormulaTokenType::RightBrace)) {
+            if (cols >= 0 && inRow != cols) {
+                Error("Every row of an array constant has the same number of values");
+                return nullptr;
+            }
+            cols = inRow;
+            inRow = 0;
+            ++rows;
+            const bool end = Check(FormulaTokenType::RightBrace);
+            Advance();
+            if (end) break;
+            continue;
+        }
+        Error("Expected ',', ';' or '}' in an array constant");
+        return nullptr;
+    }
+    node->arrayRows = rows;
+    node->arrayCols = cols;
+    return node;
 }
 
 // ============================================================================
@@ -397,6 +399,7 @@ FormulaFunctionLibrary::FormulaFunctionLibrary() {
     RegisterFinancialFunctions();
     RegisterExcelFunctions();
     ApplyArgumentNames();
+    ApplyArrayBehaviour();
 }
 
 std::vector<std::string> FormulaFunctionLibrary::GetSignatureArguments(const std::string& name) const {
@@ -1021,9 +1024,46 @@ FormulaEvaluator::FormulaEvaluator(FormulaFunctionLibrary& library)
 {
 }
 
+namespace {
+
+std::string UpperName(const std::string& name) {
+    std::string upper = name;
+    for (char& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return upper;
+}
+
+// Restores a value when the scope ends - also when an implementation throws.
+template <typename T>
+struct ScopedValue {
+    T& slot;
+    T saved;
+    ScopedValue(T& s, T value) : slot(s), saved(std::move(s)) { slot = std::move(value); }
+    ~ScopedValue() { slot = std::move(saved); }
+    ScopedValue(const ScopedValue&) = delete;
+    ScopedValue& operator=(const ScopedValue&) = delete;
+};
+
+} // namespace
+
 FormulaValue FormulaEvaluator::Evaluate(const SpreadsheetFormula& formula) {
     if (!formula.IsValid()) return FormulaValue::Error(CellErrorType::NameError);
-    return Evaluate(formula.GetAST());
+    FormulaValue v = Evaluate(formula.GetAST());
+    return v.TopLeft();
+}
+
+FormulaValue FormulaEvaluator::EvaluateArrayFormula(const SpreadsheetFormula& formula, const CellAddress& at,
+                                                    bool implicitIntersection) {
+    if (!formula.IsValid()) return FormulaValue::Error(CellErrorType::NameError);
+    // A cell calculated while another is (a reference to a dirty formula)
+    // has its own context; the other's is restored afterwards.
+    ScopedValue<CellAddress> cellScope(formulaCell_, at);
+    ScopedValue<bool> intersectScope(implicitIntersection_, implicitIntersection);
+    ScopedValue<bool> contextScope(arrayContext_, false);
+    ScopedValue<std::vector<std::pair<std::string, FormulaValue>>> namesScope(localNames_, {});
+    FormulaValue v = Evaluate(formula.GetAST());
+    if (v.IsLambda()) return FormulaValue::Error(CellErrorType::Calc);   // a LAMBDA never called
+    if (implicitIntersection && v.IsArray()) return v.TopLeft();
+    return v;
 }
 
 FormulaValue FormulaEvaluator::Evaluate(const FormulaNode* node) {
@@ -1042,15 +1082,94 @@ FormulaValue FormulaEvaluator::Evaluate(const FormulaNode* node) {
             return EvaluateUnaryOp(node);
         case FormulaNodeType::FunctionCall:
             return EvaluateFunction(node);
+        case FormulaNodeType::Array:
+            return EvaluateArrayLiteral(node);
+        case FormulaNodeType::Invoke:
+            return EvaluateInvoke(node);
+        case FormulaNodeType::SpillRef: {
+            const CellRange range = ResolveSpillRange(node->cellRef);
+            if (!range.IsValid()) return FormulaValue::Error(CellErrorType::ReferenceError);
+            return RangeValue(range);
+        }
         case FormulaNodeType::NamedRef: {
+            if (const FormulaValue* local = FindLocalName(UpperName(node->namedRef))) return *local;
             CellRange range = GetNamedRange(node->namedRef);
-            if (!range.IsValid()) return FormulaValue::Error(CellErrorType::NameError);
-            auto values = FlattenRange(range);
-            return values.empty() ? FormulaValue::Empty() : values[0];
+            if (!range.IsValid()) return FormulaValue::Error(NamedRangeError(node->namedRef));
+            return RangeValue(range);
         }
         default:
             return FormulaValue::Error(CellErrorType::ValueError);
     }
+}
+
+const FormulaValue* FormulaEvaluator::FindLocalName(const std::string& name) const {
+    for (auto it = localNames_.rbegin(); it != localNames_.rend(); ++it) {
+        if (it->first == name) return &it->second;
+    }
+    return nullptr;
+}
+
+FormulaValue FormulaEvaluator::RangeValue(const CellRange& range) {
+    auto rows = GetRangeValues(range);
+    if (rows.empty() || rows.front().empty()) return FormulaValue::Empty();
+    if (rows.size() == 1 && rows.front().size() == 1) return rows.front().front();
+    if (implicitIntersection_ && !arrayContext_) {
+        // Where one value is expected: the cell on the formula's own row (a
+        // column of cells) or column (a row of cells); none is #VALUE!.
+        const int r = formulaCell_.row, c = formulaCell_.col;
+        if (range.ColCount() == 1 && r >= range.start.row && r <= range.end.row) {
+            return rows[static_cast<size_t>(r - range.start.row)].front();
+        }
+        if (range.RowCount() == 1 && c >= range.start.col && c <= range.end.col) {
+            return rows.front()[static_cast<size_t>(c - range.start.col)];
+        }
+        return FormulaValue::Error(CellErrorType::ValueError);
+    }
+    const int rowCount = static_cast<int>(rows.size());
+    const int colCount = static_cast<int>(rows.front().size());
+    std::vector<FormulaValue> cells;
+    cells.reserve(static_cast<size_t>(rowCount) * static_cast<size_t>(colCount));
+    for (auto& row : rows) {
+        for (auto& v : row) cells.push_back(std::move(v));
+    }
+    return FormulaValue::Array(rowCount, colCount, std::move(cells));
+}
+
+FormulaValue FormulaEvaluator::EvaluateArrayLiteral(const FormulaNode* node) {
+    std::vector<FormulaValue> cells;
+    cells.reserve(node->children.size());
+    for (const auto& child : node->children) cells.push_back(Evaluate(child.get()));
+    return FormulaValue::Array(node->arrayRows, node->arrayCols, std::move(cells));
+}
+
+FormulaValue FormulaEvaluator::ElementWise(
+    const std::vector<FormulaValue>& operands,
+    const std::function<FormulaValue(const std::vector<FormulaValue>&)>& fn)
+{
+    int rows = 1, cols = 1;
+    for (const FormulaValue& v : operands) {
+        rows = std::max(rows, v.ArrayRows());
+        cols = std::max(cols, v.ArrayCols());
+    }
+    std::vector<FormulaValue> cells;
+    cells.reserve(static_cast<size_t>(rows) * static_cast<size_t>(cols));
+    std::vector<FormulaValue> at(operands.size());
+    for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            bool outside = false;
+            for (size_t i = 0; i < operands.size(); ++i) {
+                const FormulaValue& v = operands[i];
+                if (!v.IsArray()) { at[i] = v; continue; }
+                // A single row or column stretches over the other's size.
+                const int rr = v.ArrayRows() == 1 ? 0 : r;
+                const int cc = v.ArrayCols() == 1 ? 0 : c;
+                if (rr >= v.ArrayRows() || cc >= v.ArrayCols()) { outside = true; break; }
+                at[i] = v.ArrayAt(rr, cc);
+            }
+            cells.push_back(outside ? FormulaValue::Error(CellErrorType::NAError) : fn(at));
+        }
+    }
+    return FormulaValue::Array(rows, cols, std::move(cells));
 }
 
 FormulaValue FormulaEvaluator::EvaluateLiteral(const FormulaNode* node) {
@@ -1062,19 +1181,30 @@ FormulaValue FormulaEvaluator::EvaluateCellRef(const FormulaNode* node) {
 }
 
 FormulaValue FormulaEvaluator::EvaluateRangeRef(const FormulaNode* node) {
-    auto values = FlattenRange(node->rangeRef);
-    return values.empty() ? FormulaValue::Empty() : values[0];
+    return RangeValue(node->rangeRef);
 }
 
 FormulaValue FormulaEvaluator::EvaluateBinaryOp(const FormulaNode* node) {
     if (node->children.size() < 2) return FormulaValue::Error(CellErrorType::ValueError);
     FormulaValue left = Evaluate(node->children[0].get());
     FormulaValue right = Evaluate(node->children[1].get());
+    if (left.IsLambda() || right.IsLambda()) return FormulaValue::Error(CellErrorType::ValueError);
 
+    // An array on either side: the operation element by element.
+    if (left.IsArray() || right.IsArray()) {
+        const std::string op = node->op;
+        return ElementWise({left, right}, [this, &op](const std::vector<FormulaValue>& v) {
+            return ApplyBinary(op, v[0], v[1]);
+        });
+    }
+    return ApplyBinary(node->op, left, right);
+}
+
+FormulaValue FormulaEvaluator::ApplyBinary(const std::string& op, const FormulaValue& left,
+                                           const FormulaValue& right) {
     if (left.IsError()) return left;
     if (right.IsError()) return right;
 
-    const std::string& op = node->op;
     if (op == "+") return Add(left, right);
     if (op == "-") return Subtract(left, right);
     if (op == "*") return Multiply(left, right);
@@ -1089,43 +1219,162 @@ FormulaValue FormulaEvaluator::EvaluateBinaryOp(const FormulaNode* node) {
 
 FormulaValue FormulaEvaluator::EvaluateUnaryOp(const FormulaNode* node) {
     if (node->children.empty()) return FormulaValue::Error(CellErrorType::ValueError);
-    FormulaValue operand = Evaluate(node->children[0].get());
-    if (operand.IsError()) return operand;
-
     const std::string& op = node->op;
-    if (op == "-") return FormulaValue::Number(-operand.ToNumber());
-    if (op == "+") return FormulaValue::Number(operand.ToNumber());
-    if (op == "%") return FormulaValue::Number(operand.ToNumber() / 100.0);
-    return FormulaValue::Error(CellErrorType::ValueError);
+    if (op == "@") {
+        // Implicit intersection: a range gives the cell on the formula's row
+        // or column, any other array its top-left value.
+        ScopedValue<bool> intersect(implicitIntersection_, true);
+        ScopedValue<bool> context(arrayContext_, false);
+        return Evaluate(node->children[0].get()).TopLeft();
+    }
+    FormulaValue operand = Evaluate(node->children[0].get());
+    if (operand.IsLambda()) return FormulaValue::Error(CellErrorType::ValueError);
+    auto apply = [&op](const FormulaValue& v) -> FormulaValue {
+        if (v.IsError()) return v;
+        if (op == "-") return FormulaValue::Number(-v.ToNumber());
+        if (op == "+") return FormulaValue::Number(v.ToNumber());
+        if (op == "%") return FormulaValue::Number(v.ToNumber() / 100.0);
+        return FormulaValue::Error(CellErrorType::ValueError);
+    };
+    if (operand.IsArray()) {
+        return ElementWise({operand}, [&apply](const std::vector<FormulaValue>& v) { return apply(v[0]); });
+    }
+    return apply(operand);
+}
+
+FormulaValue FormulaEvaluator::EvaluateLet(const FormulaNode* node) {
+    // LET(name1, value1, [name2, value2, ...], calculation)
+    const size_t n = node->children.size();
+    if (n < 3 || n % 2 == 0) return FormulaValue::Error(CellErrorType::ValueError);
+    ScopedValue<std::vector<std::pair<std::string, FormulaValue>>> scope(localNames_, localNames_);
+    for (size_t i = 0; i + 1 < n; i += 2) {
+        const FormulaNode* name = node->children[i].get();
+        if (name->nodeType != FormulaNodeType::NamedRef) return FormulaValue::Error(CellErrorType::NameError);
+        FormulaValue value = Evaluate(node->children[i + 1].get());
+        localNames_.emplace_back(UpperName(name->namedRef), std::move(value));
+    }
+    return Evaluate(node->children.back().get());
+}
+
+FormulaValue FormulaEvaluator::EvaluateLambda(const FormulaNode* node) {
+    // LAMBDA([parameter1, ...], calculation): a value until it is called.
+    if (node->children.empty()) return FormulaValue::Error(CellErrorType::ValueError);
+    auto lambda = std::make_shared<FormulaLambda>();
+    for (size_t i = 0; i + 1 < node->children.size(); ++i) {
+        const FormulaNode* name = node->children[i].get();
+        if (name->nodeType != FormulaNodeType::NamedRef) return FormulaValue::Error(CellErrorType::ValueError);
+        lambda->parameters.push_back(UpperName(name->namedRef));
+    }
+    lambda->body = node->children.back().get();
+    lambda->captured = localNames_;
+    FormulaValue v;
+    v.lambda = std::move(lambda);
+    return v;
+}
+
+FormulaValue FormulaEvaluator::CallLambda(const FormulaValue& lambda, const std::vector<FormulaValue>& arguments) {
+    if (!lambda.IsLambda()) return FormulaValue::Error(CellErrorType::ValueError);
+    const FormulaLambda& l = *lambda.lambda;
+    if (arguments.size() != l.parameters.size()) return FormulaValue::Error(CellErrorType::ValueError);
+    if (currentDepth_ >= maxRecursionDepth_) return FormulaValue::Error(CellErrorType::NumError);
+    ScopedValue<int> depth(currentDepth_, currentDepth_ + 1);
+    ScopedValue<std::vector<std::pair<std::string, FormulaValue>>> scope(localNames_, l.captured);
+    for (size_t i = 0; i < arguments.size(); ++i) localNames_.emplace_back(l.parameters[i], arguments[i]);
+    return Evaluate(l.body);
+}
+
+FormulaValue FormulaEvaluator::EvaluateInvoke(const FormulaNode* node) {
+    if (node->children.empty()) return FormulaValue::Error(CellErrorType::ValueError);
+    const FormulaValue callee = Evaluate(node->children[0].get());
+    if (!callee.IsLambda()) return callee.IsError() ? callee : FormulaValue::Error(CellErrorType::ValueError);
+    std::vector<FormulaValue> arguments;
+    for (size_t i = 1; i < node->children.size(); ++i) arguments.push_back(Evaluate(node->children[i].get()));
+    return CallLambda(callee, arguments);
 }
 
 FormulaValue FormulaEvaluator::EvaluateFunction(const FormulaNode* node) {
+    const std::string upper = UpperName(node->functionName);
+    if (upper == "LET") return EvaluateLet(node);
+    if (upper == "LAMBDA") return EvaluateLambda(node);
+
     const FunctionDefinition* func = functionLibrary_.GetFunction(node->functionName);
-    if (!func) return FormulaValue::Error(CellErrorType::NameError);
+    if (!func) {
+        // A LET name (or LAMBDA parameter) holding a LAMBDA: f(2).
+        if (const FormulaValue* local = FindLocalName(upper); local && local->IsLambda()) {
+            const FormulaValue callee = *local;
+            std::vector<FormulaValue> arguments;
+            for (const auto& child : node->children) arguments.push_back(Evaluate(child.get()));
+            return CallLambda(callee, arguments);
+        }
+        return FormulaValue::Error(CellErrorType::NameError);
+    }
+
+    // A function of single values called with arrays: once per element.
+    if (func->elementWise) {
+        std::vector<FormulaValue> operands;
+        bool anyArray = false;
+        {
+            // Where one value is expected a range intersects (a formula from
+            // a file without dynamic arrays); otherwise it is an array.
+            ScopedValue<bool> context(arrayContext_, false);
+            for (const auto& child : node->children) {
+                operands.push_back(Evaluate(child.get()));
+                if (operands.back().IsLambda()) operands.back() = FormulaValue::Error(CellErrorType::ValueError);
+                anyArray = anyArray || operands.back().IsArray();
+            }
+        }
+        auto call = [this, func](const std::vector<FormulaValue>& values) -> FormulaValue {
+            std::vector<FunctionCallArgument> order;
+            for (size_t i = 0; i < values.size(); ++i) order.push_back({false, i, CellRange()});
+            ScopedValue<std::vector<FunctionCallArgument>> publish(callArguments_, std::move(order));
+            return func->implementation(values, {}, this);
+        };
+        if (!anyArray) return call(operands);
+        return ElementWise(operands, call);
+    }
 
     std::vector<FormulaValue> args;
     std::vector<std::vector<FormulaValue>> rangeArgs;
     std::vector<FunctionCallArgument> order;
 
+    // An argument of a function that takes ranges keeps a range a range,
+    // also in a formula that otherwise intersects.
+    ScopedValue<bool> context(arrayContext_, true);
+    auto asRange = [&](FunctionCallArgument& a, const CellRange& range) {
+        a.isRange = true;
+        a.index = rangeArgs.size();
+        a.range = range;
+        rangeArgs.push_back(FlattenRange(range));
+    };
     for (const auto& child : node->children) {
         FunctionCallArgument a;
+        const bool local = child->nodeType == FormulaNodeType::NamedRef &&
+                           FindLocalName(UpperName(child->namedRef)) != nullptr;
         if (child->nodeType == FormulaNodeType::RangeRef) {
-            a.isRange = true;
-            a.index = rangeArgs.size();
-            a.range = child->rangeRef;
-            rangeArgs.push_back(FlattenRange(child->rangeRef));
-        } else if (child->nodeType == FormulaNodeType::NamedRef &&
+            asRange(a, child->rangeRef);
+        } else if (child->nodeType == FormulaNodeType::SpillRef &&
+                   ResolveSpillRange(child->cellRef).IsValid()) {
+            asRange(a, ResolveSpillRange(child->cellRef));
+        } else if (!local && child->nodeType == FormulaNodeType::NamedRef &&
                    GetNamedRange(child->namedRef).IsValid()) {
-            a.isRange = true;
-            a.index = rangeArgs.size();
-            a.range = GetNamedRange(child->namedRef);
-            rangeArgs.push_back(FlattenRange(a.range));
-        } else if (child->nodeType == FormulaNodeType::NamedRef) {
+            asRange(a, GetNamedRange(child->namedRef));
+        } else if (!local && child->nodeType == FormulaNodeType::NamedRef) {
             a.index = args.size();
-            args.push_back(FormulaValue::Error(CellErrorType::NameError));
+            args.push_back(FormulaValue::Error(NamedRangeError(child->namedRef)));
         } else {
-            a.index = args.size();
-            args.push_back(Evaluate(child.get()));
+            FormulaValue v = Evaluate(child.get());
+            if (v.IsArray()) {
+                // An array is handed on as a range of its shape, so the
+                // functions that take ranges (SUM, INDEX, SUMPRODUCT ...)
+                // read every value and its rows and columns.
+                a.isRange = true;
+                a.index = rangeArgs.size();
+                a.range = CellRange(0, 0, v.ArrayRows() - 1, v.ArrayCols() - 1);
+                rangeArgs.push_back(v.array->cells);
+            } else {
+                a.index = args.size();
+                args.push_back(std::move(v));
+            }
         }
         order.push_back(std::move(a));
     }
@@ -1213,6 +1462,12 @@ FormulaValue FormulaEvaluator::GetCellValue(const CellAddress& addr) const {
         resolveFormulaCell_) {
         resolveFormulaCell_(cell, sheet);
     }
+    // A value spilled from a formula not calculated yet: that formula first.
+    if (cell && cell->IsSpilledValue() && resolveFormulaCell_) {
+        const CellAddress at = cell->GetSpillAnchor();
+        SpreadsheetCell* anchor = sheet->GetCellIfExists(at.row, at.col);
+        if (anchor && anchor->HasFormula() && anchor->IsFormulaDirty()) resolveFormulaCell_(anchor, sheet);
+    }
     if (!cell || cell->IsEmpty()) return FormulaValue::Empty();
     // A formula cell is worth its result, with the result's own type: a
     // number stays a number - it was handed on as its display text, so =B5
@@ -1267,16 +1522,46 @@ std::vector<FormulaValue> FormulaEvaluator::FlattenRange(const CellRange& range)
     return result;
 }
 
+CellRange FormulaEvaluator::ResolveSpillRange(const CellAddress& anchor) const {
+    const CellRange none(CellAddress(-1, -1));
+    SpreadsheetSheet* sheet = currentSheet_;
+    if (!anchor.sheetName.empty() && spreadsheet_) sheet = spreadsheet_->GetSheetByName(anchor.sheetName);
+    if (!sheet) return none;
+    SpreadsheetCell* cell = sheet->GetCellIfExists(anchor.row, anchor.col);
+    if (!cell || !cell->HasFormula()) return none;
+    if (cell->IsFormulaDirty() && resolveFormulaCell_) resolveFormulaCell_(cell, sheet);
+    // A dynamic array formula (even one giving a single value) or a fixed
+    // array formula; a blocked spill or an ordinary formula has none.
+    const bool spills = cell->GetFormulaArrayMode() == FormulaArrayMode::Spilling &&
+                        cell->HasArrayResult() && !cell->IsSpillBlocked();
+    if (!spills && cell->GetFormulaArrayMode() != FormulaArrayMode::FixedRange) return none;
+    CellRange range(anchor.row, anchor.col, anchor.row + cell->GetArrayRows() - 1,
+                    anchor.col + cell->GetArrayCols() - 1);
+    range.start.sheetName = range.end.sheetName = anchor.sheetName;
+    return range;
+}
+
+CellErrorType FormulaEvaluator::NamedRangeError(const std::string& name) const {
+    // A name the formula sees whose sheet was deleted: #REF!; no such name: #NAME?.
+    if (spreadsheet_ &&
+        spreadsheet_->IsNamedRangeVisible(name, currentSheet_ ? currentSheet_->GetName() : std::string())) {
+        return CellErrorType::ReferenceError;
+    }
+    return CellErrorType::NameError;
+}
+
 CellRange FormulaEvaluator::GetNamedRange(const std::string& name) const {
     if (currentSheet_) {
         if (const NamedRange* nr = currentSheet_->GetNamedRange(name)) {
             return nr->range;
         }
     }
+    // The workbook's names: the one scoped to the formula's sheet, else the
+    // workbook-wide one - never one scoped to another sheet.
     if (spreadsheet_) {
-        return spreadsheet_->GetNamedRange(name);
+        return spreadsheet_->ResolveNamedRange(name, currentSheet_ ? currentSheet_->GetName() : std::string());
     }
-    return CellRange();
+    return CellRange(CellAddress(-1, -1));   // no such name: #NAME?
 }
 
 // ============================================================================
@@ -1314,49 +1599,375 @@ FormulaValue SpreadsheetFormulaEngine::EvaluateCell(SpreadsheetCell* cell, Sprea
     FormulaValue result;
     auto formula = cell->GetFormula();
     if (formula && formula->IsValid()) {
-        result = evaluator_->Evaluate(*formula);
+        const bool intersect = cell->GetFormulaArrayMode() == FormulaArrayMode::SingleValue;
+        result = evaluator_->EvaluateArrayFormula(*formula, cell->GetAddress(), intersect);
     } else {
         result = FormulaValue::Error(CellErrorType::NameError);
     }
 
-    // Store the result back into the cell using the variant API.
-    switch (result.type) {
+    StoreResult(cell, sheet, result);
+    cell->MarkFormulaClean();
+    return result.TopLeft();
+}
+
+namespace {
+
+// A value as a cell holds it. An empty element of an array shows 0, as in
+// Excel; an empty single result stays empty.
+void ValueForCell(const FormulaValue& v, bool emptyIsZero, CellValueVariant& out, CellValueType& type) {
+    switch (v.type) {
         case CellValueType::Number:
-            cell->SetFormulaResult(CellValueVariant(result.GetNumber()), CellValueType::Number);
-            break;
+            out = v.GetNumber(); type = CellValueType::Number; return;
         case CellValueType::Text:
-            cell->SetFormulaResult(CellValueVariant(result.GetText()), CellValueType::Text);
-            break;
+            out = v.GetText(); type = CellValueType::Text; return;
         case CellValueType::Boolean:
-            cell->SetFormulaResult(CellValueVariant(result.GetBoolean()), CellValueType::Boolean);
-            break;
+            out = v.GetBoolean(); type = CellValueType::Boolean; return;
         case CellValueType::Error:
-            cell->SetFormulaResult(CellValueVariant(result.GetError()), CellValueType::Error);
-            break;
+            out = v.GetError(); type = CellValueType::Error; return;
         default:
-            cell->SetFormulaResult(CellValueVariant(std::monostate{}), CellValueType::Empty);
-            break;
+            if (v.IsArray() || v.IsLambda()) {
+                out = CellErrorType::Calc; type = CellValueType::Error; return;
+            }
+            if (emptyIsZero) { out = 0.0; type = CellValueType::Number; return; }
+            out = std::monostate{}; type = CellValueType::Empty; return;
+    }
+}
+
+// Element (r, c) of `v` in a fixed array formula's range: an array smaller
+// than the range repeats a single row or column, and is #N/A beyond that.
+FormulaValue FitElement(const FormulaValue& v, int r, int c) {
+    if (!v.IsArray()) return v;
+    const int rr = v.ArrayRows() == 1 ? 0 : r;
+    const int cc = v.ArrayCols() == 1 ? 0 : c;
+    if (rr >= v.ArrayRows() || cc >= v.ArrayCols()) return FormulaValue::Error(CellErrorType::NAError);
+    return v.ArrayAt(rr, cc);
+}
+
+bool OwnSpill(const SpreadsheetCell* c, int anchorRow, int anchorCol) {
+    if (!c || !c->IsSpilledValue()) return false;
+    const CellAddress a = c->GetSpillAnchor();
+    return a.row == anchorRow && a.col == anchorCol;
+}
+
+} // namespace
+
+void SpreadsheetFormulaEngine::ClearSpill(SpreadsheetSheet* sheet, SpreadsheetCell* anchor, const CellRange& keep) {
+    if (!sheet || !anchor) return;
+    const int row = anchor->GetRow(), col = anchor->GetColumn();
+    const CellRange old = anchor->GetArrayRange();
+    for (int r = old.start.row; r <= old.end.row; ++r) {
+        for (int c = old.start.col; c <= old.end.col; ++c) {
+            if ((r == row && c == col) || keep.Contains(r, c)) continue;
+            SpreadsheetCell* child = sheet->GetCellIfExists(r, c);
+            if (OwnSpill(child, row, col)) child->ClearContents();
+        }
+    }
+}
+
+void SpreadsheetFormulaEngine::StoreResult(SpreadsheetCell* cell, SpreadsheetSheet* sheet, const FormulaValue& result) {
+    const int row = cell->GetRow(), col = cell->GetColumn();
+    const FormulaArrayMode mode = cell->GetFormulaArrayMode();
+    const CellRange before = cell->CoversArray() ? cell->GetArrayRange() : CellRange(row, col, row, col);
+    const bool blockedBefore = cell->IsSpillBlocked();
+    FormulaValue top = result.TopLeft();
+    CellRange covered(row, col, row, col);
+
+    if (mode == FormulaArrayMode::FixedRange && sheet) {
+        // A legacy array formula fills its own range, whatever is there.
+        const int rows = cell->GetArrayRows(), cols = cell->GetArrayCols();
+        covered = CellRange(row, col, row + rows - 1, col + cols - 1);
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                if (r == 0 && c == 0) continue;
+                if (row + r >= SpreadsheetLimits::MaxRows || col + c >= SpreadsheetLimits::MaxColumns) continue;
+                CellValueVariant v;
+                CellValueType type;
+                ValueForCell(FitElement(result, r, c), true, v, type);
+                sheet->GetCell(row + r, col + c)->SetSpilledValue(v, type, r, c);
+            }
+        }
+        top = FitElement(result, 0, 0);
+        cell->SetArrayExtent(rows, cols, false, result.IsArray());
+    } else if (mode == FormulaArrayMode::Spilling && result.IsArray() && sheet) {
+        const int rows = result.ArrayRows(), cols = result.ArrayCols();
+        // Blocked by any cell in the way that holds something other than this
+        // formula's own spill, by a merge, or by the sheet's edge.
+        bool blocked = row + rows > SpreadsheetLimits::MaxRows || col + cols > SpreadsheetLimits::MaxColumns;
+        for (int r = 0; r < rows && !blocked; ++r) {
+            for (int c = 0; c < cols && !blocked; ++c) {
+                if (r == 0 && c == 0) continue;
+                const SpreadsheetCell* other = sheet->GetCellIfExists(row + r, col + c);
+                if (other && !other->IsEmpty() && !OwnSpill(other, row, col)) blocked = true;
+                if (sheet->GetMergedCell(row + r, col + c)) blocked = true;
+            }
+        }
+        if (blocked) {
+            ClearSpill(sheet, cell, CellRange(row, col, row, col));
+            cell->SetArrayExtent(rows, cols, true, true);
+            top = FormulaValue::Error(CellErrorType::Spill);
+        } else {
+            covered = CellRange(row, col, row + rows - 1, col + cols - 1);
+            ClearSpill(sheet, cell, covered);
+            for (int r = 0; r < rows; ++r) {
+                for (int c = 0; c < cols; ++c) {
+                    if (r == 0 && c == 0) continue;
+                    CellValueVariant v;
+                    CellValueType type;
+                    ValueForCell(result.ArrayAt(r, c), true, v, type);
+                    sheet->GetCell(row + r, col + c)->SetSpilledValue(v, type, r, c);
+                }
+            }
+            cell->SetArrayExtent(rows, cols, false, true);
+        }
+    } else {
+        // One value: whatever it spilled before goes.
+        ClearSpill(sheet, cell, CellRange(row, col, row, col));
+        cell->SetArrayExtent(1, 1, false, result.IsArray());
     }
 
-    cell->MarkFormulaClean();
-    return result;
+    const CellRange after = cell->CoversArray() ? cell->GetArrayRange() : CellRange(row, col, row, col);
+    if (!(after.start == before.start && after.end == before.end) || blockedBefore != cell->IsSpillBlocked()) {
+        ++spillLayoutChanges_;
+    }
+
+    CellValueVariant v;
+    CellValueType type;
+    ValueForCell(top, result.IsArray(), v, type);
+    cell->SetFormulaResult(v, type);
 }
+
+std::vector<std::pair<const SpreadsheetSheet*, CellRange>> SpreadsheetFormulaEngine::ClearOrphanedSpills() {
+    std::vector<std::pair<const SpreadsheetSheet*, CellRange>> cleared;
+    if (!spreadsheet_) return cleared;
+    for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
+        SpreadsheetSheet* sheet = spreadsheet_->GetSheet(s);
+        if (!sheet) continue;
+        std::vector<SpreadsheetCell*> orphans;
+        sheet->ForEachCell([&](int row, int col, SpreadsheetCell& cell) {
+            if (!cell.IsSpilledValue()) return;
+            const CellAddress at = cell.GetSpillAnchor();
+            const SpreadsheetCell* anchor = sheet->GetCellIfExists(at.row, at.col);
+            const bool claimed = anchor && anchor->CoversArray() && anchor->GetArrayRange().Contains(row, col);
+            if (!claimed) orphans.push_back(&cell);
+        });
+        for (SpreadsheetCell* cell : orphans) {
+            cell->ClearContents();
+            cleared.emplace_back(sheet, CellRange(cell->GetRow(), cell->GetColumn(), cell->GetRow(), cell->GetColumn()));
+        }
+    }
+    if (!cleared.empty()) ++spillLayoutChanges_;
+    return cleared;
+}
+
+namespace {
+
+// A cell or a block of cells on one sheet.
+struct SheetArea {
+    const SpreadsheetSheet* sheet = nullptr;
+    CellRange range;
+    long long CellCount() const {
+        return static_cast<long long>(range.RowCount()) * static_cast<long long>(range.ColCount());
+    }
+};
+
+struct SheetCellKey {
+    const SpreadsheetSheet* sheet;
+    int row;
+    int col;
+    bool operator==(const SheetCellKey& o) const { return sheet == o.sheet && row == o.row && col == o.col; }
+};
+
+struct SheetCellKeyHash {
+    size_t operator()(const SheetCellKey& k) const {
+        size_t h = std::hash<const void*>()(k.sheet);
+        h ^= std::hash<long long>()((static_cast<long long>(k.row) << 20) ^ k.col) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+} // namespace
 
 void SpreadsheetFormulaEngine::Recalculate() {
     if (!spreadsheet_ || !autoCalculate_) return;
+    if (recalculateAllPending_) {
+        RecalculateAll();
+        return;
+    }
+
+    // Where each formula is, and what it reads. A reference without a sheet
+    // name reads the formula's own sheet; one naming a sheet that does not
+    // exist reads nothing that can change.
+    // A formula's area is the cells it fills: itself, or its array's range
+    // (also a blocked spill's, which a cleared cell may free).
+    struct Watched {
+        const SpreadsheetSheet* sheet;
+        CellAddress at;
+        bool dirty;
+        CellRange area;
+    };
+    std::vector<Watched> formulas;
+    std::unordered_map<SheetCellKey, int, SheetCellKeyHash> formulaAt;
+    std::unordered_map<SheetCellKey, std::vector<int>, SheetCellKeyHash> readersOfCell;
+    std::vector<std::pair<int, SheetArea>> rangeReaders;
+    std::vector<int> nameReaders;
+    std::vector<std::pair<int, SheetArea>> arrayAreas;   // formulas filling more than their cell
+
+    // Spilled values whose formula went or shrank are emptied first, and
+    // count as changed for whatever reads them.
+    for (const auto& [sheet, range] : ClearOrphanedSpills()) changedRanges_.emplace_back(sheet->GetName(), range);
 
     for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
-        auto* sheet = spreadsheet_->GetSheet(s);
+        SpreadsheetSheet* sheet = spreadsheet_->GetSheet(s);
         if (!sheet) continue;
-
-        sheet->ForEachCell([this, sheet](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
-            if (cell.HasFormula() && cell.IsFormulaDirty()) {
-                EvaluateCell(&cell, sheet);
+        auto sheetOf = [this, sheet](const std::string& name) -> const SpreadsheetSheet* {
+            return name.empty() ? sheet : spreadsheet_->GetSheetByName(name);
+        };
+        sheet->ForEachCell([&](int row, int col, SpreadsheetCell& cell) {
+            if (!cell.HasFormula()) return;
+            if (!cell.GetFormula()) cell.SetParsedFormula(ParseFormula(cell.GetFormulaText(), CellAddress(row, col)));
+            const int index = static_cast<int>(formulas.size());
+            bool dirty = cell.IsFormulaDirty();
+            if (auto formula = cell.GetFormula(); formula && formula->IsValid()) {
+                for (const auto& dep : formula->GetDependencies()) {
+                    if (const auto* from = sheetOf(dep.sheetName)) {
+                        readersOfCell[SheetCellKey{from, dep.row, dep.col}].push_back(index);
+                    }
+                }
+                for (const auto& range : formula->GetRangeDependencies()) {
+                    if (const auto* from = sheetOf(range.start.sheetName)) {
+                        rangeReaders.push_back({index, SheetArea{from, CellRange(range.start.row, range.start.col,
+                                                                                  range.end.row, range.end.col)}});
+                    }
+                }
+                if (formula->ReadsNamedRanges()) nameReaders.push_back(index);
+                for (const auto& name : formula->GetFunctionNames()) {
+                    const FunctionDefinition* def = functionLibrary_.GetFunction(name);
+                    if (def && def->isVolatile) dirty = true;   // NOW, TODAY, RAND ...
+                }
             }
+            CellRange area(row, col, row, col);
+            if (cell.CoversArray() || cell.IsSpillBlocked()) {
+                area = CellRange(row, col, row + cell.GetArrayRows() - 1, col + cell.GetArrayCols() - 1);
+                arrayAreas.push_back({index, SheetArea{sheet, area}});
+            }
+            formulas.push_back({sheet, CellAddress(row, col), dirty, area});
+            formulaAt[SheetCellKey{sheet, row, col}] = index;
         });
     }
 
+    // From the changed cells to everything that reads them: a formula that
+    // becomes dirty is itself a change - of every cell it fills - for the
+    // formulas that read it.
+    std::vector<SheetArea> pending;
+    for (const auto& [name, range] : changedRanges_) {
+        if (const auto* sheet = spreadsheet_->GetSheetByName(name)) pending.push_back({sheet, range});
+    }
+    changedRanges_.clear();
+    for (const auto& f : formulas) {
+        if (f.dirty) pending.push_back({f.sheet, f.area});
+    }
+    const bool anyChange = !pending.empty();
+
+    auto mark = [&](int index) {
+        Watched& f = formulas[static_cast<size_t>(index)];
+        if (f.dirty) return;
+        f.dirty = true;
+        pending.push_back({f.sheet, f.area});
+    };
+    if (anyChange) {
+        for (int index : nameReaders) mark(index);   // a name may cover any cell
+    }
+    while (!pending.empty()) {
+        const SheetArea area = pending.back();
+        pending.pop_back();
+        const long long cells = area.CellCount();
+
+        // Formulas standing in the area (pasted, filled, restored by undo),
+        // and formulas reading one of its cells: through the cell indexes
+        // when the area is small, by walking the indexes when it is large.
+        if (cells <= static_cast<long long>(formulaAt.size() + readersOfCell.size())) {
+            for (int row = area.range.start.row; row <= area.range.end.row; ++row) {
+                for (int col = area.range.start.col; col <= area.range.end.col; ++col) {
+                    const SheetCellKey key{area.sheet, row, col};
+                    if (auto it = formulaAt.find(key); it != formulaAt.end()) mark(it->second);
+                    if (auto it = readersOfCell.find(key); it != readersOfCell.end()) {
+                        for (int index : it->second) mark(index);
+                    }
+                }
+            }
+        } else {
+            for (const auto& [key, index] : formulaAt) {
+                if (key.sheet == area.sheet && area.range.Contains(key.row, key.col)) mark(index);
+            }
+            for (const auto& [key, readers] : readersOfCell) {
+                if (key.sheet == area.sheet && area.range.Contains(key.row, key.col)) {
+                    for (int index : readers) mark(index);
+                }
+            }
+        }
+        for (const auto& [index, read] : rangeReaders) {
+            if (read.sheet == area.sheet && read.range.Intersects(area.range)) mark(index);
+        }
+        // An array whose cells were written into (its spill is blocked now)
+        // or emptied (it may spill again).
+        for (const auto& [index, filled] : arrayAreas) {
+            if (filled.sheet == area.sheet && filled.range.Intersects(area.range)) mark(index);
+        }
+    }
+
+    auto markCells = [&formulas]() {
+        for (const auto& f : formulas) {
+            if (!f.dirty) continue;
+            auto* sheet = const_cast<SpreadsheetSheet*>(f.sheet);
+            if (SpreadsheetCell* cell = sheet->GetCellIfExists(f.at.row, f.at.col)) cell->MarkFormulaDirty();
+        }
+    };
+
+    // Calculate them. A reference to a dirty formula calculates it first
+    // (FormulaEvaluator's resolver), so the order of the walk does not
+    // matter. A chain deeper than one nested calculation follows leaves the
+    // cells above the limit calculated from a value not yet current, so
+    // another pass marks the same set again and reaches further, as
+    // RecalculateAll does. The cells are listed before any is calculated:
+    // a spill creates cells, which the sheet's cell map must not see while
+    // it is walked.
+    const int layoutBefore = spillLayoutChanges_;
+    constexpr int kMaxPasses = 16;
+    for (int pass = 0; pass < kMaxPasses; ++pass) {
+        markCells();
+        nestingLimitReached_ = false;
+        for (const auto& f : formulas) {
+            if (!f.dirty) continue;
+            auto* sheet = const_cast<SpreadsheetSheet*>(f.sheet);
+            SpreadsheetCell* cell = sheet->GetCellIfExists(f.at.row, f.at.col);
+            if (cell && cell->HasFormula() && cell->IsFormulaDirty()) EvaluateCell(cell, sheet);
+        }
+        if (!nestingLimitReached_) break;
+    }
+
     dirtyCells_.clear();
+
+    // A spill that grew, moved or was blocked or freed changed cells nobody
+    // was marked for: what reads them is calculated once more.
+    if (spillLayoutChanges_ != layoutBefore && recalculateDepth_ < 4) {
+        for (const auto& f : formulas) {
+            if (!f.dirty) continue;
+            auto* sheet = const_cast<SpreadsheetSheet*>(f.sheet);
+            const SpreadsheetCell* cell = sheet->GetCellIfExists(f.at.row, f.at.col);
+            if (!cell) continue;
+            const CellRange now = (cell->CoversArray() || cell->IsSpillBlocked()) ? cell->GetArrayRange()
+                                                                                   : CellRange(f.at.row, f.at.col, f.at.row, f.at.col);
+            if (now.start == f.area.start && now.end == f.area.end) continue;
+            const CellRange both(std::min(now.start.row, f.area.start.row), std::min(now.start.col, f.area.start.col),
+                                 std::max(now.end.row, f.area.end.row), std::max(now.end.col, f.area.end.col));
+            changedRanges_.emplace_back(f.sheet->GetName(), both);
+        }
+        if (!changedRanges_.empty()) {
+            ++recalculateDepth_;
+            Recalculate();
+            --recalculateDepth_;
+        }
+    }
 }
 
 void SpreadsheetFormulaEngine::RecalculateAll() {
@@ -1367,27 +1978,41 @@ void SpreadsheetFormulaEngine::RecalculateAll() {
     // the cells it reached are clean by the time the walk gets to them. A
     // chain deeper than one nested calculation follows (EvaluateCell) gets
     // another pass, each reaching further, rather than an ever deeper stack.
+    //
+    // Spills: values whose formula no longer covers them are emptied first;
+    // a value spilled from a dirty formula calculates that formula before it
+    // is read. A formula that read a cell a spill reached only later in the
+    // pass read it empty, so the pass is repeated while spills still move
+    // (a few times at most). The cells are listed before any is calculated:
+    // a spill creates cells, which the cell map must not see while walked.
+    ClearOrphanedSpills();
     constexpr int kMaxPasses = 16;
+    constexpr int kMaxSpillPasses = 4;
+    int spillPasses = 0;
     for (int pass = 0; pass < kMaxPasses; ++pass) {
         nestingLimitReached_ = false;
+        const int layoutBefore = spillLayoutChanges_;
+        std::vector<std::pair<SpreadsheetCell*, SpreadsheetSheet*>> cells;
         for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
             auto* sheet = spreadsheet_->GetSheet(s);
             if (!sheet) continue;
-            sheet->ForEachCell([](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
-                if (cell.HasFormula()) cell.MarkFormulaDirty();
+            sheet->ForEachCell([&cells, sheet](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
+                if (!cell.HasFormula()) return;
+                cell.MarkFormulaDirty();
+                cells.emplace_back(&cell, sheet);
             });
         }
-        for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
-            auto* sheet = spreadsheet_->GetSheet(s);
-            if (!sheet) continue;
-            sheet->ForEachCell([this, sheet](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
-                if (cell.HasFormula() && cell.IsFormulaDirty()) EvaluateCell(&cell, sheet);
-            });
+        for (const auto& [cell, sheet] : cells) {
+            if (cell->HasFormula() && cell->IsFormulaDirty()) EvaluateCell(cell, sheet);
         }
-        if (!nestingLimitReached_) break;
+        const bool spillsMoved = spillLayoutChanges_ != layoutBefore && ++spillPasses < kMaxSpillPasses;
+        if (spillsMoved) ClearOrphanedSpills();
+        if (!nestingLimitReached_ && !spillsMoved) break;
     }
 
     dirtyCells_.clear();
+    changedRanges_.clear();
+    recalculateAllPending_ = false;
 }
 
 void SpreadsheetFormulaEngine::UpdateDependencies(SpreadsheetCell* cell, const std::string& sheetName) {

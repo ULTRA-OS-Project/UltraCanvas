@@ -25,7 +25,7 @@ namespace UltraCanvas {
         auto tile = CreateLabel(id, x, y, 52, 52);
         tile->SetText(text);
         tile->SetAlignment(TextAlignment::Center);
-        tile->SetBackgroundColor(bg);
+        tile->SetBackgroundColor(DemoKit::ThemedFill(bg));
         tile->SetTextColor(Colors::White);
         tile->SetFontWeight(FontWeight::Bold);
         return tile;

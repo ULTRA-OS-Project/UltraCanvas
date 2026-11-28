@@ -24,9 +24,9 @@ unsigned int CreateShaderProgram(); void ClearFrame(const Color& color); void Ma
 - [Usage Examples](#usage-examples)
   - [Application state](#application-state)
   - [Configuring and creating the surface](#configuring-and-creating-the-surface)
-  - [Init callback — create GL resources](#init-callback-—-create-gl-resources)
-  - [Render callback — draw each frame](#render-callback-—-draw-each-frame)
-  - [Cleanup callback — release GL resources](#cleanup-callback-—-release-gl-resources)
+  - [Init callback — create GL resources](#init-callback--create-gl-resources)
+  - [Render callback — draw each frame](#render-callback--draw-each-frame)
+  - [Cleanup callback — release GL resources](#cleanup-callback--release-gl-resources)
   - [Driving rotation from UltraCanvas widgets](#driving-rotation-from-ultracanvas-widgets)
   - [OnDemand rendering pattern](#ondemand-rendering-pattern)
 - [Compositing and Performance Notes](#compositing-and-performance-notes)
@@ -419,6 +419,6 @@ surface->RequestRender();
 
 ## See Also
 
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — Base class documentation
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — Base class documentation
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) — 2D rendering pipeline
-- [UltraCanvasContainer](UltraCanvasContainer.md) — Hosting GL surfaces inside layouts
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) — Hosting GL surfaces inside layouts

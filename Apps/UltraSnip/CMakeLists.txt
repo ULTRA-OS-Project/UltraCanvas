@@ -5,6 +5,7 @@
 # VideoFX's frame recorder). UltraDesktop's screenshot button and
 # Super+Shift+S start it; a second start hands its request to the running
 # one. Without VideoFX the pictures still work and a recording says why not.
+# Version: 0.1.1 - the overlay is the framework's (UltraCanvasScreenAreaPicker), not built here
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -16,7 +17,6 @@ endif()
 add_executable(UltraSnip
     main.cpp
     ui/UltraSnipCapture.cpp
-    ui/UltraSnipOverlay.cpp
     ui/UltraSnipRecorder.cpp
     ui/UltraSnipRecordingBar.cpp
     ui/UltraSnipSettings.cpp

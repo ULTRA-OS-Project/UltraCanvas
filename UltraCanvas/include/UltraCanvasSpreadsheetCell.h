@@ -1,5 +1,14 @@
 // include/UltraCanvasSpreadsheetCell.h
 // Spreadsheet cell data structure with value, formatting, and formula support
+// Version: 1.6.0 - array formulas: FormulaArrayMode (Spilling / SingleValue / FixedRange), the
+//                  anchor's extent and #SPILL! state, spilled values (SetSpilledValue,
+//                  IsSpilledValue, GetSpillAnchor); every setter makes a spilled cell ordinary again
+// Version: 1.5.0 - ReadDataValidationBound (the .xlsx / .ods writers); Custom rules are evaluated by
+//                  SpreadsheetSheet::ValidateCell
+// Version: 1.4.0 - a typed "nan", "inf" or "0x10" is text, not a number
+// Version: 1.3.0 - a typed "45%" is the percentage 0.45 (it was text); a percentage under General shows as one
+// Version: 1.2.0 - DataValidationListItems
+// Version: 1.1.0 - ValidateValue checks the cell's rule (it accepted everything); CheckDataValidation
 // Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.0.0
 // Last Modified: 2026-10-08
@@ -7,18 +16,32 @@
 #pragma once
 
 #include "UltraCanvasSpreadsheetTypes.h"
+#include <algorithm>
+#include <cstdint>
 #include <string>
+#include <vector>
 #include <memory>
 #include <optional>
 #include <functional>
 #include <cstring>
 #include <cstdio>
+#include <cctype>
+#include <cmath>
 
 namespace UltraCanvas {
 
 // Forward declarations
 class SpreadsheetSheet;
 class SpreadsheetFormula;
+
+// How a formula's array result is put on the sheet.
+enum class FormulaArrayMode : uint8_t {
+    Spilling,       // a dynamic array: spills right and down, #SPILL! when blocked (what is typed)
+    SingleValue,    // one value only - a range where one value is expected gives the cell on
+                    // the formula's row or column (a formula read from a file without
+                    // dynamic arrays)
+    FixedRange      // a legacy array formula (Ctrl+Shift+Enter) filling a fixed range
+};
 
 // ============================================================================
 // SPREADSHEET CELL
@@ -38,7 +61,24 @@ private:
     std::string formulaText_;                       // Original formula text (e.g., "=SUM(A1:A10)")
     std::shared_ptr<SpreadsheetFormula> formula_;   // Parsed formula (lazy evaluated)
     bool formulaDirty_ = false;                     // Needs recalculation
-    
+
+    // Array formulas (see GetFormulaArrayMode): the anchor's mode and extent,
+    // and a spilled value's offset from its anchor.
+    FormulaArrayMode arrayMode_ = FormulaArrayMode::Spilling;
+    int arrayRows_ = 1;
+    int arrayCols_ = 1;
+    bool spillBlocked_ = false;
+    bool arrayResult_ = false;
+    bool spilledValue_ = false;
+    int spillRowOffset_ = 0;
+    int spillColOffset_ = 0;
+    void ResetArrayState() {
+        arrayMode_ = FormulaArrayMode::Spilling;
+        arrayRows_ = arrayCols_ = 1;
+        spillBlocked_ = arrayResult_ = spilledValue_ = false;
+        spillRowOffset_ = spillColOffset_ = 0;
+    }
+
     // Cached display value
     mutable std::string displayValue_;
     mutable bool displayDirty_ = true;
@@ -169,7 +209,78 @@ public:
     
     // Set formula result (called by formula engine)
     void SetFormulaResult(const CellValueVariant& result, CellValueType resultType);
-    
+
+    // ===== ARRAY FORMULAS =====
+    // A formula whose result is an array covers more cells than its own
+    // (UltraCanvasSpreadsheetFormula.h). The anchor holds the formula and the
+    // top-left value; every other cell it covers holds a spilled value - a
+    // plain value marked with where its formula is, never a formula itself.
+    // Typing into a spilled cell makes it an ordinary cell again (and blocks
+    // a dynamic spill: #SPILL!).
+
+    FormulaArrayMode GetFormulaArrayMode() const { return arrayMode_; }
+    // Spilling and SingleValue keep a 1 x 1 extent until calculated; a
+    // FixedRange covers rows x cols from this cell. Set after SetFormula,
+    // which resets it to Spilling.
+    void SetFormulaArrayMode(FormulaArrayMode mode, int rows = 1, int cols = 1) {
+        arrayMode_ = mode;
+        arrayRows_ = std::max(1, rows);
+        arrayCols_ = std::max(1, cols);
+        spillBlocked_ = false;
+    }
+    // The size of the array the formula gives (a FixedRange's own size);
+    // for a blocked spill the size it would cover.
+    int GetArrayRows() const { return arrayRows_; }
+    int GetArrayCols() const { return arrayCols_; }
+    bool IsSpillBlocked() const { return spillBlocked_; }
+    // Whether the last result was an array (even a 1 x 1 one): a dynamic
+    // array formula, which .xlsx marks as one.
+    bool HasArrayResult() const { return arrayResult_; }
+    // Set by the engine after a calculation.
+    void SetArrayExtent(int rows, int cols, bool blocked, bool arrayResult) {
+        arrayRows_ = std::max(1, rows);
+        arrayCols_ = std::max(1, cols);
+        spillBlocked_ = blocked;
+        arrayResult_ = arrayResult;
+    }
+    // The cells this formula fills now: more than itself for a fixed array
+    // formula and for a dynamic one that spills.
+    bool CoversArray() const {
+        if (!HasFormula()) return false;
+        if (arrayMode_ == FormulaArrayMode::FixedRange) return true;
+        return arrayMode_ == FormulaArrayMode::Spilling && !spillBlocked_ &&
+               (arrayRows_ > 1 || arrayCols_ > 1);
+    }
+    CellRange GetArrayRange() const {
+        return CellRange(row_, col_, row_ + arrayRows_ - 1, col_ + arrayCols_ - 1);
+    }
+
+    // A value a formula elsewhere put here; anchorRowOffset / anchorColOffset
+    // are how far up and left its formula is.
+    void SetSpilledValue(const CellValueVariant& value, CellValueType type, int anchorRowOffset,
+                         int anchorColOffset) {
+        valueType_ = type;
+        value_ = value;
+        formulaText_.clear();
+        formula_.reset();
+        formulaDirty_ = false;
+        displayDirty_ = true;
+        ResetArrayState();
+        spilledValue_ = true;
+        spillRowOffset_ = anchorRowOffset;
+        spillColOffset_ = anchorColOffset;
+    }
+    // Marks the value already here as spilled (a file read gives the values
+    // of an array's cells as plain values).
+    void MarkSpilledFrom(int anchorRowOffset, int anchorColOffset) {
+        spilledValue_ = true;
+        spillRowOffset_ = anchorRowOffset;
+        spillColOffset_ = anchorColOffset;
+    }
+    bool IsSpilledValue() const { return spilledValue_; }
+    // The cell whose formula spilled this value.
+    CellAddress GetSpillAnchor() const { return CellAddress(row_ - spillRowOffset_, col_ - spillColOffset_); }
+
     // ===== STYLING =====
     
     // Get style (returns default if nullptr)
@@ -248,7 +359,9 @@ public:
     void SetValidation(const DataValidation& validation);
     void RemoveValidation() { validation_.reset(); }
     
-    // Validate current value against validation rules
+    // True when the cell's value passes its own validation rule (always,
+    // when it has none). On false, `errorMessage` gets the rule's error
+    // message, or a default one. See CheckDataValidation below.
     bool ValidateValue(std::string* errorMessage = nullptr) const;
     
     // ===== MERGE =====
@@ -296,6 +409,34 @@ private:
     static const CellStyle& GetDefaultStyle();
 };
 
+// Checks `cell` (null: an empty cell) against `validation`, as a spreadsheet
+// application does when a value is entered:
+// - an empty cell passes when the rule allows blanks;
+// - WholeNumber, Decimal, Date and Time need a number (a date or time is its
+//   serial number) compared with formula1 / formula2 by the rule's operator;
+//   WholeNumber also needs it whole. The bounds are dot-decimal numbers; a
+//   Date bound may also be "YYYY-MM-DD" and a Time bound "HH:MM[:SS]";
+// - TextLength compares the number of characters (not bytes) of the shown text;
+// - List needs the shown text to be one of formula1's comma- or
+//   semicolon-separated items (surrounding spaces and quotes ignored);
+// - Custom (a formula) passes here, as does Any: it is evaluated on the sheet
+//   (SpreadsheetSheet::ValidateCell), as are a list taken from cells and a
+//   bound that is a formula ("=$B$1").
+// A bound that cannot be read fails the check rather than passing it.
+// On false, `errorMessage` gets the rule's errorMessage, or a default one.
+bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell* cell,
+                         std::string* errorMessage = nullptr);
+
+// The items of a List rule's formula1, in order, as CheckDataValidation reads
+// them (empty items dropped); empty for any other rule.
+std::vector<std::string> DataValidationListItems(const DataValidation& validation);
+
+// A Whole number / Decimal / Date / Time / Text length bound as the number
+// CheckDataValidation compares with: a dot-decimal number, and for Date and
+// Time also "YYYY-MM-DD" / "HH:MM[:SS]" as their serial number. Nothing for
+// text that is none of these (a formula).
+std::optional<double> ReadDataValidationBound(const std::string& text, ValidationType type);
+
 // ============================================================================
 // IMPLEMENTATION
 // ============================================================================
@@ -308,6 +449,14 @@ inline SpreadsheetCell::SpreadsheetCell(const SpreadsheetCell& other)
     , formulaText_(other.formulaText_)
     , formula_(other.formula_)
     , formulaDirty_(other.formulaDirty_)
+    , arrayMode_(other.arrayMode_)
+    , arrayRows_(other.arrayRows_)
+    , arrayCols_(other.arrayCols_)
+    , spillBlocked_(other.spillBlocked_)
+    , arrayResult_(other.arrayResult_)
+    , spilledValue_(other.spilledValue_)
+    , spillRowOffset_(other.spillRowOffset_)
+    , spillColOffset_(other.spillColOffset_)
     , displayValue_(other.displayValue_)
     , displayDirty_(other.displayDirty_)
     , isPartOfMerge_(other.isPartOfMerge_)
@@ -336,6 +485,14 @@ inline SpreadsheetCell& SpreadsheetCell::operator=(const SpreadsheetCell& other)
         formulaText_ = other.formulaText_;
         formula_ = other.formula_;
         formulaDirty_ = other.formulaDirty_;
+        arrayMode_ = other.arrayMode_;
+        arrayRows_ = other.arrayRows_;
+        arrayCols_ = other.arrayCols_;
+        spillBlocked_ = other.spillBlocked_;
+        arrayResult_ = other.arrayResult_;
+        spilledValue_ = other.spilledValue_;
+        spillRowOffset_ = other.spillRowOffset_;
+        spillColOffset_ = other.spillColOffset_;
         displayValue_ = other.displayValue_;
         displayDirty_ = other.displayDirty_;
         isPartOfMerge_ = other.isPartOfMerge_;
@@ -443,6 +600,7 @@ inline void SpreadsheetCell::ClearContents() {
     formulaText_.clear();
     formula_.reset();
     formulaDirty_ = false;
+    ResetArrayState();
     displayDirty_ = true;
 }
 
@@ -477,6 +635,7 @@ inline void SpreadsheetCell::SetText(const std::string& text) {
     value_ = text;
     formulaText_.clear();
     formula_.reset();
+    ResetArrayState();
     displayDirty_ = true;
 }
 
@@ -485,6 +644,7 @@ inline void SpreadsheetCell::SetNumber(double value) {
     value_ = value;
     formulaText_.clear();
     formula_.reset();
+    ResetArrayState();
     displayDirty_ = true;
 }
 
@@ -493,6 +653,7 @@ inline void SpreadsheetCell::SetBoolean(bool value) {
     value_ = value;
     formulaText_.clear();
     formula_.reset();
+    ResetArrayState();
     displayDirty_ = true;
 }
 
@@ -501,6 +662,7 @@ inline void SpreadsheetCell::SetError(CellErrorType error) {
     value_ = error;
     formulaText_.clear();
     formula_.reset();
+    ResetArrayState();
     displayDirty_ = true;
 }
 
@@ -523,6 +685,7 @@ inline void SpreadsheetCell::SetDateTime(const DateTimeValue& value) {
     value_ = value.serialNumber;
     formulaText_.clear();
     formula_.reset();
+    ResetArrayState();
     displayDirty_ = true;
 }
 
@@ -531,6 +694,7 @@ inline void SpreadsheetCell::SetCurrency(double amount, const std::string& curre
     value_ = CurrencyValue(amount, currencyCode);
     formulaText_.clear();
     formula_.reset();
+    ResetArrayState();
     displayDirty_ = true;
 }
 
@@ -539,6 +703,7 @@ inline void SpreadsheetCell::SetPercentage(double value) {
     value_ = value;
     formulaText_.clear();
     formula_.reset();
+    ResetArrayState();
     displayDirty_ = true;
 }
 
@@ -548,11 +713,13 @@ inline void SpreadsheetCell::SetFormula(const std::string& formula) {
     formulaDirty_ = true;
     displayDirty_ = true;
     formula_.reset();  // Will be parsed by formula engine
+    ResetArrayState();   // a dynamic formula until said otherwise
 }
 
 inline void SpreadsheetCell::SetValue(const CellValueVariant& value, CellValueType type) {
     value_ = value;
     valueType_ = type;
+    spilledValue_ = false;
     displayDirty_ = true;
 }
 
@@ -576,20 +743,39 @@ inline void SpreadsheetCell::SetValueFromString(const std::string& input) {
         return;
     }
     
-    // Try to parse as number
-    try {
-        size_t pos;
-        double num = std::stod(input, &pos);   // locale-ok: cell entry - what the user typed, in their locale
-        if (pos == input.length()) {
-            // Check if it looks like a percentage
-            if (input.back() == '%') {
-                SetPercentage(num / 100.0);
-            } else {
-                SetNumber(num);
+    // A number, or a percentage: "45%", "12.5 %", "-3%" is the number with
+    // the sign taken off and divided by 100. The number must be all of what
+    // is left - std::stod stops at the '%', which is why "45%" used to be
+    // stored as text.
+    std::string number = input;
+    while (!number.empty() && std::isspace(static_cast<unsigned char>(number.back()))) number.pop_back();
+    const bool percent = !number.empty() && number.back() == '%';
+    if (percent) {
+        number.pop_back();
+        while (!number.empty() && std::isspace(static_cast<unsigned char>(number.back()))) number.pop_back();
+    }
+    // Only what a person writes a number with: digits, a sign, the decimal
+    // point or comma, an exponent ("1.5e3"). std::stod also reads "nan",
+    // "inf", "infinity" and hexadecimal ("0x10", "0x1p3"), which typed into
+    // a cell are words, not numbers - "nan" became a NaN, "0x10" became 16.
+    const size_t first = number.find_first_not_of(" \t");
+    bool plain = first != std::string::npos;
+    for (size_t k = plain ? first : 0; plain && k < number.size(); ++k) {
+        const char ch = number[k];
+        plain = std::isdigit(static_cast<unsigned char>(ch)) || ch == '+' || ch == '-' ||
+                ch == '.' || ch == ',' || ch == 'e' || ch == 'E';
+    }
+    if (plain) {
+        try {
+            size_t pos;
+            double num = std::stod(number, &pos);   // locale-ok: cell entry - what the user typed, in their locale
+            if (pos == number.length() && std::isfinite(num)) {
+                if (percent) SetPercentage(num / 100.0);
+                else SetNumber(num);
+                return;
             }
-            return;
-        }
-    } catch (...) {}
+        } catch (...) {}
+    }
     
     // Default to text
     SetText(input);
@@ -800,14 +986,9 @@ inline void SpreadsheetCell::SetValidation(const DataValidation& validation) {
     validation_ = std::make_unique<DataValidation>(validation);
 }
 
-inline bool SpreadsheetCell::ValidateValue(std::string* errorMessage) const {
-    (void)errorMessage;
-    if (!validation_) return true;
-    
-    // TODO: Implement validation logic based on ValidationType and ValidationOperator
-    // For now, return true
-    return true;
-}
+// ValidateValue is defined in core/UltraCanvasSpreadsheetSheet.cpp, beside
+// CheckDataValidation, which does the work for it and for
+// SpreadsheetSheet::ValidateCell.
 
 // ===== COMPARISON =====
 
@@ -885,9 +1066,18 @@ inline void SpreadsheetCell::UpdateDisplayValue() const {
             break;
             
         case CellValueType::Number:
-        case CellValueType::Percentage:
             if (auto* num = std::get_if<double>(&value_)) {
                 displayValue_ = FormatNumber(*num);
+            }
+            break;
+
+        case CellValueType::Percentage:
+            // Under General a percentage shows as one ("45%", "12.5%");
+            // a format the cell was given decides otherwise.
+            if (auto* num = std::get_if<double>(&value_)) {
+                displayValue_ = GetStyle().numberFormat.category == NumberFormatCategory::General
+                                    ? FormatNumber(*num * 100.0) + "%"
+                                    : FormatNumber(*num);
             }
             break;
             

@@ -18,6 +18,8 @@
 // Asked afresh on every call, so a font installed or registered meanwhile
 // counts. UI thread: the text engine's default font map is that thread's.
 //
+// Version: 1.2.0 - FontFamilySubstitute / GetFontFamilySubstitutes: the installed font a family
+//                  nobody has installed is drawn in by name (Helvetica in Arial on Windows)
 // Version: 1.1.0 - IsFontFamilyAvailable is cheap: its list is made once per font set;
 //                  FirstInstalledFontFamily: the entry of a font-family list to draw in
 // Version: 1.0.0
@@ -62,6 +64,29 @@ namespace UltraCanvas {
     // Cheap after the first call: the list is made once per font set
     // (GetFontSetGeneration) and kept.
     bool IsFontFamilyAvailable(const std::string& family);
+
+    // A family with fonts of other names made to stand in for it: the same
+    // design under another name or one cut to the same widths, so a text set
+    // in it keeps its lines. `substitutes` in the order they are tried.
+    struct FontFamilySubstitutes {
+        const char* family;                       // "Helvetica"
+        std::vector<const char*> substitutes;     // "Arial", "Liberation Sans", ...
+    };
+    // The families the framework knows stand-ins for: the classic PostScript
+    // and Windows 3 names Windows itself maps (its FontSubstitutes: Helvetica
+    // and Helv onto Arial, Times and Tms Rmn onto Times New Roman, Courier
+    // onto Courier New) and the metric-compatible pairs fontconfig maps on
+    // Linux (Arial and Liberation Sans, Calibri and Carlito, ...). The
+    // fontconfig set the framework makes where the system has none (Windows,
+    // Android) carries them as aliases, so the text engine draws by them.
+    const std::vector<FontFamilySubstitutes>& GetFontFamilySubstitutes();
+
+    // The installed family that stands in for `family` (case ignored): the
+    // first of its substitutes the text engine has. "" when `family` has none
+    // installed - and when it is installed itself, and needs none. A document
+    // naming Helvetica is drawn in Arial on Windows without anything missing:
+    // UltraCanvasRichTextEdit's font report leaves such a family out.
+    std::string FontFamilySubstitute(const std::string& family);
 
     // The entry of a CSS font-family list to draw in, as a browser picks it:
     // the first the text engine has (IsFontFamilyAvailable), or an entry that

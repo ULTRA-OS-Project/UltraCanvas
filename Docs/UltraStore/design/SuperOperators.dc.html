@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Operations - Operators</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-wrap: wrap; align-items: stretch">
+
+<nav aria-label="Operations" style="flex: 1 1 220px; max-width: 250px; min-width: 0; background: #0f172a; color: #e2e8f0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<a href="SuperDashboard.dc.html" aria-label="UltraStore Operations" style="display: flex; align-items: center; gap: 10px; padding: 0 8px; text-decoration: none; color: #ffffff">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 32px; height: 32px; border-radius: 9px">
+<span style="display: flex; flex-direction: column; line-height: 1.15"><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 16px; letter-spacing: -0.02em">UltraStore</span><span style="font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #93c5fd">Operations</span></span>
+</a>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="SuperDashboard.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Dashboard</a>
+<a href="SuperMerchants.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Merchants</a>
+<a href="SuperReview.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500"><span style="flex: 1 1 auto">App review</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #2563eb; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">4</span></a>
+<a href="SuperReports.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500"><span style="flex: 1 1 auto">Reports</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">7</span></a>
+<a href="SuperTerms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Terms and notices</a>
+<a href="SuperUsers.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500"><span style="flex: 1 1 auto">Users</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #f59e0b; color: #0f172a; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">3</span></a>
+<a href="SuperOperators.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #1e3a8a; color: #ffffff; font-weight: 700">Operators</a>
+<a href="#payouts" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Payouts</a>
+<a href="#audit" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Audit log</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Settings</a>
+</div>
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; background: #1e293b; font-size: 12px; color: #94a3b8">
+<span style="font-weight: 700; color: #e2e8f0">store.ultraos.eu</span>
+<span>Catalog sequence 42 · 38 merchants · 112 apps live</span>
+<span>{{who}}</span>
+</div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Operators</h1>
+<span style="color: #64748b">Who sits at this window, and what each may do. An admin makes the accounts and gives the roles; the services refuse what a role does not allow, and the audit log names the person, not the token.</span>
+<span style="display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; min-height: 28px; padding: 4px 12px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Built 2026-11-19: the marketplace service keeps the operator accounts (Server/UltraStoreMarket, POST /v1/operators/signin, /v1/operators); the session it signs reaches the account service with the same name and role. The window is the Operators page and the Settings page's sign-in (Apps/UltraStoreOperator/ui/OperatorOperatorsPage.cpp); the static operator token stays the bootstrap admin.</span>
+</div>
+
+<section aria-labelledby="signin-title" style="display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+<h2 id="signin-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.02em">Sign in</h2>
+<p style="margin: 0; font-size: 13px; color: #334155">An operator account at the marketplace service: the email and the password. The session it answers with is kept as the window's token, lasts the service's hours (12 by default) and is verified by the account service with the secret the two services share, so the Users page needs no token of its own. The static operator token the service was started with is the bootstrap admin: it makes the first admin account, then stays in a drawer.</p>
+<div style="display: flex; flex-direction: column; gap: 10px; max-width: 420px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600">Email<input type="email" value="alex@ultra-os.example" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600">Password<input type="password" value="correct horse battery" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a"></label>
+<div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+<button type="button" onClick="{{signIn}}" style="height: 40px; padding: 0 18px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Sign in</button>
+<button type="button" onClick="{{signOut}}" style="height: 40px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Sign out</button>
+<span style="font-size: 13px; color: #64748b">{{sessionLine}}</span>
+</div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 14px; background: #f8fafc; font-size: 13px; color: #334155">
+<span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Signed in as</span>
+<span style="font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: #0f172a">{{me.name}}</span>
+<span>{{me.line}}</span>
+<span style="{{me.roleStyle}}">{{me.roleLabel}}</span>
+<span style="color: #64748b">May: {{me.may}}</span>
+</div>
+</section>
+
+<section aria-labelledby="roles-title" style="display: flex; flex-direction: column; gap: 10px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="roles-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.02em">The roles</h2>
+<table style="border-collapse: collapse; width: 100%; font-size: 13px">
+<thead>
+<tr style="color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em">
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0; width: 120px">Role</th>
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">May</th>
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">May not</th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="padding: 10px; border-bottom: 1px solid #f1f5f9"><span style="height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; background: #dbeafe; color: #1e40af">admin</span></td><td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155">everything: the merchants and their applications, the review and the publish, the reports, the notices, the terms and the policy, the users (suspend, delete on request, reset two-factor), the operator accounts</td><td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #64748b">disable their own account, or take their own admin role away</td></tr>
+<tr><td style="padding: 10px; border-bottom: 1px solid #f1f5f9"><span style="height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; background: #f1f5f9; color: #0f172a">reviewer</span></td><td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155">review and release the submissions, publish the catalog; read the merchants, the reports, the users, the audit log</td><td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #64748b">register or suspend a merchant, send a notice, touch a user or an operator account</td></tr>
+<tr><td style="padding: 10px; border-bottom: 1px solid #f1f5f9"><span style="height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; background: #f1f5f9; color: #0f172a">support</span></td><td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155">handle the reports, send notices, act for a user (a notice, sign out everywhere, release the data archive); read the rest</td><td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #64748b">decide a review, suspend or delete a user, change the terms or the policy</td></tr>
+<tr><td style="padding: 10px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; background: #f1f5f9; color: #0f172a">auditor</span></td><td style="padding: 10px; color: #334155">read everything, the audit logs of both services included</td><td style="padding: 10px; color: #64748b">change anything</td></tr>
+</tbody>
+</table>
+<p style="margin: 0; font-size: 12px; color: #64748b">Anyone changes their own name and password. A role gates a call at the service (403 forbidden, naming the role); the window hides the admin's controls from the others. A session ends by itself after the service's hours; a disabled account is refused from the next call on.</p>
+</section>
+
+<section aria-labelledby="accounts-title" style="display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: center; gap: 12px">
+<h2 id="accounts-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.02em">The accounts</h2>
+<span style="margin-left: auto; font-size: 13px; color: #64748b">{{count}} accounts · {{active}} active</span>
+</div>
+<table style="border-collapse: collapse; width: 100%; font-size: 13px">
+<thead>
+<tr style="color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em">
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Operator</th>
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Role</th>
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">State</th>
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Made</th>
+<th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Last sign-in</th>
+<th scope="col" style="text-align: right; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0">An admin's</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{ops}}" as="o" hint-placeholder-count="5">
+<tr style="{{o.rowStyle}}">
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; align-items: center; gap: 10px"><span aria-hidden="true" style="{{o.avatarStyle}}">{{o.initials}}</span><span style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">{{o.nameLabel}}</span><span style="color: #64748b">{{o.id}} · {{o.email}}</span></span></div></td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9"><span style="{{o.roleStyle}}">{{o.role}}</span></td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9"><span style="{{o.stateStyle}}">{{o.stateLabel}}</span></td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155">{{o.made}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155">{{o.lastSignin}}</td>
+<td style="padding: 10px; border-bottom: 1px solid #f1f5f9; text-align: right"><div style="display: inline-flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap">
+<sc-for list="{{o.roles}}" as="r" hint-placeholder-count="4"><button type="button" onClick="{{r.pick}}" aria-pressed="{{r.on}}" style="{{r.style}}">{{r.label}}</button></sc-for>
+<button type="button" onClick="{{o.toggle}}" style="{{o.toggleStyle}}">{{o.toggleLabel}}</button>
+</div></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+<p style="margin: 0; font-size: 12px; color: #64748b">Every change is a row in the audit log: who made the account, who changed a role, who switched one off - under the admin's own name. A password is never shown; an admin sets a new one, and the person changes it after their first sign-in.</p>
+</section>
+
+<section aria-labelledby="new-title" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="new-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.02em">A new account</h2>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600">Email<input type="email" placeholder="name@example.org" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600">Name<input type="text" placeholder="shown in the sidebar and the audit log" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600">Role<select style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a; background: #ffffff"><option>support</option><option>reviewer</option><option>auditor</option><option>admin</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600">Password<input type="password" placeholder="12 characters or more" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a"></label>
+<button type="button" style="align-self: flex-start; height: 40px; padding: 0 18px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Add the account</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.02em">Your own account</h2>
+<p style="margin: 0; font-size: 13px; color: #334155">The name and the password are yours to change; the role and the switch are another admin's.</p>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600">Name<input type="text" value="Alex Nowak" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600">New password<input type="password" placeholder="12 characters or more" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a"></label>
+<button type="button" style="align-self: flex-start; height: 40px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Change</button>
+<p style="margin: 0; font-size: 12px; color: #64748b">From the command line: <code>ultrastoreop signin &lt;email&gt;</code>, <code>whoami</code>, <code>operator list | add | set | disable | enable</code>, <code>signout</code>.</p>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1560}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      signedIn: true,
+      ops: [
+        { id: 'op-0001', name: 'Alex Nowak', email: 'alex@ultra-os.example', role: 'admin', active: true, made: '12 Nov 2026 by operator', lastSignin: '2 h ago', grad: 'linear-gradient(135deg, #bfdbfe, #1d4ed8)' },
+        { id: 'op-0002', name: 'Sam Petrov', email: 'sam@ultra-os.example', role: 'support', active: true, made: '12 Nov 2026 by Alex Nowak', lastSignin: '20 min ago', grad: 'linear-gradient(135deg, #bbf7d0, #15803d)' },
+        { id: 'op-0003', name: 'Ada Lindqvist', email: 'ada@ultra-os.example', role: 'reviewer', active: true, made: '14 Nov 2026 by Alex Nowak', lastSignin: 'yesterday', grad: 'linear-gradient(135deg, #fbcfe8, #be185d)' },
+        { id: 'op-0004', name: 'Jonas Baum', email: 'jonas@ultra-os.example', role: 'auditor', active: true, made: '15 Nov 2026 by Alex Nowak', lastSignin: 'never', grad: 'linear-gradient(135deg, #fde68a, #b45309)' },
+        { id: 'op-0005', name: 'Mira Costa', email: 'mira@ultra-os.example', role: 'support', active: false, made: '3 Oct 2026 by operator', lastSignin: '4 weeks ago', grad: 'linear-gradient(135deg, #e2e8f0, #64748b)' }
+      ]
+    };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#2563eb';
+    const s = this.state;
+    const ME = 'op-0001';
+    const MAY = {
+      admin: 'everything, the operator accounts included',
+      reviewer: 'review decide, publish; read the rest',
+      support: 'reports handle, notices send, users support; read the rest',
+      auditor: 'read everything'
+    };
+    const roleStyle = (r) => 'height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; white-space: nowrap; ' + (r === 'admin' ? 'background: #dbeafe; color: #1e40af' : 'background: #f1f5f9; color: #0f172a');
+    const small = (on) => 'height: 28px; padding: 0 10px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; border: 0; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: #f1f5f9; color: #0f172a');
+    const initials = (o) => o.name.split(/\s+/).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+    const ops = s.ops.map((o) => {
+      const own = o.id === ME;
+      return {
+        ...o,
+        nameLabel: own ? o.name + ' (you)' : o.name,
+        initials: initials(o),
+        avatarStyle: 'width: 32px; height: 32px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 800; font-size: 11px; flex: 0 0 auto; background: ' + o.grad,
+        roleStyle: roleStyle(o.role),
+        stateLabel: o.active ? 'active' : 'disabled',
+        stateStyle: 'height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; ' + (o.active ? 'background: #dcfce7; color: #166534' : 'background: #fee2e2; color: #991b1b'),
+        rowStyle: o.active ? '' : 'opacity: 0.6',
+        roles: own ? [] : ['admin', 'reviewer', 'support', 'auditor'].map((r) => ({
+          label: r, on: r === o.role, style: small(r === o.role),
+          pick: () => this.setState({ ops: s.ops.map((x) => x.id === o.id ? { ...x, role: r } : x) })
+        })),
+        toggleLabel: own ? 'your own account' : o.active ? 'Disable' : 'Enable',
+        toggleStyle: own ? 'height: 28px; padding: 0 10px; border: 0; background: transparent; font: inherit; font-size: 12px; color: #64748b; cursor: default'
+          : 'height: 28px; padding: 0 10px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; border: 0; ' + (o.active ? 'background: #fee2e2; color: #991b1b' : 'background: #dcfce7; color: #166534'),
+        toggle: () => { if (!own) this.setState({ ops: s.ops.map((x) => x.id === o.id ? { ...x, active: !x.active } : x) }); }
+      };
+    });
+    const meOp = s.ops.find((o) => o.id === ME);
+    const me = s.signedIn
+      ? { name: meOp.name, line: meOp.id + ' · ' + meOp.email + ' · the session lasts 12 hours', roleLabel: meOp.role, roleStyle: roleStyle(meOp.role) + ' align-self: flex-start', may: MAY[meOp.role] }
+      : { name: 'operator', line: 'the static token: the bootstrap admin, no account', roleLabel: 'admin (bootstrap)', roleStyle: roleStyle('admin') + ' align-self: flex-start', may: MAY.admin };
+    return {
+      accent, ops, me,
+      who: s.signedIn ? 'Signed in as ' + meOp.name + ', ' + meOp.role : 'Signed in as operator (the static token)',
+      sessionLine: s.signedIn ? 'Signed in; the session is the token in the settings.' : 'Signed out: the static token is the bearer again.',
+      count: s.ops.length, active: s.ops.filter((o) => o.active).length,
+      signIn: () => this.setState({ signedIn: true }),
+      signOut: () => this.setState({ signedIn: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -130,7 +130,7 @@ namespace {
         root->layout.SetFlexColumn().SetFlexGap(8)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         root->SetPadding(10, 12, 10, 12);
-        root->SetBackgroundColor(Colors::White);
+        root->SetBackgroundColor(DemoKit::Themed(Colors::White));
         // Taller than the tab (a short window, a longer translation): it
         // scrolls instead of cutting the log off.
         {
@@ -419,7 +419,7 @@ namespace {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("SystemDialogsTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
 

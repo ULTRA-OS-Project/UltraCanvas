@@ -79,7 +79,7 @@ explicit UltraCanvasLabel(const std::string& identifier = "");
   Tr("About"))`, or `("", Tr("Select a repository"))` for a label that needs
   no name. Until 2.18.0 the one string was the text. A label built from
   text alone still compiles - and shows nothing:
-  `scripts/check_label_identifiers.py` (CI's `label-identifiers.yml`)
+  `scripts/check_label_identifiers.py` (CI's `source-checks.yml`)
   refuses a one-string label whose string is a `Tr` call or reads as words,
   and `debugOutput` names the ones it cannot read.
 - A width or height greater than 0 is a **set size**: the label keeps it, and
@@ -651,6 +651,14 @@ shadowLabel->SetBackgroundColor(Color(100, 100, 100));
 3. With `hasShadow`, the text is drawn once at `shadowOffset` in
    `shadowColor`, then in its own colour; inline images are drawn on their
    placeholders.
+4. A text of one character - "+", "×", "‹", a check mark - in a label
+   centred both ways (`SetAlignment(TextAlignment::Center,
+   VerticalAlignment::Middle)`) is placed by its drawn shape: its ink in the
+   middle of the content box, on whole pixels. A word is centred on its
+   line, which puts its capitals in the middle; a lone symbol has no
+   capitals and sat where the font put it (an "×" 2 px low in a 32 px
+   label). A label with markup, a shadow, inline images or boxes, or
+   selectable text keeps its own layout.
 
 ### Where the text layout comes from
 

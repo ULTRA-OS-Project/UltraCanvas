@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraAccount. `Icon=UltraAccount` is resolved
+# through the icon themes; the install rules put media/appicon/UltraAccount.png
+# and .svg into share/icons/hicolor.
+Type=Application
+Version=1.5
+Name=UltraAccount
+GenericName=Account
+Comment=Your ULTRA OS account: sign up, verify your email and phone, your subscription and recovery keys
+Exec=UltraAccount
+TryExec=UltraAccount
+Icon=UltraAccount
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraAccount
+Categories=Settings;Security;
+Keywords=account;sign in;register;subscription;recovery;phone;

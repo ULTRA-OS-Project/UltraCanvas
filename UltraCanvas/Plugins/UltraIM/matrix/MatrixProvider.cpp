@@ -1,5 +1,7 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
+// Version: 0.2.6 - the pictures: m.room.avatar and the members' avatar_url fetched as thumbnails (the
+//                  authenticated media API, else the one before it), on conversations, contacts, messages
 // Version: 0.2.5 - TransferProgress for media going up to and coming down from the content repository
 // Version: 0.2.4 - SendVoiceNote: m.audio marked as a voice message (MSC3245) with its length; a video's
 //                  length in info.duration
@@ -23,6 +25,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <system_error>
 
@@ -756,7 +759,10 @@ void MatrixProvider::ApplyRoom(const std::string& roomId, const JSONValue& data,
 void MatrixProvider::ApplyState(Room& room, const JSONValue& event) {
     const std::string type = event["type"].GetString();
     const JSONValue& content = event["content"];
-    if (type == "m.room.name") {
+    if (type == "m.room.avatar") {
+        room.avatarUrl = content["url"].GetString();
+        QueueAvatar(room.avatarUrl);
+    } else if (type == "m.room.name") {
         room.name = content["name"].GetString();
     } else if (type == "m.room.canonical_alias") {
         room.alias = content["alias"].GetString();
@@ -772,6 +778,13 @@ void MatrixProvider::ApplyState(Room& room, const JSONValue& event) {
         if (membership == "join" || membership == "invite") room.recipients.insert(user);
         else room.recipients.erase(user);
         const std::string name = content["displayname"].GetString();
+        const std::string avatar = content["avatar_url"].GetString();
+        if ((membership == "join" || membership == "invite") && !avatar.empty()) {
+            room.memberAvatars[user] = avatar;
+            QueueAvatar(avatar);
+        } else {
+            room.memberAvatars.erase(user);
+        }
         if (membership == "join" || membership == "invite") {
             room.members[user] = !name.empty() ? name : (room.members.count(user) ? room.members[user] : Localpart(user));
             if (membership == "join") room.joined.insert(user);
@@ -793,6 +806,7 @@ bool MatrixProvider::MessageFrom(const Room& room, const JSONValue& event, Ultra
     out.senderName = NameOf(room, out.senderId);
     out.timestampMs = event["origin_server_ts"].GetInteger(NowMs());
     out.isOwn = out.senderId == userId_;
+    if (!out.isOwn) out.senderAvatarPath = MemberAvatar(room, out.senderId);
     out.deliveryStatus = UltraIMDeliveryStatus::Sent;
     // Our own message comes back with the transaction id we sent it under,
     // which is the client message id: the optimistic row and the echo meet.
@@ -881,7 +895,7 @@ bool MatrixProvider::ApplyEvent(Room& room, const JSONValue& event, bool live, s
         ApplyState(room, event);
         // A new name or alias changes what the list shows: the conversation
         // is updated (no line in the timeline).
-        if (type == "m.room.name" || type == "m.room.canonical_alias") return live;
+        if (type == "m.room.name" || type == "m.room.canonical_alias" || type == "m.room.avatar") return live;
         if (type != "m.room.member" || membership == before || user == userId_) return false;
         UltraIMMessage line;
         line.messageId = event["event_id"].GetString();
@@ -1071,6 +1085,9 @@ UltraIMConversation MatrixProvider::ConversationOf(const Room& room) const {
         c.memberNames[m] = NameOf(room, m);
     }
     c.isEncrypted = room.encrypted;
+    // The room's own picture, else - for a direct chat - the other person's.
+    c.avatarPath = AvatarFile(room.avatarUrl);
+    if (c.avatarPath.empty() && !c.directContactId.empty()) c.avatarPath = MemberAvatar(room, c.directContactId);
     if (!c.directContactId.empty()) {
         auto p = presence_.find(c.directContactId);
         if (p != presence_.end()) c.presence = p->second;
@@ -1117,6 +1134,7 @@ void MatrixProvider::FetchContacts(UltraIMContactsCallback onResult) {
             contact.contactId = user;
             contact.providerId = providerId_;
             contact.displayName = NameOf(entry.second, user);
+            contact.avatarPath = MemberAvatar(entry.second, user);
             auto p = presence_.find(user);
             if (p != presence_.end()) contact.presence = p->second;
             out.push_back(contact);
@@ -1146,6 +1164,9 @@ void MatrixProvider::FetchMessages(const std::string& conversationId, const std:
         const size_t begin = end > static_cast<size_t>(limit) ? end - static_cast<size_t>(limit) : 0;
         out.assign(timeline.begin() + static_cast<std::ptrdiff_t>(begin),
                    timeline.begin() + static_cast<std::ptrdiff_t>(end));
+        for (UltraIMMessage& m : out) {
+            if (!m.isOwn) m.senderAvatarPath = MemberAvatar(it->second, m.senderId);
+        }
         return out;
     };
 
@@ -1693,11 +1714,91 @@ void MatrixProvider::QueueDownload(const std::string& url, const Media& media, c
 
 void MatrixProvider::FlushDownloads() {
     std::vector<DownloadJob> queue;
+    std::vector<std::string> avatars;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         queue.swap(downloadQueue_);
+        avatars.swap(avatarQueue_);
     }
     for (const auto& job : queue) StartDownload(job, false);
+    for (const auto& url : avatars) StartAvatar(url, false);
+}
+
+// ---- the pictures ----------------------------------------------------------------
+// A room's picture (m.room.avatar) and its members' (avatar_url on their
+// m.room.member event) are mxc URLs, never encrypted. Each is fetched once,
+// as the thumbnail a list shows, into the media folder.
+
+std::string MatrixProvider::AvatarFile(const std::string& url) const {
+    if (url.empty()) return std::string();
+    auto it = avatarFiles_.find(url);
+    return it == avatarFiles_.end() ? std::string() : it->second;
+}
+
+std::string MatrixProvider::MemberAvatar(const Room& room, const std::string& userId) const {
+    auto it = room.memberAvatars.find(userId);
+    return it == room.memberAvatars.end() ? std::string() : AvatarFile(it->second);
+}
+
+void MatrixProvider::QueueAvatar(const std::string& url) {
+    std::string server, id;
+    if (!SplitMxc(url, server, id) || avatarFiles_.count(url) || !avatarFetching_.insert(url).second) return;
+    avatarQueue_.push_back(url);
+}
+
+void MatrixProvider::StartAvatar(const std::string& url, bool legacyEndpoint) {
+    std::shared_ptr<MatrixHttp> http = Http();
+    std::string server, id;
+    if (!http || !SplitMxc(url, server, id)) {
+        OnAvatar(url, MatrixBytes());
+        return;
+    }
+    const std::string path = (legacyEndpoint ? "/_matrix/media/v3/thumbnail/" : "/_matrix/client/v1/media/thumbnail/") +
+                             PathSegment(server) + "/" + PathSegment(id) + "?width=96&height=96&method=crop";
+    http->Download(path, 60000, [this, url, legacyEndpoint](const MatrixBytes& r) {
+        if (!r.Ok() && !legacyEndpoint && (r.errcode == "M_UNRECOGNIZED" || r.status == 404 || r.status == 400)) {
+            StartAvatar(url, true);
+            return;
+        }
+        OnAvatar(url, r);
+    });
+}
+
+void MatrixProvider::OnAvatar(const std::string& url, const MatrixBytes& r) {
+    // The kind from its first bytes (a thumbnail is JPEG or PNG, sometimes WebP or GIF).
+    const std::vector<uint8_t>& b = r.body;
+    std::string mime;
+    if (b.size() >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) mime = "image/jpeg";
+    else if (b.size() >= 8 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') mime = "image/png";
+    else if (b.size() >= 12 && std::memcmp(b.data(), "RIFF", 4) == 0 && std::memcmp(b.data() + 8, "WEBP", 4) == 0)
+        mime = "image/webp";
+    else if (b.size() >= 6 && std::memcmp(b.data(), "GIF8", 4) == 0) mime = "image/gif";
+    std::string path;
+    if (r.Ok() && !mime.empty()) {
+        path = MediaPath(url + "#avatar", mime, std::string());
+        if (!WriteWholeFile(path, b)) path.clear();
+    }
+    std::vector<UltraIMEvent> events;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        // A failure is tried again when the URL comes up again (a later sync).
+        avatarFetching_.erase(url);
+        if (path.empty()) return;
+        avatarFiles_[url] = path;
+        for (const auto& entry : rooms_) {
+            const Room& room = entry.second;
+            bool shows = room.avatarUrl == url;
+            for (const auto& member : room.memberAvatars) shows = shows || member.second == url;
+            if (!shows) continue;
+            UltraIMEvent e;
+            e.type = UltraIMEventType::ConversationUpdate;
+            e.providerId = providerId_;
+            e.conversationId = room.id;
+            e.conversation = ConversationOf(room);
+            events.push_back(e);
+        }
+    }
+    for (const auto& e : events) Emit(e);
 }
 
 void MatrixProvider::ReportProgress(const std::string& key, const UltraIMMessage& message, int64_t now, int64_t total,

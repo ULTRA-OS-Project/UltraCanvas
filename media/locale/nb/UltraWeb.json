@@ -1,0 +1,8 @@
+{
+  "@language": "nb",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Fjernet {0} informasjonskapsler; programmenes enhetstillatelser er glemt",
+  "No cookies to clear; the apps' device permissions are forgotten": "Ingen informasjonskapsler å fjerne; programmenes enhetstillatelser er glemt",
+  "{0} wants to use your camera": "{0} vil bruke kameraet ditt",
+  "{0} wants to use your microphone": "{0} vil bruke mikrofonen din"
+}

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStoreAdmin - Marketplace</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 60px; box-sizing: border-box">
+<a href="AdminDashboard.dc.html" aria-label="UltraStoreAdmin overview" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 30px; height: 30px; border-radius: 8px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.02em">UltraStoreAdmin</span>
+</a>
+<span style="display: inline-flex; align-items: center; gap: 8px; color: #475569; font-size: 13px"><span style="font-weight: 600; color: #0f172a">ULTRA OS Store</span>· store.ultraos.eu/v1</span>
+<span style="flex: 1 1 auto"></span>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">4 changes since sequence 42</span>
+<button type="button" aria-label="Account: Alex" style="width: 36px; height: 36px; border-radius: 999px; border: 0; background: #0f172a; color: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">AK</button>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: flex-start">
+
+<nav aria-label="Admin" style="flex: 1 1 220px; max-width: 260px; min-width: 0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Store</span>
+<a href="AdminDashboard.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Overview</a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Apps and components</a>
+<a href="AdminSales.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Sales</a>
+<a href="AdminFinance.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Finance</a>
+<a href="#affiliates" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Affiliates and codes</a>
+<a href="AdminPublish.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Publish</a>
+<a href="AdminMarketplace.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #dbeafe; color: #1d4ed8; font-weight: 700">Marketplace</a>
+<a href="#keys" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Keys</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Settings</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Apps</span>
+<a href="AdminAppEditor.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo</a>
+<a href="#app-ultrapaint" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/451050dafeeb42579ba048b1a08f78fa" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraPaint</a>
+<a href="#app-artcreator" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 22px; height: 22px; border-radius: 6px">ArtCreator</a>
+<a href="#app-ultrafiler" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0339854b95aaa1785eff13f10f2fce1c" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraFiler</a>
+<a href="#app-ultramail" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/bafbc6e21d0bfb6f2d3d60d6d272ad66" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraMail</a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #1d4ed8; font-weight: 600; font-size: 13px">All 24 apps</a>
+</div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Marketplace</h1>
+<span style="color: #64748b">The operator's marketplace service: your shop as the operator sees it, the notices, the terms, your submissions. Every request is signed with your key, so the passphrase is asked for once per visit. The three states of the page are stacked here: before a shop, waiting, and open.</span>
+</div>
+
+<section style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<span style="font-weight: 700">No shop yet: apply for one below.</span>
+<span style="flex: 1 1 auto"></span>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: #334155">Passphrase <input type="password" value="••••••••••••" style="height: 40px; width: 240px; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px"></label>
+<button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Ask the service</button>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 16px; font-weight: 700">1 · Apply for a shop</h2><span style="font-size: 13px; color: #64748b">The operator decides. The application carries the public half of this backend's key, signed with it, so the key that signs your submissions is the one the operator registers; the name and the website are what the catalog shows as the publisher.</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="ap-name" style="font-size: 12px; font-weight: 700; color: #334155">Shop name</label><input id="ap-name" type="text" value="Pixelwerk Studio" placeholder="" style="height: 40px; width: 360px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div><div style="display: flex; flex-direction: column; gap: 6px"><label for="ap-contact" style="font-size: 12px; font-weight: 700; color: #334155">Contact</label><input id="ap-contact" type="text" value="mail@pixelwerk.example" placeholder="an address or a page the operator can reach you at" style="height: 40px; width: 360px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div><div style="display: flex; flex-direction: column; gap: 6px"><label for="ap-email" style="font-size: 12px; font-weight: 700; color: #334155">Email (the operator's to see)</label><input id="ap-email" type="text" value="jo@pixelwerk.example" placeholder="" style="height: 40px; width: 360px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div><div style="display: flex; flex-direction: column; gap: 6px"><label for="ap-website" style="font-size: 12px; font-weight: 700; color: #334155">Website</label><input id="ap-website" type="text" value="https://pixelwerk.example" placeholder="" style="height: 40px; width: 360px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="ap-description" style="font-size: 12px; font-weight: 700; color: #334155">About the publisher · shown with the shop</label><textarea id="ap-description" rows="2" style="padding: 10px 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; resize: vertical">Games and tools for ULTRA OS, made in Leipzig since 2021.</textarea></div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Apply</button><button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Check the application</button>
+<span style="font-size: 13px; color: #64748b">Key 2 "production" signs the application: 7f3a…c21e</span>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 16px; font-weight: 700">2 · Waiting for the operator</h2><span style="font-size: 13px; color: #64748b">Applied as ap-000017 on 19 Nov 2026. Check the application asks the service; approved sets the merchant id and opens the rest of the page.</span></div>
+<div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">Applied · ap-000017</span>
+<span style="font-size: 13px; color: #64748b">The operator usually answers within three working days; a rejection comes with the reason.</span>
+<span style="flex: 1 1 auto"></span>
+<button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Check the application</button>
+</div>
+</section>
+
+<section style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<span style="font-weight: 700">Pixelwerk Studio (pixelwerk): active, 0 strikes, terms in force 2, accepted 2</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Shop open</span>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 16px; font-weight: 700">3 · Your shop's profile</h2><span style="font-size: 13px; color: #64748b">The name and the website are what the catalog shows as the publisher; the contact is the operator's. The key is rotated from the command line: ultrastoreadmin market profile --rotate-key &lt;id&gt;, signed with the old key.</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="pr-name" style="font-size: 12px; font-weight: 700; color: #334155">Shop name</label><input id="pr-name" type="text" value="Pixelwerk Studio" placeholder="" style="height: 40px; width: 360px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div><div style="display: flex; flex-direction: column; gap: 6px"><label for="pr-contact" style="font-size: 12px; font-weight: 700; color: #334155">Contact</label><input id="pr-contact" type="text" value="mail@pixelwerk.example" placeholder="" style="height: 40px; width: 360px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div><div style="display: flex; flex-direction: column; gap: 6px"><label for="pr-website" style="font-size: 12px; font-weight: 700; color: #334155">Website</label><input id="pr-website" type="text" value="https://pixelwerk.example" placeholder="" style="height: 40px; width: 360px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 700; color: #334155">Key that signs</span><span style="height: 40px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 10px; background: #f1f5f9; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #475569">2 · production · 7f3a…c21e</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="pr-description" style="font-size: 12px; font-weight: 700; color: #334155">About the publisher</label><textarea id="pr-description" rows="2" style="padding: 10px 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; resize: vertical">Games and tools for ULTRA OS, made in Leipzig since 2021.</textarea></div>
+<div style="display: flex; align-items: center; gap: 10px">
+<button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Save the profile</button>
+<span style="font-size: 13px; color: #64748b">The next publish of the catalog names it.</span>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Notices</h2><span style="font-size: 13px; color: #64748b">What the operator sent you; the unacknowledged first.</span></div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a"><span style="flex: 1 1 auto; font-size: 13px"><strong>announcement:</strong> Maintenance on Sunday 23 Nov, 02:00–04:00 UTC; the publish pauses.</span><button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Acknowledge</button></div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: #f8fafc"><span style="flex: 1 1 auto; font-size: 13px; color: #64748b"><strong>reminder:</strong> Terms 2 come into force on 1 Dec · acknowledged</span></div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Terms</h2><span style="font-size: 13px; color: #64748b">Version 2, in force from 1 Dec 2026: accepted by Jo Kessler on 12 Nov 2026.</span></div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="terms-by" style="font-size: 12px; font-weight: 700; color: #334155">Who accepts, by name</label><input id="terms-by" type="text" value="Jo Kessler" placeholder="" style="height: 40px; width: 240px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div><button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Accept the terms</button>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Submit a release for review</h2><span style="font-size: 13px; color: #64748b">The component as it is here, signed with your key; the packages' hashes go with it. The operator's review releases it into the one public catalog.</span></div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<select style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; background: #ffffff; min-width: 260px"><option>Skyline Siege (com.pixelwerk.skyline)</option><option>Little Letters (com.pixelwerk.letters)</option></select>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="sub-answers" style="font-size: 12px; font-weight: 700; color: #334155">Answers the submission</label><input id="sub-answers" type="text" value="" placeholder="s-00000012" style="height: 40px; width: 220px; max-width: 100%; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; box-sizing: border-box"></div><button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Submit</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #475569">
+<span>s-00000012 · com.pixelwerk.skyline 1.4.0 · released (release: sequence 43)</span>
+<span>s-00000011 · com.pixelwerk.letters 2.0.1 · changes requested (request_changes: the age rating is missing)</span>
+</div>
+</section>
+
+</main>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":2160}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

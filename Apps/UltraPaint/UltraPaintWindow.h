@@ -11,6 +11,15 @@
 // second start hands over add a tab rather than a window. The class also
 // holds the registry of open windows - File > New Window still opens one -
 // and the application exits with the last of them.
+// Version: 2.6.0 - DocumentFonts: the image's fonts for the text bar's font list
+// Version: 2.5.0 - closing the window and Quit ask Save / Don't save / Cancel for each unsaved
+//                  image in turn (ReviewUnsavedTabs); files dropped on the start page open
+// Version: 2.4.0 - closing a tab with unsaved changes asks Save / Don't save / Cancel
+//                  (AskSaveBeforeClosing); CmdSave / CmdSaveAs take what to do once saved
+// Version: 2.3.0 - the start page (Create new bitmap, Paste image, Clipboard history) in place of
+//                  a blank canvas while no image is open; CmdClipboardHistory
+// Version: 2.2.0 - PastedFrom / PastedText: a paste's status line as one translatable sentence per source
+// Version: 2.1.0 - lastScaleOptions: Scale Image offers the resampling method and sharpening chosen last
 // Version: 2.0.0 - images in tabs: DocumentTab (document + its own surface), the tab strip
 //                  over the canvas, AddDocumentTab / SwitchToTab / CloseTab, OpenPaths,
 //                  OpenInRunningWindow; New, Open and a new image go to a tab
@@ -51,7 +60,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -159,13 +168,24 @@ private:
     // A new tab on `doc`, made the active one.
     void AddDocumentTab(std::shared_ptr<UCRasterDocument> doc);
     // `doc` in a tab: in place of the active tab's when that is a blank
-    // canvas nobody has touched (what the window starts with), else a new one.
+    // canvas nobody has touched, else a new one.
     void ShowInTab(std::shared_ptr<UCRasterDocument> doc);
+    // The start page: what the window shows while no image is open (at the
+    // start, and once the last tab has closed) - Create new bitmap, Paste
+    // image and Clipboard history, one under the other in the middle of the
+    // canvas area. `document` and `surface` are null while it shows.
+    void BuildStartPage();
+    void ShowStartPage(bool show);
+    // The images copied last (the clipboard history's 20 newest), as
+    // thumbnails to pick one from: it opens as a new image.
+    void CmdClipboardHistory();
     // Makes tab `index` the active one: the panels, the title, the tools and
     // the glass follow its document.
     void SwitchToTab(int index);
-    // Closes tab `index`, asking first when its image has unsaved changes.
-    // The last tab closing leaves a blank canvas in its place.
+    // Closes tab `index`. A tab that is not on show is brought to the front
+    // and the close asked about first; one with unsaved changes asks Save,
+    // Don't save or Cancel, and closes after a save only once it is saved.
+    // The last tab closing leaves the start page in its place.
     void CloseTab(int index);
     void RemoveTabNow(int index);
     // The surfaces' callbacks to the tools, the status line and the glass.
@@ -294,7 +314,20 @@ private:
     // plain windows) over the whole image. The adjustment dialogs did skip it,
     // which is what made the Adjust menu look as though it did nothing.
     void ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog);
+    // The resampling method and sharpening last chosen in Scale Image, offered again
+    UCScaleImageOptions lastScaleOptions;
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
+    // Closing an image with unsaved changes: Save, Don't save or Cancel.
+    enum class SaveAnswer { Save, Discard, Cancel };
+    void AskSaveBeforeClosing(const std::string& name, const std::function<void(SaveAnswer)>& onAnswer);
+    // Before the window closes or the application quits: each image with
+    // unsaved changes is brought to the front in turn and asks Save, Don't
+    // save or Cancel. `done` runs once every one has been saved or let go;
+    // Cancel (or a save cancelled or failed) stops there and changes nothing
+    // - the images let go of so far keep their changes and their mark.
+    void ReviewUnsavedTabs(const std::function<void()>& done);
+    void ReviewUnsavedFrom(std::shared_ptr<std::vector<const UCRasterDocument*>> letGo,
+                           const std::function<void()>& done);
     // What saving the open image to `path` would lose - its layers (a flat
     // format, when `layers` is asked), its password (anything but a *.ucd) -
     // as the question to confirm first; empty when nothing is lost.
@@ -309,8 +342,10 @@ private:
     void CmdNewWindow();
     void CmdOpen();
     void CmdImport();
-    void CmdSave();
-    void CmdSaveAs();
+    // `afterSaved` runs once the image has been written - not when the save
+    // was cancelled or failed (closing a tab saves first with it).
+    void CmdSave(const std::function<void()>& afterSaved = nullptr);
+    void CmdSaveAs(const std::function<void()>& afterSaved = nullptr);
     void CmdExport();
     void CmdPassword();
     void CmdUndo();
@@ -401,6 +436,9 @@ private:
     // The bar shows the caret's attributes, else the active text layer's,
     // else what a new text starts in.
     void SyncTextBar();
+    // The fonts the image's texts use - the one being typed, every text
+    // layer's - for the font list's "In this document".
+    std::vector<std::string> DocumentFonts() const;
     // The text being typed keeps its line spacing on every paragraph.
     void StampTextLineSpacing();
     // The topmost visible text layer whose box holds (x, y), or -1.
@@ -463,6 +501,7 @@ private:
     std::shared_ptr<UltraCanvasContainer>      canvasColumn;  // the tab strip over the pages
     std::shared_ptr<UltraCanvasTabbedContainer> tabStrip;
     std::shared_ptr<UltraCanvasContainer>      tabPages;      // the tabs' surfaces, the glass, the text editor
+    std::shared_ptr<UltraCanvasContainer>      startPage;     // in place of the strip and pages while no image is open
     std::vector<std::shared_ptr<DocumentTab>>  documentTabs;  // in the strip's order
     int activeTab = -1;
     int surfaceSerial = 0;                                    // names each tab's surface
@@ -520,13 +559,24 @@ private:
         std::string file;
     };
     PasteSource ReadPasteSource();
+public:
+    // Where a pasted picture came from, as the status line names it: the
+    // clipboard (nothing more said), a copied file, the clipboard history's
+    // newest image, or the history's image copied at a given time.
+    enum class PastedFrom { Clipboard, File, LastCopied, CopiedWhen };
+private:
+    // The status line after a paste, one whole sentence per source (so a
+    // translation can order it): `detail` is the file's name (File) or when
+    // it was copied (CopiedWhen).
+    static std::string PastedText(PastedFrom from, const std::string& detail, int w, int h, bool asNewImage);
     // `image` as a new layer: where it was copied from when it came from
-    // here and still fits, centred otherwise.
+    // here and still fits, centred otherwise. `from` and `detail` name it in
+    // the status line.
     void PasteAsLayer(std::shared_ptr<UCRasterLayer> image, const std::string& layerName, bool fromHere,
-                      const std::string& what);
-    // `image` as a new image; `what` names it in the status line ("the last
+                      PastedFrom from = PastedFrom::Clipboard, const std::string& detail = std::string());
+    // `image` as a new image; `from` names it in the status line ("the last
     // copied image").
-    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image, const std::string& what = std::string());
+    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image, PastedFrom from = PastedFrom::Clipboard);
     // The clipboard history's newest image (UltraCanvasClipboardHistory, the
     // one UltraDesktop keeps) and when it was copied ("5 min ago"); null when
     // there is no history or no image in it.

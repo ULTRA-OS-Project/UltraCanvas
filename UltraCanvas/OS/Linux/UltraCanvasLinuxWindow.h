@@ -1,9 +1,10 @@
 // OS/Linux/UltraCanvasX11Window.h
 // Linux platform implementation for UltraCanvas Framework
+// Version: 1.4.0 - IsOnCurrentDesktop / MoveToCurrentDesktop (_NET_WM_DESKTOP)
 // Version: 1.3.0 - a destructor, which releases the native half
 // Version: 1.2.0 - SetNativeWindowShape
 // Version: 1.1.0 - per-monitor HiDPI (deviceScale) support
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -78,6 +79,8 @@ namespace UltraCanvas {
         virtual void Show() override;
         virtual void Hide() override;
         virtual void RaiseAndFocus() override;
+        bool IsOnCurrentDesktop() const override;
+        bool MoveToCurrentDesktop() override;
         virtual void SetWindowTitle(const std::string& title) override;
         virtual void SetWindowIcon(const std::string& iconPath) override;
         virtual void SetWindowSize(int width, int height) override;

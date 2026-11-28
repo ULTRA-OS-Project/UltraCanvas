@@ -56,6 +56,17 @@
 // sidebar; their chats join the same list, and everything done in a
 // conversation goes to that conversation's provider.
 //
+// On a narrow window - a phone, ChatCube for Android, or a desktop window
+// made narrower than kCompactWidth - the two columns take turns: the list
+// fills the window, a conversation opened from it fills the window in its
+// place with a back arrow before the name, and the arrow (or Android's back
+// key) returns to the list:
+//
+//   | [My ID 3f2a 9c01] [Copy][Gear]  |        | [<] Bob   online  [Call][Video] |
+//   | [ Add: a ChatCube ID ...  ][+]  |  -->   |  ( hello )                      |
+//   | ● Bob              14:05        |  <--   |            ( hi, how are you )  |
+//   | # Team             13:40        |        | [+] [ Message...       ] [Send] |
+//
 // A call shows a bar across the top of the chat view:
 //
 //   | Incoming video call from Bob                        [Accept] [Decline] |
@@ -71,6 +82,27 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.18 - the search's kinds a segmented control in the search row (filterControl_); no filter row
+// Version: 0.3.17 - a location shows as a map card (its click opens openstreetmap.org); My position
+//                   in the location window
+// Version: 0.3.16 - the feature icons: a + button with a menu of the features put behind it, the
+//                   smileys & stickers (a grid, and an arrow listing the sets by an example of
+//                   each), a location from OpenStreetMap; Settings > Display > Feature icons
+//                   says which are in the field, behind the +, or not shown
+// Version: 0.3.15 - a screenshot into the composer: the button beside the paperclip hides the
+//                   window, an area of the screen is chosen (UltraCanvasScreenAreaPicker) and
+//                   the picture waits in the strip like a pasted one; the field grows with its text
+// Version: 0.3.14 - the compact layout: on a window narrower than kCompactWidth (a phone) the list and the
+//                  open conversation take turns, with a back arrow; the buttons of networks this build
+//                  cannot reach are hidden (Telegram and Signal on Android); the microphone and the camera
+//                  asked for on Android before a recording or a call
+// Version: 0.3.13 - who is typing, per conversation: in its row of the list and, named in a group, in the header
+// Version: 0.3.12 - a network's module loaded when its button is pressed (LoadNetwork); NetworkName
+// Version: 0.3.11 - an IRC account (server, nickname, the password of a registered nick); #channel goes to IRC
+// Version: 0.3.10 - an XMPP account (the address and password; the server found from its domain)
+// Version: 0.3.9 - Signal: linked to the phone by a QR code (signal-cli); +phone asks Telegram or Signal
+// Version: 0.3.8 - Mattermost and Zulip accounts (AccountForm); an address more than one signed-in
+//                  network takes asks which (ProvidersOfAddress)
 // Version: 0.3.7 - the group editor (Group settings): a description, members removed, blocked, messaged
 // Version: 0.3.6 - public groups: the "Public groups" list with Join, Make public / Make private
 // Version: 0.3.5 - a Mastodon account: ToggleMastodonForm, SignInToMastodon, mastodonProviderId_
@@ -110,7 +142,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -118,9 +150,12 @@
 #include "ChatCubeProfileWindow.h"
 #include "ChatCubeSettings.h"
 #include "ChatCubeSettingsWindow.h"
+#include "ChatCubeEmoji.h"
+#include "ChatCubeLocationWindow.h"
 #include "ChatCubeViews.h"
 
 #include "UltraCanvasMediaViewerWindow.h"
+#include "UltraCanvasScreenAreaPicker.h"
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMTypes.h"
 
@@ -144,6 +179,7 @@ class UltraCanvasImageElement;
 class UltraCanvasLabel;
 class UltraCanvasListView;
 class UltraCanvasMenu;
+class UltraCanvasSegmentedControl;
 class UltraCanvasQRCode;
 class UltraCanvasTextArea;
 class UltraCanvasTextInput;
@@ -180,6 +216,22 @@ private:
     // The Connecting page; `failed`: with the error and Try again / Settings.
     void ShowConnectingPage(bool failed = false);
     void ShowChatView();
+    // The compact layout (a phone): on below kCompactWidth logical pixels,
+    // off above it. Called with the window's width at the start and on every
+    // resize (a rotation, a desktop window dragged narrower).
+    void UpdateLayoutMode(int windowWidth);
+    // Which column a compact window shows: the list, or the open conversation.
+    void ApplyCompactPanes();
+    void ShowConversationList();
+    // Whether the microphone (and with `camera` the camera) may be used now.
+    // Always on the desktop, which asks by itself. On Android, false the
+    // first time: the system's prompt is shown, and `retry` runs once it is
+    // answered yes (a status line says so when it is answered no).
+    bool HaveMediaPermission(bool camera, std::function<void()> retry);
+    // Whether this build reaches `providerId`: its provider registered, or a
+    // module for it in the plug-in folder. A network it cannot reach has no
+    // button in the sidebar.
+    bool NetworkAvailable(const std::string& providerId) const;
 
     // ---- actions -------------------------------------------------------------
     void SignIn();
@@ -200,6 +252,8 @@ private:
     void StopRecoveryPolling();
     void AddContact();
     void AddContactById(const std::string& id);
+    // On that network, chosen (the menu that asks) or the address's own.
+    void AddContactOn(const std::string& provider, const std::string& id);
     void RefreshNearby();           // the "On this network" list
     // The "Public groups" list: the ChatCube groups anyone may join, those
     // not joined yet, each with Join; and the owner's switch in a group's menu.
@@ -211,6 +265,34 @@ private:
     // A Mastodon account: the server, then its sign-in page in the browser.
     void ToggleMastodonForm();
     void SignInToMastodon(bool stored);
+    // A network signed in to with a server, a user and a password - and a
+    // code when the account asks for one (Mattermost's MFA): Mattermost and
+    // Zulip, one form each, built and run alike.
+    struct AccountForm {
+        std::string providerId;
+        std::string name;                                   // "Mattermost"
+        std::shared_ptr<UltraCanvas::UltraCanvasButton>    toggle;
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> form;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> server;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> user;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> password;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> code;
+        std::shared_ptr<UltraCanvas::UltraCanvasButton>    signIn;
+        bool serverOptional = false;        // XMPP: the address's domain finds the server
+        bool passwordOptional = false;      // IRC: only a registered nick has one
+    };
+    void BuildAccountForm(AccountForm& f, UltraCanvas::UltraCanvasContainer& sidebar, const std::string& serverHint,
+                          const std::string& userHint);
+    void ToggleAccountForm(AccountForm& f);
+    void SignInToAccount(AccountForm& f, bool stored);
+    AccountForm* AccountFormOf(const std::string& providerId);
+    // Signal: this computer linked to the phone's Signal account by a QR
+    // code, through signal-cli (a daemon address, or one ChatCube starts).
+    void ToggleSignalForm();
+    void SignInToSignal(bool stored);
+    bool OnSignalEvent(const UltraIMEvent& e);
+    // A network's sign-in and connection events: true when they were one of these forms'.
+    bool OnAccountEvent(const UltraIMEvent& e);
     // The keys to encrypted Matrix rooms to a passphrase-protected file (the
     // format Element reads), and back from one.
     void ExportMatrixKeys();
@@ -228,6 +310,10 @@ private:
     // The Telegram application's API ID and hash the relay keeps, so nobody
     // types them; then `then` (the stored Telegram session resumed, say).
     void FetchTelegramCredentials(std::function<void()> then);
+    // The networks an address can belong to, the likeliest first: @name:server
+    // Matrix; @user@server Mastodon; @user Telegram or Mattermost; +phone, t.me
+    // Telegram; name@domain Zulip or Mattermost; a ChatCube ID ChatCube.
+    std::vector<std::string> ProvidersOfAddress(const std::string& address) const;
     // The provider an address belongs to: @name:server Matrix, +phone /
     // @username / t.me/... Telegram, anything else a ChatCube ID.
     std::string ProviderOfAddress(const std::string& address) const;
@@ -246,6 +332,38 @@ private:
     // the file, or the picture written to a file of ChatCube's own, into the
     // strip. False when the clipboard holds neither (text pastes as text).
     bool PasteAttachment();
+    // The screenshot button: the window hides, the screen is captured once
+    // it has gone, an area of it chosen (a window clicked, or a rectangle
+    // dragged; Esc gives up), and the picture goes into the strip like a
+    // pasted one. The window comes back either way.
+    void TakeScreenshot();
+    void PickScreenArea();
+    void StageScreenshot(const UltraCanvas::Rect2Di& area);
+    void EndScreenshot();
+    // A new file in ChatCube's cache for a picture of its own (pasted, a
+    // screenshot): "<prefix>-<date>-<time>[-n]" with no extension yet, free
+    // as .png and .jpg; "" when the folder cannot be made.
+    std::string NewCachedPicturePath(const std::string& prefix) const;
+    // The feature icons as Settings > Display > Feature icons places them:
+    // shown in the field's row, behind the + (its menu), or not at all; a
+    // feature the open conversation cannot use is greyed out
+    void ApplyFeatureIcons();
+    // Whether a feature can be used in the open conversation now
+    bool FeatureUsable(Feature feature) const;
+    // A feature started, from its icon or from the + menu
+    void RunFeature(Feature feature);
+    void OpenFeatureMenu();
+    // Smileys & stickers: the grid of the set chosen last, or the list of
+    // sets (the arrow beside it)
+    void OpenEmojiGrid();
+    void OpenEmojiSets();
+    void InsertIntoMessage(const std::string& text);
+    void StageSticker(const std::string& svgPath);
+    // The location window; its place into the message
+    void OpenLocation();
+    void InsertLocation(const MapPlace& place);
+    // Where an element is in the window, for a menu or popup beside it
+    UltraCanvas::Rect2Di WindowRectOf(UltraCanvas::UltraCanvasUIElement& element) const;
     // Files dropped on the window (an event filter on it): onto a chat in
     // the list, that chat opens and they wait in its strip; anywhere else,
     // they wait in the open chat's. False when the drop carries no file.
@@ -341,6 +459,11 @@ private:
     void SetStatus(const std::string& text);                                      // the action's part
     void SetProviderStatus(const std::string& providerId, const std::string& text);   // "" removes the entry
     void RenderStatus();
+    // The networks of the sidebar, in its order, under the names it shows.
+    std::vector<std::pair<std::string, const char*>> Networks() const;
+    std::string NetworkName(const std::string& providerId) const;
+    // The network's module loaded if it is not yet (on demand); its info.
+    bool LoadNetwork(const std::string& providerId, UltraIMProviderInfo& info);
     void SetSignInStatus(const std::string& text);
     void RefreshConversations();
     void ScrollToEnd();
@@ -372,6 +495,11 @@ private:
     void CopyAddress(const std::string& address);
     // A group's members: a name for each, a chat with one, one taken out.
     std::string MemberName(const UltraIMConversation& group, const std::string& memberId) const;
+    // Who is typing: kept per conversation, shown in its row and its header.
+    void SetTyping(const std::string& conversationId, const std::string& contactId, bool typing);
+    void ExpireTyping();
+    void ShowTyping(const std::string& conversationId);
+    std::string TypingText(const UltraIMConversation& conversation) const;
     void MessageMember(const std::string& providerId, const std::string& memberId);
     void RemoveMember(const std::string& conversationId, const std::string& memberId);
     // Asked in a dialog, then done through UltraIM.
@@ -456,6 +584,11 @@ private:
     bool hasIdentity_ = false;
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> chatView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> sidebar_;         // the list's column
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> pane_;            // the conversation's column
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    back_;            // compact: back to the list
+    bool compact_ = false;              // the list and the conversation take turns
+    bool compactShowsChat_ = false;     // compact: the conversation is the one shown
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     myId_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> contactId_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> groupForm_;
@@ -494,6 +627,18 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> mastodonServer_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonSignIn_;
     std::string mastodonProviderId_ = "mastodon";
+    std::string signalProviderId_ = "signal";
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    signalToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> signalForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> signalDaemon_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    signalLink_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     signalHint_;
+    std::shared_ptr<UltraCanvas::UltraCanvasQRCode>    signalQr_;
+    AccountForm mattermost_{"mattermost", "Mattermost", {}, {}, {}, {}, {}, {}, {}};
+    AccountForm zulip_{"zulip", "Zulip", {}, {}, {}, {}, {}, {}, {}};
+    AccountForm xmpp_{"xmpp", "XMPP", {}, {}, {}, {}, {}, {}, {}, true};
+    AccountForm irc_{"irc", "IRC", {}, {}, {}, {}, {}, {}, {}, false, true};
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> networkMenu_;   // "Add on which network?"
     std::string activeProvider_;    // the open conversation's provider
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;
@@ -513,6 +658,21 @@ private:
     std::shared_ptr<MessageBubbleDelegate>             bubbles_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    attach_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    screenshot_;    // hidden where the screen is not captured
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    plus_;          // the menu of the features behind it
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    emoji_;         // smileys & stickers ...
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    emojiSets_;     // ... and the arrow listing the sets
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    location_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu>      featureMenu_;
+    EmojiPicker                                        emojiPicker_;
+    std::unique_ptr<ChatCubeLocationWindow>            locationWindow_;   // made when first opened
+    int                                                mapTilesListener_ = 0;   // map cards redrawn as tiles come
+    // A screenshot in flight: the wait for the window to leave the screen,
+    // the frozen screen, and the picker over it
+    uint64_t screenshotTimer_ = 0;
+    bool     screenshotRunning_ = false;
+    UltraCanvas::DesktopScreenImage screenShot_;
+    std::unique_ptr<UltraCanvas::UltraCanvasScreenAreaPicker> screenPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    send_;
     // What goes with the next message, in the strip above the field.
     struct StagedAttachment {
@@ -531,11 +691,12 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> searchRow_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     searchInfo_;
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> filterRow_;
     std::string searchText_;            // what the list shows the matches of ("" all)
     UltraIMSearchKind searchKind_ = UltraIMSearchKind::AnyKind;
     UltraIMSearchKind shownKind_ = UltraIMSearchKind::AnyKind;   // what the list shows now
-    std::vector<std::pair<UltraIMSearchKind, std::shared_ptr<UltraCanvas::UltraCanvasButton>>> filterChips_;
+    // The kinds of the search (All, pictures, ...), in the search row
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> filterControl_;
+    std::vector<UltraIMSearchKind> filterKinds_;   // the control's segments, in order
     uint64_t    searchTimer_ = 0;
     int         searchSerial_ = 0;      // the answer of an older search is dropped
     bool        settingSearch_ = false; // the field set by hand, not typed
@@ -612,8 +773,8 @@ private:
     uint64_t         callTimer_ = 0;        // the duration ticker (0: none)
 
     std::string activeConversation_;
-    std::string typingContact_;
-    int64_t     typingUntilMs_ = 0;
+    // Who is typing where: conversation id -> contact id -> shown until (ms).
+    std::map<std::string, std::map<std::string, int64_t>> typing_;
     int64_t     lastTypingSentMs_ = 0;
     bool        relayoutPending_ = false;
     bool        fillingList_ = false;

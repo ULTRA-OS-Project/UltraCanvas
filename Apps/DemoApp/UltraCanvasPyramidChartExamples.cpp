@@ -434,7 +434,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildDataTab() {
         "the ice-cream-cone suite. Every tier here is larger than the one above it, so nothing is "
         "flagged - the suite is badly proportioned, not upside down."));
     notes->SetFontSize(10.5f);
-    notes->SetTextColor(Color(70, 70, 70, 255));
+    notes->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
     notes->SetMargin(20, 0, 0, 0);
     DemoKit::Add(row, notes, 1);
     notes->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(300));
@@ -688,7 +688,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
 
     auto selection = DemoKit::CreateText("PlaySelection", Tr("Click a tier to read its figures here."));
     selection->SetFontSize(11);
-    selection->SetTextColor(Color(70, 70, 70, 255));
+    selection->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
     DemoKit::Add(panel, selection);
 
     // The callbacks report indices into the data source, so sorting cannot shift them
@@ -737,7 +737,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePyramidC
     DemoKit::Add(page, card, 1);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PyramidChartTabs", 0, 0, 0, 0);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
 
     tabs->AddTab(Tr("3D Ribbon Pyramid"), Build3DRibbonTab());

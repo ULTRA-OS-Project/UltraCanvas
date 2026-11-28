@@ -6,16 +6,19 @@
 // Exercises the real engine sources with no UI stack and no link dependencies
 // beyond the files under test.
 //
+// Version: 1.3.0 - axis distributions: histogram binning (Freedman-Diaconis, the
+//   inclusive top edge), kernel density, the Tukey box summary, ChartAxis::Samples
 // Version: 1.2.0 - the ternary projection: corners, equal sides, centroid, round trip,
 //   height-limited fit, apex down
 // Version: 1.1.0 - axis bands / symmetric / cyclic, line and area series,
 //   stacking, marker polygons, the analysis helpers
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartAnalysis.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartDistribution.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
@@ -1507,6 +1510,88 @@ static void TestPinnedLabels() {
 
 // =============================================================================
 
+// =============================================================================
+// AXIS DISTRIBUTIONS
+// =============================================================================
+
+static void TestHistogramBinning() {
+    std::printf("Axis distribution: histogram binning\n");
+
+    const std::vector<double> values{0.0, 0.1, 0.2, 0.5, 0.9, 1.0, 1.5, NAN, -0.5};
+    const ChartHistogram h = ComputeHistogram(values, 0.0, 1.0, 4);
+    CHECK(h.counts.size() == 4, "the requested bin count is used");
+    CHECK(Near(h.BinWidth(), 0.25), "the bins split the interval evenly");
+    CHECK(h.counts[0] == 3 && h.counts[1] == 0 && h.counts[2] == 1 && h.counts[3] == 2,
+          "values fall in their bins and the top edge counts in the last bin");
+    CHECK(h.total == 6, "values outside the interval and NaN are not counted");
+    CHECK(h.maxCount == 3, "the tallest bin is reported");
+
+    std::vector<double> many;
+    for (int i = 0; i < 1000; ++i) many.push_back(static_cast<double>(i % 100) / 100.0);
+    const int fd = FreedmanDiaconisBinCount(many, 0.0, 1.0);
+    // IQR 0.495, n 1000: width 2 * 0.495 / 10 = 0.099 -> ceil(10.1) = 11 bins.
+    CHECK(fd == 11, "Freedman-Diaconis: width 2 IQR / cbrt(n)");
+    CHECK(ComputeHistogram(many, 0.0, 1.0, 0).counts.size() == static_cast<size_t>(fd),
+          "bin count 0 selects Freedman-Diaconis");
+    CHECK(FreedmanDiaconisBinCount({5.0, 5.0, 5.0, 5.0}, 0.0, 10.0) >= 1,
+          "a zero IQR falls back to a positive bin count");
+    CHECK(FreedmanDiaconisBinCount(many, 0.0, 1.0, 4) == 4, "the bin count is capped");
+
+    const ChartHistogram empty = ComputeHistogram({}, 0.0, 1.0, 3);
+    CHECK(empty.total == 0 && empty.maxCount == 0 && empty.counts.size() == 3,
+          "no values gives empty bins, not a crash");
+}
+
+static void TestKernelDensity() {
+    std::printf("Axis distribution: kernel density\n");
+
+    std::vector<double> values;
+    for (int i = 0; i < 400; ++i) values.push_back(std::sin(i * 0.37) * 0.15 + 0.5);
+    const double bw = SilvermanBandwidth(values);
+    CHECK(bw > 0.0 && bw < 0.2, "Silverman's bandwidth is positive and on the data's scale");
+
+    const size_t samples = 201;
+    const std::vector<double> dens = ComputeKernelDensity(values, -0.5, 1.5, samples);
+    CHECK(dens.size() == samples, "one density per sample point");
+    double integral = 0.0;
+    for (size_t i = 0; i + 1 < samples; ++i) integral += (dens[i] + dens[i + 1]) * 0.5 * 0.01;
+    CHECK(Near(integral, 1.0, 0.02), "the density integrates to one");
+    const size_t peak = static_cast<size_t>(
+        std::max_element(dens.begin(), dens.end()) - dens.begin());
+    const double peakAt = -0.5 + 0.01 * static_cast<double>(peak);
+    CHECK(peakAt > 0.3 && peakAt < 0.7, "the density peaks where the values are");
+    CHECK(dens.front() < 1e-6 && dens.back() < 1e-6, "and vanishes far from them");
+
+    const std::vector<double> one = ComputeKernelDensity({0.25}, 0.0, 1.0, 11);
+    CHECK(one[2] > 0.0 && one[2] >= one[0] && one[2] >= one[10],
+          "a single value is a narrow peak, not nothing");
+    CHECK(SilvermanBandwidth({1.0}) == 0.0, "one value has no Silverman bandwidth");
+}
+
+static void TestBoxSummary() {
+    std::printf("Axis distribution: box summary\n");
+
+    const ChartBoxSummary s = ComputeBoxSummary({1, 2, 3, 4, 5, 6, 7, 8, 9, 100, NAN});
+    CHECK(s.valid && s.count == 10, "non-finite values are skipped");
+    CHECK(Near(s.median, 5.5), "the median interpolates between the middle values");
+    CHECK(Near(s.q1, 3.25) && Near(s.q3, 7.75), "quartiles interpolate (type 7)");
+    CHECK(Near(s.whiskerLow, 1.0), "the low whisker ends at the smallest value inside the fence");
+    CHECK(Near(s.whiskerHigh, 9.0), "the high whisker stops short of the outlier");
+    CHECK(s.outliers.size() == 1 && Near(s.outliers[0], 100.0), "the outlier is listed");
+    CHECK(Near(s.minimum, 1.0) && Near(s.maximum, 100.0), "the extremes are kept");
+
+    const ChartBoxSummary single = ComputeBoxSummary({4.0});
+    CHECK(single.valid && Near(single.q1, 4.0) && Near(single.q3, 4.0) &&
+          Near(single.whiskerLow, 4.0) && Near(single.whiskerHigh, 4.0),
+          "one value collapses the box onto it");
+    CHECK(!ComputeBoxSummary({}).valid, "no values is not a summary");
+
+    ChartAxis axis("v");
+    axis.Observe({3.0, NAN, 1.0, 2.0});
+    CHECK(axis.Samples().size() == 3 && Near(axis.Samples()[0], 3.0),
+          "ChartAxis::Samples is what the axis observed, NaN left out");
+}
+
 int main() {
     std::printf("=== ChartEngineTest ===\n\n");
 
@@ -1553,6 +1638,9 @@ int main() {
     TestNiceRangeAndSignedPrefix();
     TestPinnedLabels();
     TestSqrtScale();
+    TestHistogramBinning();
+    TestKernelDensity();
+    TestBoxSummary();
 
     std::printf("\n%s (%d failure%s)\n",
                 g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Music - Artist</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#15803d}a:hover{color:#166534}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="padding: 12px 24px; min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 20px">
+<a href="MusicHome.dc.html" aria-label="UltraStore Music home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Music</span>
+</a>
+<form role="search" style="flex: 1 1 360px; max-width: 560px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-artist" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search</label>
+<input id="search-artist" type="search" placeholder="What do you want to play?" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<nav aria-label="Account" style="margin-left: auto; display: flex; gap: 8px; align-items: center">
+<span style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; background: #dcfce7; color: #15803d; font-weight: 700; font-size: 13px">Premium</span>
+<button type="button" aria-label="Account" style="width: 40px; height: 40px; border-radius: 999px; border: 0; background: #dcfce7; color: #15803d; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">AK</button>
+</nav>
+</div>
+</header>
+
+<main style="flex: 1 1 auto; display: flex; flex-direction: column">
+
+<section aria-labelledby="artist-title" style="position: relative; height: 340px; background: linear-gradient(160deg, #581c87 0%, #1e1b4b 55%, #0f172a 100%); color: #ffffff; display: flex; align-items: flex-end; padding: 0 32px 28px; box-sizing: border-box; overflow: hidden">
+<span aria-hidden="true" style="position: absolute; right: 10%; top: -40px; width: 420px; height: 420px; border-radius: 999px; background: radial-gradient(closest-side, rgba(236,72,153,0.45), rgba(236,72,153,0))"></span>
+<span aria-hidden="true" style="position: absolute; right: 16px; bottom: 12px; font-size: 11px; color: #e9d5ff">[ARTIST PHOTO 2660 × 1140]</span>
+<div style="position: relative; display: flex; flex-direction: column; gap: 8px">
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #f9a8d4"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="#60a5fa"><circle cx="12" cy="12" r="10"></circle><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>Verified artist</span>
+<h1 id="artist-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 72px; font-weight: 800; letter-spacing: -0.04em; line-height: 1">Kesselhaus Quartet</h1>
+<span style="font-size: 15px; color: #e9d5ff">1,204,118 monthly listeners · Berlin</span>
+</div>
+</section>
+
+<div style="padding: 20px 32px 32px; display: flex; flex-direction: column; gap: 28px">
+
+<div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
+<button type="button" aria-label="Play" style="width: 56px; height: 56px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(22,163,74,0.35)"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg></button>
+<button type="button" aria-label="Shuffle" style="width: 44px; height: 44px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"></path></svg></button>
+<button type="button" aria-pressed="true" style="height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #0f172a; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">Following</button>
+<button type="button" style="height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">Support the band · from 2 EUR</button>
+<button type="button" aria-label="More" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; color: #64748b; font-size: 20px; font-weight: 800">⋯</button>
+</div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; align-items: flex-start">
+
+<div style="display: flex; flex-direction: column; gap: 28px; min-width: 0">
+
+<section aria-labelledby="popular-title" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="popular-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Popular</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column">
+<li style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px; background: #f0fdf4"><span style="width: 20px; text-align: center; color: #15803d"><svg aria-label="Playing" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 16v-6M10 19V5M15 16V8M20 14v-4"></path></svg></span><span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 6px; background: linear-gradient(135deg, #ec4899, #581c87); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 14px; color: #15803d">Blue Hour</span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 100px; text-align: right">8,412,330</span><span style="width: 24px; text-align: center; color: #15803d"><svg aria-label="Liked" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 44px; text-align: right">6:40</span></li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px"><span style="width: 20px; text-align: center; color: #64748b; font-variant-numeric: tabular-nums">2</span><span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 6px; background: linear-gradient(135deg, #a855f7, #3b0764); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 14px">Kesselhaus</span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 100px; text-align: right">5,106,802</span><span style="width: 24px; text-align: center; color: #cbd5e1"><svg aria-label="Not liked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 44px; text-align: right">5:12</span></li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px"><span style="width: 20px; text-align: center; color: #64748b; font-variant-numeric: tabular-nums">3</span><span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 6px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 14px">Breakwater <span style="font-weight: 500; color: #64748b">· with Lena Marlow</span></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 100px; text-align: right">731,555</span><span style="width: 24px; text-align: center; color: #cbd5e1"><svg aria-label="Not liked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 44px; text-align: right">5:26</span></li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px"><span style="width: 20px; text-align: center; color: #64748b; font-variant-numeric: tabular-nums">4</span><span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 6px; background: linear-gradient(135deg, #f472b6, #9d174d); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 14px">Night Shift</span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 100px; text-align: right">2,204,019</span><span style="width: 24px; text-align: center; color: #cbd5e1"><svg aria-label="Not liked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 44px; text-align: right">7:03</span></li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 10px"><span style="width: 20px; text-align: center; color: #64748b; font-variant-numeric: tabular-nums">5</span><span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 6px; background: linear-gradient(135deg, #c4b5fd, #4c1d95); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 14px">Spree</span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 100px; text-align: right">1,187,440</span><span style="width: 24px; text-align: center; color: #cbd5e1"><svg aria-label="Not liked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; width: 44px; text-align: right">4:48</span></li>
+</ol>
+<a href="#more-popular" style="font-size: 13px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; height: 40px; padding: 0 10px">See more</a>
+</section>
+
+<section aria-live="polite" style="display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Discography</h2>
+<div role="group" aria-label="Kind" style="display: flex; gap: 6px">
+<sc-for list="{{kinds}}" as="k" hint-placeholder-count="5">
+<button type="button" onClick="{{k.pick}}" aria-pressed="{{k.selected}}" style="{{k.style}}">{{k.label}} <span style="{{k.countStyle}}">{{k.count}}</span></button>
+</sc-for>
+</div>
+<div role="group" aria-label="Sort" style="margin-left: auto; display: flex; gap: 6px">
+<sc-for list="{{sorts}}" as="s" hint-placeholder-count="2">
+<button type="button" onClick="{{s.pick}}" aria-pressed="{{s.selected}}" style="{{s.style}}">{{s.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+<sc-for list="{{releases}}" as="r" hint-placeholder-count="8">
+<a href="{{r.href}}" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: #f8fafc; text-decoration: none; color: #0f172a">
+<span aria-hidden="true" style="{{r.coverStyle}}">{{r.mark}}<span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 600; letter-spacing: 0">[COVER]</span><span style="{{r.badgeStyle}}">{{r.badge}}</span></span>
+<span style="font-weight: 700; font-size: 14px; line-height: 1.3">{{r.title}}</span>
+<span style="font-size: 12px; color: #64748b; margin-top: -6px">{{r.meta}}</span>
+</a>
+</sc-for>
+</div>
+<sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+<div style="padding: 40px 24px; border-radius: 20px; background: #f8fafc; text-align: center; color: #64748b">Nothing of this kind yet.</div>
+</sc-if>
+</section>
+
+</div>
+
+<aside style="display: flex; flex-direction: column; gap: 20px; min-width: 0">
+<section aria-labelledby="about-title" style="display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 20px; border: 1px solid #e2e8f0">
+<div aria-hidden="true" style="aspect-ratio: 4 / 3; border-radius: 12px; background: linear-gradient(135deg, #ec4899, #581c87); position: relative"><span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #fbcfe8">[PHOTO]</span></div>
+<h2 id="about-title" style="margin: 0; font-size: 16px; font-weight: 700">About</h2>
+<p style="margin: 0; font-size: 14px; color: #334155">Four players from Berlin who met at the Kesselhaus Friday sessions in 2019: piano, double bass, drums and a trumpet that often sounds like a voice. Three studio albums, a live record from their home room, and a habit of letting the room into the mix.</p>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Monthly listeners</dt><dd style="margin: 0; font-weight: 600">1,204,118</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Followers</dt><dd style="margin: 0; font-weight: 600">318,406</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Top city</dt><dd style="margin: 0; font-weight: 600">Berlin · 88,200</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Label</dt><dd style="margin: 0; font-weight: 600">Kesselhaus Records (own)</dd></div>
+</dl>
+</section>
+<section aria-labelledby="live-title" style="display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 20px; border: 1px solid #e2e8f0">
+<h2 id="live-title" style="margin: 0; font-size: 16px; font-weight: 700">On tour</h2>
+<a href="#berlin" style="display: flex; gap: 12px; align-items: center; text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column; align-items: center; width: 44px; line-height: 1.1"><span style="font-size: 11px; color: #b91c1c; font-weight: 700; text-transform: uppercase">Nov</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">28</span></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 700; font-size: 14px">Kesselhaus, Berlin</span><span style="font-size: 12px; color: #64748b">Friday session · few tickets left</span></span></a>
+<a href="#hamburg" style="display: flex; gap: 12px; align-items: center; text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column; align-items: center; width: 44px; line-height: 1.1"><span style="font-size: 11px; color: #b91c1c; font-weight: 700; text-transform: uppercase">Dec</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">12</span></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 700; font-size: 14px">Elbphilharmonie, Hamburg</span><span style="font-size: 12px; color: #64748b">Kleiner Saal · with Lena Marlow</span></span></a>
+<a href="#leipzig" style="display: flex; gap: 12px; align-items: center; text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column; align-items: center; width: 44px; line-height: 1.1"><span style="font-size: 11px; color: #b91c1c; font-weight: 700; text-transform: uppercase">Jan</span><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">17</span></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 700; font-size: 14px">Moritzbastei, Leipzig</span><span style="font-size: 12px; color: #64748b">Tickets from 24 EUR</span></span></a>
+</section>
+<section aria-labelledby="fans-title" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="fans-title" style="margin: 0; font-size: 16px; font-weight: 700">Fans also like</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<a href="#lena" style="display: flex; flex-direction: column; align-items: center; gap: 6px; text-decoration: none; color: #0f172a; text-align: center"><span aria-hidden="true" style="width: 72px; height: 72px; border-radius: 999px; background: linear-gradient(135deg, #38bdf8, #0369a1)"></span><span style="font-size: 12px; font-weight: 600">Lena Marlow</span></a>
+<a href="#harbour" style="display: flex; flex-direction: column; align-items: center; gap: 6px; text-decoration: none; color: #0f172a; text-align: center"><span aria-hidden="true" style="width: 72px; height: 72px; border-radius: 999px; background: linear-gradient(135deg, #22c55e, #14532d)"></span><span style="font-size: 12px; font-weight: 600">The Harbour Lights</span></a>
+<a href="#orbit" style="display: flex; flex-direction: column; align-items: center; gap: 6px; text-decoration: none; color: #0f172a; text-align: center"><span aria-hidden="true" style="width: 72px; height: 72px; border-radius: 999px; background: linear-gradient(135deg, #1e1b4b, #0f172a)"></span><span style="font-size: 12px; font-weight: 600">Orbit Drift</span></a>
+</div>
+</section>
+</aside>
+
+</div>
+</div>
+</main>
+
+<div aria-label="Now playing" style="position: sticky; bottom: 0; display: grid; grid-template-columns: 1fr 2fr 1fr; align-items: center; gap: 16px; padding: 12px 24px; background: #0f172a; color: #ffffff; border-top: 1px solid #1e293b">
+<div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+<span aria-hidden="true" style="width: 56px; height: 56px; border-radius: 8px; background: linear-gradient(135deg, #ec4899, #581c87); flex: 0 0 auto"></span>
+<div style="display: flex; flex-direction: column; line-height: 1.25; min-width: 0"><span style="font-weight: 700; font-size: 14px">Blue Hour</span><span style="font-size: 12px; color: #94a3b8">Kesselhaus Quartet · Blue Hour (Live)</span></div>
+<button type="button" aria-label="Liked" style="width: 36px; height: 36px; border: 0; background: transparent; color: #4ade80; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; align-items: center">
+<div style="display: flex; align-items: center; gap: 10px">
+<button type="button" aria-label="Shuffle, off" style="width: 36px; height: 36px; border: 0; background: transparent; color: #94a3b8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"></path></svg></button>
+<button type="button" aria-label="Previous" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18 5l-10 7 10 7z"></path><rect x="4.5" y="5" width="2.5" height="14" rx="1"></rect></svg></button>
+<button type="button" aria-label="Pause" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: #ffffff; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></button>
+<button type="button" aria-label="Next" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5l10 7-10 7z"></path><rect x="17" y="5" width="2.5" height="14" rx="1"></rect></svg></button>
+<button type="button" aria-label="Repeat, off" style="width: 36px; height: 36px; border: 0; background: transparent; color: #94a3b8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; width: 100%; max-width: 560px; font-size: 12px; color: #94a3b8; font-variant-numeric: tabular-nums">
+<span>2:10</span>
+<span role="slider" aria-label="Position" aria-valuemin="0" aria-valuemax="400" aria-valuenow="130" style="flex: 1 1 auto; height: 4px; border-radius: 2px; background: #334155; overflow: hidden; display: block"><span style="display: block; width: 32%; height: 100%; background: #ffffff"></span></span>
+<span>6:40</span>
+</div>
+</div>
+<div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px">
+<button type="button" style="height: 36px; padding: 0 10px; border: 0; background: transparent; color: #94a3b8; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer">Lyrics</button>
+<button type="button" aria-label="Queue" style="width: 36px; height: 36px; border: 0; background: transparent; color: #94a3b8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"></path><path d="M17 15l4 2.5-4 2.5z" fill="currentColor"></path></svg></button>
+<button type="button" style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 0; background: transparent; color: #4ade80; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"></rect><path d="M8 21h8"></path></svg>This laptop</button>
+<button type="button" aria-label="Volume" style="width: 36px; height: 36px; border: 0; background: transparent; color: #94a3b8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6l-5 4z"></path><path d="M16 9a4 4 0 0 1 0 6"></path></svg></button>
+<span aria-hidden="true" style="width: 80px; height: 4px; border-radius: 2px; background: #334155; overflow: hidden"><span style="display: block; width: 65%; height: 100%; background: #ffffff"></span></span>
+<span style="margin-left: 8px; height: 22px; padding: 0 8px; border-radius: 5px; background: #1e293b; color: #cbd5e1; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">FLAC 24/96</span>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#16a34a","options":["#16a34a","#2563eb","#0f172a","#7c3aed"]},"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { kind: 'all', sort: 'newest' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#16a34a';
+    // Sample discography: year, kind 'album' | 'single' | 'live' | 'appears', tracks
+    const RELEASES = [
+      { id: 'blue-hour', title: 'Blue Hour (Live at the Kesselhaus)', year: 2026, kind: 'live', tracks: 9, grad: 'linear-gradient(135deg, #ec4899, #581c87)', latest: true },
+      { id: 'night-shift', title: 'Night Shift', year: 2025, kind: 'album', tracks: 10, grad: 'linear-gradient(135deg, #f472b6, #9d174d)' },
+      { id: 'breakwater', title: 'Breakwater (with Lena Marlow)', year: 2026, kind: 'appears', tracks: 1, grad: 'linear-gradient(135deg, #0ea5e9, #1e3a8a)', href: 'MusicAlbum.dc.html' },
+      { id: 'spree', title: 'Spree', year: 2025, kind: 'single', tracks: 1, grad: 'linear-gradient(135deg, #c4b5fd, #4c1d95)' },
+      { id: 'kesselhaus', title: 'Kesselhaus', year: 2023, kind: 'album', tracks: 11, grad: 'linear-gradient(135deg, #a855f7, #3b0764)' },
+      { id: 'first-friday', title: 'First Friday', year: 2021, kind: 'album', tracks: 8, grad: 'linear-gradient(135deg, #fb7185, #881337)' },
+      { id: 'tram', title: 'Last Tram', year: 2022, kind: 'single', tracks: 2, grad: 'linear-gradient(135deg, #fbbf24, #92400e)' },
+      { id: 'live-2022', title: 'Live at Jazzfest Berlin', year: 2022, kind: 'live', tracks: 7, grad: 'linear-gradient(135deg, #67e8f9, #155e75)' },
+      { id: 'winter', title: 'Winter Session (with Orbit Drift)', year: 2024, kind: 'appears', tracks: 3, grad: 'linear-gradient(135deg, #94a3b8, #0f172a)' },
+      { id: 'solo', title: 'Trumpet Solo', year: 2020, kind: 'single', tracks: 1, grad: 'linear-gradient(135deg, #fde68a, #b45309)' }
+    ];
+    const s = this.state;
+    const chip = (on) => 'display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 0; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: #f1f5f9; color: #0f172a');
+    const kinds = [
+      { id: 'all', label: 'All' },
+      { id: 'album', label: 'Albums' },
+      { id: 'single', label: 'Singles and EPs' },
+      { id: 'live', label: 'Live' },
+      { id: 'appears', label: 'Appears on' }
+    ].map((k) => {
+      const on = k.id === s.kind;
+      const count = RELEASES.filter((r) => k.id === 'all' || r.kind === k.id).length;
+      return { ...k, selected: on, count, style: chip(on), countStyle: 'font-size: 12px; font-weight: 700; ' + (on ? 'color: #cbd5e1' : 'color: #64748b'), pick: () => this.setState({ kind: k.id }) };
+    });
+    const sorts = [
+      { id: 'newest', label: 'Newest' },
+      { id: 'oldest', label: 'Oldest' }
+    ].map((x) => ({ ...x, selected: x.id === s.sort, style: chip(x.id === s.sort), pick: () => this.setState({ sort: x.id }) }));
+    const kindLabel = { album: 'Album', single: 'Single', live: 'Live album', appears: 'Appears on' };
+    const list = RELEASES.filter((r) => s.kind === 'all' || r.kind === s.kind).sort((a, b) => s.sort === 'newest' ? b.year - a.year : a.year - b.year);
+    const releases = list.map((r) => ({
+      ...r,
+      href: r.href || ('#' + r.id),
+      mark: r.title.split(/\s+/).filter((w) => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map((w) => w[0].toUpperCase()).join(''),
+      coverStyle: 'position: relative; aspect-ratio: 1; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 48px; letter-spacing: -0.04em; background: ' + r.grad,
+      badge: r.latest ? 'Latest release' : '',
+      badgeStyle: 'position: absolute; right: 8px; top: 8px; height: 22px; padding: 0 7px; border-radius: 6px; background: ' + accent + '; color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0; display: ' + (r.latest ? 'inline-flex' : 'none') + '; align-items: center',
+      meta: r.year + ' · ' + kindLabel[r.kind] + (r.tracks > 1 ? ' · ' + r.tracks + ' songs' : '')
+    }));
+    return { accent, kinds, sorts, releases, empty: releases.length === 0 };
+  }
+}
+</script>
+</body>
+</html>

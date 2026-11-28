@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.23.0 - the reading pane's "Add to contacts" (a "Re:" from a stranger) goes
+//                   to onAddContact
 // Version: 0.22.0 - the panes, the folder tree and the message list follow a change of the look (Theme::Follow); the cards are the look's
 // Version: 0.21.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.20.0 - SetSecureKeys / onCertificateLearnt for signed and encrypted mail
@@ -563,6 +565,10 @@ void MailView::BuildMessageBox() {
     };
     preview_.onDelete = [this](const MessageEnvelope& e) {
         if (onDelete) onDelete(e);
+    };
+    // "Add to contacts" in the warning strip of a "Re:" from a stranger.
+    preview_.onAddContact = [this](const MessageEnvelope& e) {
+        if (onAddContact) onAddContact(e);
     };
     preview_.onJunk = [this](const MessageEnvelope& e) {
         if (onJunk) onJunk(e);

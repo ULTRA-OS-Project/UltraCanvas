@@ -8,6 +8,9 @@
 // numbered parts (32 KiB each, one envelope per part), peer to peer over
 // the link when it is up, else through the relay's queue - so a file reaches
 // someone offline, and a group, with nothing added to the relay.
+// The owner's profile picture goes the same way, to each contact: a sealed
+// "picture" body with a version and the bytes (at most 32 KiB), sent again
+// when it changes and to a contact added later; the relay never holds it.
 //
 // The identity's key vault opens by itself with the device key, or - as its
 // owner chooses (SetSignInProtection) - only with a password (the vault
@@ -17,6 +20,12 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.16 - the profile picture: the owner's sent to every contact end to end (a "picture" body),
+//                  the contacts' kept and shown beside their names
+// Version: 0.1.15 - group revisions (relay 1.6): a record older than the newest applied is dropped,
+//                  and a group we were taken out of stays out
+// Version: 0.1.14 - a group request reports the group as the relay's reply has it, not a re-read
+//                  of the store that an older group.update can have overwritten (the flaky rename)
 // Version: 0.1.13 - a group's description; the owner blocks and unblocks members
 // Version: 0.1.12 - public groups (relay 1.5): the directory, joining one, the owner's public / private
 // Version: 0.1.11 - TransferProgress: a file's parts counted as they leave and as they arrive
@@ -53,6 +62,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -285,7 +295,13 @@ private:
     std::vector<uint8_t> KeyOf(const std::string& userId);
     UltraIMConversation EnsureDirectConversation(const std::string& userId);
     void RefreshGroups();
-    void UpsertGroup(const UltraCanvas::JSONValue& group);
+    // Stores the relay's record of a group, tells the listeners, and returns
+    // the conversation as that record has it (empty when it says removed) -
+    // what a request's callback reports, rather than a re-read of the store,
+    // which an older push on the socket can have overwritten in between. A
+    // record older than the newest applied (its revision, relay 1.6) is
+    // dropped, and the conversation as we hold it returned instead.
+    UltraIMConversation UpsertGroup(const UltraCanvas::JSONValue& group);
     // What the store does not keep onto a group's conversation: its owner, as
     // the relay last said, and the names of the members it knows.
     void FillGroupDetails(UltraIMConversation& conversation);
@@ -333,6 +349,22 @@ private:
     // A "delete" from the sender of the messages it names.
     void HandleDeleteBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
     void HandleEditBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    // ---- the profile picture: the owner's, sent to every contact as a
+    // sealed "picture" body (the version, the bytes base64, none when it
+    // was removed); the contacts' kept in the media folder
+    // A copy of `path` becomes the owner's picture ("" removes it), with a
+    // new version; false with `error` when it is no picture or too large.
+    bool SetOwnPicture(const std::string& path, UltraIMResult& error);
+    // The owner's picture to a contact that does not have this version yet
+    // (each contact's last version sent is remembered); to every contact.
+    void SharePictureWith(const std::string& userId);
+    void SharePicture();
+    void HandlePictureBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    // A contact's picture here ("" for none), and the paths filled in on
+    // what goes to the host: a 1:1 conversation's, a message's sender's.
+    std::string PictureOf(const std::string& userId);
+    void FillPictures(UltraIMConversation& conversation);
+    void FillPictures(UltraIMMessage& message);
     // A part of one of our files has left (the relay took it, or the other
     // side's link acknowledged it): TransferProgress, at each percent.
     void NotePartLeft(const std::string& outboxId);
@@ -398,6 +430,15 @@ private:
     std::map<std::string, std::string> groupOwners_;    // group conversation -> its owner's user id
     std::set<std::string> publicGroups_;                // group conversations that are public
     std::map<std::string, std::string> groupDescriptions_;  // group conversation -> its description
+    // The newest revision of each group applied (relay 1.6), and whether that
+    // record took us out of it: an older record arriving late is dropped.
+    // Kept for a group we left too, so a late record does not put it back.
+    struct GroupRevision {
+        int64_t revision = 0;
+        bool removed = false;
+    };
+    std::mutex groupOrderMutex_;                        // a group record's check and write, as one step
+    std::map<std::string, GroupRevision> groupRevisions_;   // group conversation -> newest applied
     std::set<std::string> fetchingUsers_;
     // Proven by a local connection's handshake: user id -> (key, name).
     std::map<std::string, std::pair<std::vector<uint8_t>, std::string>> lanKeys_;

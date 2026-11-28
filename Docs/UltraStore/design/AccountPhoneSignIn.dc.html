@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore phone - Sign in</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.45; display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased; padding: 60px 24px 32px">
+
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.02em">UltraStore</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 32px">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1">Sign in</h1>
+<p style="margin: 0; color: #64748b; font-size: 14px">Your licences, subscriptions and library on this phone.</p>
+</div>
+
+<form style="display: flex; flex-direction: column; gap: 14px; margin-top: 24px">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="m-email" style="font-size: 13px; font-weight: 700; color: #334155">Email</label><input id="m-email" type="email" value="anna.k@example.org" style="height: 50px; padding: 0 16px; border-radius: 14px; border: 1px solid #cbd5e1; font: inherit; font-size: 16px; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="display: flex; justify-content: space-between; align-items: baseline"><label for="m-pw" style="font-size: 13px; font-weight: 700; color: #334155">Password</label><a href="AccountRecovery.dc.html" style="font-size: 13px; font-weight: 600; text-decoration: none">Forgot it?</a></div><div style="display: flex; align-items: center; height: 50px; padding: 0 6px 0 16px; border-radius: 14px; border: 1px solid #cbd5e1"><input id="m-pw" type="password" value="••••••••••••" style="flex: 1 1 auto; min-width: 0; border: 0; font: inherit; font-size: 16px; outline: none; background: transparent"><button type="button" style="height: 38px; padding: 0 12px; border: 0; border-radius: 10px; background: #f1f5f9; font: inherit; font-size: 12px; font-weight: 700; color: #334155; cursor: pointer">Show</button></div></div>
+<button type="button" style="height: 54px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer; margin-top: 4px">Sign in</button>
+</form>
+
+<div style="display: flex; align-items: center; gap: 12px; margin: 20px 0; color: #94a3b8; font-size: 12px"><span style="flex: 1 1 auto; height: 1px; background: #e2e8f0"></span>or<span style="flex: 1 1 auto; height: 1px; background: #e2e8f0"></span></div>
+
+<button type="button" style="display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 50px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11a5 5 0 0 1 10 0v2a5 5 0 0 1-10 0z"></path><path d="M12 6V3M12 21v-3"></path><path d="M9.5 11.5v1a2.5 2.5 0 0 0 5 0v-1"></path></svg>Sign in with a passkey</button>
+<button type="button" style="display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 50px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 10px"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"></rect><path d="M8 21h8"></path><path d="M9 11l2 2 4-4"></path></svg>Confirm on a signed-in machine</button>
+<span style="font-size: 12px; color: #64748b; text-align: center; margin-top: 8px">Anna's laptop is signed in and nearby: approve there and this phone is signed in without a password.</span>
+
+<p style="margin-top: auto; font-size: 14px; color: #64748b; text-align: center">New here? <a href="AccountSignUp.dc.html" style="font-weight: 700; text-decoration: none">Create an account</a></p>
+<p style="margin: 10px 0 0; font-size: 11px; color: #94a3b8; text-align: center"><a href="#privacy" style="color: #64748b">Privacy</a> · <a href="#terms" style="color: #64748b">Terms</a> · <a href="#imprint" style="color: #64748b">Imprint</a></p>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

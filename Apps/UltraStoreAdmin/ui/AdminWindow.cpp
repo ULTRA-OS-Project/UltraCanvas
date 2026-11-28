@@ -55,7 +55,7 @@ constexpr const char* kItemPrefix = "c:";
 
 const char* kSettingKeys[] = {"catalog.base_url", "packages.base_url", "store.contact", "texts.languages", "ai.provider",
                                "ai.base_url", "ai.model", "payment.url", "payment.licence_key", "payment.token",
-                               "market.url", "market.merchant_id", "market.key"};
+                               "market.url", "market.merchant_id", "market.key", "market.application_id"};
 
 // A setting's label, in the person's language.
 std::string SettingLabel(const std::string& key) {
@@ -72,6 +72,7 @@ std::string SettingLabel(const std::string& key) {
     if (key == "market.url")          return Tr("Marketplace service URL");
     if (key == "market.merchant_id")  return Tr("Merchant id at the marketplace (from the operator)");
     if (key == "market.key")          return Tr("Key that signs submissions (id; empty: the first active)");
+    if (key == "market.application_id") return Tr("Application for a shop (id; from Marketplace, Apply)");
     return key;
 }
 
@@ -1728,6 +1729,21 @@ void AdminWindow::RefreshFinancePage() {
 // ===========================================================================
 // Marketplace
 // ===========================================================================
+// A multi-line text box of the given height, in the store look (the
+// component form's description is the same).
+std::shared_ptr<UltraCanvasTextArea> MultilineBox(const std::string& id, float height, const std::string& placeholder) {
+    auto area = Theme::Pin(std::make_shared<UltraCanvasTextArea>(id, 0.0f, height));
+    area->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(height));
+    area->SetWordWrap(true);
+    area->SetShowLineNumbers(false);
+    area->SetHighlightSyntax(false);
+    area->SetFontSize(12.0f);
+    area->SetBackgroundColor(Theme::kPageBackground);
+    area->SetBorders(1.0f, Theme::kBorder, 4.0f);
+    if (!placeholder.empty()) area->SetPlaceholder(placeholder);
+    return area;
+}
+
 void AdminWindow::BuildMarketPage() {
     std::shared_ptr<Container> header, body;
     BuildPage(kMarket, Tr("Marketplace"), header, body);
@@ -1748,6 +1764,55 @@ void AdminWindow::BuildMarketPage() {
     keyRow->AddChild(refresh);
     standing->AddChild(keyRow);
     body->AddChild(standing);
+
+    // Before the merchant id: a shop asked for.
+    applyBox_ = Theme::Surface("uaM.apply", Theme::kInnerGap);
+    applyBox_->AddChild(Theme::Text("uaM.apply.title", Tr("Apply for a shop"), 14.0f, FontWeight::Bold));
+    applyBox_->AddChild(Theme::Caption("uaM.apply.hint",
+        Tr("The operator decides. The application carries the public half of this backend's key, signed with it, so the key that signs your submissions is the one the operator registers; the name and the website are what the catalog shows as the publisher.")));
+    apName_ = Theme::Pin(CreateTextInput("uaM.apply.name", 0, 0, 320, Theme::kControlHeight));
+    applyBox_->AddChild(Theme::Field("uaM.apply.nameRow", Tr("Shop name"), apName_));
+    apContact_ = Theme::Pin(CreateTextInput("uaM.apply.contact", 0, 0, 320, Theme::kControlHeight));
+    apContact_->SetPlaceholder(Tr("an address or a page the operator can reach you at"));
+    applyBox_->AddChild(Theme::Field("uaM.apply.contactRow", Tr("Contact"), apContact_));
+    apEmail_ = Theme::Pin(CreateTextInput("uaM.apply.email", 0, 0, 320, Theme::kControlHeight));
+    applyBox_->AddChild(Theme::Field("uaM.apply.emailRow", Tr("Email (the operator's to see)"), apEmail_));
+    apWebsite_ = Theme::Pin(CreateTextInput("uaM.apply.website", 0, 0, 320, Theme::kControlHeight));
+    apWebsite_->SetPlaceholder("https://");
+    applyBox_->AddChild(Theme::Field("uaM.apply.websiteRow", Tr("Website"), apWebsite_));
+    apDescription_ = MultilineBox("uaM.apply.description", 64.0f, Tr("a line about the publisher, shown with the shop"));
+    applyBox_->AddChild(apDescription_);
+    auto applyRow = Theme::Row("uaM.apply.row", Theme::kInnerGap, true);
+    auto applyButton = Theme::Button("uaM.apply.go", Tr("Apply"), 100, Theme::ButtonKind::Primary);
+    applyButton->onClick = [this]() { ApplyForShop(); };
+    applyRow->AddChild(applyButton);
+    auto checkButton = Theme::Button("uaM.apply.check", Tr("Check the application"), 160);
+    checkButton->onClick = [this]() { CheckApplication(); };
+    applyRow->AddChild(checkButton);
+    applyState_ = Theme::Caption("uaM.apply.state", "");
+    applyState_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    applyRow->AddChild(applyState_);
+    applyBox_->AddChild(applyRow);
+    applyBox_->SetVisible(false);
+    body->AddChild(applyBox_);
+
+    // The merchant's own profile.
+    profileBox_ = Theme::Surface("uaM.profile", Theme::kInnerGap);
+    profileBox_->AddChild(Theme::Text("uaM.profile.title", Tr("Your shop's profile"), 14.0f, FontWeight::Bold));
+    profileBox_->AddChild(Theme::Caption("uaM.profile.hint", Tr("The name and the website are what the catalog shows as the publisher; the contact is the operator's. The key is rotated from the command line (market profile --rotate-key).")));
+    prName_ = Theme::Pin(CreateTextInput("uaM.profile.name", 0, 0, 320, Theme::kControlHeight));
+    profileBox_->AddChild(Theme::Field("uaM.profile.nameRow", Tr("Shop name"), prName_));
+    prContact_ = Theme::Pin(CreateTextInput("uaM.profile.contact", 0, 0, 320, Theme::kControlHeight));
+    profileBox_->AddChild(Theme::Field("uaM.profile.contactRow", Tr("Contact"), prContact_));
+    prWebsite_ = Theme::Pin(CreateTextInput("uaM.profile.website", 0, 0, 320, Theme::kControlHeight));
+    profileBox_->AddChild(Theme::Field("uaM.profile.websiteRow", Tr("Website"), prWebsite_));
+    prDescription_ = MultilineBox("uaM.profile.description", 64.0f, Tr("a line about the publisher"));
+    profileBox_->AddChild(prDescription_);
+    auto saveProfile = Theme::Button("uaM.profile.save", Tr("Save the profile"), 140, Theme::ButtonKind::Primary);
+    saveProfile->onClick = [this]() { SaveProfile(); };
+    profileBox_->AddChild(saveProfile);
+    profileBox_->SetVisible(false);
+    body->AddChild(profileBox_);
 
     auto notices = Theme::Surface("uaM.notices", Theme::kInnerGap);
     notices->AddChild(Theme::Text("uaM.notices.title", Tr("Notices"), 14.0f, FontWeight::Bold));
@@ -1788,7 +1853,7 @@ void AdminWindow::BuildMarketPage() {
 
     auto submit = Theme::Surface("uaM.submit", Theme::kInnerGap);
     submit->AddChild(Theme::Text("uaM.submit.title", Tr("Submit a release"), 14.0f, FontWeight::Bold));
-    submit->AddChild(Theme::Caption("uaM.submit.hint", Tr("The app as it is saved here goes to the review, signed; the packages are named by their hashes.")));
+    submit->AddChild(Theme::Caption("uaM.submit.hint", Tr("The app as it is saved here goes to the review, signed; the packages are named by their hashes and, when the operator keeps a package store, uploaded from this store's packages folder.")));
     submitApp_ = Theme::Pin(CreateDropdown("uaM.app", 0, 0, 320, Theme::kControlHeight));
     submit->AddChild(Theme::Field("uaM.appRow", Tr("App"), submitApp_));
     submitAnswers_ = Theme::Pin(CreateTextInput("uaM.answers", 0, 0, 200, Theme::kControlHeight));
@@ -1805,12 +1870,21 @@ void AdminWindow::BuildMarketPage() {
         if (!seed) { SetStatus(seed.error.message, true); return; }
         MarketClient client(MarketSettings::From(db_), seed.Value());
         const std::string answers = submitAnswers_->GetText();
-        RunJob(TrF("Submitting {0}", appId), [client, c = component.Value(), answers]() {
+        RunJob(TrF("Submitting {0}", appId), [client, c = component.Value(), answers, packagesDir = store_.PackagesDir()]() {
             JobOutcome out;
             const auto sent = client.Submit(c, answers);
             if (!sent) { out.ok = false; out.message = sent.error.message; return out; }
             out.message = TrF("Submitted {0} {1} as {2}: {3}", sent.Value().app, sent.Value().version, sent.Value().id, sent.Value().state);
-            for (const auto& [name, outcome] : sent.Value().checks) out.lines.push_back(name + ": " + outcome);
+            bool waiting = false;
+            for (const auto& [name, outcome] : sent.Value().checks) { out.lines.push_back(name + ": " + outcome); if (name == "packages" && outcome == "waiting") waiting = true; }
+            if (waiting) {
+                // The packages into the operator's package store.
+                const auto ups = client.UploadPackages(sent.Value().id, c, packagesDir, [&out](const PackageUpload& up) {
+                    out.lines.push_back(up.skipped ? TrF("{0}: not in the package store, its URL stays", up.fileName)
+                                                   : TrF("{0} uploaded ({1} bytes): packages {2}, {3}", up.fileName, up.size, up.packagesCheck, up.state));
+                });
+                if (!ups) { out.ok = false; out.message = ups.error.message; return out; }
+            }
             return out;
         }, [this](const JobOutcome& out) { if (out.ok) { submitAnswers_->SetText(""); RefreshMarketPage(); } });
     };
@@ -1830,9 +1904,10 @@ void AdminWindow::BuildMarketPage() {
     body->AddChild(reports);
 }
 
-Result<std::vector<uint8_t>> AdminWindow::MarketSeed() {
+Result<std::vector<uint8_t>> AdminWindow::MarketSeed(bool needMerchant) {
     const MarketSettings settings = MarketSettings::From(db_);
-    if (!settings.Complete()) return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, Tr("Settings: market.url and market.merchant_id name the marketplace service"));
+    if (settings.url.empty()) return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, Tr("Settings: market.url names the marketplace service"));
+    if (needMerchant && !settings.Complete()) return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, Tr("No merchant id yet: apply for a shop below, then check the application"));
     if (!marketPassphrase_ || marketPassphrase_->GetText().empty()) return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, Tr("The key's passphrase signs the request"));
     return OpenKeySeed(db_, 0, marketPassphrase_->GetText());
 }
@@ -1842,6 +1917,7 @@ void AdminWindow::RefreshMarketPage() {
         submitApp_->ClearItems();
         for (const UltraStore::Component& c : components_) if (c.kind == UltraStore::ComponentKind::App) submitApp_->AddItem(c.name.empty() ? c.id : c.name + " (" + c.id + ")", c.id);
     }
+    if (!MarketSettings::From(db_).Complete()) { marketError_.clear(); marketStanding_ = Tr("No shop yet: apply for one below."); ShowMarketPage(); return; }
     const auto seed = MarketSeed();
     if (!seed) { marketError_ = seed.error.message; ShowMarketPage(); return; }
     MarketClient client(MarketSettings::From(db_), seed.Value());
@@ -1857,11 +1933,13 @@ void AdminWindow::RefreshMarketPage() {
         std::vector<Notice> notices;
         bool haveTerms = false;
         Terms terms;
+        Standing profile;
         std::vector<std::string> subs, reps;
         const auto standing = client.GetStanding();
         if (!standing) error = standing.error.message;
         else {
             const Standing& s = standing.Value();
+            profile = s;
             standingText = TrF("{0} ({1}): {2}, {3} strike(s), terms in force {4}, accepted {5}", s.name, s.id, s.standing,
                                s.strikes, s.termsInForce, s.termsAccepted);
         }
@@ -1884,10 +1962,11 @@ void AdminWindow::RefreshMarketPage() {
                                (r.Get("outcome").GetString().empty() ? "" : ": " + r.Get("outcome").GetString()) + "\n" + r.Get("text").GetString());
             }
         }
-        app_.PostToUIThread([this, token, standingText, error, notices, haveTerms, terms, subs, reps]() {
+        app_.PostToUIThread([this, token, standingText, error, notices, haveTerms, terms, subs, reps, profile]() {
             if (!token.lock()) return;
             marketStanding_ = standingText;
             marketError_ = error;
+            marketProfile_ = profile;
             notices_ = notices;
             haveTerms_ = haveTerms;
             terms_ = terms;
@@ -1902,6 +1981,20 @@ void AdminWindow::ShowMarketPage() {
     if (!marketStandingLabel_) return;
     marketStandingLabel_->SetText(!marketError_.empty() ? marketError_ : marketStanding_.empty() ? Tr("Not asked yet.") : marketStanding_);
     marketStandingLabel_->SetTextColor(marketError_.empty() ? Theme::kTextPrimary : Theme::kDanger);
+    const MarketSettings settings = MarketSettings::From(db_);
+    if (applyBox_) {
+        applyBox_->SetVisible(!settings.Complete());
+        if (applyState_ && settings.Applied()) applyState_->SetText(TrF("Applied as {0}; the operator decides", settings.applicationId));
+    }
+    if (profileBox_) {
+        profileBox_->SetVisible(settings.Complete() && marketError_.empty() && !marketProfile_.id.empty());
+        if (!marketProfile_.id.empty()) {
+            prName_->SetText(marketProfile_.name);
+            prContact_->SetText(marketProfile_.contact);
+            prWebsite_->SetText(marketProfile_.website);
+            prDescription_->SetText(marketProfile_.description, false);
+        }
+    }
     noticesList_->ClearChildren();
     if (notices_.empty()) noticesList_->AddChild(Theme::Caption("uaM.n.none", Tr("No notices.")));
     int n = 0;
@@ -1950,6 +2043,62 @@ void AdminWindow::ShowMarketPage() {
     UpdateNoticesBanner();
     pageHost_->InvalidateLayout();
     pageHost_->RequestRedraw();
+}
+
+void AdminWindow::ApplyForShop() {
+    if (!apName_ || apName_->GetText().empty() || apContact_->GetText().empty()) { SetStatus(Tr("An application names the shop and how to reach you"), true); return; }
+    const auto seed = MarketSeed(false);
+    if (!seed) { SetStatus(seed.error.message, true); return; }
+    MarketClient client(MarketSettings::From(db_), seed.Value());
+    RunJob(Tr("Applying for a shop"), [client, name = apName_->GetText(), contact = apContact_->GetText(), email = apEmail_->GetText(), website = apWebsite_->GetText(),
+                                       description = apDescription_->GetText()]() {
+        JobOutcome out;
+        const auto r = client.Apply(name, contact, email, website, description);
+        if (!r) { out.ok = false; out.message = r.error.message; return out; }
+        out.message = TrF("Applied as {0}: the operator decides", r.Value().id);
+        out.lines = {r.Value().id, r.Value().secret};
+        return out;
+    }, [this](const JobOutcome& out) {
+        if (!out.ok || out.lines.size() < 2) return;
+        db_.SetSetting("market.application_id", out.lines[0]);
+        db_.SetSetting("market.application_secret", out.lines[1]);
+        ShowMarketPage();
+    });
+}
+
+void AdminWindow::CheckApplication() {
+    const MarketSettings settings = MarketSettings::From(db_);
+    if (!settings.Applied()) { SetStatus(Tr("No application was made from here"), true); return; }
+    RunJob(Tr("Asking about the application"), [settings]() {
+        JobOutcome out;
+        const auto a = MarketClient::ApplicationState(settings.url, settings.applicationId, settings.applicationSecret);
+        if (!a) { out.ok = false; out.message = a.error.message; return out; }
+        out.message = a.Value().Approved() ? TrF("Approved: the shop is open as {0}", a.Value().merchant)
+                    : a.Value().state == "rejected" ? TrF("Rejected: {0}", a.Value().message) : Tr("Still waiting for the operator");
+        if (a.Value().Approved()) out.lines = {a.Value().merchant};
+        return out;
+    }, [this](const JobOutcome& out) {
+        if (applyState_) applyState_->SetText(out.message);
+        if (out.ok && !out.lines.empty()) { db_.SetSetting("market.merchant_id", out.lines[0]); RefreshMarketPage(); }
+    });
+}
+
+void AdminWindow::SaveProfile() {
+    const auto seed = MarketSeed();
+    if (!seed) { SetStatus(seed.error.message, true); return; }
+    MarketClient client(MarketSettings::From(db_), seed.Value());
+    ProfileChange change;
+    change.name = prName_->GetText();
+    change.contact = prContact_->GetText();
+    change.website = prWebsite_->GetText();
+    change.description = prDescription_->GetText();
+    RunJob(Tr("Saving the profile"), [client, change]() {
+        JobOutcome out;
+        const auto r = client.UpdateProfile(change);
+        if (!r) { out.ok = false; out.message = r.error.message; return out; }
+        out.message = Tr("Profile saved: the next publish of the catalog names it");
+        return out;
+    }, [this](const JobOutcome& out) { if (out.ok) RefreshMarketPage(); });
 }
 
 void AdminWindow::UpdateNoticesBanner() {

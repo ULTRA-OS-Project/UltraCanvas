@@ -690,11 +690,11 @@ std::vector<std::string> RequirementModel::GetDerivedElements(
 
     for (const auto& r : relations) {
         if (r.kind != kind) continue;
-        const std::string& near = incoming ? r.targetId : r.sourceId;
-        const std::string& far  = incoming ? r.sourceId : r.targetId;
-        if (near != nodeId) continue;
-        if (std::find(result.begin(), result.end(), far) == result.end()) {
-            result.push_back(far);
+        const std::string& closeTo = incoming ? r.targetId : r.sourceId;
+        const std::string& distant  = incoming ? r.sourceId : r.targetId;
+        if (closeTo != nodeId) continue;
+        if (std::find(result.begin(), result.end(), distant) == result.end()) {
+            result.push_back(distant);
         }
     }
     return result;

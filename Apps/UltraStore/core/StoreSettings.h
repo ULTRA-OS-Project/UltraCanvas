@@ -12,6 +12,7 @@
 // ULTRASTORE_SERVERS, through the generated UltraStoreBuiltin.h. Until the
 // admin backend publishes the first catalog both are empty, and the window
 // says so on its Discover page.
+// Version: 0.5.0 - the account service of one's own
 // Version: 0.4.0 - the reports sent to the marketplace service
 // Version: 0.3.0 - the open order
 // Version: 0.2.0 - the code in force
@@ -31,8 +32,12 @@ namespace UltraStore {
 struct StoreSettings {
     std::string channel = "stable";       // "stable" or "beta"
     std::string language;                 // "de"; empty: the system's (SystemLanguage())
+    // Where the buyer is, for the tax in a price: "AT"; empty: the account's
+    // country, else the region of the system's language (Purchase.h, BuyerCountry).
+    std::string country;
     std::vector<std::string> servers;     // base URLs, tried in order; empty: the built-in ones
     std::vector<std::string> extraKeys;   // hex public keys the user added
+    std::string accountUrl;               // the account service to sign in to; empty: the catalog's (account_url)
     bool refreshOnStart = true;
     int windowWidth = 1180;
     int windowHeight = 760;
@@ -42,10 +47,12 @@ struct StoreSettings {
     // (ultrastore://code/<CODE>), and the day it was entered: it stays in
     // force for kCodeDays, so a partner whose link brought the person is
     // credited by a purchase made within that time, and the price shows the
-    // discount until then.
+    // discount until then. 90 days: the one window a link and a code share in
+    // the affiliate programme (Docs/Research/UltraAffiliatesDesignProposal.md,
+    // decided 2026-11-26); it was 30.
     std::string code;
     std::string codeEnteredAt;   // "YYYY-MM-DD"
-    static constexpr int kCodeDays = 30;
+    static constexpr int kCodeDays = 90;
     // The code when it was entered within kCodeDays of today, else "".
     std::string CodeInForce(const std::string& today) const;
 

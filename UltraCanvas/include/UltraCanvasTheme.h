@@ -23,12 +23,14 @@
 // roles, its fonts - from what UltraCanvasHostAppearance read; the
 // application's theme policy (ThemePolicy, UltraCanvasApplication) applies
 // it at start and on every host change.
+// Version: 1.5.0 - DeriveAccent: white text on any mid-tone accent, never black on Windows blue
+// Version: 1.4.0 - ForDarkLook: a colour chosen for the light look, its lightness turned over
 // Version: 1.3.0 - TakeHostFonts: the host's fonts and scale onto a theme, for an Own provider
 // Version: 1.2.0 - ThemeFonts and ThemeTextRole; LightHighContrast / DarkHighContrast;
 //                  FromHost with DeriveAccent; ThemePolicy (T3 of the host theme proposal)
 // Version: 1.1.0 - change handlers (AddChangeHandler / RemoveChangeHandler), called after SetCurrent
 // Version: 1.0.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -124,6 +126,18 @@ public:
     // host's; named "Host Light", "Host Dark", "Host Light High Contrast",
     // "Host Dark High Contrast".
     static UltraCanvasTheme FromHost(const HostAppearance& host);
+
+    // A colour an element or a page chose for the light look - a pale
+    // panel, a grey caption, an unlit segment - for a dark one: its
+    // lightness turned over into the dark look's range (white lands near
+    // the panel, black near white ink), its hue kept and a pale tint's
+    // saturation softened, so a pale green panel becomes a dark green one
+    // and dark grey text light grey. Alpha is kept. Pure.
+    static Color ForDarkLook(const Color& lightLookColour);
+    // ForDarkLook under a dark theme, the colour unchanged under a light one
+    Color ForThisLook(const Color& lightLookColour) const {
+        return dark ? ForDarkLook(lightLookColour) : lightLookColour;
+    }
     // The host's fonts and text scale onto this theme, as FromHost puts
     // them: the interface font and the monospace font where the host names
     // one, the scale where it is positive; the theme's own stay otherwise.
@@ -132,9 +146,12 @@ public:
     void TakeHostFonts(const HostAppearance& host);
 
     // One accent into the five accent roles, over the roles' surfaces:
-    // `accent` is darkened or lightened until `onAccent` (white or the dark
-    // ink, whichever reads better) reaches `onAccentContrast` on it (4.5:1,
-    // 7:1 for high contrast); `accentHover` is the accent moved 8 % toward
+    // `onAccent` is white on any accent white already reaches 3:1 on (the
+    // blues, reds, purples a desktop offers - never black on a mid blue,
+    // which WCAG 2 scores high but reads badly), the dark ink only on a
+    // light accent (yellow, pastels); `accent` is darkened (white text) or
+    // lightened (dark ink) until that text reaches `onAccentContrast` on it
+    // (4.5:1, 7:1 for high contrast); `accentHover` is the accent moved 8 % toward
     // the ink; `accentSoft` the accent at 18 % over panel when dark, 14 %
     // when light; `focus` the accent unless it fails 3:1 on ground, then
     // lineStrong. Pure.

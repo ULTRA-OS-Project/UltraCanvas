@@ -18,6 +18,27 @@ name: Build result
 #
 # Only the newest run (and attempt) of Build for a commit sets its status: a
 # late event of a superseded run or of an earlier attempt changes nothing.
+# The newest is the one with the highest run id, not the first the API
+# lists, and a run cancelled when another of the same commit superseded it
+# never counts as the newest while any run of the commit was not cancelled.
+# On 2026-11-25 pull request #1402 was given its ci:distro and ci:intel
+# labels together: two Build runs started in the same second, the build's
+# concurrency cancelled the older, and the API listed that cancelled run
+# first. Taken as the newest, it left the real run's every event - its
+# pending, its failure, its re-run's success - without a status: the commit
+# never had a "Build result" at all.
+#
+# A job GitHub never started is re-run, not reported. On 2026-11-23 the
+# macos-15 leg of pull request #1371 sat queued for 20 minutes and then 15
+# and ended "cancelled" both times with no runner and no step (runner_id 0)
+# while the macOS legs of two other pull requests got runners within ten
+# minutes in the same hour: GitHub dropped the queued job ("not acquired by
+# a runner"), the run ended "failure" and the pull request read red with
+# nothing of it wrong. When every job of a failed run that did not succeed
+# is such a dropped job, this re-runs the failed jobs (up to attempt 3) and
+# leaves the status pending; the new attempt sets it when it ends. A job
+# that ran and failed, timed out or was cancelled after it started keeps
+# the run red, as before.
 #
 # Make "Build result" a required status check of main's branch protection
 # (Settings > Branches): then a pull request cannot be merged until a Build
@@ -34,7 +55,7 @@ on:
     types: [requested, completed]
 
 permissions:
-  actions: read
+  actions: write   # read the run's jobs; re-run jobs GitHub never started
   statuses: write
 
 concurrency:
@@ -63,10 +84,17 @@ jobs:
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a commit: $SHA"; exit 1; }
 
           # The newest Build run of this commit, and its attempt: only it may
-          # set the status.
+          # set the status. The highest run id - runs started in the same
+          # second are listed in no useful order - among the runs not
+          # cancelled, so a run its successor cancelled never stands in for
+          # it; among all of them when every one was cancelled.
           read -r newest_id newest_attempt < <(gh api \
-            "repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?head_sha=$SHA&per_page=1" \
-            --jq '.workflow_runs[0] | "\(.id) \(.run_attempt)"')
+            "repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?head_sha=$SHA&per_page=100" \
+            --jq '.workflow_runs as $all
+                  | ([ $all[] | select(.status != "completed" or .conclusion != "cancelled") ]
+                     | if length > 0 then . else $all end)
+                  | max_by(.id)
+                  | "\(.id) \(.run_attempt)"')
           if [ "$newest_id" != "$RUN_ID" ] || [ "$newest_attempt" != "$ATTEMPT" ]; then
             echo "Run $RUN_ID attempt $ATTEMPT is not the newest for $SHA" \
                  "(that is $newest_id attempt $newest_attempt): status left as it is."
@@ -76,7 +104,7 @@ jobs:
           set_status() {   # state, description
             gh api -X POST "repos/$REPO/statuses/$SHA" \
               -f state="$1" -f context="Build result" \
-              -f description="$2" -f target_url="$RUN_URL" > /dev/null
+              -f description="${2:0:140}" -f target_url="$RUN_URL" > /dev/null
             echo "Build result: $1 - $2"
           }
 
@@ -87,6 +115,26 @@ jobs:
 
           jobs=$(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs?per_page=1" \
                    --jq '.total_count')
+
+          # A failed run whose only unsuccessful jobs are ones GitHub dropped
+          # before they started (cancelled, no runner, no step): re-run them
+          # instead of reporting the run (see the head of this file).
+          if [ "$CONCLUSION" = "failure" ] && [ "$jobs" -gt 0 ] && [ "$ATTEMPT" -lt 3 ]; then
+            read -r unsuccessful dropped names < <(gh api --paginate \
+              "repos/$REPO/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs?per_page=100" \
+              --jq '.jobs[]' | jq -rs '
+                [ .[] | select(.conclusion != "success" and .conclusion != "skipped"
+                               and .conclusion != "neutral") ] as $bad
+                | [ $bad[] | select(.conclusion == "cancelled"
+                                    and ((.runner_id // 0) == 0)
+                                    and ((.steps // []) | length) == 0) ] as $dropped
+                | "\($bad | length) \($dropped | length) \([$dropped[].name] | join(", ") | gsub(" "; "_"))"')
+            if [ "$unsuccessful" -gt 0 ] && [ "$unsuccessful" = "$dropped" ]; then
+              gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs" > /dev/null
+              set_status pending "GitHub never started ${names//_/ } - re-running it (attempt $((ATTEMPT + 1)))"
+              exit 0
+            fi
+          fi
           case "$CONCLUSION" in
             success)
               if [ "$jobs" -gt 0 ]; then

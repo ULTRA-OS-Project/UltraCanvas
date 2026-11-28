@@ -67,7 +67,7 @@ namespace {
         auto label = DemoKit::CreateText(id, text);
         label->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
         label->SetFontSize(11);
-        label->SetTextColor(Color(100, 100, 115, 255));
+        label->SetTextColor(DemoKit::Themed(Color(100, 100, 115, 255)));
         return label;
     }
 
@@ -75,14 +75,14 @@ namespace {
     inline std::shared_ptr<UltraCanvasLabel> MakeTabTitle(const std::string& id,
                                                           const std::string& text) {
         auto title = DemoKit::CreateHeading(id, text);
-        title->SetTextColor(Color(50, 50, 75, 255));
+        title->SetTextColor(DemoKit::Themed(Color(50, 50, 75, 255)));
         return title;
     }
 
     // A tab's page: no size of its own, the tabbed container gives it one.
     inline std::shared_ptr<UltraCanvasContainer> MakeTab(const std::string& id) {
         auto tab = std::make_shared<UltraCanvasContainer>(id);
-        tab->SetBackgroundColor(Color(240, 241, 248, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(240, 241, 248, 255)));
         tab->SetPadding(12);
         return tab;
     }
@@ -148,7 +148,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateGaugeCard(
     bool showValueLabel = true) {
 
     auto card = std::make_shared<UltraCanvasContainer>(id, 0, 0, 0, 0);
-    card->SetBackgroundColor(Color(255, 255, 255, 255));
+    card->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     card->SetBorders(1.0f, Color(218, 219, 228, 255));
     // Label-less showcase cards use tighter padding/row-gap so the enlarged gauge
     // gets the maximum possible diameter.
@@ -264,7 +264,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
     clock->SetTitle(Tr("Clock"));
 
     auto clockCard = std::make_shared<UltraCanvasContainer>("clock_c", 0, 0, 0, 0);
-    clockCard->SetBackgroundColor(Color(255, 255, 255, 255));
+    clockCard->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     clockCard->SetBorders(1.0f, Color(218, 219, 228, 255));
     clockCard->SetPadding(kCardPadding);
     SetVBox(clockCard, 6);
@@ -291,7 +291,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
     stopwatch->SetSubDial(mins);
 
     auto swCard = std::make_shared<UltraCanvasContainer>("sw_c", 0, 0, 0, 0);
-    swCard->SetBackgroundColor(Color(255, 255, 255, 255));
+    swCard->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     swCard->SetBorders(1.0f, Color(218, 219, 228, 255));
     swCard->SetPadding(kCardPadding);
     {
@@ -522,7 +522,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
     dclock->SetDigitalFontFamily("DSEG7 Classic,DSEG7 Modern,Digital-7,Monospace");
     dclock->SetGaugeColor(Color(0, 230, 80, 255)); // classic LED green
     auto dclockCard = std::make_shared<UltraCanvasContainer>("dclock_c", 0, 0, 0, 0);
-    dclockCard->SetBackgroundColor(Color(255, 255, 255, 255));
+    dclockCard->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     dclockCard->SetBorders(1.0f, Color(218, 219, 228, 255));
     dclockCard->SetPadding(kCardPadding);
     SetVBox(dclockCard, 8);
@@ -566,7 +566,7 @@ namespace {
                                                          const std::string& text) {
         auto lbl = DemoKit::CreateText(id, text);
         lbl->SetFontSize(11);
-        lbl->SetTextColor(Color(90, 90, 110, 255));
+        lbl->SetTextColor(DemoKit::Themed(Color(90, 90, 110, 255)));
         return lbl;
     }
 
@@ -765,7 +765,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
     // ---------------------------------------------------------------------
     auto panel = std::make_shared<UltraCanvasContainer>("RoundPanel", 0, 0, 320, 0);
     panel->size.width = CSSLayout::Dimension::Px(320);
-    panel->SetBackgroundColor(Color(255, 255, 255, 255));
+    panel->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     panel->SetBorders(1.0f, Color(218, 219, 228, 255));
     panel->SetPadding(kCardPadding);
     // Tight 2px row gap: it both makes the caption-to-control spacing uniform
@@ -1131,7 +1131,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGaugeExa
     // scrolls instead of squeezing the gauges).
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
         "GaugeTabs", 0, 0, 920, 860);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
     DemoKit::AddStretched(card, tabs);
     CSSLayout::BoxConstraints limits;

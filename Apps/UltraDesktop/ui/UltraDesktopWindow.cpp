@@ -2,6 +2,15 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.5 - the Sticker board open on another virtual desktop comes to this one on a
+//                  click on its button (it was hidden there instead), and when files are dropped
+// Version: 0.8.4 - the wallpaper's JPEG beside an AVIF where the AVIF cannot be read (Android); builds without the message centre
+// Version: 0.8.3 - the settings button's menu has a title, "UltraDesktop"
+// Version: 0.8.2 - the tool group gains UltraToDo; the tool applications'
+//                  windows stay off the taskbar unless toolAppsOnTaskbar; the
+//                  organiser offers at least the desktops the settings ask
+//                  for (Windows' Task View may have fewer); a click on the
+//                  current desktop 1 shows the wallpaper
 // Version: 0.8.1 - the clipboard button opens UltraClipboard (a running one, even
 //                  in the background, comes forward); Super+V and the button's
 //                  right-click menu keep the quick panel; without UltraClipboard
@@ -302,7 +311,9 @@ UltraDesktopWindow::UltraDesktopWindow() = default;
 
 UltraDesktopWindow::~UltraDesktopWindow() {
     if (lookHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(lookHandler_);
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
     toasts_.reset();   // its windows, its bus connection
+#endif
     // The poll thread, the shell monitor and the shortcut's thread all hand
     // over through members of this object: stop them before anything else goes.
     StopDevicePoll();
@@ -425,19 +436,42 @@ std::string UltraDesktopWindow::WallpaperPath() const {
     return DefaultWallpaperPath();
 }
 
+namespace {
+// The JPEG beside an AVIF of ULTRA OS's own pictures (media/images/desktop
+// ships both): what a build without libheif shows - Android's, whose APK
+// carries only the JPEGs. "" for any other file.
+std::string JpegTwin(const std::string& path) {
+    const fs::path p = PathFromUtf8(path);
+    std::string ext = PathToUtf8(p.extension());
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (ext != ".avif") return std::string();
+    fs::path twin = p;
+    twin.replace_extension(".jpg");
+    std::error_code ec;
+    return fs::is_regular_file(twin, ec) ? PathToUtf8(twin) : std::string();
+}
+} // namespace
+
 std::string UltraDesktopWindow::DefaultWallpaperPath() {
-    // ULTRA OS's own picture; the framework's landscape where it is missing.
+    // ULTRA OS's own picture - as AVIF, else its JPEG - and the framework's
+    // landscape where both are missing.
     const std::string own = NormalizePath(GetResourcesDir() + kDefaultWallpaper);
     std::error_code ec;
     if (fs::is_regular_file(PathFromUtf8(own), ec)) return own;
+    fs::path jpeg = PathFromUtf8(own);
+    jpeg.replace_extension(".jpg");
+    if (fs::is_regular_file(jpeg, ec)) return PathToUtf8(jpeg);
     return NormalizePath(GetResourcesDir() + kFallbackWallpaper);
 }
 
 void UltraDesktopWindow::LoadWallpaper(UltraCanvasImageElement& wallpaper) const {
     const std::string path = WallpaperPath();
     if (wallpaper.LoadFromFile(path)) return;
-    // A picture this build cannot read (an AVIF without libheif): the
-    // framework's landscape rather than an empty desktop.
+    // An AVIF this build cannot read (no libheif): the same picture as JPEG.
+    const std::string twin = JpegTwin(path);
+    if (!twin.empty() && wallpaper.LoadFromFile(twin)) return;
+    // Anything else unreadable: the framework's landscape rather than an
+    // empty desktop.
     const std::string fallback = NormalizePath(GetResourcesDir() + kFallbackWallpaper);
     debugOutput << "UltraDesktop: the wallpaper \"" << path << "\" could not be read, showing " << fallback
                 << std::endl;
@@ -1361,8 +1395,10 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     desktopCount_ = std::clamp(DesiredDesktopCount(), 1, 9);
     for (int i = 0; i < desktopCount_; ++i) {
         const std::string id = "desktop" + std::to_string(i + 1);
-        AddBarToggle(organiser_, id, TrF("Desktop {0}", i + 1), "", std::to_string(i + 1),
-                     [this, i](bool) { SwitchToDesktop(i); });
+        AddBarToggle(organiser_, id,
+                     i == 0 ? Tr("Desktop 1: the wallpaper (a click while on it shows the wallpaper)")
+                            : TrF("Desktop {0}", i + 1),
+                     "", std::to_string(i + 1), [this, i](bool) { OnDesktopButton(i); });
     }
     organiser_->AddSeparator();
     // The pinboard is the Sticker board; the free-form notes keep a note
@@ -1399,6 +1435,8 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
                                    Tr("Snip: a picture or a video of the screen (Super+Shift+S)"),
                                    IconPath("screenshot.svg"), [this]() { OpenSnip({"--rectangle"}); });
     screenshot->onContextMenu = [this](int windowX, int windowY) { ShowScreenshotMenu(windowX, windowY); };
+    AddBarButton(organiser_, "todo", Tr("UltraToDo: the task list, with reminders and alarms"),
+                 IconPath("todo.svg"), [this]() { OpenToDo(); });
     bar->AddChild(organiser_);
 
     // As on the taskbar, the wave starts 4 px past the organiser's last
@@ -1610,6 +1648,9 @@ void UltraDesktopWindow::ShowDesktopMenu(int windowX, int windowY) {
             }
         }
     }));
+    popupMenu_->AddItem(MenuItemData::Checkbox(Tr("Tool applications on the taskbar too"),
+                                               settings_.toolAppsOnTaskbar,
+                                               [this](bool on) { SetToolAppsOnTaskbar(on); }));
     popupMenu_->AddItem(MenuItemData::Separator());
     if (UltraCanvasDesktopShell::CanOpenDisplaySettings()) {
         popupMenu_->AddItem(MenuItemData::Action(Tr("Display settings..."), [this]() { OpenDisplaySettings(); }));
@@ -1730,7 +1771,9 @@ void UltraDesktopWindow::DropFiles(const std::vector<std::string>& files, const 
     PrepareCategoryBoard();
     if (!categoryBoard_) return;
     categoryBoard_->AddFilesToCategory(files, kUnsortedCategory);
-    if (!settings_.categoryBoard.visible) ToggleCategoryBoard(true);
+    if (!settings_.categoryBoard.visible || (boardWindow_ && !boardWindow_->IsOnCurrentDesktop())) {
+        ToggleCategoryBoard(true);
+    }
 }
 
 void UltraDesktopWindow::SetTaskbarEdge(TaskbarEdge edge) {
@@ -1899,6 +1942,20 @@ void UltraDesktopWindow::OpenSnip(const std::vector<std::string>& arguments) {
     UltraCanvasAlert::Error(TrF("UltraSnip could not be started: {0}", error), Tr("Screenshot"), nullptr, window_.get());
 }
 
+void UltraDesktopWindow::OpenToDo() {
+    std::string error;
+    if (UltraCanvasDesktopShell::LaunchProgram("UltraToDo", {}, &error)) return;
+    debugOutput << "UltraDesktop: UltraToDo could not be started: " << error << std::endl;
+    UltraCanvasAlert::Error(TrF("UltraToDo could not be started: {0}", error), Tr("Tasks"), nullptr, window_.get());
+}
+
+void UltraDesktopWindow::SetToolAppsOnTaskbar(bool shown) {
+    if (settings_.toolAppsOnTaskbar == shown) return;
+    settings_.toolAppsOnTaskbar = shown;
+    SaveSettings();
+    windowsDirty_.store(true);
+}
+
 void UltraDesktopWindow::ShowScreenshotMenu(int windowX, int windowY) {
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("ScreenshotButtonMenu", 0, 0, 260, 0);
@@ -1945,6 +2002,13 @@ void UltraDesktopWindow::ToggleStickerboard(bool visible) {
 }
 
 void UltraDesktopWindow::ToggleCategoryBoard(bool visible) {
+    // Open, but on another virtual desktop: the click asks for the board and
+    // gets it here (ShowCategoryBoard brings it over). Hiding it where
+    // nobody is looking would look like a click that did nothing, and take
+    // a second one to show it.
+    if (!visible && boardWindow_ && boardWindow_->IsWindowVisible() && !boardWindow_->IsOnCurrentDesktop()) {
+        visible = true;
+    }
     settings_.categoryBoard.visible = visible;
     if (visible) ShowCategoryBoard();
     else if (boardWindow_) boardWindow_->Hide();
@@ -2043,10 +2107,29 @@ int UltraDesktopWindow::DesiredDesktopCount() const {
     // follows it (the manager answers the request asynchronously); otherwise
     // the window manager's own count, since it is the one that has the
     // desktops; the settings value only where there is no manager to ask.
+    // The organiser never offers fewer than the settings ask for: Windows'
+    // Task View starts with one desktop, and a button past the manager's
+    // count asks it for more when it is clicked (SwitchToDesktop).
     if (requestedDesktops_ > 0) return requestedDesktops_;
     const int managed = UltraCanvasDesktopShell::GetVirtualDesktopCount();
-    if (managed > 0) return managed;
-    return settings_.virtualDesktops;
+    return std::max(managed, settings_.virtualDesktops);
+}
+
+void UltraDesktopWindow::OnDesktopButton(int index) {
+    // Desktop 1 is the wallpaper's: a click on it while on it shows the
+    // wallpaper, the way Show desktop does, by minimising what is open there.
+    if (index == 0 && UltraCanvasDesktopShell::GetCurrentVirtualDesktop() <= 0) {
+        for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+            if (w.skipTaskbar || w.minimized || w.appClass == "UltraDesktop") continue;
+            if (w.virtualDesktop > 0) continue;
+            UltraCanvasDesktopShell::MinimizeWindow(w.id);
+        }
+        currentDesktop_ = 0;
+        RefreshDesktops();
+        windowsDirty_.store(true);
+        return;
+    }
+    SwitchToDesktop(index);
 }
 
 void UltraDesktopWindow::SwitchToDesktop(int index) {
@@ -2164,6 +2247,11 @@ void UltraDesktopWindow::CheckSettingsFile() {
                          written.virtualDesktops != settings_.virtualDesktops ||
                          written.dropFilesOn != settings_.dropFilesOn ||
                          written.hiddenInfoItems != settings_.hiddenInfoItems;
+    // The tool applications on the taskbar: the running list is re-read.
+    if (written.toolAppsOnTaskbar != settings_.toolAppsOnTaskbar) {
+        settings_.toolAppsOnTaskbar = written.toolAppsOnTaskbar;
+        windowsDirty_.store(true);
+    }
     // The battery's badge: shown or taken away, nothing to rebuild.
     if (written.batteryPercent != settings_.batteryPercent) SetBatteryPercentShown(written.batteryPercent);
     if (!changed) return;
@@ -2285,6 +2373,12 @@ void UltraDesktopWindow::OnTimer() {
         ticksSinceNotices_ = 0;
         ApplyNotices();
     }
+    // As the session's shell on Windows, minimized windows stay out of
+    // sight - not parked as title bars along the bottom of the screen.
+    if (++ticksSinceMinimized_ >= kMinimizedTicks) {
+        ticksSinceMinimized_ = 0;
+        UltraCanvasDesktopShell::KeepMinimizedWindowsHidden();
+    }
 
     if (screenshotBadgeTicks_ > 0 && --screenshotBadgeTicks_ == 0 && organiser_) {
         organiser_->ClearItemBadge("screenshot");
@@ -2296,8 +2390,7 @@ void UltraDesktopWindow::OnTimer() {
 void UltraDesktopWindow::RefreshDesktops() {
     // The window manager added or removed a desktop (a keyboard shortcut,
     // another pager, its own settings): the organiser follows it.
-    const int managed = UltraCanvasDesktopShell::GetVirtualDesktopCount();
-    if (managed > 0 && std::clamp(managed, 1, 9) != desktopCount_ && organiser_) {
+    if (std::clamp(DesiredDesktopCount(), 1, 9) != desktopCount_ && organiser_) {
         BuildLayout();
     }
     const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
@@ -2324,6 +2417,9 @@ void UltraDesktopWindow::RefreshWindows() {
         if (w.active && w.appClass != "UltraDesktop") lastPasteWindow_ = w.id;
         if (w.skipTaskbar) continue;
         if (w.appClass == "UltraDesktop") continue;   // ourselves, whatever the manager says
+        // UltraClipboard, UltraSnip and UltraToDo have their buttons on the
+        // tool group; the taskbar lists them only when asked to.
+        if (!settings_.toolAppsOnTaskbar && DesktopSettings::IsToolApplication(w.appClass)) continue;
         if (currentDesktop_ >= 0 && w.virtualDesktop >= 0 && w.virtualDesktop != currentDesktop_) continue;
         const std::string key = RunningGroupKey(w);
         auto& members = wanted[key];
@@ -2389,8 +2485,18 @@ void UltraDesktopWindow::RefreshWindows() {
             };
             button->onHoverEnter = [this, key]() { HoverRunning(key); };
             button->onHoverLeave = [this, key]() { UnhoverRunning(key); };
+            group.iconFile = iconFile;
         } else {
             button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(group.itemId));
+            // An icon that is found after the button was made (a Store
+            // application's, resolved a moment later) replaces the letter,
+            // and the letter comes back if it goes.
+            if (button && iconFile != group.iconFile) {
+                group.iconFile = iconFile;
+                button->SetIcon(iconFile);
+                button->SetText(iconFile.empty() ? group.letter : std::string());
+                button->SetUseIconAsMask(iconFile.empty());
+            }
         }
 
         // The windows keep the order they came in, not the stacking order,
@@ -2907,6 +3013,7 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("UltraDesktop"));
     popupMenu_->AddItem(MenuItemData::Action(Tr("ULTRA OS settings"), [this]() { OpenSystemSettings(); }));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
@@ -3275,7 +3382,17 @@ void UltraDesktopWindow::RefreshTray() {
         } else {
             button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget(itemId));
             if (button && known->second != icon.iconFile) {
+                // The picture came (or went) after the button was made: the
+                // initial stands in only while there is none. It used to stay
+                // beside the picture ("W" beside WhatsApp's icon).
+                std::string text;
+                if (icon.iconFile.empty() && !icon.appClass.empty()) {
+                    text = icon.appClass.substr(0, 1);
+                    std::transform(text.begin(), text.end(), text.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+                }
                 button->SetIcon(icon.iconFile);
+                button->SetText(text);
                 known->second = icon.iconFile;
             }
         }

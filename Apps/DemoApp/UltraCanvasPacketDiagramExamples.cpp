@@ -45,7 +45,7 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakePacketTab(const std::string& id,
                                                                int w, int h) {
         auto tab = std::make_shared<UltraCanvasContainer>(id, 0, 0, w, h);
-        tab->SetBackgroundColor(Color(252, 252, 254, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(252, 252, 254, 255)));
         tab->SetPadding(10);
         tab->layout.SetFlexColumn().SetFlexGap(6)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -71,7 +71,7 @@ namespace UltraCanvas {
         DemoKit::Add(root, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PacketTabs", 0, 0, 0, 0);
-        tabs->SetTabStyle(TabStyle::Rounded);
+        DemoKit::StyleTabs(tabs);
         tabs->SetTabHeight(30);
         tabs->SetTabCornerRadius(8.0f);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));

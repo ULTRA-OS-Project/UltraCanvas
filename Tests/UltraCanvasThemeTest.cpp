@@ -3,6 +3,11 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.19.0 - the rich text page the lighter of well and panel, the desk darker (rich-text.desk)
+// Version: 1.18.0 - DeriveAccent: white text on Windows blue and the mid-tone accents
+// Version: 1.17.0 - ForDarkLook / ForThisLook; the gauge's dark look
+// Version: 1.16.0 - the dialog's destructive outline answer and the Filer's operation list under a
+//                  dark theme; a dialog given type sizes keeps following the theme and its sizes
 // Version: 1.15.0 - the dark split pane handle, section card, clipboard rows and scrollbar thumb; the button's
 //                   derived states for the look; a size set by hand through ApplyTheme; a late delegate
 // Version: 1.14.0 - TakeHostFonts: the host's fonts onto an own theme
@@ -101,6 +106,7 @@
 #endif
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTooltipTypes.h"
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 #include "UltraCanvasVideoTimeline.h"
 
 #include <cstdio>
@@ -471,14 +477,20 @@ int main() {
         rtBase.baseFont.fontFamily = "Georgia";
         rtBase.baseFont.fontSize = 16;
         const RichTextEditStyle rt = RichTextEditStyle::FromTheme(own, rtBase);
-        CHECK(Same(rt.textColor, r.ink) && Same(rt.backgroundColor, r.well) && Same(rt.pageColor, r.well) && Same(rt.deskColor, r.panel) && Same(rt.selectionColor, r.accentSoft)
+        const Color paperExpected = UltraCanvasTheme::Luminance(r.well) > UltraCanvasTheme::Luminance(r.panel) ? r.well : r.panel;
+        CHECK(Same(rt.pageColor, paperExpected)
+              && UltraCanvasTheme::Luminance(rt.deskColor) < UltraCanvasTheme::Luminance(rt.pageColor),
+              "rich text edit: the page the lighter of the well and the panel, the desk darker than the page");
+        CHECK(Same(rt.textColor, r.ink) && Same(rt.backgroundColor, r.well) && Same(rt.selectionColor, r.accentSoft)
               && Same(rt.cursorColor, r.ink) && Same(rt.linkColor, r.accent) && Same(rt.quoteTextColor, r.inkMuted) && Same(rt.codeBackgroundColor, r.panel)
-              && Same(rt.tableBorderColor, r.lineStrong) && Same(rt.borderColor, r.lineStrong), "rich text edit: ink on the well, the page the well, the desk the panel, the accent for the selection and links");
+              && Same(rt.tableBorderColor, r.lineStrong) && Same(rt.borderColor, r.lineStrong), "rich text edit: ink on the well, the accent for the selection and links");
         CHECK(rt.baseFont.fontFamily == "Georgia" && Near(rt.baseFont.fontSize, 16, 1e-9) && Same(rt.commentHighlightColor, RichTextEditStyle().commentHighlightColor)
               && Same(rt.insertionColor, RichTextEditStyle().insertionColor), "rich text edit: the document's font and the comment and tracked-change colours stay");
         UltraCanvasTheme paper = own;
         paper.SetRole("rich-text.page", Colors::White);
         CHECK(Same(RichTextEditStyle::FromTheme(paper).pageColor, Colors::White), "the element role rich-text.page is honoured");
+        paper.SetRole("rich-text.desk", Color(200, 200, 200));
+        CHECK(Same(RichTextEditStyle::FromTheme(paper).deskColor, Color(200, 200, 200)), "the element role rich-text.desk is honoured");
     }
 
     std::printf("FromTheme for the badge, card, chips, panels and the rest\n");
@@ -711,7 +723,13 @@ int main() {
               && Same(freshTree->GetSelectionTextColor(), dark.roles.ink) && Same(freshTree->GetVerticalScrollbarStyle().trackBorderColor, dark.roles.line),
               "a new scrollbar, list view and tree view are styled from the theme, a dark tree's selection the soft accent with ink, its scrollbar with it");
         UltraCanvasUIElement::SetFollowThemeByDefault(false);
-        CHECK(UltraCanvasTreeView("plain").GetSelectionTextColor().a == 0, "a tree that does not follow keeps the row's own text colour on a selected row");
+        {
+            UltraCanvasTreeView plainTree("plain");
+            CHECK(plainTree.GetSelectionTextColor().a == 0 && Same(plainTree.SelectedRowTextColor(), Colors::White),
+                  "a tree that does not follow writes a selected row in white on the default blue, not the row's black");
+            plainTree.SetSelectionColor(Color(200, 225, 250));
+            CHECK(Same(plainTree.SelectedRowTextColor(), Colors::Black), "and in black on a selection too light for white");
+        }
         UltraCanvasUIElement::SetFollowThemeByDefault(true);
         auto freshPanel = std::make_shared<UltraCanvasContainer>("fresh-panel", 0, 0, 200, 100);
         auto freshGroup = std::make_shared<UltraCanvasGroupBox>("fresh-group", 0, 0, 200, 100, "Group");
@@ -804,6 +822,68 @@ int main() {
         UltraCanvasUIElement::SetFollowThemeByDefault(false);
         auto later = std::make_shared<UltraCanvasButton>("later", 0, 0, 80, 24, "Later");
         CHECK(!later->GetFollowTheme() && !Same(later->GetStyle().normalColor, dark.roles.raised), "the default off again: a new element does not follow");
+        UltraCanvasTheme::SetCurrent(light);
+    }
+
+    std::printf("a dialog's destructive answer and an operation list under a dark theme\n");
+    {
+        // "Delete permanently" beside "Move to Trash": the theme's button,
+        // outlined and lettered in the danger colour - it was a fixed light
+        // pink fill with dark red text in a dark dialog too.
+        for (const UltraCanvasTheme* t : {&light, &dark}) {
+            const ButtonStyle red = UltraCanvasModalDialog::DestructiveOutlineStyle(*t, ButtonStyle());
+            const std::string look = t->dark ? "dark" : "light";
+            CHECK(Same(red.normalColor, t->roles.raised) && Same(red.hoverColor, t->roles.hover)
+                  && Same(red.normalTextColor, t->roles.danger) && Same(red.borderColor, t->roles.danger)
+                  && Same(red.pressedColor, t->roles.danger),
+                  (look + ": the theme's button surface, outlined and lettered in its danger colour").c_str());
+            CHECK(Contrast(red.normalTextColor, red.normalColor) >= 4.5 && Contrast(red.pressedTextColor, red.pressedColor) >= 3.0,
+                  (look + ": the label reads at rest (" + std::to_string(Contrast(red.normalTextColor, red.normalColor)) +
+                          ":1) and pressed").c_str());
+        }
+        // The Filer's move / copy / delete list sets its own shape (row and
+        // header heights) and then follows the theme again once its
+        // delegate is in: a style set by hand had left it white in a dark
+        // dialog.
+        UltraCanvasTheme::SetCurrent(dark);
+        UltraCanvasUIElement::SetFollowThemeByDefault(true);
+        auto opList = std::make_shared<UltraCanvasListView>("op-list", 0, 0, 400, 200);
+        ListViewStyle shape = opList->GetStyle();
+        shape.rowHeight = 22;
+        shape.alternateRowColors = true;
+        opList->SetStyle(shape);
+        auto rows = std::make_shared<UltraCanvasDefaultListDelegate>();
+        rows->SetFontSize(11.0f);
+        opList->SetDelegate(rows);
+        opList->SetFollowTheme(true);
+        CHECK(opList->GetFollowTheme() && Same(opList->GetStyle().backgroundColor, dark.roles.well)
+              && Same(opList->GetStyle().headerBackgroundColor, dark.roles.panel) && opList->GetStyle().rowHeight == 22,
+              "the list: the dark well and header, its own row height kept");
+        CHECK(Same(rows->GetTextColor(), dark.roles.ink) && Near(rows->GetFontSize(), 11.0, 1e-6),
+              "its rows in the theme's ink, at the size the list set");
+
+        // A host that sets the dialog's type sizes (the Filer at 9) keeps it
+        // following the theme, and a theme change keeps those sizes: setting
+        // them stopped the following, so a dialog opened before a switch
+        // kept the old look.
+        auto dlg = std::make_shared<UltraCanvasModalDialog>();
+        ModalDialogStyle sized = dlg->GetStyle();
+        sized.messageFontSize = 9.0f;
+        sized.detailsFontSize = 8.0f;
+        sized.buttonFontSize = 9.0f;
+        dlg->SetStyle(sized);
+        CHECK(dlg->GetFollowTheme(), "a dialog given type sizes only keeps following the theme");
+        UltraCanvasTheme::SetCurrent(light);
+        dlg->OnThemeChanged(light);
+        CHECK(Same(dlg->GetStyle().messageTextColor, light.roles.ink) && Same(dlg->GetStyle().detailsTextColor, light.roles.inkMuted),
+              "a theme change re-colours its message and details");
+        CHECK(Near(dlg->GetStyle().messageFontSize, 9.0, 1e-6) && Near(dlg->GetStyle().detailsFontSize, 8.0, 1e-6)
+              && Near(dlg->GetStyle().buttonFontSize, 9.0, 1e-6), "and keeps the sizes the host set");
+        ModalDialogStyle inked = dlg->GetStyle();
+        inked.messageTextColor = Color(10, 20, 200);
+        dlg->SetStyle(inked);
+        CHECK(!dlg->GetFollowTheme(), "a style that changes the colours stops the following, as any SetStyle by hand");
+        UltraCanvasUIElement::SetFollowThemeByDefault(false);
         UltraCanvasTheme::SetCurrent(light);
     }
 
@@ -939,6 +1019,18 @@ int main() {
         const ThemeRoles blue = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, Color(0x00, 0x78, 0xd4), false);
         CHECK(Same(blue.accent, Color(0x00, 0x78, 0xd4, 255)) && Same(blue.onAccent, Colors::White) && Same(blue.focus, blue.accent),
               "Windows' blue stays itself: white reads on it, it is the focus ring");
+        // 0,120,215 measures 4.499:1 with white and 4.67:1 with black: the
+        // text stays white and the blue darkens a step, on Light and on Dark
+        for (const bool dk : {false, true}) {
+            const ThemeRoles base = dk ? UltraCanvasTheme::Dark().roles : UltraCanvasTheme::Light().roles;
+            const ThemeRoles win = UltraCanvasTheme::DeriveAccent(base, Color(0, 120, 215), dk);
+            CHECK(Same(win.onAccent, Colors::White) && Contrast(win.onAccent, win.accent) >= 4.5 && win.accent.b > 180,
+                  dk ? "Windows blue on Dark: white text, still blue" : "Windows blue on Light: white text, still blue");
+        }
+        for (const Color& mid : {Color(0xe6, 0x2d, 0x42), Color(0x91, 0x41, 0xac), Color(0xed, 0x5b, 0x00)}) {
+            const ThemeRoles m = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, mid, false);
+            CHECK(Same(m.onAccent, Colors::White), "a mid-tone red, purple or orange takes white text, never black");
+        }
         const ThemeRoles yellow = UltraCanvasTheme::DeriveAccent(UltraCanvasTheme::Light().roles, Color(255, 255, 0), false);
         CHECK(Same(yellow.onAccent, UltraCanvasTheme::Light().roles.ink) && Contrast(yellow.focus, UltraCanvasTheme::Light().roles.ground) >= 3.0,
               "a yellow accent takes the dark ink, and a focus ring that shows on the ground");
@@ -1068,6 +1160,39 @@ int main() {
         CHECK(Same(styledCells->GetTextColor(), Color(1, 2, 3)) && Near(styledCells->GetFontSize(), 11.0, 1e-6)
               && Same(styledCells->GetSelectedTextColor(), light.roles.onAccent), "what the application set on it stays, the rest follows");
         UltraCanvasTheme::SetCurrent(light);
+    }
+
+    {
+        std::printf("\nForDarkLook\n");
+        const Color white = UltraCanvasTheme::ForDarkLook(Colors::White);
+        const Color black = UltraCanvasTheme::ForDarkLook(Colors::Black);
+        CHECK(white.r < 40 && white.r == white.g && white.g == white.b, "white turns into a dark panel grey");
+        CHECK(black.r > 220, "black turns into near-white ink");
+        const Color paleGreen = UltraCanvasTheme::ForDarkLook(Color(220, 255, 220, 255));
+        CHECK(paleGreen.g > paleGreen.r && paleGreen.g > paleGreen.b && paleGreen.g < 90, "a pale green panel turns into a dark green one");
+        const Color greyText = UltraCanvasTheme::ForDarkLook(Color(110, 110, 110, 255));
+        CHECK(Contrast(greyText, dark.roles.panel) > 4.5, "grey text reads on the dark panel");
+        CHECK(UltraCanvasTheme::ForDarkLook(Color(200, 200, 200, 120)).a == 120, "alpha is kept");
+        CHECK(Same(light.ForThisLook(Color(12, 34, 56, 255)), Color(12, 34, 56, 255)), "the light look keeps the colour");
+        CHECK(Same(dark.ForThisLook(Colors::White), white), "the dark look converts it");
+
+        std::printf("\nthe gauge\n");
+        // Following is the application's default under a theme policy; here
+        // it is switched on for these gauges
+        const bool followed = UltraCanvasUIElement::FollowThemeByDefault();
+        UltraCanvasUIElement::SetFollowThemeByDefault(true);
+        UltraCanvasTheme::SetCurrent(light);
+        auto gauge = std::make_shared<UltraCanvasGaugeDiagramElement>("ThemeGauge", 0, 0, 120, 120);
+        CHECK(!gauge->IsDarkLook(), "light under the light theme");
+        UltraCanvasTheme::SetCurrent(dark);
+        gauge->OnThemeChanged(dark);
+        CHECK(gauge->IsDarkLook(), "dark once the theme turns dark");
+        auto darkBorn = std::make_shared<UltraCanvasGaugeDiagramElement>("DarkGauge", 0, 0, 120, 120);
+        CHECK(darkBorn->IsDarkLook(), "a gauge made under a dark theme is dark");
+        UltraCanvasTheme::SetCurrent(light);
+        gauge->OnThemeChanged(light);
+        CHECK(!gauge->IsDarkLook(), "light again after the switch back");
+        UltraCanvasUIElement::SetFollowThemeByDefault(followed);
     }
 
     UltraCanvasTheme::SetCurrent(light);

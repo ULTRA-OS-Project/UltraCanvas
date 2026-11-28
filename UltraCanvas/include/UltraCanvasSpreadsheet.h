@@ -1,7 +1,40 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.20.0 - pivot tables: InsertPivotTable, SetPivotTable, RemovePivotTable, RefreshPivotTables,
+//                  SetPivotTableSource, DrillDownPivotCell, the field list (ShowInsertPivotTableDialog,
+//                  ShowPivotTableDialog); a pivot's cells are read-only and follow its source's changes
+// Version: 1.19.0 - every chart of the framework: ShowInsertChartDialog / ShowChartTypeDialog (the chart
+//                  gallery), InsertChartOfTypeFromSelection; the charts drawn by any chart element
+// Version: 1.18.0 - templates: LoadFromFile reads .ots, .xltx and .xltm, SaveToFile writes .ots and .xltx
+//                  with their template media types; IsSpreadsheetTemplateExtension
+// Version: 1.17.0 - a table to assistive technology (rows and cells as parts, the active cell focused and
+//                  announced); Copy / Cut a selected chart onto the office clipboard (CopyChartToClipboard)
+// Version: 1.16.0 - conditional formats and validation rules as undo steps (RulesChange): AddConditionalFormat,
+//                  SetConditionalFormatRule, RemoveConditionalFormatRule, the selection calls and the dialogs
+// Version: 1.15.0 - conditional formats drawn (PaintCell, so print and PDF too); comments (a red corner,
+//                  shown on hover) and links (Ctrl+click opens them: OpenHyperlink, onOpenHyperlink),
+//                  SetCellComment / SetCellHyperlink as undo steps; the rules dialogs
+//                  (ShowConditionalFormatDialog, ShowDataValidationDialog, ShowCommentDialog,
+//                  ShowHyperlinkDialog); validation lists taken from cells
+// Version: 1.14.0 - charts: InsertChart / InsertChartFromSelection, SetChart, RemoveChart, SelectChart,
+//                  RefreshCharts, ShowChartPropertiesDialog; drawn over the cells, moved and resized
+//                  with handles, each change an undo step
+// Version: 1.13.0 - GetNamedRangeList: every name with its scope, for the .xlsx / .ods writers
+// Version: 1.12.0 - PaintCell: one cell drawn as the grid draws it, for printing
+// Version: 1.11.0 - the system clipboard: Copy/Cut publish text and an HTML table; Paste reads other programs' (PasteHtml, PasteText); a paste is an undo step
+// Version: 1.10.0 - MoveActiveCell selects the cell it lands on; ExtendSelectionBy (Shift+arrow)
+// Version: 1.9.0 - deleting a sheet removes the names scoped to it and makes those covering it #REF!
+//                  (IsNamedRangeVisible); undo brings them back
+// Version: 1.8.0 - named ranges: one per scope and name, a scoped one visible only from its sheet and
+//                  covering it, following renames (ResolveNamedRange)
+// Version: 1.7.0 - inserting / deleting rows and columns is undone and redone (it was a placeholder step
+//                  whose undo cleared the sheet)
+// Version: 1.6.0 - inserting / deleting rows and columns moves the references in every sheet's formulas
+// Version: 1.5.0 - data validation enforced on a typed entry (onValidationFailed, Retry / Cancel / Accept),
+//                  a list rule's dropdown (ShowValidationListAt, Alt+Down); a typed value is an undo step
+// Version: 1.4.0 - LoadFromFile / LoadODS open a password-protected .ods with its password
 // Version: 1.3.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -17,10 +50,16 @@
 #include <memory>
 #include <functional>
 #include <stack>
+#include <map>
+#include <cstdint>
+#include <optional>
+#include <utility>
 
 namespace UltraCanvas {
 class UltraCanvasTextInput;
 class UltraCanvasMenu;
+class UltraCanvasChartEngineElement;
+class UltraCanvasUIElement;
 
 // Forward declarations
 class IRenderContext;
@@ -59,6 +98,25 @@ struct SpreadsheetUndoAction {
     int sheetIndex = -1;
     int toIndex = -1;
     std::vector<FormulaText> rewrittenFormulas;
+    // SheetDelete (and SheetInsert undone): workbookNames holds the names
+    // removing the sheet took away or turned to #REF!, as they were.
+    // RowInsert / RowDelete / ColumnInsert / ColumnDelete: the sheet as it
+    // was on the other side of the step (removedSheet, same id), the other
+    // sheets' formulas it rewrote (rewrittenFormulas) and the workbook's
+    // names. Undo and redo each swap them with what is there now, so the
+    // step always holds the state it leads back to.
+    std::map<std::string, NamedRange> workbookNames;
+    // ChartChange: the sheet's charts on the other side of the step; undo
+    // and redo each swap them with what is there now.
+    std::vector<SpreadsheetChart> chartData;
+    // RulesChange: the sheet's conditional formats and range validation
+    // rules on the other side of the step, and the cells' own validation
+    // rules it changed (no rule: none); undo and redo each swap them with
+    // what is there now.
+    struct CellRule { int row = 0; int col = 0; std::optional<DataValidation> rule; };
+    std::vector<ConditionalFormat> conditionalFormatData;
+    std::vector<std::pair<CellRange, DataValidation>> validationData;
+    std::vector<CellRule> cellRuleData;
 };
 
 // A text measurer backed by a live render context: it selects each cell's own
@@ -79,6 +137,13 @@ enum class SpreadsheetEditMode {
     Resizing,
     AutoFilling
 };
+
+// True for the extensions of a spreadsheet template - "ots" (OpenDocument),
+// "xltx" and "xltm" (Excel) - given as an extension (with or without its dot)
+// or a whole path, any case. A template is its workbook's package under the
+// template's media type: LoadFromFile reads all three, SaveToFile writes
+// .ots and .xltx as templates; a .xltm is read, not written.
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath);
 
 // ============================================================================
 // SPREADSHEET COMPONENT
@@ -114,13 +179,27 @@ public:
     std::function<void(int, int, int)> onSheetTabContextMenu;
     // A header sort button reordered the selection: (range, column, order).
     std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;
+    // The selected chart changed: its index on the active sheet, -1 for none.
+    std::function<void(int)> onChartSelectionChange;
+    // A chart was inserted, changed, moved, resized or removed (an undo or
+    // redo of one too).
+    std::function<void()> onChartsChange;
+    // A chart was double-clicked: (index). Unset, the chart's properties
+    // dialog opens (ShowChartPropertiesDialog).
+    std::function<void(int)> onChartDoubleClick;
+    // A pivot table was inserted, changed, refreshed or removed.
+    std::function<void()> onPivotTablesChange;
+    // A value or total of a pivot was double-clicked: (row, col). Unset, a
+    // new sheet shows the source rows behind it (DrillDownPivotCell); any
+    // other cell of a pivot opens its field list (ShowPivotTableDialog).
+    std::function<void(int, int)> onPivotDrillDown;
     
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
     int activeSheetIndex_ = 0;
     int firstVisibleTab_ = 0;   // first sheet tab shown in the tab strip
     std::unique_ptr<SpreadsheetFormulaEngine> formulaEngine_;
-    std::map<std::string, NamedRange> namedRanges_;
+    std::map<std::string, NamedRange> namedRanges_;   // by NamedRangeKey(scope, name)
     
     SpreadsheetEditMode editMode_ = SpreadsheetEditMode::Normal;
     // The live text, mirrored from the editor child so the formula preview and
@@ -161,6 +240,12 @@ private:
     CellRange clipboardRange_;
     std::string clipboardSheetName_;
     std::vector<std::vector<SpreadsheetCell>> clipboardData_;
+    std::string clipboardText_;   // what Copy put on the system clipboard as text
+    // Assistive technology's view of the grid (made on first request).
+    class AccessibleGrid;
+    std::shared_ptr<AccessibleGrid> accessibleGrid_;
+    void AnnounceAccessibleSelection();
+    bool PasteValues(const std::vector<std::vector<std::string>>& rows);
     
     std::stack<SpreadsheetUndoAction> undoStack_;
     std::stack<SpreadsheetUndoAction> redoStack_;
@@ -206,6 +291,20 @@ private:
     // The formula bar's function menu and its "fx" button.
     std::shared_ptr<UltraCanvasMenu> functionMenu_;
     bool functionMenuEnabled_ = true;
+    // The items of the active cell's list rule (ShowValidationListAt).
+    std::shared_ptr<UltraCanvasMenu> validationListMenu_;
+    // The cell whose comment or link the hover tooltip shows (-1: none).
+    int tipRow_ = -1;
+    int tipCol_ = -1;
+    void UpdateCellTip(const UCEvent& event, int row, int col);
+    // StopEditing runs the commit and then takes the editor down: an answer to
+    // a refused entry that arrives while it runs is held until it is done, so
+    // Retry's new editor is not the one taken down (see RunAfterEditEnds).
+    int stopEditingDepth_ = 0;
+    std::vector<std::function<void()>> afterEditEnds_;
+    // Counts PushUndo calls, so a refused entry takes back its own undo step
+    // and no other.
+    uint64_t undoPushSerial_ = 0;
     // The caret the function hint was last drawn for: the editor moves its
     // caret (arrow keys) without telling us, and repaints only itself.
     size_t functionHintCaret_ = static_cast<size_t>(-1);
@@ -237,6 +336,44 @@ private:
     float sheetTabHeight_ = 24;
     float scrollbarSize_ = 16;
     
+    // Charts (UltraCanvasSpreadsheetChart.h): the selected one on the active
+    // sheet, a move or resize in progress, the engine's drawings by revision.
+    int selectedChart_ = -1;
+    uint64_t selectedChartSheet_ = 0;
+    int chartDrag_ = 0;                  // 0 none, 1 moving, 2 resizing
+    int chartHandle_ = 0;                // SlideHandle while resizing
+    Point2Di chartDragFrom_;
+    Rect2Di chartDragBox_;               // the chart's box in sheet pixels when the drag began
+    std::vector<SpreadsheetChart> chartsBeforeDrag_;
+    bool chartsDirty_ = true;
+    // Pivot tables (UltraCanvasSpreadsheetPivot.h): the sheets whose cells
+    // changed since the pivots last read them, and whether the pivots are
+    // writing their own cells (which is no change to a source).
+    std::vector<std::string> pivotSourcesChanged_;
+    bool writingPivots_ = false;
+    void NotePivotSourceChange(const std::string& sheetName, const CellRange& range);
+    bool WritePivotTable(SpreadsheetSheet& sheet, SpreadsheetPivotTable& pivot, std::string* problem);
+    // True, and a message on the status line, when `range` of the active
+    // sheet reaches into a pivot's cells, which only the pivot writes.
+    bool RefusePivotEdit(const CellRange& range);
+    // The active sheet's columns under `pivot` fitted to what they hold.
+    void FitPivotColumns(const SpreadsheetPivotTable& pivot);
+    // A double-click on a pivot's cell: true when it was one.
+    bool HandlePivotDoubleClick(int row, int col);
+    std::map<uint64_t, std::shared_ptr<UltraCanvasUIElement>> chartCache_;
+    bool HandleChartEvent(const UCEvent& event);
+    void RenderCharts(IRenderContext* ctx);
+    Rect2Di ChartScreenRect(const SpreadsheetChart& chart) const;
+    int ChartAt(int x, int y) const;
+    void RecordChartStep(SpreadsheetSheet& sheet, std::vector<SpreadsheetChart> before, const std::string& description);
+    void ApplyChartStep(SpreadsheetUndoAction& action);
+    // A conditional-format or validation change about to be made to `sheet`,
+    // as one undo step (RulesChange): its rules as they are now, and the
+    // cells' own rules in `cellRules`.
+    void RecordRulesStep(SpreadsheetSheet& sheet, const std::string& description,
+                         std::vector<SpreadsheetUndoAction::CellRule> cellRules = {});
+    void ApplyRulesStep(SpreadsheetUndoAction& action);
+
     Rect2Df formulaBarBounds_;
     Rect2Df gridBounds_;
     Rect2Df sheetTabsBounds_;
@@ -257,6 +394,21 @@ public:
     void Arrange(const UltraCanvas::Rect2Df &newFinalRect, const CSSLayout::LayoutContext &ctx) override;
     bool AcceptsFocus() const override { return true; }
     bool SetFocus(bool focus = true) override;   // commit edit on focus loss
+
+    // ===== ACCESSIBILITY =====
+    // A table to assistive technology, named by its sheet: its rows and
+    // their cells are its parts (GetAccessibleTableInterface,
+    // GetAccessiblePartsInterface) - the used cells, and as far as the active
+    // cell and the selection reach - each cell named by its address and the
+    // value it shows ("B3 42"). The active cell is the focused part and the
+    // value text; a move of it or of the selection is announced
+    // (SelectionChanged, its `part` the active cell), a change of sheet too
+    // (NameChanged).
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Table; }
+    std::string GetAccessibleName() const override;
+    std::string GetAccessibleValueText() const override;
+    IAccessibleParts* GetAccessiblePartsInterface() override;
+    IAccessibleTable* GetAccessibleTableInterface() override;
     
     // ===== SHEET MANAGEMENT =====
     int GetSheetCount() const { return static_cast<int>(sheets_.size()); }
@@ -319,7 +471,10 @@ public:
     bool IsCellSelected(int row, int col) const;
     
     // ===== NAVIGATION =====
-    void MoveActiveCell(int rowDelta, int colDelta);
+    void MoveActiveCell(int rowDelta, int colDelta);   // selects the cell it lands on
+    // Shift+arrow: the range grows or shrinks at the corner away from the
+    // active cell, which stays where it is.
+    void ExtendSelectionBy(int rowDelta, int colDelta);
     void MoveToCellBegin();
     void MoveToCellEnd();
     void MoveToRowBegin();
@@ -349,6 +504,84 @@ public:
     void SetEditBuffer(const std::string& text);
     void InsertTextAtCursor(const std::string& text);
     
+    // ===== DATA VALIDATION =====
+    // A rule is set on the sheet (GetActiveSheet()->SetValidation(range,
+    // rule)) or on one cell (GetCell(row, col)->SetValidation(rule)). A value
+    // typed into a cell is checked when the edit is committed: an entry that
+    // breaks the rule is answered as the rule's alertStyle says -
+    //   Stop         Retry (edit the entry again) or Cancel (the old value back)
+    //   Warning      Yes (keep it), No (edit it again) or Cancel
+    //   Information  OK (keep it) or Cancel
+    // A rule with showErrorAlert false keeps whatever is typed. Values set
+    // from code, pasted or filled are not checked; SpreadsheetSheet::ValidateCell
+    // checks any cell.
+    enum class ValidationAnswer { Accept, Retry, Cancel };
+    struct ValidationFailure {
+        int row = 0;
+        int col = 0;
+        std::string enteredText;   // what was typed
+        DataValidation rule;
+        std::string message;       // the rule's errorMessage, or a default one
+    };
+    // Asked instead of the grid's own dialog when it is set; call `answer`
+    // once, now or later. Accept on a Stop rule counts as Cancel.
+    std::function<void(const ValidationFailure&, std::function<void(ValidationAnswer)> answer)> onValidationFailed;
+
+    // A List rule with showDropdown puts an arrow beside the active cell; a
+    // click on it or Alt+Down opens the rule's items, and the one picked is
+    // entered as if typed (one undo step). Window coordinates.
+    void ShowValidationListAt(int row, int col, int windowX, int windowY);
+    // The items the arrow offers for a cell; empty when it has no List rule
+    // with a dropdown.
+    std::vector<std::string> GetValidationListItems(int row, int col) const;
+    // Enters `item` into the cell as typed, as picking it from the list does.
+    // False (nothing changes) when it is not one of the cell's items.
+    bool ChooseValidationListItem(int row, int col, const std::string& item);
+
+    // ===== CONDITIONAL FORMATS, VALIDATION, COMMENTS, LINKS =====
+    // The formats over a range are the sheet's (SpreadsheetSheet::
+    // AddConditionalFormat, GetConditionalFormatting); the grid draws them,
+    // as the printed page does. These act on the selection, as the dialogs do.
+    // Each call is one undo step, as the dialogs' changes are.
+    // A rule over the selection (GetFormattingRange), added after the others.
+    void AddSelectionConditionalFormat(const ConditionalFormatRule& rule);
+    // A format over its own range on the active sheet, added after the others.
+    void AddConditionalFormat(const ConditionalFormat& format);
+    // Replaces rule `rule` of the active sheet's format `format`
+    // (GetConditionalFormats() order); false when there is no such rule.
+    bool SetConditionalFormatRule(int format, int rule, const ConditionalFormatRule& value);
+    // Deletes that rule, and the format with it when it was the last.
+    bool RemoveConditionalFormatRule(int format, int rule);
+    // Removes every format that covers a cell of the selection.
+    void ClearSelectionConditionalFormats();
+    // The selection's validation rule; a rule of type Any removes it.
+    void SetSelectionValidation(const DataValidation& rule);
+
+    // A cell's note: a red corner marks it, and resting the pointer on the
+    // cell shows it. Each change is an undo step; empty text removes it.
+    void SetCellComment(int row, int col, const std::string& text, const std::string& author = "");
+    void RemoveCellComment(int row, int col);
+    // A cell's link: a web or mail address, a file, or a place in the
+    // workbook (HyperlinkType::InternalCell, "Sheet2.B4"). Its text shows
+    // blue and underlined, the pointer resting on it shows where it goes, and
+    // Ctrl+click opens it. Each change is an undo step.
+    void SetCellHyperlink(int row, int col, const CellHyperlink& link);
+    void RemoveCellHyperlink(int row, int col);
+    // Opens the cell's link: an address through the system (OpenURL), or
+    // `onOpenHyperlink` when set; a place in the workbook by selecting it.
+    // False when the cell has no link.
+    bool OpenHyperlink(int row, int col);
+    std::function<void(const CellHyperlink& link)> onOpenHyperlink;
+
+    // The dialogs that edit them for the selection, built from the
+    // framework's elements (UltraCanvasSpreadsheetRulesDialogs.cpp): the
+    // conditional formats over it (add, change, delete), its validation
+    // rule, the active cell's comment and its link.
+    void ShowConditionalFormatDialog();
+    void ShowDataValidationDialog();
+    void ShowCommentDialog();
+    void ShowHyperlinkDialog();
+
     // ===== FORMATTING =====
     // The range the SetSelection* / AdjustSelection* calls actually write to.
     // Identical to GetSelection() for an ordinary range; a whole-column or
@@ -468,13 +701,113 @@ public:
     void DeleteRowsAt(int row, int count = 1);
     
     // ===== CLIPBOARD =====
+    // Copy and Cut keep the cells whole for a paste in this program, and put
+    // them on the system clipboard as other programs read them: the shown
+    // text, a tab between cells and a line per row, beside an HTML table.
+    // Paste takes the grid's own copy while the system clipboard still holds
+    // it; else what another program copied - its HTML table, or tab- or
+    // comma-separated text - each value read as if typed. Every paste is one
+    // undo step. With a chart selected, Copy and Cut take the chart instead:
+    // a static copy for a document or a slide (CopyChartToClipboard,
+    // UltraCanvasOfficeClipboard.h), a picture and its data for other programs.
     void Cut();
     void Copy();
     void Paste();
     void PasteSpecial(const PasteOptions& options);
+    std::string RangeAsText(const CellRange& range) const;
+    std::string RangeAsHtml(const CellRange& range) const;
+    // Another program's cells, pasted at the active cell; false when there
+    // is nothing to paste (no table, no text).
+    bool PasteHtml(const std::string& html);
+    bool PasteText(const std::string& text);
+
+    // ===== DRAWING A CELL =====
+    // One cell of `sheet` in `bounds` - its fill, its value as its format
+    // shows it, its borders - as the grid draws it; printing draws its pages
+    // with it (UltraCanvasSpreadsheetPrint.h).
+    static void PaintCell(IRenderContext* ctx, const SpreadsheetSheet& sheet, int row, int col, const Rect2Di& bounds);
     bool HasClipboardData() const { return clipboardOp_ != ClipboardOperation::NoOperation; }
     void ClearClipboard();
     
+    // ===== CHARTS (UltraCanvasSpreadsheetChart.h) =====
+    // On the active sheet. `chart` placed as its anchor says, its data read
+    // from the cells, selected; its index. One undo step.
+    int InsertChart(const SpreadsheetChart& chart);
+    // A chart of `kind` over the selection (MakeSpreadsheetChart): -1 when
+    // the selection holds no number to plot.
+    int InsertChartFromSelection(RichChart::Kind kind, bool stacked = false,
+                                 SpreadsheetChartSeriesIn seriesIn = SpreadsheetChartSeriesIn::Automatic);
+    int GetChartCount() const;
+    const SpreadsheetChart* GetChart(int index) const;
+    // Chart `index` becomes `chart` (its kind, title, legend, anchor ...),
+    // its data read again. One undo step; false for no such chart.
+    bool SetChart(int index, const SpreadsheetChart& chart);
+    bool RemoveChart(int index);                 // one undo step
+    int GetSelectedChart() const;                // -1: none
+    void SelectChart(int index);                 // -1 selects none
+    // Reads every sheet's charts from their cells again; true when any
+    // changed. The grid does it before drawing and saving, after its cells
+    // changed.
+    bool RefreshCharts();
+    // Chart `index`'s box in the element's coordinates (it may lie outside
+    // the cells shown).
+    Rect2Di GetChartBounds(int index) const;
+    // A dialog for chart `index`: its kind, title, legend and - for a chart
+    // made from a block of cells - whether its series run along the rows.
+    // OK is one undo step.
+    void ShowChartPropertiesDialog(int index);
+    // A chart of type `type` (SpreadsheetChartTypes) over the selection: -1,
+    // and why in `problem` (in the reader's language), when the selection
+    // does not fit the type - "A bubble chart needs three columns of
+    // numbers ...".
+    int InsertChartOfTypeFromSelection(size_t type, std::string* problem = nullptr);
+    // The chart gallery (ShowSpreadsheetChartGallery) over the selection;
+    // the type picked is inserted, or a message says why it cannot be.
+    void ShowInsertChartDialog();
+    // The chart gallery for chart `index`, its own type chosen; the type
+    // picked becomes its type (one undo step).
+    void ShowChartTypeDialog(int index);
+
+    // ===== PIVOT TABLES (UltraCanvasSpreadsheetPivot.h) =====
+    // `pivot` written onto sheet `sheetIndex` - or, with -1, onto a new
+    // sheet after the active one, at A1 - computed from its source; its
+    // index on that sheet, or -1 and why in `problem`. Its cells are the
+    // pivot's: typing, pasting or clearing them is refused.
+    int InsertPivotTable(const SpreadsheetPivotTable& pivot, int sheetIndex, std::string* problem = nullptr);
+    // Pivot `index` of sheet `sheetIndex` becomes `pivot`, its cells
+    // written again (cleared where it stood before).
+    bool SetPivotTable(int sheetIndex, int index, const SpreadsheetPivotTable& pivot, std::string* problem = nullptr);
+    // Removes the pivot and clears its cells.
+    bool RemovePivotTable(int sheetIndex, int index);
+    // Computes the pivot from its source again ("Refresh").
+    bool RefreshPivotTable(int sheetIndex, int index, std::string* problem = nullptr);
+    // Every pivot of the workbook; how many were written. A pivot read from
+    // a file that the model cannot represent keeps its cells.
+    int RefreshPivotTables();
+    // Refreshes the pivots whose source cells changed since they were last
+    // written; true when any was. The grid does it before drawing, the
+    // writers before saving.
+    bool RefreshChangedPivotTables();
+    // The pivot whose cells hold the active cell of the active sheet: its
+    // index there, -1 for none.
+    int GetActivePivotTable() const;
+    // Pivot `index` of the active sheet takes its data from `range` of
+    // `sheetName`; its fields are kept where the new source has their
+    // columns (matched by name).
+    bool SetPivotTableSource(int index, const std::string& sheetName, const CellRange& range,
+                             std::string* problem = nullptr);
+    // A new sheet after the active one holding the source rows behind
+    // cell (row, col) of the active sheet - a pivot's value or total -
+    // under the source's field names; its index, -1 for any other cell.
+    int DrillDownPivotCell(int row, int col);
+    // The field list (ShowSpreadsheetPivotDialog) for a new pivot over the
+    // selection (Insert > Pivot table), or for pivot `index` of the active
+    // sheet; OK writes it.
+    void ShowInsertPivotTableDialog();
+    void ShowPivotTableDialog(int index);
+    // Asks for pivot `index`'s source range ("Sheet1.A1:D40").
+    void ShowPivotSourceDialog(int index);
+
     // ===== UNDO/REDO =====
     void Undo();
     void Redo();
@@ -552,12 +885,41 @@ public:
     void ClearAllFilters();
     
     // ===== NAMED RANGES =====
-    void AddNamedRange(const std::string& name, const CellRange& range, 
+    // A workbook name is visible from every sheet (sheetScope "") or only
+    // from the sheet it is scoped to; the same name may stand once for the
+    // workbook and once per sheet ("Total" on each month's sheet). Names are
+    // matched without regard to case. The range says which sheet it covers
+    // (range.start.sheetName); a scoped name that says none covers its own
+    // sheet, an unscoped one the sheet of the formula using it.
+    void AddNamedRange(const std::string& name, const CellRange& range,
                        const std::string& sheetScope = "");
+    // Without a scope: the name under any scope. With one: only there
+    // ("" is the workbook's).
     void RemoveNamedRange(const std::string& name);
+    void RemoveNamedRange(const std::string& name, const std::string& sheetScope);
     bool HasNamedRange(const std::string& name) const;
-    CellRange GetNamedRange(const std::string& name) const;
+    bool HasNamedRange(const std::string& name, const std::string& sheetScope) const;
+    // The range of the name under exactly that scope, its sheet filled in as
+    // above; an invalid range when there is none.
+    CellRange GetNamedRange(const std::string& name, const std::string& sheetScope = "") const;
+    // What `name` means in a formula on sheet `fromSheet`: the name scoped to
+    // that sheet, else the workbook's - never another sheet's. An invalid
+    // range when neither exists (the formula shows #NAME?).
+    CellRange ResolveNamedRange(const std::string& name, const std::string& fromSheet) const;
+    // Whether a formula on `fromSheet` sees a name `name` at all. A name it
+    // sees whose range is invalid covered a sheet since deleted: #REF!, not
+    // #NAME?. Deleting a sheet removes the names scoped to it and breaks
+    // those covering it; undoing the delete brings both back.
+    bool IsNamedRangeVisible(const std::string& name, const std::string& fromSheet) const;
     std::vector<std::string> GetNamedRangeNames() const;
+    // Every name with its scope (NamedRange::sheetScope, "" for the
+    // workbook's) and its range as it was given.
+    std::vector<NamedRange> GetNamedRangeList() const {
+        std::vector<NamedRange> list;
+        list.reserve(namedRanges_.size());
+        for (const auto& entry : namedRanges_) list.push_back(entry.second);
+        return list;
+    }
     
     // ===== FORMULA ENGINE =====
     SpreadsheetFormulaEngine* GetFormulaEngine() { return formulaEngine_.get(); }
@@ -572,13 +934,18 @@ public:
     // UltraCanvasOfficeEncryption.h. Without it such a file fails with a
     // message saying a password is needed; a wrong one, with "The password is
     // not correct". UltraCanvasFileLoader::RequestDocumentPassword asks the
-    // user for it. Other formats ignore it.
+    // user for it. It opens a password-protected .ods too - LibreOffice's
+    // "Save with password", decrypted by UltraCanvasOdfEncryption.h. Other
+    // formats ignore it.
     bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-    // `password` saves a password-protected .xlsx (agile encryption,
+    // The type is the extension's: .ods, .xlsx (and the templates .ots,
+    // .xltx), .csv, .tsv.
+    // `password` saves a password-protected .xlsx or .xltx (agile encryption,
     // AES-256 / SHA-512, what Excel 2013 and later write). Any other format
     // with a password is refused rather than saved unprotected.
     bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
-    bool LoadODS(const std::string& filePath);
+    // .ods and .xlsx; an .ots or .xltx path is written as that template.
+    bool LoadODS(const std::string& filePath, const std::string& password = std::string());
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
     bool SaveXLSX(const std::string& filePath, const std::string& password = std::string());
@@ -684,7 +1051,7 @@ private:
     enum class HitArea { Nowhere, FormulaBar, ColumnHeader, RowHeader, CornerHeader, 
                          Cell, ColumnResizer, RowResizer, SheetTab, 
                          HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
-                         ColumnSortButton };
+                         ColumnSortButton, ValidationListButton };
     struct HitTestResult { HitArea area = HitArea::Nowhere; int row = -1; int col = -1; int tabIndex = -1;
                            bool addSheetButton = false; int tabScroll = 0;
                            bool functionMenuButton = false; };
@@ -707,7 +1074,6 @@ private:
     void BeginUndoGroup(UndoActionType type, const std::string& description);
     void RecordCellChange(int row, int col);
     void RecordRangeChange(const CellRange& range);
-    void RecordStructureChange();
     void CommitUndoGroup();
     void CancelUndoGroup();
     void PushUndo(const SpreadsheetUndoAction& action);
@@ -745,6 +1111,32 @@ private:
     std::string GenerateUniqueSheetName() const;
     void UpdateFormulaBar();
     void CommitEdit();
+    // After rows or columns were inserted (count > 0) or deleted (count < 0)
+    // on `changed`: the other sheets' formulas that name it, and the
+    // workbook's names on it, move with its cells.
+    // `step` (optional) records the other sheets' formulas it rewrote.
+    void MoveReferencesToSheet(const SpreadsheetSheet& changed, bool columns, int at, int count,
+                               SpreadsheetUndoAction* step = nullptr);
+    // Inserts (count > 0) or deletes (count < 0) rows or columns of the
+    // active sheet at `at`, as one undo step (InsertRowsAt and the others).
+    void ChangeRowsOrColumns(bool columns, int at, int count);
+    static bool IsStructureStep(UndoActionType type);
+    void ApplyStructureStep(SpreadsheetUndoAction& action);
+    // A typed plain value into a cell of the active sheet: an undo step,
+    // onCellChange, and the formulas that read it recalculated.
+    void SetCellFromEntry(int row, int col, const std::string& text);
+    // After a commit: checks the entry against the cell's rule and, when it
+    // breaks it, asks (onValidationFailed or the dialog) and acts on the answer.
+    void CheckEnteredValue(int row, int col, const std::string& entered, SpreadsheetEditMode mode,
+                           const SpreadsheetUndoAction& before, uint64_t serialBefore);
+    void AskValidationFailure(const ValidationFailure& failure, std::function<void(ValidationAnswer)> answer);
+    void ResolveValidationFailure(ValidationAnswer answer, const ValidationFailure& failure,
+                                  SpreadsheetEditMode mode, const SpreadsheetUndoAction& before,
+                                  bool tookUndoStep, uint64_t serialAfter);
+    void RunAfterEditEnds(std::function<void()> action);
+    // The list arrow beside the active cell; an empty rect when there is none.
+    Rect2Di ValidationListButtonRect() const;
+    void RenderValidationListButton(IRenderContext* ctx);
     Point2Di CellToScreen(int row, int col) const;
     Rect2Df CellAreaRect() const;   // the scrolling cell area, below/right of the headers
     CellAddress ScreenToCell(int x, int y) const;

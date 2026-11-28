@@ -21,6 +21,8 @@
 // Version: 0.5.0 - mail addresses in plain text (merged with main's 0.4.0)
 // Version: 0.4.0 - banks and exchanges claimed from elsewhere; ordinary words
 //                  and mailbox addresses are not claims
+// Version: 0.5.0 - the reasons in the reader's language (a German catalogue)
+// Version: 0.4.0 - PlainLinkSpans (the Microsoft account mail's long links)
 // Version: 0.3.0 - PlainLinkAt
 // Version: 0.2.0 - borrowed brand pictures (a fake "It's a Match!"), image hosts
 // Version: 0.1.0
@@ -29,7 +31,12 @@
 
 #include "UltraMailSenderBrands.h"
 #include "UltraMailThreatScan.h"
+#include "UltraLocalisation/UltraLocalisation.h"
+#include "UltraCanvasPathUtf8.h"
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -324,6 +331,46 @@ TEST(scanning_a_raw_message_reads_headers_and_body) {
     REQUIRE(HasFinding(r, "link-target-mismatch"));
     REQUIRE(HasFinding(r, "reply-to-mismatch"));
     REQUIRE(r.Summary().find("paypal.com") != std::string::npos);
+}
+
+TEST(the_reasons_are_written_in_the_readers_language) {
+    // A German catalogue for UltraMail with two of the reasons and the
+    // list's "and", in a folder of its own.
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+        ("ultramail-tr-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(dir / "de");
+    {
+        std::ofstream out(dir / "de" / "UltraMail.json", std::ios::binary);
+        out << "{\n  \"@language\": \"de\",\n"
+               "  \"A link points straight at the numeric address {0} instead of a named site.\": "
+               "\"Ein Link f\u00fchrt direkt zur Zahlenadresse {0} statt zu einer benannten Website.\",\n"
+               "  \"Replies would not go back to {0} but to {1}.\": "
+               "\"Antworten gingen nicht an {0} zur\u00fcck, sondern an {1}.\"\n}\n";
+    }
+    UltraCanvas::UltraLocalisation::SetFolders(UltraCanvas::PathToUtf8(dir), "");
+    REQUIRE(UltraCanvas::UltraLocalisation::Load("de", "UltraMail"));
+    const std::string raw =
+        "From: \"PayPal Service\" <service@paypa1-secure.example>\r\n"
+        "To: erika@example.com\r\n"
+        "Subject: Your account has been locked\r\n"
+        "Reply-To: collector@elsewhere.example\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
+        "\r\n"
+        "<html><body><p>Your account has been suspended.</p>"
+        "<a href=\"http://198.51.100.7/login\">www.paypal.com</a></body></html>\r\n";
+    const std::string german = ScanRawMessage(raw).Summary();
+    UltraCanvas::UltraLocalisation::Load("en", "UltraMail");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    REQUIRE(german.find("Ein Link f\xC3\xBChrt direkt zur Zahlenadresse 198.51.100.7") != std::string::npos);
+    REQUIRE(german.find("Antworten gingen nicht an paypa1-secure.example zur\xC3\xBC" "ck, sondern an "
+                        "elsewhere.example.") != std::string::npos);
+    // What the catalogue does not have stays English, never empty.
+    REQUIRE(german.find("A sign-in link is unencrypted") != std::string::npos);
+    // And back in English after the switch.
+    REQUIRE(ScanRawMessage(raw).Summary().find("A link points straight at the numeric address") !=
+            std::string::npos);
 }
 
 TEST(an_empty_or_unparseable_message_is_unscanned_not_clean) {
@@ -648,6 +695,36 @@ TEST(plain_link_at_finds_the_url_under_a_position) {
     REQUIRE_EQ(PlainLinkAt(text, text.find("test")), std::string("www.test.org"));
     REQUIRE(PlainLinkAt(text, text.find("not")).empty());
     REQUIRE(PlainLinkAt(text, text.size() + 5).empty());
+}
+
+TEST(plain_text_link_spans_are_what_a_click_opens) {
+    // A line of a Microsoft account mail: one long link with "!", "*" and "%24".
+    const std::string verify =
+        "https://account.live.com/Aliases/Verify?aliasname=info%40example.com&aliastype=Email"
+        "&otc=*DgyhHEpp0uNLWBcx!LbC2gi1YubjEoYTxZ4jC8dkpjvBcegvSzt!TgWGS2v5UiVacuLDZUw%24&cxt=ALS";
+    auto spans = PlainLinkSpans(verify);
+    REQUIRE_EQ(spans.size(), std::size_t(1));
+    REQUIRE_EQ(spans[0].first, std::size_t(0));
+    REQUIRE_EQ(spans[0].second, verify.size());
+
+    // Two links and an address on one line; the "|" and the full stop are not theirs.
+    const std::string line = "Privacy: https://go.microsoft.com/fwlink/?LinkId=521839 | "
+                             "Imprint: https://aka.ms/impressum_de. Mail info@example.com";
+    spans = PlainLinkSpans(line);
+    REQUIRE_EQ(spans.size(), std::size_t(3));
+    REQUIRE_EQ(line.substr(spans[0].first, spans[0].second - spans[0].first),
+               std::string("https://go.microsoft.com/fwlink/?LinkId=521839"));
+    REQUIRE_EQ(line.substr(spans[1].first, spans[1].second - spans[1].first),
+               std::string("https://aka.ms/impressum_de"));
+    REQUIRE_EQ(line.substr(spans[2].first, spans[2].second - spans[2].first),
+               std::string("info@example.com"));
+    // Every byte of a span is a link to PlainLinkAt, and the bytes around it are not.
+    for (const auto& [a, b] : spans) {
+        REQUIRE(!PlainLinkAt(line, a).empty());
+        REQUIRE(!PlainLinkAt(line, b - 1).empty());
+        if (b < line.size()) REQUIRE(PlainLinkAt(line, b).empty());
+    }
+    REQUIRE(PlainLinkSpans("No link here, and not www. either").empty());
 }
 
 TEST(plain_text_mail_addresses_are_mailto_links) {
@@ -1760,4 +1837,435 @@ TEST(a_companys_name_from_its_own_or_a_free_domain_is_not_a_mismatch) {
         "header.from=band-music.example");
     REQUIRE(proven.Has("sender-company-mismatch"));
     REQUIRE(proven.level == ThreatLevel::Clean);
+}
+
+// ---------------------------------------------------------------------------
+// Fake luxury goods behind disguised links (a reader's inbox, 2026-11-17)
+// ---------------------------------------------------------------------------
+namespace {
+
+// The mail as it arrived, cut to what the rules read: no List-Unsubscribe, no
+// Authentication-Results, and every link written "https:////host".
+const char* kReplicaWatchMail =
+    "Return-Path: <infospool@wwwpopshoponline.example>\r\n"
+    "Received: from wwwpopshoponline.example (unknown [196.251.102.238])\r\n"
+    "\tby mail.reader.example (Postfix) with ESMTPS id DE4AFC112B1\r\n"
+    "\tfor <info@reader.example>; Tue, 17 Nov 2026 17:54:52 +0100 (CET)\r\n"
+    "Message-ID: <4o.xg0bmjniq.oz6vdlltrpu@4p.7crrlgxl.ti>\r\n"
+    "Date: Tue, 17 Nov 2026 16:55:51 -0300\r\n"
+    "From: Victoria <infospool@wwwpopshoponline.example>\r\n"
+    "To: info <info@reader.example>\r\n"
+    "Subject: [Black Friday] Rolex Watches Starting at Just $250\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/html;\r\n\tcharset=\"utf-8\"\r\n"
+    "Content-Transfer-Encoding: Quoted-Printable\r\n"
+    "X-Antivirus-Status: Clean\r\n"
+    "\r\n"
+    "<HTML lang=3Den><BODY><TABLE><TR><TD><A style=3D\"DISPLAY: b=\r\n"
+    "lock\" href=3D\"https:////vv1.popshoponline.example////////1v5wer//////=\r\n"
+    "/vy5.html\" target=3D_blank><IMG alt=3D\"Exclusive Luxury Timepieces Starting =\r\n"
+    "at Only $250\" src=3D\"https:////vv1.popshoponline.example//////qw.jpg\" width=\r\n"
+    "=3D600></A></TD></TR><TR><TD><A href=3D\"https:////vv1.popshoponline.example=\r\n"
+    "////////1v5wer///////vy5.html\"><H1>Timeless Luxury, Crafted For You </H1></A>=\r\n"
+    "<A href=3D\"https:////vv1.popshoponline.example////////1v5wer///////vy5.html\">=\r\n"
+    "<P>Discover our exclusive range of precision luxury watches. Designed for=20\r\n"
+    "distinction and built to last, now available starting from an unbeatable=20\r\n"
+    "<STRONG>$250</STRONG>. </P></A><A href=3D\"https:////vv1.popshoponline.examp=\r\n"
+    "le////////1v5wer///////vy5.html\">SHOP LUXURY WATCHES FROM $250 </A></TD></T=\r\n"
+    "R><TR><TD><P>You received this message because you subscribed to our luxury=\r\n"
+    " arrivals and special promotions. </P><A href=3D\"https:////vv1.popshoponlin=\r\n"
+    "e.example/////return.php?p=3DTUsxP2lu\">Unsubscribe from this mailing list =\r\n"
+    "</A></TD></TR></TABLE></BODY></HTML>\r\n";
+
+} // namespace
+
+TEST(links_with_extra_slashes_keep_their_host) {
+    // A browser reads any run of '/' and '\' after "https:" as the "//".
+    const auto links = ExtractLinks(
+        "<a href=\"https:////shop.example.ru////x.html\">a</a>"
+        "<a href=\"https:\\\\shop.example.ru\\x.html\">b</a>"
+        "<a href=\"http:/shop.example.ru/\">c</a>"
+        "<a href=\"https://shop.example.ru/\">d</a>"
+        "<a href=\"/go?u=https://elsewhere.example\">e</a>"
+        "<a href=\"mailto:x@shop.example.ru\">f</a>", true);
+    REQUIRE(links.size() == 6);
+    REQUIRE(links[0].host == "shop.example.ru");
+    REQUIRE(links[1].host == "shop.example.ru");
+    REQUIRE(links[2].host == "shop.example.ru");
+    REQUIRE(links[3].host == "shop.example.ru");
+    REQUIRE(links[4].host.empty());   // a relative path on the sender's own site
+    REQUIRE(links[5].host.empty());
+    // Pictures loaded the same way are found too.
+    const auto images = ExtractImageHosts("<img src=\"https:////cdn.example.ru//a.jpg\">");
+    REQUIRE(images.size() == 1);
+    REQUIRE(images[0] == "cdn.example.ru");
+}
+
+TEST(a_disguised_link_address_is_told) {
+    const ThreatReport r = ScanMessage(Html("news@shop.example",
+        "<a href=\"https:////vv1.other.example////x.html\">Shop now</a>"));
+    REQUIRE(r.Has("link-disguised-address"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+    // Written as usual, it is not.
+    REQUIRE(!ScanMessage(Html("news@shop.example",
+        "<a href=\"https://vv1.other.example/x.html\">Shop now</a>"))
+                 .Has("link-disguised-address"));
+    // A phishing warning: switched off with them.
+    ScanInput off = Html("news@shop.example",
+        "<a href=\"https:////vv1.other.example////x.html\">Shop now</a>");
+    off.options.phishing = false;
+    REQUIRE(!ScanMessage(off).Has("link-disguised-address"));
+}
+
+TEST(the_250_dollar_rolex_mail_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kReplicaWatchMail);
+    REQUIRE(r.Has("link-disguised-address"));
+    REQUIRE(r.Has("counterfeit-goods"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    // The reading pane can show where the button really goes.
+    const DomainMismatch m = FindDomainMismatchInRaw(kReplicaWatchMail);
+    REQUIRE(m.found);
+    REQUIRE(m.senderDomain == "wwwpopshoponline.example");
+    REQUIRE(m.linkDomain == "vv1.popshoponline.example");
+}
+
+TEST(counterfeit_luxury_goods) {
+    auto scan = [](const std::string& from, const std::string& subject,
+                   const std::string& body) {
+        ScanInput in = Html(from, body);
+        in.subject = subject;
+        return ScanMessage(in);
+    };
+    // A price no genuine one has, an offer.
+    REQUIRE(scan("deals@watch-outlet.example", "Rolex Watches Starting at Just $250", "<p>Shop now</p>")
+                .Has("counterfeit-goods"));
+    REQUIRE(scan("x@bags.example", "Black Friday", "<p>Louis Vuitton bags from 89 EUR</p>")
+                .Has("counterfeit-goods"));
+    REQUIRE(scan("x@bags.example", "Sale", "<p>Rolex Submariner only 1.250,00 \xE2\x82\xAC</p>")
+                .Has("counterfeit-goods"));
+    // Calling itself a replica, at any price.
+    const ThreatReport replica = scan("x@time.example", "New arrivals",
+        "<p>1:1 replica Patek Philippe and Audemars Piguet, AAA quality</p>");
+    REQUIRE(replica.Has("counterfeit-goods"));
+    REQUIRE(replica.level >= ThreatLevel::Suspicious);
+    // A genuine price, the brand's own domain, a word that only sounds like one.
+    REQUIRE(!scan("x@jeweller.example", "New in", "<p>Rolex Submariner Date, $12,950</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("news@rolex.com", "Rolex", "<p>Leather strap from $250</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("x@health.example", "Omega-3 sale", "<p>Omega 3 capsules only $25</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("x@parcel.example", "Hermes delivery", "<p>Send a parcel from 4.99 EUR</p>")
+                 .Has("counterfeit-goods"));
+    // A proven shop's own bulk mail: a low price alone is a hint, not a verdict.
+    ScanInput shop = Html("news@jeweller.example", "<p>Cartier box, only $300</p>");
+    shop.listUnsubscribe = "<https://jeweller.example/u>";
+    shop.authResults = "mx.reader.example; dkim=pass header.d=jeweller.example; dmarc=pass "
+                       "header.from=jeweller.example";
+    const ThreatReport proven = ScanMessage(shop);
+    REQUIRE(proven.Has("counterfeit-goods"));
+    REQUIRE(proven.level < ThreatLevel::Suspicious);
+    // Its own switch.
+    ScanInput off = Html("deals@watch-outlet.example", "<p>Shop now</p>");
+    off.subject = "Rolex Watches Starting at Just $250";
+    off.options.counterfeits = false;
+    REQUIRE(!ScanMessage(off).Has("counterfeit-goods"));
+}
+
+// ---------------------------------------------------------------------------
+// Unsolicited SEO offers (a reader's inbox, 2026-11-17)
+// ---------------------------------------------------------------------------
+namespace {
+
+// From a genuine (DKIM-signed) free mailbox, as a "Re:" to nothing.
+const char* kSeoOfferMail =
+    "Return-Path: <samardnamcy@gmail.com>\r\n"
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=gmail.com header.i=@gmail.com "
+    "header.a=rsa-sha256 header.s=20260707 header.b=TBHtucHs;\r\n"
+    "\tdkim-atps=neutral\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Message-ID: <autogen-java-2fd2b4f5-7f63-4189-bd7e-fd374be0ed91@google.com>\r\n"
+    "Date: Tue, 17 Nov 2026 09:02:58 +0000\r\n"
+    "Subject: Re: Following Up on My Previous Email \r\n"
+    "From: samardnamcy@gmail.com\r\n"
+    "To: info@reader.example\r\n"
+    "Content-Type: multipart/alternative; boundary=\"0000000000003377a60660752935\"\r\n"
+    "\r\n"
+    "--0000000000003377a60660752935\r\n"
+    "Content-Type: text/plain; charset=\"UTF-8\"; format=flowed; delsp=yes\r\n"
+    "\r\n"
+    "Hi,\r\n\r\nJust following up on my previous email.\r\n\r\n"
+    "Would you be interested in seeing the brief SEO audit report I prepared for  \r\n"
+    "your website?\r\n\r\nLooking forward to your response.\r\n\r\nBest,\r\n\r\n"
+    "--0000000000003377a60660752935\r\n"
+    "Content-Type: text/html; charset=\"UTF-8\"\r\n"
+    "Content-Transfer-Encoding: quoted-printable\r\n"
+    "\r\n"
+    "Hi,<br><br>Just following up on my previous email.<br><br>Would you be inte=\r\n"
+    "rested in seeing the brief SEO audit report I prepared for your website?<br=\r\n"
+    "><br>Looking forward to your response.<br><br>Best,<br><br>On Thu, Nov 12, =\r\n"
+    "2026 at 11:52=E2=80=AFAM wrote:<br>Hey!<br><br>I noticed a small SEO issue o=\r\n"
+    "n your website that could be affecting how it appears in Google search resul=\r\n"
+    "ts.<br><br>I've captured a screenshot and put together a quick audit report.=\r\n"
+    "<br><br>Would you like me to share it?<br><br>Thanks,\r\n"
+    "--0000000000003377a60660752935--\r\n";
+
+} // namespace
+
+TEST(the_seo_audit_offer_is_spam) {
+    const ThreatReport r = ScanRawMessage(kSeoOfferMail);
+    REQUIRE(r.Has("seo-solicitation"));
+    REQUIRE(r.verifiedDomain == "gmail.com");    // genuine gmail - and still spam
+    REQUIRE(r.level == ThreatLevel::Suspicious);  // spam, not a scam
+}
+
+TEST(seo_offers) {
+    auto scan = [](const std::string& from, const std::string& subject,
+                   const std::string& body) {
+        ScanInput in;
+        in.fromAddr = from;
+        in.subject  = subject;
+        in.body     = body;
+        return ScanMessage(in);
+    };
+    // From a domain of its own, nothing proven.
+    REQUIRE(scan("sam@rank-boost.example", "Quick question",
+                 "We can get your website on the first page of Google. Would you like "
+                 "a free analysis?").level >= ThreatLevel::Suspicious);
+    // Search engines without the reader's website, or without an offer.
+    REQUIRE(!scan("x@gmail.com", "SEO meetup", "The SEO meetup is on Friday, see you there.")
+                 .Has("seo-solicitation"));
+    REQUIRE(!scan("x@gmail.com", "Hi", "I found your website in the search results. "
+                  "Nice photos!").Has("seo-solicitation"));
+    // "seo" small is a name: Seo-yeon writing about the reader's website.
+    REQUIRE(!scan("seo.yeon@gmail.com", "Photos", "Hi, it's Seo! I saw your website and "
+                  "would you like the photos from Saturday? Seo").Has("seo-solicitation"));
+    REQUIRE(scan("x@gmail.com", "Quick question", "Your website has seo issues - would you "
+                 "like a free audit? It would help its google ranking.")
+                .Has("seo-solicitation"));   // another search-engine term says it
+    REQUIRE(scan("x@gmail.com", "Hi", "I found SEO issues on your website. Would you like "
+                 "the report?").Has("seo-solicitation"));
+    // A proven domain's newsletter is a hint; a proven registry brand nothing.
+    ScanInput news;
+    news.fromAddr = "news@seo-tool.example";
+    news.body = "Our SEO report for your website is ready - would you like a tour?";
+    news.listUnsubscribe = "<https://seo-tool.example/u>";
+    news.authResults = "mx.reader.example; dkim=pass header.d=seo-tool.example; dmarc=pass "
+                       "header.from=seo-tool.example";
+    const ThreatReport newsletter = ScanMessage(news);
+    REQUIRE(newsletter.Has("seo-solicitation"));
+    REQUIRE(newsletter.level == ThreatLevel::Advertisement);
+    // Its own switch.
+    ScanInput off;
+    off.fromAddr = "x@gmail.com";
+    off.body = "I noticed an SEO issue on your website. Would you like the report?";
+    REQUIRE(ScanMessage(off).Has("seo-solicitation"));
+    off.options.seoOffers = false;
+    REQUIRE(!ScanMessage(off).Has("seo-solicitation"));
+}
+
+// ---------------------------------------------------------------------------
+// Replies and forwards from strangers (unsolicited-reply)
+// ---------------------------------------------------------------------------
+namespace {
+
+// A forwarded "invoice" (WG: = Weitergeleitet) from a stranger, in a thread of
+// another company's messages, with the virus scanner's tag in front.
+const char* kForwardedInvoiceMail =
+    "Return-Path: <no-reply@automobielbeheersing.com>\r\n"
+    "Received: from automobielbeheersing.com (unknown [105.98.12.169])\r\n"
+    "\tby mail.reader.example (Postfix) with ESMTP id 6EC09C112BE\r\n"
+    "In-Reply-To: <wwc046ac96-c1d5-41db-a34e-c3aa58e9a741@kemink-fleisch.de>\r\n"
+    "References: <wwc046ac96-c1d5-41db-a34e-c3aa58e9a741@kemink-fleisch.de>\r\n"
+    "Message-ID: <865e44bab25d$accaf298$d0187ce3$@automobielbeheersing.com>\r\n"
+    "Date: Fri, 20 Nov 2026 12:14:06 +0000\r\n"
+    "To: Info <info@reader.example>\r\n"
+    "From: no-reply@automobielbeheersing.com\r\n"
+    "Subject: *** VIRUS ***WG: Rechnung 373115 vom  31.05.2026 | Kurt Heinrich Kemink GmbH & Co. KG\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/plain; charset=\"utf-8\"\r\n"
+    "\r\n"
+    "Bitte bis 15.06 26 bez.\r\n"
+    "\r\n"
+    "Mit freundlichen Gruessen\r\n"
+    "\r\n"
+    "Von: Kemink-Fleisch | Rechnungsstellung ausgangsrechnung@\r\n"
+    "Betreff: Rechnung 373115 vom 31.05.2026\r\n"
+    "\r\n"
+    "Sehr geehrte Damen und Herren,\r\n"
+    "anbei erhalten Sie Ihre aktuelle Rechnung.\r\n";
+
+// A sales "Re:" to a cold mail the reader never answered, DKIM-signed by the
+// sender's own domain.
+const char* kSalesFollowUpMail =
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=suppliesrevenue.com header.i=@suppliesrevenue.com\r\n"
+    "Message-ID: <01a20303-5b90-74ed-bc7a-0488d11f72bc@suppliesrevenue.com>\r\n"
+    "List-Unsubscribe: <https://link.inproxalberta1.net/unsub/1/660353df>\r\n"
+    "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"
+    "In-Reply-To: <01a1f8b5-6bc4-757c-9c79-93040fcbba76@suppliesrevenue.com>\r\n"
+    "References: <01a1f8b5-6bc4-757c-9c79-93040fcbba76@suppliesrevenue.com>\r\n"
+    "From: Dale Phillips <d_phillips@suppliesrevenue.com>\r\n"
+    "To: info@reader.example\r\n"
+    "Subject: Re: Riscos Cloverleaf sales\r\n"
+    "Date: Sun, 22 Nov 2026 11:28:01 +0000\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/plain; charset=utf-8\r\n"
+    "\r\n"
+    "Worth a chat?\r\n"
+    "\r\n"
+    "> Hello,\r\n"
+    "> I came across your website and read about your operating systems.\r\n"
+    "> Do you have 10 minutes to see how we can get similar results?\r\n";
+
+} // namespace
+
+TEST(a_forwarded_invoice_from_a_stranger_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kForwardedInvoiceMail);
+    REQUIRE(r.Has("unsolicited-reply"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+    // It names the thread the sender was never part of, and the bill.
+    REQUIRE(r.Summary().find("kemink-fleisch.de") != std::string::npos);
+    REQUIRE(r.Summary().find("rechnung") != std::string::npos);
+}
+
+TEST(a_sales_follow_up_from_a_stranger_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kSalesFollowUpMail);
+    REQUIRE(r.Has("unsolicited-reply"));
+    REQUIRE(r.verifiedDomain == "suppliesrevenue.com");   // genuine - and still flagged
+    REQUIRE(r.level == ThreatLevel::Suspicious);          // spam, not a scam
+}
+
+TEST(reply_prefixes) {
+    auto scan = [](const std::string& subject) {
+        ScanInput in;
+        in.fromAddr = "someone@company.example";
+        in.subject  = subject;
+        in.body     = "See below.";
+        return ScanMessage(in);
+    };
+    for (const char* s : {"Re: offer", "RE: offer", "Fw: offer", "FWD: offer", "WG: Rechnung",
+                          "AW: Angebot", "Re[2]: offer", "[SPAM] Re: offer", "*** VIRUS ***WG: x",
+                          "TR: facture", "SV: tilbud"})
+        REQUIRE(scan(s).Has("unsolicited-reply"));
+    for (const char* s : {"Offer", "Regarding: offer", "Fwiw the meeting", "Rechnung 123",
+                          "Re-launch: our new site", "Ref: 123"})
+        REQUIRE(!scan(s).Has("unsolicited-reply"));
+    // Nothing it replies to says more than a thread of the sender's own.
+    ScanInput own;
+    own.fromAddr = "someone@company.example";
+    own.subject = "Re: offer";
+    own.inReplyTo = "<abc@company.example>";
+    const int ownThread = ScanMessage(own).score;
+    REQUIRE(scan("Re: offer").score > ownThread);
+}
+
+TEST(replies_that_are_not_unsolicited) {
+    // A mailing list's post: strangers answer each other there.
+    ScanInput list;
+    list.fromAddr = "dev@people.example";
+    list.subject  = "Re: [dev] build broken";
+    list.listId   = "<dev.lists.project.example>";
+    REQUIRE(!ScanMessage(list).Has("unsolicited-reply"));
+    // Its own switch.
+    ScanInput off;
+    off.fromAddr = "someone@company.example";
+    off.subject  = "Fw: invoice";
+    REQUIRE(ScanMessage(off).Has("unsolicited-reply"));
+    off.options.strangerReplies = false;
+    REQUIRE(!ScanMessage(off).Has("unsolicited-reply"));
+    // A sender the reader trusts: the reader's own call.
+    ScanInput trusted;
+    trusted.fromAddr = "someone@company.example";
+    trusted.subject  = "Re: invoice";
+    trusted.senderTrusted = true;
+    REQUIRE(!ScanMessage(trusted).Has("unsolicited-reply"));
+    REQUIRE(FindingOnlyFromStrangers("unsolicited-reply"));
+}
+
+// ---------------------------------------------------------------------------
+// A no-reply address with a code per message is one sender
+// ---------------------------------------------------------------------------
+TEST(a_no_reply_address_with_a_code_is_one_sender) {
+    REQUIRE_EQ(SenderLists::Normalize("Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>"),
+               std::string("no-reply@mail.anthropic.com"));
+    REQUIRE_EQ(SenderLists::StableAddress("noreply+7f3a@shop.example"),
+               std::string("noreply@shop.example"));
+    REQUIRE_EQ(SenderLists::StableAddress("do-not-reply.4411@bank.example"),
+               std::string("do-not-reply@bank.example"));
+    // Anything else stays as it is.
+    for (const char* a : {"no-reply@mail.anthropic.com", "noreplyx@shop.example",
+                          "erika-mustermann@example.com", "no-reply-@x.example", "reply-1@x.example"})
+        REQUIRE_EQ(SenderLists::StableAddress(a), std::string(a));
+    // A "+tag" on the mailbox: the mailbox alone.
+    REQUIRE_EQ(SenderLists::Normalize("Shop <Orders+Q7x2Lm@Shop.Example>"),
+               std::string("orders@shop.example"));
+    REQUIRE_EQ(SenderLists::StableAddress("+abc@x.example"), std::string("+abc@x.example"));
+    SenderLists tagged;
+    tagged.trusted.insert(SenderLists::Entry("orders+111@shop.example", false));
+    REQUIRE(tagged.Trusts("orders+222@shop.example"));
+    REQUIRE(tagged.Trusts("orders@shop.example"));
+    REQUIRE(!tagged.Trusts("billing+111@shop.example"));
+    REQUIRE_EQ(SenderLists::Bare("Anthropic <No-Reply-AB@Mail.Anthropic.com>"),
+               std::string("no-reply-ab@mail.anthropic.com"));
+
+    // Trusted once, from one message: the next message's new code is trusted too.
+    SenderLists lists;
+    lists.trusted.insert(SenderLists::Entry("no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com", false));
+    REQUIRE(lists.Trusts("Anthropic <no-reply-Xy12Zw9QpL@mail.anthropic.com>"));
+    REQUIRE(!lists.Trusts("no-reply-Xy12Zw9QpL@other.example"));
+    // An entry kept with its code (before) still matches its own message.
+    SenderLists old;
+    old.trusted.insert("no-reply-abc123@mail.example");
+    REQUIRE(old.Trusts("no-reply-abc123@mail.example"));
+    // Blocking works the same way.
+    SenderLists block;
+    block.blocked.insert(SenderLists::Entry("noreply-9f8e@spam.example", true));
+    REQUIRE_EQ(block.BlockedBy("noreply-0000@spam.example"), std::string("noreply@spam.example"));
+}
+
+namespace {
+
+// Claude's sign-in link: a no-reply address with a code, signed by
+// mail.anthropic.com, its links through the mail service's click tracker.
+const char* kClaudeSignInMail =
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=mail.anthropic.com header.i=@mail.anthropic.com header.a=rsa-sha256 header.s=s1;\r\n"
+    "\tdkim-atps=neutral\r\n"
+    "Content-Transfer-Encoding: quoted-printable\r\n"
+    "Content-Type: text/html; charset=us-ascii\r\n"
+    "Date: Mon, 23 Nov 2026 15:32:04 +0000 (UTC)\r\n"
+    "From: Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>\r\n"
+    "Mime-Version: 1.0\r\n"
+    "Message-ID: <wQUx5eonRfCXjydxKPVDhg@geopod-ismtpd-58>\r\n"
+    "Subject: Your secure link to Claude is here | 2026-11-23 16:32:04\r\n"
+    "Reply-To: Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>\r\n"
+    "To: info@reader.example\r\n"
+    "\r\n"
+    "<html><body><img alt=3D\"Claude\" src=3D\"https://claude.ai/images/email/claude_logo_chip.png\">\r\n"
+    "<div>Sign in to Claude</div><div>Click the button below to finish signing in. This link expires in 10 minutes.</div>\r\n"
+    "<a clicktracking=3D\"off\" href=3D\"https://claude.ai/magic-link/android#617c13cecf9998950aa62b390e9f5c74:aW5mb0ByZWFkZXIuZXhhbXBsZQ=3D=3D\">Sign in</a>\r\n"
+    "If you didn't request this email, you can safely ignore it. Need a hand? Contact\r\n"
+    "<a href=3D\"https://url8792.mail.anthropic.com/ls/click?upn=3Du001.abc\">Anthropic Support</a>.\r\n"
+    "<a href=3D\"https://url8792.mail.anthropic.com/ls/click?upn=3Du001.help\">Help</a>\r\n"
+    "<img src=3D\"https://url8792.mail.anthropic.com/wf/open?upn=3Du001.tr\" width=3D\"1\" height=3D\"1\"></body></html>\r\n";
+
+} // namespace
+
+TEST(claudes_sign_in_mail_is_genuine_and_trusted_once_for_good) {
+    const ThreatReport r = ScanRawMessage(kClaudeSignInMail);
+    REQUIRE(r.level == ThreatLevel::Clean);
+    REQUIRE(r.verifiedDomain == "mail.anthropic.com");
+    // Trusting it from this message trusts the next one, under its new code.
+    SenderLists lists;
+    lists.trusted.insert(SenderLists::Normalize("Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>"));
+    SetSenderLists(lists);
+    std::string next = kClaudeSignInMail;
+    for (std::size_t p; (p = next.find("REjD6rPynU0gNGG4w2exEQ")) != std::string::npos;)
+        next.replace(p, 22, "Qm7Tx0Lk2PaVb9");
+    const bool trusted = GetSenderLists().Trusts("no-reply-Qm7Tx0Lk2PaVb9@mail.anthropic.com");
+    SetSenderLists(SenderLists{});
+    REQUIRE(trusted);
+    REQUIRE(ScanRawMessage(next).level == ThreatLevel::Clean);
 }

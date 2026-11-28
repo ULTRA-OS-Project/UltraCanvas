@@ -40,7 +40,7 @@ namespace UltraCanvas {
         single->SetSelectedIndex(0);
         DemoKit::Add(singleCard, single);
         auto singleOut = DemoKit::AddText(singleCard, "CgSingleOut", Describe(*single));
-        singleOut->SetBackgroundColor(Color(240, 240, 240));
+        singleOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         singleOut->SetPadding(3);
         single->onSelectionChanged = [singleOut, g = single.get()](int) { singleOut->SetText(Describe(*g)); };
 
@@ -53,7 +53,7 @@ namespace UltraCanvas {
         for (const std::string& name : {Tr("Free"), Tr("Paid"), Tr("Installed"), Tr("Has updates")}) none->AddChip(name);
         DemoKit::Add(noneCard, none);
         auto noneOut = DemoKit::AddText(noneCard, "CgNoneOut", Describe(*none));
-        noneOut->SetBackgroundColor(Color(240, 240, 240));
+        noneOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         noneOut->SetPadding(3);
         none->onSelectionChanged = [noneOut, g = none.get()](int) { noneOut->SetText(Describe(*g)); };
 
@@ -66,7 +66,7 @@ namespace UltraCanvas {
         multi->SetSelectedIndices({0, 1});
         DemoKit::Add(multiCard, multi);
         auto multiOut = DemoKit::AddText(multiCard, "CgMultiOut", Describe(*multi));
-        multiOut->SetBackgroundColor(Color(240, 240, 240));
+        multiOut->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         multiOut->SetPadding(3);
         multi->onSelectedIndicesChanged = [multiOut, g = multi.get()](const std::vector<int>&) { multiOut->SetText(Describe(*g)); };
 

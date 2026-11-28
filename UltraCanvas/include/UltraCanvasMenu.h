@@ -1,5 +1,6 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.20.0 - MenuStyle::headerBackgroundColor: a header row on a darker band; the header text dark grey
 // Version: 1.19.0 - FromTheme sets the entries' font at the body size; the SetStyle rule and the constructor tail
 // Version: 1.18.1 - the kept layout and width are one slot per entry, moved with the entries
 // Version: 1.18.0 - an entry's width is measured once and kept with what it was measured from
@@ -231,7 +232,10 @@ namespace UltraCanvas {
         Color textColor = Color(26, 26, 26);
         Color shortcutColor = Color(110, 110, 110);
         Color disabledTextColor = Color(160, 160, 160);
-        Color headerTextColor = Color(110, 110, 110);
+        Color headerTextColor = Color(64, 64, 64);
+        // A header row sits on a band darker than the panel, so a menu's
+        // title stands apart from its entries; Transparent for none.
+        Color headerBackgroundColor = Color(0, 0, 0, 22);
 
         // Typography
         FontStyle font;
@@ -707,7 +711,8 @@ namespace UltraCanvas {
         style.disabledTextColor = Color(160, 160, 160, 255);
         style.shortcutColor = Color(110, 110, 110, 255);
         style.separatorColor = Color(0, 0, 0, 24);
-        style.headerTextColor = Color(110, 110, 110, 255);
+        style.headerTextColor = Color(64, 64, 64, 255);
+        style.headerBackgroundColor = Color(0, 0, 0, 22);
 
         style.itemHeight = 28;
         style.paddingTop = 4;
@@ -755,6 +760,7 @@ namespace UltraCanvas {
         style.shortcutColor = Color(190, 190, 190, 255);
         style.separatorColor = Color(255, 255, 255, 26);
         style.headerTextColor = Color(190, 190, 190, 255);
+        style.headerBackgroundColor = Color(0, 0, 0, 70);
         style.shadowColor = Color(0, 0, 0, 110);
         // A grey icon drawn for a light menu would vanish on this one: the
         // default iconTint (Symbolic) draws it in the light text colour,

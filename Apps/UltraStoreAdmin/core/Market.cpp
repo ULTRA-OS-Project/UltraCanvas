@@ -8,6 +8,8 @@
 #include "KeyVault.h"
 #include "Verifier.h"
 
+#include "UltraCanvasPathUtf8.h"
+
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 
@@ -18,8 +20,13 @@
 #include <cctype>
 #include <charconv>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 
 namespace UltraStoreAdmin {
+
+namespace fs = std::filesystem;
 
 using UltraCanvas::JSONValue;
 
@@ -212,6 +219,8 @@ MarketSettings MarketSettings::From(const AdminDatabase& db) {
     MarketSettings s;
     s.url = TrimSlash(db.Setting("market.url"));
     s.merchantId = db.Setting("market.merchant_id");
+    s.applicationId = db.Setting("market.application_id");
+    s.applicationSecret = db.Setting("market.application_secret");
     return s;
 }
 
@@ -223,25 +232,30 @@ MarketClient::MarketClient(MarketSettings settings, std::vector<uint8_t> seed, M
     settings_.url = TrimSlash(settings_.url);
 }
 
-Result<JSONValue> MarketClient::Ask(const std::string& method, const std::string& path, const std::string& jsonBody) const {
+Result<JSONValue> MarketClient::Answer(const MarketReply& reply) {
     using R = Result<JSONValue>;
-    if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL (the setting market.url)");
-    if (settings_.merchantId.empty()) return R::Failure(ErrorCode::InvalidArgument, "No merchant id (the setting market.merchant_id, from the operator)");
-    if (seed_.size() != 32) return R::Failure(ErrorCode::InvalidArgument, "The merchant's key is needed to sign the request");
-    const std::string authorization = SignRequest(seed_, settings_.merchantId, method, path, jsonBody);
-    if (authorization.empty()) return R::Failure(ErrorCode::CryptoUnavailable, "The request could not be signed");
-    const MarketReply reply = call_(method, settings_.url + path, authorization, jsonBody);
     if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);
     UltraCanvas::JSONParseResult parse;
     const JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
     if (reply.status < 200 || reply.status >= 300) {
         const std::string description = parse.success && v.IsObject() ? v.Get("error_description").GetString() : std::string();
+        const std::string code = parse.success && v.IsObject() ? v.Get("error").GetString() : std::string();
         return R::Failure(reply.status == 404 ? ErrorCode::NotFound : reply.status == 401 ? ErrorCode::SignatureInvalid : ErrorCode::NetworkError,
                           description.empty() ? "The marketplace service answered HTTP " + std::to_string(reply.status) : description,
-                          "HTTP " + std::to_string(reply.status));
+                          code.empty() ? "HTTP " + std::to_string(reply.status) : code);
     }
     if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The marketplace service's answer is not JSON", parse.errorMessage);
     return R::Succeed(v);
+}
+
+Result<JSONValue> MarketClient::Ask(const std::string& method, const std::string& path, const std::string& jsonBody) const {
+    using R = Result<JSONValue>;
+    if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL (the setting market.url)");
+    if (settings_.merchantId.empty()) return R::Failure(ErrorCode::InvalidArgument, "No merchant id (the setting market.merchant_id, from the operator; `market apply` asks for one)");
+    if (seed_.size() != 32) return R::Failure(ErrorCode::InvalidArgument, "The merchant's key is needed to sign the request");
+    const std::string authorization = SignRequest(seed_, settings_.merchantId, method, path, jsonBody);
+    if (authorization.empty()) return R::Failure(ErrorCode::CryptoUnavailable, "The request could not be signed");
+    return Answer(call_(method, settings_.url + path, authorization, jsonBody));
 }
 
 namespace {
@@ -251,6 +265,10 @@ Standing StandingOf(const JSONValue& v) {
     s.id = v.Get("id").GetString();
     s.name = v.Get("name").GetString();
     s.standing = v.Get("standing").GetString();
+    s.contact = v.Get("contact").GetString();
+    s.website = v.Get("website").GetString();
+    s.description = v.Get("description").GetString();
+    s.key = v.Get("key").GetString();
     s.strikes = static_cast<int>(v.Get("strikes").GetInteger(0));
     s.termsInForce = static_cast<int>(v.Get("terms").Get("in_force").GetInteger(0));
     s.termsAccepted = static_cast<int>(v.Get("terms").Get("accepted").GetInteger(0));
@@ -263,6 +281,65 @@ Result<Standing> MarketClient::GetStanding() const {
     const auto v = Ask("GET", "/v1/merchants/me");
     if (!v) return Result<Standing>::Failure(v.error.code, v.error.message, v.error.detail);
     return Result<Standing>::Succeed(StandingOf(v.Value()));
+}
+
+Result<Standing> MarketClient::UpdateProfile(const ProfileChange& change) const {
+    JSONValue body = JSONValue::MakeObject();
+    if (change.name) body.Set("name", JSONValue(*change.name));
+    if (change.contact) body.Set("contact", JSONValue(*change.contact));
+    if (change.website) body.Set("website", JSONValue(*change.website));
+    if (change.description) body.Set("description", JSONValue(*change.description));
+    if (change.keyHex) body.Set("key", JSONValue(*change.keyHex));
+    const auto v = Ask("PUT", "/v1/merchants/me", UltraCanvas::JSON::Serialize(body));
+    if (!v) return Result<Standing>::Failure(v.error.code, v.error.message, v.error.detail);
+    return Result<Standing>::Succeed(StandingOf(v.Value()));
+}
+
+Result<ApplicationReceipt> MarketClient::Apply(const std::string& name, const std::string& contact, const std::string& email, const std::string& website,
+                                               const std::string& description) const {
+    using R = Result<ApplicationReceipt>;
+    if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL (the setting market.url)");
+    if (seed_.size() != 32) return R::Failure(ErrorCode::InvalidArgument, "The key that will sign the submissions signs the application");
+    if (name.empty() || contact.empty()) return R::Failure(ErrorCode::InvalidArgument, "An application names the shop and how to reach it");
+    std::vector<uint8_t> publicKey;
+    if (const auto pk = UltraStore::PublicKeyOfSeed(seed_)) publicKey = pk.Value();
+    else return R::Failure(pk.error.code, pk.error.message, pk.error.detail);
+    // The signed part, in the service's canonical form: sorted keys, no spaces.
+    JSONValue signedPart = JSONValue::MakeObject();
+    signedPart.Set("contact", JSONValue(contact));
+    signedPart.Set("description", JSONValue(description));
+    signedPart.Set("email", JSONValue(email));
+    signedPart.Set("key", JSONValue(UltraStore::ToHex(publicKey)));
+    signedPart.Set("name", JSONValue(name));
+    signedPart.Set("website", JSONValue(website));
+    const auto signature = UltraStore::SignCatalog(CanonicalJson(signedPart), seed_);
+    if (!signature) return R::Failure(signature.error.code, signature.error.message, signature.error.detail);
+    JSONValue body = signedPart;
+    body.Set("signature", JSONValue(UltraStore::ToHex(signature.Value())));
+    const auto v = Answer(call_("POST", settings_.url + "/v1/merchants/apply", {}, UltraCanvas::JSON::Serialize(body)));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    ApplicationReceipt receipt;
+    receipt.id = v.Value().Get("id").GetString();
+    receipt.secret = v.Value().Get("secret").GetString();
+    if (receipt.id.empty() || receipt.secret.empty()) return R::Failure(ErrorCode::ParseError, "The marketplace service's receipt lacks the id or the secret");
+    return R::Succeed(std::move(receipt));
+}
+
+Result<Application> MarketClient::ApplicationState(const std::string& url, const std::string& id, const std::string& secret, const MarketCall& call) {
+    using R = Result<Application>;
+    if (url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL (the setting market.url)");
+    if (id.empty() || secret.empty()) return R::Failure(ErrorCode::InvalidArgument, "No application was made from here (`market apply`)");
+    const auto v = Answer(call("GET", TrimSlash(url) + "/v1/applications/" + Encode(id) + "?secret=" + Encode(secret), {}, {}));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    Application a;
+    a.id = v.Value().Get("id").GetString();
+    a.state = v.Value().Get("state").GetString();
+    a.message = v.Value().Get("message").GetString();
+    a.merchant = v.Value().Get("merchant").GetString();
+    a.name = v.Value().Get("name").GetString();
+    a.createdAt = v.Value().Get("created_at").GetString();
+    a.decidedAt = v.Value().Get("decided_at").GetString();
+    return R::Succeed(std::move(a));
 }
 
 JSONValue SubmissionPackages(const UltraStore::Component& component) {
@@ -278,6 +355,8 @@ JSONValue SubmissionPackages(const UltraStore::Component& component) {
             o.Set("sha256", p.sha256);
             o.Set("size", static_cast<int64_t>(p.size));
             o.Set("version", release.version);
+            if (!p.format.empty()) o.Set("format", p.format);
+            if (p.url.find("/restricted/") != std::string::npos) o.Set("access", "restricted");
             packages.Append(std::move(o));
         }
     }
@@ -306,6 +385,64 @@ Result<SubmissionReceipt> MarketClient::Submit(const UltraStore::Component& comp
     receipt.state = v.Value().Get("state").GetString();
     for (const JSONValue::Member& m : v.Value().Get("checks").GetMembers()) receipt.checks.emplace_back(m.first, m.second.GetString());
     return R::Succeed(std::move(receipt));
+}
+
+std::string LocalPackageFile(const std::string& packagesDirUtf8, const UltraStore::Package& p) {
+    if (packagesDirUtf8.empty() || p.sha256.empty()) return {};
+    const fs::path file = UltraCanvas::PathFromUtf8(packagesDirUtf8) / UltraCanvas::PathFromUtf8(p.sha256 + "." + (p.format.empty() ? std::string("zip") : p.format));
+    std::error_code ec;
+    return fs::is_regular_file(file, ec) ? UltraCanvas::PathToUtf8(file) : std::string();
+}
+
+Result<PackageUpload> MarketClient::UploadPackage(const std::string& submissionId, const std::string& sha256, const std::string& fileUtf8) const {
+    using R = Result<PackageUpload>;
+    if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL (the setting market.url)");
+    if (settings_.merchantId.empty()) return R::Failure(ErrorCode::InvalidArgument, "No merchant id (the setting market.merchant_id)");
+    if (seed_.size() != 32) return R::Failure(ErrorCode::InvalidArgument, "The merchant's key is needed to sign the upload");
+    std::ifstream in(UltraCanvas::PathFromUtf8(fileUtf8), std::ios::binary);
+    if (!in) return R::Failure(ErrorCode::IoError, "Cannot read " + fileUtf8);
+    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::string path = "/v1/submissions/" + Encode(submissionId) + "/packages/" + Encode(sha256);
+    const std::string authorization = SignRequest(seed_, settings_.merchantId, "POST", path, bytes);
+    if (authorization.empty()) return R::Failure(ErrorCode::CryptoUnavailable, "The upload could not be signed");
+    const auto v = Answer(call_("POST", settings_.url + path, authorization, bytes));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    PackageUpload up;
+    up.sha256 = sha256;
+    up.fileName = fs::path(UltraCanvas::PathFromUtf8(fileUtf8)).filename().string();   // path-string-ok: the file's own name, for a message
+    up.size = bytes.size();
+    up.packagesCheck = v.Value().Get("checks").Get("packages").GetString();
+    up.state = v.Value().Get("state").GetString();
+    return R::Succeed(up);
+}
+
+Result<std::vector<PackageUpload>> MarketClient::UploadPackages(const std::string& submissionId, const UltraStore::Component& component,
+                                                                const std::string& packagesDirUtf8,
+                                                                const std::function<void(const PackageUpload&)>& each) const {
+    using R = Result<std::vector<PackageUpload>>;
+    std::vector<PackageUpload> out;
+    std::vector<std::string> done;
+    for (const UltraStore::Release& release : component.releases) {
+        for (const UltraStore::Package& p : release.packages) {
+            if (std::find(done.begin(), done.end(), p.sha256) != done.end()) continue;
+            done.push_back(p.sha256);
+            const std::string file = LocalPackageFile(packagesDirUtf8, p);
+            if (file.empty()) {
+                PackageUpload missing;
+                missing.sha256 = p.sha256;
+                missing.fileName = p.sha256 + "." + p.format;
+                missing.skipped = true;
+                out.push_back(missing);
+                if (each) each(missing);
+                continue;
+            }
+            const auto up = UploadPackage(submissionId, p.sha256, file);
+            if (!up) return R::Failure(up.error.code, up.error.message + " (" + p.sha256.substr(0, 12) + ")", up.error.detail);
+            out.push_back(up.Value());
+            if (each) each(up.Value());
+        }
+    }
+    return R::Succeed(out);
 }
 
 Result<JSONValue> MarketClient::Submissions() const {

@@ -92,7 +92,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
     // Auto width (stretches to the tab body); as tall as its lines - the
     // buttons wrap and the info wraps when the tab is narrow.
     auto bar = DemoKit::CreateColumn("ctrl_"+d->GetIdentifier(), 2);
-    bar->SetBackgroundColor(Color(247,247,250,255));
+    bar->SetBackgroundColor(DemoKit::Themed(Color(247,247,250,255)));
     bar->SetPadding(6, 4);
 
     // Line 1 — button row.
@@ -117,7 +117,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
 
     // Line 2 — info label.
     auto lbl = DemoKit::AddCaption(bar, "inf_"+d->GetIdentifier(), info);
-    lbl->SetTextColor(Color(100,100,110,255));
+    lbl->SetTextColor(DemoKit::Themed(Color(100,100,110,255)));
     lbl->SetFontSize(11.0f);
     return bar;
 }
@@ -660,7 +660,7 @@ namespace UltraCanvas {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("DendrogramTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         DemoKit::Add(card, tabs, 1);
         tabs->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);

@@ -1,0 +1,15 @@
+{% extends layout|default:"base.html" %}
+{% block title %}{{ title }} - {{ brand }}{% endblock %}
+{% block content %}
+<div class="{% if layout %}card form-narrow{% else %}narrow{% endif %}"><div class="{% if layout %}card-body{% endif %}">
+  <h1 class="{% if layout %}h3 fs-4{% endif %}">{{ title }}</h1>
+  {% if lead %}<p class="text-secondary">{{ lead }}</p>{% endif %}
+  <form method="post" enctype="multipart/form-data" class="mt-4"{% if form.depends_json %} data-depends="{{ form.depends_json }}"{% endif %}>
+    {% csrf_token %}
+    {% include "_form.html" %}
+    <button class="btn btn-primary btn-lg" type="submit">{{ submit|default:"Save" }}</button>
+    {% if cancel_url %}<a class="btn btn-outline-secondary btn-lg ms-2" href="{{ cancel_url }}">Cancel</a>{% endif %}
+  </form>
+  {% if below %}<div class="mt-4 d-grid gap-1 small">{% for text, label, href in below %}<div>{{ text }} <a href="{{ href }}">{{ label }}</a></div>{% endfor %}</div>{% endif %}
+</div></div>
+{% endblock %}

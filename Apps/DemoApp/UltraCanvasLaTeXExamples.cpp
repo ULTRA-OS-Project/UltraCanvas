@@ -136,7 +136,7 @@ namespace {
             failed->SetText(TrF("The document could not be imported:\n{0}", error));
             failed->SetWrap(TextWrap::WrapWord);
             failed->SetFontSize(12);
-            failed->SetTextColor(Color(150, 60, 60, 255));
+            failed->SetTextColor(DemoKit::Themed(Color(150, 60, 60, 255)));
             failed->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
             failed->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -185,7 +185,7 @@ namespace {
         page->layout.SetFlexColumn().SetFlexGap(6)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         page->SetPadding(8, 10, 8, 10);
-        page->SetBackgroundColor(Colors::White);
+        page->SetBackgroundColor(DemoKit::Themed(Colors::White));
 
         // Decide the rendering path: a formula-only document goes to the
         // LaTeX view, everything else to the document reader.
@@ -222,7 +222,7 @@ namespace {
                                 "cannot be typeset:\n{0}", GetLaTeXModuleError()));
             failed->SetWrap(TextWrap::WrapWord);
             failed->SetFontSize(12);
-            failed->SetTextColor(Color(150, 60, 60, 255));
+            failed->SetTextColor(DemoKit::Themed(Color(150, 60, 60, 255)));
             failed->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
             failed->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -239,7 +239,7 @@ namespace {
         renderedLabel->SetWrap(TextWrap::WrapWord);
         renderedLabel->SetFontSize(12);
         renderedLabel->SetFontWeight(FontWeight::Bold);
-        renderedLabel->SetTextColor(headerColor);
+        renderedLabel->SetTextColor(DemoKit::ThemedInk(headerColor));
         renderedLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         page->AddChild(renderedLabel);
 
@@ -249,7 +249,7 @@ namespace {
         renderArea->layout.SetFlexRow()
                           .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                           .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        renderArea->SetBackgroundColor(Colors::White);
+        renderArea->SetBackgroundColor(DemoKit::Themed(Colors::White));
         renderArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         renderArea->AddChild(body);
@@ -325,7 +325,7 @@ namespace {
         if (texFiles.empty()) {
             auto empty = DemoKit::CreateText("LaTeXEmpty", TrF("No .tex files found in {0}", latexDir));
             empty->SetFontSize(13);
-            empty->SetTextColor(Color(150, 60, 60, 255));
+            empty->SetTextColor(DemoKit::Themed(Color(150, 60, 60, 255)));
             empty->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
             DemoKit::Add(root, empty, 1);
             return root;
@@ -334,7 +334,7 @@ namespace {
         // Vertical tab bar on the left: one tab per .tex file, titled by filename.
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("LaTeXTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Left);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(26);
         // The example set is large — the tab column scrolls when it does not fit

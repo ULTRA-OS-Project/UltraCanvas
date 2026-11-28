@@ -1,7 +1,14 @@
 // include/UltraCanvasSpreadsheetTypes.h
 // Core type definitions for UltraCanvas Spreadsheet component
+// Version: 1.3.1 - UndoActionType::RulesChange: conditional formats and validation rules changed
+// Version: 1.3.0 - conditional formats: ConditionalThreshold (colour scale and data bar points),
+//                  Top10 / AboveAverage settings, ApplyConditionalStyle (what a rule's style sets);
+//                  IsRangeListSource (a list rule taken from cells)
+// Version: 1.2.0 - UndoActionType::ChartChange: a chart inserted, changed, moved or removed
+// Version: 1.1.0 - PrintSettings: the rows and columns repeated on every printed page
+//                  (repeatRowsFirst / Last, repeatColumnsFirst / Last), kept by .xlsx and .ods
 // Version: 1.0.0
-// Last Modified: 2026-01-09
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -649,6 +656,14 @@ struct DataValidation {
     bool IsValid() const { return type != ValidationType::Any; }
 };
 
+// Whether a List rule's formula1 names cells rather than listing the items:
+// it starts with '=' ("=$D$1:$D$5", "='Lists'.A1:A9"). Its items are then
+// the cells' values (SpreadsheetSheet::GetValidationListItems).
+inline bool IsRangeListSource(const DataValidation& validation) {
+    return validation.type == ValidationType::List && !validation.formula1.empty() &&
+           validation.formula1[0] == '=';
+}
+
 // ============================================================================
 // CONDITIONAL FORMATTING
 // ============================================================================
@@ -674,6 +689,47 @@ enum class ConditionalFormatType {
     TimePeriod
 };
 
+// A point of a colour scale or an end of a data bar: the lowest or highest
+// value in the range, a number, a percent of the way from the lowest to the
+// highest, a percentile of the values, or what a formula gives.
+enum class ConditionalThresholdKind {
+    Lowest,
+    Highest,
+    Number,
+    Percent,
+    Percentile,
+    Formula
+};
+
+struct ConditionalThreshold {
+    ConditionalThresholdKind kind = ConditionalThresholdKind::Lowest;
+    std::string value;          // the number, percent or formula (not used by Lowest / Highest)
+
+    ConditionalThreshold() = default;
+    ConditionalThreshold(ConditionalThresholdKind k, const std::string& v = "") : kind(k), value(v) {}
+    bool operator==(const ConditionalThreshold& other) const {
+        return kind == other.kind && value == other.value;
+    }
+};
+
+// One rule of a conditional format.
+//   CellValue        the cell compared by `op` with formula1 (and formula2):
+//                    a number, "quoted text", or a formula ("=$B$1")
+//   Expression       formula1 is a formula, true for the format's top-left
+//                    cell and moved to each other one as a copied formula is
+//   ContainsText ... formula1 is the text, compared ignoring case
+//   Top10            formula1 is how many (or what percent, `percent`) of the
+//                    highest values (`bottom`: lowest)
+//   AboveAverage     above the range's average (`aboveAverage` false: below;
+//                    `equalAverage`: or equal to it)
+//   Duplicate / UniqueValues   the cell's text occurs more than once / once
+//   ColorScale       the cell filled with colorScale's colours, two or three,
+//                    at `thresholds` (default lowest, [50th percentile,] highest)
+//   DataBar          a bar of dataBarColor from the cell's left edge, as long
+//                    as the value is between thresholds[0] and thresholds[1]
+//                    (default the lowest and the highest)
+// A rule's style applies only what it sets: a fill, a font colour that is not
+// black, bold, italic, underline, strikethrough (ApplyConditionalStyle).
 struct ConditionalFormatRule {
     ConditionalFormatType type = ConditionalFormatType::CellValue;
     ValidationOperator op = ValidationOperator::Between;
@@ -685,11 +741,18 @@ struct ConditionalFormatRule {
     
     // For color scales
     std::vector<Color> colorScale;
-    std::vector<double> colorScaleValues;
+    std::vector<double> colorScaleValues;   // numbers for the points when `thresholds` is empty
+    std::vector<ConditionalThreshold> thresholds;
     
     // For data bars
     Color dataBarColor = Colors::Blue;
     bool showValue = true;
+
+    // Top10 and AboveAverage
+    bool percent = false;
+    bool bottom = false;
+    bool aboveAverage = true;
+    bool equalAverage = false;
     
     // For icon sets
     std::vector<std::string> iconSetType;
@@ -699,6 +762,19 @@ struct ConditionalFormat {
     CellRange range;
     std::vector<ConditionalFormatRule> rules;
 };
+
+// `rule` (a conditional format's style) laid over `base`: its fill, a font
+// colour other than black, bold, italic, underline and strikethrough. What
+// the rule leaves at its default the cell keeps.
+inline void ApplyConditionalStyle(CellStyle& base, const CellStyle& rule) {
+    if (rule.fill.HasFill()) base.fill = rule.fill;
+    if (!(rule.font.color == Colors::Black)) base.font.color = rule.font.color;
+    if (rule.font.bold) base.font.bold = true;
+    if (rule.font.italic) base.font.italic = true;
+    if (rule.font.strikethrough) base.font.strikethrough = true;
+    if (rule.font.underline != UnderlineStyle::NoUnderline) base.font.underline = rule.font.underline;
+    if (rule.borders.HasAnyBorder()) base.borders = rule.borders;
+}
 
 // ============================================================================
 // NAMED RANGE
@@ -825,11 +901,28 @@ struct PrintSettings {
     int fitToWidth = 0;         // 0 = auto
     int fitToHeight = 0;
     int scale = 100;            // Percentage
+    // The default (A1 alone, no sheet: CellRange()) means no print area is set.
     CellRange printArea;
+    // Header and footer texts in Excel's codes: &P page, &N pages, &A sheet,
+    // &F file, &D date, &T time, && a literal '&'.
     std::string headerLeft, headerCenter, headerRight;
     std::string footerLeft, footerCenter, footerRight;
+    // Manual page breaks: each is the 0-based row (column) that starts a new page.
     std::vector<int> rowBreaks;
     std::vector<int> colBreaks;
+    // Rows and columns printed again at the top / left of every page (Excel's
+    // "Rows to repeat at top", an .ods sheet's header rows); 0-based and
+    // inclusive, -1 for none.
+    int repeatRowsFirst = -1;
+    int repeatRowsLast = -1;
+    int repeatColumnsFirst = -1;
+    int repeatColumnsLast = -1;
+
+    bool HasPrintArea() const { return !(printArea == CellRange()); }
+    bool HasRepeatRows() const { return repeatRowsFirst >= 0 && repeatRowsLast >= repeatRowsFirst; }
+    bool HasRepeatColumns() const {
+        return repeatColumnsFirst >= 0 && repeatColumnsLast >= repeatColumnsFirst;
+    }
 };
 
 // ============================================================================
@@ -971,6 +1064,8 @@ enum class UndoActionType {
     SheetRename,
     SheetReorder,
     FreezePane,
+    ChartChange,    // a sheet's charts (UltraCanvasSpreadsheetChart.h) as they were
+    RulesChange,    // a sheet's conditional formats and validation rules as they were
     Composite       // Multiple actions grouped
 };
 

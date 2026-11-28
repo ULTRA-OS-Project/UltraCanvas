@@ -1,0 +1,40 @@
+{% extends "operator/base.html" %}
+{% block title %}Affiliate payouts - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Affiliate payouts</h1><span class="text-secondary">{{ page.paginator.count }}</span><a class="btn btn-outline-secondary ms-auto" href="{% url 'operator:affiliates' %}">Affiliates</a></div>
+<div class="panels">
+<div class="card form-wide"><div class="card-body">
+  <h2>Make the payouts</h2>
+  <p class="text-secondary">For every affiliate and currency: the commissions approved up to the day below - {{ approval_days }} days after their sale - less what is held back of each, less everything given back up to it, and what was released from the holdback. A balance under {{ minimum }} is carried to the next month, unless the affiliate's account is being left. A blocked or banned affiliate's money waits. The portal moves no money: a payout says what to pay and where; you pay it and mark it paid.</p>
+  <form method="post">
+    {% csrf_token %}
+    <div class="mb-3"><label class="form-label" for="until">Everything due on</label><input class="form-control" id="until" type="date" name="until" value="{{ until|date:'Y-m-d' }}" required></div>
+    <button class="btn btn-primary">Make the payouts</button>
+  </form>
+</div></div>
+<div class="card"><div class="card-body">
+  <nav class="nav nav-pills gap-1 mb-3" aria-label="Payouts by state">
+    {% for value, label in states %}<a class="nav-link{% if state == value %} active{% endif %}" href="?state={{ value }}">{{ label }}</a>{% endfor %}
+    <a class="nav-link{% if state == 'all' %} active{% endif %}" href="?state=all">All</a>
+  </nav>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>No.</th><th>Affiliate</th><th>Up to</th><th class="text-end">Amount</th><th>State</th><th>Reference</th><th></th></tr></thead>
+    <tbody>
+    {% for payout in page %}
+    <tr><td>{{ payout.pk }}</td><td><a href="{% url 'operator:affiliate' payout.affiliate.pk %}" class="font-monospace">{{ payout.affiliate.handle }}</a></td><td>{{ payout.until|date:"j M Y" }}</td>
+      <td class="text-end">{{ payout.amount }} {{ payout.currency }}</td><td>{{ payout.get_state_display }}</td><td class="font-monospace">{{ payout.reference }}</td>
+      <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'operator:affiliate_payout' payout.pk %}">Open</a></td></tr>
+    {% empty %}<tr><td colspan="7" class="text-secondary">No payout here.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+    {% if page.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?state={{ state }}&amp;page={{ page.previous_page_number }}">Newer</a>{% endif %}
+    {% if page.has_other_pages %}<span class="text-secondary">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% endif %}
+    {% if page.has_next %}<a class="btn btn-outline-secondary btn-sm" href="?state={{ state }}&amp;page={{ page.next_page_number }}">Older</a>{% endif %}
+  </div>
+</div></div>
+</div>
+{% endblock %}

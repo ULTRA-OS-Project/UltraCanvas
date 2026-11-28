@@ -1,0 +1,11 @@
+{% load portal_ui %}<div class="mb-3{% if field.widget_type == 'checkbox' %} form-check{% endif %}" data-field="{{ field.name }}">
+  {% if field.widget_type == 'checkbox' %}
+    {{ field|bs }}
+    <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {% else %}
+    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {{ field|bs }}
+  {% endif %}
+  {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+  {% if field.help_text %}<div class="form-text" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</div>{% endif %}
+</div>

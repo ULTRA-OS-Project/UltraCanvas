@@ -35,6 +35,12 @@
 // the build has it. Without UltraMessage the lock still stops a second copy;
 // it just cannot bring the first one forward, and Claim() answers
 // AlreadyRunning.
+// Version: 1.7.0 - HandOffMessage: the terminal's line about the running copy, translated
+// Version: 1.6.0 - RunAlreadyRunningAlert says why the running copy did not come forward
+// Version: 1.5.0 - BringToFront brings the window to the virtual desktop in view
+// Version: 1.4.0 - the listening copy rejoins the bus when it loses it (the
+//                  broker's host ended): a later start is handed over again
+//                  instead of saying "already running"
 // Version: 1.3.0 - Claim retakes the lock while it waits for an answer, so a
 //                  copy still ending does not make it say "already running"
 // Version: 1.2.0 - answered from the bus thread; Listen before the start-up
@@ -42,7 +48,7 @@
 // Version: 1.1.0 - MakeOpenRequest / ListenOpen: the second start's files go
 //                  to the running copy, as absolute paths
 // Version: 1.0.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -51,10 +57,13 @@
 #include "DataFormats/UltraCanvasJSON.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UltraCanvas {
@@ -121,11 +130,32 @@ namespace UltraCanvas {
 
         // Restores and raises the application's main window - the first
         // window that is not a dialog - or, when a dialog is open, that
-        // dialog, which keeps what is typed in it.
+        // dialog, which keeps what is typed in it. A window on another
+        // virtual desktop comes to the one in view, where the start that
+        // asked for it was made (UltraCanvasWindowBase::MoveToCurrentDesktop).
         static void BringToFront();
         // Says "<displayName> is already running" and runs the event loop
         // until the alert is dismissed. Returns EXIT_SUCCESS, for main().
+        // When this process's Claim() answered AlreadyRunning, the alert
+        // also says why the running copy's window did not come: the bus's
+        // own reason when the bus could not be joined, or that the copy did
+        // not answer. In the language of the application (Tr).
         static int RunAlreadyRunningAlert(UltraCanvasApplication& app, const std::string& displayName);
+
+        // What a start says on the terminal about the copy already running,
+        // for the applications that are started from one (a resident tool
+        // with --background, a command-line request): one line, without the
+        // line end, in the person's language. A start that handed over
+        // quits before it has an application, so this loads the language
+        // itself when nothing has yet (as Initialize() would).
+        enum class HandOffNote {
+            Running,          // "<name> is already running."
+            BroughtForward,   // "<name> is already running: brought it forward."
+            RequestTaken,     // "<name> is already running: handed the request to it."
+            OpeningHere       // "<name> is already running but did not answer: opening a window here."
+        };
+        static std::string HandOffMessage(const std::string& displayName,
+                                          HandOffNote note = HandOffNote::BroughtForward);
 
         const std::string& GetAppId() const { return appId_; }
 
@@ -134,6 +164,15 @@ namespace UltraCanvas {
         // retaking the lock at `lockPath` between tries: HandedOff, First
         // when the lock came free, else AlreadyRunning.
         Start HandOff(const JSONValue& request, const std::string& lockPath);
+        // Connects (hosting the bus when nobody does) and subscribes to the
+        // show topic with `handler_`; false when the bus cannot be reached.
+        // Called with busMutex_ held.
+        bool JoinBus(bool quiet);
+        // The watch thread: every second, a listener not on the bus - it
+        // could not be reached at Listen(), or the subscription was refused -
+        // tries again. One that loses the bus later is brought back by its
+        // endpoint (UltraMsgConnectOptions::autoReconnect).
+        void WatchBus();
 
         std::string appId_;
         std::string displayName_;
@@ -143,6 +182,13 @@ namespace UltraCanvas {
         // Cleared by Close(): a request already queued for the UI thread is
         // then dropped instead of run.
         std::shared_ptr<std::atomic<bool>> live_;
+        // What Listen() was given, kept for rejoining the bus.
+        std::shared_ptr<Handler> handler_;
+        std::mutex busMutex_;                 // endpoint_, subscription_ once listening
+        std::thread watch_;
+        std::mutex watchMutex_;
+        std::condition_variable watchWake_;
+        bool watchStop_ = false;
     };
 
 } // namespace UltraCanvas

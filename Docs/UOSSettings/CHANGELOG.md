@@ -1,3 +1,77 @@
+#### 2026-11-26 *0.29.0*
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
+
+#### 2026-11-22 *0.28.0*
+- **Desktop → Tool applications.** A new row chooses whether UltraClipboard,
+  UltraSnip and UltraToDo show only on UltraDesktop's tool group (the
+  default) or on the taskbar too (`toolAppsOnTaskbar`).
+- **The Look page's controls start at one x.** Each row's caption was as
+  wide as its own text, so every control began at a different place.
+  The captions now share one column as wide as the widest of them,
+  measured in the font they are drawn in (`FitCaptionColumn`, as on the
+  Desktop page), in every language.
+- **The preview shows all of itself.** Its label stands on a line of its
+  own above the button, field and choice: on one line a translated label
+  ("Eine Beschriftung im Aussehen") was cut short at a fixed 160 px, and
+  at full width pushed the choice past the panel's edge.
+- **The page scrolls** instead of cutting off the notes at its foot.
+- **The Translations page moves out, into UOS-Localisation.** The
+  localisation editor was squeezed into a settings page about 620 px wide;
+  it is now a program of its own, UOS-Localisation, laid out for a whole
+  window. The *Language* page's new **Translate applications...** button
+  starts it in the language chosen there, and says so on the page when it
+  cannot be found. The *Translator* name stays on the *Language* page
+  (Language.conf), and UOS-Localisation writes it into what it saves.
+
+#### 2026-11-21 *0.27.0*
+- **Why the look could not be saved.** Appearance's "Could not write
+  ...\Appearance.conf." now gives the system's reason after the path (the file
+  in use, access denied). The Desktop page, which also saves the light / dark
+  choice, used to drop that failure silently and report "Saved"; it now says
+  the look could not be saved, with the reason.
+- **The settings tables follow a change of look.** The tables of Last used
+  folder, Notification registrations and Trusted certificates took their
+  background, header and rule colours once, when the page was built, while
+  the labels in them follow a theme change - so after a switch of look a
+  dark table stayed in a light window, its text turned dark on dark. The
+  tables, their headers, rows and scrollbars now take the theme's colours
+  again after every change (`FollowKitLook`).
+- **The tables and the certificate page are translated.** The column
+  headers (Application, Click starts, Opens in, Last used folder, Device,
+  Address, Key), the "Click starts" cells, the certificate page's notes and
+  status line, the Last used folder notes and "Saved to" went into the
+  window untranslated; they go through `Tr` now, translated in all thirty
+  languages (machine drafts). The activator's CLSID moved from the cell to
+  its tooltip. pt-BR also gets the eight older strings it lacked.
+
+#### 2026-11-16 *0.26.0*
+- **The Desktop page's captions and three switches can be translated.**
+  The row captions (Taskbar, Theme, Dropped files ... At sign-in), the
+  Global / Individual and One common folder / Their own folders switches of
+  File dialogs and the Colour / Black and white / System switch of Emoji
+  were written straight into the window and stayed English in every
+  language - beside notes that named them in the reader's own. They go
+  through `Tr` now and are translated in all thirty languages, in the
+  wording the notes quote.
+- **The Sub-categories choices are translated too** ("Never", "Above 8
+  applications"), and the Desktop page's caption column is as wide as its
+  widest caption, measured in the font it is drawn in (between 130 and
+  320 px at 12 pt), so a translated caption ("Virtuelle Schreibtische",
+  "Abgelegte Dateien") is not cut short as it was in a column 130 px wide.
+- **The info bar's icons and the programs that start with the desktop are
+  named in the reader's language.** Their names come from the desktop's
+  own source, so UOS-Settings now takes the desktop's catalogue as a second
+  set (`UltraLocalisation::AddSet("UltraDesktop")`); the info bar's
+  checkboxes passed a variable to `Tr`, which no catalogue ever held.
+- **UOS-Settings is translated throughout.** The thirty other languages had
+  a quarter of the window's texts - the tree and the Language page - and
+  showed the rest in English: the Desktop, File dialogs, Appearance,
+  Notifications and Devices pages with their notes. The 79 missing texts
+  are now in every language's catalogue (machine drafts, as the rest,
+  until a person reviews them).
+
 #### 2026-11-15 *0.25.0*
 - **Appearance > Look has a Light text row.** *Firm*, the default, draws
   light text on a dark ground a little stronger in every application, so a

@@ -14,6 +14,24 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.15.0 - ThreatFinding::detail and Summary in the reader's language; LinkHost (the host a link goes to); PlainLinkSpans: where the links of a line of plain text are, so the
+//                   plain-text view can draw them as links
+// Version: 0.14.1 - SenderLists::StableAddress / Bare: "no-reply-<code>@..." and
+//                   "name+tag@..." are one sender
+// Version: 0.14.0 - replies and forwards from strangers ("Re:", "Fw:", "WG:" ... from a
+//                   sender the reader never wrote to; unsolicited-reply, only from
+//                   strangers; its own switch, strangerReplies); a mailing list's post
+//                   (ScanInput::listId) is not one; kThreatRulesRevision 2026-11-23
+// Version: 0.13.0 - unsolicited SEO offers (seo-solicitation; its own switch, seoOffers),
+//                   stronger as a "Re:" with no In-Reply-To / References; "seo" only
+//                   in capitals, "SEO" (in lower case it is a name: Seo-yeon)
+//                   (ScanInput::inReplyTo, references); FindingOnlyFromStrangers;
+//                   kThreatRulesRevision 2026-11-18 03:00
+// Version: 0.12.0 - links written "https:////host" or "https:\\host" are read the way
+//                   the browser reads them (the host was lost, and every link rule
+//                   with it), and told (link-disguised-address); counterfeit luxury
+//                   goods - a Rolex for $250, "replica" bags (counterfeit-goods; its
+//                   own switch, counterfeits); kThreatRulesRevision 2026-11-18
 // Version: 0.11.0 - fake invoices: a web page attached (attachment-web-page), one that
 //                   loads a script, sends a form or moves the browser on
 //                   (attachment-active-page; ScanInput::attachedPages), and a
@@ -58,6 +76,7 @@
 
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace UltraMail {
@@ -98,6 +117,9 @@ struct ThreatScanOptions {
     bool attachments   = true;   // attachment-*: programs, disguised documents,
                                  // web pages
     bool spamFlag      = true;   // spam-flag: the receiving server's own verdict
+    bool counterfeits  = true;   // counterfeit-goods: a Rolex for $250, "replica" bags
+    bool seoOffers     = true;   // seo-solicitation: "an SEO issue on your website"
+    bool strangerReplies = true; // unsolicited-reply: "Re:" / "Fw:" / "WG:" from a stranger
     bool operator==(const ThreatScanOptions&) const = default;
 };
 
@@ -123,8 +145,19 @@ struct SenderLists {
     // The entry that blocks `address` ("x@example.com" or "@example.com"),
     // or "" when none does.
     std::string BlockedBy(const std::string& address) const;
-    // "Erika <ERIKA@Example.com> " -> "erika@example.com".
+    // "Erika <ERIKA@Example.com> " -> "erika@example.com", and a no-reply
+    // address with a code of its own in every message as one sender:
+    // "no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com" ->
+    // "no-reply@mail.anthropic.com" (StableAddress).
     static std::string Normalize(const std::string& address);
+    // Normalize without StableAddress: the address as the message gives it.
+    static std::string Bare(const std::string& address);
+    // A lowercased bare address as one sender: a "+tag" dropped
+    // ("name+code@shop.example" -> "name@shop.example"), and a no-reply word
+    // ("no-reply", "noreply", "do-not-reply" ...) followed by "-", "_", "."
+    // or "+" and a code kept as the word and the domain alone. Any other
+    // address unchanged.
+    static std::string StableAddress(const std::string& bareAddress);
     // What a typed entry is kept as, or "" when it is none: an address for
     // either list; for the blocked one also a domain, "@example.com" (typed
     // "example.com" or "@Example.com").
@@ -142,6 +175,13 @@ SenderLists GetSenderLists();
 // guessed kinds - romance, advance-fee, crypto caution, spam markers, a
 // brand's name in a domain - are the reader's call, and they made it.
 bool FindingKeptForTrustedSender(const std::string& code);
+
+// Whether a finding only counts when the sender is a stranger: an offer of
+// services (seo-solicitation) is spam from an unknown address and ordinary
+// business from one in the address book; a "Re:" or "Fw:" (unsolicited-reply)
+// is a trick from a stranger and the ordinary thread of a contact. The scan does not know the book;
+// ClassifySender, which does, leaves these out for a contact.
+bool FindingOnlyFromStrangers(const std::string& code);
 
 struct ThreatReport {
     ThreatLevel                level = ThreatLevel::Unscanned;
@@ -183,6 +223,14 @@ std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml);
 // what the plain-text view reports for the pointer.
 std::string PlainLinkAt(const std::string& text, std::size_t offset);
 
+// The host a web link goes to, in lowercase ("www.example.com" for a bare
+// "www.example.com/x" too), or "" for anything else - as the scan reads it.
+std::string LinkHost(const std::string& url);
+
+// Every link of `text` that PlainLinkAt would report, as [first, second) byte
+// ranges in order - what the plain-text view draws as links.
+std::vector<std::pair<std::size_t, std::size_t>> PlainLinkSpans(const std::string& text);
+
 // A web page that came as an attachment (.html, .htm, .svg ...): its file
 // name and its text, as the attachment holds it.
 struct AttachedPage {
@@ -200,6 +248,9 @@ struct ScanInput {
     std::string listUnsubscribe; // List-Unsubscribe header value
     std::string precedence;      // Precedence header value
     std::string autoSubmitted;   // Auto-Submitted header value
+    std::string inReplyTo;       // In-Reply-To header value
+    std::string references;      // References header value
+    std::string listId;          // List-Id header value (a mailing list's post)
     std::string spamFlag;        // X-Spam-Flag value
     std::string spamStatus;      // X-Spam-Status / SpamAssassin summary
     std::string authResults;     // the topmost Authentication-Results header's value:
@@ -231,7 +282,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1793059200;   // 2026-10-27 00:00 UTC
+constexpr long long kThreatRulesRevision = 1795402800;   // 2026-11-23 03:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication

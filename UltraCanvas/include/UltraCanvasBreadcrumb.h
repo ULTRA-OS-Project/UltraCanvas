@@ -1,5 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
+// Version: 1.9.1 - FolderBreadcrumbOptions::computerLabel empty by default: "Computer" in the
+//                  language shown
 // Version: 1.9.0 - BreadcrumbStyle::FromTheme, ApplyTheme: the breadcrumb follows the theme; a SetStyle by hand
 //                  stops the following
 // Version: 1.8.0 - FolderBreadcrumbOptions::driveLabel: what a drive is called on the
@@ -261,7 +263,8 @@ namespace UltraCanvas {
     struct FolderBreadcrumbOptions {
         // Leading node listing every drive / mounted volume in its dropdown.
         bool showComputerItem = true;
-        std::string computerLabel = "Computer";
+        // Empty: "Computer" in the language shown.
+        std::string computerLabel;
         // Per-segment dropdown listing the folders inside that segment, so the
         // path can be extended one level straight from the strip.
         bool subFolderDropdowns = true;

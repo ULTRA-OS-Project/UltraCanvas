@@ -55,7 +55,10 @@ Custom buttons carry no `DialogButton` type, so neither rule can name them —
 they take a **role** instead. `AddCustomButton(text, result, role, callback)`
 with `DialogButtonRole::Default` makes the button what Return takes (before the
 configured default) and draws it in the accent colour; `Destructive` draws it
-red (`DestructiveDefault` filled red, when the red answer is also the default);
+as the theme's ordinary button outlined and lettered in the theme's `danger`
+colour - a dark red in a light look, a light one in a dark look
+(`UltraCanvasModalDialog::DestructiveOutlineStyle`) - and `DestructiveDefault`
+fills it red, when the red answer is also the default;
 `Cancel` makes it what Escape takes. Buttons are laid out in the order they are
 added, each as wide as its label. `AddFooterElement(element)` puts an element —
 an "Apply to all 7 remaining conflicts" checkbox — at the left of the button

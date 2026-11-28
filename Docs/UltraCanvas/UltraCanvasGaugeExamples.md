@@ -224,10 +224,25 @@ void SetClockHandColor(const Color& c);   // AnalogClock: hour and minute hands,
 void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbers
 ```
 
+The gauge follows the theme. Under a dark one its own greys - captions,
+ticks, unlit segments, the face - and the default text, background, track,
+ring border and clock colours are drawn in the dark look
+(`UltraCanvasTheme::ForDarkLook`); a colour given with its setter is drawn
+as given, and the value colours (the gauge colour, ranges, warnings) are
+kept in either look. The speedometer's face is dark in both looks, so its
+value is light unless `SetTextColor` chose otherwise.
+
+```cpp
+void ApplyTheme(const UltraCanvasTheme& theme); // called for it when the theme changes
+bool IsDarkLook() const;
+```
+
 ### Round-Gauge (CircularRing) Styling
 
 ```cpp
 void SetRingThickness(float t);                    // indicator width in px
+void SetRingCompact(bool compact);                 // the ring fills the element: a 12-40 px marker
+void SetRingValueText(bool show);                  // the value in the centre (on by default)
 void SetRingStyle(GaugeRingStyle s);               // SolidArc / Segmented / Dashed / SegmentedRing
 void SetRingSegmentStyle(GaugeRingSegmentStyle s); // Bars / Dots / Blocks
 void SetRingSegmentCount(int count);               // number of chunks/ticks/dots
@@ -592,6 +607,26 @@ ring->SetRingSegmentCount(8);
 ring->SetRingSegmentRounded(true);
 ring->SetRingCenterIcon(GaugeRingIcon::Battery);
 ring->SetRingCenterContent(GaugeRingCenterContent::Icon);
+```
+
+**A small marker in a row of text or buttons** (12 to 40 px): compact, the
+ring fills the element - no title, no padding, no minimum radius - and
+without the number it is a ring whose colour and fill say how far along a
+value is. Without `SetRingCompact` the ring keeps the card layout, which
+needs about 60 px; below that it drew a corner of a ring and its value.
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
+using namespace UltraCanvas;
+
+auto marker = CreateGaugeDiagramElement("task.marker", 0, 0, 26, 26);
+marker->SetMode(GaugeMode::CircularRing);
+marker->SetRingCompact(true);
+marker->SetRingValueText(false);
+marker->SetRingThickness(5.0f);
+marker->SetValue(60.0);
+marker->SetGaugeColor(Color(240, 135, 20));       // orange: urgent
+marker->SetTrackColor(Color(226, 226, 230));
 ```
 
 ### 11. Battery

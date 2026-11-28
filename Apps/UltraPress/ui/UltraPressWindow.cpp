@@ -23,6 +23,7 @@
 
 #include "UltraPressBlocks.h"
 #include "UltraPressPublish.h"
+#include "UltraPressSite.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -293,6 +294,7 @@ bool EditorWindow::SetSiteProperty(const std::string& name, const std::string& v
         site.url = url;
     } else if (name == "language") site.language = value;
     else if (name == "owner") site.owner = value;
+    else if (name == "output") site.output = value == kOutputWasm ? kOutputWasm : kOutputHtml;
     else return false;
     dirty = true;
     RenderPreview();
@@ -399,7 +401,7 @@ bool EditorWindow::Publish() {
         return false;
     }
     const std::string out = PathToUtf8(PathFromUtf8(siteDir) / ".ultrapress" / "publish");
-    const PublishResult written = PublishStatic(site, siteDir, out);
+    const PublishResult written = UltraPress::Publish(site, siteDir, out);   // the site's output: HTML + JavaScript or WebAssembly
     for (const std::string& line : written.errors) std::fprintf(stderr, "%s\n", line.c_str());
     if (!written.ok) {
         SetStatus("Not published: " + (written.errors.empty() ? std::string("cannot write the site") : written.errors.front()));
@@ -432,7 +434,7 @@ bool EditorWindow::Publish() {
     });
     return true;
 #else
-    SetStatus("This build has no UltraCloud: `ultrapress publish` writes the folder to upload yourself");
+    SetStatus("This build has no UltraCloud: `UltraPress publish` writes the folder to upload yourself");
     return false;
 #endif
 }
@@ -449,7 +451,7 @@ void EditorWindow::ChooseHost() {
     if (!window) return;
     // The sign-in the dialog runs is reported on the console as it happens -
     // the steps, an FTP session's commands and replies, and how it ended with
-    // the transport's diagnostics - the way `ultrapress hosts add` reports
+    // the transport's diagnostics - the way `UltraPress hosts add` reports
     // one. The dialog shows the refusal in a line; a server that answers
     // nothing is only explained by the session that led there. Both callbacks
     // run on the sign-in thread, so the sinks set in onBegin are that
@@ -463,14 +465,14 @@ void EditorWindow::ChooseHost() {
     auto sinks = std::make_shared<SignInSinks>();
     UltraCloud::AddAccountWatch watch;
     watch.onBegin = [sinks](const UltraCloud::Account& account) {
-        std::fprintf(stderr, "ultrapress: signing in at %s as %s\n",
+        std::fprintf(stderr, "UltraPress: signing in at %s as %s\n",
                      account.serverUrl.c_str(), account.username.c_str());
         sinks->cloud = UltraCloud::SetThreadLog([](const UltraCloud::LogLine& line) {
-            std::fprintf(stderr, "ultrapress:   %s\n", line.text.c_str());
+            std::fprintf(stderr, "UltraPress:   %s\n", line.text.c_str());
         });
 #if ULTRAPRESS_HAS_ULTRANET
         sinks->ftp = UltraNet_SetThreadFtpLog([](const UltraNetFtpLogLine& line) {
-            std::fprintf(stderr, "ultrapress:   %s\n", line.text.c_str());
+            std::fprintf(stderr, "UltraPress:   %s\n", line.text.c_str());
         });
 #endif
     };
@@ -480,10 +482,10 @@ void EditorWindow::ChooseHost() {
         UltraNet_SetThreadFtpLog(std::move(sinks->ftp));
 #endif
         if (result) {
-            std::fprintf(stderr, "ultrapress: host %s added\n", account.accountId.c_str());
+            std::fprintf(stderr, "UltraPress: host %s added\n", account.accountId.c_str());
             return;
         }
-        std::fprintf(stderr, "ultrapress: host not added: %s\n", result.message.c_str());
+        std::fprintf(stderr, "UltraPress: host not added: %s\n", result.message.c_str());
         if (!result.diagnostics.empty()) std::fprintf(stderr, "%s\n", result.diagnostics.c_str());
     };
     UltraCloud::ShowAddAccountDialog(
@@ -499,7 +501,7 @@ void EditorWindow::ChooseHost() {
         [](const std::string& providerId) { return Hosts::IsHostProvider(providerId); },
         "Add a web host", std::move(watch));
 #else
-    SetStatus("This build has no host dialog: `ultrapress hosts add` and `ultrapress hosts use`");
+    SetStatus("This build has no host dialog: `UltraPress hosts add` and `UltraPress hosts use`");
 #endif
 }
 
@@ -1005,6 +1007,22 @@ void EditorWindow::RebuildProperties() {
         }
         siteInput("SiteLanguage", "Language (two letters, en or de)", "language", site.language);
         siteInput("SiteOwner", "Owner (the organisation named in the feed and the structured data)", "owner", site.owner);
+        // The two outputs Publish writes (Docs/Research/UltraSiteStaticSitesProposal.md §2).
+        field("SiteOutput", "Publish as");
+        {
+            auto outputPick = CreateDropdown("SiteOutput", 0, 0, 0, 30);
+            outputPick->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(30));
+            outputPick->SetFollowTheme(true);
+            outputPick->AddItem("HTML + JavaScript - styled pages, fast on any host and in search", kOutputHtml);
+            outputPick->AddItem("WebAssembly - drawn by UltraCanvas, as in this editor", kOutputWasm);
+            outputPick->SetSelectedIndex(site.output == kOutputWasm ? 1 : 0, false);
+            outputPick->onSelectionChanged = [this](int, const DropdownItem& item) {
+                const std::string value = item.value;
+                Later([this, value]() { SetSiteProperty("output", value); });
+            };
+            properties->AddChild(outputPick);
+            properties->AddChild(Gap(10));
+        }
         properties->AddChild(Gap(6));
         properties->AddChild(Caption("PropsSiteHint", "The host the site publishes to is set with Host\xE2\x80\xA6 in the side column.",
                                      LabelVariant::Muted, 13, false));

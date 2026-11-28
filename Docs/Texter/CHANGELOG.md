@@ -1,3 +1,123 @@
+#### 2026-11-26 *1.94*
+- **Markdown: a selection over several lines shows on the rendered lines too**
+  (table cells, rules, pictures, formulas), not only on the line being edited;
+  and **the line being edited is formatted like the rest** - a heading at its
+  size, bold, code and links in their styles, a table row's cells under their
+  columns - with its markup dimmed. Both come from the framework's TextArea
+  (see the UltraCanvas changelog's entry of the same date).
+
+#### 2026-11-26 *1.93*
+- **The navigator beside a word-processing document.** *View > Navigator
+  (documents)*, or F5, shows the framework's document navigator at the left
+  of every word-processing tab: the headings as a tree that follows the
+  caret (promote, demote, move or drag a chapter), the tables, pictures,
+  charts, comments, bookmarks, notes and tracked changes, and a search box
+  that filters them. The choice is kept in the settings
+  (`documentNavigator`), as UltraOffice's is.
+
+#### 2026-11-26 *1.92*
+- **A word-processing tab's dialogs are the framework's**, the ones
+  UltraOffice has: a comment (new or edited, and resolved), a picture's
+  properties (alt text, and now its wrapping, position and size), a
+  caption (Figure, Table or Equation). The context menu adds *Paragraph...*,
+  *Page Setup...*, *Styles...* (in *Paragraph Style*), *Table
+  Properties...* (in *Table*), *All Comments...* and *Previous Change* (in
+  *Track Changes*).
+
+#### 2026-11-26 *1.91*
+- **Untranslated text in Texter.** File Statistics' Saved / Unsaved and its
+  totals line ("Total: 2 files • 1 KB • 120 words • 700 characters", with
+  each language's plural forms); Go to Line's "Go" button, which every
+  language showed in English; and 17 newer entries no language had yet (the
+  spell-check status, the dark-mode background, the zoom's page fits, two
+  save warnings). All 30 languages now have them.
+
+#### 2026-11-25 *1.90*
+- **The start-up log no longer prints a "Build Date".** It came from
+  `__DATE__` / `__TIME__`, which differ on every build, so `main.cpp` missed
+  the compiler cache on every CI run.
+
+#### 2026-11-24 *1.89*
+- **Info > File Statistics cut its column headers** in at least 29 of the 31 languages:
+  each header was an 80 px label whatever its column, and the columns were
+  sized for English (Greek "Σύνολο χαρακτήρων" needs 145 px of the Charset
+  column's 70). A column is now at least as wide as its header, and the
+  headers and cells fill their columns.
+- **Go to Line cut "Line number:"** in ten languages; the caption is as wide
+  as its text and the field takes what is left.
+- **UltraTexter runs inside MobilePC.** Its window manager - every editor
+  window, New Window, tabs dragged out, the files a second start hands over -
+  moved unchanged out of `main.cpp` into `TexterWindowManager.h`, which
+  MobilePC starts Texter with on Android. Built for Android, the file
+  statistics show a file's creation time as *Not available* (Android has no
+  `statx` before API 30).
+
+#### 2026-11-21 *1.88*
+- **Save as an OpenDocument presentation.** A document saved as `.odp`,
+  `.otp` or `.fodp` is laid out as a deck, as a `.pptx` is; a document opened
+  with a password is not saved as one (OpenDocument files are not saved with
+  a password here), and the deck a tab was opened from is not written over.
+
+#### 2026-11-20 *1.87*
+- **Save as a presentation.** A document saved as `.pptx` is laid out as a
+  deck: a slide per first-level heading, its paragraphs and lists as the
+  slide's text, tables and pictures below. A presentation opened as its
+  outline can be saved as a new `.pptx` and comes back as its slides; it is
+  still never written over the deck it was opened from.
+
+#### 2026-11-19 *1.86*
+- **Closing Texter with unsaved files names them.** The question listed only a
+  count ("3 file(s) have unsaved changes"); it now shows the files in a list -
+  each one's name and folder, or "Not saved yet" for a new one, the whole path
+  as its tooltip - in the shape of UltraFiler's delete question, and it follows
+  a dark look.
+- **Saving them shows each file first.** Answering Yes saves the files one by
+  one; Texter now switches to each file's tab before it is saved, so the Save
+  dialog a new file needs, or the message about a file that could not be
+  written, is plainly about the file on screen.
+- **Closing one tab shows it before asking.** Closing a tab that is not the
+  current one (with its x) asked "Save changes to …?" over another file; Texter
+  now switches to that tab first.
+- **A password-protected document opens: Texter asks for the password.** A
+  `.docx`, `.odt`, `.pptx` or `.odp` saved with a password (Word, PowerPoint,
+  LibreOffice, ODF 1.4's encryption included) brings up the framework's
+  password prompt - asked again after a wrong one - and opens once it is
+  given, where before it only said the file was protected. The question comes
+  a moment after the window shows, so a protected file named on the command
+  line or restored from the last session is asked for in front of Texter, not
+  of an empty screen. The password is kept with the tab while it is open:
+  saved again as `.docx` the document stays protected, and an `.odt` opened
+  with one is not written back without it - Save As `.docx` keeps it.
+- **A PowerPoint deck or an OpenDocument presentation opens as the outline of
+  its slides, not as a hex dump.** The Open dialog's "Documents" offered
+  `.pptx` since FileLoader read decks, but Texter sent anything but `.odt`,
+  `.docx` and `.doc` to its text loader, which showed a deck's bytes. A
+  `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm`, `.odp`, `.otp` or
+  `.fodp` now opens in the document editor as each slide's number and title,
+  its bullets, tables, pictures' descriptions and speaker notes; a protected
+  or damaged deck says why. Saving the outline back under a deck's name is
+  refused - it would have written plain text over the slides - and *Save As*
+  `.odt` or `.docx` keeps it.
+- **A password-protected `.odt` says so** instead of opening as a hex dump.
+  (Texter still asks no password; open it in a program that does, or see the
+  framework's `RequestDocumentPassword`.)
+
+#### 2026-11-16 *1.85*
+- **A tall caret beside a table at the top of a document is gone.** A
+  document that opens with a table (an ODT letter's address block) showed a
+  blinking bar the height of the whole table at its left edge; the caret now
+  starts in the table's first cell, one line high, and Ctrl+Home goes there
+  too (framework editor fix).
+- **A .docx that opened as hex opens as a document.** A file whose main part
+  is not `word/document.xml` (`word/document2.xml`, as files that went through
+  Word for the web can have) and a file written with its own XML prefixes were
+  not recognised as Word documents, so Texter showed their bytes (framework
+  Word reader fix).
+- **The Markdown bar no longer appears beside plain text after a theme
+  change.** Toggling the theme restyled the hidden bar, and the restyle showed
+  it again on any tab. The cause was in the framework's layout (see its
+  changelog); Markdown and word-processing tabs keep their bar as before.
+
 #### 2026-11-15 *1.84*
 - **A window started dark has a dark menu bar, toolbar and status bar.** The
   dark colours were laid over the window only when the look changed, so a

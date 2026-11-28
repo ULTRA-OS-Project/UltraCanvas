@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraAffiliates - A link and its QR code on a phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.45; display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased">
+
+<div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 60px 20px 24px; box-sizing: border-box">
+
+<header style="display: flex; align-items: center; gap: 8px">
+<a href="AffiliatePhoneHome.dc.html" aria-label="Back to the dashboard" style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-left: -10px; border-radius: 999px; color: #0f172a"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg></a>
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.03em">Link and QR code</h1>
+</header>
+
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid #e2e8f0">
+<img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 48px; height: 48px; border-radius: 11px; flex: 0 0 auto">
+<span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.3"><span style="font-weight: 700">UltraVideo</span><span style="font-size: 13px; color: #475569">You earn 15 % · within 90 days</span></span>
+<a href="#products" style="display: inline-flex; align-items: center; height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; color: #0f172a; text-decoration: none; font-weight: 700; font-size: 13px">Change</a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; font-weight: 600; color: #475569">Campaign</span>
+<div role="group" aria-label="Campaign" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px">
+<sc-for list="{{campaigns}}" as="c" hint-placeholder-count="4">
+<button type="button" onClick="{{c.pick}}" aria-pressed="{{c.selected}}" style="{{c.style}}">{{c.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px; border-radius: 20px; background: #f8fafc; border: 1px solid #e2e8f0">
+<div style="width: 232px; padding: 6px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<svg role="img" aria-label="The QR code of the link" viewBox="{{qrBox}}" style="display: block; width: 100%; height: auto" shape-rendering="crispEdges"><rect x="0" y="0" width="{{qrSide}}" height="{{qrSide}}" fill="#ffffff"></rect><path d="{{qrPath}}" fill="#000000"></path></svg>
+</div>
+<span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #334155; text-align: center; word-break: break-all">{{link}}</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<button type="button" onClick="{{copy}}" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">{{copyLabel}}</button>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button type="button" style="height: 48px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Share</button>
+<button type="button" style="height: 48px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Save the code</button>
+</div>
+</div>
+
+<p style="margin: 0; font-size: 13px; color: #475569">Say that it is advertising wherever you put the link or the code.</p>
+
+</div>
+
+<nav aria-label="Affiliate sections" style="flex: 0 0 auto; display: flex; justify-content: space-around; align-items: flex-start; padding: 10px 8px 28px; box-sizing: border-box; border-top: 1px solid #e2e8f0; background: #ffffff">
+<a href="AffiliatePhoneHome.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; min-height: 44px; text-decoration: none; color: #64748b; font-size: 11px; font-weight: 600"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"></path><path d="M6 16V9"></path><path d="M11 16V5"></path><path d="M16 16v-6"></path></svg>Dashboard</a>
+<a href="AffiliatePhoneLink.dc.html" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; min-height: 44px; text-decoration: none; color: #1d4ed8; font-size: 11px; font-weight: 700"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg>Links</a>
+<a href="#products" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; min-height: 44px; text-decoration: none; color: #64748b; font-size: 11px; font-weight: 600"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>Products</a>
+<a href="#payouts" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; min-height: 44px; text-decoration: none; color: #64748b; font-size: 11px; font-weight: 600"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="3"></rect><path d="M3 10h18"></path><path d="M7 15h4"></path></svg>Payouts</a>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { campaign: 'poster-berlin', copied: false };
+    this.codes = {};
+  }
+  // The QR code of a text as an SVG path: byte mode, error correction Q, versions 1 to 10 - the portal's qr.py in small.
+  qr(text) {
+    const ECC = [0, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24], BLOCKS = [0, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8];
+    const bytes = Array.from(unescape(encodeURIComponent(text)), (c) => c.charCodeAt(0));
+    const raw = (v) => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; };
+    let ver = 1, room = 0;
+    for (; ver <= 10; ver++) { room = (Math.floor(raw(ver) / 8) - ECC[ver] * BLOCKS[ver]) * 8; if (4 + (ver < 10 ? 8 : 16) + bytes.length * 8 <= room) break; }
+    if (ver > 10) return { d: '', side: 29 };
+    const bits = [], put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+    put(4, 4); put(bytes.length, ver < 10 ? 8 : 16); bytes.forEach((b) => put(b, 8));
+    put(0, Math.min(4, room - bits.length)); put(0, (8 - bits.length % 8) % 8);
+    for (let pad = 0xEC; bits.length < room; pad ^= 0xFD) put(pad, 8);
+    const data = []; bits.forEach((b, i) => { data[i >> 3] = (data[i >> 3] || 0) | (b << (7 - (i & 7))); });
+    const mul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >> 7) * 0x11D); z ^= ((y >> i) & 1) * x; } return z; };
+    const eccLen = ECC[ver], nBlocks = BLOCKS[ver], rawCw = Math.floor(raw(ver) / 8), shortN = nBlocks - rawCw % nBlocks, shortLen = Math.floor(rawCw / nBlocks);
+    const div = new Array(eccLen).fill(0); div[eccLen - 1] = 1;
+    for (let i = 0, root = 1; i < eccLen; i++) { for (let j = 0; j < eccLen; j++) { div[j] = mul(div[j], root); if (j + 1 < eccLen) div[j] ^= div[j + 1]; } root = mul(root, 2); }
+    const blocks = [];
+    for (let i = 0, k = 0; i < nBlocks; i++) {
+      const dat = data.slice(k, k + shortLen - eccLen + (i < shortN ? 0 : 1)); k += dat.length;
+      const rem = new Array(eccLen).fill(0);
+      dat.forEach((b) => { const f = b ^ rem.shift(); rem.push(0); div.forEach((c, x) => { rem[x] ^= mul(c, f); }); });
+      if (i < shortN) dat.push(0);
+      blocks.push(dat.concat(rem));
+    }
+    const all = [];
+    for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - eccLen || j >= shortN) all.push(b[i]); });
+    const size = ver * 4 + 17, m = [], fn = [];
+    for (let y = 0; y < size; y++) { m.push(new Array(size).fill(false)); fn.push(new Array(size).fill(false)); }
+    const set = (x, y, dark) => { m[y][x] = dark; fn[y][x] = true; };
+    for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    [[3, 3], [size - 4, 3], [3, size - 4]].forEach(([cx, cy]) => { for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = cx + dx, y = cy + dy, dist = Math.max(Math.abs(dx), Math.abs(dy)); if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, dist !== 2 && dist !== 4); } });
+    if (ver > 1) { const n = Math.floor(ver / 7) + 2, step = Math.floor((ver * 8 + n * 3 + 5) / (n * 4 - 4)) * 2, pos = [6]; for (let i = n - 2; i >= 0; i--) pos.push(size - 7 - i * step);
+      pos.forEach((px, i) => pos.forEach((py, j) => { if (!((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0))) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(px + dx, py + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); })); }
+    const format = (mask) => { const d = (3 << 3) | mask; let rem = d; for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >> 9) * 0x537); const b = ((d << 10) | rem) ^ 0x5412, bit = (i) => ((b >> i) & 1) !== 0;
+      for (let i = 0; i <= 5; i++) set(8, i, bit(i)); set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8)); for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+      for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i)); set(8, size - 8, true); };
+    format(0);
+    if (ver >= 7) { let rem = ver; for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >> 11) * 0x1F25); const b = (ver << 12) | rem; for (let i = 0; i < 18; i++) { const dark = ((b >> i) & 1) !== 0, a = size - 11 + i % 3, c = Math.floor(i / 3); set(a, c, dark); set(c, a, dark); } }
+    for (let right = size - 1, i = 0; right >= 1; right -= 2) { if (right === 6) right = 5; for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) { const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert; if (!fn[y][x] && i < all.length * 8) { m[y][x] = ((all[i >> 3] >> (7 - (i & 7))) & 1) !== 0; i++; } } }
+    const tests = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x, y) => x % 3 === 0, (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => x * y % 2 + x * y % 3 === 0, (x, y) => (x * y % 2 + x * y % 3) % 2 === 0, (x, y) => ((x + y) % 2 + x * y % 3) % 2 === 0];
+    const flip = (k) => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!fn[y][x] && tests[k](x, y)) m[y][x] = !m[y][x]; };
+    const penalty = () => { let res = 0;
+      const line = (cells) => { let score = 0, colour = false, run = 0; const h = [0, 0, 0, 0, 0, 0, 0];
+        const add = (r) => { if (h[0] === 0) r += size; h.pop(); h.unshift(r); };
+        const count = () => { const n = h[1], core = n > 0 && h[2] === n && h[3] === n * 3 && h[4] === n && h[5] === n; return (core && h[0] >= n * 4 && h[6] >= n ? 1 : 0) + (core && h[6] >= n * 4 && h[0] >= n ? 1 : 0); };
+        cells.forEach((c) => { if (c === colour) { run++; if (run === 5) score += 3; else if (run > 5) score++; } else { add(run); if (!colour) score += count() * 40; colour = c; run = 1; } });
+        if (colour) { add(run); run = 0; } add(run + size); return score + count() * 40; };
+      for (let y = 0; y < size; y++) res += line(m[y]);
+      for (let x = 0; x < size; x++) res += line(m.map((row) => row[x]));
+      for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) if (m[y][x] === m[y][x + 1] && m[y][x] === m[y + 1][x] && m[y][x] === m[y + 1][x + 1]) res += 3;
+      let dark = 0; m.forEach((row) => row.forEach((c) => { if (c) dark++; })); const total = size * size;
+      return res + (Math.floor((Math.abs(dark * 20 - total * 10) + total - 1) / total) - 1) * 10; };
+    let best = 0, low = Infinity;
+    for (let k = 0; k < 8; k++) { flip(k); format(k); const p = penalty(); if (p < low) { low = p; best = k; } flip(k); }
+    flip(best); format(best);
+    let d = '';
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (m[y][x]) { let s = x; while (x < size && m[y][x]) x++; d += 'M' + (s + 4) + ',' + (y + 4) + 'h' + (x - s) + 'v1h-' + (x - s) + 'z'; }
+    return { d, side: size + 8 };
+  }
+  renderVals() {
+    const s = this.state;
+    const campaigns = ['poster-berlin', 'newsletter-may', 'youtube-review', ''].map((name) => ({
+      label: name || 'None', selected: s.campaign === name, pick: () => this.setState({ campaign: name, copied: false }),
+      style: 'flex: 0 0 auto; height: 44px; padding: 0 16px; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; ' +
+        (s.campaign === name ? 'border: 1px solid #0f172a; background: #0f172a; color: #ffffff' : 'border: 1px solid #cbd5e1; background: #ffffff; color: #334155')
+    }));
+    const link = 'https://store.ultraos.eu/r/anna/org.ultraos.ultravideo/' + (s.campaign ? '?s=' + s.campaign : '');
+    const code = this.codes[link] || (this.codes[link] = this.qr(link));
+    return {
+      accent: this.props.accent ?? '#2563eb', campaigns, link, qrPath: code.d, qrSide: code.side, qrBox: '0 0 ' + code.side + ' ' + code.side,
+      copy: () => this.setState({ copied: true }), copyLabel: s.copied ? 'Copied' : 'Copy the link'
+    };
+  }
+}
+</script>
+</body>
+</html>

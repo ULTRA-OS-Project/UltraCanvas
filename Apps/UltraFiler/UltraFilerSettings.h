@@ -7,6 +7,13 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.26.0 - Display > Favorite folders: favoriteHighlight (none, fill, border, shade),
+//                  favoriteHighlightColor and favoriteHeart; EffectiveFavoriteHighlightColor
+// Version: 1.25.0 - Display > Path bar: pathBarFolderColor / pathBarCurrentColor, the segments'
+//                  colours (#E4E6E9 and #0078D7 by default, as the arrow bar was before it took
+//                  the theme's)
+// Version: 1.24.0 - Display > Display mode: displayMode, the filer light or dark
+//                  whatever the desktop says, or following it (the default)
 // Version: 1.23.0 - Display > Path bar: pathBarVolumeNames, a drive named by its
 //                  volume on the path bar ("My Passport Ultra (D:)")
 // Version: 1.22.0 - networkServers: the computers opened by name in the Network section
@@ -23,7 +30,7 @@
 //                   passwords Unlock was given
 // Version: 1.16.0 - the shared settings folder, and the move of the old one into it
 // Version: 1.15.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -46,6 +53,13 @@
 
 namespace UltraCanvas {
 
+// Display > Display mode: whether UltraFiler is light or dark.
+enum class FilerDisplayMode {
+    System,        // as the desktop says (and UOS-Settings' Look page), live
+    Light,         // always light
+    Dark           // always dark
+};
+
 // Display > New tab: what the "+" at the end of the folder tab strip shows.
 enum class FilerNewTabStart {
     CurrentFolder, // another view of the folder the active tab is showing
@@ -67,6 +81,10 @@ public:
     // offer "Restore defaults" without repeating the literals.
     static inline const Color kDefaultTreeDriveBackgroundColor{226, 236, 248, 255};
     static inline const Color kDefaultTreeSelectedFolderColor{0, 120, 215, 255};
+    // The path bar's segments: the folders on the way (a light grey) and the
+    // folder shown (the strong blue, with white on it).
+    static inline const Color kDefaultPathBarFolderColor{228, 230, 233, 255};    // #E4E6E9
+    static inline const Color kDefaultPathBarCurrentColor{0, 120, 215, 255};     // #0078D7
 
     // Display > Treeview: the folder tree's width - the narrowest the tree
     // pane goes (the divider stops there too; low enough that a tree of a few
@@ -161,6 +179,36 @@ public:
     // strip never waits on a disk for them. A drive whose volume has no name,
     // and a network drive, keep the letter either way.
     bool pathBarVolumeNames = true;
+    // ... and its colours: the segments of the folders on the way to the one
+    // shown, and the segment of the folder shown. The text on each is white
+    // or dark, whichever reads on it.
+    Color pathBarFolderColor  = kDefaultPathBarFolderColor;
+    Color pathBarCurrentColor = kDefaultPathBarCurrentColor;
+
+    // Display > Favorite folders: how a favorite folder stands out in the
+    // folder display - a solid fill, a border or a shade in one colour, or
+    // nothing beyond the heart - and whether it carries the heart. The
+    // default colour is a pale rose (EffectiveFavoriteHighlightColor turns it
+    // into the heart's red for a border and a dark tint under a dark theme).
+    static inline const Color kDefaultFavoriteHighlightColor{253, 226, 228, 255};   // #FDE2E4
+    static inline const Color kFavoriteHeartRed{226, 67, 74, 255};                  // the heart's
+    FilerFavoriteHighlight favoriteHighlight = FilerFavoriteHighlight::NoHighlight;
+    Color favoriteHighlightColor = kDefaultFavoriteHighlightColor;
+    bool favoriteHeart = true;
+
+    // The colour the highlight is drawn in. A colour of the user's own is
+    // used as it is, in either look. The default pale rose would make a faint
+    // border, so a border takes the heart's red; and it would glare on a
+    // dark ground, so under a dark theme a fill or shade is a dark tint of
+    // the red instead.
+    Color EffectiveFavoriteHighlightColor(bool darkTheme, const Color& ground) const {
+        if (favoriteHighlightColor != kDefaultFavoriteHighlightColor) return favoriteHighlightColor;
+        if (favoriteHighlight == FilerFavoriteHighlight::Border) return kFavoriteHeartRed;
+        if (!darkTheme) return favoriteHighlightColor;
+        auto mix = [](uint8_t a, uint8_t b) { return static_cast<uint8_t>(a + (b - a) * 0.35); };
+        return Color(mix(ground.r, kFavoriteHeartRed.r), mix(ground.g, kFavoriteHeartRed.g),
+                     mix(ground.b, kFavoriteHeartRed.b), 255);
+    }
 
     // Display > Thumbnails and Display > Detail view: which file kinds may
     // show a thumbnail in the file display, and which ones the detail pane
@@ -205,6 +253,13 @@ public:
     // thumbnail of their own content, and programs and shortcuts that carry
     // an icon inside them, are drawn the same way under both.
     FilerFileIconStyle fileIconStyle = FilerFileIconStyle::HostOperatingSystem;
+
+    // Display > Display mode: the filer's look - the desktop's light or
+    // dark (the default, and what every earlier release did), or always
+    // light, or always dark whatever the desktop says. Applied through the
+    // application's theme policy (FollowHost / Light / Dark), so the
+    // desktop's accent, fonts and high contrast still come with it.
+    FilerDisplayMode displayMode = FilerDisplayMode::System;
 
     // Display > Tab style: how the window's tab strip draws its tabs.
     // Modern is the capsule look (each tab a pill floating in the strip,
@@ -526,6 +581,22 @@ public:
         if (it != kv.end()) homeShowPredefinedOnly = (it->second == "predefined");
         it = kv.find("display.pathbar.volume.names");
         if (it != kv.end()) pathBarVolumeNames = ParseFlag(it->second);
+        it = kv.find("display.pathbar.folders.color");
+        if (it != kv.end()) ParseColor(it->second, pathBarFolderColor);
+        it = kv.find("display.pathbar.current.color");
+        if (it != kv.end()) ParseColor(it->second, pathBarCurrentColor);
+        it = kv.find("display.favorites.highlight");
+        if (it != kv.end()) {
+            const std::string& v = it->second;
+            favoriteHighlight = v == "fill"   ? FilerFavoriteHighlight::Fill
+                              : v == "border" ? FilerFavoriteHighlight::Border
+                              : v == "shade"  ? FilerFavoriteHighlight::Shade
+                                              : FilerFavoriteHighlight::NoHighlight;
+        }
+        it = kv.find("display.favorites.color");
+        if (it != kv.end()) ParseColor(it->second, favoriteHighlightColor);
+        it = kv.find("display.favorites.heart");
+        if (it != kv.end()) favoriteHeart = ParseFlag(it->second);
         it = kv.find("display.thumbnails.kinds.off");
         if (it != kv.end()) thumbnailKinds = ParseEnabledKinds(it->second);
         it = kv.find("display.thumbnails.formats.off");
@@ -551,6 +622,13 @@ public:
         if (it != kv.end()) fileIconStyle = ParseFileIconStyle(it->second);
         it = kv.find("display.tabs.style");
         if (it != kv.end()) tabStripStyle = ParseTabStripStyle(it->second);
+        it = kv.find("display.mode");
+        if (it != kv.end()) {
+            const std::string mode = Trim(it->second);
+            displayMode = mode == "light" ? FilerDisplayMode::Light
+                        : mode == "dark"  ? FilerDisplayMode::Dark
+                                          : FilerDisplayMode::System;
+        }
         it = kv.find("display.files.show.hidden");
         if (it != kv.end())
             showHiddenFiles =
@@ -707,6 +785,16 @@ public:
              << (homeShowPredefinedOnly ? "predefined" : "all") << "\n";
         file << "display.pathbar.volume.names = "
              << (pathBarVolumeNames ? "true" : "false") << "\n";
+        file << "display.pathbar.folders.color = "
+             << FormatColor(pathBarFolderColor) << "\n";
+        file << "display.pathbar.current.color = "
+             << FormatColor(pathBarCurrentColor) << "\n";
+        file << "display.favorites.highlight = "
+             << (favoriteHighlight == FilerFavoriteHighlight::Fill   ? "fill"
+               : favoriteHighlight == FilerFavoriteHighlight::Border ? "border"
+               : favoriteHighlight == FilerFavoriteHighlight::Shade  ? "shade" : "none") << "\n";
+        file << "display.favorites.color = " << FormatColor(favoriteHighlightColor) << "\n";
+        file << "display.favorites.heart = " << (favoriteHeart ? "true" : "false") << "\n";
         file << "display.thumbnails.kinds.off = "
              << FormatDisabledKinds(thumbnailKinds) << "\n";
         file << "display.thumbnails.formats.off = "
@@ -725,6 +813,11 @@ public:
              << FormatFileIconStyle(fileIconStyle) << "\n";
         file << "display.tabs.style = "
              << FormatTabStripStyle(tabStripStyle) << "\n";
+        file << "display.mode = "
+             << (displayMode == FilerDisplayMode::Light ? "light"
+               : displayMode == FilerDisplayMode::Dark  ? "dark"
+                                                        : "system")
+             << "\n";
         file << "display.files.show.hidden = "
              << (showHiddenFiles ? "true" : "false") << "\n";
         file << "display.ignored.builtin = "

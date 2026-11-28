@@ -12,7 +12,9 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "../Apps/UltraAuthenticator/AccountStore.h"
 #include "UltraCrypt/OtpAuthUri.h"
+#include "../Apps/UltraAuthenticator/RecoveryCode.h"
 
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -666,6 +668,73 @@ static void TestAttach() {
     std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
+// Recovery from a forgotten master password, through the account layer:
+// turning it on and off asks for the master password, the locked vault names
+// its recovery key, a wrong share is refused and counted like a wrong
+// password, the right one unlocks with the new password and spends the slot.
+static void TestRecovery() {
+    std::printf("Recovery from a forgotten master password\n");
+    const std::string path = TempVaultPath("recovery");
+    AccountStore store;
+    Check(store.Create(path, Buf("pw")), "create");
+    std::string key;
+    Check(store.AddFromUri(TotpUri("Example", "alice"), key), "add");
+
+    UltraCryptSecureBuffer share;
+    UltraCrypt_RandomSecureBuffer(kRecoveryShareBytes, share);
+    Check(store.EnableRecovery(Buf("wrong"), share, "e-1", "https://account.example").code ==
+              StoreResultCode::AuthenticationFailed,
+          "turning recovery on asks for the master password");
+    Check(!store.GetRecoveryInfo().enabled, "and a wrong one changes nothing");
+    Check(store.EnableRecovery(Buf("pw"), share, "e-1", "https://account.example"), "recovery turns on");
+
+    store.Lock();
+    const VaultRecoveryInfo info = store.LockedRecoveryInfo();
+    Check(info.enabled && info.escrowId == "e-1" && info.serviceUrl == "https://account.example",
+          "the locked vault names its recovery key");
+
+    const int64_t now = 3'000'000;
+    UltraCryptSecureBuffer wrong;
+    UltraCrypt_RandomSecureBuffer(kRecoveryShareBytes, wrong);
+    Check(store.Recover(wrong, Buf("new pw"), now).code == StoreResultCode::AuthenticationFailed,
+          "a wrong share is refused");
+    Check(store.FailedUnlockAttempts() == 1 && store.IsLocked(), "counted, and still locked");
+
+    Check(store.Recover(share, Buf("new pw"), now), "the right share recovers");
+    Check(store.IsOpen() && store.FailedUnlockAttempts() == 0, "open, the count reset");
+    std::vector<Account> accounts;
+    Check(store.List(accounts) && accounts.size() == 1, "the account is still there");
+    Check(!store.GetRecoveryInfo().enabled, "the recovery slot is spent");
+    store.Lock();
+    Check(!store.Unlock(Buf("pw"), now + 10), "the forgotten password is gone");
+    Check(store.Unlock(Buf("new pw"), now + 20), "the new one opens it");
+
+    Check(store.EnableRecovery(Buf("new pw"), share, "", ""), "recovery on again, a code only");
+    Check(store.DisableRecovery(Buf("wrong")).code == StoreResultCode::AuthenticationFailed,
+          "turning it off asks for the master password too");
+    Check(store.DisableRecovery(Buf("new pw")) && !store.GetRecoveryInfo().enabled, "and it turns off");
+    store.Close();
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
+
+    std::printf("The recovery code\n");
+    const std::string code = FormatRecoveryCode(share);
+    Check(code.size() == 52 + 12 && code[4] == '-', "52 Base32 characters in thirteen groups of four");
+    UltraCryptSecureBuffer back;
+    std::string typed = code;
+    for (char& c : typed) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    typed.replace(4, 1, " ");
+    Check(ParseRecoveryCode(typed, back) &&
+              UltraCrypt_ConstantTimeEquals(back.Data(), back.GetSize(), share.Data(), share.GetSize()),
+          "typed back in lower case with a space, it is the same share");
+    Check(!ParseRecoveryCode(code.substr(0, code.size() - 5), back), "a code missing a group is refused");
+    Check(!ParseRecoveryCode("not a code", back), "nonsense is refused");
+    UltraCryptSecureBuffer fromHex;
+    Check(ShareFromHex(ShareToHex(share), fromHex) &&
+              UltraCrypt_ConstantTimeEquals(fromHex.Data(), fromHex.GetSize(), share.Data(), share.GetSize()),
+          "the hex the account service keeps round-trips");
+    Check(!ShareFromHex("zz", fromHex), "bad hex is refused");
+}
+
 int main() {
     std::printf("UltraAuthenticator account-layer tests — backend: %s\n\n",
                 UltraCrypt_IsAvailable() ? UltraCrypt_GetBackendName().c_str()
@@ -692,6 +761,7 @@ int main() {
     TestLockAndUnlock();
     TestUnlockThrottled();
     TestAttach();
+    TestRecovery();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

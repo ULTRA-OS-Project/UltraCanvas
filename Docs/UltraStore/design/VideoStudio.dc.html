@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Video - Studio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#b91c1c}a:hover{color:#991b1b}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="padding: 12px 24px; min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 20px">
+<a href="VideoHome.dc.html" aria-label="UltraStore Video home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Video</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: #0f172a; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Studio</span>
+</a>
+<form role="search" style="flex: 1 1 320px; max-width: 520px; margin: 0 auto; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-studio" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search your channel</label>
+<input id="search-studio" type="search" placeholder="Search your videos, comments, playlists" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 14px; color: #0f172a; outline: none">
+</form>
+<a href="VideoChannel.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 700; font-size: 14px">View channel</a>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="M6 10l6-6 6 6"></path><path d="M4 20h16"></path></svg>Upload</button>
+<img src="/_blob/90eb60090b672bec83f5ce0aa977c5a0" alt="ULTRA OS Project" style="width: 40px; height: 40px; border-radius: 999px">
+</div>
+</header>
+
+<div style="display: flex; flex: 1 1 auto">
+
+<nav aria-label="Studio" style="flex: 0 0 240px; padding: 16px 12px; box-sizing: border-box; background: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 2px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0 20px">
+<img src="/_blob/90eb60090b672bec83f5ce0aa977c5a0" alt="" style="width: 80px; height: 80px; border-radius: 999px">
+<span style="font-weight: 700">ULTRA OS Project</span>
+<span style="font-size: 12px; color: #64748b">@ultraos · 38.2K subscribers</span>
+</div>
+<a href="#dashboard" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Dashboard</a>
+<a href="VideoStudio.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #b91c1c; background: #fee2e2; font-weight: 700">Content</a>
+<a href="#analytics" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Analytics</a>
+<a href="#comments" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Comments <span style="margin-left: auto; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">17</span></a>
+<a href="#captions" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Captions</a>
+<a href="#supporters" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Supporters</a>
+<a href="#copyright" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Copyright</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Settings</a>
+</nav>
+
+<main style="flex: 1 1 auto; min-width: 0; padding: 24px 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.03em">Channel content</h1>
+<div style="display: flex; gap: 20px; font-size: 13px; color: #64748b"><span><strong style="color: #0f172a; font-size: 16px">184K</strong> views · 28 days</span><span><strong style="color: #0f172a; font-size: 16px">9,120 h</strong> watch time</span><span><strong style="color: #0f172a; font-size: 16px">+1,204</strong> subscribers</span><span><strong style="color: #0f172a; font-size: 16px">612.40 EUR</strong> from supporters</span></div>
+</div>
+
+<section aria-labelledby="upload-title" style="display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 0; border-radius: 20px; border: 1px solid #e2e8f0; background: #ffffff; overflow: hidden">
+<div style="display: flex; flex-direction: column; gap: 16px; padding: 24px; border-right: 1px solid #e2e8f0; background: #f8fafc">
+<h2 id="upload-title" style="margin: 0; font-size: 16px; font-weight: 700">Upload a video</h2>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 14px; background: #ffffff; border: 1px solid #e2e8f0">
+<div aria-hidden="true" style="aspect-ratio: 16 / 9; border-radius: 10px; background: linear-gradient(160deg, #0f172a, #1e3a8a); position: relative; overflow: hidden"><span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #bfdbfe">[FRAME at 0:12]</span></div>
+<span style="font-weight: 700; font-size: 14px">ultradesktop-0.4-tour.mp4</span>
+<span style="font-size: 12px; color: #64748b">1.6 GB · 1920 × 1080 · 60 fps · H.264 + AAC · 9:18</span>
+<div style="display: flex; flex-direction: column; gap: 4px"><span style="height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden; display: block"><span style="display: block; width: 62%; height: 100%; background: #dc2626"></span></span><span style="font-size: 12px; color: #334155"><strong>Uploading 62 %</strong> · 1.0 of 1.6 GB · about 2 minutes left, then processing</span></div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #334155">
+<li style="display: flex; gap: 8px; align-items: center"><span style="color: #15803d; font-weight: 800">✓</span>Checked: a format this portal decodes</li>
+<li style="display: flex; gap: 8px; align-items: center"><span style="color: #15803d; font-weight: 800">✓</span>Chapters read from the UltraVideo markers (5)</li>
+<li style="display: flex; gap: 8px; align-items: center"><span style="color: #15803d; font-weight: 800">✓</span>Captions read from the subtitle track (English)</li>
+<li style="display: flex; gap: 8px; align-items: center"><span style="color: #64748b; font-weight: 800">·</span>Renditions 1080p, 720p, 480p, 360p after processing</li>
+</ul>
+</div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px; border-radius: 14px; border: 2px dashed #cbd5e1; text-align: center; color: #64748b; font-size: 13px">
+<svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="M6 10l6-6 6 6"></path><path d="M4 20h16"></path></svg>
+<span>Drop another file here, or <a href="#choose" style="font-weight: 700; text-decoration: none">choose one</a></span>
+<span>MP4, WebM, MKV, MOV up to 32 GB. UltraVideo's <em>Export to UltraStore Video</em> lands here directly.</span>
+</div>
+</div>
+
+<form style="display: flex; flex-direction: column; gap: 18px; padding: 24px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="v-title" style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Title</label>
+<input id="v-title" type="text" value="UltraDesktop 0.4: the panel, the launcher and tiling" style="height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; font-weight: 600; outline: none">
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="v-desc" style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Description</label>
+<textarea id="v-desc" rows="5" style="padding: 12px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; outline: none; resize: vertical">A tour of UltraDesktop 0.4 on a plain Linux machine: the panel and its applets, the launcher, window tiling with the keyboard, and the new settings pages.
+
+0:00 Intro
+0:40 The panel
+2:55 The launcher
+5:10 Tiling
+7:30 Settings</textarea>
+<span style="font-size: 12px; color: #64748b">Timestamps in the description become chapters; the five from UltraVideo's markers are already in.</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Thumbnail</span>
+<div style="display: flex; gap: 8px">
+<button type="button" aria-pressed="true" aria-label="Frame at 0:12" style="flex: 1 1 0; aspect-ratio: 16 / 9; border-radius: 10px; border: 2px solid #0f172a; background: linear-gradient(160deg, #0f172a, #1e3a8a); cursor: pointer"></button>
+<button type="button" aria-label="Frame at 3:04" style="flex: 1 1 0; aspect-ratio: 16 / 9; border-radius: 10px; border: 1px solid #e2e8f0; background: linear-gradient(160deg, #1e3a8a, #3b82f6); cursor: pointer"></button>
+<button type="button" aria-label="Frame at 6:40" style="flex: 1 1 0; aspect-ratio: 16 / 9; border-radius: 10px; border: 1px solid #e2e8f0; background: linear-gradient(160deg, #e2e8f0, #94a3b8); cursor: pointer"></button>
+<button type="button" style="flex: 1 1 0; aspect-ratio: 16 / 9; border-radius: 10px; border: 2px dashed #cbd5e1; background: #ffffff; font: inherit; font-size: 12px; font-weight: 700; color: #475569; cursor: pointer">Upload</button>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="v-playlist" style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Playlist</label>
+<select id="v-playlist" style="height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 14px"><option>UltraDesktop</option><option>Release notes</option><option>None</option></select>
+<label for="v-lang" style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 6px">Language and captions</label>
+<select id="v-lang" style="height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 14px"><option>English · captions from the subtitle track</option><option>Deutsch</option></select>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px">
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; padding: 0; margin-bottom: 6px">Visibility</legend>
+<label style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px; border: 2px solid #0f172a; background: #ffffff; font-size: 14px; cursor: pointer"><input type="radio" name="vis" checked style="width: 18px; height: 18px; margin: 0; accent-color: #dc2626">Public <span style="color: #64748b">· on the channel and in search</span></label>
+<label style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font-size: 14px; cursor: pointer"><input type="radio" name="vis" style="width: 18px; height: 18px; margin: 0; accent-color: #dc2626">Unlisted <span style="color: #64748b">· anyone with the link</span></label>
+<label style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font-size: 14px; cursor: pointer"><input type="radio" name="vis" style="width: 18px; height: 18px; margin: 0; accent-color: #dc2626">Private <span style="color: #64748b">· only you and people you name</span></label>
+<label style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font-size: 14px; cursor: pointer"><input type="radio" name="vis" style="width: 18px; height: 18px; margin: 0; accent-color: #dc2626">Scheduled <span style="color: #64748b">· publish at a date and time</span></label>
+</fieldset>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px">Audience and licence</span>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #dc2626">Made for children</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #dc2626">Age-restricted (18+)</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #dc2626">Allow comments</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #dc2626">Allow download</label>
+<label for="v-licence" style="font-size: 13px; color: #334155; margin-top: 4px">Licence</label>
+<select id="v-licence" style="height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 14px"><option>Creative Commons BY 4.0</option><option>Standard licence</option></select>
+</div>
+</div>
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 6px; border-top: 1px solid #e2e8f0; flex-wrap: wrap">
+<span style="font-size: 13px; color: #64748b">The video is checked for a format the portal decodes and for a copyright match before it goes public; both take minutes, not hours.</span>
+<div style="display: flex; gap: 8px"><button type="button" style="height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Save as draft</button><button type="button" style="height: 44px; padding: 0 22px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Publish when uploaded</button></div>
+</div>
+</form>
+</section>
+
+<section aria-labelledby="videos-title" style="display: flex; flex-direction: column; border-radius: 20px; border: 1px solid #e2e8f0; background: #ffffff; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap">
+<h2 id="videos-title" style="margin: 0; font-size: 16px; font-weight: 700">Your videos <span style="color: #64748b; font-weight: 600">· 16</span></h2>
+<div style="display: flex; gap: 6px">
+<button type="button" aria-pressed="true" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 0; background: #0f172a; color: #ffffff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Videos</button>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 0; background: #f1f5f9; color: #0f172a; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Live</button>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 0; background: #f1f5f9; color: #0f172a; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Shorts</button>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 0; background: #f1f5f9; color: #0f172a; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Playlists</button>
+</div>
+</div>
+<table style="border-collapse: collapse; width: 100%; font-size: 13px">
+<thead>
+<tr style="background: #f8fafc; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em">
+<th scope="col" style="text-align: left; padding: 10px 20px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Video</th>
+<th scope="col" style="text-align: left; padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Visibility</th>
+<th scope="col" style="text-align: left; padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Date</th>
+<th scope="col" style="text-align: right; padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Views</th>
+<th scope="col" style="text-align: right; padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Comments</th>
+<th scope="col" style="text-align: right; padding: 10px 20px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Likes</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom: 1px solid #f1f5f9">
+<td style="padding: 12px 20px"><div style="display: flex; gap: 12px; align-items: center"><span aria-hidden="true" style="position: relative; flex: 0 0 120px; aspect-ratio: 16 / 9; border-radius: 8px; background: linear-gradient(160deg, #0f172a, #1e3a8a); overflow: hidden"><span style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,0.3)"><span style="display: block; width: 62%; height: 100%; background: #dc2626"></span></span></span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 700; color: #0f172a">UltraDesktop 0.4: the panel, the launcher and tiling</span><span style="color: #64748b">Uploading 62 % · 9:18 · captions English</span></div></div></td>
+<td style="padding: 12px 14px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #fef3c7; color: #92400e; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Processing</span></td>
+<td style="padding: 12px 14px; color: #334155">17 Nov 2026<br><span style="color: #64748b">publish when uploaded</span></td>
+<td style="padding: 12px 14px; text-align: right; color: #64748b">–</td>
+<td style="padding: 12px 14px; text-align: right; color: #64748b">–</td>
+<td style="padding: 12px 20px; text-align: right; color: #64748b">–</td>
+</tr>
+<tr style="border-bottom: 1px solid #f1f5f9">
+<td style="padding: 12px 20px"><div style="display: flex; gap: 12px; align-items: center"><span aria-hidden="true" style="position: relative; flex: 0 0 120px; aspect-ratio: 16 / 9; border-radius: 8px; background: linear-gradient(160deg, #1e1b4b, #0f172a 60%, #082f49); overflow: hidden"><span style="position: absolute; right: 4px; bottom: 4px; height: 18px; padding: 0 4px; border-radius: 4px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">12:04</span></span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="VideoWatch.dc.html" style="font-weight: 700; color: #0f172a; text-decoration: none">UltraVideo 0.7: cut, grade and export in 12 minutes</a><span style="color: #64748b">5 chapters · captions English, Deutsch · CC BY</span></div></div></td>
+<td style="padding: 12px 14px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Public</span></td>
+<td style="padding: 12px 14px; color: #334155">15 Nov 2026</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">48,212</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">312 <span style="color: #b91c1c">· 4 new</span></td>
+<td style="padding: 12px 20px; text-align: right; font-weight: 600">2,140</td>
+</tr>
+<tr style="border-bottom: 1px solid #f1f5f9">
+<td style="padding: 12px 20px"><div style="display: flex; gap: 12px; align-items: center"><span aria-hidden="true" style="position: relative; flex: 0 0 120px; aspect-ratio: 16 / 9; border-radius: 8px; background: linear-gradient(160deg, #7f1d1d, #0f172a); overflow: hidden"><span style="position: absolute; right: 4px; bottom: 4px; height: 18px; padding: 0 4px; border-radius: 4px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">1:00:12</span></span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#office-hours" style="font-weight: 700; color: #0f172a; text-decoration: none">Office hours: your questions on the store and the runtime</a><span style="color: #64748b">Streamed · recording kept · no captions yet</span></div></div></td>
+<td style="padding: 12px 14px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Public</span></td>
+<td style="padding: 12px 14px; color: #334155">16 Nov 2026</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">1,310</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">58</td>
+<td style="padding: 12px 20px; text-align: right; font-weight: 600">96</td>
+</tr>
+<tr style="border-bottom: 1px solid #f1f5f9">
+<td style="padding: 12px 20px"><div style="display: flex; gap: 12px; align-items: center"><span aria-hidden="true" style="position: relative; flex: 0 0 120px; aspect-ratio: 16 / 9; border-radius: 8px; background: linear-gradient(160deg, #334155, #0f172a); overflow: hidden"></span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#release-stream" style="font-weight: 700; color: #0f172a; text-decoration: none">Release stream: ULTRA OS 0.10, what is new</a><span style="color: #64748b">Live · scheduled 20 Nov 2026, 18:00 CET</span></div></div></td>
+<td style="padding: 12px 14px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Scheduled</span></td>
+<td style="padding: 12px 14px; color: #334155">20 Nov 2026</td>
+<td style="padding: 12px 14px; text-align: right; color: #64748b">412 reminders</td>
+<td style="padding: 12px 14px; text-align: right; color: #64748b">–</td>
+<td style="padding: 12px 20px; text-align: right; color: #64748b">–</td>
+</tr>
+<tr style="border-bottom: 1px solid #f1f5f9">
+<td style="padding: 12px 20px"><div style="display: flex; gap: 12px; align-items: center"><span aria-hidden="true" style="position: relative; flex: 0 0 120px; aspect-ratio: 16 / 9; border-radius: 8px; background: linear-gradient(160deg, #fbcfe8, #be185d); overflow: hidden"><span style="position: absolute; right: 4px; bottom: 4px; height: 18px; padding: 0 4px; border-radius: 4px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">14:52</span></span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#paint" style="font-weight: 700; color: #0f172a; text-decoration: none">UltraPaint: layers, brushes and the PixelFX stack</a><span style="color: #64748b">4 chapters · captions English</span></div></div></td>
+<td style="padding: 12px 14px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Public</span></td>
+<td style="padding: 12px 14px; color: #334155">3 Nov 2026</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">31,200</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">140</td>
+<td style="padding: 12px 20px; text-align: right; font-weight: 600">1,380</td>
+</tr>
+<tr style="border-bottom: 1px solid #f1f5f9">
+<td style="padding: 12px 20px"><div style="display: flex; gap: 12px; align-items: center"><span aria-hidden="true" style="position: relative; flex: 0 0 120px; aspect-ratio: 16 / 9; border-radius: 8px; background: linear-gradient(160deg, #e2e8f0, #94a3b8); overflow: hidden"><span style="position: absolute; right: 4px; bottom: 4px; height: 18px; padding: 0 4px; border-radius: 4px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">6:40</span></span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#shortcuts" style="font-weight: 700; color: #0f172a; text-decoration: none">Keyboard-only editing: every shortcut in UltraVideo</a><span style="color: #64748b">no chapters · captions English</span></div></div></td>
+<td style="padding: 12px 14px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #f1f5f9; color: #334155; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Unlisted</span></td>
+<td style="padding: 12px 14px; color: #334155">27 Oct 2026</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">9,050</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">22</td>
+<td style="padding: 12px 20px; text-align: right; font-weight: 600">410</td>
+</tr>
+<tr>
+<td style="padding: 12px 20px"><div style="display: flex; gap: 12px; align-items: center"><span aria-hidden="true" style="position: relative; flex: 0 0 120px; aspect-ratio: 16 / 9; border-radius: 8px; background: linear-gradient(160deg, #be123c, #4c0519); overflow: hidden"><span style="position: absolute; right: 4px; bottom: 4px; height: 18px; padding: 0 4px; border-radius: 4px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">22:20</span></span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#pi" style="font-weight: 700; color: #0f172a; text-decoration: none">ULTRA OS on a Raspberry Pi 5: first boot to first app</a><span style="color: #b91c1c">Copyright: a 12-second music match claimed by its label, revenue shared · <a href="#dispute" style="font-weight: 700">Dispute</a></span></div></div></td>
+<td style="padding: 12px 14px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Public</span></td>
+<td style="padding: 12px 14px; color: #334155">18 Sep 2026</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">212,000</td>
+<td style="padding: 12px 14px; text-align: right; font-weight: 600">1,044</td>
+<td style="padding: 12px 20px; text-align: right; font-weight: 600">9,870</td>
+</tr>
+</tbody>
+</table>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b">
+<span>Rows 1 to 7 of 16</span>
+<div style="display: flex; gap: 6px"><button type="button" style="height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Previous</button><button type="button" style="height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Next</button></div>
+</div>
+</section>
+
+</main>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#dc2626","options":["#dc2626","#2563eb","#0f172a","#0f766e"]},"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#dc2626' };
+  }
+}
+</script>
+</body>
+</html>

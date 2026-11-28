@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    MobilePC for Android. The framework's template
+    (UltraCanvas/OS/Android/packaging/AndroidManifest.xml) with MobilePC's
+    package, label and library. What the template's notes say about each
+    attribute holds here unchanged; only what differs is explained.
+    scripts/android-package-apk.sh packages it (its manifest option).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="org.ultraos.mobilepc">
+
+    <uses-feature android:glEsVersion="0x00030000" android:required="false"/>
+    <!-- A touchscreen is the control pad's, but a mouse and a keyboard on a
+         device without one do the same. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+
+    <!-- UltraFiler shows and changes the phone's own files by path
+         (/storage/emulated/0): "All files access", which the user switches
+         on in Settings, from Android 11; the storage permission before it
+         (UltraCanvasAndroidPermissions.h, RequestAllFilesAccess). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+                     android:maxSdkVersion="29"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+                     android:maxSdkVersion="29"/>
+
+    <!-- The launcher icon is made from media/appicon/MobilePC.png
+         (the icon option of scripts/android-package-apk.sh). -->
+    <application
+        android:label="MobilePC"
+        android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true"
+        android:hasCode="true">
+
+        <!-- UltraCanvasActivity, not a plain NativeActivity: it puts the
+             desktop on an external display (a Presentation) and captures the
+             mouse for it (UltraCanvas/OS/Android/UltraCanvasAndroidDesktop.h).
+             singleTask: one MobilePC; a second launch brings it forward.
+             The configuration changes keep the activity - and every window of
+             the desktop - alive through a turn of the phone and a keyboard
+             attached or taken away. -->
+        <activity
+            android:name="org.ultraos.ultracanvas.UltraCanvasActivity"
+            android:label="MobilePC"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:exported="true">
+
+            <!-- libMobilePC.so, the MobilePC target (Apps/MobilePC/CMakeLists.txt). -->
+            <meta-data android:name="android.app.lib_name"
+                       android:value="MobilePC"/>
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

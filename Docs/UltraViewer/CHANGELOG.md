@@ -1,3 +1,33 @@
+#### 2026-11-26 *1.0.16*
+- **PowerPoint 97-2003 decks.** A `.ppt` (and a `.pps` show or a `.pot`
+  template) shows its slides, its outline with **O** and its slide show with
+  **F5**, like a `.pptx` or an `.odp`; the desktop entry offers UltraViewer
+  for them.
+
+#### 2026-11-20 *1.0.15*
+- **A presentation shows its slides, and has a slide show.** A `.pptx` or
+  `.odp` opens as its slides - drawn with their fonts, pictures, tables,
+  charts and SmartArt - with the thumbnail strip, zoom and search, the
+  speaker notes of the slide shown on the info bar. **F5** starts a
+  full-screen slide show from the first slide, **Shift+F5** from the one
+  shown; the arrows, Space and Page Up / Down move through it, **Escape**
+  ends it. **O** shows the outline of the slides instead, and back.
+
+#### 2026-11-19 *1.0.14*
+- **Presentations open: `.pptx` and `.odp`** (and `.pptm`, `.ppsx`, `.ppsm`,
+  `.potx`, `.potm`, `.otp`, `.fodp`) as the outline of their slides - each
+  slide's number and title, its bullets, tables, pictures' descriptions and
+  speaker notes - through the framework's media viewer. A password-protected
+  deck shows *password-protected* and the **Unlock** button, as a protected
+  PDF does; its password is kept for the folder like theirs.
+- UltraViewer is offered under *Open with* for decks: the desktop entry's
+  MimeType, the macOS bundle's document types and the Windows package's file
+  types name them.
+- A deck's tables span the view instead of a hundred pixels, their header
+  words no longer broken over two lines (the framework's Markdown view).
+- The **Unlock** dialog shows the Unlock button's lock centred above the
+  password field (the framework's dialog), in the light and the dark look.
+
 #### 2026-11-15 *1.0.13*
 - **An SVG or another drawing can be saved** - as SVG, PDF, EPS, DXF and
   the other vector types, or as any bitmap type at any size; on Windows an

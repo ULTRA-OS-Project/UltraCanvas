@@ -24,6 +24,12 @@ Which programs get a Start menu entry follows the rule the installer's Start
 menu follows (scripts/build-windows-installer.sh), so the two list the same
 applications: a desktop entry (Apps/*/*.desktop) makes one, and so does a GUI
 program without one. A new application needs nothing here.
+
+--app <Program> is the one exception to the single package: an application
+published in the Microsoft Store as a product of its own (UltraTexter). The
+layout then holds that program and what it loads - its DLLs by the import
+tables (scripts/pe_imports.py), the plug-ins, the run-time modules, the media
+the framework reads - and the manifest has its one Start menu entry.
 """
 
 import argparse
@@ -38,6 +44,11 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# scripts/pe_imports.py, beside this file: a checker that loads this script by
+# its path (check_notification_activators.py) has no scripts/ on its path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pe_imports  # noqa: E402
 
 # The Publisher suffix that lets Windows 11 install a package that is not
 # signed (Add-AppxPackage -AllowUnsigned, from an elevated PowerShell). For
@@ -58,7 +69,7 @@ class App:
     exe: str                  # file name in dist/, without .exe
     display_name: str         # Start menu name
     icon: str                 # path of the PNG the logos are rendered from
-    description: str
+    description: str          # its desktop entry's Comment=; "" without one
     file_types: List[FileTypes] = field(default_factory=list)
     notification_id: str = ""   # its UltraMessage application ID, when it has a toast activator
 
@@ -86,6 +97,7 @@ MEDIA_TYPES = FileTypes("ultracanvas.media", "Images, video, audio and documents
     ".mp4", ".mov", ".mkv", ".webm", ".avi",
     ".mp3", ".wav", ".flac", ".ogg", ".opus", ".m4a",
     ".pdf", ".epub", ".ucd",
+    ".pptx", ".ppsx", ".odp", ".ppt", ".pps",
 ])
 
 # Explorer's "Open with", by program. A package declares file types by
@@ -109,6 +121,7 @@ FILE_TYPES = {
 # here, so a click on its toast cannot be lost in the package.
 NOTIFICATION_ACTIVATORS = {
     "UltraMail": "org.ultraos.ultramail",
+    "UltraToDo": "org.ultraos.ultratodo",
 }
 # The argument Windows starts the program with for a click; the program sees
 # it (UltraCanvas::IsNotificationActivationArgument) and opens no file for it.
@@ -230,7 +243,7 @@ def find_apps(dist: str, repo_root: str) -> List[App]:
         if entry is None and pe_subsystem(exe_path) != 2:
             continue                # a command-line tool
         name = (entry or {}).get("Name") or exe
-        description = (entry or {}).get("Comment") or f"{name}, part of UltraCanvas"
+        description = (entry or {}).get("Comment") or ""
         # The entry's icon, else one named after the program, else the one
         # CMake embeds in it (UltraCanvasDemo's is Demo.png), else the suite's.
         candidates = []
@@ -295,15 +308,16 @@ def fail(message: str) -> None:
 
 
 def msix_version(version: str) -> str:
-    """x.y.z (the changelog's) -> x.y.z.0, MSIX's four-part version.
+    """x.y.z (the changelog's) -> x.y.z.0, MSIX's four-part version; x.y
+    (Texter's) -> x.y.0.0.
 
     The Store requires the fourth part to be 0; it reserves it.
     """
     parts = version.split(".")
-    if len(parts) == 3:
-        parts.append("0")
+    if len(parts) in (2, 3):
+        parts += ["0"] * (4 - len(parts))
     if len(parts) != 4 or not all(p.isdigit() and int(p) <= 65535 for p in parts):
-        fail(f"version '{version}' is not x.y.z with each part 0..65535")
+        fail(f"version '{version}' is not x.y or x.y.z with each part 0..65535")
     return ".".join(str(int(p)) for p in parts)
 
 
@@ -382,6 +396,101 @@ def copy_dist(dist: str, layout: str) -> None:
                  "uses itself")
 
 
+# ── One application on its own (--app) ──────────────────────────────────────
+#
+# What the package of one application holds besides its .exe, the way
+# scripts/package-store-app.sh cuts an application out of dist/ for UltraStore:
+#   - the DLLs its import table reaches inside dist/, and theirs in turn;
+#   - every plug-in family under Plugins/ (an application finds them beside
+#     its .exe) but one that belongs to another application, with theirs;
+#   - lib/ and etc/: the modules libraries open at run time, which no import
+#     table names - the LaTeX module, libvips' loaders, libheif's codecs,
+#     ImageMagick's coders and their configuration - with theirs;
+#   - the media the framework and the application read (APP_MEDIA), not the
+#     demo's samples, videos and 3D scenes;
+#   - cacert.pem (HTTPS) and UltraCanvas-Package.ini (which build this is).
+# Not the other programs: an application that starts another one of the suite
+# (UltraDesktop its applications, UOS-Settings the tools) does not find it in
+# a package of its own.
+
+# The media folders (Resources/media/<name>): the UI's typeface and the other
+# bundled fonts, the widget icons, the application icons, media/lib (the
+# default window icon and the cursors), the translations, the emoji fonts,
+# the MicroTeX fonts of the LaTeX module, and media/docs (the logos the About
+# windows show).
+APP_MEDIA = ["fonts", "icons", "appicon", "lib", "locale", "emoji", "microtex", "docs"]
+
+# A plug-in family only its own application loads, by the program's name:
+# ChatCube's network providers and TDLib, some tens of megabytes.
+PLUGIN_FAMILY_OWNER = {"UltraIM": "ChatCube"}
+
+APP_FILES = ["cacert.pem", "UltraCanvas-Package.ini"]
+APP_MODULE_FOLDERS = ["lib", "etc"]
+
+
+def copy_app(dist: str, layout: str, exe: str) -> int:
+    """The package layout of one application: `exe` and what it loads, out of
+    dist/. Returns how many DLLs the import tables brought along."""
+    if os.path.exists(layout):
+        shutil.rmtree(layout)
+    os.makedirs(layout)
+
+    # The program, and its console companion where it has one
+    # (cmake/UltraCanvasWindowsGuiApp.cmake).
+    roots = []
+    for name in (exe + ".exe", exe + ".com"):
+        if os.path.isfile(os.path.join(dist, name)):
+            shutil.copy2(os.path.join(dist, name), os.path.join(layout, name))
+            roots.append(os.path.join(layout, name))
+
+    plugins = os.path.join(dist, "Plugins")
+    if os.path.isdir(plugins):
+        for family in sorted(os.listdir(plugins)):
+            if PLUGIN_FAMILY_OWNER.get(family, exe) != exe:
+                continue
+            shutil.copytree(os.path.join(plugins, family),
+                            os.path.join(layout, "Plugins", family))
+    for folder in APP_MODULE_FOLDERS:
+        if os.path.isdir(os.path.join(dist, folder)):
+            shutil.copytree(os.path.join(dist, folder), os.path.join(layout, folder))
+    for name in APP_FILES:
+        if os.path.isfile(os.path.join(dist, name)):
+            shutil.copy2(os.path.join(dist, name), os.path.join(layout, name))
+    for name in APP_MEDIA:
+        source = os.path.join(dist, "Resources", "media", name)
+        if os.path.isdir(source):
+            shutil.copytree(source, os.path.join(layout, "Resources", "media", name))
+        else:
+            print(f"  Warning: {source} is not in dist/")
+
+    # The plug-ins and the run-time modules are loaded by name at run time,
+    # so they are roots of the closure like the program itself.
+    for folder in ["Plugins"] + APP_MODULE_FOLDERS:
+        for directory, _, names in os.walk(os.path.join(layout, folder)):
+            roots += [os.path.join(directory, n) for n in sorted(names)
+                      if n.lower().endswith(".dll")]
+
+    # One closure over all the roots (pe_imports.closure starts from one and
+    # would copy the shared DLLs again for each of some 140 modules): every
+    # DLL an import names that dist/ carries beside the programs, and theirs
+    # in turn. Windows' own are not in dist/ and stay the system's.
+    carried = {n.lower(): n for n in os.listdir(dist) if n.lower().endswith(".dll")}
+    copied = set()
+    queue = list(roots)
+    while queue:
+        current = queue.pop()
+        for name in pe_imports.imports(current):
+            actual = carried.get(name.lower())
+            if actual is None or actual.lower() in copied:
+                continue
+            copied.add(actual.lower())
+            shutil.copy2(os.path.join(dist, actual), os.path.join(layout, actual))
+            queue.append(os.path.join(layout, actual))
+    if not copied:
+        fail(f"no DLL of {exe}.exe found in {dist}/ - the import tables were not read")
+    return len(copied)
+
+
 def build_manifest(apps: List[App], identity_name: str, publisher: str,
                    publisher_display_name: str, display_name: str,
                    description: str, version: str, arch: str,
@@ -402,7 +511,7 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
         prefix, _, local = tag.rpartition(":")
         return f"{{{ns[prefix]}}}{local}"
 
-    package = ET.Element(q("Package"), {"IgnorableNamespaces": "uap uap3 com desktop rescap"})
+    package = ET.Element(q("Package"))
     ET.SubElement(package, q("Identity"), {
         "Name": identity_name,
         "Publisher": publisher,
@@ -484,6 +593,15 @@ def build_manifest(apps: List[App], identity_name: str, publisher: str,
         # enterprise packages).
         ET.SubElement(capabilities, q("rescap:Capability"), {"Name": "allowElevation"})
 
+    # IgnorableNamespaces may name only prefixes the manifest declares, and
+    # ElementTree declares only those an element uses: the package of an
+    # application without a toast activator (Texter on its own) has no com:
+    # or desktop: element, and makeappx refuses it for naming them ("The
+    # package contains an XML prefix that is not defined", 0x80080204).
+    used = {element.tag[1:].partition("}")[0] for element in package.iter()}
+    package.set("IgnorableNamespaces",
+                " ".join(prefix for prefix, uri in ns.items() if prefix and uri in used))
+
     ET.indent(package, space="  ")
     return ET.ElementTree(package)
 
@@ -519,10 +637,18 @@ def main() -> None:
     parser.add_argument("--publisher", required=True,
                         help="the signing certificate's subject, or Partner Center's")
     parser.add_argument("--publisher-display-name", required=True)
-    parser.add_argument("--display-name", default="UltraCanvas")
+    parser.add_argument("--app", metavar="PROGRAM",
+                        help="package this one application on its own (its .exe name in dist/, "
+                             "without .exe: Texter) instead of the whole suite")
+    parser.add_argument("--app-display-name",
+                        help="with --app: the application's Start menu name, where the package "
+                             "names it otherwise than the suite does (UltraTexter)")
+    parser.add_argument("--display-name",
+                        help="the package's name (default: UltraCanvas; with --app, the "
+                             "application's). The Store wants a name reserved in Partner Center")
     parser.add_argument("--description",
-                        default="UltraCanvas applications: editors, viewers, mail, "
-                                "file management and utilities")
+                        help="the package's description (default: the suite's; with --app, "
+                             "the application's)")
     parser.add_argument("--allow-elevation", action="store_true",
                         help="declare the restricted capability allowElevation, so UltraFiler's "
                              "'Delete as administrator' works from the package (the Store grants "
@@ -535,8 +661,9 @@ def main() -> None:
     # package's file types arrives in the ANSI code page.
     parser.add_argument("--min-version", default="10.0.18362.0")
     parser.add_argument("--max-version-tested", default="10.0.26100.0")
-    parser.add_argument("--package-icon", default="UltraCanvas.png",
-                        help="file in media/appicon/ for the package's StoreLogo")
+    parser.add_argument("--package-icon",
+                        help="file in media/appicon/ for the package's StoreLogo "
+                             "(default: UltraCanvas.png; with --app, the application's icon)")
     parser.add_argument("--imagemagick", help="path to magick/convert")
     args = parser.parse_args()
 
@@ -554,15 +681,40 @@ def main() -> None:
     apps = find_apps(args.dist, REPO_ROOT)
     if not apps:
         fail(f"no application in {args.dist}/ - nothing for the Start menu")
+    if args.app:
+        apps = [app for app in apps if app.exe == args.app]
+        if not apps:
+            fail(f"{args.app}.exe is not an application in {args.dist}/ "
+                 "(a GUI program, or one with a desktop entry)")
+        if args.app_display_name:
+            apps[0].display_name = args.app_display_name
+    elif args.app_display_name:
+        fail("--app-display-name names the application of --app")
+    for app in apps:
+        if not app.description:
+            app.description = (f"{app.display_name}, an UltraCanvas application" if args.app
+                               else f"{app.display_name}, part of UltraCanvas")
     check_unique(apps)
 
-    print(f"Copying {args.dist}/ to {args.layout}/")
-    copy_dist(args.dist, args.layout)
+    appicon_dir = os.path.join(REPO_ROOT, "media", "appicon")
+    if args.app:
+        display_name = args.display_name or apps[0].display_name
+        description = args.description or apps[0].description
+        package_icon = (os.path.join(appicon_dir, args.package_icon) if args.package_icon
+                        else apps[0].icon)
+        print(f"Copying {args.app} and what it loads from {args.dist}/ to {args.layout}/")
+        count = copy_app(args.dist, args.layout, args.app)
+        print(f"  {count} DLLs by the import tables")
+    else:
+        display_name = args.display_name or "UltraCanvas"
+        description = args.description or ("UltraCanvas applications: editors, viewers, mail, "
+                                           "file management and utilities")
+        package_icon = os.path.join(appicon_dir, args.package_icon or "UltraCanvas.png")
+        print(f"Copying {args.dist}/ to {args.layout}/")
+        copy_dist(args.dist, args.layout)
 
     magick = find_imagemagick(args.imagemagick)
     assets = os.path.join(args.layout, "Assets")
-    appicon_dir = os.path.join(REPO_ROOT, "media", "appicon")
-    package_icon = os.path.join(appicon_dir, args.package_icon)
     if not os.path.isfile(package_icon):
         fail(f"package icon {package_icon} not found")
     render_package_assets(magick, package_icon, assets)
@@ -573,7 +725,7 @@ def main() -> None:
 
     manifest = build_manifest(
         apps, args.identity_name, publisher, args.publisher_display_name,
-        args.display_name, args.description, version, args.arch,
+        display_name, description, version, args.arch,
         args.min_version, args.max_version_tested, args.allow_elevation)
     manifest_path = os.path.join(args.layout, "AppxManifest.xml")
     manifest.write(manifest_path, encoding="utf-8", xml_declaration=True)

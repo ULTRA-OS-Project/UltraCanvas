@@ -1,4 +1,7 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
+// Version: 0.10.2 - "Use as the default cloud account" wraps instead of being cut in a longer language
+// Version: 0.10.1 - the colours are the theme's (UiStyle 0.3.0): the form is dark under a dark
+//                  look, so its dropdowns, fields and the checkbox's label read on it
 // Version: 0.10.0 - the status line is as tall as what it says, so a long
 //                   refusal is read whole; the edit form offers "Save without
 //                   signing in" once a sign-in has failed
@@ -320,7 +323,7 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
                   .SetFlexGap(UiStyle::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(UiStyle::kPadding);
-    dialog->SetBackgroundColor(UiStyle::kSurface);
+    dialog->SetBackgroundColor(UiStyle::Surface());
 
     // One two-column grid rather than a flex container per row: the caption
     // column is exactly as wide as the widest caption in it (so a longer
@@ -453,6 +456,12 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
     // status line below it.
     auto makeDefault = UltraCanvasCheckbox::CreateCheckbox(
         "cloudAccDefault", 0, 0, 300, 26, Tr("Use as the default cloud account"), false);
+    // A longer translation wraps onto a second line instead of being cut
+    // off (Russian needs 487 px); the spacer above the buttons absorbs it.
+    makeDefault->SetLabelWrap(true);
+    makeDefault->size.height = CSSLayout::Dimension::Auto();
+    makeDefault->boxConstraints = CSSLayout::BoxConstraints{};
+    makeDefault->boxConstraints->minHeight = CSSLayout::Dimension::Px(26);
     AddFormWideRow(grid, makeDefault);
     form->makeDefault = makeDefault.get();
 
@@ -496,7 +505,7 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
     auto hint = CreateLabel("cloudAccHint", 0, 0, 0, 36, "");
     hint->SetWrap(TextWrap::WrapWord);
     hint->SetFontSize(UiStyle::kFontSize - 1.0f);
-    hint->SetTextColor(UiStyle::kTextSecondary);
+    hint->SetTextColor(UiStyle::TextSecondary());
     AddFormWideRow(grid, hint);
     form->hint = hint.get();
 
@@ -511,7 +520,7 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
     status->SetWrap(TextWrap::WrapWordChar);
     status->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
     status->SetFontSize(UiStyle::kFontSize);
-    status->SetTextColor(UiStyle::kDanger);
+    status->SetTextColor(UiStyle::Danger());
     status->layoutItem.SetFlexShrink(0);
     form->status = status.get();
 
@@ -582,7 +591,7 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
         UltraCanvasLabel* status = form->status;
         // What is wrong with the form is said in the refusal colour; the grey
         // of a "Signing in…" left by the attempt before would read as a note.
-        status->SetTextColor(UiStyle::kDanger);
+        status->SetTextColor(UiStyle::Danger());
         const auto caps = chosenProvider->Capabilities();
         const bool ftp = chosenProvider->Id() == "ftp";
         const std::string scheme = SchemeSelected(form->protocol);
@@ -647,7 +656,7 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
         // user saved without one.
         const bool storeOnly = keepSignIn || (!verify && form->editing);
 
-        status->SetTextColor(Color(60, 60, 60, 255));
+        status->SetTextColor(UiStyle::TextPrimary());
         status->SetText(storeOnly        ? Tr("Saving…")
                         : caps.needsOAuth ? Tr("Waiting for the browser sign-in…")
                                           : TrF("Signing in at {0}…", a.serverUrl));
@@ -697,7 +706,7 @@ void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService
                 if (!alive) return;   // dialog already closed
                 if (r.code == ResultCode::Cancelled) return;   // closed meanwhile
                 if (r) { *added = a; dlg->CloseDialog(DialogResult::OK); return; }
-                form->status->SetTextColor(UiStyle::kDanger);
+                form->status->SetTextColor(UiStyle::Danger());
                 // DescribeResult: a sentence in the reader's language for
                 // the result code; the service's own words in the tooltip.
                 form->status->SetText(DescribeResult(r));

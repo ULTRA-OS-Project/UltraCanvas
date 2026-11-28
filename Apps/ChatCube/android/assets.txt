@@ -1,0 +1,16 @@
+# Apps/ChatCube/android/assets.txt
+# What ChatCube for Android opens by path at run time, relative to the
+# repository: scripts/android-package-apk.sh --assets copies each into the
+# APK's assets/, which the framework unpacks to $HOME/share on the first
+# launch after an install (GetResourcesDir() on Android). One path a line;
+# '#' starts a comment.
+
+# The fonts the theme names, and the icons: ChatCube's own
+# (media/icons/chatcube) and the framework's that its dialogs and menus use.
+media/fonts
+media/icons
+# The logo on the sign-in page and in the sidebar, the window icon.
+media/appicon/ChatCube.png
+media/appicon/ChatCube.svg
+# Every language's texts (Tr): ChatCube's catalogue and the standard set.
+media/locale

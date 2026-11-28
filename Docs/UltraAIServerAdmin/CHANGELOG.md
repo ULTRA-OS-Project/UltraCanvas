@@ -1,3 +1,9 @@
+#### 2026-11-26 *0.1.2*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
 #### 2026-11-12 *0.1.1*
 - The Connection page shows the key the server signs its lists with, to
   give to users who want to check what their client pinned.

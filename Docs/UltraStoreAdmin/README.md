@@ -25,6 +25,18 @@ store itself is [`Docs/UltraStore/README.md`](../UltraStore/README.md).
 | Translations | **UltraAI**, the `ITranslator` of the module, with the provider the settings name (`ai.provider`: `qwen`, `llama-cpp`, a configured endpoint; empty follows the routing policy, local first). The creator writes at least one language; `translate` fills every language of `texts.languages` (the official languages, by default) the component lacks, from its `source_language`, and lists them under `machine_translated`. A text a person wrote is never overwritten; a machine one is redone on `--redo`. |
 | Which languages? | The EU's 24 official languages, the EFTA countries' and the UK's, then the other markets the apps ship to (Ukrainian, Turkish, Serbian, Russian, Arabic, Hebrew, Hindi, Indonesian, Japanese, Korean, Thai, Vietnamese, Chinese simplified and traditional, Brazilian Portuguese): `Translation.cpp`, narrowed or widened by the setting. |
 
+> **Affiliates: where this stands (2026-11-26).** The partners, the two
+> tiers and the ledger described here are what this tool does, and they are
+> the earlier scheme. The owner has decided **UltraAffiliates**
+> ([`Docs/Research/UltraAffiliatesDesignProposal.md`](../Research/UltraAffiliatesDesignProposal.md))
+> for every shop: run by the operator in the store portal
+> (`Server/UltraStorePortal`, which replaces this tool), free for the
+> merchant, 5 % of every affiliate sale from the store's fee plus a boost
+> the merchant may add, and a superaffiliate in place of the recruit share.
+> A merchant keeps no partner list and no ledger of its own there. Nothing
+> here is migrated: the portal kept no compatibility with this tool. The
+> store keeps a code for 90 days now (it was 30).
+
 ## The pieces
 
 ```
@@ -78,6 +90,7 @@ app and every runtime or library the database has, an item marked
 | Affiliates and codes | The partners with their shares, who recruited them and what the ledger owes them; add or change one, switch one off, the join QR code. The codes with what they take off, the apps and the validity; a new code, its QR code, switch off, remove. A sale recorded by hand with what it credits. |
 | Finance | The books from the ledger for a period - all time, a year, a month: the statement by currency (paid, given back by the refunds and chargebacks, the partners' credits, net to the store), net by month as a bar chart in the main currency, revenue by app, the partners with what they earned, what a reversal took back, what was paid out and what is owed, a payout recorded, the reversals; *Statement CSV* writes the period for the books; *Sync sales* pulls the sales and the reversals. The design's VAT by country and statements archive are not here: the ledger knows no buyer country, and a statement is written when it is asked for. |
 | Settings | The store's settings (the URLs, the languages, the UltraAI provider) and the publishers. |
+| Marketplace | The design's `AdminMarketplace` artboard: without a merchant id, *Apply for a shop* (the name, the contact, the email, the website, a line about the publisher; signed with the key behind the passphrase) and *Check the application*, which sets `market.merchant_id` once approved; with one, the standing, *Your shop's profile* (name, contact, website, description, saved with `PUT /v1/merchants/me`), the notices with *Acknowledge*, the terms with *Accept the terms*, *Submit a release*, the submissions and the reports. |
 
 The slow operations (a key's Argon2id seal, a publish, a translation) run
 on a worker thread and report through `PostToUIThread`; the window refuses
@@ -89,7 +102,7 @@ of the last action, red when it failed.
 | What | Where |
 |---|---|
 | the admin store: `admin.sqlite`, `packages/`, `media/<id>/<file>` | `UltraCanvasDataFolderRoot() / "UltraStoreAdmin"` (`~/.local/share/UltraStoreAdmin`, `~/Library/Application Support/UltraStoreAdmin`, `%APPDATA%\UltraStoreAdmin`), or `--store <dir>` |
-| the publish folder | wherever `publish <outdir>` says: `catalog.json`, `catalog.json.sig`, `media/`, `packages/`, `restricted/`, `go/`, `join/`, and with `web.site_dir` the web store: `index.html`, `categories/`, `category/<id>/`, `app/<id>/`, `ultrastore-web.wasm`, `ultracanvas-loader.js`, `runtime/<hash>/`, `ultrastore.png` |
+| the publish folder | wherever `publish <outdir>` says: `catalog.json`, `catalog.json.sig`, `media/`, `packages/`, `restricted/`, `go/`, `join/`, and the web store in its output (`web.output`). As HTML + JavaScript: `index.html`, `categories/` (with `free/` and `paid/`), `category/<id>/`, `app/<id>/`, `<language>/...`, `search/`, `assets/`, `404.html`, `sitemap.xml`, `robots.txt`, `.htaccess`, `_headers`. As WebAssembly: the shadow pages and `ultrastore-web.wasm`, `ultracanvas-loader.js`, `runtime/<hash>/`, `ultrastore.png` |
 
 The media paths in the catalog (`media/<id>/<file>`) are relative to the
 catalog's URL, as the store expects, and to the admin store folder on this
@@ -113,8 +126,10 @@ The settings in `admin.sqlite`:
 |---|---|
 | `catalog.base_url` | where `catalog.json` will be served: `https://store.example/v1` |
 | `packages.base_url` | where `packages/` and `restricted/` are served; the catalog's URL when unset |
+| `account.url` | the account service the store signs in to (`Server/UltraStoreAccount`), written into the catalog as `account_url`; unset, the store has no *Sign in* |
 | `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages and the web store's |
-| `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake - or `site/` of a `wasm-build.yml` run's `ultrastore-web-dynamic` artifact): set, `publish` lays the web store beside the catalog - the HTML shadow pages, the module, the loader, the runtime under `runtime/<hash>/`; unset, nothing of the site is written |
+| `web.output` | which web store `publish` lays beside the catalog. `html` is the store as HTML + JavaScript (`WebStoreHtml.h`). `wasm` is the WebAssembly store from `web.site_dir`. `off` writes none. Unset, a store with `web.site_dir` keeps the WebAssembly store and any other gets the HTML one |
+| `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake - or `site/` of a `wasm-build.yml` run's `ultrastore-web-dynamic` artifact): the WebAssembly store's module, loader and runtime, which `web.output` `wasm` lays beside the catalog with the HTML shadow pages |
 | `web.store_download_url` | where the native store is downloaded; the web store's *Get UltraStore* |
 | `texts.languages` | the languages `translate` fills, codes separated by spaces; set by `init` to the official list |
 | `ai.provider`, `ai.base_url`, `ai.model` | the UltraAI translator's provider, server and model |
@@ -162,7 +177,9 @@ finance report [<YYYY-MM>|<YYYY>]                        the statement by curren
 finance periods | statement [<period>] [-o <file.csv>]   the months with a sale; the report as CSV, for the books
 market standing                                          where this merchant stands at the marketplace: active, paused (terms), suspended; strikes
 market submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]
-                                                         the app as saved here, signed, to the operator's review
+                                                         the app as saved here, signed, to the operator's review; its packages from
+                                                         this store's packages folder into the operator's package store, when it keeps one
+market upload <submission> <app-id>                      the app's packages into the operator's package store again (after a failed upload)
 market submissions | withdraw <submission>               every submission with its last decision; one taken back
 market notices [--all] | ack <notice>                    the operator's notices (the unacknowledged, or all); one acknowledged
 market terms [accept <version> --by <name>]              the terms in force; an acceptance
@@ -181,7 +198,17 @@ bearer token for `sale sync`, or `ULTRASTORE_PAY_ADMIN_TOKEN`), and
 its README) is named by `market.url` (the service's base) and
 `market.merchant_id` (the id the operator registered this backend under,
 with the public half of its key); `market.key` names the key that signs,
-the first active one when empty. Every `market` request is signed with
+the first active one when empty. A backend without a merchant id applies
+for one: `market apply <name> --contact <c>` sends the shop's name, the
+contact, an email for the operator, the website and a description with
+the key's public half, signed by that key, and keeps the application's id
+and secret (`market.application_id`, `market.application_secret`);
+`market application` asks what became of it and, once the operator
+approved, sets `market.merchant_id`. `market profile` shows the profile
+the service holds and changes it (`--name`, `--contact`, `--website`,
+`--description`; the website is the publisher's page in the catalog), and
+`--rotate-key <id>` sends another of this backend's keys as the new one,
+signed with the old, then names it in `market.key`. Every `market` request is signed with
 that key - `Authorization: Merchant <id>:<timestamp>:<signature>` over
 the method, the path, the timestamp and the body, as the service's
 `auth.py` verifies it - so the passphrase is asked for as it is for
@@ -233,6 +260,13 @@ the store does, and only then records the sequence. The store fetches
 `https://store.example/v1/catalog.json`, trusts `production.pub`, and lists
 Hello.
 
+That is a store of one's own. The public UltraStore catalog is the
+marketplace's, and every merchant reaches it with `market submit` - the
+ULTRA OS Project's own apps too (decided 2026-11-18, the store's README,
+*The operator tier*). The archive for `package add` comes from
+`scripts/package-store-app.sh <App>`, cut out of the suite package (the
+store's README, *Packaging an application for the store*).
+
 ## What publish checks
 
 - The catalog parses with the store's `ParseCatalog`: every id is reverse
@@ -273,7 +307,24 @@ Hello.
 - A picture variant over its budget (`MediaBudget`, `PackageStore.h`) is
   listed: a heavy picture is the usual reason a web store page is over its
   own budget.
-- With `web.site_dir` set, the web store (`WebSite.h`,
+- With `web.output` `html` - the default where `web.site_dir` is not set -
+  the web store is laid beside the catalog as HTML + JavaScript
+  (`WebStoreHtml.h`, written by UltraSite):
+  - **Pages.** Discover, the categories (and `free/`, `paid/`), each
+    category and each app that is not hidden. Each is complete and styled,
+    with the store's design, a dark look, a search box and *Install* /
+    *Try* / *Buy* as `ultrastore://app/<id>` links with the store's
+    download beside them.
+  - **Languages.** The same pages are written in every language of the
+    apps' texts, under `<language>/`. Their words come from the store's
+    own translations (`media/locale/<language>/UltraStore.json` and
+    `Standard.json`), and the pages are joined by `hreflang` and a
+    language switcher.
+  - **Addresses.** They carry the catalog base's path (`/v1/`).
+  - **The rest of the folder** is left alone. A missing picture or a
+    page over its budget is a warning in the report, never a failed
+    publish.
+- With `web.output` `wasm` (the default where `web.site_dir` is set), the web store (`WebSite.h`,
   `Docs/UltraStore/WebstoreBrief.md`) is laid beside the catalog: a page
   for Discover, the categories, each category and each app that is not
   hidden (`index.html`, `categories/`, `category/<id>/`, `app/<id>/`, each
@@ -301,6 +352,8 @@ Hello.
    files reach the server?*).
 4. **Affiliates and codes** (*Decisions*): the partners, two tiers, the
    codes in the catalog, QR codes and links, the ledger and the report.
+   Built; superseded as the design by UltraAffiliates (the note above *The
+   pieces*).
 5. **Payment**: Paysafe with Skrill Quick Checkout (the store's README,
    *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
    sales into the ledger, the catalog naming the service from the
@@ -311,5 +364,14 @@ Hello.
    signed with this backend's key, the notices show as a banner until
    acknowledged, the terms are read and accepted there, the standing and
    the reports about this merchant are shown; `publish` stays for a
-   private or test catalog. Next: the packages uploaded into the
-   operator's package store with the submission.
+   private or test catalog. Self-service (2026-11-19): `market apply`
+   asks the operator for a shop with this backend's key, `market
+   application` sets the merchant id once approved, `market profile`
+   edits the profile the catalog shows and rotates the key; the window's
+   page has the three states. The packages (2026-11-20): `market submit`
+   and the page's *Submit* send each package of the app from this store's
+   `packages/` folder into the operator's package store right after the
+   submission, when the operator keeps one (the `packages` check says
+   *waiting*); `market upload` sends them again. The operator's publish
+   then lays them out beside the public catalog, so no server of one's
+   own is needed for the marketplace. Next: the review pipeline.

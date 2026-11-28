@@ -87,7 +87,7 @@ std::shared_ptr<UltraCanvasLabel> AddNotesColumn(const std::shared_ptr<UltraCanv
     column->SetPadding(20, 0, 0, 0);
     auto notes = DemoKit::AddText(column, id, text);
     notes->SetFontSize(10.5f);
-    notes->SetTextColor(Color(70, 70, 70, 255));
+    notes->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
     return notes;
 }
 
@@ -384,7 +384,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHorizontalTab() {
         "SetAutoContrastInsideLabels(true) picks white or near-black text per stage from the fill's brightness, "
         "so the grey, blue, amber and green bands all stay readable."));
     notes->SetFontSize(10.5f);
-    notes->SetTextColor(Color(70, 70, 70, 255));
+    notes->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
     DemoKit::Add(page.tab, notes);
 
     return page.tab;
@@ -588,7 +588,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
                                       Tr("Click a stage to read its figures here.\nClick a neck to report the "
                                       "conversion through it."));
     selection->SetFontSize(11);
-    selection->SetTextColor(Color(70, 70, 70, 255));
+    selection->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
 
     // The callbacks report indices into the data source, so sorting cannot shift them
     auto source = chart->GetFunnelDataSource();
@@ -644,7 +644,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFunnelCh
     DemoKit::Add(page, card, 1);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("FunnelChartTabs", 0, 0, 0, 0);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 

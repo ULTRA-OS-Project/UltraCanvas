@@ -215,7 +215,7 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasLabel> MakeTabDescription(const std::string& id, const std::string& text) {
         auto lbl = DemoKit::CreateText(id, text);
         lbl->SetFontSize(11);
-        lbl->SetTextColor(Color(70, 70, 80, 255));
+        lbl->SetTextColor(DemoKit::Themed(Color(70, 70, 80, 255)));
         lbl->SetMargin(10, 12, 4, 12);   // top, right, bottom, left — inset from the tab edge
         return lbl;
     }
@@ -386,7 +386,7 @@ namespace UltraCanvas {
         DemoKit::Add(page, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("HeatmapTabs", 0, 0, 0, 0);
-        tabs->SetTabStyle(TabStyle::Rounded);
+        DemoKit::StyleTabs(tabs);
         tabs->SetTabHeight(30);
         tabs->SetTabCornerRadius(8.0f);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
@@ -398,13 +398,13 @@ namespace UltraCanvas {
 
         // ---- Tab 1: Interactive Heatmap (control panel + large heatmap) ----
         auto tab1 = std::make_shared<UltraCanvasContainer>("HmTabInteractive", 0, 0, INNER_W, INNER_H);
-        tab1->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab1->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab1->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // As wide as its widest option (300 px at least) and the tab's height;
         // it scrolls when the options are taller than the tab.
         auto panel = std::make_shared<UltraCanvasContainer>("HmPanel");
-        panel->SetBackgroundColor(Color(247, 247, 250, 255));
+        panel->SetBackgroundColor(DemoKit::Themed(Color(247, 247, 250, 255)));
         panel->SetPadding(12, 14, 12, 14);
         panel->layout.SetFlexColumn().SetFlexGap(4)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -432,7 +432,7 @@ namespace UltraCanvas {
 
         // ---- Tab 2: Spectrogram (STFT) ----
         auto tab2 = std::make_shared<UltraCanvasContainer>("HmTabSpec", 0, 0, INNER_W, INNER_H);
-        tab2->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab2->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab2->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddFlexChild(tab2, MakeTabDescription("HmSpecDesc",
                      Tr("Short-Time Fourier Transform of a synthetic signal (two steady tones + a rising chirp). "
@@ -457,7 +457,7 @@ namespace UltraCanvas {
 
         // ---- Tab 3: Calendar Heatmap ----
         auto tab3 = std::make_shared<UltraCanvasContainer>("HmTabCal", 0, 0, INNER_W, INNER_H);
-        tab3->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab3->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab3->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddFlexChild(tab3, MakeTabDescription("HmCalDesc",
                      Tr("Calendar (contribution-graph) heatmap: a full year of synthetic daily activity, "
@@ -477,7 +477,7 @@ namespace UltraCanvas {
 
         // ---- Tab 4: Hexbin Density ----
         auto tab4 = std::make_shared<UltraCanvasContainer>("HmTabHex", 0, 0, INNER_W, INNER_H);
-        tab4->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab4->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab4->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddFlexChild(tab4, MakeTabDescription("HmHexDesc",
                      Tr("Hexbin density: 6000 clustered points binned into a hexagonal lattice, "
@@ -498,7 +498,7 @@ namespace UltraCanvas {
 
         // ---- Tab 5: "Job Gains & Losses" recreation ----
         auto tab5 = std::make_shared<UltraCanvasContainer>("HmTabJobs", 0, 0, INNER_W, INNER_H);
-        tab5->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab5->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab5->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         AddFlexChild(tab5, MakeTabDescription("HmJobsDesc",
                      Tr("Winners & Losers (NYT-style): proof that a dot-density \"sectors rising / falling\" "

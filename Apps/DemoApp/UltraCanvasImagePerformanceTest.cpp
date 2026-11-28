@@ -1222,7 +1222,7 @@ namespace UltraCanvas {
         // ========== TOOLBAR ==========
         // A row that wraps: longer texts put the image info on a line of its own.
         auto toolbar = DemoKit::CreateRow("PerfToolbar", 8);
-        toolbar->SetBackgroundColor(Color(245, 248, 252, 255));
+        toolbar->SetBackgroundColor(DemoKit::Themed(Color(245, 248, 252, 255)));
         toolbar->SetBorders(1.0f, Color(200, 210, 220, 255));
         toolbar->SetPadding(6, 6, 6, 6);
         toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -1238,7 +1238,7 @@ namespace UltraCanvas {
 
         state->infoLabel = DemoKit::CreateText("PerfImageInfo", Tr("No image loaded"));
         state->infoLabel->SetFontSize(11);
-        state->infoLabel->SetTextColor(Color(60, 60, 60, 255));
+        state->infoLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
 
         // The gear at the right end: which formats the benchmark times.
         state->settingsBtn = std::make_shared<UltraCanvasButton>("PerfSettingsBtn", 0, 0, 32, 30, "");
@@ -1269,7 +1269,7 @@ namespace UltraCanvas {
 
         // ========== CHART AREA (fills remaining vertical space) ==========
         auto chartSection = std::make_shared<UltraCanvasContainer>("PerfChartSection");
-        chartSection->SetBackgroundColor(Color(255, 255, 255, 255));
+        chartSection->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
 
         chartSection->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         chartSection->layout.SetFlexGap(4);
@@ -1284,7 +1284,7 @@ namespace UltraCanvas {
         // Thumbnails row — use AddChild without layout manager.
         state->thumbsRow = std::make_shared<UltraCanvasContainer>(
                 "PerfThumbsRow", 0, 0, 0, 48);
-        state->thumbsRow->SetBackgroundColor(Color(255, 255, 255, 255));
+        state->thumbsRow->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         state->thumbsRow->SetBorders(1.0f, Color(220, 220, 220, 255));
 
         state->thumbs.reserve(state->codecs.size());
@@ -1293,7 +1293,7 @@ namespace UltraCanvas {
                     "PerfThumb_" + std::to_string(i),
                     0, 0, 0, 42);
             thumb->SetFitMode(ImageFitMode::Contain);
-            thumb->SetBackgroundColor(Color(245, 245, 245, 255));
+            thumb->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
             thumb->SetBorders(1.0f, Color(210, 215, 220, 255));
             thumb->SetClickable(true);
             thumb->SetMouseCursor(UCMouseCursor::Hand);
@@ -1314,7 +1314,7 @@ namespace UltraCanvas {
         state->statusLabel = DemoKit::AddText(card, "PerfStatusLabel",
                 Tr("Click Choose Image to pick a bitmap."));
         state->statusLabel->SetFontSize(11);
-        state->statusLabel->SetTextColor(Color(60, 60, 60, 255));
+        state->statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
 
         // Position each active codec's thumbnail horizontally centered under
         // its bar group, and hide thumbnails for codecs that are not in the

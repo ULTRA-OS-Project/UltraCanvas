@@ -679,8 +679,8 @@ std::shared_ptr<UltraCanvasContainer> MakePresentationTab(
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateMindMapExamples() {
     auto main = DemoKit::CreatePage("MindMapExamples", Tr("Mind Map"),
-            Tr("Rooted topic tree on a pan/zoom canvas. Balanced, logic, org chart, "
-            "radial and balloon (radial cluster) structures; per-branch colour cascade; collapse, in-place "
+            Tr("Rooted topic tree on a pan/zoom canvas. Balanced, logic, org chart and "
+            "radial structures; per-branch colour cascade; collapse, in-place "
             "editing and drag-to-reparent."));
     // Every map pans and zooms itself: the page is the area's height and the
     // tabs take what the texts leave.
@@ -694,7 +694,7 @@ UltraCanvasDemoApplication::CreateMindMapExamples() {
     // The read-out every tab reports to, above the tabs.
     auto statusLabel = DemoKit::CreateText("MindMapStatus", Tr("Click a topic to inspect it."));
     statusLabel->SetFontSize(10);
-    statusLabel->SetBackgroundColor(Color(245, 245, 245));
+    statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245)));
     statusLabel->SetBorders(1.0f);
     statusLabel->SetPadding(6.0f);
     statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -702,7 +702,7 @@ UltraCanvasDemoApplication::CreateMindMapExamples() {
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("MindMapTabs");
     tabs->SetTabPosition(TabPosition::Top);
-    tabs->SetTabStyle(TabStyle::Modern);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabMaxWidth(300);
 
     tabs->AddTab(Tr("Editable map"),        MakeEditableTab(statusLabel));

@@ -132,7 +132,7 @@ Changing the header is changing that contract: append a member to
 `UltraCanvasPluginHost` and bump `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION`, or
 change a type that crosses to the plug-ins (`UCElementDescriptor` and friends)
 and bump the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG`, then run
-`python3 scripts/check_plugin_abi.py --update`. CI (`plugin-abi.yml`) fails
+`python3 scripts/check_plugin_abi.py --update`. CI (`source-checks.yml`) fails
 a change to the header that moves neither; a change that is not part of the
 contract is recorded with `--update --no-abi-change "why"`.
 
@@ -201,6 +201,7 @@ on Windows the module needs the shared core). The table:
 | `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
 | `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
 | `MediaViewer` | `media-viewer` | `ultracanvas-widget-media-viewer` (shared core only) | UltraViewer, UltraFiler, UltraMail, EmailCleaner, ChatCube, UltraClipboard, UltraSnip, DemoApp |
+| `ProfilePicture` | `profile-picture`, `profile-picture-editor` | `ultracanvas-widget-profile-picture` | ChatCube, DemoApp |
 
 **Static or shared core.** The shipping configuration is a shared core
 (`ULTRACANVAS_BUILD_SHARED`, on by default whenever DemoApp is built): every

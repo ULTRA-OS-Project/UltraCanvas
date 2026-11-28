@@ -2,10 +2,12 @@
 // Format detection and load/save dispatch for word-processing documents.
 // The per-format readers/writers live in UltraCanvasOdtFormat.cpp,
 // UltraCanvasDocxFormat.cpp and Plugins/Documents/LaTeX/.
+// Version: 1.4.0 - templates: .ott is an .odt, .dotx and .dotm a .docx; a .dotm is not written
+// Version: 1.3.2 - Load passes the password to an .odt (a password-protected one opens)
 // Version: 1.3.1 - A .docx is recognised by its main document part as the package's
 //                  relationships name it (word/document2.xml, say)
 // Version: 1.3.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -24,11 +26,19 @@ namespace UltraCanvas {
 WordDocumentFormat WordDocumentFormatFromExtension(const std::string& extension) {
     std::string ext = WordFormatInternal::ToLower(extension);
     if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
-    if (ext == "odt") return WordDocumentFormat::Odt;
-    if (ext == "docx") return WordDocumentFormat::Docx;
+    if (ext == "odt" || ext == "ott") return WordDocumentFormat::Odt;
+    if (ext == "docx" || ext == "dotx" || ext == "dotm") return WordDocumentFormat::Docx;
     if (ext == "doc") return WordDocumentFormat::LegacyDoc;
     if (ext == "tex" || ext == "latex" || ext == "ltx") return WordDocumentFormat::LaTeX;
     return WordDocumentFormat::Unknown;
+}
+
+bool IsWordTemplateExtension(const std::string& extensionOrPath) {
+    std::string ext = WordFormatInternal::ToLower(extensionOrPath);
+    const size_t dot = ext.find_last_of('.');
+    const size_t slash = ext.find_last_of("/\\");
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ext = ext.substr(dot + 1);
+    return ext == "ott" || ext == "dotx" || ext == "dotm";
 }
 
 WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
@@ -112,7 +122,7 @@ bool UCWordDocumentIO::LoadByFormat(const std::string& filePath, UCRichDocument&
                                     std::string& outError, const std::string& password) {
     switch (DetectWordDocumentFormat(filePath)) {
         case WordDocumentFormat::Odt:
-            return LoadOdt(filePath, outDocument, outError);
+            return LoadOdt(filePath, outDocument, outError, password);
         case WordDocumentFormat::Docx:
             return LoadDocx(filePath, outDocument, outError);
         case WordDocumentFormat::LegacyDoc: {
@@ -154,6 +164,12 @@ bool UCWordDocumentIO::Save(const std::string& filePath, const UCRichDocument& d
     // would drop the protection without a word.
     if (!password.empty() && format != WordDocumentFormat::Docx) {
         outError = "Only a Word document (.docx) can be saved with a password: " + filePath;
+        return false;
+    }
+    // A macro-enabled template is read, its macros left out: written back
+    // without them it would be a .dotx under the wrong name.
+    if (WordFormatInternal::ToLower(PathToUtf8(PathFromUtf8(filePath).extension())) == ".dotm") {
+        outError = "Word macro-enabled templates (.dotm) are read, not written. Save as .dotx instead: " + filePath;
         return false;
     }
     switch (format) {

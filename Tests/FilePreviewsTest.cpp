@@ -7,10 +7,16 @@
 // refused; a throwing one is contained; queries from several threads at once
 // while another registers are safe. Then the built-in providers through the
 // Filer, which now reaches them only through the registry: a Word document's
-// and a PowerPoint deck's text preview, an encrypted one refused. Headless.
+// and a PowerPoint deck's text preview, an encrypted one refused; a
+// word-processing document's first page as its thumbnail. Headless.
 //
+// Version: 1.2.0 - a deck's thumbnail is its first slide drawn at the slide's shape; a protected one has none
+// Version: 1.1.1 - "the text is drawn": grey pixels darker than mid-grey, not darker than a fixed
+//                  dark grey - at 96 px a thin face (Liberation, unhinted) drew 10 such pixels
+//                  where DejaVu drew 36, and the check failed on the font, not the page
+// Version: 1.1.0 - a word-processing document's first page (odt, docx, doc)
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilePreviews.h"
@@ -187,6 +193,99 @@ int main() {
         lines.clear();
         Check(!UltraCanvasFilerWidget::TextPreviewLines(fixtures + "/office-agile-encrypted.pptx", lines, tabular),
               "an encrypted .pptx has no preview");
+    }
+
+    std::printf("A deck's first slide\n");
+    {
+        Check(CanRenderFileThumbnail("pptx") && CanRenderFileThumbnail("odp") && CanRenderFileThumbnail("potx"),
+              "decks have a thumbnail");
+        FileThumbnailRequest request;
+        request.width = 160;
+        request.height = 160;
+        const auto slide = RenderFileThumbnailFromProvider(fixtures + "/office-pptx-sample.pptx", request);
+        Check(slide && slide->GetRawWidth() == 160 && slide->GetRawHeight() == 90,
+              "a .pptx: its first slide, 160 x 90 for a 16:9 deck in a 160 x 160 tile");
+        int dark = 0;
+        for (int y = 0; slide && y < slide->GetRawHeight(); ++y)
+            for (int x = 0; x < slide->GetRawWidth(); ++x)
+                if ((slide->GetPixel(x, y) & 0xFF) < 128) ++dark;
+        Check(dark > 20, "the slide's title is drawn on it");
+        const auto odp = RenderFileThumbnailFromProvider(fixtures + "/office-pptx-sample.odp", request);
+        Check(odp && odp->GetRawWidth() == 160, "an .odp: its first slide");
+        Check(!RenderFileThumbnailFromProvider(fixtures + "/office-agile-encrypted.pptx", request),
+              "a protected deck: no thumbnail (it keeps its type glyph)");
+    }
+
+    std::printf("A PDF's first page\n");
+    if (CanRenderFileThumbnail("pdf")) {
+        // The page paints a blue square and leaves its paper alone, as
+        // nearly every PDF does: the engine hands that paper back
+        // transparent, and on a dark tile the thumbnail was a dark page.
+        FileThumbnailRequest request;
+        request.width = 96;
+        request.height = 96;
+        auto page = RenderFileThumbnailFromProvider(fixtures + "/pdf-blue-square.pdf", request);
+        Check(page != nullptr, "a PDF's first page as its thumbnail");
+        if (page) {
+            const int w = page->GetWidth(), h = page->GetHeight();
+            int seeThrough = 0;
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; ++x)
+                    if ((page->GetPixel(x, y) >> 24) != 255) ++seeThrough;
+            Check(seeThrough == 0, "the page is opaque: " + std::to_string(seeThrough) + " pixels see through");
+            Check((page->GetPixel(2, 2) & 0xFFFFFF) == 0xFFFFFF, "the paper the page leaves alone is white");
+            const uint32_t middle = page->GetPixel(w / 2, h / 2);
+            const int r = (middle >> 16) & 0xFF, b = middle & 0xFF;
+            Check(b > 180 && r < 90, "what the page paints keeps its colour (the blue square)");
+        }
+    } else {
+        std::printf("  (no PDF engine in this build: the page checks skipped)\n");
+    }
+
+    std::printf("A word-processing document's first page\n");
+    {
+        Check(Contains(thumbs, "docx") && Contains(thumbs, "odt") && Contains(thumbs, "doc"),
+              "odt, docx and doc have a first-page thumbnail");
+        Check(!Contains(thumbs, "tex"), "a .tex keeps its outline (no page thumbnail)");
+        FileThumbnailRequest request;
+        request.width = 96;
+        request.height = 96;
+        for (const char* name : {"word97-formatting.docx", "word97-formatting.odt", "word97-formatting.doc"}) {
+            const std::string what = name;
+            auto page = RenderFileThumbnailFromProvider(fixtures + "/" + name, request);
+            Check(page != nullptr, what + ": its first page as the thumbnail");
+            if (!page) continue;
+            const int w = page->GetWidth(), h = page->GetHeight();
+            Check(h == 96 && w < h && w > 48,
+                  what + ": a portrait page fitted to the box (" + std::to_string(w) + " x " +
+                          std::to_string(h) + ")");
+            // Ink: neutral grey darker than mid-grey. At this size a line of
+            // text is antialiased grey, and how dark depends on the face
+            // and hinting fontconfig picks - the fixture's Liberation Serif
+            // drawn unhinted gives 80-110 such pixels, DejaVu (where
+            // Liberation is not installed) 225-290. The red box and the
+            // yellow highlight on the page are no text, so colours do not count.
+            int seeThrough = 0, ink = 0;
+            for (int y = 0; y < h; ++y) {
+                for (int x = 0; x < w; ++x) {
+                    const uint32_t p = page->GetPixel(x, y);
+                    if ((p >> 24) != 255) ++seeThrough;
+                    const int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                    const int spread = std::max({r, g, b}) - std::min({r, g, b});
+                    if (r + g + b < 3 * 200 && spread < 40) ++ink;
+                }
+            }
+            Check(seeThrough == 0, what + ": the page is opaque paper");
+            Check((page->GetPixel(1, 1) & 0xFFFFFF) == 0xFFFFFF, what + ": the margin is white paper");
+            Check(ink > 40, what + ": the text is drawn on it (" + std::to_string(ink) + " grey pixels)");
+        }
+        Check(!RenderFileThumbnailFromProvider(fixtures + "/office-agile-encrypted.docx", request),
+              "an encrypted .docx has no page (it keeps its type glyph)");
+
+        // Through the Filer, as UltraFiler's tiles and the desktop boards ask.
+        auto tile = RenderFileThumbnail(fixtures + "/word97-formatting.docx", 120, 120);
+        Check(tile != nullptr && tile->GetHeight() == 120 && tile->GetWidth() < 120,
+              "RenderFileThumbnail gives a .docx its page, not a square page of text");
     }
 
     std::printf(failures ? "%d check(s) failed\n" : "all checks passed\n", failures);

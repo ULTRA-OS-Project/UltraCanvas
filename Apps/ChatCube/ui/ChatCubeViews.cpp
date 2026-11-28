@@ -1,5 +1,9 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.12 - a location (an openstreetmap.org link with a marker) as a map card: the map
+//                   with its pin (UltraCanvas DrawMap), the place's name under it
+// Version: 0.2.11 - a wrapped message drawn whole: its text no longer cut to one line with an ellipsis
+// Version: 0.2.10 - a row says who is typing there, in the accent, in place of the last message
 // Version: 0.2.9 - a bar under a file on its way (going out or coming in) with its percent; a sound file
 //                  with a note and a play mark, played in its bubble; a file's name measured bold, as
 //                  it is drawn, so it stays inside its bubble; no "Video" word under the play mark
@@ -19,13 +23,15 @@
 //                  rounded selection, bubbles without borders in the theme's colours, senders in
 //                  their avatar's colour
 // Version: 0.1.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeViews.h"
 #include "ChatCubeTheme.h"
+#include "ChatCubeLocationWindow.h"
 
 #include "UltraCanvasImage.h"
+#include "UltraCanvasMapView.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -76,6 +82,8 @@ constexpr int   kStickerSide = 160;
 constexpr int   kPictureMinSide = 48;
 constexpr float kPictureRadius = 10.0f;
 constexpr int   kPictureGap = 6;
+constexpr int   kMapCardWidth = 300;     // a location's map in its bubble
+constexpr int   kMapCardHeight = 160;
 constexpr double kPlayMarkRadius = 22.0;
 // A sender's avatar beside their bubble in a group, and the room it takes.
 constexpr double kSenderAvatarRadius = 14.0;
@@ -297,6 +305,10 @@ bool IsAudioMessage(const UltraIMMessage& message) {
     if (message.type != UltraIMMessageType::File) return false;
     return message.attachment.mimeType.rfind("audio/", 0) == 0 || IsAudioFileName(message.attachment.fileName) ||
            IsAudioFileName(message.attachment.localPath);
+}
+
+bool LocationOf(const UltraIMMessage& message, MapPlace& place) {
+    return message.type == UltraIMMessageType::Text && ParseLocationText(message.text, place);
 }
 
 bool HasPicture(const UltraIMMessage& message) {
@@ -528,7 +540,9 @@ Size2Di MessageBubbleDelegate::PictureSize(const UltraIMMessage& message, bool s
 }
 
 int MessageBubbleDelegate::EstimateHeight(const MessageRow& row, bool showSender) const {
-    const std::string text = MessageText(row.message);
+    MapPlace place;
+    const bool location = LocationOf(row.message, place);
+    const std::string text = location ? place.name : MessageText(row.message);
     const int charsPerLine = std::max(1, (BubbleMaxWidth() - 2 * kBubblePadH) / 7);
     int lines = text.empty() ? 0 : 1;
     int column = 0;
@@ -539,7 +553,8 @@ int MessageBubbleDelegate::EstimateHeight(const MessageRow& row, bool showSender
         }
     }
     int picture = 0;
-    if (HasPicture(row.message)) picture = PictureSize(row.message, showSender).height + (lines ? kPictureGap : 0);
+    if (location) picture = kMapCardHeight + (lines ? kPictureGap : 0);
+    else if (HasPicture(row.message)) picture = PictureSize(row.message, showSender).height + (lines ? kPictureGap : 0);
     const int quote = row.message.replyTo.messageId.empty() ? 0 : kQuoteHeight + kQuoteGap;
     const int voice = IsAudioMessage(row.message) ? 2 * static_cast<int>(kVoiceMarkRadius) : 0;
     return 2 * kRowPadV + 2 * kBubblePadV + picture + quote + std::max(lines * kLineHeightEstimate, voice) +
@@ -594,11 +609,16 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
 
     const UltraIMMessage& m = r.message;
     const bool showSender = messages->IsGroup() && !m.isOwn;
-    const std::string text = MessageText(m);
-    const bool picture = HasPicture(m);
-    const Size2Di pictureSize = picture ? PictureSize(m, showSender) : Size2Di(0, 0);
+    // A location: its map where a picture would be, its name for the text
+    MapPlace place;
+    const bool location = LocationOf(m, place);
     // In a group, the sender's avatar sits left of their bubble.
     const int inset = showSender ? kSenderAvatarInset : 0;
+    const std::string text = location ? place.name : MessageText(m);
+    const bool picture = location || HasPicture(m);
+    const Size2Di pictureSize =
+        location ? Size2Di(std::min(kMapCardWidth, BubbleMaxWidth() - 2 * kBubblePadH - inset), kMapCardHeight)
+                 : picture ? PictureSize(m, showSender) : Size2Di(0, 0);
     // Sound - a voice message or a song sent as a file - has a play mark
     // left of its words, and a song a note before its name.
     const bool voice = IsAudioMessage(m);
@@ -716,7 +736,14 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
         // The photo, the sticker, or the video's preview under a play mark;
         // a box that says so while the picture is still on its way.
         const Rect2Dd box(x, y, pictureSize.width, pictureSize.height);
-        const bool painted = PaintPicture(ctx, PicturePath(m), box, kPictureRadius);
+        if (location) {
+            // The map around the place, its pin, OpenStreetMap's credit;
+            // tiles still on their way are grey until they come
+            const GeoPoint at{place.latitude, place.longitude};
+            DrawMap(ctx, box, at, place.zoom, &at, true);
+            ctx->DrawFilledRectangle(box, Colors::Transparent, 1.0f, m.isOwn ? Color(0, 0, 0, 40) : look.line, 0.0f);
+        }
+        const bool painted = location || PaintPicture(ctx, PicturePath(m), box, kPictureRadius);
         if (!painted) {
             ctx->DrawFilledRectangle(box, look.well, 0.0f, Colors::Transparent, kPictureRadius);
             std::string waiting;
@@ -780,8 +807,13 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
         ctx->SetTextAlignment(TextAlignment::Left);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
         ctx->SetTextPaint(m.isOwn ? look.bubbleOwnInk : look.ink);
+        // A line's worth of slack below: in a rectangle exactly as tall as
+        // the measured text, a rounding difference between measuring and
+        // drawing made the renderer give up on the second line and end the
+        // first with an ellipsis - every wrapped message, on a phone nearly
+        // all of them. The text is top-aligned, so the slack draws nothing.
         ctx->DrawTextInRect(text, Rect2Dd(x + textInset, y + (bodyHeight - textSize.height) / 2.0, maxText,
-                                          textSize.height));
+                                          textSize.height + kBodyFont));
     }
     y += bodyHeight;
 
@@ -893,6 +925,21 @@ void ConversationListModel::SetPresence(const std::string& contactId, UltraIMPre
     }
 }
 
+void ConversationListModel::SetTyping(const std::string& conversationId, const std::string& text) {
+    auto it = typing_.find(conversationId);
+    const std::string before = it == typing_.end() ? std::string() : it->second;
+    if (before == text) return;
+    if (text.empty()) typing_.erase(conversationId);
+    else typing_[conversationId] = text;
+    const int row = FindRow(conversationId);
+    if (row >= 0) NotifyRowChanged(row);
+}
+
+std::string ConversationListModel::TypingText(const std::string& conversationId) const {
+    auto it = typing_.find(conversationId);
+    return it == typing_.end() ? std::string() : it->second;
+}
+
 int ConversationListModel::FindRow(const std::string& conversationId) const {
     for (size_t i = 0; i < list_.size(); ++i) {
         if (list_[i].conversationId == conversationId) return static_cast<int>(i);
@@ -999,6 +1046,12 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     ctx->SetTextPaint(unread ? look.ink : look.inkMuted);
     std::string snippet = c.lastMessageSnippet.empty() ? Tr("No messages yet") : c.lastMessageSnippet;
     if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = Tr("End-to-end encrypted");
+    // Someone typing there: that, in the accent, instead of the last message.
+    const std::string typing = list->TypingText(c.conversationId);
+    if (!typing.empty()) {
+        snippet = typing;
+        ctx->SetTextPaint(look.accent);
+    }
     ctx->DrawTextInRect(snippet, Rect2Dd(textX, topY + 22, rightEdge - textX - badgeWidth - 8, 18));
 }
 

@@ -134,7 +134,7 @@ const ColorPreset* PresetForLineColor(const Color& c) {
 // size; a canvas larger than that scrolls instead of being cut.
 std::shared_ptr<UltraCanvasContainer> MakeTabPage(const std::string& id) {
     auto page = std::make_shared<UltraCanvasContainer>(id);
-    page->SetBackgroundColor(Color(245, 247, 250, 255));
+    page->SetBackgroundColor(DemoKit::Themed(Color(245, 247, 250, 255)));
     page->SetPadding(14, 20, 14, 20);
     page->layout.SetFlexColumn().SetFlexGap(10)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -149,7 +149,7 @@ std::shared_ptr<UltraCanvasLabel> AddFieldLabel(const std::shared_ptr<UltraCanva
                                                 const std::string& id, const std::string& text) {
     auto lbl = DemoKit::AddText(parent, id, text);
     lbl->SetFontSize(11.0f);
-    lbl->SetTextColor(Color(80, 80, 80, 255));
+    lbl->SetTextColor(DemoKit::Themed(Color(80, 80, 80, 255)));
     return lbl;
 }
 }
@@ -164,7 +164,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     auto desc = DemoKit::AddText(container, "Desc",
             Tr("Pre-built example. Click Select to move/connect, drag nodes to reposition."));
     desc->SetFontSize(13);
-    desc->SetTextColor(Color(100, 100, 100, 255));
+    desc->SetTextColor(DemoKit::Themed(Color(100, 100, 100, 255)));
 
     // The canvas and, beside it (under it when the tab is narrow), the
     // instructions.
@@ -172,7 +172,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     workRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Start);
 
     auto chart = CreateFlowChart("flowChart", 0, 0, 1130, 680);
-    chart->SetBackgroundColor(Color(255, 255, 255, 255));
+    chart->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     chart->SetGridVisible(true, 20.0f);
     chart->SetGridColor(Color(235, 235, 235, 255));
     chart->SetSnapToGrid(true);
@@ -237,7 +237,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     DemoKit::AddFixed(workRow, chart);
 
     auto instrPanel = DemoKit::CreateColumn("instrPanel", 8);
-    instrPanel->SetBackgroundColor(Color(255, 255, 255, 255));
+    instrPanel->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     instrPanel->SetBorders(1.0f, Color(220, 220, 220, 255));
     instrPanel->SetPadding(10);
     DemoKit::Add(workRow, instrPanel, 1);
@@ -245,7 +245,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
 
     auto instrTitle = DemoKit::AddHeading(instrPanel, "instrTitle", Tr("How to Use"));
     instrTitle->SetFontSize(14.0f);
-    instrTitle->SetTextColor(Color(40, 40, 40, 255));
+    instrTitle->SetTextColor(DemoKit::Themed(Color(40, 40, 40, 255)));
 
     const std::pair<const char*, std::string> instructions[] = {
         {"instr1", Tr("1. Click 'Select' then drag nodes to reposition.")},
@@ -255,7 +255,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     for (const auto& entry : instructions) {
         auto instr = DemoKit::AddText(instrPanel, entry.first, entry.second);
         instr->SetFontSize(11.0f);
-        instr->SetTextColor(Color(80, 80, 80, 255));
+        instr->SetTextColor(DemoKit::Themed(Color(80, 80, 80, 255)));
     }
 
     // Buttons as wide as their text, in a row that wraps.
@@ -340,13 +340,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     DemoKit::AddHeading(container, "BuilderTitle", Tr("Build Your Own Diagram"))->SetFontSize(20.0f);
     auto desc = DemoKit::AddText(container, "BuilderDesc",
             Tr("Pick a shape, click on the canvas to place it. Click any node or connection to edit its properties."));
-    desc->SetTextColor(Color(100, 100, 100, 255));
+    desc->SetTextColor(DemoKit::Themed(Color(100, 100, 100, 255)));
 
     auto workRow = DemoKit::AddRow(container, "BuilderWorkRow", 10);
 
     // --- Chart canvas (empty) ---
     auto chart = CreateFlowChart("builderChart", 0, 0, 870, 640);
-    chart->SetBackgroundColor(Color(255, 255, 255, 255));
+    chart->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     chart->SetGridVisible(true, 20.0f);
     chart->SetGridColor(Color(235, 235, 235, 255));
     chart->SetSnapToGrid(true);
@@ -363,7 +363,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // =========================================================================
     // As tall as the canvas row, or taller when its fields need it.
     auto propsPanel = DemoKit::CreateColumn("propsPanel", 4);
-    propsPanel->SetBackgroundColor(Color(255, 255, 255, 255));
+    propsPanel->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     propsPanel->SetBorders(1.0f, Color(220, 220, 220, 255));
     propsPanel->SetPadding(10, 12, 10, 12);
     propsPanel->size.width = CSSLayout::Dimension::Px(290);
@@ -372,7 +372,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // Static header
     auto propsTitle = DemoKit::AddHeading(propsPanel, "propsTitle", Tr("Properties"));
     propsTitle->SetFontSize(14.0f);
-    propsTitle->SetTextColor(Color(40, 40, 40, 255));
+    propsTitle->SetTextColor(DemoKit::Themed(Color(40, 40, 40, 255)));
 
     auto propsHint = DemoKit::AddText(propsPanel, "propsHint", Tr("Select a node or connection."));
     propsHint->SetFontSize(11.0f);
@@ -418,7 +418,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // NODE SECTION (visible only when a non-StickyNote node is selected)
     // -------------------------------------------------------------------------
     auto nodeSection = DemoKit::CreateColumn("nodeSection", 4);
-    nodeSection->SetBackgroundColor(Color(255, 255, 255, 0));  // transparent
+    nodeSection->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 0)));  // transparent
     nodeSection->SetMargin(6, 0, 0, 0);
     DemoKit::Add(propsPanel, nodeSection);
     nodeSection->SetVisible(false);
@@ -461,7 +461,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // CONNECTION SECTION
     // -------------------------------------------------------------------------
     auto connSection = DemoKit::CreateColumn("connSection", 4);
-    connSection->SetBackgroundColor(Color(255, 255, 255, 0));
+    connSection->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 0)));
     connSection->SetMargin(6, 0, 0, 0);
     DemoKit::Add(propsPanel, connSection);
     connSection->SetVisible(false);
@@ -529,7 +529,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // STICKY NOTE SECTION (selected node has shape == StickyNote)
     // -------------------------------------------------------------------------
     auto noteSection = DemoKit::CreateColumn("noteSection", 4);
-    noteSection->SetBackgroundColor(Color(255, 255, 255, 0));
+    noteSection->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 0)));
     noteSection->SetMargin(6, 0, 0, 0);
     DemoKit::Add(propsPanel, noteSection);
     noteSection->SetVisible(false);
@@ -588,7 +588,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
         bool isNote = (node->shape == FlowChartShape::StickyNote);
         if (isNote) {
             propsHint->SetText(TrF("Editing note: {0}", id));
-            propsHint->SetTextColor(Color(180, 140, 0, 255));
+            propsHint->SetTextColor(DemoKit::Themed(Color(180, 140, 0, 255)));
             inNText->SetText(node->label);
             inNW->SetText(std::to_string(static_cast<int>(node->width)));
             inNH->SetText(std::to_string(static_cast<int>(node->height)));
@@ -636,7 +636,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
         if (!conn) return;
         *suppressEvents = true;
         propsHint->SetText(TrF("Editing connection: {0}", id));
-        propsHint->SetTextColor(Color(60, 140, 80, 255));
+        propsHint->SetTextColor(DemoKit::Themed(Color(60, 140, 80, 255)));
         inCLabel->SetText(conn->label);
         ddStyle->SetSelectedIndex(static_cast<int>(conn->style));
         ddArrow->SetSelectedIndex(static_cast<int>(conn->arrowStyle));
@@ -956,7 +956,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFlowChar
     DemoKit::Add(page, card, 1);
     
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("FlowChartTabs", 0, 0, 0, 0);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     

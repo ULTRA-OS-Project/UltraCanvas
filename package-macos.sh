@@ -19,6 +19,10 @@
 #                      notarized like the suite, as a DMG of its own with --dmg
 #                      (see "UltraCanvasStart on its own" below)
 #   --start-dir DIR    Where that goes (default: dist-start)
+#   --store-app NAME   Also cut the app NAME out of the suite on its own, as
+#                      --start-app does UltraCanvasStart, for UltraStore
+#                      (scripts/package-store-app.sh zips it); repeatable
+#   --store-dir DIR    Where those go (default: dist-store-macos)
 #
 # Environment variables:
 #   MACOSX_DEPLOYMENT_TARGET  Oldest macOS the apps must run on (CI: 15.0).
@@ -41,6 +45,8 @@ DO_SIGN=true
 NOTARIZE=false
 START_APP=false
 START_OUTPUT_DIR="dist-start"
+STORE_APPS=()
+STORE_OUTPUT_DIR="dist-store-macos"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENTITLEMENTS_PATH="MacOS/entitlements.plist"
 IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: ULTRA OS Devolopment GmbH (29638T25M9)}"
@@ -86,8 +92,10 @@ while [[ $# -gt 0 ]]; do
         --notarize)   NOTARIZE=true; shift ;;
         --start-app)  START_APP=true; shift ;;
         --start-dir)  START_OUTPUT_DIR="$2"; shift 2 ;;
+        --store-app)  STORE_APPS+=("$2"); shift 2 ;;
+        --store-dir)  STORE_OUTPUT_DIR="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,27p' "$0" | sed 's/^# \?//'
+            sed -n '2,35p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -160,6 +168,7 @@ echo "  Code signing:    $($DO_SIGN && echo "Developer ID" || echo "ad hoc (--no
 echo "  Notarize:        $NOTARIZE"
 echo "  Create DMG:      $CREATE_DMG"
 echo "  UltraCanvasStart on its own: $($START_APP && echo "yes, to $START_OUTPUT_DIR" || echo no)"
+echo "  For UltraStore on their own: ${STORE_APPS[*]:-none}${STORE_APPS[*]:+, to $STORE_OUTPUT_DIR}"
 echo ""
 
 # ── Validate prerequisites ───────────────────────────────────────────────────
@@ -278,6 +287,7 @@ bluetooth_usage() {
 location_usage() {
     case "$1" in
         UltraDesktop) echo "macOS shows the names of the Wi-Fi networks in reach only to apps allowed to use Location Services. UltraDesktop uses it for that list and nothing else." ;;
+        ChatCube) echo "ChatCube puts your current position on the map when you press My position, to send it as a location. It is asked for only then and sent only when you insert it." ;;
     esac
 }
 
@@ -773,13 +783,13 @@ codesign_bundle() {
     # (sign_shared_frameworks); the bundle holds only its plug-ins and
     # executable.
 
-    # Plug-in modules loaded at runtime (the LaTeX engine) are signed like
-    # the frameworks: inside-out, before the executable and the bundle.
-    for dylib in "$app_bundle/Contents/PlugIns/"*.dylib; do
-        if [ -f "$dylib" ]; then
-            sign_code "$dylib"
-        fi
-    done
+    # Plug-in modules loaded at runtime (the LaTeX engine, UltraNet's
+    # plug-ins under PlugIns/UltraNet/) are signed like the frameworks:
+    # inside-out, before the executable and the bundle.
+    local module
+    while IFS= read -r -d '' module; do
+        case "$(file -b "$module")" in Mach-O*) sign_code "$module" ;; esac
+    done < <(find "$app_bundle/Contents/PlugIns" -type f -print0 2>/dev/null)
 
     # Sign the main executable with hardened runtime + secure timestamp
     sign_code "$app_bundle/Contents/MacOS/"*
@@ -940,7 +950,35 @@ DEMO_SAMPLE_MEDIA=(3D videos images vector audios ebooks textsamples LaTex diagr
 # substituted) when the module is absent - and their dialogs carry only their
 # own status and error text. An app added to the bundle list keeps LaTeX by
 # default; add it here only after checking the same.
-NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer SmartHomeCenter)
+NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer SmartHomeCenter UltraMail)
+
+# The UltraNet plug-ins an app loads - the MODULE libraries of
+# <build>/Plugins/UltraNet, named ultranet_<name> - which go into the
+# bundle's Contents/PlugIns/UltraNet/, where UltraNet looks inside a bundle
+# (<exe>/../PlugIns/UltraNet), with their dylibs in the shared Frameworks/.
+# "all" is every plug-in the build made; nothing printed, none. Linux and
+# Windows give every app all of them from one shared folder; a bundle carries
+# its own, so each app names what it loads:
+#   UltraMail       the mail protocols (IMAP, SMTP, POP3, JMAP) and what an
+#                   account may reach besides - every one. Without them it
+#                   starts and reports that the IMAP plug-in was not found.
+#   DeviceExplorer  mdns: the DNS-SD browser behind its network printers
+#                   (IODeviceManager's IPP enumeration) and its eSCL
+#                   scanners, which it finds no other way.
+#   Texter, UltraFiler, UltraCanvasDemo
+#                   mdns: they print. The print dialog's choice is looked up
+#                   among IODeviceManager's printers, and the network
+#                   printers no CUPS queue reaches are browsed for through
+#                   mdns. Every app that prints (ShowPrintDialog,
+#                   PrintTextWithDialog, PrintDocumentWithDialog or
+#                   IODeviceManager's printers) gets at least mdns.
+# UltraNetMonitor loads none: it reads the system's socket table.
+ultranet_plugins_of() {
+    case "$1" in
+        UltraMail)      echo "all" ;;
+        DeviceExplorer|Texter|UltraFiler|UltraCanvasDemo) echo "mdns" ;;
+    esac
+}
 
 # True when the app $1 is in NO_LATEX_APPS.
 app_without_latex() {
@@ -1107,8 +1145,41 @@ build_app_bundle() {
         fi
     fi
 
+    # UltraNet's plug-ins, those the app loads (ultranet_plugins_of).
+    local net_wanted net_name plugin found
+    net_wanted="$(ultranet_plugins_of "$exe_name")"
+    if [ -n "$net_wanted" ]; then
+        mkdir -p "$contents_dir/PlugIns/UltraNet"
+        for net_name in $net_wanted; do
+            found=false
+            for plugin in "$BUILD_DIR"/Plugins/UltraNet/*.so "$BUILD_DIR"/Plugins/UltraNet/*.dylib; do
+                [ -f "$plugin" ] || continue
+                if [ "$net_name" != "all" ]; then
+                    case "$(basename "$plugin")" in "ultranet_$net_name".*) ;; *) continue ;; esac
+                fi
+                cp "$plugin" "$contents_dir/PlugIns/UltraNet/"
+                chmod 644 "$contents_dir/PlugIns/UltraNet/$(basename "$plugin")"
+                found=true
+            done
+            if ! $found; then
+                echo "Error: $display_name loads UltraNet's plug-in(s) '$net_name' and $BUILD_DIR/Plugins/UltraNet has none" >&2
+                return 1
+            fi
+        done
+        echo "  Copied UltraNet plug-ins: $(ls "$contents_dir/PlugIns/UltraNet" | tr '\n' ' ')"
+    fi
+
     # Bundle Homebrew dylibs into the shared suite Frameworks/
     bundle_dylibs "$contents_dir/MacOS/$exe_name" "$SHARED_FW" "$APP_FW_REF"
+
+    # The UltraNet plug-ins' own dependencies (libcurl, OpenSSL, ...), into
+    # the shared Frameworks/ the same way as the LaTeX module's below.
+    if [ -d "$contents_dir/PlugIns/UltraNet" ]; then
+        local net_plugin
+        for net_plugin in "$contents_dir"/PlugIns/UltraNet/*; do
+            [ -f "$net_plugin" ] && bundle_dylibs "$net_plugin" "$SHARED_FW" "$APP_FW_REF"
+        done
+    fi
 
     # The module's own Homebrew dependencies (cairo, pango, ...) are largely
     # the executable's, but collect and rewrite them from the module as well
@@ -1332,21 +1403,37 @@ finish_suite() {
 # the app never opens them. The archive is named like the SDKs, after the
 # framework version, since the app and the SDK it fetches belong to the same
 # release.
+#
+# --store-app NAME cuts any app of the suite out the same way, into
+# --store-dir, for UltraStore: a store package is one app with what it
+# loads (scripts/package-store-app.sh zips the bundle). Its Resources keep
+# the translations and the emoji fonts besides (STORE_MEDIA), and its
+# plug-ins - UltraNet's under PlugIns/UltraNet/ - come along with their
+# closure.
 STANDALONE_FW_REF="@executable_path/../Frameworks"
 STANDALONE_MEDIA=(fonts icons appicon lib microtex)
+STORE_MEDIA=(fonts icons appicon lib locale emoji microtex)
 STANDALONE_APP=""
+LAST_STANDALONE_APP=""
+# How long the proof run of an app on its own may take (build_standalone_app).
+STANDALONE_RUN_LIMIT=30
 
+# build_standalone_app NAME OUT_DIR MEDIA... - NAME.app out of the suite into
+# OUT_DIR, with its own Frameworks/ and the media folders named; the bundle
+# is left in LAST_STANDALONE_APP.
 build_standalone_app() {
-    local exe_name="$1"
+    local exe_name="$1" out_dir="$2"
+    shift 2
+    local keep_media=("$@")
     local src_app="$SUITE_DIR/$exe_name.app"
     if [ ! -d "$src_app" ]; then
         echo "Error: $exe_name.app is not in the suite - was $exe_name built?" >&2
         exit 1
     fi
     echo "── Packaging $exe_name on its own ──"
-    rm -rf "$START_OUTPUT_DIR"
-    mkdir -p "$START_OUTPUT_DIR"
-    local app="$START_OUTPUT_DIR/$exe_name.app"
+    mkdir -p "$out_dir"
+    rm -rf "$out_dir/$exe_name.app"
+    local app="$out_dir/$exe_name.app"
     local contents="$app/Contents"
     local fw="$contents/Frameworks"
     cp -R "$src_app" "$app"
@@ -1359,7 +1446,7 @@ build_standalone_app() {
         [ -e "$entry" ] || continue
         name="$(basename "$entry")"
         keep=false
-        for m in "${STANDALONE_MEDIA[@]}"; do
+        for m in "${keep_media[@]}"; do
             [ "$name" = "$m" ] && keep=true
         done
         $keep || rm -rf "$entry"
@@ -1370,9 +1457,10 @@ build_standalone_app() {
     local queue_file count=0 current dep
     queue_file=$(mktemp)
     echo "$contents/MacOS/$exe_name" > "$queue_file"
-    for current in "$contents/PlugIns"/*.dylib; do
-        [ -f "$current" ] && echo "$current" >> "$queue_file"
-    done
+    # Every plug-in, the ones in PlugIns/UltraNet/ too.
+    while IFS= read -r -d '' current; do
+        case "$(file -b "$current")" in Mach-O*) echo "$current" >> "$queue_file" ;; esac
+    done < <(find "$contents/PlugIns" -type f -print0 2>/dev/null)
     while [ -s "$queue_file" ]; do
         current=$(head -1 "$queue_file")
         sed -i '' '1d' "$queue_file"
@@ -1473,13 +1561,50 @@ build_standalone_app() {
     codesign_bundle "$app"
 
     # Proof that the closure loads: the bundle runs from where it is.
+    # UltraCanvasStart answers --version and ends; an app that does not know
+    # the option (UltraMail, for --store-app) opens its window instead and
+    # never ends - which held a CI row for hours - so the program runs in the
+    # background and is stopped after STANDALONE_RUN_LIMIT seconds. The
+    # loader refusing a library fails the package either way; for any other
+    # app than UltraCanvasStart, not answering is not a failure: every
+    # reference was checked against the bundle above.
     echo "  Running the packaged application..."
-    "$contents/MacOS/$exe_name" --version | head -1
+    local run_out run_pid run_status=0 waited=0
+    run_out=$(mktemp)
+    "$contents/MacOS/$exe_name" --version > "$run_out" 2>&1 < /dev/null &
+    run_pid=$!
+    while kill -0 "$run_pid" 2>/dev/null && [ "$waited" -lt "$STANDALONE_RUN_LIMIT" ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if kill -0 "$run_pid" 2>/dev/null; then
+        kill "$run_pid" 2>/dev/null || true
+        sleep 2
+        kill -9 "$run_pid" 2>/dev/null || true
+    fi
+    wait "$run_pid" 2>/dev/null || run_status=$?
+    if grep -q 'Library not loaded\|Symbol not found' "$run_out"; then
+        echo "  ERROR: $exe_name does not load from its bundle:" >&2
+        cat "$run_out" >&2
+        rm -f "$run_out"
+        exit 1
+    fi
+    if [ "$run_status" -eq 0 ]; then
+        head -1 "$run_out"
+    elif [ "$exe_name" = "UltraCanvasStart" ]; then
+        echo "  ERROR: $exe_name --version ended with status $run_status:" >&2
+        cat "$run_out" >&2
+        rm -f "$run_out"
+        exit 1
+    else
+        echo "  $exe_name did not answer --version (status $run_status; stopped after ${STANDALONE_RUN_LIMIT}s if it was still running) - its references were checked against the bundle above"
+    fi
+    rm -f "$run_out"
 
     if $NOTARIZE; then
         notarize_bundle "$app"
     fi
-    STANDALONE_APP="$app"
+    LAST_STANDALONE_APP="$app"
     echo "  Bundle size: $(du -sh "$app" | cut -f1)"
     echo ""
 }
@@ -1552,6 +1677,9 @@ VIEWER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
                 <string>public.audio</string>
                 <string>com.adobe.pdf</string>
                 <string>org.idpf.epub-container</string>
+                <string>org.openxmlformats.presentationml.presentation</string>
+                <string>com.microsoft.powerpoint.ppt</string>
+                <string>org.oasis-open.opendocument.presentation</string>
                 <string>public.plain-text</string>
             </array>
         </dict>
@@ -1647,6 +1775,25 @@ package_if_built "UltraNotifications" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraToDo, the task list with reminders and alarms
+package_if_built "UltraToDo" build_app_bundle \
+    "UltraToDo" \
+    "UltraToDo" \
+    "com.cloverleaf.UltraToDo" \
+    "media/appicon/UltraToDo.png" \
+    "public.app-category.productivity" \
+    ""
+
+# Package UltraAccount, the ULTRA OS account: sign-up, the email and phone
+# verified, the subscription, the recovery keys
+package_if_built "UltraAccount" build_app_bundle \
+    "UltraAccount" \
+    "UltraAccount" \
+    "com.cloverleaf.UltraAccount" \
+    "media/appicon/UltraAccount.png" \
+    "public.app-category.utilities" \
+    ""
+
 # Package UltraSnip, the screenshot and screen-recording tool (libVideoFX and
 # FFmpeg go to the shared Frameworks/ with the rest)
 package_if_built "UltraSnip" build_app_bundle \
@@ -1699,6 +1846,16 @@ package_if_built "UltraVideo" build_app_bundle \
     "public.app-category.video" \
     "$ULTRAVIDEO_DOC_TYPES"
 
+# Package UltraMail (Apps/UltraMail), with UltraNet's plug-ins in its
+# PlugIns/UltraNet/ (ultranet_plugins_of) and no LaTeX module.
+package_if_built "UltraMail" build_app_bundle \
+    "UltraMail" \
+    "UltraMail" \
+    "com.cloverleaf.UltraMail" \
+    "media/appicon/UltraMail.png" \
+    "public.app-category.productivity" \
+    ""
+
 # Package UltraCanvasStart, the setup application (Apps/UltraCanvasStart).
 # In the suite like every app, and with --start-app also on its own
 # (build_standalone_app, after finish_suite).
@@ -1713,19 +1870,19 @@ package_if_built "UltraCanvasStart" build_app_bundle \
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 package_if_built "ultramsg" build_cli_tool "ultramsg"
 
-# Package UltraPress (Apps/UltraPress). `ultrapress` is one program, the
+# Package UltraPress (Apps/UltraPress). `UltraPress` is one program, the
 # commands and the editor window (two names differing only in case are one
 # name on this filesystem): it goes into an app bundle, and beside it as a
 # command-line tool - a starter site, the check, a page's HTML shadow, the
 # static publish, the WordPress import.
-package_if_built "ultrapress" build_app_bundle \
-    "ultrapress" \
+package_if_built "UltraPress" build_app_bundle \
+    "UltraPress" \
     "UltraPress" \
     "com.cloverleaf.UltraPress" \
     "media/appicon/UltraPress.png" \
     "public.app-category.developer-tools" \
     ""
-package_if_built "ultrapress" build_cli_tool "ultrapress"
+package_if_built "UltraPress" build_cli_tool "UltraPress"
 
 # ── What was packaged ───────────────────────────────────────────────────────
 
@@ -1742,9 +1899,18 @@ fi
 # own Frameworks/ (verify_suite rejects that). See "Suite layout".
 finish_suite
 
-# UltraCanvasStart on its own is cut out of the finished suite, after it.
+# UltraCanvasStart on its own is cut out of the finished suite, after it,
+# and so is each app for UltraStore (--store-app).
 if $START_APP; then
-    build_standalone_app "UltraCanvasStart"
+    rm -rf "$START_OUTPUT_DIR"
+    build_standalone_app "UltraCanvasStart" "$START_OUTPUT_DIR" "${STANDALONE_MEDIA[@]}"
+    STANDALONE_APP="$LAST_STANDALONE_APP"
+fi
+if [ "${#STORE_APPS[@]}" -gt 0 ]; then
+    rm -rf "$STORE_OUTPUT_DIR"
+    for store_app in "${STORE_APPS[@]}"; do
+        build_standalone_app "$store_app" "$STORE_OUTPUT_DIR" "${STORE_MEDIA[@]}"
+    done
 fi
 
 # ── DMG creation ────────────────────────────────────────────────────────────

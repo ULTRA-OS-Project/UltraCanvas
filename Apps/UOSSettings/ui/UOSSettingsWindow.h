@@ -31,6 +31,8 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.15.0 - Language > Translations moved out: the localisation editor is
+//                  UOS-Localisation, started from the Language page
 // Version: 0.14.0 - Appearance > Look: the look, accent, font, size, scale and contrast every application
 //                  takes (Appearance.conf), with a preview strip that is the theme
 // Version: 0.10.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
@@ -55,7 +57,6 @@
 #include "UltraCanvasWindow.h"   // UltraCanvasWindow is a per-platform typedef
 
 #include <functional>
-#include "UltraCanvasLocalisationEditor.h"
 #include <map>
 #include <vector>
 #include <memory>
@@ -117,9 +118,8 @@ private:
     void SetMode(bool individual);
     void SetAppScope(const std::string& appName, bool individual);
     void BuildLanguagePage();
-    void BuildTranslationsPage();
     // Re-reads the folders into the editor's pickers and the translator's name.
-    void RefreshTranslationsPage();
+    void OpenTranslationEditor();   // starts UOS-Localisation
     void BuildEmojiPage();
     // Re-reads Emoji.conf into the page's switch.
     void RefreshLanguagePage();
@@ -142,9 +142,6 @@ private:
 
     std::string version_;
 
-    // ----- Translations -----
-    std::shared_ptr<UltraCanvas::UltraCanvasLocalisationEditor> translations_;
-
     // ----- Desktop -----
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> edge_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> theme_;
@@ -154,6 +151,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> ramDisc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filer_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> desktops_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> toolApps_;   // toolAppsOnTaskbar
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsView_;     // the Apps window: tiles or tree
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsSplit_;    // split a category above N
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> recentShown_;  // Recent's count

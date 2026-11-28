@@ -20,6 +20,14 @@
 // answers every message with "echo: <text>". The code is always 12345.
 // The number +1 555 9999 is never answered (a network that is down), for the
 // provider's step timeout.
+// The proxy: addProxy (the `proxy` object, as TDLib 1.8.69 takes it),
+// disableProxy, getProxies, removeProxy and setNetworkType, kept per database
+// directory as TDLib keeps them in its database, and held until the
+// parameters are in when they come before them. A proxy on port 1 is refused
+// (a TDLib that does not take one). fakeProxyState (td_execute, a database
+// directory) says what is kept; a signed-in client is told the connection
+// state that follows (connecting to the proxy, ready, waiting for the network).
+// Version: 0.1.7 - the proxy requests and setNetworkType; fakeProxyState
 // Version: 0.1.6 - supergroups: fakeCreateSupergroup (td_execute), chatTypeSupergroup with TDLib's -100... ids,
 //                  getSupergroupMembers a page at a time, updateSupergroupFullInfo with the member count
 // Version: 0.1.5 - a basic group after it is made: setChatTitle, addChatMembers, setChatMemberStatus (left;
@@ -30,7 +38,7 @@
 // Version: 0.1.2 - the code to the app first, by SMS on resendAuthenticationCode (as Telegram does)
 // Version: 0.1.1 - a phone number whose code never comes
 // Version: 0.1.0
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasJSON.h"
@@ -106,6 +114,27 @@ struct ChatRec {
     std::map<int64_t, int64_t> lastRead;    // member -> read up to
 };
 
+// A proxy TDLib's database keeps (addProxy).
+struct ProxyRec {
+    int32_t     id = 0;
+    std::string server;
+    int64_t     port = 0;
+    std::string type;           // proxyTypeSocks5 / proxyTypeHttp
+    std::string username;
+    std::string password;
+    bool        enabled = false;
+};
+
+// What a database directory keeps of the network: the proxies, and - for the
+// tests - how it was last told.
+struct NetworkRec {
+    std::vector<ProxyRec> proxies;
+    int32_t     nextProxy = 1;
+    bool        early = false;  // the last addProxy / disableProxy came before the parameters
+    int         tellings = 0;   // addProxy and disableProxy so far
+    std::string type = "networkTypeOther";
+};
+
 struct Client {
     int         id = 0;
     bool        started = false;
@@ -120,6 +149,7 @@ struct Client {
     std::set<int64_t> knownUsers;
     std::set<int64_t> announced;            // chat ids (in its view) it has had updateNewChat for
     bool        allLoaded = false;
+    std::vector<JSONValue> early;           // the network's requests that came before the parameters
 };
 
 struct Server {
@@ -128,6 +158,7 @@ struct Server {
     std::deque<std::string> out;
     std::map<int64_t, Account> accounts;
     std::map<std::string, std::pair<std::string, int64_t>> sessions;    // database dir -> key, user
+    std::map<std::string, NetworkRec> networks;                         // database dir -> its proxies
     std::map<std::string, ChatRec> chats;   // "p:<low>:<high>" or "g:<id>"
     std::map<int, Client> clients;
     std::map<int32_t, FileRec> files;
@@ -650,6 +681,117 @@ void AccountFound(Client& c, bool byQrCode) {
     State(c, "authorizationStateWaitRegistration");
 }
 
+// ---- the network -------------------------------------------------------------------
+
+bool IsNetworkRequest(const std::string& type) {
+    return type == "addProxy" || type == "disableProxy" || type == "getProxies" || type == "removeProxy" ||
+           type == "setNetworkType";
+}
+
+JSONValue AddedProxy(const ProxyRec& p) {
+    JSONValue type = Obj(p.type.c_str());
+    type.Set("username", JSONValue(p.username));
+    type.Set("password", JSONValue(p.password));
+    if (p.type == "proxyTypeHttp") type.Set("http_only", JSONValue(false));
+    JSONValue proxy = Obj("proxy");
+    proxy.Set("server", JSONValue(p.server));
+    proxy.Set("port", JSONValue(p.port));
+    proxy.Set("type", type);
+    JSONValue added = Obj("addedProxy");
+    added.Set("id", JSONValue(p.id));
+    added.Set("last_used_date", JSONValue(0));
+    added.Set("is_enabled", JSONValue(p.enabled));
+    added.Set("comment", JSONValue(""));
+    added.Set("proxy", proxy);
+    return added;
+}
+
+// What TDLib says of its connection, to a client that is signed in.
+void Connection(Client& c, const char* state) {
+    if (c.state != "authorizationStateReady") return;
+    JSONValue u = Obj("updateConnectionState");
+    u.Set("state", Obj(state));
+    Push(c, u);
+}
+
+// The database directory is known: `early` when the request waited for it.
+void HandleNetwork(Client& c, const JSONValue& r, bool early) {
+    const std::string type = r["@type"].GetString();
+    const std::string extra = r["@extra"].GetString();
+    NetworkRec& net = S().networks[c.databaseDir];
+    const bool online = net.type != "networkTypeNone";
+    if (type == "addProxy") {
+        const JSONValue& given = r["proxy"];
+        if (!given.IsObject()) return Answer(c, extra, Error(400, "Proxy must be non-empty"));
+        ProxyRec p;
+        p.server = given["server"].GetString();
+        p.port = given["port"].GetInteger(0);
+        p.type = given["type"]["@type"].GetString();
+        p.username = given["type"]["username"].GetString();
+        p.password = given["type"]["password"].GetString();
+        if (p.server.empty()) return Answer(c, extra, Error(400, "Server name must be non-empty"));
+        if (p.port <= 0 || p.port > 65535) return Answer(c, extra, Error(400, "Wrong port number"));
+        if (p.type != "proxyTypeSocks5" && p.type != "proxyTypeHttp") return Answer(c, extra, Error(400, "Wrong proxy type"));
+        if (p.port == 1) return Answer(c, extra, Error(400, "The fake takes no proxy on port 1"));
+        ++net.tellings;
+        net.early = early;
+        ProxyRec* kept = nullptr;       // the same one again is the one already there
+        for (ProxyRec& q : net.proxies) {
+            if (q.server == p.server && q.port == p.port && q.type == p.type && q.username == p.username &&
+                q.password == p.password)
+                kept = &q;
+        }
+        if (!kept) {
+            p.id = net.nextProxy++;
+            net.proxies.push_back(p);
+            kept = &net.proxies.back();
+        }
+        if (r["enable"].GetBoolean(false)) {
+            for (ProxyRec& q : net.proxies) q.enabled = false;
+            kept->enabled = true;
+        }
+        Answer(c, extra, AddedProxy(*kept));
+        if (kept->enabled && online) {
+            Connection(c, "connectionStateConnectingToProxy");
+            Connection(c, "connectionStateReady");
+        }
+        return;
+    }
+    if (type == "disableProxy") {
+        ++net.tellings;
+        net.early = early;
+        bool was = false;
+        for (ProxyRec& q : net.proxies) {
+            was = was || q.enabled;
+            q.enabled = false;
+        }
+        Answer(c, extra, Obj("ok"));
+        if (was && online) {
+            Connection(c, "connectionStateConnecting");
+            Connection(c, "connectionStateReady");
+        }
+        return;
+    }
+    if (type == "getProxies") {
+        JSONValue list = JSONValue::MakeArray();
+        for (const ProxyRec& q : net.proxies) list.Append(AddedProxy(q));
+        JSONValue answer = Obj("addedProxies");
+        answer.Set("proxies", list);
+        return Answer(c, extra, answer);
+    }
+    if (type == "removeProxy") {
+        const int64_t id = r["proxy_id"].GetInteger(0);
+        const auto it = std::find_if(net.proxies.begin(), net.proxies.end(), [id](const ProxyRec& q) { return q.id == id; });
+        if (it == net.proxies.end()) return Answer(c, extra, Error(400, "Unknown proxy identifier"));
+        net.proxies.erase(it);
+        return Answer(c, extra, Obj("ok"));
+    }
+    // setNetworkType
+    net.type = r["type"]["@type"].GetString();
+    Answer(c, extra, Obj("ok"));
+    Connection(c, net.type == "networkTypeNone" ? "connectionStateWaitingForNetwork" : "connectionStateReady");
+}
+
 // ---- requests ----------------------------------------------------------------------
 
 void Handle(Client& c, const JSONValue& r) {
@@ -667,6 +809,14 @@ void Handle(Client& c, const JSONValue& r) {
         JSONValue v = Obj("optionValueString");
         v.Set("value", JSONValue("fake"));
         return Answer(c, extra, v);
+    }
+    if (IsNetworkRequest(type)) {
+        // Before the parameters TDLib keeps these, and answers once they are in.
+        if (c.state == "authorizationStateWaitTdlibParameters") {
+            c.early.push_back(r);
+            return;
+        }
+        return HandleNetwork(c, r, false);
     }
     if (type == "close") {
         ok();
@@ -689,6 +839,10 @@ void Handle(Client& c, const JSONValue& r) {
         if (session != S().sessions.end() && session->second.first != c.databaseKey)
             return fail(401, "Wrong database encryption key");
         ok();
+        // What was kept for the parameters, before anything connects.
+        std::vector<JSONValue> early;
+        early.swap(c.early);
+        for (const JSONValue& kept : early) HandleNetwork(c, kept, true);
         if (session != S().sessions.end()) return SignedIn(c, session->second.second);
         return State(c, "authorizationStateWaitPhoneNumber");
     }
@@ -1244,6 +1398,27 @@ FAKE_TD_EXPORT const char* td_execute(const char* request) {
         Deliver(stored, created, -1);
         answer = Obj("chat");
         answer.Set("id", JSONValue(ViewId(stored, group.creator)));
+    } else if (type == "fakeProxyState") {
+        // What a database directory keeps of the network: the proxy in use
+        // (enabled false: none), how many are kept, whether the last telling
+        // came before the parameters, how many tellings there were, and
+        // whether TDLib is on the network.
+        const NetworkRec& net = S().networks[r["database_directory"].GetString()];
+        answer = Obj("fakeProxyState");
+        answer.Set("enabled", JSONValue(false));
+        for (const ProxyRec& q : net.proxies) {
+            if (!q.enabled) continue;
+            answer.Set("enabled", JSONValue(true));
+            answer.Set("server", JSONValue(q.server));
+            answer.Set("port", JSONValue(q.port));
+            answer.Set("type", JSONValue(q.type));
+            answer.Set("username", JSONValue(q.username));
+            answer.Set("password", JSONValue(q.password));
+        }
+        answer.Set("count", JSONValue(static_cast<int64_t>(net.proxies.size())));
+        answer.Set("early", JSONValue(net.early));
+        answer.Set("tellings", JSONValue(static_cast<int64_t>(net.tellings)));
+        answer.Set("network", JSONValue(net.type));
     } else if (type == "getOption") {
         answer = Obj("optionValueString");
         answer.Set("value", JSONValue("fake"));

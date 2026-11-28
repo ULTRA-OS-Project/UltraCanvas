@@ -1,0 +1,9 @@
+{% extends "pay/base.html" %}
+{% block title %}{{ title }} - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>{{ title }}</h1>
+  <p class="mt-3{% if ok %} alert alert-success{% endif %}">{{ text }}</p>
+  <p><a href="{{ order.app.get_absolute_url }}">Back to {{ order.app_name }}</a></p>
+</div>
+{% endblock %}

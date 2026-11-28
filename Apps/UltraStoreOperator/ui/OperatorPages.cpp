@@ -10,6 +10,9 @@
 
 #include "OperatorTheme.h"
 
+#include "UltraCanvasDataFolder.h"
+#include "UltraCanvasPathUtf8.h"
+
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
@@ -28,6 +31,18 @@ constexpr const char* kReports = "reports";
 constexpr const char* kTerms = "terms";
 
 bool Waiting(const Submission& s) { return s.state == "checked" || s.state == "failed_checks" || s.state == "in_review"; }
+
+// The automatic checks for a person.
+std::string CheckWord(const std::string& name) {
+    if (name == "signature") return Tr("Signature - the component signed with the merchant's key");
+    if (name == "merchant_standing") return Tr("Merchant standing");
+    if (name == "packages") return Tr("Packages - named by hash and size, in the package store");
+    if (name == "scans") return Tr("Scans - the archives walked, the virus scanner");
+    if (name == "entry") return Tr("Entry - the file the store launches is in the archive");
+    if (name == "smoke") return Tr("Smoke run - the build started in the sandbox");
+    if (name == "listing") return Tr("Listing - what the store's page needs");
+    return name;
+}
 
 int Number(const std::string& text, int fallback = 0) {
     if (text.empty()) return fallback;
@@ -90,6 +105,12 @@ void OperatorWindow::BuildMerchantsPage() {
     refresh->onClick = [this]() { RefreshMerchants(); };
     header->AddChild(refresh);
 
+    auto applications = Theme::Section("uoM.applications", Tr("Applications for a shop"));
+    applications->AddChild(Theme::Caption("uoM.applications.hint", Tr("A merchant applied from its admin backend: the shop's name, how to reach them, and the key that will sign its submissions, proven by the signature on the application. Approve registers the merchant with that key; reject tells the applicant why.")));
+    applicationsList_ = Theme::Column("uoM.applications.rows", Theme::kInnerGap);
+    applications->AddChild(applicationsList_);
+    body->AddChild(applications);
+
     auto list = Theme::Section("uoM.list", Tr("All merchants"));
     merchantsList_ = Theme::Column("uoM.rows", Theme::kInnerGap);
     list->AddChild(merchantsList_);
@@ -131,7 +152,61 @@ void OperatorWindow::RefreshMerchants() {
     Fetch<std::vector<Merchant>>(Tr("Reading the merchants"), [client = Client()]() { return client.Merchants(); }, [this](const std::vector<Merchant>& list) {
         merchants_ = list;
         ShowMerchants();
-    });
+    }, [this]() { RefreshApplications(); });
+}
+
+void OperatorWindow::RefreshApplications() {
+    Fetch<std::vector<MerchantApplication>>(Tr("Reading the applications"), [client = Client()]() { return client.Applications("applied"); },
+                                            [this](const std::vector<MerchantApplication>& list) { applications_ = list; ShowApplications(); });
+}
+
+void OperatorWindow::ShowApplications() {
+    if (!applicationsList_) return;
+    applicationsList_->ClearChildren();
+    int n = 0;
+    for (const MerchantApplication& a : applications_) {
+        const std::string id = "uoM.a" + std::to_string(n++);
+        auto card = Theme::Column(id, Theme::kInnerGap);
+        auto head = Theme::Row(id + ".head", Theme::kInnerGap, true);
+        auto text = Theme::Column(id + ".c", 0);
+        text->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        text->AddChild(Theme::Text(id + ".t", a.name, 13.0f, FontWeight::Bold));
+        text->AddChild(Theme::Caption(id + ".s", TrF("{0} · applied {1} · contact {2}{3}{4}", a.id, a.createdAt.substr(0, 10), a.contact,
+                                                       a.email.empty() ? std::string() : " · " + a.email, a.website.empty() ? std::string() : " · " + a.website)));
+        if (!a.description.empty()) text->AddChild(Theme::Caption(id + ".d", a.description));
+        text->AddChild(Theme::Caption(id + ".k", TrF("Key {0}", a.key)));
+        head->AddChild(text);
+        card->AddChild(head);
+        auto actions = Theme::Row(id + ".actions", Theme::kInnerGap, true);
+        auto merchantId = Theme::Pin(CreateTextInput(id + ".mid", 0, 0, 160, Theme::kControlHeight));
+        merchantId->SetPlaceholder(Tr("merchant id (made when empty)"));
+        actions->AddChild(merchantId);
+        auto message = Theme::Pin(CreateTextInput(id + ".msg", 0, 0, 320, Theme::kControlHeight));
+        message->SetPlaceholder(Tr("a message to the applicant"));
+        message->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        actions->AddChild(message);
+        auto approve = Theme::Button(id + ".approve", Tr("Approve"), 100, Theme::ButtonKind::Primary);
+        approve->onClick = [this, aid = a.id, mid = merchantId.get(), msg = message.get()]() {
+            Fetch<Merchant>(Tr("Approving the application"), [client = Client(), aid, merchantId = mid->GetText(), text = msg->GetText()]() {
+                return client.ApproveApplication(aid, merchantId, text);
+            }, [this](const Merchant& m) { SetStatus(TrF("Registered {0} as {1}", m.name, m.id)); }, [this]() { RefreshMerchants(); });
+        };
+        actions->AddChild(approve);
+        auto reject = Theme::Button(id + ".reject", Tr("Reject"), 90, Theme::ButtonKind::Danger);
+        reject->onClick = [this, aid = a.id, msg = message.get()]() {
+            if (msg->GetText().empty()) { SetStatus(Tr("A rejection says why: the message is the applicant's to read"), true); return; }
+            Confirm(Tr("Reject the application? The applicant reads the message."), [this, aid, text = msg->GetText()]() {
+                Fetch<MerchantApplication>(Tr("Rejecting the application"), [client = Client(), aid, text]() { return client.RejectApplication(aid, text); },
+                                           [this](const MerchantApplication&) { SetStatus(Tr("Rejected")); }, [this]() { RefreshApplications(); });
+            });
+        };
+        actions->AddChild(reject);
+        card->AddChild(actions);
+        applicationsList_->AddChild(card);
+        if (n < static_cast<int>(applications_.size())) applicationsList_->AddChild(Theme::Rule(id + ".rule"));
+    }
+    if (n == 0) applicationsList_->AddChild(Theme::Caption("uoM.applications.none", Tr("No application waiting.")));
+    Relayout();
 }
 
 void OperatorWindow::ShowMerchants() {
@@ -182,6 +257,7 @@ void OperatorWindow::ShowMerchantFile() {
     merchantFileBox_->AddChild(head);
     merchantFileBox_->AddChild(Theme::Caption("uoMF.facts", TrF("{0} · merchant since {1} · contact {2} · {3} · terms {4} accepted of {5} in force", m.id, m.createdAt.substr(0, 10),
                                                                  m.contact.empty() ? Tr("none") : m.contact, TrN("{n} strike", "{n} strikes", m.strikes), m.termsAccepted, m.termsInForce)));
+    if (!m.website.empty() || !m.description.empty()) merchantFileBox_->AddChild(Theme::Caption("uoMF.profile", (m.website.empty() ? std::string() : m.website + (m.description.empty() ? "" : " · ")) + m.description));
     merchantFileBox_->AddChild(Theme::Caption("uoMF.key", TrF("Key {0}", m.key)));
     if (!f.notes.empty()) merchantFileBox_->AddChild(Theme::Caption("uoMF.notes", f.notes));
 
@@ -401,19 +477,45 @@ void OperatorWindow::ShowSubmission() {
     submissionBox_->AddChild(Theme::Caption("uoRS.facts", TrF("{0} · {1} · {2} · submitted {3}{4}", s.id, s.app, s.merchant, s.createdAt,
                                                              s.answers.empty() ? "" : " · " + TrF("answers {0}", s.answers))));
 
-    // The automatic checks
+    // The automatic checks, each with the pipeline's findings under it
     int passed = 0;
     for (const auto& [name, outcome] : s.checks) if (outcome == "ok") ++passed;
-    submissionBox_->AddChild(Theme::Text("uoRS.checks.title", TrF("Automatic checks · {0} of {1}", passed, s.checks.size()), 13.0f, FontWeight::Bold));
+    auto checksHead = Theme::Row("uoRS.checks.head", Theme::kInnerGap, true);
+    auto checksTitle = Theme::Text("uoRS.checks.title", TrF("Automatic checks · {0} of {1}", passed, s.checks.size()), 13.0f, FontWeight::Bold);
+    checksTitle->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    checksHead->AddChild(checksTitle);
+    if (!s.checkedAt.empty()) checksHead->AddChild(Theme::Caption("uoRS.checks.at", TrF("pipeline ran {0} ago", Age(s.checkedAt))));
+    if (Waiting(s)) {
+        auto again = Theme::Button("uoRS.checks.again", Tr("Run the checks again"), 150);
+        again->onClick = [this, sid = s.id]() {
+            Fetch<Submission>(Tr("Running the review pipeline"), [client = Client(), sid]() { return client.RunChecks(sid); }, [this](const Submission& updated) {
+                submission_ = updated;
+                haveSubmission_ = true;
+                SetStatus(updated.ChecksFailed() ? Tr("The pipeline ran: a check failed, see its findings") : Tr("The pipeline ran"));
+                ShowSubmission();
+            });
+        };
+        checksHead->AddChild(again);
+    }
+    submissionBox_->AddChild(checksHead);
     int n = 0;
     for (const auto& [name, outcome] : s.checks) {
         const std::string id = "uoRS.c" + std::to_string(n++);
         auto row = Theme::Row(id, Theme::kInnerGap);
-        row->AddChild(Theme::Pill(id + ".p", outcome == "ok" ? Tr("ok") : outcome == "failed" ? Tr("failed") : outcome == "not run" ? Tr("not run") : outcome,
+        row->AddChild(Theme::Pill(id + ".p", outcome == "ok" ? Tr("ok") : outcome == "failed" ? Tr("failed") : outcome == "not run" ? Tr("not run") : outcome == "waiting" ? Tr("waiting") : outcome,
                                   outcome == "ok" ? Theme::Tint::Green : outcome == "failed" ? Theme::Tint::Red : Theme::Tint::Amber));
-        auto label = Theme::Caption(id + ".t", name);
-        label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        row->AddChild(label);
+        auto text = Theme::Column(id + ".c", 2);
+        text->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        text->AddChild(Theme::Caption(id + ".t", CheckWord(name)));
+        if (const std::vector<std::string>* lines = s.FindingsOf(name)) {
+            int k = 0;
+            for (const std::string& line : *lines) {
+                auto finding = Theme::Text(id + ".f" + std::to_string(k++), line, 12.0f, FontWeight::Normal, outcome == "failed" ? Theme::kDanger : Theme::kTextSecondary);
+                finding->SetWrap(TextWrap::WrapWord);
+                text->AddChild(finding);
+            }
+        }
+        row->AddChild(text);
         submissionBox_->AddChild(row);
     }
 
@@ -437,9 +539,27 @@ void OperatorWindow::ShowSubmission() {
     if (s.packages.GetSize() > 0) {
         submissionBox_->AddChild(Theme::Text("uoRS.pk.title", TrN("{n} package", "{n} packages", static_cast<long long>(s.packages.GetSize())), 13.0f, FontWeight::Bold));
         n = 0;
-        for (const JSONValue& p : s.packages.GetElements())
-            submissionBox_->AddChild(Theme::Caption("uoRS.pk" + std::to_string(n++), p.Get("file").GetString(p.Get("url").GetString()) + "  " + p.Get("sha256").GetString() + "  " +
-                                                                                        std::to_string(p.Get("size").GetInteger(0)) + " B"));
+        for (const JSONValue& p : s.packages.GetElements()) {
+            const std::string id = "uoRS.pk" + std::to_string(n++);
+            auto row = Theme::Row(id, Theme::kInnerGap, true);
+            auto label = Theme::Caption(id + ".t", p.Get("file").GetString(p.Get("url").GetString()) + "  " + p.Get("sha256").GetString() + "  " +
+                                                       std::to_string(p.Get("size").GetInteger(0)) + " B");
+            label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(label);
+            if (p.Get("uploaded").GetBoolean(false)) {
+                // The build the merchant uploaded into the package store, for the review.
+                auto download = Theme::Button(id + ".dl", Tr("Download build"), 120);
+                download->onClick = [this, sid = s.id, package = p]() {
+                    const std::string folder = UltraCanvas::PathToUtf8(UltraCanvas::UltraCanvasDataFolderRoot() / "UltraStoreOperator" / "builds" / sid);
+                    Fetch<DownloadedPackage>(Tr("Downloading the build"), [client = Client(), sid, package, folder]() { return client.DownloadPackage(sid, package, folder); },
+                                             [this](const DownloadedPackage& d) { SetStatus(TrF("Saved {0} ({1} bytes)", d.fileUtf8, d.size)); });
+                };
+                row->AddChild(download);
+            } else {
+                row->AddChild(Theme::Pill(id + ".wait", Tr("not uploaded"), Theme::Tint::Amber));
+            }
+            submissionBox_->AddChild(row);
+        }
     }
 
     // The decisions so far

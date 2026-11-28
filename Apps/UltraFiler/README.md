@@ -139,6 +139,16 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   the number of entries *Settings > Extras > History & Favorites > Limit of
   entries* is set to (10–1000, 300 by default), counted per section, with the
   oldest dropping off the end; *Settings ▸ Clear History* empties them.
+- **Edit in UltraPaint / Edit in ArtCreator:** the file context menu has
+  **Edit in UltraPaint** right after *Open with* when every selected entry is
+  a picture, and **Edit in ArtCreator** when every one is a drawing a vector
+  reader of this build takes (SVG, EPS, DXF, CDR, ... - whatever
+  `UltraCanvasFileLoader::CanLoadVectorDocument` answers for). Each needs the
+  files on the disk (not inside an archive, not on a remote drive) and the
+  editor startable - beside UltraFiler, on the `PATH`, or carried by the same
+  program (MobilePC). It starts the editor with the files; a copy already
+  running takes them (`BuildOpenMenuItems`, the folder displays'
+  `openMenuProvider`).
 - **Favorites (pinning):** the heart button next to the clock shows the
   Favorites view — the same **Files** / **Folders** / **Apps** layout as the
   History view, but listing what was pinned deliberately instead of what was
@@ -471,7 +481,10 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     every disc is a private directory on the `/dev/shm` tmpfs, which uses
     memory only as files are written, so the size is checked against what is
     free but not enforced; on Windows without ImDisk the disc is a folder in
-    `%TEMP%`, wiped on eject, and its row says *on disk*. A disc stays until it
+    `%TEMP%` on the system drive, wiped on eject, with no size of its own - it
+    holds what that drive has room for - so the dialog asks for its name alone,
+    its row says *on disk*, and its card on the Computer page says *No size of
+    its own* rather than showing the system drive's pie. A disc stays until it
     is ejected — *Eject RAM disc* in its row's context menu, after a question
     naming it — or the machine restarts, and one left by an earlier run is
     found again at start-up. Its row keeps *Delete* disabled like the other
@@ -700,6 +713,7 @@ the first time the new version runs.
 
 | Page | Setting |
 |---|---|
+| Display > Display mode | Whether UltraFiler is light or dark: **As the system says** (the default) follows the desktop - and UOS-Settings' Look page - and switches with it while UltraFiler runs; **Light mode** and **Dark mode** keep it in that look whatever the desktop says, with the desktop's accent colour, fonts and high contrast still applied. The change shows at once, in the main window and in an open settings window. Stored as `display.mode` (`system` / `light` / `dark`) |
 | Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker`. And its width: **Auto** (the default) fits the tree to the rows it shows, 10 px wider than the longest, and fits it again as branches open and close and drives come and go - up to 600 px, never squeezing the file display below its minimum, and following the window as it is resized; **Fixed width** keeps it at the pixels set beside it (100–600, 280 to start with). Dragging the divider still resizes the tree for the moment |
 | Display > Tab style | How the window's tab strip draws its tabs: **Modern** (the default since 1.71.0), each tab a capsule floating in a blue-grey strip, the open one white with a blue outline and the others plain text until the pointer is over them; **Simple modern**, flat tabs with a blue line under the open one; or **Classic**, the rounded tabs joined to the page that every release before 1.71.0 drew. The choice dresses every tab strip UltraFiler shows - the window's own, the History and Favorites views' and the Connection log window's - and shows at once on the open window; the tabs behave the same under all three |
 | Display > New tab | **Display options** — what the **"+"** at the end of the tab strip opens: **Show current folder** (the default), **Show Home folder**, or **Show Computer** (the Computer page, with the Home folder behind it in the tab). Only the "+" follows this; a tab opened on a named folder — the containing folder of a search result, an entry of the History or Favorites view — still opens on that folder |

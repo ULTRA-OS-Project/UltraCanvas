@@ -38,6 +38,7 @@
 // four uses below are qualified rather than bare.
 #include "UltraCanvasModelPreview.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 #include <string>
@@ -201,25 +202,37 @@ private:
 // keeps positions and normals in separate arrays; the vertex layout here is
 // position(3) + normal(3) per vertex, so they are woven together once on load
 // rather than on every frame.
+//
+// The file's own up axis is honoured here, as the framework's viewers do
+// (ToViewerUp): this tab's camera has +Y on screen, so a Z-up file - the
+// COLLADA aircraft, 3D Studio, STEP - would otherwise stand on its nose.
 Mesh Mesh3DToDemoMesh(const Mesh3D& src) {
     Mesh out;
     const size_t vertexCount = src.positions.size();
     out.vertices.reserve(vertexCount * 6);
+    UltraCanvas::Vec3 lo, hi;
     for (size_t i = 0; i < vertexCount; ++i) {
-        const UltraCanvas::Vec3& p = src.positions[i];
+        const UltraCanvas::Vec3 p = UltraCanvas::ToViewerUp(src.positions[i], src.upAxis);
+        if (i == 0) {
+            lo = hi = p;
+        } else {
+            lo = UltraCanvas::Vec3(std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z));
+            hi = UltraCanvas::Vec3(std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z));
+        }
         // A reader that supplies no normals is normal, not an error: the
         // framing below only needs positions, and a zero normal shades black
         // rather than crashing. GenerateMissingNormals covers the readers that
         // go through the plugin; this is the belt for the ones that do not.
         const UltraCanvas::Vec3 n = i < src.normals.size()
-                                            ? src.normals[i]
+                                            ? UltraCanvas::ToViewerUp(src.normals[i], src.upAxis)
                                             : UltraCanvas::Vec3(0.0f, 1.0f, 0.0f);
         out.vertices.insert(out.vertices.end(), {p.x, p.y, p.z, n.x, n.y, n.z});
     }
     out.indices = src.indices;
-    if (src.bounds.IsValid()) {
-        out.boundsMin = gldemo::Vec3(src.bounds.min.x, src.bounds.min.y, src.bounds.min.z);
-        out.boundsMax = gldemo::Vec3(src.bounds.max.x, src.bounds.max.y, src.bounds.max.z);
+    // Bounds of the rotated positions, which NormalizeToUnit centres on.
+    if (vertexCount > 0) {
+        out.boundsMin = gldemo::Vec3(lo.x, lo.y, lo.z);
+        out.boundsMax = gldemo::Vec3(hi.x, hi.y, hi.z);
     }
     return out;
 }
@@ -300,7 +313,7 @@ std::shared_ptr<UltraCanvasLabel> MakeTabText(const std::string& id, const std::
     auto label = DemoKit::CreateText(id, text);
     label->SetFontSize(fontSize);
     if (bold) label->SetFontWeight(FontWeight::Bold);
-    label->SetTextColor(color);
+    label->SetTextColor(DemoKit::ThemedInk(color));
     return label;
 }
 
@@ -476,7 +489,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     // Same column geometry as the other showcase tabs: the canvas ends at x=676
     // and the panel runs from 690 to 1000 inside the 1004px tab content area.
     auto panel = std::make_shared<UltraCanvasContainer>("ModelControls", 690, 40, 310, 560);
-    panel->SetBackgroundColor(Color(246, 246, 248, 255));
+    panel->SetBackgroundColor(DemoKit::Themed(Color(246, 246, 248, 255)));
     panel->SetBorders(1.0f);
     panel->SetPadding(10.0f);
     MakePanelColumn(*panel);

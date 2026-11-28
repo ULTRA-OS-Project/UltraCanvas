@@ -4,6 +4,7 @@
 // its return object. JSON handling is the vendored yyjson engine (the same
 // one UltraCanvasJSON wraps) — never exposed beyond this internal header.
 // Not installed; include only from core/UltraWin/*.cpp and tests.
+// Version: 0.1.1 - Disconnect; Connect leaves nothing open when it fails
 // Version: 0.1.0 (Stage 2a)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -21,8 +22,12 @@ public:
     QmpClient& operator=(const QmpClient&) = delete;
 
     // Connect to the socket, read the greeting, negotiate capabilities.
-    // False (with LastError set) on any failure; bounded by timeoutMs.
+    // False (with LastError set) on any failure; bounded by timeoutMs. A
+    // session this client had before is closed first, and so is the socket
+    // of a connection that fails: nothing stays open after a false.
     bool Connect(const std::string& socketPath, int timeoutMs);
+    // Closes the session. The destructor does the same.
+    void Disconnect();
 
     // Execute a no-argument command ({"execute": name}) and return true
     // when QMP answered with a "return" object. Events that arrive in
@@ -41,6 +46,7 @@ private:
     // lastAnswer. Skips async event lines.
     bool ReadAnswer(const char* key, int timeoutMs);
     bool SendLine(const std::string& line);
+    bool ConnectOnce(const std::string& socketPath, int timeoutMs);
 
     int fd = -1;
     std::string buffered;    // bytes past the last consumed line

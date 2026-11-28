@@ -1,5 +1,8 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.9.0 - the navigator beside a word-processing document (View > Navigator, F5):
+//                  TextEditorConfig::documentNavigator, DocumentTab::navigator, ApplyNavigator
+// Version: 2.8.0 - OpenDocumentFromPath asks for a protected document's password; DocumentTab::password
 // Version: 2.7.0 - darkDocumentBackground, SetDarkDocumentBackground, ApplyDocumentLook
 // Version: 2.6.0 - the status bar's spelling indicator: UpdateSpellLanguageIndicator, ShowSpellLanguageMenu
 // Version: 2.5.0 - the look is the framework theme's (the desktop's, Appearance.conf over it): ApplyDarkTheme / ApplyLightTheme,
@@ -9,12 +12,13 @@
 //                  opened twice across windows
 // Version: 2.3.0 - DialogFileFilters: the Word Processing filter is FileLoader's text document types
 // Version: 2.2.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #pragma once
 
 #include "UltraCanvasWindow.h"
+#include "UltraCrypt/UltraCryptCore.h"   // UltraCryptSecureBuffer: a protected document's password
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
@@ -30,6 +34,7 @@
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasSearchBar.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasDocumentNavigator.h"
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #include <memory>
 #include <string>
@@ -89,6 +94,9 @@ namespace UltraCanvas {
         // Word-processing documents shown on their pages (headers, footers,
         // page breaks) rather than as one column.
         bool documentPageLayout = true;
+        // The navigator (headings, tables, pictures, comments) at the left of
+        // a word-processing document (View > Navigator, F5).
+        bool documentNavigator = false;
         // The text tabs' background while the look is dark (View > Dark Mode:
         // Document Background): "dark", "white" or "lightgray". Light text on
         // black is not for everyone, and the window around it can still be dark.
@@ -182,6 +190,8 @@ namespace UltraCanvas {
         // size and colour survive a round trip instead of being flattened to
         // whatever Markdown can spell.
         std::shared_ptr<UltraCanvasRichTextEdit> richEdit;
+        // Its navigator, at the editor area's left while View > Navigator is on.
+        std::shared_ptr<UltraCanvas::UltraCanvasDocumentNavigator> navigator;
         DocumentKind kind = DocumentKind::Text;
         std::string language;              // Syntax highlighting language
         // Set once the language is settled by more than a guess - picked from
@@ -204,6 +214,10 @@ namespace UltraCanvas {
         // saves losslessly; a Markdown tab saved to one of those extensions
         // keeps its text and converts on every save.
         bool isWordDocument = false;
+        // The password a protected document was opened with (a .docx, .odt or
+        // deck), kept while the tab is open so that saving it again as .docx
+        // keeps it protected - never written anywhere. Empty when it has none.
+        std::shared_ptr<UltraCryptSecureBuffer> password;
         LineEndingType eolType = UltraCanvasTextArea::GetSystemDefaultLineEnding(); // Line ending type
 
         // Hash of the in-memory content (UltraCanvasTextArea::GetText) at the last
@@ -413,7 +427,10 @@ namespace UltraCanvas {
         // ===== DOCUMENT MANAGEMENT =====
         int CreateNewDocument(const std::string& fileName = "");
         int CreateDocumentFromTemplate(const DocumentTemplate& tpl);
-        int OpenDocumentFromPath(const std::string& filePath);
+        // A password-protected document or deck asks for its password first
+        // (UltraCanvasFileLoader::RequestDocumentPassword) and opens once it
+        // is given: -1 is returned meanwhile. `password` opens it directly.
+        int OpenDocumentFromPath(const std::string& filePath, const std::string& password = std::string());
         void CloseDocument(int index);
         void SwitchToDocument(int index);
         DocumentTab* GetActiveDocument();
@@ -449,7 +466,8 @@ namespace UltraCanvas {
         // Load a word-processing document (.odt/.docx) as editable Markdown.
         // Legacy .doc shows a convert-to-.docx message; a corrupt package
         // falls back to LoadFileIntoDocument (hex view).
-        bool LoadWordIntoDocument(int docIndex, const std::string& filePath);
+        bool LoadWordIntoDocument(int docIndex, const std::string& filePath,
+                                  const std::string& password = std::string());
         bool SaveDocument(int docIndex);
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
         // Why the last SaveDocument / SaveDocumentAs returned false (the
@@ -526,6 +544,9 @@ namespace UltraCanvas {
         // to match the config after the editor's context menu changed one.
         void UpdateViewMenuChecks();
         void OnViewTogglePageLayout(bool checked);
+        void OnViewToggleNavigator(bool checked);
+        // Shows or hides a word-processing tab's navigator as the setting says.
+        void ApplyNavigator(DocumentTab& doc);
         void OnViewToggleToolbar(bool checked);
         void OnViewToggleMarkdownToolbar(bool checked);
         void UpdateToolbarsSubmenu();
@@ -608,6 +629,14 @@ namespace UltraCanvas {
         void SetupRichDocumentCallbacks(int docIndex);
         void ConfirmSaveChanges(int docIndex, std::function<void(bool)> onComplete);
         void ConfirmCloseWithUnsavedChanges(std::function<void(bool)> onComplete);
+        // The list of files under that question: name and folder (or "Not
+        // saved yet"), in the shape of the file display's operation lists.
+        // Null for no files; outHeight is the list's height.
+        // Runs `task` once the window has painted what changed (a tab just
+        // switched to), so a dialog opened from it does not cover a stale one.
+        void AfterRepaint(std::function<void()> task);
+        std::shared_ptr<UltraCanvasUIElement> BuildUnsavedFileList(
+                const std::vector<std::shared_ptr<DocumentTab>>& listed, int& outHeight);
 
         // Layout
         void UpdateChildLayout();

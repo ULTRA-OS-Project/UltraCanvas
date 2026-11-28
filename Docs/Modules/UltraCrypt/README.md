@@ -1,9 +1,10 @@
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
-**Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
+**Status:** Stages 1, 2 and 5 implemented and under test; stages 3 and 4 in
+progress (§8).
 **Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-21
+**Last Modified:** 2026-11-19
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -26,9 +27,14 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
+Argon2id key derivation (one lane through libsodium; more - what files
+written elsewhere record, LibreOffice's ODF 1.4 encryption 4 - through the
+module's own RFC 9106 implementation on libsodium's BLAKE2b,
+`UltraCryptArgon2.cpp`, checked against libargon2), HKDF-SHA-256/512, Ed25519 signatures (§5.8),
 X25519 key agreement (§5.8.1),
-AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
+AES-128/192/256-CBC and -CTR, AES-GCM decryption on the same portable AES
+(`UltraCrypt_AesGcmDecrypt`, every CPU, the GCM specification's vectors) and
+PBKDF2-HMAC-SHA-256/512 (and -SHA-1, legacy-gated) for foreign
 formats (§5.9, §5.10), and X.509 certificates with their trust check, CMS
 signed and enveloped data and PKCS #12 (§5.11) - the one part on a second,
 optional backend, OpenSSL 3, since libsodium has nothing of public-key
@@ -47,11 +53,15 @@ therefore in place.
 **Notes on two of these.** SHA-1 is vendored (~150 lines in
 `UltraCryptCore.cpp`) because libsodium omits it; `UltraCrypt_Hash` refuses it
 unless `UltraCryptHashOptions::allowLegacy` is set, while `UltraCrypt_Hmac`
-accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. One caller
-sets `allowLegacy`: the reader of password-protected Office files
+accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. Two callers
+set `allowLegacy`, each for a password hash and key derivation, which SHA-1's
+collisions do not reach: the reader of password-protected Office files
 (`UltraCanvasOfficeEncryption.cpp`), because Office 2010 derives its keys with
-SHA-1 - a password hash and key derivation, which SHA-1's collisions do not
-reach. It writes SHA-512, so nothing UltraCanvas writes depends on SHA-1. HKDF is
+SHA-1, and the reader of password-protected OpenDocument files
+(`UltraCanvasOdfEncryption.cpp`), because ODF's PBKDF2 is HMAC-SHA-1 -
+`UltraCrypt_DeriveKeyPbkdf2` takes SHA-1 only with `allowLegacy`, and checks
+it against RFC 6070. Office's writer uses SHA-512 and nothing writes ODF
+encryption, so nothing UltraCanvas writes depends on SHA-1. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18. AES is
 vendored too (`UltraCryptAes.cpp`, ~470 lines), because libsodium has no AES
@@ -69,29 +79,31 @@ BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ## 1. Why this module exists
 
-There is currently **no sanctioned way for UltraCanvas code to compute a hash,
-an HMAC, derive a key, or encrypt a blob.** Outside vendored third-party
-code, only three files in the repository touch a crypto library, and all three
-are TLS backends doing TLS.
+Before this module there was **no sanctioned way for UltraCanvas code to
+compute a hash, an HMAC, derive a key, or encrypt a blob.** Outside vendored
+third-party code, only three files in the repository touched a crypto
+library, and all three were TLS backends doing TLS.
 
-The result is that every component needing cryptography has independently
-hand-rolled one, reached around the rules, or stalled at design stage:
+The result was that every component needing cryptography had independently
+hand-rolled one, reached around the rules, or stalled at design stage. The
+last column says where each stands now:
 
 | Consumer | Requires | State today |
 |---|---|---|
-| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
-| **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Fixed** — now uses UltraCrypt through `UCDCryptoEnvelope`; see §1.1 for what it was |
+| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Was fully specified with **none of the primitives in existence**. Now implemented as far as the container and its password protection: sections sealed with XChaCha20-Poly1305 under an Argon2id key (`UltraCanvasUCDContainer.h`, `UCDContainerTest`). SuperVault (§4.4) is still to come |
+| **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Resolved** — the cryptography is `UCDCryptoEnvelope`, on UltraCrypt; the v1 document code itself has since been removed. See §1.1 for what it was |
 | **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. `Apps/AnchorPoint/net/Sha256.h` has been deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
-| **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Design doc only |
-| **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
-| **UltraAuthenticator** ([investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare, secure memory | Blocked |
+| **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Was a design document only. v0.1 has shipped with a Memory and a File backend, the file sealed with XChaCha20-Poly1305 under an Argon2id key; native keyring backends are still planned |
+| **UltraDatabase** | At-rest encryption | ✅ Done for SQLite: every page of the database, its WAL and its journal sealed with XChaCha20-Poly1305 (`UltraDatabaseEncryption.h`) |
+| **UltraAuthenticator** ([investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare, secure memory | ✅ Unblocked and built on UltraCrypt: the OTP engine (since moved here, §5.13), its vault, its account layer and the application |
 
-Six consumers, one missing service. That is the case for building it once.
+Six consumers, one missing service. That was the case for building it once.
 
 ### 1.1 What the absence already produced
 
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.cpp` is the cautionary
-example. Its `EncryptData` / `DecryptData` are guarded by
+example. (The file was removed on 2026-11-18 - see the end of this section;
+what follows describes it as it was.) Its `EncryptData` / `DecryptData` are guarded by
 `#ifdef ULTRACANVAS_USE_OPENSSL`, **a macro no build file anywhere defines**.
 The branch that actually compiles is:
 
@@ -119,19 +131,23 @@ Plausible, well-intentioned security code that silently does nothing.
 `UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, which depends only
 on UltraCrypt and is therefore compiled and unit-tested on its own
 (`Tests/UCDCryptoEnvelopeTests.cpp`) rather than reviewed by eye.
-`UltraCanvasDocument::EncryptData` / `DecryptData` are now thin adapters over
-it, `SetPassword` / `VerifyPassword` use Argon2id with a constant-time
+`UltraCanvasDocument::EncryptData` / `DecryptData` became thin adapters over
+it, `SetPassword` / `VerifyPassword` used Argon2id with a constant-time
 comparison instead of a bare SHA-256 with a `std::hash` fallback, and
-`GeneratePasswordHash` / `GenerateSalt` are gone. Every regression test in that
+`GeneratePasswordHash` / `GenerateSalt` went. Every regression test in that
 suite fails against the old implementation.
 
 Two caveats stated plainly:
 
-1. `UltraCanvasDocument.cpp` **still does not compile**, for reasons unrelated
-   to cryptography — it references undeclared types (`UCComponentData`,
-   `UltraCanvasWindow`) and defines `GetCurrentDateTime` twice. It therefore
-   remains out of the build, and the crypto changes inside it are verified by
-   inspection, while the logic they delegate to is verified by tests.
+1. `UltraCanvasDocument.{h,cpp}` **never compiled**, for reasons unrelated
+   to cryptography — it referenced undeclared types (`UCComponentData` before
+   its definition, an `UltraCanvasWindow` the framework does not have),
+   defined `GetCurrentDateTime` twice and included a JSON library the build
+   does not carry: 11 errors in the header and 88 in the source when it was
+   last tried. It was never in the build, so the crypto changes inside it
+   were verified by inspection alone, and the pair was **removed on
+   2026-11-18**. What remains is what was verified by tests: the envelope,
+   which UltraAuthenticator's account export uses as well.
 2. Because the old code never produced ciphertext, **no readable encrypted
    `.ucd` file can exist**, so the new envelope carries no backward-compatibility
    burden and none is implemented.
@@ -577,7 +593,9 @@ public:
 void UltraCrypt_SecureZero(void* data, size_t size);
 
 // Length-independent comparison. Use for every MAC / tag / digest check.
-bool UltraCrypt_ConstantTimeEquals(const void* a, const void* b, size_t size);
+// False when the sizes differ.
+bool UltraCrypt_ConstantTimeEquals(const void* a, size_t aSize,
+                                   const void* b, size_t bSize);
 ```
 
 ### 5.2 Hashing
@@ -593,16 +611,20 @@ enum class UltraCryptHashAlgorithm : uint8_t {
 };
 
 struct UltraCryptHashOptions {
-    bool allowLegacy = false;    // required to use SHA1 as a plain digest
+    // Every way to a plain digest refuses SHA1 without it: UltraCrypt_Hash,
+    // UltraCrypt_HashFile and UltraCryptHasher.
+    bool allowLegacy = false;
 };
 
 class UltraCryptHasher {          // streaming; for files and large payloads
 public:
+    // A constructor returns nothing, so a refusal shows in IsValid(): made
+    // for SHA1 without allowLegacy, the hasher takes no data and Final()
+    // returns an empty digest. Neither copied nor moved.
     explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
                               const UltraCryptHashOptions& options =
                                   UltraCryptHashOptions());
     ~UltraCryptHasher();
-    UltraCryptHasher(UltraCryptHasher&&) noexcept;
     UltraCryptHasher(const UltraCryptHasher&) = delete;
 
     void Update(const void* data, size_t size);
@@ -611,7 +633,9 @@ public:
     void Reset();
 
     size_t GetDigestSize() const;
-    bool   IsValid() const;       // false when the algorithm is unavailable
+    // False when there is no backend to hash with, and when SHA1 was asked
+    // for without allowLegacy.
+    bool   IsValid() const;
 };
 
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
@@ -623,10 +647,12 @@ UltraCryptResult UltraCrypt_Hash(
         std::vector<uint8_t>& outDigest,
         const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
+// NotSupported for SHA1 without allowLegacy, before the file is opened.
 UltraCryptResult UltraCrypt_HashFile(
         UltraCryptHashAlgorithm algorithm,
         const std::string& filePath,
-        std::vector<uint8_t>& outDigest);
+        std::vector<uint8_t>& outDigest,
+        const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
 std::string UltraCrypt_ToHex(const std::vector<uint8_t>& bytes);
 bool        UltraCrypt_FromHex(const std::string& hex,
@@ -639,18 +665,7 @@ checksums.
 ### 5.3 HMAC
 
 ```cpp
-class UltraCryptHmacHasher {      // streaming, same shape as UltraCryptHasher
-public:
-    UltraCryptHmacHasher(UltraCryptHashAlgorithm algorithm,
-                         const UltraCryptSecureBuffer& key);
-    ~UltraCryptHmacHasher();
-    void Update(const void* data, size_t size);
-    std::vector<uint8_t> Final();
-    void Reset();                 // keeps the key
-    size_t GetDigestSize() const;
-    bool   IsValid() const;
-};
-
+// Accepts keys of any length (the standard HMAC key schedule is applied).
 // SHA1 is permitted here without allowLegacy: HMAC-SHA-1 remains sound and
 // TOTP interoperability requires it.
 UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
@@ -658,6 +673,10 @@ UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
                                  const void* data, size_t size,
                                  std::vector<uint8_t>& outMac);
 ```
+
+One call over the whole message: there is no streaming HMAC. (The proposal
+had a `UltraCryptHmacHasher` class of the shape of `UltraCryptHasher`; no
+consumer needed one - an OTP counter is eight bytes - and it was not built.)
 
 *Serves:* UltraAuthenticator (RFC 4226 / 6238), any future signed-manifest work.
 
@@ -1043,13 +1062,24 @@ UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
                                           const void* ciphertext, size_t size,
                                           UltraCryptSecureBuffer& outPlaintext);
 
-// SHA256 or SHA512 (SHA1 is refused); iterations >= 1; salt may be empty.
+// SHA256 or SHA512; SHA1 only with options.allowLegacy (OpenDocument's
+// password key); iterations >= 1; salt may be empty.
 UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm algorithm,
                                             const UltraCryptSecureBuffer& password,
                                             const std::vector<uint8_t>& salt,
                                             uint32_t iterations,
                                             size_t outputLength,
-                                            UltraCryptSecureBuffer& outKey);
+                                            UltraCryptSecureBuffer& outKey,
+                                            const UltraCryptHashOptions& options =
+                                                UltraCryptHashOptions());
+
+// AES-GCM decryption (interop only): the module's own AES and GHASH, every
+// CPU. The ciphertext ends with the 16-byte tag, checked before anything is
+// released (AuthenticationFailed, output empty).
+UltraCryptResult UltraCrypt_AesGcmDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptGcmParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
 ```
 
 The IV is the first counter block, and each next block adds one to it as a
@@ -1105,11 +1135,20 @@ UltraCryptResult UltraCrypt_ImportPkcs12(const std::vector<uint8_t>& pkcs12,
 // (detached, SHA-256, the chain carried); enveloped data made (AES-256-CBC)
 // and opened.
 UltraCryptCmsType UltraCrypt_CmsTypeOf(const std::vector<uint8_t>& der);
-UltraCryptResult UltraCrypt_CmsVerifyDetached(content, signatureDer, UltraCryptCmsSignature& out);
-UltraCryptResult UltraCrypt_CmsVerifyAttached(signedDer, outContent, UltraCryptCmsSignature& out);
-UltraCryptResult UltraCrypt_CmsSignDetached(content, const UltraCryptX509Identity& signer, outSignatureDer);
-UltraCryptResult UltraCrypt_CmsEncrypt(content, recipientsPem, outEnvelopedDer);
-UltraCryptResult UltraCrypt_CmsDecrypt(envelopedDer, const UltraCryptX509Identity& recipient,
+UltraCryptResult UltraCrypt_CmsVerifyDetached(const std::vector<uint8_t>& content,
+                                              const std::vector<uint8_t>& signatureDer,
+                                              UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsVerifyAttached(const std::vector<uint8_t>& signedDer,
+                                              std::vector<uint8_t>& outContent,
+                                              UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsSignDetached(const std::vector<uint8_t>& content,
+                                            const UltraCryptX509Identity& signer,
+                                            std::vector<uint8_t>& outSignatureDer);
+UltraCryptResult UltraCrypt_CmsEncrypt(const std::vector<uint8_t>& content,
+                                       const std::vector<std::string>& recipientsPem,
+                                       std::vector<uint8_t>& outEnvelopedDer);
+UltraCryptResult UltraCrypt_CmsDecrypt(const std::vector<uint8_t>& envelopedDer,
+                                       const UltraCryptX509Identity& recipient,
                                        UltraCryptSecureBuffer& outContent);
 ```
 
@@ -1180,14 +1219,22 @@ bool UltraCrypt_IsRsaEcdsaAvailable();
 
 // RS256: RSASSA-PKCS1-v1_5 with SHA-256. The key as a JWK's n and e
 // (big-endian bytes); below 2048 bits it is InvalidKeySize.
-UltraCryptResult UltraCrypt_CheckRsaPublicKey(modulus, exponent);
-UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(modulus, exponent, data, size, signature);
+UltraCryptResult UltraCrypt_CheckRsaPublicKey(const std::vector<uint8_t>& modulus,
+                                              const std::vector<uint8_t>& exponent);
+UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(const std::vector<uint8_t>& modulus,
+                                                 const std::vector<uint8_t>& exponent,
+                                                 const void* data, size_t size,
+                                                 const std::vector<uint8_t>& signature);
 
 // ES256: ECDSA on P-256 with SHA-256. The key as a JWK's x and y (32 bytes
 // each; a point off the curve is InvalidArgument); the signature as r || s,
 // 64 bytes, as JWS gives it - converted to DER inside.
-UltraCryptResult UltraCrypt_CheckP256PublicKey(x, y);
-UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(x, y, data, size, signature);
+UltraCryptResult UltraCrypt_CheckP256PublicKey(const std::vector<uint8_t>& x,
+                                               const std::vector<uint8_t>& y);
+UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(const std::vector<uint8_t>& x,
+                                                  const std::vector<uint8_t>& y,
+                                                  const void* data, size_t size,
+                                                  const std::vector<uint8_t>& signature);
 ```
 
 Checks only; a signature that does not hold is `SignatureInvalid`, whichever
@@ -1212,6 +1259,7 @@ coordinates and signatures.
 de-facto `otpauth://` key URI an authenticator scans from a QR code. Until
 2026-11 the files were UltraAuthenticator's (`Apps/UltraAuthenticator/otp/`).
 
+<!-- doc-check: int64_t unixTime; std::string typed; uint64_t lastAcceptedStep; -->
 ```cpp
 namespace Otp = UltraCanvas::Otp;
 Otp::Parameters params;                         // TOTP, SHA-1, 6 digits, 30 s
@@ -1247,6 +1295,7 @@ use, the digit count, a short secret.
 
 **UCD v2 section encryption (§4.3 pipeline):**
 
+<!-- doc-check: std::vector<uint8_t> sectionHeaderBytes; std::vector<uint8_t> payload; -->
 ```cpp
 UltraCryptKdfParams kdf =
     UltraCrypt_RecommendedKdfParams(UltraCryptKdfAlgorithm::Argon2id);
@@ -1264,6 +1313,7 @@ if (!UltraCrypt_AeadSeal(key, aead, payload.data(), payload.size(), ciphertext))
 
 **UCD v2 SuperVault subkey (§4.4 step 6):**
 
+<!-- doc-check: std::string kSvltInfoPrefix; std::string fileUuid; UltraCryptSecureBuffer serviceKeyMaterial; std::vector<uint8_t> kdfSalt; -->
 ```cpp
 std::vector<uint8_t> info(kSvltInfoPrefix.begin(), kSvltInfoPrefix.end());
 info.insert(info.end(), fileUuid.begin(), fileUuid.end());
@@ -1275,6 +1325,7 @@ UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA256, serviceKeyMaterial,
 
 **TOTP code (RFC 6238):**
 
+<!-- doc-check: int64_t unixTimeUtc; uint64_t period; -->
 ```cpp
 uint64_t counter = static_cast<uint64_t>(unixTimeUtc) / period;
 uint8_t  message[8];
@@ -1338,7 +1389,7 @@ is part of the deliverable, not a follow-up:
 |---|---|
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
-| **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
+| **3** | ◐ **All but one item** — the v1 document encryption rewritten on UltraCrypt as `UCDCryptoEnvelope` (§1.1), `AnchorPoint/net/Sha256.h` retired, the UCD v2 container written with its password protection (`UltraCanvasUCDContainer.h`), SQLite files encrypted at rest (`UltraDatabaseEncryption.h`), UltraVault's file backend shipped. Still to do: UCD v2's SuperVault key source (spec §4.4), which the container refuses to open so far |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
 | **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME; RSA / ECDSA checks (§5.12), for the UltraDBAdmin relay's sign-in |
 
@@ -1363,6 +1414,7 @@ storage layer and the UCD v2 format.
 - ~~`UltraCanvasDocument`'s dormant encryption~~ — **leave it.** The file is
   out of the build and likely to be deleted; its encryption path was already
   superseded by `UCDCryptoEnvelope` (§1.1). Nothing further is to be done to it.
+  *(Deleted on 2026-11-18.)*
 - ~~Naming convention~~ — **keep the `UltraCrypt_` prefix** and the global
   namespace, matching UltraNet and UltraDatabase. The framework accepts having
   both patterns.

@@ -1,6 +1,7 @@
 # Tests/VectorFormatsTests.cmake
 # VectorFormatsPluginTest (every vector converter, and detailed.cdr through
-# the patched libcdr), CDRWriterTest and CDRPluginRenderTest. Included by Tests/CMakeLists.txt
+# the patched libcdr), ODGConverterTest, VectorFillRuleTest, EMFPlusTest, CDRWriterTest and
+# CDRPluginRenderTest. Included by Tests/CMakeLists.txt
 # under BUILD_TESTS, and by the top-level CMakeLists.txt on its own under
 # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS - so platforms that build no full
 # test suite (Windows CI) still run the CorelDRAW path on real files.
@@ -42,6 +43,83 @@ if(TARGET UltraCanvasVectorPlugin)
     message(STATUS "    Test registered: VectorFormatsPluginTest")
 else()
     message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# VectorExportFixtures: not a test on its own - the drawings, and the
+# manifest of what must be where, that scripts/check_libreoffice_render.py
+# has LibreOffice draw (.github/workflows/vector-libreoffice.yml).
+if(TARGET UltraCanvasVectorPlugin)
+    add_executable(VectorExportFixtures
+        ${_VFT_DIR}/VectorExportFixtures.cpp
+    )
+    target_include_directories(VectorExportFixtures PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(VectorExportFixtures PRIVATE cxx_std_20)
+    target_link_libraries(VectorExportFixtures PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorExportFixtures PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+endif()
+
+# ===== OPENDOCUMENT DRAWING =====
+# ODGConverterTest: the .odg / .fodg writer and reader round trip, LibreOffice
+# Draw's own sample files (media/vector/ODG) and hand-written custom-shape
+# geometry. Run with --render <file> <out.ppm> to draw any vector file.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building ODGConverterTest...")
+    add_executable(ODGConverterTest
+        ${_VFT_DIR}/ODGConverterTest.cpp
+    )
+    target_include_directories(ODGConverterTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(ODGConverterTest PRIVATE cxx_std_20)
+    target_compile_definitions(ODGConverterTest PRIVATE
+        VECTOR_SAMPLES_DIR="${_VFT_DIR}/../media/vector"
+    )
+    target_link_libraries(ODGConverterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(ODGConverterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME ODGConverterTest COMMAND ODGConverterTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: ODGConverterTest")
+endif()
+
+# ===== FILL RULE =====
+# VectorFillRuleTest: a shape's even-odd / non-zero fill through every writer
+# with a reader (EMF, WMF, DXF, XAR, CDR, ODG, SVG), drawn after the round
+# trip, and the non-zero-as-even-odd subpath helper.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorFillRuleTest...")
+    add_executable(VectorFillRuleTest
+        ${_VFT_DIR}/VectorFillRuleTest.cpp
+    )
+    target_include_directories(VectorFillRuleTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(VectorFillRuleTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorFillRuleTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorFillRuleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME VectorFillRuleTest COMMAND VectorFillRuleTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: VectorFillRuleTest")
+endif()
+
+# EMFPlusTest: EMF+ records in the EMF reader (alpha kept, the GDI copy of a
+# dual file not drawn twice, a fallback to it for what is not read), and the
+# EMF a WMF carries.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building EMFPlusTest...")
+    add_executable(EMFPlusTest
+        ${_VFT_DIR}/EMFPlusTest.cpp
+    )
+    target_include_directories(EMFPlusTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(EMFPlusTest PRIVATE cxx_std_20)
+    target_link_libraries(EMFPlusTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(EMFPlusTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME EMFPlusTest COMMAND EMFPlusTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: EMFPlusTest")
 endif()
 
 # Round-trips a VectorDocument through the Vector plugin's CDR writer and the
@@ -117,4 +195,23 @@ if(TARGET UltraCanvasCDRPlugin)
     message(STATUS "    Test registered: CDRPluginRenderTest")
 else()
     message(STATUS "  CDRPluginRenderTest skipped (needs UltraCanvasCDRPlugin)")
+endif()
+
+# VectorFileSizeTest: a drawing written in each format the Vector plugin
+# writes and reads, rasterized from the file - its page is the natural size
+# (InspectVectorFile, GetFileInfo), and RasterizeVectorFile scales it.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorFileSizeTest...")
+    add_executable(VectorFileSizeTest
+        ${_VFT_DIR}/VectorFileSizeTest.cpp
+    )
+    target_include_directories(VectorFileSizeTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(VectorFileSizeTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorFileSizeTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorFileSizeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME VectorFileSizeTest COMMAND VectorFileSizeTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: VectorFileSizeTest")
 endif()

@@ -27,7 +27,7 @@ namespace UltraCanvas {
             // most messages are, so a click does not move the buttons below.
             auto statusLabel = DemoKit::AddText(page, "StatusLabel", Tr("Click any button to see feedback here"));
             statusLabel->SetFontSize(11);
-            statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
+            statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
             statusLabel->SetBorders(1.0f);
             statusLabel->SetPadding(8.0f);
             statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);

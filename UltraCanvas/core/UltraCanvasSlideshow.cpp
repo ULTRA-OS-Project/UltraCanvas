@@ -1,17 +1,19 @@
 // core/UltraCanvasSlideshow.cpp
 // Timed image slideshow with selectable info-panel layouts and indicator styles.
+// Version: 1.6.1 - the transitions' frames come from UltraCanvasSlideTransition, shared with the slide show player
 // Version: 1.6.0 - Make/Register descriptor: "slideshow" in the element registry, bundled or as a runtime module
 // Version: 1.5.1 - the slide counter is centred on its capitals, not its line box
 // Version: 1.5.0 - a picture saved over shows its new content: the drawn
 //                  paths go to an UltraCanvasImageFileWatch, checked on its
 //                  worker, never on the paint path
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlideshow.h"
 #include "UltraCanvasElementPlugins.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasSlideTransition.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -616,46 +618,21 @@ namespace UltraCanvas {
             return;
         }
 
+        // The frame's geometry is UltraCanvasSlideTransition's, shared with
+        // the presentation player; the pictures are drawn here, fitted.
+        SlideTransitionEffect effect = SlideTransitionEffect::Cut;
         switch (config.fadeStyle) {
-            case SlideshowFadeStyle::NoFade: {
-                DrawSlideAt(ctx, currentIndex, imgRect, 1.0f, 0.0f);
-                break;
-            }
-            case SlideshowFadeStyle::CrossFade: {
-                DrawSlideAt(ctx, previousIndex, imgRect, 1.0f - p, 0.0f);
-                DrawSlideAt(ctx, currentIndex,  imgRect, p,        0.0f);
-                break;
-            }
-            case SlideshowFadeStyle::FadeOutIn: {
-                if (p < 0.5f) {
-                    float a = 1.0f - (p * 2.0f);
-                    DrawSlideAt(ctx, previousIndex, imgRect, a, 0.0f);
-                } else {
-                    float a = (p - 0.5f) * 2.0f;
-                    DrawSlideAt(ctx, currentIndex, imgRect, a, 0.0f);
-                }
-                break;
-            }
-            case SlideshowFadeStyle::SlideHorizontal: {
-                float w = imgRect.width;
-                DrawSlideAt(ctx, previousIndex, imgRect, 1.0f, -p * w);
-                DrawSlideAt(ctx, currentIndex,  imgRect, 1.0f, (1.0f - p) * w);
-                break;
-            }
-            case SlideshowFadeStyle::SlideVertical: {
-                float h = imgRect.height;
-                DrawSlideAt(ctx, previousIndex, imgRect, 1.0f, 0.0f, -p * h);
-                DrawSlideAt(ctx, currentIndex,  imgRect, 1.0f, 0.0f, (1.0f - p) * h);
-                break;
-            }
-            case SlideshowFadeStyle::ZoomFade: {
-                // Previous holds steady and fades out; new zooms in from slightly
-                // enlarged while fading in.
-                DrawSlideAt(ctx, previousIndex, imgRect, 1.0f - p, 0.0f, 0.0f, 1.0f);
-                float scale = 1.08f - 0.08f * p;
-                DrawSlideAt(ctx, currentIndex,  imgRect, p, 0.0f, 0.0f, scale);
-                break;
-            }
+            case SlideshowFadeStyle::NoFade:          effect = SlideTransitionEffect::Cut; break;
+            case SlideshowFadeStyle::CrossFade:       effect = SlideTransitionEffect::CrossFade; break;
+            case SlideshowFadeStyle::FadeOutIn:       effect = SlideTransitionEffect::FadeOutIn; break;
+            case SlideshowFadeStyle::SlideHorizontal: effect = SlideTransitionEffect::PushLeft; break;
+            case SlideshowFadeStyle::SlideVertical:   effect = SlideTransitionEffect::PushUp; break;
+            case SlideshowFadeStyle::ZoomFade:        effect = SlideTransitionEffect::ZoomFade; break;
+        }
+        for (const SlideTransitionLayer& layer : SlideTransitionFrame(effect, imgRect, p)) {
+            DrawSlideAt(ctx, layer.incoming ? currentIndex : previousIndex, imgRect,
+                        static_cast<float>(layer.alpha), static_cast<float>(layer.offsetX),
+                        static_cast<float>(layer.offsetY), static_cast<float>(layer.scale));
         }
     }
 

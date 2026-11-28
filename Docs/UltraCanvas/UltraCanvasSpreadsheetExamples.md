@@ -32,7 +32,10 @@
   - [6. Save: ODS Directly, CSV via Export Dialog](#6-save-ods-directly-csv-via-export-dialog)
   - [7. Working with Multiple Sheets](#7-working-with-multiple-sheets)
   - [8. Reading Cell Values Back](#8-reading-cell-values-back)
+- [Named ranges](#named-ranges)
 - [Formula language and functions](#formula-language-and-functions)
+- [Arrays and spills](#arrays-and-spills)
+- [Functions not yet supported](#functions-not-yet-supported)
 - [Column widths](#column-widths)
 - [Cell formatting menu](#cell-formatting-menu)
 - [Function menu](#function-menu)
@@ -41,7 +44,16 @@
 - [Pointing at cells in a formula](#pointing-at-cells-in-a-formula)
 - [Sheet tab menu](#sheet-tab-menu)
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
+- [Data validation](#data-validation)
+- [Conditional formats](#conditional-formats)
+- [Comments and links](#comments-and-links)
 - [Best Practices](#best-practices)
+- [Printing and PDF](#printing-and-pdf)
+- [Charts](#charts)
+  - [Every chart type](#every-chart-type)
+- [Pivot tables](#pivot-tables)
+- [Copy and paste with documents and slides](#copy-and-paste-with-documents-and-slides)
+- [Accessibility](#accessibility)
 - [See Also](#see-also)
 
 ## Overview
@@ -70,6 +82,8 @@
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references; Ctrl-drag copies instead, a double-click fills down beside the neighbouring data, Ctrl+D / Ctrl+R fill down / right (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
+- **Charts**: every chart of the framework a block of cells can feed - columns, bars, lines, areas, pies, scatter, bubbles, waterfall, Sankey, Gantt, heatmap, ternary and forty more - picked in a chart gallery and made from the selection, anchored to cells, their series read from the cells whenever they change; moved and resized with handles, kept in `.xlsx` and `.ods`, printed (see [Charts](#charts))
+- **Pivot tables**: a block of cells summarised by its fields - rows, columns, filters and values with sums, counts, averages, min, max, products, standard deviations and variances, shares of the totals, subtotals and grand totals, the items' order and filters, dates grouped by year, quarter or month and numbers by a step; read-only cells refreshed when the source changes, drilled into with a double-click, built in a field list, kept in `.xlsx` and `.ods` (see [Pivot tables](#pivot-tables))
 - **File I/O**: Load/Save OpenDocument (`.ods`), Excel (`.xlsx`) and CSV/TSV, with auto-detection or explicit import/export options; load legacy Excel (`.xls`) — read only, save it as `.xlsx` or `.ods`
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
 
@@ -172,7 +186,8 @@ void  SelectColumn(int col);
 void  SelectAll();
 bool  IsCellSelected(int row, int col) const;
 
-void  MoveActiveCell(int rowDelta, int colDelta);
+void  MoveActiveCell(int rowDelta, int colDelta);     // selects the cell it lands on (the arrows, Enter, Tab)
+void  ExtendSelectionBy(int rowDelta, int colDelta);  // Shift+arrow: the far corner moves, the active cell stays
 void  ScrollToCell(int row, int col);
 void  EnsureCellVisible(int row, int col);
 ```
@@ -237,13 +252,46 @@ void FreezePanes(int rows, int cols);
 void UnfreezePanes();
 ```
 
+Inserting or deleting rows or columns moves the references in formulas with
+the cells, on every sheet, as a spreadsheet does. Say two rows are inserted
+above row 2:
+
+- `=A2+$B$5` becomes `=A4+$B$7`. `$`-anchored references move too: the `$`
+  stops a reference moving when it is copied, not when the sheet changes.
+- `=SUM(A1:A5)` becomes `=SUM(A1:A7)`: a range across the insertion grows.
+- `=Data.A3` on another sheet moves when the rows were inserted on Data.
+
+Deleting rows moves the references below them up and shrinks the ranges
+across them. A reference wholly inside the deleted rows becomes `#REF!`, so
+`=A2*2` becomes `=#REF!*2`. Text in quotes, and everything else in the
+formula, is kept as it was written. Workbook names covering the sheet move
+with it (see [Named ranges](#named-ranges)). Each insert or delete is one undo step: undo puts back the
+cells, row and column sizes, merges and the formulas on every sheet as they
+were, deleted cells included, and redo does it again. For a formula
+string of your own, the same rewrite is
+`MoveFormulaReferencesForRowsColumns(formula, sheetName, onThatSheet, columns, at, count)`
+(`UltraCanvasSpreadsheetSheet.h`).
+
 ### Clipboard, Undo/Redo, Formula Engine
+
+Copy and Cut keep the cells whole for a paste in the same program and put
+them on the system clipboard as other programs read them: the shown values
+as tab-separated text, beside an HTML table. Paste takes the grid's own copy
+while the system clipboard still holds it - a copied formula's references
+move with it (`=B2*2` copied from B3 to B8 is `=B7*2`), a cut one's stay -
+and otherwise another program's HTML table (spanned cells kept apart) or
+tab-, comma- or semicolon-separated text, each value read as if typed.
+Every paste is one undo step.
 
 ```cpp
 void Cut();
 void Copy();
 void Paste();
 void PasteSpecial(const PasteOptions& options);
+std::string RangeAsText(const CellRange& range) const;   // what Copy puts on the clipboard
+std::string RangeAsHtml(const CellRange& range) const;
+bool PasteHtml(const std::string& html);                 // another program's cells, at the active cell
+bool PasteText(const std::string& text);
 
 void Undo();
 void Redo();
@@ -297,13 +345,20 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 
 ```cpp
 // Format chosen automatically from the file extension. `password` opens a
-// password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
-// formats ignore it.
+// password-protected .xlsx (see UltraCanvasOfficeEncryption.md) or .ods
+// (UltraCanvasOdfEncryption.md); other formats ignore it. The templates read
+// as their workbooks: .ots as an .ods, .xltx and .xltm as an .xlsx.
 bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
-// With a password: a password-protected .xlsx; any other format with one is refused.
+// With a password: a password-protected .xlsx or .xltx; any other format with
+// one is refused. An .ots or .xltx is written as a template - the same
+// package under the template's media type; an .xltm is refused.
 bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
+// True for "ots", "xltx", "xltm" (an extension or a path), a free function.
+bool IsSpreadsheetTemplateExtension(const std::string& extensionOrPath);
 
-bool LoadODS(const std::string& filePath);
+// `password` opens a password-protected .ods (LibreOffice's "Save with
+// password", ODF 1.2 and 1.4 - see UltraCanvasOdfEncryption.md).
+bool LoadODS(const std::string& filePath, const std::string& password = std::string());
 bool SaveODS(const std::string& filePath);
 bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
 bool SaveXLSX(const std::string& filePath, const std::string& password = std::string());
@@ -334,6 +389,50 @@ quotes exactly as the spreadsheet does:
 // separator, the quote or a line break; a quote inside doubled), then the
 // options' line ending. UTF-8; CSVEncodeFromUtf8 turns it into the charset.
 std::string CSVFormatRecord(const std::vector<std::string>& fields, const CSVExportOptions& opt);
+```
+
+#### What a workbook file keeps
+
+Besides the cells, their styles, column widths, row heights and merges,
+`.xlsx` and `.ods` both read and write what a sheet holds around them, so a
+workbook opened and saved again comes back as it was:
+
+| | `.xlsx` | `.ods` |
+|---|---|---|
+| Frozen rows and columns | the frozen `pane` of `sheetViews` | the split (mode 2) in `settings.xml` |
+| Hidden rows and columns | `hidden="1"` | `table:visibility="collapse"` |
+| Named ranges, the workbook's and a sheet's | `definedNames` (a sheet's with `localSheetId`) | `table:named-expressions` of the document and of the table |
+| Auto-filter, and columns filtered to values | `autoFilter`, `_xlnm._FilterDatabase` | `table:database-range` with filter buttons |
+| Print area | `_xlnm.Print_Area` | `table:print-ranges` |
+| Rows / columns repeated on every page | `_xlnm.Print_Titles` | header rows / columns |
+| Page setup, header and footer, page breaks | `printOptions`, `pageMargins`, `pageSetup`, `headerFooter`, `rowBreaks` / `colBreaks` | the page layout and master page in `styles.xml`, `fo:break-before` |
+| Conditional formats | `conditionalFormatting`, their styles as `dxfs` in `styles.xml` | `calcext:conditional-formats`, their styles as common styles in `styles.xml` |
+| Validation rules | `dataValidations` | `table:content-validations`, named by the cells |
+| Comments | the comments part, and the legacy VML drawing Excel shows them with | `office:annotation` in the cell |
+| Links | `hyperlinks` (an address through the sheet's relationships, a place as `location`) | a `text:a` in the cell's text |
+
+Header and footer texts are kept in Excel's codes (`&P` page, `&N` pages,
+`&A` sheet, `&F` file, `&D` date, `&T` time, `&&` an ampersand), which an
+`.ods` holds as text fields. A workbook name whose range names no sheet
+(it covers the sheet of the formula using it) has no such form in Excel: an
+`.xlsx` gives it the first sheet.
+
+```cpp
+auto grid = std::make_shared<UltraCanvasSpreadsheet>("Report", 0, 0, 900, 600);
+SpreadsheetSheet* report = grid->GetActiveSheet();
+report->FreezeRows(1);
+report->SetColumnHidden(4, true);                        // column E
+report->SetAutoFilter(CellRange(0, 0, 99, 5));           // A1:F100
+grid->AddNamedRange("Amounts", CellRange(1, 2, 99, 2), report->GetName());   // scoped to the sheet
+
+PrintSettings& print = report->GetPrintSettings();
+print.orientation = PageOrientation::Landscape;
+print.paperSize = PaperSize::A4;
+print.repeatRowsFirst = 0;                               // row 1 on every page
+print.repeatRowsLast = 0;
+print.footerCenter = "Page &P of &N";
+report->SetPrintArea(CellRange(0, 0, 99, 5));
+grid->SaveToFile("report.xlsx");                         // or "report.ods": the same survives
 ```
 
 ### View Settings
@@ -507,6 +606,16 @@ SeedSampleData(sheet.get());
 ### 3. Formulas and Recalculation
 
 Set formula cells with `SetCellFormula`, then call `Recalculate()` so the engine evaluates dependencies. Formulas use A1 notation and are 1-based in text (`B2:B8` is rows 1..7).
+
+`Recalculate()` calculates every formula whose result may have changed since
+the last call: formulas set or changed, formulas reading a cell that changed,
+directly or through other formulas, on any sheet, the formulas that name a
+range, and the volatile ones (`NOW`, `TODAY`, `RAND`, `RANDBETWEEN`). It
+finds the changes itself, however a cell was changed: through the grid
+(typing, paste, fill, clear, sort, undo) or by writing into a sheet directly
+(`GetActiveSheet()->SetCellValue(...)`). A change that has not been
+recalculated yet is calculated before the grid draws. Inserting or deleting
+rows or columns recalculates everything; so does `RecalculateAll()`.
 
 ```cpp
 const int totalRow = 9;
@@ -682,6 +791,42 @@ std::string text  = sheet->GetCellText(0, 0);         // "Month"
 std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
 ```
 
+## Named ranges
+
+A workbook name stands for a range in formulas (`=SUM(Amounts)`). It is
+visible from every sheet, or, given a `sheetScope`, only from that sheet:
+
+```cpp
+CellRange rates(0, 0, 0, 0);                         // A1
+rates.start.sheetName = rates.end.sheetName = "Settings";
+grid->AddNamedRange("Rate", rates);                  // every sheet: Settings.A1
+
+grid->AddNamedRange("Total", CellRange(9, 1, 9, 1), "Jan");   // on Jan: Jan.B10
+grid->AddNamedRange("Total", CellRange(9, 1, 9, 1), "Feb");   // on Feb: Feb.B10
+
+CellRange r = grid->ResolveNamedRange("Total", "Feb");        // what =Total means on Feb
+bool both = grid->HasNamedRange("Total", "Jan") && grid->HasNamedRange("Total", "Feb");
+grid->RemoveNamedRange("Total", "Jan");                       // that one only
+```
+
+- **One name per scope.** The same name can exist once for the workbook and
+  once for each sheet, as Excel files often have ("Total" on each month's
+  sheet).
+- **Lookup from a formula.** A formula looks for the name scoped to its own
+  sheet first, then for the workbook's. It never sees a name scoped to
+  another sheet; that gives `#NAME?`, as a name that does not exist does.
+- **Case.** Names are matched without regard to case.
+- **Which sheet a name covers.** It covers the sheet its range names
+  (`range.start.sheetName`). A scoped name whose range names none covers its
+  own sheet. A workbook name whose range names none covers the sheet of the
+  formula using it.
+- **Following the sheet.** Renaming a sheet renames the scope and the covered
+  sheet of its names. Inserting or deleting rows or columns moves the names
+  covering that sheet.
+- **Deleting a sheet.** The names scoped to it go with it. Workbook names
+  covering it stay, and a formula using one shows `#REF!` (`#NAME?` is for a
+  name that does not exist). Undoing the delete brings both back.
+
 ## Formula language and functions
 
 Formulas are written as in Excel and LibreOffice, with one difference: a
@@ -715,7 +860,21 @@ sheet) is calculated first; a circular reference reads the value it has.
 | Date and time | `DATE`, `TIME`, `TODAY`, `NOW`, `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `WEEKDAY`, `EDATE`, `EOMONTH`, `DAYS`, `DATEDIF`, `DATEVALUE` |
 | Logical | `IF`, `IFS`, `IFERROR`, `IFNA`, `SWITCH`, `AND`, `OR`, `NOT`, `XOR`, `TRUE`, `FALSE` |
 | Information | `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISNONTEXT`, `ISLOGICAL`, `ISERROR`, `ISERR`, `ISNA`, `ISEVEN`, `ISODD`, `NA`, `N` |
-| Financial | `PMT`, `FV`, `PV`, `NPV` |
+| Dynamic arrays | `FILTER`, `SORT`, `SORTBY`, `UNIQUE`, `SEQUENCE`, `RANDARRAY`, `TRANSPOSE`, `XLOOKUP`, `XMATCH` |
+| LAMBDA | `LET`, `LAMBDA`, `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL`, `MAKEARRAY` |
+| Financial | `PMT`, `IPMT`, `PPMT`, `CUMIPMT`, `CUMPRINC`, `FV`, `PV`, `NPV`, `XNPV`, `NPER`, `RATE`, `IRR`, `XIRR`, `MIRR`, `EFFECT`, `NOMINAL`, `SLN`, `SYD`, `DB`, `DDB`, `VDB` |
+
+The financial functions follow Excel and LibreOffice: money paid out is
+negative, `type` 1 pays at the start of a period. `RATE` and `IRR` solve by
+Newton's method from their guess (10% when left out) to within 1E-7 in at
+most 20 steps, `XIRR` to within 1E-8 in at most 100 (Excel's documented
+limits), and give `#NUM!` when they do not converge, as when the cash flows
+never change sign. `XNPV` and `XIRR` count years of 365 days from the first
+date. `DB` rounds its rate to three decimals, `VDB` switches to straight-line
+depreciation when that is larger unless `no_switch` is TRUE.
+
+An argument can be left out where the function has a default:
+`=SEQUENCE(3,,10)`, `=XLOOKUP(A1,B1:B99,C1:C99,,-1)`.
 
 Text functions count characters, not bytes: `=LEN("ขาย")` is 3. The
 criteria of `SUMIF`, `COUNTIF` and their kin are Excel's: a value (`30`,
@@ -741,6 +900,104 @@ rowCount.implementation = [](const std::vector<FormulaValue>&,
 };
 engine->GetFunctionLibrary().RegisterFunction(rowCount);
 ```
+
+A function of single values that should take arrays element by element, as
+the built-in `ABS` or `IF` do, sets `FunctionDefinition::elementWise`.
+
+## Arrays and spills
+
+A range is a value of its own: `=A1:A3*10` is three values, `=SUM(A1:A5*B1:B5)`
+multiplies element by element before it adds, and `=IF(A1:A5>2,"big","small")`
+decides five times. An array constant is written `{1,2;3,4}` - commas between
+columns, semicolons between rows - and holds numbers, text, TRUE / FALSE and
+errors. Arrays of different sizes meet as in Excel: a single row or column
+stretches over the other's rows or columns, and positions only one of them
+reaches are `#N/A`. `FormulaValue::IsArray()`, `ArrayRows()`, `ArrayCols()`
+and `ArrayAt(r, c)` read an array result; a function implementation returns
+one with `FormulaValue::Array(rows, cols, values)`.
+
+**Spills.** A formula whose result is an array fills the cells to its right
+and below - it *spills*, as in Excel 365. The formula stays in its own cell
+(the anchor); every other cell holds a *spilled value*: a plain value with no
+formula, which shows and is read like any other (`IsSpilledValue()`,
+`GetSpillAnchor()`). When a cell in the way is not empty, or is merged, the
+anchor shows `#SPILL!` and spills nothing; clearing the cell lets it spill
+again. Typing into a spilled cell makes it an ordinary cell, and so blocks the
+spill. A spill follows its source: when the result grows, shrinks or changes,
+the cells it covers change with it, the ones it leaves are emptied, and every
+formula reading them is calculated again.
+
+`A1#` is the whole array spilled from A1 (`=SUM(B2#)`, `=ROWS(B2#)`,
+`='Data'.A1#`); it is `#REF!` when A1 spills nothing. `@` takes one value
+where an array would come: `=@A1:A10` is the cell of A1:A10 on the formula's
+own row (`#VALUE!` when there is none).
+
+**Fixed array formulas** - what Ctrl+Shift+Enter enters in Excel - fill a range
+chosen beforehand, whatever is in it: `SpreadsheetSheet::SetArrayFormula(range,
+formula)`. A result smaller than the range repeats a single row or column, and
+is `#N/A` beyond that; a single value fills the range. In the grid,
+Ctrl+Shift+Enter on a formula being typed enters it this way over the
+selection (an undo step).
+
+**LET and LAMBDA.** `=LET(rate,B1/12,n,B2*12,PMT(rate,n,B3))` names values
+for the calculation. `=LAMBDA(x,x*x)(4)` is 16; a LAMBDA named with LET is
+called by its name (`=LET(sq,LAMBDA(n,n*n),sq(3)+sq(4))`), and `MAP`,
+`REDUCE`, `SCAN`, `BYROW`, `BYCOL` and `MAKEARRAY` call one for each element,
+row or column.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+SpreadsheetSheet* sheet = grid->GetActiveSheet();
+sheet->SetCellFormula(0, 3, "=SORT(FILTER(A2:B50,B2:B50>100),2,-1)");   // D1 spills
+sheet->SetCellFormula(0, 6, "=ROWS(D1#)");                             // how many rows it spilled
+sheet->SetArrayFormula(CellRange(1, 8, 49, 8), "=B2:B50*1.2");         // I2:I50, fixed
+grid->Recalculate();
+
+const SpreadsheetCell* anchor = sheet->GetCellIfExists(0, 3);
+if (anchor && anchor->IsSpillBlocked()) {
+    // #SPILL!: a cell of D1 .. (anchor->GetArrayRows() x GetArrayCols()) is taken
+}
+```
+
+**What the formats keep.** In `.xlsx` an array formula is
+`<f t="array" ref="D1:E7">`; a dynamic one also carries the cell metadata
+`cm="1"` that `xl/metadata.xml` marks as a dynamic array (`XLDAPR`,
+`fDynamic="1"`), so Excel keeps it a spill, and one without it is a fixed
+array. The spilled cells are written as plain values, as Excel writes them.
+`A1#` is stored as `_xlfn.ANCHORARRAY(A1)`, `@` as `_xlfn.SINGLE(...)`, the
+newer functions with their prefixes (`_xlfn._xlws.FILTER`, `_xlfn.SEQUENCE`)
+and LET's names with `_xlpm.`. In `.ods` an array formula spans its block with
+`table:number-matrix-columns-spanned` / `-rows-spanned`. OpenDocument has no
+dynamic spill, so a spill is saved as an array over the block it covers now
+(and reopens as a fixed array), and `A1#` as that block's range; Excel's
+functions that OpenFormula does not define are written in their namespace,
+`COM.MICROSOFT.SEQUENCE`, as LibreOffice writes them. A formula read from a
+file that is not marked as an array - in `.xlsx`, `.ods` or `.xls` - is worth
+one value, as Excel and LibreOffice read it: a range where one value is
+expected gives the cell on the formula's row or column
+(`FormulaArrayMode::SingleValue`), and it never spills.
+
+## Functions not yet supported
+
+The common Excel functions the engine does not have yet - a formula using one
+shows `#NAME?` - for planning the next round:
+
+| Category | Missing |
+|---|---|
+| Lookup and reference | `ROW`, `COLUMN`, `OFFSET`, `INDIRECT`, `ADDRESS`, `AREAS`, `HYPERLINK`, `FORMULATEXT`, `GETPIVOTDATA`, `HSTACK`, `VSTACK`, `TAKE`, `DROP`, `CHOOSECOLS`, `CHOOSEROWS`, `TOCOL`, `TOROW`, `WRAPROWS`, `WRAPCOLS`, `EXPAND` |
+| Math | `AGGREGATE`, `CEILING.MATH`, `CEILING.PRECISE`, `FLOOR.MATH`, `FLOOR.PRECISE`, `ISO.CEILING`, `MMULT`, `MDETERM`, `MINVERSE`, `MUNIT`, `SUMX2MY2`, `SUMX2PY2`, `SUMXMY2`, `SERIESSUM`, `PERMUT`, `PERMUTATIONA`, `COMBINA`, `MULTINOMIAL`, `FACTDOUBLE`, `SQRTPI`, `ROMAN`, `ARABIC`, `BASE`, `DECIMAL`, `ACOSH`, `ASINH`, `ATANH`, `ACOT`, `ACOTH`, `COT`, `COTH`, `CSC`, `CSCH`, `SEC`, `SECH` |
+| Statistical | `AVERAGEA`, `MAXA`, `MINA`, `STDEVA`, `STDEVPA`, `VARA`, `VARPA`, `AVEDEV`, `DEVSQ`, `GEOMEAN`, `HARMEAN`, `TRIMMEAN`, `CORREL`, `PEARSON`, `RSQ`, `COVAR`, `COVARIANCE.P`, `COVARIANCE.S`, `SLOPE`, `INTERCEPT`, `STEYX`, `FORECAST`, `FORECAST.LINEAR`, `TREND`, `GROWTH`, `LINEST`, `LOGEST`, `FREQUENCY`, `KURT`, `SKEW`, `SKEW.P`, `PERCENTILE.INC`, `PERCENTILE.EXC`, `QUARTILE.INC`, `QUARTILE.EXC`, `PERCENTRANK` (and `.INC`, `.EXC`), `RANK.AVG`, `MODE.MULT`, `STANDARDIZE`, `PROB`, `FISHER`, `FISHERINV`, `GAMMA`, `GAMMALN`; the distributions and tests: `NORM.DIST`, `NORM.INV`, `NORM.S.DIST`, `NORM.S.INV` (and `NORMDIST`, `NORMINV`, `NORMSDIST`, `NORMSINV`), `T.DIST` (`.2T`, `.RT`), `T.INV` (`.2T`), `T.TEST`, `CHISQ.DIST`, `CHISQ.INV`, `CHISQ.TEST`, `F.DIST`, `F.INV`, `F.TEST`, `BINOM.DIST`, `BINOM.INV`, `POISSON.DIST`, `EXPON.DIST`, `GAMMA.DIST`, `GAMMA.INV`, `BETA.DIST`, `BETA.INV`, `LOGNORM.DIST`, `LOGNORM.INV`, `WEIBULL.DIST`, `CONFIDENCE.NORM`, `CONFIDENCE.T`, `Z.TEST` |
+| Text | `TEXTBEFORE`, `TEXTAFTER`, `TEXTSPLIT`, `FIXED`, `DOLLAR`, `NUMBERVALUE`, `UNICHAR`, `UNICODE`, `ARRAYTOTEXT`, `VALUETOTEXT`, `LENB`, `LEFTB` |
+| Date and time | `NETWORKDAYS`, `NETWORKDAYS.INTL`, `WORKDAY`, `WORKDAY.INTL`, `WEEKNUM`, `ISOWEEKNUM`, `YEARFRAC`, `DAYS360`, `TIMEVALUE` |
+| Information | `ISREF`, `ISFORMULA`, `ISOMITTED`, `TYPE`, `ERROR.TYPE`, `CELL`, `INFO`, `SHEET`, `SHEETS` |
+| Financial (securities) | `ACCRINT`, `ACCRINTM`, `AMORDEGRC`, `AMORLINC`, `COUPDAYBS`, `COUPDAYS`, `COUPDAYSNC`, `COUPNCD`, `COUPNUM`, `COUPPCD`, `DISC`, `DOLLARDE`, `DOLLARFR`, `DURATION`, `MDURATION`, `FVSCHEDULE`, `INTRATE`, `ISPMT`, `ODDFPRICE`, `ODDFYIELD`, `ODDLPRICE`, `ODDLYIELD`, `PDURATION`, `PRICE`, `PRICEDISC`, `PRICEMAT`, `RECEIVED`, `RRI`, `TBILLEQ`, `TBILLPRICE`, `TBILLYIELD`, `YIELD`, `YIELDDISC`, `YIELDMAT` |
+| Engineering | `BIN2DEC`, `BIN2HEX`, `BIN2OCT`, `DEC2BIN`, `DEC2HEX`, `DEC2OCT`, `HEX2BIN`, `HEX2DEC`, `HEX2OCT`, `OCT2BIN`, `OCT2DEC`, `OCT2HEX`, `CONVERT`, `DELTA`, `GESTEP`, `ERF`, `ERFC`, `BITAND`, `BITOR`, `BITXOR`, `BITLSHIFT`, `BITRSHIFT`, `BESSELJ`, the complex-number functions (`COMPLEX`, `IMABS`, `IMREAL`, `IMAGINARY`, `IMSUM`, `IMPRODUCT` ...) |
+| Database | `DSUM`, `DAVERAGE`, `DCOUNT`, `DCOUNTA`, `DGET`, `DMAX`, `DMIN`, `DPRODUCT`, `DSTDEV`, `DVAR` |
+| Newest (Microsoft 365) | `GROUPBY`, `PIVOTBY`, `PERCENTOF`, `TRIMRANGE`, `REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE`, `IMAGE`; web: `ENCODEURL`, `FILTERXML`, `WEBSERVICE` |
+
+`ROW`, `COLUMN`, `OFFSET` and `INDIRECT` are the ones most worth doing next:
+they are common in existing workbooks and need the formula's own position or
+a reference as a value, which the evaluator does not hand to functions yet.
 
 ## Column widths
 
@@ -1076,16 +1333,614 @@ Turn the warning off with `SetSortFormulaWarningEnabled(false)`.
 and `SpreadsheetSheet::CountFormulaCells(range)` gives the count if you want
 to warn in your own way.
 
+## Data validation
+
+A rule says what a cell may hold. It is set on a range of the sheet, or on one
+cell, and is checked when someone **types** into the cell and commits the
+entry (Enter, Tab, a click elsewhere). Values set from code, pasted or filled
+are not checked; `SpreadsheetSheet::ValidateCell` checks any cell on demand.
+
+```cpp
+DataValidation quantity;
+quantity.type = ValidationType::WholeNumber;     // also Decimal, Date, Time, TextLength, List
+quantity.op = ValidationOperator::Between;
+quantity.formula1 = "1";                         // dot-decimal; a Date bound may be "2026-01-31",
+quantity.formula2 = "99";                        // a Time bound "17:30"
+quantity.alertStyle = ValidationAlertStyle::Stop;
+quantity.errorTitle = "Quantity";
+quantity.errorMessage = "Order between 1 and 99 pieces.";
+grid->GetActiveSheet()->SetValidation(CellRange(1, 2, 50, 2), quantity);   // C2:C51
+
+DataValidation status;
+status.type = ValidationType::List;
+status.formula1 = "Open, In progress, Done";     // or ODF's "\"Open\";\"Done\""
+grid->GetActiveSheet()->SetValidation(CellRange(1, 3, 50, 3), status);     // D2:D51
+```
+
+An entry that breaks its rule is answered as the rule's `alertStyle` says,
+in a dialog titled with `errorTitle` that shows `errorMessage` (or a default):
+
+| Alert style | Buttons | What they do |
+|---|---|---|
+| `Stop` | Retry, Cancel | Retry opens the entry again on its cell, all of it selected; Cancel puts the old value back. A Stop rule never keeps the entry. |
+| `Warning` | Yes, No, Cancel | Yes keeps it; No edits it again; Cancel puts the old value back. |
+| `Information` | OK, Cancel | OK keeps it; Cancel puts the old value back. |
+
+A refused entry leaves no undo step. A rule with `showErrorAlert = false`
+keeps whatever is typed, and blanks pass while `allowBlank` is true (the
+default).
+
+A `Custom` rule is a formula that must come out true. It is written for the
+rule's top-left cell and moved to each other cell as a copied formula is
+(`=K1>A1` on K1:K5 checks `=K3>A3` in K3). A bound of the other rules may be
+a formula too (`=$F$1`), worked out when the cell is checked:
+
+```cpp
+DataValidation later;
+later.type = ValidationType::Custom;
+later.formula1 = "=B2>A2";                       // the end after the start, row by row
+grid->GetActiveSheet()->SetValidation(CellRange(1, 1, 50, 1), later);      // B2:B51
+
+DataValidation upTo;
+upTo.type = ValidationType::Decimal;
+upTo.op = ValidationOperator::LessOrEqual;
+upTo.formula1 = "=$F$1";                         // no more than F1 holds
+grid->GetActiveSheet()->SetValidation(CellRange(1, 4, 50, 4), upTo);       // E2:E51
+```
+
+To ask in your own way, set `onValidationFailed`. It replaces the dialog, and
+`answer` may be called at once or later, exactly once:
+
+```cpp
+grid->onValidationFailed = [statusLabel](const UltraCanvasSpreadsheet::ValidationFailure& failure,
+                                         std::function<void(UltraCanvasSpreadsheet::ValidationAnswer)> answer) {
+    statusLabel->SetText(failure.message);       // also failure.row, col, enteredText, rule
+    answer(UltraCanvasSpreadsheet::ValidationAnswer::Retry);   // or Accept, Cancel
+};
+```
+
+A `List` rule with `showDropdown` (the default) puts a small arrow just right
+of the active cell. A click on it, or Alt+Down, opens the rule's items with
+the cell's current value ticked; the one picked is entered as if typed, as one
+undo step. From code:
+
+```cpp
+std::vector<std::string> items = grid->GetValidationListItems(1, 3);   // {"Open", "In progress", "Done"}
+grid->ChooseValidationListItem(1, 3, "Done");                          // false for an item not offered
+```
+
+A list rule whose `formula1` starts with `=` names cells instead
+(`IsRangeListSource`): `"=$G$1:$G$9"`, `"='Lists'.A1:A20"` or a named range.
+Its items are the cells' values, read when the arrow opens or an entry is
+checked, so the list follows the cells:
+
+```cpp
+DataValidation region;
+region.type = ValidationType::List;
+region.formula1 = "=$G$1:$G$3";                  // North, South, East in G1:G3
+grid->GetActiveSheet()->SetValidation(CellRange(1, 0, 50, 0), region);
+std::vector<std::string> regions = grid->GetActiveSheet()->GetValidationListItems(1, 0);
+```
+
+`.xlsx` and `.ods` read and write the rules (see *What a workbook file
+keeps*), and `ShowDataValidationDialog()` edits the selection's rule:
+what is allowed, the condition and its values, blanks, the list arrow, and
+how a wrong entry is answered (`SetSelectionValidation` from code; a rule of
+type `Any` removes it).
+
+## Conditional formats
+
+A conditional format changes how the cells of a range look by what they
+hold. The sheet keeps them (`SpreadsheetSheet::AddConditionalFormat`,
+`SetConditionalFormats`), and `UltraCanvasSpreadsheet::PaintCell` draws them,
+so the grid, the printed page and the PDF all show them. A format is a range
+and its rules:
+
+| Rule (`ConditionalFormatType`) | Holds when | Settings |
+|---|---|---|
+| `CellValue` | the value compares with `formula1` (and `formula2`) by `op` | a number, `"quoted text"` or a formula (`=$B$1`) |
+| `Expression` | the formula in `formula1` is true, moved to each cell from the range's top-left one | `=E1>$F$1` |
+| `ContainsText`, `NotContainsText`, `BeginsWithText`, `EndsWithText` | the shown text, ignoring case | the text in `formula1` |
+| `ContainsBlanks`, `NotContainsBlanks`, `ContainsErrors`, `NotContainsErrors` | the cell is empty / shows an error | |
+| `Top10` | among the highest (`bottom`: lowest) `formula1` values, or percent of them (`percent`) | |
+| `AboveAverage` | above the range's average (`aboveAverage` false: below; `equalAverage`: or equal) | |
+| `DuplicateValues`, `UniqueValues` | the text occurs more than once / once in the range | |
+| `ColorScale` | a number: the cell filled with `colorScale`'s two or three colours, mixed by where the value lies | `thresholds` (default lowest, 50th percentile, highest) |
+| `DataBar` | a number: a bar of `dataBarColor` from the left edge, as long as the value is far between the lowest and the highest | `thresholds`, `showValue` |
+
+A rule's `style` lays only what it sets over the cell's own
+(`ApplyConditionalStyle`): a fill, a font colour other than black, bold,
+italic, underline, strikethrough. Rules are tried by `priority` (lower first;
+one without a priority after those with one), then in order; the first
+style that holds wins, a colour scale and a data bar draw beside it, and
+`stopIfTrue` ends the search.
+
+```cpp
+SpreadsheetSheet* sheet = grid->GetActiveSheet();
+
+ConditionalFormatRule over;
+over.type = ConditionalFormatType::CellValue;
+over.op = ValidationOperator::GreaterThan;
+over.formula1 = "1000";
+over.style.fill = CellFill::Solid(Color(255, 199, 206));
+over.style.font.color = Color(156, 0, 6);
+
+ConditionalFormat amounts;
+amounts.range = CellRange(1, 2, 99, 2);                          // C2:C100
+amounts.rules.push_back(over);
+sheet->AddConditionalFormat(amounts);
+
+ConditionalFormatRule scale;
+scale.type = ConditionalFormatType::ColorScale;
+scale.colorScale = {Color(248, 105, 107), Color(255, 235, 132), Color(99, 190, 123)};
+ConditionalFormat heat;
+heat.range = CellRange(1, 3, 99, 3);                             // D2:D100
+heat.rules.push_back(scale);
+sheet->AddConditionalFormat(heat);
+
+ConditionalCellFormat look = sheet->GetConditionalFormatting(4, 2);   // what C5 is drawn with
+if (look.style) { /* the rule's style */ }
+if (look.fill) { /* a colour scale's colour */ }
+```
+
+The figures a colour scale, a data bar, top values and duplicates need (the
+lowest, the highest, the sorted values) are worked out once per change of the
+sheet's cells, not per cell drawn. `ShowConditionalFormatDialog()` lists the
+rules over the selection, adds one (a value comparison, a formula, text,
+blanks, errors, top or bottom values, above or below the average,
+duplicates, unique values, a two- or three-colour scale, a data bar) and
+changes or deletes the one picked; `AddSelectionConditionalFormat` and
+`ClearSelectionConditionalFormats` do the same from code. `.xlsx` and `.ods`
+read and write them; an icon set or a date rule is not drawn and not kept.
+
+A change made through the grid - its calls or its dialogs - is one undo step,
+as a typed value is; the sheet's own calls above are not. On the grid, a
+format is added with `AddConditionalFormat`, and a rule of the active sheet's
+format (in `GetConditionalFormats()` order) changed or deleted by its
+position, the format going with its last rule:
+
+```cpp
+ConditionalFormatRule over;
+over.type = ConditionalFormatType::CellValue;
+over.op = ValidationOperator::GreaterThan;
+over.formula1 = "1000";
+over.style.font.bold = true;
+
+ConditionalFormat flagged;
+flagged.range = CellRange(1, 4, 99, 4);                          // E2:E100
+flagged.rules.push_back(over);
+grid->AddConditionalFormat(flagged);                             // one undo step
+over.formula1 = "5000";
+grid->SetConditionalFormatRule(0, 0, over);                      // false when there is no such rule
+grid->RemoveConditionalFormatRule(0, 0);
+grid->Undo();                                                    // the rule is back
+```
+
+`SetSelectionValidation` is an undo step in the same way, and its undo gives
+back the cells' own rules the range's replaced.
+
+## Comments and links
+
+A cell's comment (`CellComment`: text, author) is marked by a red corner
+at the cell's top right, and resting the pointer on the cell shows it. A
+link (`CellHyperlink`) draws its cell's text blue and underlined (unless the
+cell has a colour of its own); the pointer resting on it shows where it goes,
+and Ctrl+click opens it - a web or mail address through the system
+(`OpenURL`), a place in the workbook (`HyperlinkType::InternalCell`,
+`"Sheet2.B4"`) by selecting it. Setting `onOpenHyperlink` takes the opening
+over (to ask first, or in a test).
+
+```cpp
+grid->SetCellComment(0, 0, "Checked against the March statement", "Ann");   // an undo step
+grid->SetCellHyperlink(1, 0, CellHyperlink("https://example.com/report"));
+grid->SetCellHyperlink(2, 0, CellHyperlink("Summary.A1", HyperlinkType::InternalCell));
+grid->OpenHyperlink(2, 0);                       // goes to Summary!A1; false for a cell without a link
+grid->RemoveCellComment(0, 0);
+```
+
+A link set on an empty cell gives it the address as its text.
+`ShowCommentDialog()` and `ShowHyperlinkDialog()` edit the active cell's
+(each with a button that removes it); both are kept by `.xlsx` (with the VML
+drawing Excel needs to show a comment) and `.ods`.
+
 ## Best Practices
 
 - **Create with the factory.** Use `CreateSpreadsheetElement(...)` so the element is a `shared_ptr` (matching the rest of the framework). Capture that `shared_ptr` in async callbacks (file dialogs) so the grid stays alive, and call `RequestRedraw()` after mutating it from a callback.
 - **Set values, then format.** `SetCellValue` / `SetCellFormula` define the value; use `GetCell(row, col)->SetNumberFormat(...)` / `SetBold(...)` to style. Number formats are factories (`NumberFormat::Currency`, `NumberFormat::Percentage`).
-- **Call `Recalculate()` after setting formulas** when you need results immediately (e.g. right after seeding data); the engine recalculates dirty cells automatically during normal editing when auto-calculate is enabled.
+- **Call `Recalculate()` after writing into a sheet directly** when you need the results at once (e.g. right after seeding data). The grid's own setters (`SetCellValue`, `SetCellFormula`, ...) recalculate as they go while auto-calculate is enabled.
 - **Mind coordinate systems.** The API is 0-based `(row, col)`; formula text and `CellAddress::ToString()` are 1-based A1 notation (`SetCellFormula(9, 1, "=SUM(B2:B8)")`).
 - **Prefer the auto-detecting loaders for a quick "Open"** (`LoadFromFile`, single-arg `LoadCSV`); use the `*WithOptions` variants plus the import/export dialogs when the user needs to choose charset, separators, or quoting.
 - **Always check the return value and `GetLastError()`** after any `Load*`/`Save*` call to surface a clear reason to the user.
 - **Let the grid size the columns after an import.** The loaders already call `RequestAutoFitForUnsizedColumns()`; call `AutoFitUnsizedColumns()` yourself only after filling a sheet from code.
+- **Rules live on the sheet, the dialogs on the grid.** Conditional formats and validation rules are `SpreadsheetSheet`'s (`AddConditionalFormat`, `SetValidation`); comments and links are a cell's. The grid's `Show...Dialog` calls edit them for the selection.
 - **Use sheet-level objects for bulk work.** `GetActiveSheet()` / `GetSheet(index)` expose `SpreadsheetSheet`, which has range, column/row, merge, freeze, sort, filter, and find/replace operations directly.
+
+## Printing and PDF
+
+`SpreadsheetPrintPages` (`UltraCanvasSpreadsheetPrint.h`) cuts a sheet into
+pages and draws them, for a PDF file and for printers. It prints the print
+area, or every cell in use, and follows the sheet's `PrintSettings`:
+
+| Setting | What it does on paper |
+|---|---|
+| `paperSize`, `orientation` | the page; Custom prints on Letter for now |
+| `marginTop` / `Bottom` / `Left` / `Right` (inches) | the room for cells |
+| `scale` (%), or `fitToWidth` / `fitToHeight` (pages) | the size; fitting never enlarges |
+| `rowBreaks`, `colBreaks` | a page starts at each of these rows (columns) |
+| `printGridlines`, `printRowColHeaders` | lines between the cells; column letters and row numbers |
+| `centerHorizontally`, `centerVertically` | the block of cells centred in the room |
+| `headerLeft` ... `footerRight`, `headerMargin`, `footerMargin` | lines in the margins; `&P` the page, `&N` the pages, `&A` the sheet, `&D` the date, `&&` an ampersand |
+
+Pages run down, then across. Hidden rows and columns are left out, a merged
+block is drawn once per page it reaches, and every cell is drawn by
+`UltraCanvasSpreadsheet::PaintCell`, the grid's own painter, so paper shows
+what the screen does: 100 % on paper is the size on screen at 100 %.
+`SetTitleRows` / `SetTitleColumns` repeat lines on every page after the ones
+they are on.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; UltraCanvasWindow* window; -->
+```cpp
+#include "UltraCanvasSpreadsheetPrint.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
+
+grid->GetPrintSettings().orientation = PageOrientation::Landscape;
+grid->GetPrintSettings().fitToWidth = 1;          // every column across one page
+grid->SetPrintArea(CellRange(0, 0, 49, 7));      // A1:H50
+
+auto pages = CreateSpreadsheetPrintPages(*grid);  // the sheet on show, copied
+pages->SetTitleRows(0, 0);                        // row 1 on every page
+std::string error;
+pages->ExportPdf("Budget.pdf", error);
+
+// Printing: the PDF for printers that take one, the pages for those that draw.
+std::vector<uint8_t> pdf;
+if (pages->ExportPdf(pdf, error))
+    PrintDocumentWithDialog("Budget", pdf, "application/pdf", window, pages);
+```
+
+## Charts
+
+A sheet holds charts (`UltraCanvasSpreadsheetChart.h`). A `SpreadsheetChart`
+is anchored to cells - its top-left corner some pixels into one cell, its
+bottom-right into another, as .xlsx's two-cell anchor keeps it - and holds a
+`RichChart`, the chart model documents and decks use, whose series are
+ranges of cells: each series' name, its categories (a scatter series' x
+values), its values and - a bubble series - its sizes
+(`SpreadsheetChartSeries`, ranges as `SpreadsheetChartRange`: a sheet's name
+and a `CellRange`). It is drawn by its kind's chart element (`DrawRichChart`:
+the chart engine's, or a funnel, a Sankey diagram, a Gantt chart ...) over
+the cells, moves with them
+when the grid scrolls or rows and columns are inserted above or left of it,
+and prints where it stands.
+
+The kinds, and the columns each reads, are in [Every chart type](#every-chart-type)
+below. A file's bubble and stock charts written by another program are read
+and drawn too, from the values the file keeps with them.
+
+`InsertChartFromSelection(kind, stacked, seriesIn)` makes one from the
+selection as a spreadsheet does (`MakeSpreadsheetChart`): a first row of
+words names the series, a first column of words (or an empty corner) holds
+the categories, and the series run down the columns when the block is at
+least as tall as it is wide (`SpreadsheetChartSeriesIn::Automatic`), else
+along the rows. It returns -1, and inserts nothing, when the selection holds
+no number. A single selected cell stands for the block of cells in use
+around it.
+
+On the grid a click selects a chart, a drag moves it, its eight handles
+resize it, Delete (or Backspace) removes it and the arrow keys nudge it (ten
+pixels with Shift); a double-click opens `ShowChartPropertiesDialog` - the
+kind, the title, the legend and, for a chart made from a block, whether the
+series run along the rows - unless `onChartDoubleClick` is set. Inserting,
+changing, moving, resizing and deleting are each one undo step
+(`UndoActionType::ChartChange`).
+
+The data is read from the cells again whenever they change: the grid marks
+its charts stale when a sheet reports a change and reads them before it
+draws and before it saves (`RefreshCharts`, which also recalculates the
+formulas waiting). A chart whose ranges name a sheet reads it from any sheet;
+renaming that sheet renames the ranges.
+
+| Format | How a chart is kept |
+|---|---|
+| .xlsx | `xl/drawings/drawingN.xml` (an `xdr:twoCellAnchor` holding a `graphicFrame`), its relationships, and `xl/charts/chartN.xml` written by `WriteDrawingMLChart` with the series as `c:f` references (`'Sales Data'!$B$2:$B$7`) and their cached values; a one-cell anchor is read too |
+| .ods | a `draw:frame` in the sheet's `table:shapes` naming an object `Object N/` whose `content.xml` is a `chart:chart` (`WriteOdfChartObject`) with `chart:values-cell-range-address` and the categories' and names' ranges into the sheets; a frame LibreOffice anchors in a cell is read too |
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetChart.h"
+
+// Months in A2:A7, two regions' sales in B2:C7, their names in B1:C1.
+grid->Select(CellRange(0, 0, 6, 2));
+int index = grid->InsertChartFromSelection(RichChart::Kind::Column);   // one undo step
+if (index >= 0) {
+    SpreadsheetChart chart = *grid->GetChart(index);
+    chart.chart.title = "Sales";
+    chart.chart.legend = true;
+    // Six columns wide from G2, ten pixels into it.
+    chart.anchor.from = CellAddress(1, 6);
+    chart.anchor.fromOffsetX = 10;
+    chart.anchor.to = CellAddress(16, 12);
+    grid->SetChart(index, chart);                                   // one undo step
+}
+
+grid->SetCellValue(3, 1, 120.0);   // the chart shows it the next time it is drawn
+grid->RefreshCharts();             // ...or now
+const RichChart& data = grid->GetChart(0)->chart;   // series[0].values[2] == 120
+
+grid->onChartSelectionChange = [](int selected) { /* -1: none */ };
+```
+
+A chart of any block, placed and kept by hand:
+
+<!-- doc-check: SpreadsheetSheet& sheet; std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+SpreadsheetChart pie = MakeSpreadsheetChart(sheet, CellRange(0, 0, 6, 1), RichChart::Kind::Pie);
+pie.anchor = SpreadsheetChartAnchorForBox(sheet, Rect2Di(400, 40, 360, 260));   // sheet pixels
+grid->InsertChart(pie);
+
+// The ranges' two spellings.
+SpreadsheetChartRange range;
+SpreadsheetChartRange::FromExcel("'Sales Data'!$B$2:$B$7", range);
+std::string odf = range.ToOdf();   // 'Sales Data'.$B$2:.$B$7
+```
+
+### Every chart type
+
+Every chart of the framework that a block of cells can feed is a type of
+the chart gallery (`SpreadsheetChartTypes()`, 52 of them in nine
+categories), each a `RichChart::Kind` with a look (stacked, 100 %, filled,
+joined). The grid's *Insert* opens the gallery (`ShowInsertChartDialog`),
+and a chart's type changes through it (`ShowChartTypeDialog`, and the *Type*
+button of the properties dialog). Each tile is a picture of the selection
+drawn by the chart itself - or, where the selection does not fit the type,
+of a small sample, faded, with the reason (`SpreadsheetChartFitMessage`:
+"A bubble chart needs three columns of numbers: x, y and size."). A click
+or the arrow keys pick a tile, Enter or a double click takes it; the
+category chips scroll to their section. Every kind is drawn by one factory,
+`CreateRichChartElement` (`UltraCanvasRichDocumentChart.h`), so a document
+or a slide holding the same `RichChart` draws it too.
+
+The columns each type reads, left to right, after an optional first row of
+series names (the names column is the categories; a first column of dates
+counts as names for the kinds that do not plot dates):
+
+| Category | Type (`id`) | Kind | Reads |
+|---|---|---|---|
+| Column and bar | Columns, stacked, 100 % (`column`, `column-stacked`, `column-percent`) | `Column` | names, one or more columns of numbers |
+| | Bars, stacked, 100 % (`bar`, `bar-stacked`, `bar-percent`) | `Bar` | as columns |
+| | Diverging bars (`diverging-bar`) | `DivergingBar` | names, the answers' counts from the most negative to the most positive (an odd middle column is neutral) |
+| | Population pyramid (`population-pyramid`) | `PopulationPyramid` | age groups, left, right |
+| | Dumbbell (`dumbbell`) | `Dumbbell` | names, two (or more) columns joined per row |
+| | Mekko (`mekko`) | `Mekko` | names (the columns), a column per segment |
+| Line and area | Line (`line`) | `Line` | names, one or more columns |
+| | Area, stacked, 100 % (`area`, `area-stacked`, `area-percent`) | `Area` | names, one or more columns |
+| | Cumulative flow (`cumulative-flow`) | `CumulativeFlow` | periods, a column per stage |
+| | Nested areas (`nested-area`) | `NestedArea` | names, values |
+| Pie and circular | Pie, Doughnut (`pie`, `doughnut`) | `Pie`, `Doughnut` | names, values |
+| | Radar, filled (`radar`, `radar-filled`) | `Radar` | at least three names (the spokes), one or more columns |
+| | Polar (`polar`) | `Polar` | at least three names, one or more columns |
+| | Radial bars (`radial-bar`) | `RadialBar` | names, one or more columns |
+| | Progress rings (`circular-progress`) | `CircularProgress` | names, values (out of 100, or out of a second column) |
+| | Gauge (`gauge`) | `Gauge` | the first value (a second column's first value is the maximum) |
+| Scatter and bubble | Scatter, with lines (`scatter`, `scatter-lines`) | `Scatter` | x, then one or more columns of y |
+| | Bubble (`bubble`) | `Bubble` | x, y, size (more series: y and size pairs) |
+| | Quadrant (`quadrant`) | `Quadrant` | names, x, y |
+| | Importance-performance (`importance-performance`) | `ImportancePerformance` | names, importance, performance (Slack's nine-point scales, 1 best) |
+| | Ternary (`ternary`) | `Ternary` | names, three parts (a, b, c) |
+| | Hexbin (`hexbin`) | `Hexbin` | x, y |
+| | 3D scatter (`scatter-3d`) | `Scatter3D` | names, x, y, z |
+| Statistical | Histogram (`histogram`) | `Histogram` | raw values, a column per group (`RichChart::bins`, 0 = Sturges' rule) |
+| | Box and whisker (`box-whisker`) | `BoxWhisker` | raw values, a column per group - or names and one column, grouped by name |
+| | Jitter (`jitter`) | `Jitter` | as box and whisker |
+| | Ridgeline (`ridgeline`) | `Ridgeline` | as box and whisker |
+| Financial | Stock (`stock`) | `Stock` | dates or names, (open,) high, low, close |
+| | Waterfall (`waterfall`) | `Waterfall` | names, changes (a name starting with *Total* or *Subtotal* stands on zero) |
+| Flow and hierarchy | Funnel (`funnel`) | `Funnel` | stages, values |
+| | Pyramid (`pyramid`) | `Pyramid` | levels, values |
+| | Sankey (`sankey`) | `Sankey` | sources (names), targets (a column of words), amounts |
+| | Chord (`chord`) | `Chord` | a square table: the same names down the side and across the top |
+| | Treemap, Sunburst (`treemap`, `sunburst`) | `Treemap`, `Sunburst` | names, columns of words for deeper levels, values |
+| | Gantt (`gantt`) | `Gantt` | tasks, start dates, end dates (an end before its start is a number of days) |
+| | Timeline (`timeline`) | `Timeline` | names, dates (and end dates for spans) |
+| Matrix and maps | Heatmap (`heatmap`) | `Heatmap` | names down, a column of numbers per column |
+| | Calendar heatmap (`calendar-heatmap`) | `CalendarHeatmap` | dates, values |
+| | Contour, Surface (`contour`, `surface`) | `Contour`, `Surface` | a table of numbers, at least two rows and two columns |
+| Other | Word cloud (`word-cloud`) | `WordCloud` | words, weights |
+| | Parliament (`parliament`) | `Parliament` | parties, seats |
+
+Left out, because no table of cells feeds them: the Kanban board (a board
+of cards worked on, not a chart of numbers), the circular infographic (rings
+of hand-placed cells and icons), the spectrogram (audio), the image
+histogram `UltraCanvasHistogramChart` (a picture's pixel counts - the
+histogram type bins cells instead), the GL contour surface (it needs a GL
+context; the surface type draws the cairo one), the parallel-coordinates
+chart (a runtime-loaded module, not in the core the spreadsheet links), the
+legacy chart elements the engine replaces (line, bar, scatter, area, pie,
+radar, financial, waterfall, dumbbell, diverging, Mekko, polar, radial bar,
+population) and the diagrams that hold structure rather than numbers (flow
+charts, UML, mind maps, Git graphs, fishbone, SWOT, PERT, Venn, timeline
+diagram, ticker board).
+
+<!-- doc-check: SpreadsheetSheet& sheet; std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+// Sources in A2:A9, targets in B2:B9, amounts in C2:C9, names in row 1.
+const int sankey = SpreadsheetChartTypeById("sankey");
+std::string problem;
+if (grid->InsertChartOfTypeFromSelection(static_cast<size_t>(sankey), &problem) < 0) {
+    // problem: "A Sankey diagram needs a column of sources, ..."
+}
+
+// Made by hand, checked, inserted; its type changed later.
+SpreadsheetChart gantt = MakeSpreadsheetChartOfType(sheet, CellRange(0, 4, 8, 6),
+                                                    static_cast<size_t>(SpreadsheetChartTypeById("gantt")));
+if (SpreadsheetChartFitMessage(gantt).empty()) grid->InsertChart(gantt);
+SetSpreadsheetChartType(gantt, sheet, static_cast<size_t>(SpreadsheetChartTypeById("timeline")));
+
+grid->ShowInsertChartDialog();   // the gallery over the selection
+```
+
+A type a format has no form for is kept as an UltraCanvas extension beside a
+column chart of its numbers - what Excel and LibreOffice show - and reading
+puts the real kind back:
+
+| Kinds | .xlsx | .ods |
+|---|---|---|
+| Column, Bar, Line, Area, Pie, Doughnut, Scatter, Radar, Stock | `c:barChart` ... `c:stockChart` | `chart:class` `bar` ... `stock` |
+| Bubble | `c:bubbleChart`, sizes as `c:bubbleSize` references | a `chart:bar` and the extension (ODF's bubble series cannot name our x, y and size ranges) |
+| Surface, Contour | `c:surface3DChart`, `c:surfaceChart` | a `chart:bar` and the extension |
+| every other kind | a `c:barChart` of its numbers, and in the chart part's `c:extLst` a `c:ext uri="{8E1F6B2A-4C3D-4A57-9B0E-2D6C71A5F3B8}"` holding `ucc:chart kind="sankey" stacked percent filled bins data-range series-in-rows` with a `ucc:series name categories values sizes` per series (Excel's range spelling) | a `chart:bar` of its numbers, and as the last child of `chart:chart` an `ucchart:chart` in the namespace `http://schemas.ultracanvas.org/spreadsheet/chart/2026`, the same attributes and series in ODF's range spelling |
+
+Excel's own 2016 kinds (`cx:` waterfall, histogram, funnel, box and
+whisker, treemap, sunburst) are not written as `cx:` parts: those take the
+extension route too, so Excel shows their columns.
+
+## Pivot tables
+
+A pivot table summarises a block of cells whose first row names its
+columns - the fields (`UltraCanvasSpreadsheetPivot.h`). A
+`SpreadsheetPivotTable` names its source (`sourceSheet`, `sourceRange`, or a
+named range in `sourceName`), the cell its table starts at (`target`) and its
+fields, each a column of the source:
+
+- `rowFields` and `columnFields` (`PivotField`) put the distinct items of
+  their columns down the side and across the top, nested in the order given;
+  `filterFields` stand above the table and leave records out;
+- `valueFields` (`PivotValueField`) summarise a column for every combination:
+  `PivotSummary::Sum`, `Count` (cells with anything in them), `Average`,
+  `Max`, `Min`, `Product`, `CountNumbers`, `StdDev` / `StdDevP`, `Var` /
+  `VarP`, shown as they are or as a share (`PivotShowAs::PercentOfTotal`,
+  `PercentOfRow`, `PercentOfColumn`). Several value fields stand side by side
+  under a *Values* level, or one under the other with `valuesInRows`.
+- Each axis field has its order (`descending`; numbers and dates by value,
+  before texts), its `subtotals` after each item's group (the innermost
+  field has none), the items it leaves out (`hiddenItems`, by
+  `PivotItem::key`) and a grouping: dates by `PivotGroupBy::Years`,
+  `Quarters` or `Months` (a month gathers every year's), numbers by
+  `NumberRange` of a `step`, from an automatic or a set `start` to an
+  `end`. `grandTotalRow` and `grandTotalColumn` turn the totals at the
+  bottom and at the right on or off.
+
+`ComputeSpreadsheetPivot` lays the summary out as cells (`PivotOutput`):
+the filters, a blank row, the caption and the column fields' names, the
+column items (each label once over its group, `"<item> Total"` columns,
+*Grand Total*), the row fields' names, then a row per item with its
+subtotal and grand total rows. `RefreshSpreadsheetPivot` writes it onto a
+sheet at `target`: the cells it filled before are cleared, names, items and
+totals take a header style (bold, a light band, a rule over the totals) and
+values the source column's number format (a share as a percentage, a count
+as a plain number). `SpreadsheetPivotDrillDownRows` gives the source rows
+behind a value or a total.
+
+On the grid a sheet keeps the pivots that stand on it
+(`SpreadsheetSheet::GetPivotTables`). `InsertPivotTable(pivot, sheetIndex)`
+writes one (onto a new sheet *Pivot* with -1), `SetPivotTable` changes its
+fields and writes it again, `RemovePivotTable` clears it, `RefreshPivotTable`
+and `RefreshPivotTables` compute it from its source again. Its cells are
+read-only: typing, pasting, cutting or clearing them is refused with a
+message on `onStatusChange`. When a cell of a pivot's source changes, the
+grid refreshes the pivot before it draws next and before it saves
+(`RefreshChangedPivotTables`). A double-click on a value or a total opens a
+new sheet of the source rows behind it (`DrillDownPivotCell`, or
+`onPivotDrillDown`); on any other cell of a pivot, its field list.
+`ShowInsertPivotTableDialog` builds a pivot from the selection in the field
+list (`ShowSpreadsheetPivotDialog`: the source, a new sheet or a cell, and
+the fields), `ShowPivotTableDialog` edits one, `ShowPivotSourceDialog` asks
+for its source. The field list is an element of its own,
+`UltraCanvasSpreadsheetPivotPanel` (`UltraCanvasSpreadsheetPivotPanel.h`),
+which an application can dock beside the grid: the fields, the four areas,
+add / remove / move buttons, the picked field's summary, show-as, order,
+grouping, subtotals and items, the totals.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasSpreadsheet> grid; -->
+```cpp
+#include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetPivot.h"
+
+// Region in A, product in B, date in C, sales in D, their names in row 1.
+SpreadsheetSheet* data = grid->GetSheet(0);
+SpreadsheetPivotTable pivot = MakeSpreadsheetPivot(*data, CellRange(0, 0, 40, 3));
+pivot.rowFields.push_back(PivotField{0});                    // Region down the side
+PivotField year{2};
+year.grouping.by = PivotGroupBy::Years;                     // the dates by year
+pivot.columnFields.push_back(year);                          // across the top
+pivot.valueFields.push_back(MakePivotValueField(*data, pivot.sourceRange, 3));   // Sum of Sales
+PivotValueField share{3};
+share.showAs = PivotShowAs::PercentOfTotal;
+pivot.valueFields.push_back(share);
+std::string problem;
+int index = grid->InsertPivotTable(pivot, -1, &problem);    // onto a new sheet "Pivot"
+
+data->SetCellValue(5, 3, 120.0);       // the pivot follows the next time the grid draws
+grid->RefreshChangedPivotTables();     // ...or now
+
+SpreadsheetPivotTable changed = grid->GetActiveSheet()->GetPivotTables()[0];
+changed.rowFields[0].hiddenItems.push_back("North");         // leave North out
+changed.grandTotalColumn = false;
+grid->SetPivotTable(grid->GetActiveSheetIndex(), index, changed);
+```
+
+A pivot computed without a grid - into any sheet:
+
+<!-- doc-check: SpreadsheetSheet& data; SpreadsheetSheet& report; -->
+```cpp
+SpreadsheetPivotTable pivot = MakeSpreadsheetPivot(data, CellRange(0, 0, 40, 3));
+pivot.rowFields.push_back(PivotField{1});
+pivot.valueFields.push_back(PivotValueField{3, PivotSummary::Average});
+PivotOutput out;
+if (ComputeSpreadsheetPivot(pivot, data, out)) {
+    for (const PivotOutputCell& cell : out.cells) {
+        // cell.row, cell.col from the target; cell.kind, cell.text or cell.number
+    }
+}
+pivot.target = CellAddress(0, 0);
+RefreshSpreadsheetPivot(pivot, report, [&data](const std::string&) { return &data; });
+```
+
+| Format | How a pivot is kept |
+|---|---|
+| .xlsx | `xl/pivotCache/pivotCacheDefinitionN.xml` (the source as a `worksheetSource`, a `cacheField` per column with its distinct values and, for a grouped field, its `fieldGroup` / `rangePr`), `pivotCacheRecordsN.xml` (each source row as indexes into them) and `xl/pivotTables/pivotTableN.xml` (the `location`, a `pivotField` per column with its axis, items, hidden items, order and subtotal, `rowFields`, `colFields`, `pageFields`, `dataFields` with `subtotal` and `showDataAs`); the workbook lists the caches in `<pivotCaches>`, the worksheet relates to its tables. The cache says `refreshOnLoad`, so Excel computes the table again when it opens it; the pivot's cells are in the sheet for any program that does not |
+| .ods | a `table:data-pilot-table` in the workbook's `table:data-pilot-tables`: `table:target-range-address`, `table:grand-total`, a `table:source-cell-range` and a `table:data-pilot-field` per field (`table:orientation` row, column, page or data, `table:function`, `table:data-pilot-level` with its subtotals, hidden `table:data-pilot-member`s and sort order, `table:data-pilot-groups` for a grouping, `table:data-pilot-field-reference` for a share, `table:selected-page` for a filter of one item) |
+
+Reading takes either back into the model; a pivot made elsewhere with
+something the model cannot represent - a calculated field, a grouping that
+adds fields (Excel's *Years* beside *Months*), a source outside the workbook,
+a value shown as a difference or a running total - keeps the cells the file
+has, is not refreshed, and says why in `unsupportedReason`.
+
+## Copy and paste with documents and slides
+
+`Copy()` puts the selected cells on the system clipboard as an HTML table and
+tab-separated text: a document (`UltraCanvasRichTextEdit`) pastes them as a
+table, a slide (`UltraCanvasSlideEdit`) as a table shape. With a chart
+selected (`SelectChart`), `Copy()` and `Cut()` take the chart instead: it is
+kept on the office clipboard (`CopyChartToClipboard`,
+`UltraCanvasOfficeClipboard.h`) and pastes into a document or onto a slide as
+a chart holding a static copy of its data, while other programs get a picture
+of it (HTML) and its data as text.
+
+```cpp
+grid->SelectChart(0);
+grid->Copy();                                   // the chart, not the cells
+RichChart chart;
+int width = 0, height = 0;
+bool held = GetClipboardChart(chart, width, height);   // true until something else is copied
+```
+
+## Accessibility
+
+The grid is a table to a screen reader, named by its sheet. Its rows and
+cells are parts, and it answers as a table (`GetAccessibleTableInterface()`):
+a cell is named by its address and the value it shows ("B3 42"), the active
+cell is the focused cell and the grid's value text, and a move of it or of the
+selection is announced (`SelectionChanged`, with the cell as the event's
+`part`). See
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#parts-an-element-draws-itself).
+
+```cpp
+IAccessibleTable* table = grid->GetAccessibleTableInterface();
+std::string cell = table->GetCell(2, 1).name;   // "B3 42"
+```
 
 ## See Also
 
@@ -1097,3 +1952,5 @@ to warn in your own way.
 - [`include/UltraCanvasSpreadsheetFormatMenu.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormatMenu.h) - Cell formatting menu and number-format presets
 - [`include/UltraCanvasSpreadsheetMetrics.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetMetrics.h) - Document length conversion and content-width estimation
 - [`include/UltraCanvasSpreadsheetFormula.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetFormula.h) - Formula parser/evaluator engine
+- [`include/UltraCanvasSpreadsheetPrint.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetPrint.h) - A sheet's pages for PDF and printers
+- [`include/UltraCanvasSpreadsheetChart.h`](../../UltraCanvas/include/UltraCanvasSpreadsheetChart.h) - Charts on a sheet, anchored to cells, their series ranges of cells

@@ -12,8 +12,12 @@
 #include "Market.h"
 #include "Verifier.h"
 
+#include "UltraCanvasPathUtf8.h"
+
 #include "DataFormats/UltraCanvasJSON.h"
 
+#include <filesystem>
+#include <fstream>
 #include <map>
 
 using namespace UltraStoreAdmin;
@@ -201,4 +205,115 @@ TEST(the_seed_is_opened_from_the_key_vault_for_the_signing) {
     const std::string header = SignRequest(seed.Value(), "m-1", "GET", "/v1/merchants/me", "", "1700000000");
     REQUIRE(VerifySigned(header, "m-1", "GET", "/v1/merchants/me", "", pk));
     RemoveDir(dir);
+}
+
+TEST(a_shop_is_applied_for_the_application_polled_and_the_profile_edited) {
+    std::vector<uint8_t> seed, pk;
+    REQUIRE(UltraStore::GenerateSigningKey(seed, pk));
+    FakeMarket m;
+    m.answers["POST /v1/merchants/apply"] = R"({"id":"ap-000001","secret":"s3cret","state":"applied"})";
+    m.answers["GET /v1/applications/ap-000001?secret=s3cret"] = R"({"id":"ap-000001","name":"Pixelwerk","state":"approved","message":"Welcome","merchant":"pixelwerk","created_at":"2026-11-19T10:00:00Z","decided_at":"2026-11-19T11:00:00Z"})";
+    m.answers["GET /v1/merchants/me"] = R"({"id":"pixelwerk","name":"Pixelwerk","contact":"mail@pixelwerk.example","website":"https://pixelwerk.example","description":"Games.","key":")" + UltraStore::ToHex(pk) + R"(","standing":"active","strikes":0,"terms":{"in_force":0,"accepted":0}})";
+    m.answers["PUT /v1/merchants/me"] = R"({"id":"pixelwerk","name":"Pixelwerk Studio","contact":"mail@pixelwerk.example","website":"https://pixelwerk.example","description":"Games for ULTRA OS.","key":"ab","standing":"active","strikes":0,"terms":{"in_force":0,"accepted":0}})";
+    // Apply: no merchant id needed, no Authorization header, the key and a signature over the canonical body.
+    MarketClient applicant({"https://market.example/", ""}, seed, m.Call());
+    const auto receipt = applicant.Apply("Pixelwerk", "mail@pixelwerk.example", "jo@pixelwerk.example", "https://pixelwerk.example", "Games.");
+    REQUIRE(receipt);
+    REQUIRE_EQ(receipt.Value().id, std::string("ap-000001"));
+    REQUIRE_EQ(receipt.Value().secret, std::string("s3cret"));
+    const std::string& call = m.calls.back();
+    REQUIRE(call.rfind("POST https://market.example/v1/merchants/apply |  | {", 0) == 0);
+    const std::string body = call.substr(call.rfind(" | ") + 3);
+    REQUIRE(body.find("\"key\":\"" + UltraStore::ToHex(pk) + "\"") != std::string::npos);
+    REQUIRE(body.find("\"signature\":\"") != std::string::npos);
+    REQUIRE(body.find("\"email\":\"jo@pixelwerk.example\"") != std::string::npos);
+    // The signature verifies over the body without the signature, canonically.
+    UltraCanvas::JSONParseResult parse;
+    UltraCanvas::JSONValue sent = UltraCanvas::JSON::Parse(body, &parse);
+    REQUIRE(parse.success);
+    std::vector<uint8_t> signature;
+    REQUIRE(UltraStore::FromHex(sent.Get("signature").GetString(), signature));
+    sent.Remove("signature");
+    REQUIRE(UltraStore::VerifyCatalogSignature(CanonicalJson(sent), signature, {pk}));
+    // Without a merchant id, a signed call is refused before the network; the apply works without one.
+    REQUIRE(applicant.GetStanding().error.code == UltraStore::ErrorCode::InvalidArgument);
+    // The application's state, public with the secret.
+    const auto state = MarketClient::ApplicationState("https://market.example", "ap-000001", "s3cret", m.Call());
+    REQUIRE(state);
+    REQUIRE(state.Value().Approved());
+    REQUIRE_EQ(state.Value().merchant, std::string("pixelwerk"));
+    REQUIRE_EQ(state.Value().message, std::string("Welcome"));
+    REQUIRE(m.calls.back().rfind("GET https://market.example/v1/applications/ap-000001?secret=s3cret |  | ", 0) == 0);
+    REQUIRE(!MarketClient::ApplicationState("https://market.example", "", "", m.Call()));
+    // The profile comes with the standing, and is edited signed; the key rotation sends the new public half.
+    MarketClient client({"https://market.example", "pixelwerk"}, seed, m.Call());
+    const auto standing = client.GetStanding();
+    REQUIRE(standing);
+    REQUIRE_EQ(standing.Value().website, std::string("https://pixelwerk.example"));
+    REQUIRE_EQ(standing.Value().description, std::string("Games."));
+    ProfileChange change;
+    change.name = "Pixelwerk Studio";
+    change.description = "Games for ULTRA OS.";
+    const auto updated = client.UpdateProfile(change);
+    REQUIRE(updated);
+    REQUIRE_EQ(updated.Value().name, std::string("Pixelwerk Studio"));
+    REQUIRE(m.calls.back().rfind("PUT https://market.example/v1/merchants/me | Merchant pixelwerk:", 0) == 0);
+    REQUIRE_EQ(m.calls.back().substr(m.calls.back().rfind(" | ") + 3), std::string(R"({"name":"Pixelwerk Studio","description":"Games for ULTRA OS."})"));
+    ProfileChange rotate;
+    rotate.keyHex = "ab";
+    REQUIRE(client.UpdateProfile(rotate));
+    REQUIRE_EQ(m.calls.back().substr(m.calls.back().rfind(" | ") + 3), std::string(R"({"key":"ab"})"));
+}
+
+
+TEST(the_packages_are_uploaded_into_the_operators_package_store) {
+    std::vector<uint8_t> seed, pk;
+    REQUIRE(UltraStore::GenerateSigningKey(seed, pk));
+    UltraStore::Component hello = HelloApp();
+    const std::string dir = TempDir("market-packages");
+    // One package's file is in the local store under its hash; the other is not.
+    const std::string bytes = "PK\x03\x04 the build";
+    hello.releases[0].packages[0].sha256 = UltraStore::Sha256Hex(bytes);
+    hello.releases[0].packages[0].size = bytes.size();
+    hello.releases[0].packages[0].format = "zip";
+    hello.releases[0].packages[0].url = "https://files.example/restricted/" + hello.releases[0].packages[0].sha256 + ".zip";
+    {
+        std::ofstream out(UltraCanvas::PathFromUtf8(dir) / (hello.releases[0].packages[0].sha256 + ".zip"), std::ios::binary);
+        out << bytes;
+    }
+    REQUIRE_EQ(LocalPackageFile(dir, hello.releases[0].packages[0]), UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / (hello.releases[0].packages[0].sha256 + ".zip")));
+    UltraStore::Package elsewhere = hello.releases[0].packages[0];
+    elsewhere.sha256 = std::string(64, 'e');
+    elsewhere.url = "https://files.example/packages/" + elsewhere.sha256 + ".zip";
+    hello.releases[0].packages.push_back(elsewhere);
+    REQUIRE(LocalPackageFile(dir, elsewhere).empty());
+    // The submission names the format and the access.
+    const JSONValue named = SubmissionPackages(hello);
+    REQUIRE_EQ(named.At(0).Get("format").GetString(), std::string("zip"));
+    REQUIRE_EQ(named.At(0).Get("access").GetString(), std::string("restricted"));
+    REQUIRE(!named.At(1).Contains("access"));
+    FakeMarket m;
+    m.answers["POST /v1/submissions/s-00000001/packages/" + hello.releases[0].packages[0].sha256] = R"({"id":"s-00000001","state":"checked","checks":{"signature":"ok","packages":"ok"}})";
+    MarketClient client({"https://market.example", "m-anna"}, seed, m.Call());
+    std::vector<std::string> told;
+    const auto ups = client.UploadPackages("s-00000001", hello, dir, [&told](const PackageUpload& up) { told.push_back(up.fileName + (up.skipped ? " skipped" : " sent")); });
+    REQUIRE(ups);
+    REQUIRE_EQ(ups.Value().size(), size_t(2));
+    REQUIRE(!ups.Value()[0].skipped);
+    REQUIRE_EQ(ups.Value()[0].size, uint64_t(bytes.size()));
+    REQUIRE_EQ(ups.Value()[0].packagesCheck, std::string("ok"));
+    REQUIRE(ups.Value()[1].skipped);
+    REQUIRE_EQ(told.size(), size_t(2));
+    // One call, the raw bytes as the body, signed over them.
+    REQUIRE_EQ(m.calls.size(), size_t(1));
+    const std::string call = m.calls[0];
+    const std::string path = "/v1/submissions/s-00000001/packages/" + hello.releases[0].packages[0].sha256;
+    REQUIRE(call.rfind("POST https://market.example" + path + " | Merchant m-anna:", 0) == 0);
+    const std::string body = call.substr(call.rfind(" | ") + 3);
+    REQUIRE_EQ(body, bytes);
+    const std::string authorization = call.substr(call.find(" | ") + 3, call.rfind(" | ") - call.find(" | ") - 3);
+    REQUIRE(VerifySigned(authorization, "m-anna", "POST", path, body, pk));
+    // A file that is not there is an error for the single upload.
+    REQUIRE(client.UploadPackage("s-00000001", "ff", dir + "/nope.zip").error.code == UltraStore::ErrorCode::IoError);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }

@@ -1,5 +1,7 @@
 // UltraCanvas/include/UltraCanvasVirtualFSBridge.h
 // Bridge module connecting UltraCanvas to VirtualFS for compression and archive operations
+// Version: 1.3.0 - ExtractArchive's onExistingFile: what to do with an entry whose file exists
+//                  already (overwrite, skip, or write it under another name)
 // Version: 1.2.0 - UCVFSArchiveWriteOptions::method: what CreateArchive compresses
 //                  a ZIP / 7-Zip with; UCVFSCompressionOptions::type is said to
 //                  be the buffer compressors' choice only
@@ -7,7 +9,7 @@
 //                  compressor level, threads and zstd long mode, the TAR header
 //                  format and what of a file CreateArchive stores
 // Version: 1.0.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,15 +33,14 @@ namespace VirtualFS {
 namespace UltraCanvas {
 
 // ============================================================================
-// COMPRESSION TYPES (Extended from existing UltraCanvas types)
+// COMPRESSION TYPES
 // ============================================================================
 
 /**
  * @enum UCVFSCompressionType
- * @brief Extended compression types available through VirtualFS
+ * @brief Compression types available through VirtualFS
  * 
- * Extends the existing UCCompressionType and UCACompressionType enums
- * with additional algorithms available through VirtualFS/libarchive
+ * zlib's own (Deflate, GZIP) and the algorithms VirtualFS / libarchive add.
  */
 enum class UCVFSCompressionType {
     Uncompressed = 0,           // No compression (store)
@@ -94,6 +95,30 @@ using UCVFSProgressCallback = std::function<bool(
     uint64_t currentBytes, 
     uint64_t totalBytes,
     const std::string& currentFile)>;
+
+/**
+ * @brief An entry ExtractArchive is about to write whose file exists already
+ * at the destination: the archive's name for it, where it would go, its size
+ * and its modification time (seconds since the epoch, 0 = the archive keeps
+ * none).
+ */
+struct UCVFSExistingFile {
+    std::string entryPath;
+    std::string destPath;
+    uint64_t entrySize = 0;
+    int64_t entryModifiedTime = 0;
+};
+
+/// Write over the file there, leave it and skip the entry, or write the entry
+/// to the path the callback names instead ("name (2).ext").
+enum class UCVFSExistingFileAction { Overwrite, Skip, WriteAs };
+
+/**
+ * @brief Called on the extracting thread for each regular file that exists
+ * already; `writeAsPath` is read for WriteAs. Must not touch UI state.
+ */
+using UCVFSExistingFileCallback = std::function<UCVFSExistingFileAction(
+    const UCVFSExistingFile& file, std::string& writeAsPath)>;
 
 // ============================================================================
 // COMPRESSION OPTIONS
@@ -523,13 +548,16 @@ public:
      *        that could not be written) it is a heading line ending in ':'
      *        per kind, then one entry per line. Prefer it to GetLastError()
      *        from a worker thread: that one is shared by every caller.
+     * @param onExistingFile Optional: asked for each regular file that exists
+     *        already at the destination. Without it the file is written over.
      * @return true on success
      */
     static bool ExtractArchive(
         const std::string& archivePath,
         const std::string& destDirectory,
         UCVFSProgressCallback progressCallback = nullptr,
-        std::string* outError = nullptr);
+        std::string* outError = nullptr,
+        UCVFSExistingFileCallback onExistingFile = nullptr);
     
     /**
      * @brief Creates a new archive from files

@@ -1,0 +1,84 @@
+{% extends "operator/base.html" %}
+{% block title %}Affiliate {{ profile.handle }} - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Affiliate <span class="font-monospace">{{ profile.handle }}</span></h1>{% include "_state.html" with state=profile.state label=profile.get_state_display %}</div>
+<div class="panels">
+<div class="card"><div class="card-body">
+  <dl class="facts">
+    <dt>Account</dt><dd>{{ profile.user.email }}{% if profile.user.name %} - {{ profile.user.name }}{% endif %}</dd>
+    <dt>Applied</dt><dd>{{ profile.created|date:"j F Y" }}{% if profile.activated_at %}, active since {{ profile.activated_at|date:"j F Y" }}{% endif %}</dd>
+    <dt>Phone</dt><dd>{{ profile.phone }} - {% if profile.phone_verified_at %}proven {{ profile.phone_verified_at|date:"j F Y" }}{% else %}<span class="text-danger">not proven</span>{% endif %}</dd>
+    <dt>Identity</dt><dd>{% if profile.id_checked_at %}{{ profile.id_name }}, born {{ profile.id_birth_date|date:"j F Y" }}; {{ profile.get_id_document_display }} of {{ profile.id_country }}{% if profile.id_expires %}, valid until {{ profile.id_expires|date:"j F Y" }}{% endif %}; checked {{ profile.id_checked_at|date:"j F Y" }}{% if profile.id_checked_by %} by {{ profile.id_checked_by.display_name }}{% endif %}{% else %}<span class="text-danger">not checked</span>{% endif %}</dd>
+    <dt>Where they advertise</dt><dd>{% if profile.website %}{{ profile.website }}<br>{% endif %}{{ profile.channels|linebreaksbr|default:"-" }}</dd>
+    <dt>Paid to</dt><dd>{{ profile.legal_name|default:"-" }}{% if profile.vat_id %}, VAT id {{ profile.vat_id }}{% endif %}<br>{{ profile.payout_details|linebreaksbr|default:"no payout details" }}</dd>
+    <dt>Brought in by</dt><dd>{% if profile.superaffiliate %}<a href="{% url 'operator:affiliate' profile.superaffiliate.pk %}" class="font-monospace">{{ profile.superaffiliate.handle }}</a>, who earns {% if profile.super_percent is not None %}{{ profile.super_percent.normalize }}{% else %}{{ default_super }}{% endif %} % of this affiliate's commissions on top{% else %}nobody{% endif %}</dd>
+    <dt>Customers</dt><dd>{{ customers }} bound</dd>
+    {% if recruits %}<dt>Brought in</dt><dd>{% for recruit in recruits %}<a href="{% url 'operator:affiliate' recruit.pk %}" class="font-monospace">{{ recruit.handle }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+  </dl>
+</div></div>
+{% if profile.state == "applied" %}
+<div class="card form-wide"><div class="card-body">
+  <h2>The review</h2>
+  <p class="text-secondary">Look at an identity document - in a video call, or a copy the applicant sends you and you delete afterwards - and write down what it says. No picture of it is kept here. One person has one profile; an affiliate is eighteen or older.</p>
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="activate">{% include "_form.html" with form=review %}<button class="btn btn-primary">Identity checked: activate</button></form>
+</div></div>
+{% endif %}
+{% if sums %}
+<div class="card"><div class="card-body">
+  <h2>Money</h2>
+  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Currency</th><th class="text-end">Pending</th><th class="text-end">Held back</th><th class="text-end">Balance</th><th class="text-end">In a payout to pay</th><th class="text-end">Paid</th></tr></thead><tbody>
+  {% for row in sums %}<tr><td>{{ row.currency }}</td><td class="text-end">{{ row.pending }}</td>
+    <td class="text-end">{{ row.held }}{% if row.next_release %}<br><span class="small text-secondary">{{ row.next_release_amount }} on {{ row.next_release|date:"j M Y" }}</span>{% endif %}</td>
+    <td class="text-end"><b>{{ row.balance }}</b>{% if row.balance > 0 and not row.payable %}<br><span class="small text-secondary">under {{ minimum }}: carried</span>{% endif %}</td>
+    <td class="text-end">{{ row.to_pay }}</td><td class="text-end">{{ row.paid }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if payouts %}<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Payout</th><th>Up to</th><th class="text-end">Amount</th><th>State</th><th>Reference</th><th></th></tr></thead><tbody>
+  {% for payout in payouts %}<tr><td>{{ payout.pk }}</td><td>{{ payout.until|date:"j M Y" }}</td><td class="text-end">{{ payout.amount }} {{ payout.currency }}</td><td>{{ payout.get_state_display }}</td><td class="font-monospace">{{ payout.reference }}</td>
+    <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'operator:affiliate_payout' payout.pk %}">Open</a></td></tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+  {% if profile.state != "blocked" and profile.state != "banned" %}
+  <form method="post" class="mb-2">{% csrf_token %}<input type="hidden" name="action" value="payout"><button class="btn btn-outline-secondary btn-sm">Make this affiliate's payout for what is due today</button></form>
+  {% endif %}
+  <p class="small text-secondary mb-0">Payouts are made monthly for every affiliate (<a href="{% url 'operator:affiliate_payouts' %}">Payouts</a>); a balance under {{ minimum }} is carried{% if leaving %} - not this one: the account is being left, and whatever is owed is paid{% endif %}. The portal moves no money: pay at the bank or the provider, then mark the payout paid with the reference.</p>
+</div></div>
+{% endif %}
+<div class="card"><div class="card-body">
+  <h2>Commissions</h2>
+  {% if lines %}<div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Date</th><th>Product</th><th>For</th><th class="text-end">Reckoned on</th><th class="text-end">From the fee</th><th class="text-end">From the publisher</th><th class="text-end">Commission</th><th class="text-end">Held back</th><th>State</th><th>Order</th></tr></thead><tbody>
+    {% for line in lines %}<tr><td>{{ line.created|date:"j M Y" }}</td><td>{{ line.order.app_name }}</td><td>{% if line.basis == "super" %}share of {{ line.share_of.affiliate.handle }}{% elif line.basis == "bound_customer" %}customer{% else %}link{% endif %}</td>
+      <td class="text-end">{{ line.net }}</td><td class="text-end">{{ line.operator_part }}</td><td class="text-end">{{ line.merchant_part }}</td><td class="text-end">{{ line.amount }} {{ line.currency }}</td>
+      <td class="text-end">{% if line.state == "approved" and line.held %}{{ line.held }}{% if line.holdback.released_on %} <span class="small text-secondary">released</span>{% else %} <span class="small text-secondary">until {{ line.holdback.release_on|date:"j M Y" }}</span>{% endif %}{% elif line.from_holdback %}-{{ line.from_holdback }}{% endif %}</td>
+      <td>{% if line.payout_id %}{% if line.payout.state == "paid" %}Paid{% else %}In payout {{ line.payout_id }}{% endif %}{% else %}{{ line.get_state_display }}{% endif %}</td><td><a href="{% url 'operator:order' line.order_id %}">open</a></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="text-secondary mb-0">None.</p>{% endif %}
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>The record</h2>
+  {% for row in sanctions %}
+  <div class="border rounded p-3 mb-3">
+    <b>{{ row.get_kind_display }}</b> on {{ row.at|date:"j F Y, H:i" }}{% if row.decided_by %} by {{ row.decided_by.display_name }}{% endif %}{% if row.until %}, until {{ row.until|date:"j F Y" }}{% endif %}
+    <dl class="facts mb-0 mt-2"><dt>The rule</dt><dd>{{ row.rule }}</dd><dt>What happened</dt><dd>{{ row.facts|linebreaksbr }}</dd>
+      {% if row.evidence %}<dt>Evidence</dt><dd>{{ row.evidence|linebreaksbr }}</dd>{% endif %}{% if row.money %}<dt>The money</dt><dd>{{ row.money|linebreaksbr }}</dd>{% endif %}
+      {% if row.statement %}<dt>The affiliate said</dt><dd>{{ row.statement|linebreaksbr }}</dd>{% endif %}</dl>
+  </div>
+  {% empty %}<p class="text-secondary">No block and no ban.</p>{% endfor %}
+  {% if profile.state == "blocked" %}
+  <form method="post" class="d-flex flex-wrap gap-2 mb-3">{% csrf_token %}<input type="hidden" name="action" value="lift"><input class="form-control" style="max-width: 24rem" name="note" placeholder="Why it is lifted" aria-label="Why it is lifted"><button class="btn btn-outline-secondary">Lift the block</button></form>
+  {% endif %}
+  {% if profile.state != "banned" and profile.state != "closed" %}
+  <h3 class="h5">Block or ban</h3>
+  <p class="text-secondary">A blocked or banned affiliate's links earn nothing and what is owed is held. The rule and what happened are shown to the affiliate at once; the whole record is theirs on request.</p>
+  <form method="post" style="max-width: 40rem" onsubmit="return confirm('Put it on the record?')">{% csrf_token %}<input type="hidden" name="action" value="sanction">{% include "_form.html" with form=sanction_form %}<button class="btn btn-danger">Put it on the record</button></form>
+  {% endif %}
+</div></div>
+{% if profile.superaffiliate %}
+<div class="card form-wide"><div class="card-body">
+  <h2>The superaffiliate's share</h2>
+  <form method="post" class="d-flex flex-wrap gap-2">{% csrf_token %}<input type="hidden" name="action" value="super">
+    <input class="form-control" style="max-width: 10rem" name="super_percent" value="{% if profile.super_percent is not None %}{{ profile.super_percent.normalize }}{% endif %}" placeholder="{{ default_super }}" aria-label="Percent" inputmode="decimal">
+    <button class="btn btn-outline-secondary">Set</button></form>
+  <p class="small text-secondary mb-0 mt-2">In percent of this affiliate's commissions, paid on top from the store's fee. Empty: the programme's {{ default_super }} %. Zero: none.</p>
+</div></div>
+{% endif %}
+</div>
+{% endblock %}

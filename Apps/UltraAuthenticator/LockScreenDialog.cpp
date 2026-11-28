@@ -3,6 +3,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "LockScreenDialog.h"
+
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "BrandHeader.h"
 #include "Theme.h"
 
@@ -90,6 +92,18 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& message) {
     unlockButton_->onClick = [this]() { Attempt(); };
     AddChild(unlockButton_);
 
+    // Recovery is offered whatever the vault's state: the dialog it opens says
+    // when recovery was never turned on, which is itself what a person who
+    // forgot the password needs to hear.
+    auto forgotBtn = std::make_shared<UltraCanvasButton>(
+        "lock-forgot", margin, kDialogHeight - 54, 150, 32);
+    forgotBtn->SetText(Tr("Forgot password"));
+    Theme::StyleButton(forgotBtn, Theme::GhostButton());
+    forgotBtn->onClick = [this]() {
+        if (onForgot && !unlocked_ && !quitting_) onForgot();
+    };
+    AddChild(forgotBtn);
+
     auto quitBtn = std::make_shared<UltraCanvasButton>(
         "lock-quit", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
     quitBtn->SetText("Quit");
@@ -103,6 +117,13 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& message) {
     AddChild(quitBtn);
 
     RefreshWaitState();
+}
+
+void LockScreenDialog::CompleteUnlock() {
+    if (unlocked_ || quitting_) return;
+    if (passwordInput_) passwordInput_->SetText("");
+    unlocked_ = true;
+    CloseDialog(DialogResult::OK);
 }
 
 void LockScreenDialog::ShowModal(UltraCanvasWindowBase* parent) {

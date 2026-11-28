@@ -7,42 +7,141 @@
 // for the document views; UltraCanvasFileLoader::LoadTextDocument opens a
 // deck that way.
 //
+// WritePptxPresentation writes the model back as a package PowerPoint,
+// LibreOffice and this reader open (with a password: encrypted, as
+// PowerPoint's "Encrypt with Password" writes it), and
+// PptxPresentationFromRichDocument lays a word-processing document out as a
+// deck - a slide per first-level heading.
+//
 // A password-protected deck is decrypted on the way in
 // (UltraCanvasOfficeEncryption.h), like a protected .xlsx or .docx.
 //
-// What is not read: the layout as drawn (masters, themes, fills, fonts and
-// sizes, animations, transitions), charts, SmartArt and embedded objects.
-// Shape positions are kept as the slide gives them - a shape that inherits its
-// place from the layout has none. There is no writer.
+// Markup Compatibility's mc:AlternateContent is read - around shapes and
+// around runs - through its first Choice that gives anything, else its
+// Fallback; an equation (a14:m) gives its text.
+//
+// For drawing a slide (UltraCanvasPptxSlideRender.h) the reader also resolves
+// what a shape takes from its slide layout and slide master: its place (a
+// placeholder that names none takes the layout's, then the master's), its
+// text's size, colour, font, alignment, spacing, indents and bullets (the
+// run, then the layout's and the master's list styles, then the master's text
+// styles; the theme's heading and body fonts), its vertical anchor, insets and
+// autofit scale, its fill (solid or gradient), outline (colour, width, dash,
+// arrowheads), outline shape (a preset or a custom path), rotation and
+// mirroring, and the slide's background - a theme colour (schemeClr)
+// resolved through the deck's theme. Connectors are read as lines; a table's
+// cells keep their merges, fills and borders, its style (ppt/tableStyles.xml)
+// applied; a picture keeps its crop. A chart (c:chartSpace) is read through
+// UltraCanvasDrawingML into a RichChart; SmartArt is read from the drawing
+// PowerPoint saves beside it, as ordinary shapes. Runs keep their hyperlinks.
+//
+// The design is read as well: every slide master and slide layout, in the
+// file's order, into PptxPresentation::masters / layouts - name, layout type,
+// master, background, and the placeholders resolved as a slide's are (place,
+// kind, text look) with their prompt text ("Click to edit Master title
+// style") - and each slide's layoutIndex. A slide's transition (p:transition,
+// also PowerPoint 2010's inside mc:AlternateContent) is read into
+// PptxSlide::transition: its kind (one the model has none for as Fade), its
+// length (p14:dur, else the speed) and when the show moves on. An empty
+// placeholder on a slide is kept (an editor types into it): its place and one
+// empty paragraph whose run has the size a:endParaRPr or the layout gives; a
+// p:ph naming no type (ECMA's obj) reads as "body".
+//
+// What is not read: effects (shadows, glow, 3D), pattern and picture fills,
+// animations, a transition's direction and sound, comments, embedded objects
+// (beyond the picture they show), video and audio (beyond the poster frame).
 //
 // Specification: ECMA-376 Part 1, PresentationML (§19) and DrawingML (§20-21).
+// Version: 1.7.0 - group shapes kept (PptxShape::groupPath, PptxSlide::groupNames): p:grpSp read and
+//                  written with its chOff / chExt, a turned group's children turned with it; ODP's
+//                  draw:g; PptxGroupIds, PptxNewGroupId; PptxPictureNaturalSize (an .odp's crop)
+// Version: 1.6.0 - masters, layouts and transitions read and written (.pptx here, .odp in
+//                  UltraCanvasPresentationOdp.h); PptxLayout::type is p:sldLayout/@type
+// Version: 1.6.0 - PptxParagraphsToRichDocument / PptxParagraphsFromRichDocument: a shape's text for the
+//                  rich in-place editor and back
+// Version: 1.5.0 - masters, layouts (PptxLayout, PptxSlide::layoutIndex, PptxSlideFromLayout), transitions;
+//                  UCPresentation / UCSlide / UCSlideShape
+// Version: 1.4.0 - WritePptxPresentation / WritePptxPresentationToPackage (the writer, .pptx and kin,
+//                  with a password too) and PptxPresentationFromRichDocument
+// Version: 1.3.0 - what a slide looks like: fonts, spacing, indents, bullet characters and numbering
+//                  schemes, insets, rotation and mirroring, preset and custom outlines, gradients,
+//                  dashes and arrowheads, connectors, merged and styled table cells, picture crops,
+//                  hyperlinks, charts (UltraCanvasDrawingML) and SmartArt drawings
+// Version: 1.2.0 - mc:AlternateContent (Choice, else Fallback) around shapes and runs; equations
+//                  (a14:m) read as their text
+// Version: 1.1.0 - what a slide is drawn with: places inherited from the layout and master,
+//                  text sizes, colours and alignment, anchors, fills, outlines, the background,
+//                  the theme's colours, and (withPictures) the pictures' bytes
 // Version: 1.0.0
-// Last Modified: 2026-10-18
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasRichDocument.h"
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
 namespace UltraCanvas {
+
+struct PptxRun;
+struct PptxShape;
+struct PptxSlide;
+struct PptxPresentation;
+// Format-neutral names: the model is PowerPoint's and OpenDocument's alike.
+using UCPresentation = PptxPresentation;
+using UCSlide = PptxSlide;
+using UCSlideShape = PptxShape;
 
 struct PptxRun {
     std::string text;            // UTF-8; "\n" for a line break within the paragraph
     bool bold = false;
     bool italic = false;
     bool underline = false;
+    float sizePt = 0;            // resolved: the run's, else its list style's, else the master's; 0: unknown
+    std::string color;           // resolved "RRGGBB"; empty: the slide's default text colour
+    std::string font;            // resolved typeface (the theme's for +mj-lt / +mn-lt); empty: the system's
+    bool strike = false;
+    int baseline = 0;            // per cent of the size: > 0 superscript, < 0 subscript
+    bool allCaps = false, smallCaps = false;
+    std::string highlight;       // "RRGGBB" behind the text; empty: none
+    std::string hyperlink;       // the link's target (a URL, or "#slide3" for a jump to a slide)
 };
+
+enum class PptxAlign { Left, Center, Right, Justify };
+
+// Paragraph spacing: either a share of the line (1.0 = single) or points.
+struct PptxSpacing {
+    float percent = 0;           // of a line; 0: not said
+    float points = 0;            // exact points; 0: not said
+    bool IsSet() const { return percent > 0 || points > 0; }
+};
+enum class PptxAnchor { Top, Middle, Bottom };
 
 struct PptxParagraph {
     std::vector<PptxRun> runs;
     int level = 0;               // 0-based outline level (a:pPr lvl)
     bool bullet = false;         // drawn with a bullet or a number
     bool numbered = false;       // a:buAutoNum
+    PptxAlign align = PptxAlign::Left;   // resolved as the runs' size is
+    // Resolved like the alignment; unset spacings take PowerPoint's own.
+    PptxSpacing spaceBefore, spaceAfter, lineSpacing;
+    int64_t marginLeft = -1;     // EMU, the text's left edge (a:pPr marL); -1: not said
+    int64_t indent = 0;          // EMU, the first line's (and bullet's) offset from it, usually negative
+    std::string bulletChar;      // a:buChar's character ("" with bullet: PowerPoint's default dot)
+    std::string bulletFont;      // its typeface ("Wingdings", "Arial" ...)
+    std::string bulletColor;     // "RRGGBB"; empty: the text's
+    float bulletSizePercent = 0; // of the text's size; 0: the same
+    std::string numberScheme;    // a:buAutoNum type ("arabicPeriod", "alphaLcParenR", "romanUcPeriod" ...)
+    int numberStartAt = 1;
     std::string Text() const;    // the runs' text joined
 };
+
+// The number PowerPoint shows for item `number` (1-based) of an
+// a:buAutoNum scheme, with its punctuation: "3.", "c)", "(iv)", "IV.".
+std::string PptxNumberLabel(const std::string& scheme, int number);
 
 enum class PptxShapeKind {
     Title,       // the title placeholder (also a title slide's centred title)
@@ -50,33 +149,154 @@ enum class PptxShapeKind {
     Body,        // a content placeholder: bulleted unless it says otherwise
     Text,        // a text box or any other shape with text
     Table,
-    Picture
+    Picture,
+    Connector,   // a line or connector (p:cxnSp): its box runs from start to end, mirrored as flipped
+    Chart        // a chart (PptxShape::chart)
+};
+
+// A table cell's look, after the table's style and the cell's own: its
+// fill, its four borders and how it spans.
+struct PptxCellStyle {
+    std::string fill;            // "RRGGBB"; empty: none
+    std::string textColor;       // from the table style ("RRGGBB"); empty: the runs'
+    bool bold = false;           // from the table style (the header row's)
+    struct Border {
+        std::string color;       // "RRGGBB"; empty: none
+        double widthPt = 0;
+    };
+    Border left, right, top, bottom;
+    int gridSpan = 1, rowSpan = 1;
+    bool mergedAway = false;     // covered by a cell to its left or above (hMerge / vMerge)
+    int64_t insetLeft = 91440, insetRight = 91440, insetTop = 45720, insetBottom = 45720;   // EMU
+    PptxAnchor anchor = PptxAnchor::Top;
 };
 
 struct PptxShape {
     PptxShapeKind kind = PptxShapeKind::Text;
     std::string name;            // as the deck names it ("Title 1", "TextBox 3")
-    // Position and size in EMU (914400 per inch, 12700 per point), as the
-    // slide gives them; all 0 when the shape takes its place from the layout.
-    // Inside a group they are in the group's own coordinates.
+    // Position and size in EMU (914400 per inch, 12700 per point): the
+    // slide's, or the layout's or master's for a placeholder that names none
+    // (placeInherited); all 0 when none of them gives one. A shape in a
+    // group is placed on the slide, the group's scaling applied.
     int64_t x = 0, y = 0, width = 0, height = 0;
+    bool placeInherited = false;
+    std::string placeholder;     // the placeholder's type ("title", "body", "subTitle" ...); empty: none
+    PptxAnchor anchor = PptxAnchor::Top;   // where the text sits in the box
+    float fontScale = 1.0f;      // a:normAutofit fontScale: the text shrunk to fit
+    std::string fill;            // solid fill "RRGGBB"; empty: none
+    std::string line;            // outline colour "RRGGBB"; empty: none
+    double lineWidthPt = 0;
+    std::string geometry;        // a:prstGeom ("rect", "roundRect", "ellipse" ...); empty: rect
+    // a:custGeom: its outline, each point 0..1 across and down the box (its
+    // first sub-path's coordinate space); empty: the preset.
+    std::vector<RichShape::PathPoint> customPath;
+    double rotationDeg = 0;      // clockwise about the box's centre
+    bool flipH = false, flipV = false;
+    // A gradient fill (`fill` holds its first colour): its stops ("RRGGBB")
+    // and its angle (0: left to right, 90: top to bottom), or round from the centre.
+    std::vector<RichShape::GradientStop> gradientStops;
+    double gradientAngleDeg = 0;
+    bool gradientRadial = false;
+    RichShape::Dash dash = RichShape::Dash::Solid;
+    bool arrowStart = false, arrowEnd = false;   // on a line's or connector's ends
+    // The text's insets from the box (a:bodyPr lIns ...), EMU; -1: PowerPoint's own (0.1", 0.05").
+    int64_t insetLeft = -1, insetRight = -1, insetTop = -1, insetBottom = -1;
+    bool wrap = true;            // a:bodyPr wrap="none": one line, as wide as it needs
+    int textRotation = 0;        // a:bodyPr vert: 90 (vert, eaVert), 270 (vert270); 0: across
     std::vector<PptxParagraph> paragraphs;                   // the shape's text
     std::vector<std::vector<std::vector<PptxParagraph>>> rows;   // Table: rows, cells, paragraphs
+    std::vector<int64_t> columnWidths;   // Table: EMU, from its grid
+    std::vector<int64_t> rowHeights;     // Table: EMU, as each row asks (the text may need more)
+    std::vector<std::vector<PptxCellStyle>> cellStyles;   // Table: each cell's, as `rows`
     std::string pictureTarget;   // Picture: the package part, e.g. "ppt/media/image1.png"
     std::string altText;         // Picture: its description
+    // Picture: what its a:srcRect crops away from each side, a share of the picture (0..1).
+    double cropLeft = 0, cropTop = 0, cropRight = 0, cropBottom = 0;
+    RichChart chart;             // Chart: its data (UltraCanvasDrawingML)
+    // The groups the shape is in (p:grpSp, draw:g), outermost first: ids that
+    // PptxSlide::groupNames names, unique on the slide; empty: in none. A
+    // group's shapes stand next to each other in the z-order, and each keeps
+    // its place on the slide (the group's scaling and turn already applied),
+    // so a reader of the shapes alone draws the slide as it is.
+    std::vector<int> groupPath;
+};
+
+// How a slide comes on in the show (p:transition / presentation:transition-*).
+// Only what the show can play is kept; a kind the reader does not know is
+// read as Fade, so the slide still comes on softly.
+enum class PptxTransitionKind { NoTransition, Fade, Push, Wipe, Split, Cover, Zoom };
+
+struct PptxTransition {
+    PptxTransitionKind kind = PptxTransitionKind::NoTransition;   // not "None": X11 defines that
+    double durationSec = 0.5;
+    bool advanceOnClick = true;  // false: only after advanceAfterSec
+    double advanceAfterSec = -1; // the show moves on by itself after this long; -1: never
+};
+
+// A slide layout (ppt/slideLayouts, ODP presentation:presentation-page-layout
+// with its master page): the placeholders a new slide made from it starts
+// with, placed and styled as the layout and its master say - resolved as the
+// reader resolves a slide's shapes, for drawing and for copying.
+struct PptxLayout {
+    std::string name;            // as the deck names it ("Title and Content")
+    // p:sldLayout/@type: "title", "obj", "twoObj", "titleOnly", "secHead",
+    // "blank" ... (an .odp's worked out from its placeholders); empty when
+    // the file says none.
+    std::string type;
+    int masterIndex = 0;         // into PptxPresentation::masters
+    std::vector<PptxShape> placeholders;   // each with its `placeholder` type and prompt text
+    std::string background;      // "RRGGBB"; empty: the master's
+};
+
+// A slide master: the deck's design the layouts build on.
+struct PptxMaster {
+    std::string name;
+    std::vector<PptxShape> placeholders;   // the master's title, body, date, footer, number
+    std::string background;      // "RRGGBB"; empty: white
 };
 
 struct PptxSlide {
     int number = 0;              // 1-based, in presentation order
+    int layoutIndex = -1;        // into PptxPresentation::layouts; -1: none known
     bool hidden = false;         // left out of the slide show
     std::string title;           // the title placeholder's text
     std::vector<PptxShape> shapes;           // in z-order, back to front
     std::vector<PptxParagraph> notes;        // the speaker notes
+    std::string background;      // "RRGGBB" from the slide, its layout or its master; empty: white
+    std::string textColor;       // the theme's dark text colour (tx1); empty: black
+    PptxTransition transition;   // how the slide comes on in the show
+    // The groups' names by id (PptxShape::groupPath); a group without one is
+    // written as "Group <id>".
+    std::map<int, std::string> groupNames;
 };
+
+// Every group id the slide's shapes use, in no particular order, and an id
+// none of them (nor groupNames) uses yet.
+std::vector<int> PptxGroupIds(const PptxSlide& slide);
+int PptxNewGroupId(const PptxSlide& slide);
+
+// A picture's own size in EMU, from its bytes (PNG, JPEG, GIF): its pixels
+// at the resolution it states (a PNG's pHYs, a JPEG's JFIF density), else
+// at 96 to the inch - what OpenDocument's fo:clip measures a crop in, as
+// LibreOffice does. False when the bytes give no size.
+bool PptxPictureNaturalSize(const std::vector<uint8_t>& bytes, int64_t& width, int64_t& height);
 
 struct PptxPresentation {
     int64_t slideWidth = 0, slideHeight = 0; // EMU (16:9 is 12192000 x 6858000)
+    // The theme's colours by name ("dk1", "lt1", "dk2", "lt2", "accent1" ...
+    // "accent6", "hlink"), "RRGGBB".
+    std::map<std::string, std::string> themeColors;
+    // The theme's heading and body typefaces (a:majorFont / a:minorFont's latin).
+    std::string majorFont, minorFont;
     std::vector<PptxSlide> slides;
+    // The design: masters and the layouts a new slide is made from, in the
+    // file's order. Empty for a deck made in memory; the writers then write
+    // their own standard set.
+    std::vector<PptxMaster> masters;
+    std::vector<PptxLayout> layouts;
+    // The pictures' bytes by package part (PptxShape::pictureTarget), when
+    // read withPictures; empty otherwise.
+    std::map<std::string, std::vector<uint8_t>> pictures;
 };
 
 // True for a ZIP package holding ppt/presentation.xml. A password-protected
@@ -88,11 +308,33 @@ bool IsPptxExtension(const std::string& extensionOrPath);
 
 // Reads a deck; `filePath` is UTF-8. `password` opens a password-protected
 // one. False with a reason in `error` a user can be shown.
+// `withPictures` also keeps the pictures' bytes (PptxPresentation::pictures),
+// for drawing the slides.
 bool ReadPptxPresentation(const std::string& filePath, PptxPresentation& out, std::string& error,
-                          const std::string& password = std::string());
+                          const std::string& password = std::string(), bool withPictures = false);
 // The same for a package (the ZIP) already in memory.
 bool ReadPptxPresentationFromPackage(std::vector<uint8_t> package, PptxPresentation& out,
-                                     std::string& error);
+                                     std::string& error, bool withPictures = false);
+
+// A shape's text as a word-processing document, for editing it in
+// UltraCanvasRichTextEdit: each paragraph a block - a bulleted or numbered one
+// a list item at its level - with its alignment, each run with its look
+// (bold, italic, underline, strike, super- and subscript, typeface, size,
+// colour, highlight, link), a line break inside a paragraph kept.
+UCRichDocument PptxParagraphsToRichDocument(const std::vector<PptxParagraph>& paragraphs);
+// And back. `previous` - the paragraphs before the edit - gives what the
+// document does not hold (the bullet's character, typeface and colour, the
+// numbering scheme, indents, spacing): a paragraph takes them from the one
+// it was at the same place, else the last one at its level, else the first.
+// An empty paragraph keeps the look of the run before it, so typing into it
+// later looks as the shape says.
+std::vector<PptxParagraph> PptxParagraphsFromRichDocument(const UCRichDocument& document,
+                                                          const std::vector<PptxParagraph>& previous);
+
+// A new slide made from layout `layoutIndex` of `deck`: its placeholders,
+// empty (their prompt text is the editor's to show), and the layout's
+// background; a title-and-content slide when the deck has no such layout.
+PptxSlide PptxSlideFromLayout(const PptxPresentation& deck, int layoutIndex);
 
 // The deck as an outline: per slide a heading (its number and title), its
 // text - bulleted paragraphs as list items at their level, the rest as
@@ -100,5 +342,50 @@ bool ReadPptxPresentationFromPackage(std::vector<uint8_t> package, PptxPresentat
 // a block quote; slides separated by a rule. Hidden slides are included and
 // marked "(hidden)".
 UCRichDocument PptxPresentationToRichDocument(const PptxPresentation& presentation);
+
+// ----- Writing -----
+// Writes `deck` as a PowerPoint package to `filePath` (UTF-8): the slides in
+// order with their size, background and hidden flag, every shape kind with
+// its place, turn, mirroring, outline (preset or custom), fill (solid or
+// gradient), line (dash, arrowheads) and text (insets, wrap, vertical, anchor,
+// autofit scale; paragraphs with their level, alignment, spacing, margin,
+// indent and bullet or numbering; runs with size, colour, typeface, bold,
+// italic, underline, strike, baseline, capitals, highlight and hyperlinks -
+// "#slideN" as a jump to that slide), placeholders for the title, subtitle
+// and content; tables with their cells' merges, fills, borders, margins and
+// anchors (a table without cell looks takes PowerPoint's default style);
+// pictures from `deck.pictures` with their crop (a picture whose bytes were
+// not kept is written as a grey box with its description); groups (p:grpSp
+// round the shapes of a PptxShape::groupPath, nested, chOff / chExt the
+// group's box); charts
+// (UltraCanvasDrawingML's chart parts); speaker notes; the theme's colours and
+// heading and body fonts; each slide's transition (with p14:dur in
+// mc:AlternateContent for a length no speed names, advClick, advTm). A deck
+// with layouts is written with its own masters and layouts - names, types,
+// backgrounds, placeholders with their look as a list style and their prompt
+// text, a blank layout for a master that has none - each slide on its
+// layoutIndex (-1: the first) and its placeholders matched to the layout's;
+// a deck without (one made in memory) gets the standard master and its Title
+// and Content layout. The extension names the package kind: .pptx,
+// .potx (a template), .ppsx (a show), and their macro-enabled .pptm / .potm
+// / .ppsm, which carry no macros. With a `password` the package is
+// encrypted (UltraCanvasOfficeEncryption.h), as PowerPoint's "Encrypt with
+// Password" saves it. False with a reason in `error` a user can be shown.
+bool WritePptxPresentation(const PptxPresentation& deck, const std::string& filePath, std::string& error,
+                           const std::string& password = std::string());
+// The same package in memory (unencrypted); `extension` names its kind.
+bool WritePptxPresentationToPackage(const PptxPresentation& deck, std::vector<uint8_t>& out, std::string& error,
+                                    const std::string& extension = "pptx");
+
+// A word-processing document laid out as a deck (16:9): each first-level
+// heading starts a slide and is its title (a rule or a page break starts an
+// untitled one; the document's title heads the first). Paragraphs, list
+// items (levels, numbering, bullets), headings below the first level (bold),
+// code (Courier New) and block quotes (italic) go into the slide's content
+// placeholder; tables and pictures stand one under the other below it. A
+// deck's own outline (PptxPresentationToRichDocument) reads back as its
+// slides: "1. Title (hidden)" as the title of a hidden slide, a "Notes:"
+// quote as the speaker notes.
+PptxPresentation PptxPresentationFromRichDocument(const UCRichDocument& document);
 
 } // namespace UltraCanvas

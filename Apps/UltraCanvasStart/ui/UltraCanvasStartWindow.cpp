@@ -1,4 +1,8 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.5.0 - the Framework step's "Newest SDK" row: the server's pub/LATEST
+//                  against the SDK in use, Download <version> for a newer one,
+//                  the matching UltraCanvasStart linked; Move a project...
+//                  points an existing project at the SDK in the prefix field
 // Version: 0.4.6 - Download fetches the SDK from start.ultraos.eu into a chosen
 //                  folder, checks it against SHA256SUMS and unpacks it there;
 //                  the download page row is the archive's address
@@ -162,6 +166,7 @@ ContainerStyle PlainContainer() {
 
 UltraCanvasStartWindow::~UltraCanvasStartWindow() {
     if (worker_.joinable()) worker_.join();
+    if (updateWorker_.joinable()) updateWorker_.join();
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(uiTimer_);
     }
@@ -640,6 +645,33 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFrameworkStep
         row->AddChild(Theme::MakeLink("ucsFwReleasePageLink", SdkReleasePage(version), SdkReleasePage(version)));
         card->AddChild(row);
     }
+    {
+        // The newest SDK on the server (pub/LATEST), against the one in use.
+        auto row = Theme::MakeKeyRow("ucsFwUpdate", "Newest SDK");
+        row->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(Theme::kControlHeight + 4.0f));
+        updateText_ = Theme::MakeValue("ucsFwUpdateText", "not asked yet");
+        row->AddChild(updateText_);
+        // Secondary: the step's one accent button stays Download.
+        updateDownloadButton_ = Theme::MakeButton("ucsFwUpdateDownload", "Download", false, 150);
+        updateDownloadButton_->onClick = [this]() {
+            if (update_.ok && !update_.latest.empty()) DownloadSdkArchive(update_.latest);
+        };
+        updateDownloadButton_->SetVisible(false);
+        row->AddChild(updateDownloadButton_);
+        updateCheckButton_ = Theme::MakeButton("ucsFwUpdateCheck", "Check again", false, 110);
+        updateCheckButton_->onClick = [this]() { StartUpdateCheck(); };
+        row->AddChild(updateCheckButton_);
+        card->AddChild(row);
+    }
+    {
+        // A newer SDK can need a package this build's checks do not know:
+        // the UltraCanvasStart of the same release does.
+        updateStartRow_ = Theme::MakeKeyRow("ucsFwUpdateStart", "Its UltraCanvasStart");
+        updateStartLink_ = Theme::MakeLink("ucsFwUpdateStartLink", "", "");
+        updateStartRow_->AddChild(updateStartLink_);
+        updateStartRow_->SetVisible(false);
+        card->AddChild(updateStartRow_);
+    }
     sdkRow_ = Theme::MakeRow("ucsSdkRow");
     auto prefixLabel = Theme::MakeText("ucsSdkLabel", "SDK prefix", Theme::kSizeBody, Theme::kTextSecondary);
     prefixLabel->SetElementSize(Size2Df(Theme::kKeyWidth, Theme::kControlHeight));
@@ -652,7 +684,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFrameworkStep
     sdkPrefixInput_->onTextChanged = [this](const std::string&) { ReadChoicesFromPanes(); RefreshFrameworkStep(); };
     sdkRow_->AddChild(sdkPrefixInput_);
     downloadButton_ = Theme::MakeButton("ucsDownloadSdk", "Download", true, 100);
-    downloadButton_->onClick = [this]() { DownloadSdkArchive(); };
+    downloadButton_->onClick = [this]() { DownloadSdkArchive(FrameworkVersion()); };
     sdkRow_->AddChild(downloadButton_);
     unpackButton_ = Theme::MakeButton("ucsUnpackSdk", "Unpack...", false, 90);
     unpackButton_->onClick = [this]() { UnpackSdk(); };
@@ -660,6 +692,9 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFrameworkStep
     findButton_ = Theme::MakeButton("ucsFindSdk", "Find...", false, 80);
     findButton_->onClick = [this]() { FindSdk(); };
     sdkRow_->AddChild(findButton_);
+    moveProjectButton_ = Theme::MakeButton("ucsMoveProject", "Move a project...", false, 130);
+    moveProjectButton_->onClick = [this]() { MoveProjectToSdk(); };
+    sdkRow_->AddChild(moveProjectButton_);
     card->AddChild(sdkRow_);
 
     // ----- either way: what the choice means, in words -----
@@ -846,6 +881,11 @@ void UltraCanvasStartWindow::OnEnterStep(int index) {
     if (index == static_cast<int>(Step::Framework) || index == static_cast<int>(Step::Project)) {
         ReadChoicesFromPanes();
         RefreshPlan();
+    }
+    // The first visit to the Framework step asks the server once; Check
+    // again asks again.
+    if (index == static_cast<int>(Step::Framework) && !updateAsked_ && SdkDownloadAvailable()) {
+        StartUpdateCheck();
     }
     if (index == static_cast<int>(Step::Project) && doneCard_) {
         doneCard_->SetVisible(projectCreated_);
@@ -1087,9 +1127,8 @@ std::string Megabytes(int64_t bytes) {
 }
 } // namespace
 
-void UltraCanvasStartWindow::DownloadSdkArchive() {
+void UltraCanvasStartWindow::DownloadSdkArchive(const std::string& version) {
     if (working_) return;
-    const std::string version = FrameworkVersion();
     const std::string archiveName = SdkArchiveName(profile_.platform, version, profile_.architecture);
     if (!SdkDownloadAvailable()) {
         OpenURL(SdkDownloadUrl(profile_.platform, version, profile_.architecture));
@@ -1195,9 +1234,125 @@ void UltraCanvasStartWindow::StartUnpack(const std::string& archive) {
             RefreshPlan();
             for (auto& step : plan_.steps) if (step.kind == StepKind::Download) step.done = true;
             if (stepper_) stepper_->SetStepError(static_cast<int>(Step::Framework), false);
-            SetStatus("SDK unpacked into " + prefix + ". Next goes on to the project.");
+            RefreshUpdateRow();
+            SetStatus("SDK unpacked into " + prefix + ". Next goes on to a new project; "
+                      "Move a project... points an existing one at it.");
         });
     });
+}
+
+void UltraCanvasStartWindow::StartUpdateCheck() {
+    if (updateChecking_) return;
+    if (updateWorker_.joinable()) updateWorker_.join();
+    updateAsked_ = true;
+    updateChecking_ = true;
+    if (updateText_) updateText_->SetText("asking " + SdkLatestUrl() + "...");
+    if (updateCheckButton_) updateCheckButton_->SetDisabled(true);
+    const SystemProfile profile = profile_;
+    const std::string installed = InstalledSdkVersion();
+    updateWorker_ = std::thread([this, profile, installed]() {
+        const SdkUpdateCheck check = CheckSdkUpdate(profile.platform, installed, profile.architecture);
+        RunOnUiThread([this, check]() {
+            update_ = check;
+            updateChecking_ = false;
+            if (updateCheckButton_) updateCheckButton_->SetDisabled(false);
+            RefreshUpdateRow();
+        });
+    });
+}
+
+std::string UltraCanvasStartWindow::InstalledSdkVersion() const {
+    const std::string prefix = sdkPrefixInput_ ? sdkPrefixInput_->GetText() : "";
+    const std::string fromPrefix = SdkPrefixVersion(prefix);
+    return fromPrefix.empty() ? FrameworkVersion() : fromPrefix;
+}
+
+void UltraCanvasStartWindow::RefreshUpdateRow() {
+    if (!updateText_) return;
+    bool offer = false;
+    std::string text;
+    if (updateChecking_) {
+        text = "asking " + SdkLatestUrl() + "...";
+    } else if (!updateAsked_) {
+        text = SdkDownloadAvailable() ? "not asked yet"
+                                      : "this build cannot ask; the newest is named in " + SdkLatestUrl();
+    } else if (!update_.ok) {
+        text = "could not ask: " + update_.error;
+    } else {
+        // Measured against the SDK in the prefix field now, which a
+        // Download, Unpack... or Find... may have changed since the check.
+        const std::string installed = InstalledSdkVersion();
+        const bool newer = CompareVersions(update_.latest, installed) > 0;
+        if (!newer) {
+            text = update_.latest + " - the SDK in use (" + installed + ") is the newest";
+        } else if (!update_.archiveListed) {
+            text = update_.latest + " is out, without " + update_.archive + " yet";
+        } else {
+            text = update_.latest + " is newer than " + installed;
+            offer = true;
+        }
+    }
+    updateText_->SetText(text);
+    if (updateDownloadButton_) {
+        updateDownloadButton_->SetVisible(offer);
+        if (offer) {
+            updateDownloadButton_->SetText("Download " + update_.latest);
+            Theme::FitToLabel(updateDownloadButton_, 150);
+            updateDownloadButton_->SetDisabled(working_);
+        }
+    }
+    if (updateStartRow_) {
+        updateStartRow_->SetVisible(offer);
+        if (offer && updateStartLink_) {
+            const std::string url = StartAppDownloadUrl(profile_.platform, update_.latest, profile_.architecture);
+            const std::string label = StartAppArchiveName(profile_.platform, update_.latest, profile_.architecture) +
+                                      " - its checks know what the new SDK needs";
+            updateStartLink_->SetText("<u>" + Theme::EscapeMarkup(label) + "</u>");
+            LabelTextLink link;
+            link.startByte = 0;
+            link.endByte = static_cast<int>(label.size());
+            link.href = url;
+            updateStartLink_->SetTextLinks({ link });
+            updateStartLink_->SetShowLinkTooltips(true);
+        }
+    }
+    if (paneHost_) paneHost_->InvalidateLayout();
+}
+
+void UltraCanvasStartWindow::MoveProjectToSdk() {
+    if (working_) return;
+    const std::string prefix = sdkPrefixInput_ ? sdkPrefixInput_->GetText() : "";
+    const std::string sdk = FindSdkPrefix(prefix);
+    if (sdk.empty()) {
+        UltraCanvasDialogManager::ShowError(
+            "Set the SDK prefix first: Download, Unpack... or Find... the SDK the project should use.",
+            "No SDK", nullptr, window_.get());
+        return;
+    }
+    const std::string start = choices_.projectFolder.empty() ? profile_.homeDirectory : choices_.projectFolder;
+    const std::string folder = UltraCanvasNativeDialogs::SelectFolder(
+        "Which project should use this SDK? (the folder with its CMakePresets.json)", start, window_.get());
+    if (folder.empty()) return;
+    const RepointResult result = RepointProjectSdk(folder, sdk);
+    if (!result.ok) {
+        UltraCanvasDialogManager::ShowError(result.error, "The project was not moved", nullptr, window_.get());
+        return;
+    }
+    const std::string version = SdkPrefixVersion(sdk);
+    std::string message;
+    if (!result.changed) {
+        message = result.presets + " already uses this SDK.";
+    } else {
+        message = result.presets + " now uses the SDK" + (version.empty() ? "" : " " + version) + " in\n" + sdk;
+        if (!result.oldPrefix.empty()) message += "\n\ninstead of\n" + result.oldPrefix;
+    }
+    if (result.cacheRemoved) {
+        message += "\n\nbuild/CMakeCache.txt was removed, so the next configure finds the new SDK.";
+    }
+    message += "\n\nBuild it again: cmake --preset default, then cmake --build --preset default.";
+    UltraCanvasDialogManager::ShowInformation(message, "Project moved", nullptr, window_.get());
+    SetStatus(result.changed ? "The project in " + folder + " now uses " + sdk + "."
+                             : "The project in " + folder + " already used " + sdk + ".");
 }
 
 void UltraCanvasStartWindow::CreateProject() {
@@ -1504,6 +1659,8 @@ void UltraCanvasStartWindow::RefreshFrameworkStep() {
     const bool sdk = !wayPicker_ || wayPicker_->GetSelectedIndex() == 0;
     const std::string prefix = sdkPrefixInput_ ? sdkPrefixInput_->GetText() : "";
     if (sdkRow_) sdkRow_->SetVisible(sdk);
+    if (moveProjectButton_) moveProjectButton_->SetDisabled(working_ || prefix.empty());
+    RefreshUpdateRow();
     if (frameworkBadge_) {
         if (!sdk) {
             frameworkBadge_->SetText("clone and build");
@@ -1529,6 +1686,10 @@ void UltraCanvasStartWindow::RefreshFrameworkStep() {
                     "(from the address above, or from the GitHub release).\n";
             text += "3. Or unpack it yourself and use **Find...** to point at the folder.\n";
             text += "4. The prefix goes into the project's `CMakePresets.json` as `CMAKE_PREFIX_PATH`.\n";
+            text += "5. **Newest SDK** asks " + SdkLatestUrl() + " for the newest release. When it is newer "
+                    "than the SDK in use, **Download** it, then **Move a project...** points an existing "
+                    "project at it. The UltraCanvasStart of that release is linked too: its Tools step "
+                    "knows what the newer SDK needs.\n";
             if (!prefix.empty()) text += "\nThe prefix is `" + prefix + "`.\n";
             else text += "\nWithout a prefix the project is still written; set `CMAKE_PREFIX_PATH` in `CMakePresets.json` later.\n";
         } else {
@@ -1596,6 +1757,10 @@ void UltraCanvasStartWindow::SetBusy(bool busy) {
     if (downloadButton_) downloadButton_->SetDisabled(busy);
     if (unpackButton_) unpackButton_->SetDisabled(busy);
     if (findButton_) findButton_->SetDisabled(busy);
+    if (updateDownloadButton_) updateDownloadButton_->SetDisabled(busy);
+    if (moveProjectButton_) {
+        moveProjectButton_->SetDisabled(busy || !sdkPrefixInput_ || sdkPrefixInput_->GetText().empty());
+    }
     if (createButton_) createButton_->SetDisabled(busy);
     if (buildButton_) buildButton_->SetDisabled(busy || !projectCreated_);
     UpdateNavigation();

@@ -14,18 +14,25 @@
 // width profiles and brushes go out as what they draw and come back as
 // strokes. Export() to a file is staged: saving over a file replaces it
 // only once the new one is written, leaves no temporary file, and a save that
-// fails says why and keeps what was there.
+// fails says why and keeps what was there. A radial gradient stretched by
+// its gradientTransform round-trips and is drawn as the ellipse it is, and an
+// even-odd ring keeps its hole through SVG, PDF and EPS.
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
+// Version: 1.8.0 - fill-rule: read (inherited, CSS), written on shapes, drawn; PDF f*, EPS eofill
+// Version: 1.7.0 - gradientTransform and spreadMethod read, written and drawn by the renderer
 // Version: 1.6.0
 // Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
+#include "UltraCanvasEPSConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasVectorRaster.h"
+#include "UltraCanvasRasterLayer.h"
 
 #include <chrono>
 #include <cmath>
@@ -34,6 +41,7 @@
 #include <iterator>
 #include <functional>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -574,7 +582,7 @@ int main(int argc, char** argv) {
                 if (auto d = std::dynamic_pointer_cast<VectorGroup>(g->Children[k])) out.push_back(d);
             return out;
         };
-        auto near = [](const std::shared_ptr<VectorGroup>& d, Point2Dd content, double x, double y) {
+        auto closeTo = [](const std::shared_ptr<VectorGroup>& d, Point2Dd content, double x, double y) {
             if (!d || !d->Transform) return false;
             const Point2Dd p = d->Transform->Transform(content);
             return std::fabs(p.x - x) < 1e-6 && std::fabs(p.y - y) < 1e-6;
@@ -584,24 +592,24 @@ int main(int argc, char** argv) {
         auto head = drawings(0);
         Check(arrow && arrow->Children.size() == 2 && std::dynamic_pointer_cast<VectorLine>(arrow->Children[0]) &&
               head.size() == 1, "marker-end from a CSS class: the line and its arrowhead become one group");
-        Check(!head.empty() && near(head[0], Point2Dd(9, 3.5), 10, 50) && near(head[0], Point2Dd(10, 3.5), 10, 52),
+        Check(!head.empty() && closeTo(head[0], Point2Dd(9, 3.5), 10, 50) && closeTo(head[0], Point2Dd(10, 3.5), 10, 52),
               "the arrowhead's refX/refY sits on the line's end, turned along it and scaled by stroke-width");
         const Color* hc = (!head.empty() && !head[0]->Children.empty() && head[0]->Children[0]->Style.Fill)
                 ? std::get_if<Color>(&*head[0]->Children[0]->Style.Fill) : nullptr;
         Check(hc && hc->r == 0x2c && hc->g == 0x3e && hc->b == 0x50, "the arrowhead keeps the marker's own fill");
 
         auto dot = drawings(1);
-        Check(dot.size() == 1 && near(dot[0], Point2Dd(5, 5), 60, 10) && near(dot[0], Point2Dd(10, 5), 62, 10),
+        Check(dot.size() == 1 && closeTo(dot[0], Point2Dd(5, 5), 60, 10) && closeTo(dot[0], Point2Dd(10, 5), 62, 10),
               "marker-mid on the middle vertex only, viewBox mapped, markerUnits=userSpaceOnUse unscaled");
         const Color* dc = (!dot.empty() && !dot[0]->Children.empty() && dot[0]->Children[0]->Style.Fill)
                 ? std::get_if<Color>(&*dot[0]->Children[0]->Style.Fill) : nullptr;
         Check(dc && dc->g == 255 && dc->r == 0, "fill=\"context-stroke\" takes the line's stroke");
 
         auto rev = drawings(2);
-        Check(rev.size() == 2 && near(rev[0], Point2Dd(5, 0), 95, 10) && near(rev[1], Point2Dd(5, 0), 145, 10),
+        Check(rev.size() == 2 && closeTo(rev[0], Point2Dd(5, 0), 95, 10) && closeTo(rev[1], Point2Dd(5, 0), 145, 10),
               "orient=auto-start-reverse turns the start marker round, not the end one");
         auto curve = drawings(3);
-        Check(curve.size() == 1 && near(curve[0], Point2Dd(10, 3.5), 140, 91),
+        Check(curve.size() == 1 && closeTo(curve[0], Point2Dd(10, 3.5), 140, 91),
               "an arrowhead on a curve follows the curve's tangent at its end");
         auto big = drawings(4);
         Check(big.size() == 1 && big[0]->Style.ClipPath &&
@@ -885,5 +893,128 @@ int main(int argc, char** argv) {
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
+    // ===== GRADIENT TRANSFORMS =====
+    // gradientTransform and spreadMethod survive the round trip, and the
+    // framework's own renderer draws them: a unit circle stretched into a
+    // 100 x 50 ellipse is the same grey 0.6 of the way out along both axes.
+    {
+        std::printf("--- gradientTransform ---\n");
+        const std::string ellipseSvg =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='100' viewBox='0 0 200 100'>"
+            "<defs><radialGradient id='e' gradientUnits='userSpaceOnUse' cx='0' cy='0' r='1'"
+            " gradientTransform='translate(100 50) scale(100 50)' spreadMethod='reflect'>"
+            "<stop offset='0' stop-color='#000'/><stop offset='1' stop-color='#fff'/></radialGradient></defs>"
+            "<rect width='200' height='100' fill='url(#e)'/></svg>";
+        auto e = converter.ImportFromString(ellipseSvg, options);
+        const VectorStorage::RadialGradientData* radial = nullptr;
+        // The importer resolves url(#e) into the shape's own fill.
+        if (e && !e->Layers.empty() && !e->Layers[0]->Children.empty()) {
+            const auto& fill = e->Layers[0]->Children[0]->Style.Fill;
+            if (fill)
+                if (auto* gd = std::get_if<VectorStorage::GradientData>(&*fill))
+                    radial = std::get_if<VectorStorage::RadialGradientData>(gd);
+        }
+        Check(radial && radial->Transform && std::fabs(radial->Transform->m[0][0] - 100) < 1e-6 &&
+                  std::fabs(radial->Transform->m[1][1] - 50) < 1e-6 &&
+                  radial->SpreadMethod == VectorStorage::GradientSpreadMethod::Reflect,
+              "gradientTransform and spreadMethod are read");
+        if (e) {
+            const std::string again = converter.ExportToString(*e, options);
+            Check(again.find("gradientTransform=") != std::string::npos && again.find("spreadMethod=\"reflect\"") != std::string::npos,
+                  "and written back");
+            VectorRasterOptions ro;
+            ro.background = RasterPixel(255, 255, 255, 255);
+            std::string error;
+            auto img = RasterizeVectorDocument(*e, ro, error);
+            if (img) {
+                const int across = img->GetPixel(160, 50).r, down = img->GetPixel(100, 80).r;
+                Check(std::abs(across - 153) <= 12 && std::abs(down - 153) <= 12,
+                      "drawn as the ellipse it is (" + std::to_string(across) + ", " + std::to_string(down) +
+                          ", 153 expected)");
+            } else {
+                Check(false, "the gradient document draws: " + error);
+            }
+        }
+    }
+
+    // ===== FILL-RULE =====
+    // A ring - two circles drawn the same way round in one path - keeps its
+    // hole only filled even-odd. The rule is read from the attribute, from a
+    // group (it is inherited) and from the stylesheet, written back on the
+    // shape (never a group, whose children the model does not hand it to),
+    // and drawn; the PDF and EPS writers fill such a shape with f* / eofill.
+    {
+        std::printf("--- fill-rule ---\n");
+        const std::string ring = "M 50 0 A 50 50 0 1 1 50 100 A 50 50 0 1 1 50 0 Z "
+                                 "M 50 25 A 25 25 0 1 1 50 75 A 25 25 0 1 1 50 25 Z";
+        auto doc1 = [&](const std::string& body, const std::string& css = {}) {
+            return converter.ImportFromString(
+                "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'>" +
+                    (css.empty() ? std::string() : "<style>" + css + "</style>") + body + "</svg>",
+                options);
+        };
+        auto firstPath = [](const std::shared_ptr<VectorStorage::VectorDocument>& d)
+                -> std::shared_ptr<VectorStorage::VectorElement> {
+            std::function<std::shared_ptr<VectorStorage::VectorElement>(const std::shared_ptr<VectorStorage::VectorElement>&)> find =
+                [&](const std::shared_ptr<VectorStorage::VectorElement>& e) -> std::shared_ptr<VectorStorage::VectorElement> {
+                if (!e) return nullptr;
+                if (e->Type == VectorStorage::VectorElementType::Path) return e;
+                if (VectorStorage::IsGroupType(e->Type))
+                    for (const auto& c : std::static_pointer_cast<VectorStorage::VectorGroup>(e)->Children)
+                        if (auto f = find(c)) return f;
+                return nullptr;
+            };
+            if (!d) return nullptr;
+            for (const auto& l : d->Layers)
+                if (auto f = find(l)) return f;
+            return nullptr;
+        };
+        auto centre = [](const std::shared_ptr<VectorStorage::VectorDocument>& d, int x, int y) {
+            VectorRasterOptions ro;
+            ro.background = RasterPixel(255, 255, 255, 255);
+            std::string error;
+            auto img = d ? RasterizeVectorDocument(*d, ro, error) : nullptr;
+            return img ? img->GetPixel(x, y) : RasterPixel(1, 2, 3, 0);
+        };
+        const auto EO = VectorStorage::FillRule::EvenOdd;
+
+        auto own = doc1("<path fill='#000' fill-rule='evenodd' d='" + ring + "'/>");
+        auto ownPath = firstPath(own);
+        Check(ownPath && ownPath->Style.ShapeFillRule == EO, "fill-rule=evenodd is read");
+        const RasterPixel hole = centre(own, 50, 50), band = centre(own, 50, 12);
+        Check(hole.r > 240 && band.r < 15, "and drawn with its hole open (centre " + std::to_string(hole.r) +
+                                               ", ring " + std::to_string(band.r) + ")");
+        auto plain = doc1("<path fill='#000' d='" + ring + "'/>");
+        Check(firstPath(plain) && firstPath(plain)->Style.ShapeFillRule != EO && centre(plain, 50, 50).r < 15,
+              "without it the ring is filled solid (non-zero)");
+
+        auto grouped = doc1("<g fill-rule='evenodd'><path fill='#000' d='" + ring + "'/></g>");
+        Check(firstPath(grouped) && firstPath(grouped)->Style.ShapeFillRule == EO, "a group's fill-rule is inherited");
+        auto styled = doc1("<path class='eo' fill='#000' d='" + ring + "'/>", ".eo { fill-rule: evenodd }");
+        Check(firstPath(styled) && firstPath(styled)->Style.ShapeFillRule == EO, "and the stylesheet's applies");
+
+        if (grouped) {
+            const std::string out = converter.ExportToString(*grouped, options);
+            const size_t at = out.find("fill-rule=\"evenodd\"");
+            const size_t path = out.find("<path");
+            Check(at != std::string::npos && path != std::string::npos && at > path &&
+                      out.find("fill-rule", at + 1) == std::string::npos,
+                  "written once, on the shape and not on its group");
+            auto again = converter.ImportFromString(out, options);
+            Check(firstPath(again) && firstPath(again)->Style.ShapeFillRule == EO, "and read back");
+
+            VectorConverter::PDFVectorConverter pdf;
+            const std::string p = pdf.ExportToString(*grouped, options);
+            Check(p.find("f*\n") != std::string::npos || p.find("B*\n") != std::string::npos,
+                  "the PDF writer fills it with f* / B*");
+            VectorConverter::EPSConverter eps;
+            const std::string e = eps.ExportToString(*grouped, options);
+            Check(e.find(" eofill") != std::string::npos, "the EPS writer with eofill");
+            const std::string pn = pdf.ExportToString(*plain, options), en = eps.ExportToString(*plain, options);
+            Check(pn.find("f*\n") == std::string::npos && en.find(" eofill") == std::string::npos,
+                  "and a non-zero shape with f / fill");
+        }
+    }
+
     return failures;
 }

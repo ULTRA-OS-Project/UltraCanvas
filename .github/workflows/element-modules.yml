@@ -69,6 +69,28 @@ jobs:
         with:
           submodules: recursive
 
+      # The packages of the last run on main, restored before anything is
+      # installed, so apt fetches only what changed since - as build.yml's
+      # Linux rows keep theirs (scripts/ci-apt.sh says why). On 2026-11-18
+      # both rows of this job ran out of their 45 minutes in this step, the
+      # mirror handing out each package in seconds. Both rows install the
+      # same packages on the same image, so they share one cache; the static
+      # row alone saves it (below), and on main only. Until main has saved
+      # one, the Wayland row's serves: same image, and its packages are this
+      # job's but ninja-build, which apt then fetches alone.
+      - name: Restore the apt package cache
+        id: apt-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-element-modules-ubuntu-24.04-
+          restore-keys: |
+            apt-debs-element-modules-ubuntu-24.04-
+            apt-debs-wayland-ubuntu-24.04-
+
+      - name: Put the cached packages in apt's cache
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install dependencies
         timeout-minutes: 45
         run: |
@@ -96,6 +118,20 @@ jobs:
           scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
           scripts/ci-apt.sh install libflac-dev libogg-dev libopus-dev libopusfile-dev libvorbis-dev libmp3lame-dev
           scripts/ci-apt.sh install libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev
+
+      # After the job's last apt install (the step above). Keyed by the
+      # packages it holds, so an unchanged set saves nothing new.
+      - name: Keep the downloaded packages (main, static row)
+        if: github.ref == 'refs/heads/main' && matrix.core == 'static'
+        id: apt-keep
+        run: echo "hash=$(scripts/ci-apt.sh cache-out "${{ runner.temp }}/apt-debs")" >> "$GITHUB_OUTPUT"
+
+      - name: Save the apt package cache (main, static row)
+        if: github.ref == 'refs/heads/main' && matrix.core == 'static' && steps.apt-keep.outputs.hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-element-modules-ubuntu-24.04-${{ steps.apt-keep.outputs.hash }}
 
       - name: Restore ccache
         id: ccache
@@ -146,10 +182,10 @@ jobs:
           set -euo pipefail
           if [ "${{ matrix.core }}" = shared ]; then
             widgets=""
-            expected="Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas;MediaViewer\]"
+            expected="Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas;MediaViewer;ProfilePicture\]"
           else
             widgets="MediaViewer"
-            expected="Widgets: compiled in \[MediaViewer\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas\]"
+            expected="Widgets: compiled in \[MediaViewer\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas;ProfilePicture\]"
           fi
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -186,6 +222,32 @@ jobs:
           else
             test ! -e build/Plugins/Elements/ultracanvas-widget-media-viewer.so
           fi
+
+      # A module archive with a static core has to carry its own dependencies:
+      # the module's public name resolves to that archive alone, so a symbol it
+      # forgot to ask for has to come from somewhere. In an ordinary build it
+      # does - every application links several archives at once and they cover
+      # for each other - and the gap shows only in a program whose link line is
+      # short enough to miss it. uc-net had never named the UltraCanvasTextUtils
+      # archive whose Trim() and Base64Encode() its UltraNetMime objects call,
+      # and ultradbadmin-relay (UltraDatabase, UltraVault, UltraNet, UltraCrypt,
+      # no core) failed to link months later, on a clean build (#1265). Each
+      # probe is an empty main with one archive forced in whole and nothing else
+      # of UltraCanvas on the line, so every object's undefined symbols must
+      # resolve from that archive's own declared dependencies. Linking is the
+      # whole test; the programs are never run. Static row only - a shared core
+      # is deliberately the single home of its absorbed archives' symbols, so
+      # there the question does not apply (see the CMakeLists comment).
+      - name: Every module archive links on its own
+        if: matrix.core == 'static'
+        run: |
+          set -euo pipefail
+          cmake --build build --target ultracanvas-module-link-probes -j"$(nproc)"
+          ls build/link-probes
+          # A guard that probed nothing would pass in silence, so insist on
+          # the archive this started with and on a plausible number of them.
+          test -x build/link-probes/uc-link-probe-uc-net
+          test "$(ls build/link-probes | wc -l)" -ge 8
 
       - name: Save ccache (main)
         if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'

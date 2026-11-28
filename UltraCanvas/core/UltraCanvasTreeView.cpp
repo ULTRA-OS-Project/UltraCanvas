@@ -1,6 +1,7 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
 // The history is in the header (include/UltraCanvasTreeView.h).
+// Version: 1.17.0 - SelectedRowTextColor: a selected row's text contrasts with the selection
 // Version: 1.11.0 - the +/- box in its own border and symbol colours (SetExpandButtonColors)
 // Version: 1.8.0 - TreeExpanderStyle::Chevron, the expand button as an arrow
 // Version: 1.7.0 - a loading row (TreeNodeData::loading) slides a thin bar along its foot
@@ -9,6 +10,7 @@
 // Version: 1.3.0 - GetRequiredWidth, the width the widest row on show needs
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasUtilsUtf8.h"
 #include <vector>
 #include <string>
@@ -1464,10 +1466,10 @@ namespace UltraCanvas {
             // selected tree that lost the focus shows no ring. Drawn over the
             // background and under the lines, icon and label. The automatic
             // colour contrasts with the row it sits on: the selection text
-            // colour (white when none is set) on the selection background,
+            // colour (SelectedRowTextColor) on the selection background,
             // the selection colour on any other row.
             if (node == focusedNode && IsFocused()) {
-                const Color onSelection = selectionTextColor.a > 0 ? selectionTextColor : Colors::White;
+                const Color onSelection = SelectedRowTextColor();
                 const Color ring = focusRingColor.a > 0 ? focusRingColor
                                  : (bgColor == selectionColor ? onSelection : selectionColor);
                 ctx->PushState();
@@ -1552,10 +1554,9 @@ namespace UltraCanvas {
 
             // Draw left icon
             if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
-                ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
-                               Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
-                                       node->data.leftIcon.width, node->data.leftIcon.height),
-                               ImageFitMode::Contain);
+                DrawNodeIcon(ctx, node, node->data.leftIcon,
+                             Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
+                                     node->data.leftIcon.width, node->data.leftIcon.height));
                 textX += node->data.leftIcon.width + iconSpacing;
             }
 
@@ -1770,10 +1771,19 @@ namespace UltraCanvas {
         if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
             int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
 
-            ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
-                           Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
-                                   node->data.rightIcon.width, node->data.rightIcon.height),
-                           ImageFitMode::Contain);
+            DrawNodeIcon(ctx, node, node->data.rightIcon,
+                         Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
+                                 node->data.rightIcon.width, node->data.rightIcon.height));
+        }
+    }
+
+    void UltraCanvasTreeView::DrawNodeIcon(IRenderContext *ctx, const TreeNode *node,
+                                           const TreeNodeIcon &icon, const Rect2Dd &rect) const {
+        if (!ctx || !node || icon.iconPath.empty()) return;
+        if (icon.drawnInTextColor) {
+            ctx->DrawMask(NodeTextColor(node), icon.iconPath, rect, ImageFitMode::Contain);
+        } else {
+            ctx->DrawImage(icon.iconPath, rect, ImageFitMode::Contain);
         }
     }
 
@@ -2284,6 +2294,16 @@ namespace UltraCanvas {
     }
 
 // ===== THE THEME =====
+    Color UltraCanvasTreeView::SelectedRowTextColor() const {
+        if (selectionTextColor.a > 0) return selectionTextColor;
+        // White wherever it reads (3:1): on the default blue black would
+        // score a hair higher by the numbers (4.7 against 4.5), yet black on
+        // a saturated blue is the pairing that reads worst. Black only on a
+        // light selection.
+        return UltraCanvasTheme::Contrast(Colors::White, selectionColor) >= 3.0
+               ? Colors::White : Colors::Black;
+    }
+
     void UltraCanvasTreeView::ApplyTheme(const UltraCanvasTheme& theme) {
         const ThemeRoles& r = theme.roles;
         SetBackgroundColor(r.well);
@@ -2297,6 +2317,7 @@ namespace UltraCanvas {
         hoverColor = r.hover;
         lineColor = r.lineStrong;
         textColor = r.ink;
+        dimmedTextColor = r.inkMuted;
         expandButtonColor = r.raised;
         expandButtonBorderColor = r.lineStrong;
         expandButtonSymbolColor = r.ink;

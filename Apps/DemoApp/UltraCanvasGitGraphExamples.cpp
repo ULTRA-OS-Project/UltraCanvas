@@ -306,7 +306,7 @@ std::shared_ptr<UltraCanvasContainer> MakeToolbar(
         bool includeLaneControls) {
 
     auto toolbar = MakeBar(idPrefix + "Toolbar");
-    toolbar->SetBackgroundColor(Color(248, 248, 252));
+    toolbar->SetBackgroundColor(DemoKit::Themed(Color(248, 248, 252)));
     toolbar->SetPadding(6);
 
     DemoKit::Add(toolbar, MakeLabel(idPrefix + "ThemeLabel", Tr("Theme:")));
@@ -421,6 +421,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
     DemoKit::Add(page, card, 1);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GitGraphTabs");
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabPosition(TabPosition::Top);
     DemoKit::Add(card, tabs, 1);
 
@@ -428,8 +429,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
                                         Tr("Ready - click a commit to select it, drag to pan, "
                                         "wheel to zoom"));
     statusLabel->SetFontSize(11);
-    statusLabel->SetTextColor(Color(60, 60, 60));
-    statusLabel->SetBackgroundColor(Color(240, 240, 245));
+    statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60)));
+    statusLabel->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 245)));
     statusLabel->SetPadding(5);
 
     auto wireStatus = [statusLabel](const std::shared_ptr<UltraCanvasGitGraph>& graph) {

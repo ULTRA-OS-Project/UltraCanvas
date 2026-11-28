@@ -15,6 +15,15 @@
 //                                (what UltraDesktop's "start with the desktop" asks)
 //   ChatCube --version / --help
 //
+// On Android the same code is libChatCube.so: main() becomes
+// ultracanvas_app_main(), which the framework's android_main() calls once
+// the sandbox, the unpacked assets and the first surface exist; the
+// providers are linked in and registered here rather than loaded as modules
+// (android/ChatCubeAndroidProviders.h), and there is no second copy to hand
+// off to - the activity is one. Packaging: Apps/ChatCube/android/README.md.
+//
+// Version: 0.2.3 - Android: ultracanvas_app_main, the providers linked in, no single-instance lock
+// Version: 0.2.2 - provider modules on demand: ChatCube Direct and the networks in use at start
 // Version: 0.2.1 - the look decided again at every change (the desktop's, the Settings window's): the
 //                  provider asks ChatCube::DarkLook; the elements follow the theme by default
 // Version: 0.2.0 - the theme under the Own policy: ThemeFor over the settings' look (System follows the desktop) and --dark, the host's fonts
@@ -27,7 +36,7 @@
 // Version: 0.1.2 - --dark
 // Version: 0.1.1 - --debug and --log
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ui/ChatCubeSettings.h"
@@ -61,6 +70,10 @@
 #include "VideoFX/VideoFX.h"
 #endif
 
+#if defined(__ANDROID__)
+#include "ChatCubeAndroidProviders.h"
+#endif
+
 // CHATCUBE_VERSION comes from the build alone: CMake reads the first line of
 // Docs/ChatCube/CHANGELOG.md (cmake/UltraCanvasVersion.cmake). No fallback.
 #ifndef CHATCUBE_VERSION
@@ -71,6 +84,7 @@ namespace {
 
 namespace fs = std::filesystem;
 
+#if !defined(__ANDROID__)
 bool HasModule(const fs::path& dir) {
     std::error_code ec;
     for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
@@ -95,6 +109,7 @@ std::string ResolvePluginDirectory() {
     }
     return "Plugins/UltraIM";
 }
+#endif
 
 // A JPEG no larger than `maxSide` on its longer side, from the file at
 // `path`: a picture through the image pipeline (which reads every format
@@ -194,7 +209,12 @@ void PrintUsage(const char* program) {
 
 } // namespace
 
+#if defined(__ANDROID__)
+// A shared library loaded by the activity, not a program (as the demo's).
+extern "C" int ultracanvas_app_main(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
     bool dark = false;
     bool minimized = false;
     for (int i = 1; i < argc; ++i) {
@@ -231,19 +251,24 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
+#if !defined(__ANDROID__)
     // One ChatCube per user: two would share, and fight over, one identity.
+    // (On Android the activity is the one copy; a second launch raises it.)
     using UltraCanvas::UltraCanvasSingleInstance;
     UltraCanvasSingleInstance instance("org.ultraos.chatcube", "ChatCube");
     const UltraCanvasSingleInstance::Start start = instance.Claim();
     if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+#endif
 
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("ChatCube")) {
         std::fprintf(stderr, "ChatCube: the UltraCanvas application could not be initialised (no display?)\n");
         return EXIT_FAILURE;
     }
+#if !defined(__ANDROID__)
     if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
         return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "ChatCube");
+#endif
     // What the Settings window chose last - the desktop's look under
     // System - and --dark over it.
     ChatCube::Settings settings;
@@ -272,20 +297,32 @@ int main(int argc, char** argv) {
 
     UltraIMConfig config;
     config.appId = "org.ultraos.chatcube";
+#if !defined(__ANDROID__)
     config.pluginDirectory = ResolvePluginDirectory();
     // UltraNet's plug-ins (mDNS for the local network) sit next to UltraIM's.
     const fs::path netPlugins = UltraCanvas::PathFromUtf8(config.pluginDirectory).parent_path() / "UltraNet";
     std::error_code netError;
     if (fs::is_directory(netPlugins, netError)) UltraNet_SetPluginDirectory(UltraCanvas::PathToUtf8(netPlugins));
+#endif
+    // (On Android: no module folder - the providers are registered below.)
     const fs::path data = UltraCanvas::UltraCanvasDataFolder("ChatCube");
     config.dataDirectory = UltraCanvas::PathToUtf8(data);
     config.cacheDirectory = UltraCanvas::PathToUtf8(data / "cache");
     UltraIM_Initialize(config);
+#if defined(__ANDROID__)
+    // The providers linked into libChatCube.so, before anything asks for one:
+    // UltraIM_LoadProvider below then finds them registered.
+    ChatCube::RegisterLinkedProviders();
+#endif
     // The preview picture a provider sends along with a picture or a video.
     UltraIM_SetPreviewMaker(MakePreview);
     // Every UltraIM event and callback reaches the window on the UI thread.
     UltraIM_SetEventDispatcher([&app](std::function<void()> task) { app.PostToUIThread(std::move(task)); });
-    UltraIM_RefreshProviders();
+    // The modules on demand: ChatCube Direct, and the networks in use (those
+    // signed in to - UltraIM keeps them in ultraim-providers.txt in the data
+    // folder); another network's module is loaded when its button is pressed.
+    UltraIM_LoadProvider("direct");
+    UltraIM_LoadUsedProviders();
 
     int exitCode = EXIT_SUCCESS;
     {
@@ -301,9 +338,13 @@ int main(int argc, char** argv) {
                 // cannot be iconified.
                 app.StartTimer(400, false, [&window](UltraCanvas::TimerId) { window.Minimize(); });
             }
+#if !defined(__ANDROID__)
             instance.ListenRaise();
+#endif
             app.Run();
+#if !defined(__ANDROID__)
             instance.Close();
+#endif
         }
         // Providers stop (and their callbacks with them) before the window goes.
         UltraIM_Shutdown();

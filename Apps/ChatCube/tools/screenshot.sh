@@ -23,7 +23,10 @@
 # kept, "edited" beside the time), search.png (the search field over the
 # chat, its matches), menu.png (Bob's chat right-clicked
 # in the list), group-menu.png (a group's menu, its Members and Bob's own
-# items open) and profile.png (Edit profile). Needs: a built ChatCube and
+# items open), feature-menu.png (the + beside the field: the features
+# behind it), screenshot-picker.png and screenshot-staged.png (Screenshot
+# in that menu: the screen to choose an area from, then the picture in the
+# composer) and profile.png (Edit profile). Needs: a built ChatCube and
 # chatcube-peer, the relay's virtual environment
 # (Server/ChatCubeRelay/.venv, see Apps/ChatCube/README.md), xvfb-run,
 # ImageMagick's `import`, and a C compiler with libX11 and libXtst
@@ -33,6 +36,13 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.16 - the messages a row higher (the kinds moved into the search row)
+# Version: 0.1.15 - feature-menu.png: the + menu; Screenshot is behind the + by default
+# Version: 0.1.14 - screenshot-picker.png and screenshot-staged.png: the screenshot button (xinput drag)
+# Version: 0.1.13 - the composer clicked at its centre, y 623 (one row high now, y 601 to 646)
+# Version: 0.1.12 - the chat list a row lower again (a fifth row: IRC)
+# Version: 0.1.11 - the chat list a row lower again (a fourth row: Signal)
+# Version: 0.1.10 - the chat list a row lower again (a third row of network buttons: Mattermost, Zulip)
 # Version: 0.1.9 - Members a row lower in the group's menu (Group settings... above it)
 # Version: 0.1.8 - the chat list a row lower (a second row of network buttons: Telegram, Mastodon)
 # Version: 0.1.7 - the messages a row lower (the filter chips over the chat)
@@ -47,7 +57,7 @@
 # Version: 0.1.2 - the card's fields 21 pixels higher ("Recover my ChatCube ID" under the button)
 # Version: 0.1.1 - the e-mail and phone on the sign-in card; profile.png, the Edit profile window
 # Version: 0.1.0
-# Last Modified: 2026-11-15
+# Last Modified: 2026-11-23
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -138,24 +148,25 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
         click 499 338 type "+49 151 2345 6789" click 499 471 sleep 4000
     import -window root "$OUT/empty.png"
     # The sidebar: the add-a-contact pill, then the first conversation row,
-    # then the composer at the bottom of the window.
+    # then the composer at the bottom of the window (one row high while
+    # empty: y 601 to 646, clicked at its centre).
     "$XINPUT" click 120 69 type "$BOB" key Return sleep 3000
-    "$XINPUT" click 160 216 sleep 1500
-    "$XINPUT" click 600 625 type "Hi Bob, is the new look on your side too?" key Return sleep 3500
+    "$XINPUT" click 160 342 sleep 1500
+    "$XINPUT" click 600 623 type "Hi Bob, is the new look on your side too?" key Return sleep 3500
     "$XINPUT" type "It has avatars and a dark theme now." key Return sleep 3500
     import -window root "$OUT/chat.png"
     # A message of ours right-clicked: its menu (Escape closes it).
-    "$XINPUT" rclick 800 188 sleep 1200
+    "$XINPUT" rclick 800 160 sleep 1200
     import -window root "$OUT/message-menu.png"
     "$XINPUT" key Escape sleep 600
     # The first answer from Bob replied to: Reply in its menu, the bar over the
     # field, then the reply with its quote.
-    "$XINPUT" rclick 500 243 sleep 1200 click 540 262 sleep 800 type "Yes, it looks great here."
+    "$XINPUT" rclick 500 214 sleep 1200 click 540 233 sleep 800 type "Yes, it looks great here."
     import -window root "$OUT/reply-bar.png"
     "$XINPUT" key Return sleep 3500
     import -window root "$OUT/reply.png"
     # Our second message double-clicked: its words back in the field to change.
-    "$XINPUT" click 850 296 click 850 296 sleep 900
+    "$XINPUT" click 850 268 click 850 268 sleep 900
     import -window root "$OUT/edit.png"
     "$XINPUT" type " Really." key Return sleep 2500
     import -window root "$OUT/edited.png"
@@ -164,20 +175,30 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     import -window root "$OUT/search.png"
     "$XINPUT" click 967 77 sleep 1500
     # The chat with Bob right-clicked in the list: its menu (Escape closes it).
-    "$XINPUT" rclick 160 210 sleep 1200
+    "$XINPUT" rclick 160 336 sleep 1200
     import -window root "$OUT/menu.png"
     "$XINPUT" key Escape sleep 600
     # A group with Bob (the Group button, its name and members, Enter), then
     # its menu with Members and the items for Bob open by hovering.
-    "$XINPUT" click 57 111 sleep 800 click 158 190 type "ULTRA OS questions" \
-        click 158 228 type "$BOB" key Return sleep 3000
-    "$XINPUT" rclick 160 276 sleep 1200 move 230 387 sleep 1200 move 420 387 move 470 415 sleep 1200
+    "$XINPUT" click 57 111 sleep 800 click 158 316 type "ULTRA OS questions" \
+        click 158 354 type "$BOB" key Return sleep 3000
+    "$XINPUT" rclick 160 402 sleep 1200 move 230 513 sleep 1200 move 420 513 move 470 541 sleep 1200
     import -window root "$OUT/group-menu.png"
     "$XINPUT" key Escape sleep 300 key Escape sleep 300 key Escape sleep 600
+    # The + beside the field: its menu (feature-menu.png); Screenshot in it
+    # (behind the + by default): ChatCube hides, the frozen
+    # screen to choose from (screenshot-picker.png), an area dragged, and the
+    # picture waiting in the composer (screenshot-staged.png).
+    "$XINPUT" click 357 623 sleep 1000
+    import -window root "$OUT/feature-menu.png"
+    "$XINPUT" click 420 530 sleep 2000
+    import -window root "$OUT/screenshot-picker.png"
+    "$XINPUT" drag 120 90 620 430 sleep 2000
+    import -window root "$OUT/screenshot-staged.png"
     # The person button beside the ID: the Edit profile window.
     "$XINPUT" click 292 25 sleep 2500
     import -window root "$OUT/profile.png"
     kill $app
     sleep 1
 '
-echo "screenshot.sh: $out/signin.png, empty.png, chat.png, message-menu.png, reply-bar.png, reply.png, edit.png, edited.png, search.png, menu.png, group-menu.png, profile.png (logs in $work)"
+echo "screenshot.sh: $out/signin.png, empty.png, chat.png, message-menu.png, reply-bar.png, reply.png, edit.png, edited.png, search.png, menu.png, group-menu.png, feature-menu.png, screenshot-picker.png, screenshot-staged.png, profile.png (logs in $work)"

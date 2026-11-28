@@ -1,6 +1,12 @@
 {
   "@language": "he",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "A drawing in this window has unsaved changes. Close anyway?": {
+    "one": "בחלון זה יש {n} ציור עם שינויים שלא נשמרו. לסגור בכל זאת?",
+    "two": "בחלון זה יש {n} ציורים עם שינויים שלא נשמרו. לסגור בכל זאת?",
+    "many": "בחלון זה יש {n} ציורים עם שינויים שלא נשמרו. לסגור בכל זאת?",
+    "other": "בחלון זה יש {n} ציורים עם שינויים שלא נשמרו. לסגור בכל זאת?"
+  },
   "Added the text: click it with the Text tool, or double-click it, to edit it": "הטקסט נוסף: כדי לערוך אותו יש ללחוץ עליו עם כלי טקסט, או ללחוץ עליו לחיצה כפולה",
   "Changed the text": "הטקסט שונה",
   "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "יש ללחוץ על הדף ולהקליד, או ללחוץ על טקסט כדי לערוך אותו; הסרגל שלמעלה קובע את הגופן, הגודל, הסגנון, היישור והריווח שלו. לסיום: Escape, Ctrl+Enter או לחיצה בחוץ",
@@ -18,5 +24,8 @@
   "Text Strikethrough": "קו חוצה בטקסט",
   "Text Underline": "קו תחתון בטקסט",
   "The text was emptied, so it was deleted": "הטקסט התרוקן, ולכן נמחק",
-  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "הקלדת טקסט חדש: Enter מתחיל שורה חדשה; לסיום: Escape, Ctrl+Enter או לחיצה בחוץ"
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "הקלדת טקסט חדש: Enter מתחיל שורה חדשה; לסיום: Escape, Ctrl+Enter או לחיצה בחוץ",
+  "Untitled {0}": "ללא כותרת {0}",
+  "{0} has unsaved changes. Close it anyway?": "ב-{0} יש שינויים שלא נשמרו. לסגור בכל זאת?",
+  "{0} is open already": "{0} כבר פתוח"
 }

@@ -1,8 +1,8 @@
 # Tests/FilerTests.cmake
 # FilerFolderPreviewTest, FilerTextPreviewTest, FilerNameEncodingTest,
 # FilerRetireTest,
-# FilerHostIconsTest, FilerShortcutEntryTest, FilerHistoryTest,
-# FilerPaneDragTest, FileRemovalTest, ElevatedFileOperationsTest and
+# FilerHostIconsTest, FilerShortcutEntryTest, FilerHistoryTest, FilerFavoriteHighlightTest,
+# FilerPaneDragTest, FilerRescanKeepsThumbnailsTest, FileRemovalTest, ElevatedFileOperationsTest and
 # FilerVanishedFolderTest. Included by
 # Tests/CMakeLists.txt under BUILD_TESTS, and by the top-level CMakeLists.txt
 # on its own under ULTRACANVAS_BUILD_FILER_TESTS - so the Windows CI row,
@@ -196,6 +196,30 @@ else()
     message(STATUS "  FilerFileNameLinesTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FILER FAVORITE HIGHLIGHT TEST =====
+# Display > Favorite folders: the file display's SetFavoriteHighlight /
+# SetFavoriteHeartShown, and UltraFiler's saved look, colour and heart read
+# back from a temporary config folder, with the colour the highlight is drawn
+# in (Apps/UltraFiler/UltraFilerSettings.h, header-only). Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFavoriteHighlightTest...")
+    add_executable(FilerFavoriteHighlightTest
+        ${_FT_DIR}/FilerFavoriteHighlightTest.cpp
+    )
+    target_include_directories(FilerFavoriteHighlightTest PRIVATE ${_FT_INCLUDE_DIR}
+        ${_FT_DIR}/../Apps/UltraFiler)
+    target_compile_features(FilerFavoriteHighlightTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFavoriteHighlightTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFavoriteHighlightTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerFavoriteHighlightTest COMMAND FilerFavoriteHighlightTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerFavoriteHighlightTest")
+else()
+    message(STATUS "  FilerFavoriteHighlightTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILER SHORTCUT ENTRY TEST =====
 # What the file display makes of a .lnk it lists: type, category, info column
 # and the resolved target on the entry. Builds its own shortcuts (and, off
@@ -272,6 +296,28 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerPaneDragTest")
 else()
     message(STATUS "  FilerPaneDragTest skipped (UltraCanvas target not present)")
+endif()
+
+# FilerRescanKeepsThumbnailsTest - a rescan of the folder shown (a file
+# deleted or changed) keeps the thumbnails of the files that did not change;
+# a changed file is made again in the background; another folder lets them
+# all go. Opens a window, so it runs under Xvfb and skips without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerRescanKeepsThumbnailsTest...")
+    add_executable(FilerRescanKeepsThumbnailsTest
+        ${_FT_DIR}/FilerRescanKeepsThumbnailsTest.cpp
+    )
+    target_include_directories(FilerRescanKeepsThumbnailsTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_compile_features(FilerRescanKeepsThumbnailsTest PRIVATE cxx_std_20)
+    target_compile_definitions(FilerRescanKeepsThumbnailsTest PRIVATE
+        UC_MEDIA_DIR="${_FT_DIR}/../media")
+    target_link_libraries(FilerRescanKeepsThumbnailsTest PRIVATE UltraCanvas)
+    set_target_properties(FilerRescanKeepsThumbnailsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerRescanKeepsThumbnailsTest COMMAND FilerRescanKeepsThumbnailsTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerRescanKeepsThumbnailsTest")
 endif()
 
 # ===== FILE REMOVAL TEST =====

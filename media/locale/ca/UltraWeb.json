@@ -1,0 +1,8 @@
+{
+  "@language": "ca",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "S'han esborrat {0} galetes; es descarten els permisos de dispositiu de les aplicacions",
+  "No cookies to clear; the apps' device permissions are forgotten": "No hi ha galetes per esborrar; es descarten els permisos de dispositiu de les aplicacions",
+  "{0} wants to use your camera": "{0} vol utilitzar la càmera",
+  "{0} wants to use your microphone": "{0} vol utilitzar el micròfon"
+}

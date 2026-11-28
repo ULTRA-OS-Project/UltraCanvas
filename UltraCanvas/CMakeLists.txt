@@ -1,5 +1,10 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
+# Version: 1.5.2 - core/UltraCanvasSlideShowPlayer.cpp: the slide show player and the presenter view
+# Version: 1.5.1 - an iOS, tvOS, visionOS or watchOS configure stops with a message naming the
+#                  missing backend
+# Version: 1.5.0 - ultracanvas-module-link-probes: every module archive linked on its
+#                  own, whole, with no core, so an undeclared dependency fails here
 # Version: 1.4.9 - uc-net links UltraCanvasTextUtils, so a program that links UltraNet
 #                  without the core (ultradbadmin-relay) resolves Trim and Base64Encode
 # Version: 1.4.8 - the static link cycle between the core and UltraRTC is declared, so a static build links
@@ -65,8 +70,10 @@ if (BUILD_DEMO_APP)
     # WebAssembly: a wasm "shared library" is a dynamic-linking side module,
     # and the page is one statically linked program (the WASM block below
     # forces it, whatever the cache holds). Windows forces it ON
-    # below whenever the LaTeX plug-in is built, whatever this says.
-    if(ANDROID OR EMSCRIPTEN)
+    # below whenever the LaTeX plug-in is built, whatever this says. iOS is
+    # static too: an app may load a dynamic library only from a signed
+    # framework in its own bundle (Docs/UltraCanvas/iOSPortInvestigation.md 4.3).
+    if(ANDROID OR EMSCRIPTEN OR IOS)
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
     else()
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
@@ -173,6 +180,34 @@ option(ULTRACANVAS_PLUGIN_RTP    "Build the UltraNet RTP receiver plug-in (UDP-n
 if(WIN32)
     set(ULTRACANVAS_PLATFORM "Windows")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MSWindows")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Must be tested before APPLE: an iOS toolchain sets APPLE too, and the
+    # branch below would pick the AppKit backend (OS/MacOS), which needs
+    # Cocoa, IOKit and CoreWLAN, none of which iOS has. The UIKit backend is
+    # OS/iOS (Docs/UltraCanvas/iOSPortInvestigation.md). The core compiles
+    # with ULTRACANVAS_IOS (PUBLIC, below), which is what a source tests where
+    # __APPLE__ alone would mean macOS.
+    set(ULTRACANVAS_PLATFORM "iOS")
+    set(ULTRACANVAS_PLATFORM_DIR "OS/iOS")
+    # For every target here (the core's module archives compile sources of
+    # their own); the core also carries it PUBLIC to what links it.
+    add_compile_definitions(ULTRACANVAS_IOS=1)
+    # Static, and nothing loaded at run time: see ULTRACANVAS_BUILD_SHARED.
+    # No GL surfaces yet (iOSPortInvestigation.md 5: ANGLE on Metal later),
+    # and audio, video and UltraNet wait for their phase of the port.
+    set(ULTRACANVAS_BUILD_SHARED OFF CACHE BOOL "Build shared library instead of static" FORCE)
+    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+    set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Enable audio playback & recording (requires backend lib)" FORCE)
+    set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)" FORCE)
+    set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library" FORCE)
+elseif(CMAKE_SYSTEM_NAME MATCHES "^(tvOS|visionOS|watchOS)$")
+    # Tested before APPLE for the same reason as iOS above. No backend: the
+    # iOS one (OS/iOS) is the nearest start for any of them.
+    message(FATAL_ERROR
+        "UltraCanvas has no ${CMAKE_SYSTEM_NAME} backend (CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}).\n"
+        "  The macOS backend (OS/MacOS) is AppKit-only and cannot be used there;\n"
+        "  the iOS backend (OS/iOS) is UIKit, the nearest start for a port.\n"
+        "  What an iOS port needed: Docs/UltraCanvas/iOSPortInvestigation.md")
 elseif(APPLE)
     set(ULTRACANVAS_PLATFORM "MacOS")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MacOS")
@@ -305,8 +340,10 @@ pkg_check_modules(CAIRO REQUIRED cairo)
 # Pango - Text Layout
 pkg_check_modules(PANGO REQUIRED pango pangocairo)
 
-# FontConfig - bundled-font registration (Linux always; Windows when Pango is built with the FontConfig backend)
-if(NOT APPLE)
+# FontConfig - bundled-font registration (Linux always; Windows when Pango is built with the FontConfig backend).
+# Not macOS, whose text is CoreText; iOS is fontconfig and FreeType like Android
+# (cairo is built without its Quartz backend there).
+if(NOT APPLE OR IOS)
     pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
     # PangoFT2 - part of Pango itself, present wherever Pango is built against
     # FontConfig (which is every platform that reaches this branch). It is
@@ -534,6 +571,11 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # (OS/MacOS/UltraCanvasMacOSRemovableDrives.mm); without it each volume
     # is an entry of its own.
     find_library(DISKARBITRATION_FRAMEWORK DiskArbitration)
+    # ScreenCaptureKit (macOS 12.3+, its screenshots 14+) captures the screen
+    # (OS/MacOS/UltraCanvasMacOSScreenCapture.mm): UltraSnip, ChatCube's
+    # screenshot button. Not REQUIRED: without it the capture is compiled
+    # out (__has_include) and says why.
+    find_library(SCREENCAPTUREKIT_FRAMEWORK ScreenCaptureKit)
     # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
     # macOS 10.14, so it is looked up only when that surface is wanted, and an
     # SDK without it turns the surface off instead of failing the configure -
@@ -617,6 +659,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckBackendHunspell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDropdown.cpp
+        # The installed fonts' catalogue (families, styles, formats) and the
+        # font list that shows it, each name in its own font.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasInstalledFonts.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDatePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAutoComplete.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageAnimation.cpp
@@ -693,6 +739,21 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveSeparator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopShell.cpp
+        # A window manager inside the program, for a backend that draws one
+        # output for many windows (Android's desktop mode, MobilePC), and the
+        # title bar it puts above a window
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedWindowManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedWindowFrame.cpp
+        # Applications that run inside their host program (MobilePC's)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHostedApps.cpp
+        # Choosing an area of the screen over a frozen capture (UltraSnip, ChatCube)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScreenAreaPicker.cpp
+        # A slippy map from OpenStreetMap's tiles: the element, a map drawn
+        # into any rectangle, a map picture (ChatCube's locations)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMapView.cpp
+        # Where this device is; the backends are OS/<Platform>/UltraCanvas*Geolocation.*,
+        # picked up by the platform glob, and this is the fallback
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGeolocation.cpp
         # Wi-Fi and Bluetooth operated from a panel (join, pair, connect).
         # The backends are OS/<Platform>/UltraCanvas*Wireless.*, picked up by
         # the platform glob below; this is the shared half and the fallback.
@@ -823,6 +884,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # lives in OS/<Platform>/UltraCanvas*SessionLock.* and is picked up by
         # the platform glob.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSessionLock.cpp
+        # Starting a program when the user signs in. The platform backend
+        # lives in OS/<Platform>/UltraCanvas*LaunchAtLogin.* and is picked up
+        # by the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLaunchAtLogin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         # ExtractText: the words in a file (documents, PDF, spreadsheets,
         # pictures through text recognition, recordings through speech to text).
@@ -950,6 +1015,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartDistribution.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasControlLimits.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
         # Engine ports of the legacy charts (Docs/UltraCanvas/UltraCanvasEngineCharts.md)
@@ -963,6 +1029,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineHeatmapChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineRadarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineRadialBarChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineBarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEnginePolarChart.cpp
         # Charts built on the engine with no legacy twin
@@ -1131,6 +1198,15 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasFinancialCharts.cpp
         # Spreadsheet component (Cell + Types are header-only)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPrint.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChartIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetChartGallery.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivot.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivotIO.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetPivotDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGalleryPicker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetRulesDialogs.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetComponent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetSheet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
@@ -1196,8 +1272,30 @@ set(ULTRACANVAS_CORE_SOURCES
         # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
         # UltraCrypt - linked below, after the module is defined
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
-        # PowerPoint (.pptx) decks read as text: slides, shapes, tables, notes
+        # Password-protected OpenDocument packages (.odt / .ods / .odp): per-entry
+        # AES-CBC keyed with PBKDF2, on UltraCrypt
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOdfEncryption.cpp
+        # PowerPoint (.pptx) and OpenDocument (.odp / .fodp) decks read as
+        # text: slides, shapes, tables, notes
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptx.cpp
+        # ... and written (a PptxPresentation, or a document laid out as a deck)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptxWriter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPrint.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideDeckEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideEdit.cpp
+        # Copy and paste between cells, documents and slides (tables, text, the office clipboard's chart)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeClipboard.cpp
+        # ... played as a show (transitions, timings) and the presenter view beside it
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideShowPlayer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdpWriter.cpp
+        # ... and PowerPoint 97-2003 decks (.ppt / .pps / .pot), read into the same model
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPpt.cpp
+        # ... and a slide drawn as a picture from what it reads (previews)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPptxSlideRender.cpp
+        # ... and the slides as a document's pages, for the page views (UltraViewer)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPages.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
         # serializers. Lives in core (not the Word plugin) because framework
         # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.
@@ -1206,6 +1304,18 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        # Its document dialogs: page setup, paragraph, styles, table, picture,
+        # contents, caption, cross-reference, footnote, comments.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEditDialogs.cpp
+        # Its navigator: the document's outline (UI-free) and the side panel
+        # that lists it - headings, tables, pictures, comments, notes, changes.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentOutline.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDocumentNavigator.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp
+        # DrawingML charts and colours, read alike from .docx, .pptx and .xlsx
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDrawingML.cpp
+        # ... and OpenDocument's chart objects, alike from .odt and .odp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOdfChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextFormatBar.cpp
         # Its pages, for the printers that draw rather than take its PDF.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextPrint.cpp
@@ -1215,6 +1325,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        # OfficeArt drawings (shapes, pictures) of the binary formats, .doc and .ppt alike
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasOfficeArt.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
@@ -1242,7 +1354,7 @@ set(ULTRACANVAS_CHART_MODULE_GRANULARITY "chart" CACHE STRING
 # Platforms without dlopen fall back to compile-time selection (proposal §12.11).
 # Android counts too: an app is a .so loaded by the VM (no host executable to
 # resolve core symbols from) and dlopen outside the APK's lib/ dir is blocked.
-if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_CHART_RUNTIME_MODULES)
+if((EMSCRIPTEN OR ANDROID OR IOS) AND ULTRACANVAS_CHART_RUNTIME_MODULES)
     message(STATUS "Charts: no dynamic loading on this platform - runtime modules disabled")
     set(ULTRACANVAS_CHART_RUNTIME_MODULES OFF)
 endif()
@@ -1284,7 +1396,7 @@ if(ULTRACANVAS_ENABLE_CHARTS)
     # chart out there is not a choice anybody made. Where modules were turned
     # off, or a static core on Windows rules them out (a module there links the
     # core DLL), leaving a chart out loses it, and the configure stops.
-    if(UC_CHART_MODULE_KEYS AND (EMSCRIPTEN OR ANDROID))
+    if(UC_CHART_MODULE_KEYS AND (EMSCRIPTEN OR ANDROID OR IOS))
         message(STATUS "Charts: no runtime modules on this platform - compiling in [${UC_CHART_MODULE_KEYS}]")
         list(APPEND UC_CHART_SELECTED_KEYS ${UC_CHART_MODULE_KEYS})
         set(UC_CHART_MODULE_KEYS "")
@@ -1319,6 +1431,14 @@ else()
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasCircularProgressChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasColormap.cpp)
+    # The bridge that draws a word-processing document's chart with the engine
+    # (core/UltraCanvasRichDocumentChart.cpp) calls the engine's charts, so no
+    # program could link this core with it. Its chart-free form makes no
+    # chart, and the rich text view then draws the chart's shapes.
+    list(REMOVE_ITEM ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChartNone.cpp)
     message(STATUS "Charts: DISABLED - core keeps only the chart base the diagrams and the progress dialog use")
 endif()
 
@@ -1372,7 +1492,7 @@ set(ULTRACANVAS_WIDGETS "all" CACHE STRING
     "Selectable widgets linked into the library: 'all', empty, or a ;-list of keys")
 option(ULTRACANVAS_WIDGET_RUNTIME_MODULES
     "Build unselected widgets as runtime-loadable modules" ON)
-if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+if((EMSCRIPTEN OR ANDROID OR IOS) AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
     message(STATUS "Widgets: no dynamic loading on this platform - runtime modules disabled")
     set(ULTRACANVAS_WIDGET_RUNTIME_MODULES OFF)
 endif()
@@ -1385,7 +1505,7 @@ endif()
 # it calls UltraCanvas_RegisterSelectedWidgets(), so the module resolves them
 # at dlopen. ElementModulesTest loads every module into a host with nothing but
 # one plain element, so a missing anchor fails it with the undefined symbol.
-set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
+set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer ProfilePicture)
 set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
 set(UC_WIDGET_VideoTimeline_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
@@ -1463,6 +1583,23 @@ set(UC_WIDGET_MediaViewer_REGISTER "RegisterMediaViewerElement")
 # its module is built against the shared core only - the shipping
 # configuration on every desktop platform - and needs no anchors there.
 set(UC_WIDGET_MediaViewer_SHARED_CORE_ONLY ON)
+
+# The round profile picture, its editor row, the cropper and the crop dialog
+# (ChatCube's Edit profile, DemoApp). Two type names from one module.
+set(UC_WIDGET_ProfilePicture_KEBAB    "profile-picture")
+set(UC_WIDGET_ProfilePicture_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProfilePicture.cpp)
+set(UC_WIDGET_ProfilePicture_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasProfilePicturePlugin.cpp)
+set(UC_WIDGET_ProfilePicture_HEADER   "UltraCanvasProfilePicture.h")
+set(UC_WIDGET_ProfilePicture_REGISTER "RegisterProfilePictureElement")
+set(UC_WIDGET_ProfilePicture_ANCHOR_INCLUDES "UltraCanvasSlider.h" "UltraCanvasButton.h" "UltraCanvasLabel.h" "UltraCanvasModalDialog.h" "UltraCanvasFileLoader.h")
+set(UC_WIDGET_ProfilePicture_ANCHORS
+    "&typeid(UltraCanvasSlider)"
+    "&typeid(UltraCanvasButton)"
+    "&typeid(UltraCanvasLabel)"
+    "&UltraCanvasDialogManager::CreateDialog"
+    "&UltraCanvasFileLoader::OpenFileDialog")
 
 set(UC_WIDGET_SELECTED_KEYS "")
 set(UC_WIDGET_MODULE_KEYS "")
@@ -1577,8 +1714,9 @@ endif()
 # module still builds and simply registers no printer backend. Not in the
 # browser, which has no printing system: the toolchain finds host programs,
 # so the host's cups-config answered for the wasm build and the link asked
-# for a -lcups that does not exist there.
-if(UNIX AND NOT EMSCRIPTEN)
+# for a -lcups that does not exist there. Nor on iOS, for the same reason: the
+# Mac's own cups-config would answer for an iOS build, and iOS has no CUPS.
+if(UNIX AND NOT EMSCRIPTEN AND NOT IOS)
     pkg_check_modules(ULTRACANVAS_CUPS QUIET cups)
     if(NOT ULTRACANVAS_CUPS_FOUND)
         # Older CUPS installs ship cups-config instead of a .pc file.
@@ -1773,8 +1911,8 @@ file(GLOB ULTRACANVAS_PLATFORM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.cpp
 )
 
-# macOS needs Objective-C++ files
-if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+# macOS and iOS need Objective-C++ files
+if(ULTRACANVAS_PLATFORM STREQUAL "MacOS" OR ULTRACANVAS_PLATFORM STREQUAL "iOS")
     file(GLOB ULTRACANVAS_OBJCPP_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
     )
@@ -1784,6 +1922,13 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
     )
     list(APPEND ULTRACANVAS_PLATFORM_SOURCES ${ULTRACANVAS_OBJCPP_SOURCES})
+    # The iOS backend is written for ARC (strong properties, __weak, blocks
+    # holding Objective-C objects). The glob-pattern property below names no
+    # real file, so it sets nothing: ARC goes on the files themselves.
+    if(ULTRACANVAS_PLATFORM STREQUAL "iOS")
+        set_source_files_properties(${ULTRACANVAS_OBJCPP_SOURCES}
+                PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    endif()
 
     set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
@@ -2489,12 +2634,12 @@ target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${UL
 foreach(_inc_dir ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS} ${TINYXML2_INCLUDE_DIRS})
     target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
 endforeach()
-if(NOT APPLE AND FONTCONFIG_FOUND)
+if((NOT APPLE OR IOS) AND FONTCONFIG_FOUND)
     foreach(_inc_dir ${FONTCONFIG_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
 endif()
-if(NOT APPLE AND PANGOFT2_FOUND)
+if((NOT APPLE OR IOS) AND PANGOFT2_FOUND)
     foreach(_inc_dir ${PANGOFT2_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
@@ -2679,6 +2824,12 @@ endif()
 # leave "Move to Trash" out where there is none.
 if(ULTRACANVAS_HAS_NATIVE_TRASH)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_TRASH)
+endif()
+# Starting at sign-in: the same arrangement for UltraCanvasLaunchAtLogin.
+# Only its core file reads the define (LaunchAtLoginAvailable() answers the
+# rest), so it stays PRIVATE.
+if(ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN)
 endif()
 # Copied dates: the same arrangement for UltraCanvasFileTimes. Only its core
 # file reads the define, so it stays PRIVATE.
@@ -2888,6 +3039,38 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
     unset(_uc_src)
     unset(_uc_sym)
     unset(_uc_count)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "iOS")
+    # What a source tests where __APPLE__ alone would mean macOS (fontconfig
+    # instead of CoreText, no AppKit, no `open`): PUBLIC, so an application's
+    # sources see it too.
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_IOS=1)
+    # UIKit for the backend (OS/iOS), QuartzCore for the layer the window
+    # presents into, CoreGraphics for the image it presents, Foundation and
+    # CoreFoundation for the run loop. fontconfig is not an Apple library on
+    # iOS: it comes from the sysroot (scripts/ios-bootstrap-sysroot.sh).
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            "-framework UIKit"
+            "-framework Foundation"
+            "-framework CoreFoundation"
+            "-framework CoreGraphics"
+            "-framework QuartzCore"
+            "-framework CoreText"
+            "-framework Security"
+            "-framework UniformTypeIdentifiers"
+            ${FONTCONFIG_LIBRARIES}
+    )
+    # The sysroot's libraries are static archives named by pkg-config as bare
+    # -l names (configure with -DPKG_CONFIG_ARGN=--static for the full list),
+    # so their directories travel with the core to the application's link.
+    _uc_public_link_directories(${ULTRACANVAS_LIB_NAME}
+            ${CAIRO_LIBRARY_DIRS} ${PANGO_LIBRARY_DIRS} ${FREETYPE_LIBRARY_DIRS}
+            ${HARFBUZZ_LIBRARY_DIRS} ${GLIB_LIBRARY_DIRS} ${TINYXML2_LIBRARY_DIRS}
+            ${FONTCONFIG_LIBRARY_DIRS} ${LIBRSVG_LIBRARY_DIRS})
+    # main() is the framework's (OS/iOS/UltraCanvasiOSMain.mm), in this static
+    # archive: the application defines ultracanvas_app_main() instead. -u
+    # makes the linker take main's object from the archive whatever the
+    # order on the link line.
+    target_link_options(${ULTRACANVAS_LIB_NAME} INTERFACE "LINKER:-u,_main")
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
@@ -2903,7 +3086,8 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
                 ${UNIFORMTYPEIDENTIFIERS_FRAMEWORK})
     endif()
-    foreach(_uc_wireless_fw COREWLAN_FRAMEWORK IOBLUETOOTH_FRAMEWORK CORELOCATION_FRAMEWORK DISKARBITRATION_FRAMEWORK)
+    foreach(_uc_wireless_fw COREWLAN_FRAMEWORK IOBLUETOOTH_FRAMEWORK CORELOCATION_FRAMEWORK DISKARBITRATION_FRAMEWORK
+                            SCREENCAPTUREKIT_FRAMEWORK)
         if(${_uc_wireless_fw})
             target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_uc_wireless_fw}})
         endif()
@@ -2949,6 +3133,36 @@ endif()
 # framework and takes its C++ runtime in statically, leaving only Windows'
 # own DLLs. Built beside the applications (the build root), where
 # ReplaceSystemDesktop looks for it and package-win.sh picks it up.
+# Where this device is, on Windows (OS/MSWindows/UltraCanvasWindowsGeolocation.cpp):
+# Windows.Devices.Geolocation through C++/WinRT, where its projection header
+# is there (the MSYS2 cppwinrt package, the Windows SDK); without it
+# UltraCanvasGeolocation says the system cannot tell where it is.
+if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    include(CheckIncludeFileCXX)
+    set(_uc_geo_saved_flags "${CMAKE_REQUIRED_FLAGS}")
+    if(MSVC)
+        set(CMAKE_REQUIRED_FLAGS "/std:c++20 /EHsc")
+    else()
+        set(CMAKE_REQUIRED_FLAGS "-std=c++20")
+    endif()
+    check_include_file_cxx("winrt/Windows.Devices.Geolocation.h" ULTRACANVAS_HAVE_WINRT_GEOLOCATION)
+    set(CMAKE_REQUIRED_FLAGS "${_uc_geo_saved_flags}")
+    if(ULTRACANVAS_HAVE_WINRT_GEOLOCATION)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAVE_WINRT_GEOLOCATION=1)
+        if(MSVC)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC windowsapp)
+        else()
+            # C++/WinRT under GCC/Clang: activation and strings in
+            # runtimeobject, COM in ole32, BSTRs in oleaut32
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC runtimeobject ole32 oleaut32)
+        endif()
+        message(STATUS "  Geolocation: Windows.Devices.Geolocation (C++/WinRT)")
+    else()
+        message(STATUS "  Geolocation: none (no C++/WinRT projection headers)")
+    endif()
+    unset(_uc_geo_saved_flags)
+endif()
+
 if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     add_executable(UltraCanvasShellGuard WIN32
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/ShellGuard/UltraCanvasShellGuard.cpp)
@@ -3283,6 +3497,9 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(uc-crypt STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp
+    # Argon2id with more than one lane (libsodium's has one): LibreOffice's
+    # ODF 1.4 encryption uses four
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptArgon2.cpp
     # HOTP / TOTP (RFC 4226 / 6238) and the otpauth:// URI: UltraAuthenticator
     # shows the codes, ChatCube Direct checks them at sign-in.
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraOtp.cpp
@@ -3342,7 +3559,8 @@ set(ULTRACANVAS_CRYPT_HAS_OPENSSL ${_uc_crypt_openssl} CACHE INTERNAL
     "UltraCrypt has its OpenSSL 3 backend (UltraCryptX509.h, UltraCryptPublicKey.h)")
 _ultracanvas_module_home(UltraCrypt uc-crypt)
 # The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
-# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.
+# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC,
+# UltraCanvasOdfEncryption.cpp OpenDocument ones with its AES-CBC and PBKDF2.
 # Absorbed whole into a shared core by the _ultracanvas_absorb_modules call
 # below; a static core links the home, which is the archive, PUBLIC.
 if(NOT ULTRACANVAS_BUILD_SHARED)
@@ -3420,7 +3638,9 @@ elseif(WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp)
-elseif(APPLE)
+elseif(APPLE AND NOT IOS)
+    # libproc, which iOS does not offer: iOS gets the null factory
+    # (NetworkMonitorBackend.h).
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)
 endif()
@@ -3501,8 +3721,10 @@ if(ULTRACANVAS_ENABLE_NET)
     # When the found libcurl can't satisfy both needs we fall back to building
     # the vendored copy in third_party/curl and (Linux) stamp it with the
     # distro's symbol version node, making it a drop-in superset for everything.
-    # CI runners all ship a WebSocket-capable, correctly-versioned system
-    # libcurl, so this fallback never activates there (asserted in build.yml).
+    # (Where a libcurl has no WebSockets UltraNet has a client of its own,
+    # core/UltraNet/UltraNetWebSocketOwn.h, so nothing is without a WebSocket
+    # for want of this fallback. It is kept as it is: libcurl's client is the
+    # one in use wherever libcurl has one.)
     #
     # NOTE: the probe below deliberately uses find_library/find_path rather than
     # find_package(CURL) — find_package creates the imported CURL::libcurl
@@ -3579,7 +3801,13 @@ if(ULTRACANVAS_ENABLE_NET)
     else()
         find_package(CURL REQUIRED)
         set(UC_CURL_LINK CURL::libcurl)
-        message(STATUS "  [i] UltraNet libcurl: SYSTEM ${CURL_VERSION_STRING} (WebSocket: OK)")
+        # Whether this libcurl has WebSockets is not asked here (it is on
+        # Linux, above, where the answer chooses the library): Apple's own
+        # lists none through macOS 15. UltraNet connects either way - by
+        # libcurl's client where it has one, by its own where it has not
+        # (core/UltraNet/UltraNetWebSocketOwn.h).
+        message(STATUS "  [i] UltraNet libcurl: SYSTEM ${CURL_VERSION_STRING} "
+                       "(WebSocket: libcurl's where it has them, UltraNet's own otherwise)")
     endif()
     # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux and Android
     # (which reuses the Linux implementation). Windows and macOS use
@@ -3615,6 +3843,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Apps.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Service.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocket.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocketOwn.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetFtp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetTls.cpp
@@ -4328,7 +4557,11 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
-    target_link_libraries(uc-message PUBLIC uc-database Threads::Threads)
+    # uc-localisation: the reasons a person is shown for a bus that cannot be
+    # hosted or joined go through Tr. By its archive name, as every module
+    # archive names another ("MODULE HOMES"); UI-free, so the headless
+    # programs on the bus (ultramsg) link nothing more for it.
+    target_link_libraries(uc-message PUBLIC uc-database uc-localisation Threads::Threads)
     if(NOT ULTRACANVAS_BUILD_SHARED)
         target_link_libraries(uc-message PRIVATE uc-yyjson)
     endif()
@@ -4569,6 +4802,94 @@ _ultracanvas_absorb_modules(
     uc-net uc-win ${_ultracanvas_optional_archives} uc-message uc-networkmonitor
     uc-database uc-vault uc-crypt uc-localisation VirtualFS)
 
+# ===== EVERY MODULE ARCHIVE LINKS ON ITS OWN (STATIC CORE) =====
+# With a STATIC core, a module's public name resolves to its archive alone, so
+# that archive has to carry its own dependencies. Nothing in an ordinary build
+# says whether it does: every application links several archives at once, and a
+# symbol one archive forgot to ask for is handed to it by another, or by the
+# core, off the same link line. The gap shows only in a program whose line is
+# short enough to miss it.
+#
+# ultradbadmin-relay was that program. uc-net had never named the
+# UltraCanvasTextUtils archive whose Trim() and Base64Encode() its UltraNetMime
+# objects call, and the relay - UltraDatabase, UltraVault, UltraNet,
+# UltraCrypt, no window, no core - failed to link with "undefined reference to
+# UltraCanvas::Trim" the day its OpenID Connect sign-in was switched on
+# (#1265). Nothing in the tree would have caught it; a clean build did, months
+# later.
+#
+# One probe program per archive does catch it: an empty main, the archive
+# forced in WHOLE, and nothing else of UltraCanvas on the line. Whole matters -
+# a plain link pulls only the objects whose symbols the program needs, which
+# for an empty main is none at all, and would prove nothing. Forced in whole,
+# every object's undefined symbols must resolve from that archive's own
+# declared dependencies, which is the property the relay needed.
+#
+# A SHARED core is deliberately different and gets no probes: there every
+# archive is absorbed into libultracanvas, a module's public name resolves to
+# that one DSO, and an archive is allowed to leave its shared home to supply
+# what it uses - uc-message, for instance, compiles UltraCanvasJSON in only for
+# a static core, precisely so the DSO stays the single home of those symbols.
+# Probing an archive on its own there would report that arrangement as a fault.
+#
+# Build them all with the ultracanvas-module-link-probes target; CI does, in
+# the static row of the Element modules workflow. They are EXCLUDE_FROM_ALL,
+# so an ordinary build does not pay for them.
+if(NOT ULTRACANVAS_BUILD_SHARED AND NOT CMAKE_VERSION VERSION_LESS 3.24)
+    set(_uc_probe_source ${CMAKE_CURRENT_BINARY_DIR}/ultracanvas-module-link-probe.cpp)
+    file(WRITE ${_uc_probe_source}
+        "// Generated by UltraCanvas/CMakeLists.txt - see \"EVERY MODULE ARCHIVE\n"
+        "// LINKS ON ITS OWN\". The program does nothing: the link is the test.\n"
+        "int main() { return 0; }\n")
+    add_custom_target(ultracanvas-module-link-probes)
+    function(_ultracanvas_module_link_probe archive)
+        if(NOT TARGET ${archive})
+            return()
+        endif()
+        get_target_property(_type ${archive} TYPE)
+        if(NOT _type STREQUAL "STATIC_LIBRARY")
+            return()
+        endif()
+        # An archive that says it depends on the core is not standalone and
+        # cannot be probed. uc-rtc is the one such case, and it is deliberate:
+        # its engine calls the device glue compiled into the core
+        # (UltraRtcInternal::OpenCamera, OpenMicrophone, OpenSpeaker -
+        # undefined in libultrartc.a, defined in the core), a cycle declared
+        # above so GNU ld's single pass resolves it. Probing it would report
+        # those three for ever, which is not news.
+        get_target_property(_archive_links ${archive} LINK_LIBRARIES)
+        if(_archive_links AND ${ULTRACANVAS_LIB_NAME} IN_LIST _archive_links)
+            message(STATUS "    ${archive} depends on the core: no link probe")
+            return()
+        endif()
+        set(_probe uc-link-probe-${archive})
+        add_executable(${_probe} EXCLUDE_FROM_ALL ${_uc_probe_source})
+        target_compile_features(${_probe} PRIVATE cxx_std_20)
+        # Named ONCE, and whole. The reference carries the archive's own
+        # declared dependencies with it, so naming it a second time plainly
+        # would only put its objects on the line twice - which under
+        # --whole-archive is "multiple definition", not a missing symbol.
+        target_link_libraries(${_probe} PRIVATE
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,${archive}>")
+        # A sibling archive's own dependencies can name this one again; whole
+        # wins, as it does for the shared core (see "MODULE HOMES").
+        set_property(TARGET ${_probe} PROPERTY
+            "LINK_LIBRARY_OVERRIDE_${archive}" WHOLE_ARCHIVE)
+        set_target_properties(${_probe} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/link-probes)
+        add_dependencies(ultracanvas-module-link-probes ${_probe})
+    endfunction()
+
+    # Every archive the core absorbs, and the two text-utility archives -
+    # which are what uc-net was missing.
+    foreach(_archive uc-net uc-win uc-im uc-rtc uc-message uc-networkmonitor
+                     uc-database uc-vault uc-crypt uc-localisation VirtualFS
+                     UltraCanvasTextUtils UltraCanvasBase32)
+        _ultracanvas_module_link_probe(${_archive})
+    endforeach()
+    message(STATUS "  Module archive link probes - target: ultracanvas-module-link-probes")
+endif()
+
 # ===== ULTRAIM PROVIDER: CHATCUBE DIRECT =====
 # The ULTRA OS native messenger as an UltraIM provider module
 # (Plugins/UltraIM/direct/, Docs/Research/ChatCubeDirectPlan.md). Its code is
@@ -4691,6 +5012,144 @@ else()
     message(STATUS "  [−] UltraIM provider Mastodon - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
+# ----- UltraIM provider: Mattermost ----------------------------------------------------
+# The channels and direct messages of a Mattermost server over its REST API
+# (Plugins/UltraIM/mattermost/): password (with an MFA code) or a personal
+# access token, channels and DMs polled, threads as replies, files, edits,
+# deletes. An archive the tests link, and the module loaded from
+# <build>/Plugins/UltraIM.
+set(_ultraim_mattermost_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/mattermost)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_mattermost_dir}/MattermostModule.cpp)
+    add_library(UltraIMMattermostCore STATIC ${_ultraim_mattermost_dir}/MattermostProvider.cpp)
+    set_target_properties(UltraIMMattermostCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMMattermostCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMMattermostCore PUBLIC ${_ultraim_mattermost_dir})
+    target_link_libraries(UltraIMMattermostCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMMattermostPlugin MODULE ${_ultraim_mattermost_dir}/MattermostModule.cpp)
+    set_target_properties(UltraIMMattermostPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_mattermost"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMMattermostPlugin PRIVATE UltraIMMattermostCore)
+    message(STATUS "  [✓] UltraIM provider Mattermost - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Mattermost - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: Zulip ---------------------------------------------------------
+# The streams and direct messages of a Zulip server over its REST API
+# (Plugins/UltraIM/zulip/): password or API key, the event queue for news,
+# streams by topic, direct and group messages, uploads, edits, deletes. An
+# archive the tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_zulip_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/zulip)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_zulip_dir}/ZulipModule.cpp)
+    add_library(UltraIMZulipCore STATIC ${_ultraim_zulip_dir}/ZulipProvider.cpp)
+    set_target_properties(UltraIMZulipCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMZulipCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMZulipCore PUBLIC ${_ultraim_zulip_dir})
+    target_link_libraries(UltraIMZulipCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMZulipPlugin MODULE ${_ultraim_zulip_dir}/ZulipModule.cpp)
+    set_target_properties(UltraIMZulipPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_zulip"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMZulipPlugin PRIVATE UltraIMZulipCore)
+    message(STATUS "  [✓] UltraIM provider Zulip - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Zulip - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: Signal ------------------------------------------------
+# Signal through signal-cli's JSON-RPC daemon (Plugins/UltraIM/signal/): this
+# device linked to the phone's Signal account by a QR code, direct messages
+# and groups, attachments, replies, edits, deletes. signal-cli (GPL-3.0, a
+# separate program on Signal's own libsignal) is not linked: the provider
+# talks HTTP to a daemon the user runs, or starts one it finds. An archive the
+# tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_signal_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/signal)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_signal_dir}/SignalModule.cpp)
+    file(GLOB _ultraim_signal_sources ${_ultraim_signal_dir}/Signal*.cpp)
+    list(REMOVE_ITEM _ultraim_signal_sources ${_ultraim_signal_dir}/SignalModule.cpp)
+    add_library(UltraIMSignalCore STATIC ${_ultraim_signal_sources})
+    set_target_properties(UltraIMSignalCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMSignalCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMSignalCore PUBLIC ${_ultraim_signal_dir})
+    target_link_libraries(UltraIMSignalCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMSignalPlugin MODULE ${_ultraim_signal_dir}/SignalModule.cpp)
+    set_target_properties(UltraIMSignalPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_signal"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMSignalPlugin PRIVATE UltraIMSignalCore)
+    message(STATUS "  [✓] UltraIM provider Signal - ENABLED (needs signal-cli at run time)")
+else()
+    message(STATUS "  [−] UltraIM provider Signal - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: XMPP --------------------------------------------------
+# XMPP (Jabber) over TCP (STARTTLS / direct TLS) or WebSocket (RFC 7395) through
+# UltraNet (Plugins/UltraIM/xmpp/): the server found from the address's domain (SRV, XEP-0156), SCRAM sign-in, the
+# roster, chats, group rooms (MUC), history (MAM), receipts and markers,
+# typing, corrections, retractions, replies, HTTP upload. Stanzas parsed with
+# tinyxml2 (the core's own dependency). An archive the tests link, and the
+# module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_xmpp_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/xmpp)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    file(GLOB _ultraim_xmpp_sources ${_ultraim_xmpp_dir}/Xmpp*.cpp)
+    list(REMOVE_ITEM _ultraim_xmpp_sources ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    add_library(UltraIMXmppCore STATIC ${_ultraim_xmpp_sources})
+    set_target_properties(UltraIMXmppCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMXmppCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMXmppCore PUBLIC ${_ultraim_xmpp_dir} PRIVATE ${TINYXML2_INCLUDE_DIRS})
+    target_link_libraries(UltraIMXmppCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt
+                          PRIVATE ${TINYXML2_LIBRARIES})
+    target_link_directories(UltraIMXmppCore PRIVATE ${TINYXML2_LIBRARY_DIRS})
+
+    add_library(UltraIMXmppPlugin MODULE ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    set_target_properties(UltraIMXmppPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_xmpp"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMXmppPlugin PRIVATE UltraIMXmppCore)
+    message(STATUS "  [✓] UltraIM provider XMPP - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider XMPP - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: IRC ---------------------------------------------------
+# IRC with IRCv3 (Plugins/UltraIM/irc/): TLS on 6697 through UltraNet's TCP and
+# TLS, SASL sign-in, channels as groups and private messages as chats,
+# server-time, echo-message, chathistory where the server has it. An archive
+# the tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_irc_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/irc)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_irc_dir}/IrcModule.cpp)
+    file(GLOB _ultraim_irc_sources ${_ultraim_irc_dir}/Irc*.cpp)
+    list(REMOVE_ITEM _ultraim_irc_sources ${_ultraim_irc_dir}/IrcModule.cpp)
+    add_library(UltraIMIrcCore STATIC ${_ultraim_irc_sources})
+    set_target_properties(UltraIMIrcCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMIrcCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMIrcCore PUBLIC ${_ultraim_irc_dir})
+    target_link_libraries(UltraIMIrcCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMIrcPlugin MODULE ${_ultraim_irc_dir}/IrcModule.cpp)
+    set_target_properties(UltraIMIrcPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_irc"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMIrcPlugin PRIVATE UltraIMIrcCore)
+    message(STATUS "  [✓] UltraIM provider IRC - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider IRC - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
 # ----- UltraIM provider: Telegram ----------------------------------------------
 # On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
 # run time: nothing of TDLib is linked, so the provider builds everywhere and
@@ -4700,7 +5159,8 @@ endif()
 # ULTRAIM_FETCH_TDLIB, ULTRAIM_TDJSON_FILE), so a build ships with it where
 # a prebuilt one exists. The application's API credentials from
 # my.telegram.org can be built in; otherwise the relay hands them out
-# (ChatCube), or the user gives them.
+# (ChatCube), or the user gives them. TDLib's networking is its own: the
+# provider hands it the proxy the applications share (UltraNet_ResolveTunnelProxy).
 # Not in WebAssembly: there is no libtdjson to load there, and no loadable
 # provider module either.
 set(ULTRAIM_TELEGRAM_API_ID "" CACHE STRING "Telegram API ID (my.telegram.org) built into the Telegram provider")
@@ -4717,6 +5177,12 @@ elseif(TARGET UltraIM AND TARGET UltraVault AND TARGET UltraCrypt)
     target_compile_features(UltraIMTelegramCore PUBLIC cxx_std_20)
     target_include_directories(UltraIMTelegramCore PUBLIC ${_ultraim_telegram_dir})
     target_link_libraries(UltraIMTelegramCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraVault UltraCrypt)
+    # UltraNet for the proxy setting alone (UltraNet_ResolveTunnelProxy): TDLib
+    # connects by itself and has to be told which proxy the applications
+    # share. Without UltraNet there is no such setting, and none is told.
+    if(TARGET UltraNet)
+        target_link_libraries(UltraIMTelegramCore PUBLIC UltraNet)
+    endif()
     if(UNIX)
         target_link_libraries(UltraIMTelegramCore PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
     endif()

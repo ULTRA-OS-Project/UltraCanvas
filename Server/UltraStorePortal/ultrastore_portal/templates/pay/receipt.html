@@ -1,0 +1,20 @@
+{% extends "pay/base.html" %}
+{% block title %}Receipt {{ payment.receipt_no }} - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>{% if is_reversal %}{{ payment.get_kind_display }}{% else %}Receipt{% endif %} no. {{ payment.receipt_no|default:"-" }}</h1>
+  <div class="card mt-3"><div class="card-body">
+    <dl class="facts">
+      <dt>Date</dt><dd>{{ payment.at|date:"j F Y" }}</dd>
+      <dt>For</dt><dd>{{ order.app_name }} <span class="font-monospace">({{ order.app.app_id }})</span>{% if payment.kind == "renewal" %} - renewal{% endif %}</dd>
+      <dt>Publisher</dt><dd>{{ order.app.publisher.name }}</dd>
+      <dt>Amount</dt><dd>{{ payment.signed_amount }} {{ payment.currency }}</dd>
+      <dt>Order</dt><dd class="font-monospace">{{ order.public_id }}</dd>
+      {% if order.payer_email %}<dt>Buyer</dt><dd>{{ order.payer_email }}</dd>{% endif %}
+      {% if order.licence_id %}<dt>Licence</dt><dd class="font-monospace">{{ order.licence_id }}</dd>{% endif %}
+      <dt>Sold by</dt><dd>UltraStore - ULTRA OS Project</dd>
+    </dl>
+  </div></div>
+  <p class="text-secondary small mt-3">A receipt of the payment, not a tax invoice.</p>
+</div>
+{% endblock %}

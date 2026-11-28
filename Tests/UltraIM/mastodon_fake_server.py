@@ -25,7 +25,9 @@ import sys
 import threading
 import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from local_http_server import LocalHTTPServer    # no name lookup at start (see there)
 
 LOCK = threading.Lock()
 IDS = itertools.count(100000000000000000)
@@ -56,8 +58,15 @@ def now_iso():
 
 def account_json(name):
     a = ACCOUNTS[name]
+    # Carol never set a picture: the server's grey stand-in, as Mastodon's.
+    avatar = BASE + ("/avatars/original/missing.png" if name == "carol" else "/avatars/" + name + ".png")
     return {"id": a["id"], "username": name, "acct": name, "display_name": name.capitalize(),
-            "avatar_static": BASE + "/avatars/" + name + ".png", "url": BASE + "/@" + name}
+            "avatar_static": avatar, "url": BASE + "/@" + name}
+
+
+def avatar_bytes(name):
+    # A PNG's signature, then the name: enough to tell whose it is.
+    return b"\x89PNG\r\n\x1a\n" + (name.encode() * 40)
 
 
 def media_json(m):
@@ -184,6 +193,9 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- the API ------------------------------------------------------------
     def dispatch(self, method, path, query, raw):
+        m = re.match(r"^/avatars/([a-z]+)\.png$", path)
+        if method == "GET" and m:
+            return self.reply(200, avatar_bytes(m.group(1)))
         m = re.match(r"^/media/(\d+)/(.+)$", path)
         if method == "GET" and m:
             media = MEDIA.get(m.group(1))
@@ -350,7 +362,7 @@ def main():
     for name in args.users.split(","):
         ACCOUNTS[name] = {"id": next_id()}
         TOKENS[name + "-token"] = name
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = LocalHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
     BASE = "http://127.0.0.1:%d" % server.server_address[1]
     print(json.dumps({"url": BASE}), flush=True)

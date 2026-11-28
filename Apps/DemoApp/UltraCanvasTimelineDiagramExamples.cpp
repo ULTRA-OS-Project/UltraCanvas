@@ -1,10 +1,12 @@
 // Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
 // Timeline diagram examples: one tab per design preset, with live controls
+// Version: 1.2.0 - the Wave tab, and a Wave Axis control (falling, horizontal,
+//                  top-down, rising or the angle with the largest rings)
 // Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): controls,
 //                  diagram and statistics in cards that wrap, every text sized
 //                  to fit, the about texts wrap instead of carrying line breaks
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -79,7 +81,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTimelineDiagramExamples() {
         auto mainContainer = DemoKit::CreatePage("tlMainContainer", Tr("Timeline Diagram Infographic"),
-                Tr("Narrative timeline with nine design presets, palettes, even/proportional placement and interactive items"));
+                Tr("Narrative timeline with ten design presets, palettes, even/proportional placement and interactive items"));
 
         // Controls | tabs with the status line | statistics and about. The
         // side cards wrap under the diagram in a narrow window.
@@ -121,6 +123,14 @@ namespace UltraCanvas {
         colorSelector->AddItem(Tr("Gradient Along Path"), "gradient");
         colorSelector->SetSelectedIndex(0);
 
+        auto waveAxisSelector = AddTimelineDiagramSelector(leftSidebar, "tlWaveAxisSelector", "tlWaveAxisLabel", Tr("Wave Axis"));
+        waveAxisSelector->AddItem(Tr("Falling diagonal"), "falling");
+        waveAxisSelector->AddItem(Tr("Horizontal"), "horizontal");
+        waveAxisSelector->AddItem(Tr("Top-down"), "topdown");
+        waveAxisSelector->AddItem(Tr("Rising diagonal"), "rising");
+        waveAxisSelector->AddItem(Tr("Largest rings"), "auto");
+        waveAxisSelector->SetSelectedIndex(0);
+
         auto btnAddItem = AddTimelineDiagramButton(leftSidebar, "tlBtnAddItem", Tr("Add Random Item"), Color(13, 110, 253, 255));
         auto btnRemove = AddTimelineDiagramButton(leftSidebar, "tlBtnRemove", Tr("Remove Selected"), Color(220, 53, 69, 255));
         auto btnReverse = AddTimelineDiagramButton(leftSidebar, "tlBtnReverse", Tr("Reverse Direction"), Color(111, 66, 193, 255));
@@ -134,35 +144,36 @@ namespace UltraCanvas {
                 "- Hover for the full text\n"
                 "- Double-click an item"));
         helpBox->SetTextColor(DemoKit::BodyText());
-        helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
+        helpBox->SetBackgroundColor(DemoKit::Themed(Color(255, 243, 205, 255)));
         helpBox->SetPadding(10);
 
         // ===== TABS =====
         auto diagramCard = DemoKit::AddCard(contentContainer, "tlDiagramCard", "", "", 690);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("tlTabs", 0, 0, 660, 580);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(diagramCard, tabbedContainer);
 
         auto statusBar = DemoKit::AddText(diagramCard, "tlStatusBar",
                 Tr("Ready - click items to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
-        statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
+        statusBar->SetBackgroundColor(DemoKit::Themed(Color(233, 236, 239, 255)));
         statusBar->SetPadding(15);
-        statusBar->SetTextColor(Color(73, 80, 87, 255));
+        statusBar->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
 
         // ===== RIGHT SIDEBAR (stats + about) =====
         auto rightSidebar = AddTimelineDiagramSideCard(contentContainer, "tlRightSidebar", "tlStatsTitle", Tr("STATISTICS"));
 
         auto statsPanel = DemoKit::AddText(rightSidebar, "tlStatsPanel", "");
         statsPanel->SetFontSize(10);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        statsPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         statsPanel->SetPadding(12);
 
         DemoKit::AddHeading(rightSidebar, "tlAboutTitle", Tr("ABOUT THIS DESIGN"));
 
         auto aboutPanel = DemoKit::AddText(rightSidebar, "tlAboutPanel", "");
         aboutPanel->SetFontSize(9);
-        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        aboutPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         aboutPanel->SetPadding(12);
 
         // Diagram geometry inside each tab
@@ -192,7 +203,9 @@ namespace UltraCanvas {
                 {Tr("Chevron"), TimelineDesign::Chevron, true,
                  Tr("Chevron\n\nArrow blocks pointing forward - the process / phase presentation where the direction of travel matters more than the dates.")},
                 {Tr("Steps"), TimelineDesign::Steps, true,
-                 Tr("Steps\n\nAscending staircase blocks. Suits growth narratives where each stage builds on the previous one.")}};
+                 Tr("Steps\n\nAscending staircase blocks. Suits growth narratives where each stage builds on the previous one.")},
+                {Tr("Wave"), TimelineDesign::Wave, true,
+                 Tr("Wave\n\nA chain of half-rings that bend to alternate sides, with a node where two meet, the year inside each ring and the text beside it. The Wave Axis control turns the wave: diagonal, horizontal, top-down, or the angle with the largest rings.")}};
 
         std::vector<std::shared_ptr<UltraCanvasTimelineDiagram>> allDiagrams;
         for (const auto& spec : tabSpecs) {
@@ -229,7 +242,7 @@ namespace UltraCanvas {
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     diagram->GetIdentifier() + "Tab", 0, 0, 660, 542);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(diagram);
             tabbedContainer->AddTab(spec.tabTitle, tabContent);
             allDiagrams.push_back(diagram);
@@ -325,6 +338,18 @@ namespace UltraCanvas {
             updateStats();
         };
 
+        waveAxisSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
+            for (auto& diagram : allDiagrams) {
+                if (diagram->GetDesign() != TimelineDesign::Wave) continue;
+                diagram->EditStyle().waveAutoAngle = (item.value == "auto");
+                if (item.value == "horizontal") diagram->EditStyle().waveAxisAngle = 0.0;
+                else if (item.value == "topdown") diagram->EditStyle().waveAxisAngle = 90.0;
+                else if (item.value == "rising") diagram->EditStyle().waveAxisAngle = -45.0;
+                else diagram->EditStyle().waveAxisAngle = 45.0;
+                diagram->StyleChanged();
+            }
+        };
+
         colorSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
             TimelineColorMode mode = TimelineColorMode::PerItem;
             if (item.value == "single") mode = TimelineColorMode::Single;
@@ -375,12 +400,13 @@ namespace UltraCanvas {
         };
 
         btnReset->onClick = [themeSelector, paletteSelector, sideSelector, placementSelector,
-                             colorSelector, allDiagrams, tabSpecs, statusBar, updateStats]() {
+                             colorSelector, waveAxisSelector, allDiagrams, tabSpecs, statusBar, updateStats]() {
             themeSelector->SetSelectedIndex(0);
             paletteSelector->SetSelectedIndex(0);
             sideSelector->SetSelectedIndex(0);
             placementSelector->SetSelectedIndex(0);
             colorSelector->SetSelectedIndex(0);
+            waveAxisSelector->SetSelectedIndex(0);
 
             for (size_t i = 0; i < allDiagrams.size(); ++i) {
                 auto& diagram = allDiagrams[i];
@@ -393,6 +419,11 @@ namespace UltraCanvas {
                                       ? TimelineColorMode::GradientAlongPath
                                       : TimelineColorMode::PerItem);
                 diagram->SetReverseOrder(false);
+                if (diagram->GetDesign() == TimelineDesign::Wave) {
+                    diagram->EditStyle().waveAxisAngle = 45.0;
+                    diagram->EditStyle().waveAutoAngle = false;
+                    diagram->StyleChanged();
+                }
                 diagram->ClearSelection();
                 diagram->SetItems(i < tabSpecs.size() && tabSpecs[i].useYearData
                                   ? TimelineDiagramSamples::CompanyHistory()

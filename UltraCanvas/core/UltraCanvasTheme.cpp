@@ -1,11 +1,13 @@
 // core/UltraCanvasTheme.cpp
+// Version: 1.5.0 - DeriveAccent: white text on any mid-tone accent (never black on Windows blue)
+// Version: 1.4.0 - ForDarkLook
 // Version: 1.3.0 - TakeHostFonts, FromHost through it
 // Version: 1.3.0 - ThemeFonts and the text roles' sizes; LightHighContrast / DarkHighContrast;
 //                  FromHost with DeriveAccent and the contrast measure (T3 of the host theme proposal)
 // Version: 1.2.0 - Light's lineStrong meets 3:1 on panel and raised (a mid grey, not ButtonShadow)
 // Version: 1.1.0 - change handlers
 // Version: 1.0.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
 
@@ -199,23 +201,21 @@ Color Mix(const Color& from, const Color& to, double amount) {
 ThemeRoles UltraCanvasTheme::DeriveAccent(ThemeRoles roles, const Color& accent, bool dark, double onAccentContrast) {
     const Color darkInk = Light().roles.ink;
     Color base = Color(accent.r, accent.g, accent.b, 255);
-    // Text on the accent: white or the dark ink, whichever reads better;
-    // the accent moved toward black or white, a step at a time, until the
-    // better one reaches the contrast asked for (a mid-grey or a yellow
-    // accent reaches neither as it is).
-    // White when it reads (the conventional look on a blue or a red), else
-    // the dark ink when it reads, else whichever reads better.
-    auto better = [&](const Color& c) {
-        if (Contrast(Colors::White, c) >= onAccentContrast) return Colors::White;
-        if (Contrast(darkInk, c) >= onAccentContrast) return darkInk;
-        return Contrast(Colors::White, c) >= Contrast(darkInk, c) ? Colors::White : darkInk;
-    };
-    for (int step = 0; step < 64 && Contrast(better(base), base) < onAccentContrast; ++step) {
-        const bool towardWhite = Contrast(Colors::White, base) < Contrast(darkInk, base);
-        base = Mix(base, towardWhite ? Colors::White : Colors::Black, 0.06);
-    }
+    // Text on the accent. WCAG 2 contrast overrates dark text on saturated
+    // mid-tone accents: Windows blue (0,120,215) measures 4.50:1 with white
+    // and 4.67:1 with black, yet black on it is hard to read and white is
+    // what every desktop writes there. So white is the text on any accent it
+    // already reaches 3:1 on (blues, reds, purples, mid greens), and the
+    // accent is darkened a step at a time until white reaches the contrast
+    // asked for - a few percent, the same hue. Only on a light accent
+    // (yellow, light cyan, a pastel), where white falls under 3:1, is the
+    // text the dark ink, the accent lightened until that ink reaches it.
+    const bool whiteText = Contrast(Colors::White, base) >= 3.0;
+    const Color text = whiteText ? Colors::White : darkInk;
+    for (int step = 0; step < 64 && Contrast(text, base) < onAccentContrast; ++step)
+        base = Mix(base, whiteText ? Colors::Black : Colors::White, 0.06);
     roles.accent = base;
-    roles.onAccent = better(base);
+    roles.onAccent = text;
     roles.accentHover = Mix(base, roles.ink, 0.08);
     roles.accentSoft = Mix(roles.panel, base, dark ? 0.18 : 0.14);
     roles.focus = Contrast(base, roles.ground) >= 3.0 ? base : roles.lineStrong;
@@ -257,6 +257,46 @@ void UltraCanvasTheme::RemoveChangeHandler(int id) {
     for (auto it = handlers.begin(); it != handlers.end(); ++it) {
         if (it->id == id) { handlers.erase(it); return; }
     }
+}
+
+
+Color UltraCanvasTheme::ForDarkLook(const Color& light) {
+    // RGB -> HSL
+    const double r = light.r / 255.0, g = light.g / 255.0, b = light.b / 255.0;
+    const double maxc = std::max({r, g, b}), minc = std::min({r, g, b});
+    const double l = (maxc + minc) / 2.0;
+    double h = 0.0, s = 0.0;
+    const double d = maxc - minc;
+    if (d > 1e-9) {
+        s = l > 0.5 ? d / (2.0 - maxc - minc) : d / (maxc + minc);
+        if (maxc == r) h = (g - b) / d + (g < b ? 6.0 : 0.0);
+        else if (maxc == g) h = (b - r) / d + 2.0;
+        else h = (r - g) / d + 4.0;
+        h /= 6.0;
+    }
+    // Lightness turned over into the dark look's range: white lands on the
+    // panel's darkness (~0.12), black on near-white ink (~0.92), mid tones
+    // stay mid; a pale tint keeps some of its colour.
+    const double l2 = 0.12 + (1.0 - l) * 0.80;
+    const double s2 = std::min(1.0, s * (l > 0.8 ? 0.6 : 0.9));
+    auto hueToRgb = [](double p, double q, double t) {
+        if (t < 0.0) t += 1.0;
+        if (t > 1.0) t -= 1.0;
+        if (t < 1.0 / 6.0) return p + (q - p) * 6.0 * t;
+        if (t < 1.0 / 2.0) return q;
+        if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        return p;
+    };
+    double r2 = l2, g2 = l2, b2 = l2;
+    if (s2 > 1e-9) {
+        const double q = l2 < 0.5 ? l2 * (1.0 + s2) : l2 + s2 - l2 * s2;
+        const double p = 2.0 * l2 - q;
+        r2 = hueToRgb(p, q, h + 1.0 / 3.0);
+        g2 = hueToRgb(p, q, h);
+        b2 = hueToRgb(p, q, h - 1.0 / 3.0);
+    }
+    auto byte = [](double v) { return static_cast<uint8_t>(std::lround(std::clamp(v, 0.0, 1.0) * 255.0)); };
+    return Color(byte(r2), byte(g2), byte(b2), light.a);
 }
 
 } // namespace UltraCanvas

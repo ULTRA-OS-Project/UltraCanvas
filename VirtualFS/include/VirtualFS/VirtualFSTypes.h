@@ -1,5 +1,7 @@
 // VirtualFS/include/VirtualFSTypes.h
 // Core types, enumerations, and structures for VirtualFS
+// Version: 1.3.0 - VirtualFSExtractOptions::onExistingFile: ExtractAll asks what to do with an
+//                  entry whose file exists already (overwrite, skip, or write under another name)
 // Version: 1.2.0 - compressionMethod (ZIP / 7-Zip method; refused when it cannot
 //                  be written) and followSymlinks (links inside an archive are
 //                  followed when reading) are honoured
@@ -9,7 +11,7 @@
 //                  compressor level, threads, zstd long mode, TAR header
 //                  format, what of a file is kept, symlinks, exclusions
 // Version: 1.0.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-19
 // Author: ULTRA OS Framework
 #pragma once
 
@@ -419,6 +421,28 @@ struct VirtualFSOpenOptions {
 // EXTRACT OPTIONS STRUCTURE
 // ============================================================================
 
+// An entry ExtractAll is about to write whose file exists already at the
+// destination: the archive's name for it, where it would go, and the entry's
+// size and modification time (0 when the archive keeps none).
+struct VirtualFSExistingFile {
+    std::string entryPath;
+    std::string destPath;
+    uint64_t entrySize = 0;
+    int64_t entryModifiedTime = 0;   // seconds since the epoch, 0 = unknown
+};
+
+// What to do with it: write over the file there, leave the file there and
+// skip the entry, or write the entry to the path the callback gives instead
+// (a free name beside it, "name (2).ext").
+enum class VirtualFSExistingFileAction { Overwrite, Skip, WriteAs };
+
+// Called on the extracting thread, once per regular-file entry whose file
+// exists; `writeAsPath` is read for WriteAs. The callback must not touch UI
+// state.
+using VirtualFSExistingFileCallback =
+        std::function<VirtualFSExistingFileAction(const VirtualFSExistingFile& file,
+                                                  std::string& writeAsPath)>;
+
 struct VirtualFSExtractOptions {
     bool overwriteExisting = false;
     bool preserveTimestamps = true;
@@ -430,6 +454,9 @@ struct VirtualFSExtractOptions {
     std::vector<std::string> excludePatterns;  // Exclude matching (glob)
     uint64_t maxFileSize = 0;           // Max file size (0 = unlimited)
     std::string password;               // Password for encrypted entries
+    // ExtractAll: asked for each regular file that exists already at the
+    // destination. Without one, the file is written over, as before.
+    VirtualFSExistingFileCallback onExistingFile;
     
     static VirtualFSExtractOptions Default() { 
         return VirtualFSExtractOptions(); 

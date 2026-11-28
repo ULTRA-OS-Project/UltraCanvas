@@ -1,5 +1,6 @@
 // include/UltraCanvasUtils.h
 // Utils
+// Version: 1.3.1 - OpenURLiOS: OpenURL's iOS half
 // Version: 1.3.0 - UltraCanvas_LibraryVersion()
 // Version: 1.2.1 - GetWellKnownUserFolders: its paths are UTF-8 (comment)
 // Version: 1.2.0 - RunProcessCaptured takes an onOutput callback: the output as it comes
@@ -97,6 +98,10 @@ namespace UltraCanvas {
 #endif
 
     void OpenURL(const std::string& url);
+#if defined(ULTRACANVAS_IOS)
+    // OpenURL's iOS half: UIApplication's openURL (OS/iOS). Not for callers.
+    void OpenURLiOS(const std::string& url);
+#endif
 
     // Starts argv[0] with the given arguments, fully detached from the
     // calling process: closing this application never takes the launched one
@@ -108,6 +113,15 @@ namespace UltraCanvas {
     // detachment makes the exec result unobservable.
     bool LaunchDetachedProcess(const std::vector<std::string>& argv,
                                const std::string& workingDirectory,
+                               std::string& outError);
+    // The same, with `extraEnvironment` added to or replacing variables of
+    // the inherited environment for the started program alone (as
+    // RunProcessCaptured below takes it): UltraStore puts an application's
+    // runtime on its library path this way (kRuntimeDirVariable,
+    // UltraCanvasConfig.h).
+    bool LaunchDetachedProcess(const std::vector<std::string>& argv,
+                               const std::string& workingDirectory,
+                               const std::vector<std::pair<std::string, std::string>>& extraEnvironment,
                                std::string& outError);
 
     // What a captured child process produced.

@@ -78,8 +78,10 @@ StoreSettings StoreSettings::From(const UltraCanvas::UltraCanvasAppSettings& fil
     s.channel = file.GetString("catalog.channel", s.channel);
     if (s.channel != "beta") s.channel = "stable";
     s.language = file.GetString("texts.language", s.language);
+    s.country = file.GetString("purchase.country", s.country);
     s.servers = file.GetList("catalog.servers");
     s.extraKeys = file.GetList("catalog.trustedKeys");
+    s.accountUrl = file.GetString("account.url", s.accountUrl);
     s.refreshOnStart = file.GetBool("catalog.refreshOnStart", s.refreshOnStart);
     s.windowWidth = file.GetInt("window.width", s.windowWidth);
     s.windowHeight = file.GetInt("window.height", s.windowHeight);
@@ -118,8 +120,10 @@ void StoreSettings::RememberReport(const SentReport& report) {
 void StoreSettings::WriteTo(UltraCanvas::UltraCanvasAppSettings& file) const {
     file.Set("catalog.channel", channel);
     file.Set("texts.language", language);
+    file.Set("purchase.country", country);
     file.Set("catalog.servers", servers);
     file.Set("catalog.trustedKeys", extraKeys);
+    file.Set("account.url", accountUrl);
     file.Set("catalog.refreshOnStart", refreshOnStart);
     file.Set("window.width", windowWidth);
     file.Set("window.height", windowHeight);

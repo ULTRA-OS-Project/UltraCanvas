@@ -66,6 +66,7 @@ private:
     bool OnClosing();
     void Relayout();
     void UpdateSidebarNote(const std::string& numbers);
+    static std::string RoleWord(const std::string& role);   // the role for a person
     OperatorClient Client() const;   // on the settings as they are now
     bool Ready(bool say = true);     // the settings complete, no job running
 
@@ -83,6 +84,8 @@ private:
     void ShowMerchants();
     void OpenMerchant(const std::string& id);
     void ShowMerchantFile();
+    void RefreshApplications();
+    void ShowApplications();
     void BuildReviewPage();
     void RefreshReview();
     void ShowReview();
@@ -98,6 +101,22 @@ private:
     void BuildTermsPage();
     void RefreshTerms();
     void ShowTerms();
+    // (OperatorUsersPage.cpp: the account service's users)
+    void BuildOperatorsPage();      // OperatorOperatorsPage.cpp: the accounts and the roles, the sign-in section of Settings
+    void BuildSignInSection(const std::shared_ptr<Container>& body);
+    void RefreshWhoAmI();           // GET /v1/operators/me: the name and the role into the settings and the sidebar
+    void RefreshOperators();
+    void ShowOperators();
+    void SignInNow();
+    void SignOutNow();
+    void ForgotPasswordNow();
+    void ResetPasswordNow();
+    void ShowTwoFactor(const std::shared_ptr<Container>& into);   // one's own second factor on the Operators page
+    void BuildUsersPage();
+    void RefreshUsers();
+    void ShowUsers();
+    void OpenUser(const std::string& id);
+    void ShowUserFile();
 
     // ----- jobs -----
     struct JobOutcome {
@@ -138,6 +157,7 @@ private:
 
     // what was fetched
     std::vector<Merchant> merchants_;
+    std::vector<MerchantApplication> applications_;
     std::vector<Submission> submissions_;
     std::vector<Report> reports_;
     std::vector<Notice> notices_;
@@ -154,7 +174,7 @@ private:
     // dashboard
     std::shared_ptr<Container> stats_, dashQueue_, dashReports_, dashCompliance_, dashActions_;
     // merchants
-    std::shared_ptr<Container> merchantsList_, merchantFileBox_;
+    std::shared_ptr<Container> merchantsList_, merchantFileBox_, applicationsList_;
     std::shared_ptr<TextInput> mId_, mName_, mContact_, mKey_;
     std::shared_ptr<TextInput> mClause_, mReason_, mDays_, mSubject_;
     std::shared_ptr<TextArea> mText_;
@@ -176,6 +196,26 @@ private:
     std::shared_ptr<TextInput> pExpiry_, pStrikes_, pDays_, pDeadline_, pClauses_;
     std::shared_ptr<Dropdown> nKind_;
     std::shared_ptr<TextInput> nTo_, nSubject_, nClause_;
+    // users
+    std::vector<User> users_;
+    UserStats userStats_;
+    UserFile userFile_;
+    bool haveUserFile_ = false;
+    std::string usersFilter_ = "all";
+    std::shared_ptr<Container> uStats_, uFilters_, usersList_, userFileBox_;
+    std::shared_ptr<TextInput> uSearch_, uReason_, uSubject_, uDays_;
+    std::shared_ptr<TextArea> uText_;
+    std::shared_ptr<Dropdown> uKind_;
+    std::shared_ptr<TextInput> sAccountUrl_, sAccountToken_;
+    // the operator accounts
+    WhoAmI whoami_;
+    bool haveWhoAmI_ = false;
+    std::vector<OperatorAccount> operators_;
+    std::shared_ptr<Container> operatorsList_, operatorsAdd_;
+    std::shared_ptr<Label> signInInfo_;
+    std::shared_ptr<TextInput> sEmail_, sPassword_, sCode_, sResetCode_, sResetPassword_, oEmail_, oName_, oPassword_;
+    std::shared_ptr<Container> resetBox_;
+    std::shared_ptr<Dropdown> oRole_;
     // audit
     std::shared_ptr<Container> auditList_;
     std::shared_ptr<Label> auditCheck_;

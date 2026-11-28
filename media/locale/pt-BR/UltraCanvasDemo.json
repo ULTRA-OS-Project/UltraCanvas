@@ -137,7 +137,6 @@
   "ISO 10303 exact B-rep: analytic surfaces closed into solids, tessellated on import because the file carries no mesh": "B-rep exato ISO 10303: superfícies analíticas fechadas em sólidos, tesseladas na importação porque o arquivo não contém nenhuma malha",
   "Isolines, filled contour bands, kernel-density contours of a point cloud, inline labelled curves, zoom/pan with crosshair read-out, and 3D contour surfaces (software painter's algorithm and the UC OpenGL element) with isolines traced onto the terrain": "Isolinhas, bandas de contorno preenchidas, contornos de densidade de kernel de uma nuvem de pontos, curvas com rótulos embutidos, zoom/panorâmica com leitura em mira, e superfícies de contorno 3D (algoritmo do pintor por software e o elemento UC OpenGL) com isolinhas traçadas sobre o terreno",
   "JPEG Image display and manipulation": "Exibição e manipulação de imagens JPEG",
-  "Label": "Rótulo",
   "Labels, values and changes crawling across a band: set in a font, or lit on a 5x7 LED dot grid that the text steps across": "Rótulos, valores e variações deslizando por uma faixa: com uma fonte, ou acesos em uma grade de pontos LED de 5x7 pela qual o texto avança",
   "Layout System": "Sistema de layout",
   "Legacy Formats": "Formatos legados",
@@ -158,7 +157,7 @@
   "Multi-Month / Scroll": "Vários meses / Rolagem",
   "Multi-step progress indicator: numbered/icon/dot markers, horizontal & vertical, linear & non-linear": "Indicador de progresso em várias etapas: marcadores numerados/com ícone/de ponto, horizontal e vertical, linear e não linear",
   "Multi-Track Genomic Style": "Estilo genômico multifaixa",
-  "Narrative timeline infographic with nine design presets": "Infográfico de linha do tempo narrativa com nove predefinições de design",
+  "Narrative timeline infographic with ten design presets": "Infográfico de linha do tempo narrativa com dez predefinições de design",
   "Node-based compositor with subgraph, visual scripting, and feature playground": "Compositor baseado em nós com subgrafos, programação visual e área de testes de recursos",
   "Non-modal notifications in a screen corner, never focused, gone by themselves - how ULTRA OS shows every application's notification": "Notificações não modais em um canto da tela, que nunca recebem o foco e desaparecem sozinhas - é assim que o ULTRA OS mostra as notificações de todos os aplicativos",
   "On the right side of the title of each UC element you can find these icons:": "À direita do título de cada elemento UC você encontra estes ícones:",
@@ -239,6 +238,7 @@
   "Tabs": "Abas",
   "Tag Input": "Entrada de tags",
   "Text display with formatting and styling": "Exibição de texto com formatação e estilo",
+  "The localisation editor (Widgets > Localisation Editor, the UOS-Localisation application, Help > Translate ... in an application) edits the sets of an application in one grid.": "O editor de localização (Widgets > Editor de localização, o aplicativo UOS-Localisation, Ajuda > Traduzir ... em um aplicativo) edita os conjuntos de um aplicativo em uma única grade.",
   "The navigation column of a window: sections of items with icon, label and badge; keyboard; compact mode": "A coluna de navegação de uma janela: seções de itens com ícone, rótulo e selo; teclado; modo compacto",
   "The shared chart engine on one minimal bar chart: projections, axis scales (linear / log / symlog), grid, limiters, legend, label plan, tooltips and animation, all switchable live": "O motor de gráficos compartilhado em um gráfico de barras mínimo: projeções, escalas de eixo (linear / log / symlog), grade, limitadores, legenda, plano de rótulos, dicas de ferramenta e animação, tudo alternável em tempo real",
   "Theme Support": "Suporte a temas",
@@ -274,8 +274,6 @@
   "Vertical Slider": "Controle deslizante vertical",
   "Video Player": "Reprodutor de vídeo",
   "Video Timeline": "Linha do tempo de vídeo",
-  "Waves info graphic": "Infográfico de ondas",
-  "Waves info graphic is not ready yet": "O infográfico de ondas ainda não está pronto",
   "Workflow boards with WIP limits, swimlanes, drag & drop, a built-in card editor, Mermaid text definitions and design presets": "Quadros de fluxo de trabalho com limites de WIP, raias, arrastar e soltar, um editor de cartões integrado, definições de texto Mermaid e predefinições de design",
   "XAR Image display and manipulation": "Exibição e manipulação de imagens XAR"
 }

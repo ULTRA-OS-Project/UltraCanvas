@@ -34,6 +34,7 @@
   - [File Explorer Example](#file-explorer-example)
   - [Event Handling](#event-handling)
   - [Rows still loading](#rows-still-loading)
+  - [Dimmed rows](#dimmed-rows)
   - [Using TreeViewBuilder](#using-treeviewbuilder)
 - [Keyboard Navigation](#keyboard-navigation)
 - [Mouse Interaction](#mouse-interaction)
@@ -145,10 +146,26 @@ struct TreeNodeIcon {
     int width = 16;        // Icon width
     int height = 16;       // Icon height
     bool visible = true;   // Visibility flag
+    bool drawnInTextColor = false;  // one-colour line icon: drawn in the row's text colour
 
     TreeNodeIcon() = default;
     TreeNodeIcon(const std::string& path, int w = 16, int h = 16);
 };
+```
+
+A black line icon (an outline with no colours of its own - a cloud, a
+server) drawn as it is stays black, which vanishes on a dark theme. Set
+`drawnInTextColor` and the tree draws it as a mask in the row's text colour:
+the selection text colour on the selected row, else a node's own `textColor`
+where it has one, else the theme's ink. Leave it off for a coloured icon - every colour
+in it would become the ink.
+
+```cpp
+TreeNodeData data;
+data.nodeId = "cloud";
+data.text = "Cloud Storage";
+data.leftIcon = TreeNodeIcon("media/icons/cloud.svg", 16, 16);
+data.leftIcon.drawnInTextColor = true;   // light on a dark theme, dark on a light one
 ```
 
 ### TreeNodeData Structure
@@ -181,6 +198,7 @@ struct TreeNodeData {
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
     bool loading = false;                  // children being fetched: a bar slides along the row's foot
+    bool dimmed = false;                   // label in the muted text colour (SetDimmedTextColor)
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -882,6 +900,7 @@ void SetFocusRingColor(const Color& color);
 void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
+void SetDimmedTextColor(const Color& color);   // a dimmed row's label; the theme's inkMuted
 void SetExpandButtonColor(const Color& color);
 void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol);
 void SetExpanderArrowColor(const Color& color);
@@ -891,9 +910,11 @@ Sets various color properties for the tree view. `SetBackgroundColor` is
 inherited from `UltraCanvasUIElement`.
 
 `SetSelectionTextColor` is the text of a selected row (every cell of it in
-Columns mode); `Colors::Transparent`, the default, keeps the row's own text
-colour, and a node or cell coloured by hand keeps its colour either way. A
-light theme sets the colour that reads on the accent (`onAccent`); a dark
+Columns mode, a node or cell coloured by hand included, so the whole row
+reads on the selection). `Colors::Transparent`, the default, picks white -
+or black on a selection too light for white text (under 3:1); the default
+blue selection gets white. `SelectedRowTextColor()` returns the colour in
+use. A light theme sets the colour that reads on the accent (`onAccent`); a dark
 one selects with the soft accent and ink on it (below).
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
@@ -1094,6 +1115,21 @@ treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
 };
 ```
 
+### Dimmed rows
+
+A row the tree normally leaves out but shows for now - a hidden folder the
+user went to, an entry that is only there because a search found it - can
+read as secondary with `TreeNodeData::dimmed`. Its label is drawn in the
+tree's dimmed text colour (`SetDimmedTextColor`; under a theme its muted ink,
+so it follows a switch to dark), not the text colour. A `textColor` of the
+node's own still takes precedence, and on a selected row the selection text.
+
+```cpp
+TreeNodeData config("/home/me/.config", ".config");
+config.dimmed = true;                      // drawn lighter than its siblings
+treeView->AddNode("/home/me", config);
+```
+
 ### Using TreeViewBuilder
 
 ```cpp
@@ -1214,7 +1250,7 @@ tree->onNodeDragDrop = [](TreeNode* dragged, TreeNode* target) {
 - **Mouse Wheel**: Scroll vertically
 - **Scrollbar Drag**: Direct scrolling control
 - **Scroll-to-Top Button**: Click the floating arrow in the bottom-right corner
-  to jump back to the first row (see [Scroll-to-Top Button](#scroll-to-top-button))
+  to jump back to the first row (see [Scroll-to-Top Button](#scroll-to-top-and-scroll-to-selection-buttons))
 
 ## Rendering Details
 
@@ -1338,10 +1374,11 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 | 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 | 1.2.1 | 2026-10-07 | Docs: columns API (`SetColumns`, `TreeViewColumn`, `data.cells`), real constructors and builder calls |
 | 1.3.0 | 2026-10-22 | `SetExpanderStyle`: the expand button as an arrow (`TreeExpanderStyle::Chevron`), `SetExpanderArrowColor` |
+| 1.4.0 | 2026-11-16 | `TreeNodeData::dimmed` and `SetDimmedTextColor`: a row drawn in the muted text colour |
 
 ## See Also
 
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) - Base class documentation
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Container for tree views
-- [UltraCanvasEvent](UltraCanvasEvent.md) - Event system documentation
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) - Base class documentation
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Container for tree views
+- [UltraCanvasEvent](../../UltraCanvas/include/UltraCanvasEvent.h) - Event system documentation
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) - Rendering system

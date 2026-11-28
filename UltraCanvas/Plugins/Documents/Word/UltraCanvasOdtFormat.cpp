@@ -5,6 +5,26 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.16.0 - an OpenDocument text template (.ott) is written as one: its template media type
+// Version: 1.15.1 - chart objects written and read by UltraCanvasOdfChart (core, shared with the .odp writer)
+// Version: 1.15.0 - a password-protected .odt opened with its password (UltraCanvasOdfEncryption.h)
+// Version: 1.14.0 - chart objects: radar, bubble and stock charts; smoothed lines (chart:interpolation)
+// Version: 1.13.0 - charts as chart objects ("Object N/content.xml", chart:chart): written and read
+// Version: 1.12.3 - a heading's own font, size and spacing read and written
+// Version: 1.12.2 - a turned picture in the line (as-char with draw:transform) read and written
+// Version: 1.12.1 - a cell paragraph's own proportional line height (70%); a file by Word sets it on every line
+// Version: 1.12.0 - table cells: a paragraph per line, line heights, nested tables read as tables, the font a
+//                   picture in a line stands in, a negative table indent; Writer's proportional line
+//                   height in cells; settings items of our own
+// Version: 1.11.0 - fo:break-before="column" read and written; a table nested in a cell written as a table;
+//                   as-char drawings stand in the line
+// Version: 1.10.0 - a turned picture (draw:transform) read and written; drawn shapes in table cells
+//                   read, and written in the line (as-char) where text stops above and below them
+// Version: 1.9.0 - paragraph spacing in cells, the kerning, line-gap and cell-spacing settings read and written
+// Version: 1.8.0 - a section's own header, footer and margins (master pages) read and written; a table's
+//                  room above and below; an empty cell's font; page-anchored shapes placed from the sheet
+// Version: 1.7.0 - a letter laid out in a table: row heights, a cell's empty paragraphs, the default
+//                  paragraph style's font and spacing, negative float offsets, draw:transform in order
 // Version: 1.6.0 - Pattern fills: draw:hatch read and written, other patterns as their tile
 //                  (an inline draw:fill-image, read too);
 //                  picture fills: draw:fill-image read and written
@@ -15,13 +35,15 @@
 // Version: 1.3.0 - fo:letter-spacing: a run's (and a named text style's) letter spacing, read
 //                  and written
 // Version: 1.2.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
+#include "UltraCanvasOdfChart.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOdfEncryption.h"
 #include "UltraCanvasTextUtils.h"
 
 #include "tinyxml2.h"
@@ -30,6 +52,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <limits>
 #include <vector>
 #include <cstring>
@@ -66,11 +89,13 @@ struct OdtTextProps {
     float fontSizePt = 0.0f;
     float letterSpacingPt = kUnsetLength;           // fo:letter-spacing ("normal" = 0); NaN = inherit
     std::string parentStyleName;
+    bool paragraphFamily = false;                   // a style:family="paragraph" style
     std::string masterPageName;                     // style:master-page-name (paragraph styles)
     RichTextAlign align = RichTextAlign::Default;   // paragraph styles only
     int rightToLeft = -1;                           // style:writing-mode rl-*: 1, lr-*: 0, unset: -1
     bool bottomBorder = false;                      // paragraph styles only
     bool pageBreakBefore = false;                   // paragraph styles only
+    bool columnBreakBefore = false;                 // fo:break-before="column", the style's own
     int headingLevel = 0;                           // derived from heading style names
     std::string characterStyle;                     // the named text style a span has (model id)
     // Paragraph geometry (paragraph styles only). NaN = not set by this style.
@@ -214,11 +239,28 @@ void ProtectInterElementWhitespace(std::string& xml) {
 
 class OdtReader {
 public:
-    bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error) {
+    bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error,
+              const std::string& password = std::string()) {
         doc_ = &doc;
-        if (!zip_.Open(filePath)) {
-            error = "The file is not a valid OpenDocument text file (.odt): " + filePath;
-            return false;
+        // A password-protected .odt is decrypted into an ordinary package
+        // in memory first.
+        std::vector<uint8_t> decrypted;
+        switch (DecryptOdfPackageFile(filePath, password, decrypted, error)) {
+            case OfficeDecryptStatus::NotEncrypted:
+                if (!zip_.Open(filePath)) {
+                    error = "The file is not a valid OpenDocument text file (.odt): " + filePath;
+                    return false;
+                }
+                break;
+            case OfficeDecryptStatus::Decrypted:
+                if (!zip_.OpenFromMemory(std::move(decrypted))) {
+                    error = "The decrypted OpenDocument text file is not valid: " + filePath;
+                    return false;
+                }
+                break;
+            default:
+                error += ": " + filePath;
+                return false;
         }
         std::string contentXml;
         if (!zip_.ReadEntry("content.xml", contentXml)) {
@@ -284,7 +326,10 @@ public:
         // letter) would inject chrome the reader never displays.
         LoadSettings();
         tinyxml2::XMLElement* masterPage = ResolveMasterPage(stylesRoot, text);
-        LoadPageSetup(stylesRoot, masterPage);
+        stylesRoot_ = stylesRoot;
+        firstMasterName_ = masterPage ? Attr(masterPage, "style:name") : "";
+        currentMasterName_ = firstMasterName_;
+        LoadPageSetup(stylesRoot, masterPage, doc_->page);
         // The first page draws its header and footer from its master; the
         // pages after it from that master's next-style-name, when it names
         // another one (a letterhead's first page and its continuation pages).
@@ -318,6 +363,7 @@ public:
             doc_->blocks.push_back(std::move(carrier));
         }
         ApplySections();
+        ApplyMasterPages();
         if (!doc_->notes.empty()) doc_->UpdateNoteMarks();
         LoadMetadata();
         return true;
@@ -343,6 +389,80 @@ private:
 
     // Sections in columns become the model's sections: one starting at the
     // section's first block, and a single-column one after it.
+    // A paragraph that names another master page starts pages of that page
+    // style: its own header and footer, and its own room for them. Each is a
+    // section of the model with furniture of its own (the first master
+    // page's is the document's).
+    void ApplyMasterPages() {
+        if (masterStarts_.empty() || !stylesRoot_) return;
+        auto* masters = stylesRoot_->FirstChildElement("office:master-styles");
+        if (!masters) return;
+        struct PageStyle { int furniture = -1; float top = -1.0f, bottom = -1.0f, headerTop = -1.0f, footerBottom = -1.0f; };
+        std::map<std::string, PageStyle> known;
+        known[firstMasterName_] = PageStyle{};
+        auto styleFor = [&](const std::string& name) -> const PageStyle* {
+            auto found = known.find(name);
+            if (found != known.end()) return &found->second;
+            tinyxml2::XMLElement* master = nullptr;
+            for (auto* page = masters->FirstChildElement("style:master-page"); page;
+                 page = page->NextSiblingElement("style:master-page")) {
+                if (name == Attr(page, "style:name")) { master = page; break; }
+            }
+            if (!master) return nullptr;
+            PageStyle style;
+            RichSectionFurniture own;
+            ParseMasterPage(master, own.pages);
+            auto* headerFirst = master->FirstChildElement("style:header-first");
+            auto* footerFirst = master->FirstChildElement("style:footer-first");
+            if (headerFirst || footerFirst) {
+                ParseMasterPageRegion(headerFirst, own.firstPage.header);
+                ParseMasterPageRegion(footerFirst, own.firstPage.footer);
+                own.firstPageDiffers = true;
+            }
+            // A set of its own even when it is empty, where the document's
+            // is not: these pages have no header then.
+            const bool documentHasSome = !doc_->pageFurniture.IsEmpty() || !doc_->firstPageFurniture.IsEmpty();
+            if (!own.pages.IsEmpty() || !own.firstPage.IsEmpty() || documentHasSome) {
+                style.furniture = static_cast<int>(doc_->sectionFurniture.size());
+                doc_->sectionFurniture.push_back(std::move(own));
+            }
+            RichPageSetup page = doc_->page;
+            LoadPageSetup(stylesRoot_, master, page);
+            auto differs = [](float a, float b) { return std::abs(a - b) > 0.05f; };
+            if (differs(page.marginTopPt, doc_->page.marginTopPt)) style.top = page.marginTopPt;
+            if (differs(page.marginBottomPt, doc_->page.marginBottomPt)) style.bottom = page.marginBottomPt;
+            if (differs(page.headerTopPt, doc_->page.headerTopPt)) style.headerTop = page.headerTopPt;
+            if (differs(page.footerBottomPt, doc_->page.footerBottomPt)) style.footerBottom = page.footerBottomPt;
+            return &(known[name] = style);
+        };
+        std::map<size_t, const PageStyle*> starts;
+        for (const auto& [index, name] : masterStarts_) {
+            if (index >= doc_->blocks.size()) continue;
+            if (const PageStyle* style = styleFor(name)) starts[index] = style;
+        }
+        PageStyle current;
+        for (size_t i = 0; i < doc_->blocks.size(); ++i) {
+            RichDocBlock& block = doc_->blocks[i];
+            auto start = starts.find(i);
+            if (start != starts.end()) {
+                current = *start->second;
+                if (i == 0) continue;
+                if (!block.sectionStart) {
+                    block.section = doc_->SectionFor(static_cast<int>(i) - 1);
+                    block.sectionStart = true;
+                }
+                block.section.newPage = true;
+            }
+            if (!block.sectionStart) continue;
+            // Every section from here on is on pages of this style.
+            block.section.furniture = current.furniture;
+            block.section.marginTopPt = current.top;
+            block.section.marginBottomPt = current.bottom;
+            block.section.headerTopPt = current.headerTop;
+            block.section.footerBottomPt = current.footerBottom;
+        }
+    }
+
     void ApplySections() {
         for (const SectionRange& range : sectionRanges_) {
             RichSectionSetup setup = range.setup;
@@ -414,7 +534,14 @@ private:
     // list style name -> (level -> text:start-value of a numbered level)
     std::map<std::string, std::map<int, int>> listStartValues_;
     // table-column style name -> column width in points
+    // Page styles: the styles part's root, the master page the document
+    // starts on and the one in force, and the blocks at which another starts.
+    tinyxml2::XMLElement* stylesRoot_ = nullptr;
+    std::string firstMasterName_, currentMasterName_;
+    std::vector<std::pair<size_t, std::string>> masterStarts_;
     std::map<std::string, float> columnWidths_;
+    struct RowHeight { float heightPt = 0.0f; bool exact = false; };
+    std::map<std::string, RowHeight> rowHeights_;              // table-row style -> its height
     std::map<std::string, RichTableCell> cellStyles_;          // table-cell style -> borders, fill
     // Graphic styles: how a frame wraps and where it sits. Empty = not stated
     // (then the parent style's, then Writer's defaults).
@@ -426,8 +553,12 @@ private:
         // A drawn shape's line ends and dash, and where its words sit.
         std::string strokeDash, markerStart, markerEnd, textAreaVertical, paddingLeft;
         std::string fillGradientName, fillHatchName, fillHatchSolid, fillImageName, repeat;
+        // A shape's drop shadow.
+        std::string shadow, shadowOffsetX, shadowOffsetY, shadowColor, shadowOpacity, shadowBlur;
     };
     std::map<std::string, GraphicPlacement> graphicStyles_;
+    OdtTextProps defaultParagraph_;                            // style:default-style family="paragraph"
+    bool hasDefaultParagraph_ = false;
     GraphicPlacement defaultGraphic_;                          // style:default-style family="graphic"
     // A drawn shape's graphic property: its style's, else the default's.
     std::string ShapeAttribute(const std::string& styleName, std::string GraphicPlacement::*field) const {
@@ -450,9 +581,11 @@ private:
         float widthPercent = 0.0f;
         RichTextAlign align = RichTextAlign::Left;
         float indentPt = 0.0f;
+        float spaceBeforePt = -1.0f, spaceAfterPt = -1.0f;     // fo:margin-top / -bottom; < 0 = not stated
     };
     std::map<std::string, TablePlacement> tablePlacements_;    // table style -> width, position
     std::vector<std::string> columnDefaultCellStyles_;         // of the table being read
+    bool cellLineMultiples_ = false;                           // a cell's proportional line height is every line's
     std::map<std::string, std::string> fontFamilies_;          // font-face name -> family
     bool tabsRelativeToIndent_ = true;                         // Writer's default
     // Numbering runs per LIST, not per text:list element: a list that
@@ -739,6 +872,9 @@ private:
                     fallback.stroke = Attr(graphic, "draw:stroke");
                     fallback.strokeColor = Attr(graphic, "svg:stroke-color");
                     fallback.strokeWidth = Attr(graphic, "svg:stroke-width");
+                    fallback.shadowOffsetX = Attr(graphic, "draw:shadow-offset-x");
+                    fallback.shadowOffsetY = Attr(graphic, "draw:shadow-offset-y");
+                    fallback.shadowColor = Attr(graphic, "draw:shadow-color");
                 }
                 continue;
             }
@@ -747,6 +883,25 @@ private:
                 float distance = ParseLengthPt(Attr(pp, "style:tab-stop-distance"));
                 if (distance > 0) doc_->defaultTabStopPt = distance;
             }
+            // Pair kerning, which Word's files turn off.
+            if (auto* tp = style->FirstChildElement("style:text-properties")) {
+                const std::string kerning = Attr(tp, "style:letter-kerning");
+                if (!kerning.empty()) doc_->letterKerning = kerning != "false";
+            }
+            // What every paragraph style starts from: the document's font,
+            // its size and its paragraph spacing. Not its colour (the view's
+            // ink serves, and follows a dark theme) nor a page's start.
+            OdtTextProps fallback;
+            ReadTextAndParagraphProps(style, fallback);
+            fallback.color.clear();
+            fallback.highlight.clear();
+            fallback.pageBreakBefore = false;
+            fallback.bottomBorder = false;
+            fallback.hasFrame = false;
+            fallback.hasTabStops = false;
+            fallback.tabStops.clear();
+            defaultParagraph_ = fallback;
+            hasDefaultParagraph_ = true;
         }
     }
 
@@ -754,14 +909,35 @@ private:
     // (Writer's own default) or from the page margin (Word's convention,
     // kept in documents Writer imported from Word).
     void LoadSettings() {
+        // A file Word wrote sets a proportional line height on every line
+        // of a cell, as Word does (Writer's own files: see CollectCellRuns).
+        std::string metaXml;
+        if (zip_.ReadEntry("meta.xml", metaXml) && metaXml.find("MicrosoftWord") != std::string::npos) {
+            cellLineMultiples_ = true;
+        }
         std::string settingsXml;
         if (!zip_.ReadEntry("settings.xml", settingsXml)) return;
-        const std::string key = "config:name=\"TabsRelativeToIndent\"";
-        size_t at = settingsXml.find(key);
-        if (at == std::string::npos) return;
-        size_t close = settingsXml.find('>', at);
-        if (close == std::string::npos) return;
-        tabsRelativeToIndent_ = settingsXml.compare(close + 1, 4, "true") == 0;
+        // A boolean config item's value, or `otherwise` when the file does
+        // not state it.
+        auto setting = [&](const char* name, bool otherwise) {
+            const std::string key = std::string("config:name=\"") + name + "\"";
+            const size_t at = settingsXml.find(key);
+            if (at == std::string::npos) return otherwise;
+            const size_t close = settingsXml.find('>', at);
+            if (close == std::string::npos) return otherwise;
+            return settingsXml.compare(close + 1, 4, "true") == 0;
+        };
+        tabsRelativeToIndent_ = setting("TabsRelativeToIndent", tabsRelativeToIndent_);
+        // Writer's compatibility options a layout depends on: whether lines
+        // include the font's line gap, and whether paragraph spacing counts
+        // in table cells. A file without them (Word's export) has both.
+        doc_->fontLineGap = setting("AddExternalLeading", true);
+        doc_->paragraphSpacingInCells = setting("AddParaSpacingToTableCells", true);
+        doc_->breakAfterSlash = setting("UltraCanvasBreakAfterSlash", true);
+        // A multiple of the font's line on every line of a cell is Word's
+        // way (and this writer's file says so); Writer sets a one-line
+        // paragraph at 122% as it does at 100%.
+        cellLineMultiples_ = setting("UltraCanvasCellLineMultiples", cellLineMultiples_);
     }
 
     // Applies a paragraph style's geometry to a block, in the model's terms.
@@ -799,6 +975,53 @@ private:
         return it != fontFamilies_.end() ? it->second : fontName;
     }
 
+    // A style's character and paragraph properties (style:style and
+    // style:default-style carry the same two elements).
+    void ReadTextAndParagraphProps(tinyxml2::XMLElement* style, OdtTextProps& props) {
+        if (auto* tp = style->FirstChildElement("style:text-properties")) {
+            std::string weight = Attr(tp, "fo:font-weight");
+            if (!weight.empty()) props.bold = (weight != "normal") ? 1 : 0;
+            std::string fontStyle = Attr(tp, "fo:font-style");
+            if (!fontStyle.empty()) props.italic = (fontStyle != "normal") ? 1 : 0;
+            std::string underline = Attr(tp, "style:text-underline-style");
+            if (!underline.empty()) props.underline = (underline != "none") ? 1 : 0;
+            std::string strike = Attr(tp, "style:text-line-through-style");
+            if (!strike.empty()) props.strike = (strike != "none") ? 1 : 0;
+            std::string position = Attr(tp, "style:text-position");
+            if (!position.empty()) {
+                props.superscript = (position.rfind("super", 0) == 0) ? 1 : 0;
+                props.subscript = (position.rfind("sub", 0) == 0) ? 1 : 0;
+            }
+            std::string display = Attr(tp, "text:display");
+            if (!display.empty()) props.hidden = (display == "none") ? 1 : 0;
+            props.color = Attr(tp, "fo:color");
+            props.fontFamily = FamilyForFontName(Attr(tp, "style:font-name"));
+            if (props.fontFamily.empty()) props.fontFamily = Attr(tp, "fo:font-family");
+            props.fontSizePt = ParseLengthPt(Attr(tp, "fo:font-size"));
+            const std::string tracking = Attr(tp, "fo:letter-spacing");
+            if (tracking == "normal") props.letterSpacingPt = 0.0f;
+            else if (!tracking.empty()) props.letterSpacingPt = ParseLengthPt(tracking);
+            // A character background is a highlight; "transparent" says
+            // explicitly that there is none.
+            props.highlight = Attr(tp, "fo:background-color");
+        }
+        if (auto* pp = style->FirstChildElement("style:paragraph-properties")) {
+            std::string align = Attr(pp, "fo:text-align");
+            if (align == "center") props.align = RichTextAlign::Center;
+            else if (align == "end" || align == "right") props.align = RichTextAlign::Right;
+            else if (align == "justify") props.align = RichTextAlign::Justify;
+            else if (align == "start" || align == "left") props.align = RichTextAlign::Left;
+            const std::string mode = Attr(pp, "style:writing-mode");
+            if (mode.rfind("rl", 0) == 0) props.rightToLeft = 1;
+            else if (mode.rfind("lr", 0) == 0) props.rightToLeft = 0;
+            ReadParagraphGeometry(pp, props);
+            std::string border = Attr(pp, "fo:border-bottom");
+            props.bottomBorder = !border.empty() && border != "none";
+            props.pageBreakBefore = std::string(Attr(pp, "fo:break-before")) == "page";
+            props.columnBreakBefore = std::string(Attr(pp, "fo:break-before")) == "column";
+        }
+    }
+
     void CollectStyles(tinyxml2::XMLElement* container) {
         if (!container) return;
         for (auto* style = container->FirstChildElement("style:style"); style;
@@ -819,47 +1042,8 @@ private:
             OdtTextProps props;
             props.parentStyleName = Attr(style, "style:parent-style-name");
             props.masterPageName = Attr(style, "style:master-page-name");
-            if (auto* tp = style->FirstChildElement("style:text-properties")) {
-                std::string weight = Attr(tp, "fo:font-weight");
-                if (!weight.empty()) props.bold = (weight != "normal") ? 1 : 0;
-                std::string fontStyle = Attr(tp, "fo:font-style");
-                if (!fontStyle.empty()) props.italic = (fontStyle != "normal") ? 1 : 0;
-                std::string underline = Attr(tp, "style:text-underline-style");
-                if (!underline.empty()) props.underline = (underline != "none") ? 1 : 0;
-                std::string strike = Attr(tp, "style:text-line-through-style");
-                if (!strike.empty()) props.strike = (strike != "none") ? 1 : 0;
-                std::string position = Attr(tp, "style:text-position");
-                if (!position.empty()) {
-                    props.superscript = (position.rfind("super", 0) == 0) ? 1 : 0;
-                    props.subscript = (position.rfind("sub", 0) == 0) ? 1 : 0;
-                }
-                std::string display = Attr(tp, "text:display");
-                if (!display.empty()) props.hidden = (display == "none") ? 1 : 0;
-                props.color = Attr(tp, "fo:color");
-                props.fontFamily = FamilyForFontName(Attr(tp, "style:font-name"));
-                if (props.fontFamily.empty()) props.fontFamily = Attr(tp, "fo:font-family");
-                props.fontSizePt = ParseLengthPt(Attr(tp, "fo:font-size"));
-                const std::string tracking = Attr(tp, "fo:letter-spacing");
-                if (tracking == "normal") props.letterSpacingPt = 0.0f;
-                else if (!tracking.empty()) props.letterSpacingPt = ParseLengthPt(tracking);
-                // A character background is a highlight; "transparent" says
-                // explicitly that there is none.
-                props.highlight = Attr(tp, "fo:background-color");
-            }
-            if (auto* pp = style->FirstChildElement("style:paragraph-properties")) {
-                std::string align = Attr(pp, "fo:text-align");
-                if (align == "center") props.align = RichTextAlign::Center;
-                else if (align == "end" || align == "right") props.align = RichTextAlign::Right;
-                else if (align == "justify") props.align = RichTextAlign::Justify;
-                else if (align == "start" || align == "left") props.align = RichTextAlign::Left;
-                const std::string mode = Attr(pp, "style:writing-mode");
-                if (mode.rfind("rl", 0) == 0) props.rightToLeft = 1;
-                else if (mode.rfind("lr", 0) == 0) props.rightToLeft = 0;
-                ReadParagraphGeometry(pp, props);
-                std::string border = Attr(pp, "fo:border-bottom");
-                props.bottomBorder = !border.empty() && border != "none";
-                props.pageBreakBefore = std::string(Attr(pp, "fo:break-before")) == "page";
-            }
+            ReadTextAndParagraphProps(style, props);
+            props.paragraphFamily = std::string(Attr(style, "style:family")) == "paragraph";
             std::string name = Attr(style, "style:name");
             if (auto* tableProps = style->FirstChildElement("style:table-properties")) {
                 // Width (absolute, or relative "50%") and placement. "margins"
@@ -875,6 +1059,14 @@ private:
                 placement.align = align == "center" ? RichTextAlign::Center
                                 : align == "right" ? RichTextAlign::Right : RichTextAlign::Left;
                 placement.indentPt = ParseLengthPt(Attr(tableProps, "fo:margin-left"));
+                // The room above and below the table (a letter's address
+                // window keeps its distance from the reference line).
+                if (tableProps->Attribute("fo:margin-top")) {
+                    placement.spaceBeforePt = std::max(0.0f, ParseLengthPt(Attr(tableProps, "fo:margin-top")));
+                }
+                if (tableProps->Attribute("fo:margin-bottom")) {
+                    placement.spaceAfterPt = std::max(0.0f, ParseLengthPt(Attr(tableProps, "fo:margin-bottom")));
+                }
                 if (!name.empty()) tablePlacements_[name] = placement;
             }
             if (auto* cellProps = style->FirstChildElement("style:table-cell-properties")) {
@@ -899,6 +1091,13 @@ private:
                 placement.padding = Attr(graphic, "fo:padding");
                 placement.minHeight = Attr(graphic, "fo:min-height");
                 placement.strokeDash = Attr(graphic, "draw:stroke-dash");
+                placement.shadow = Attr(graphic, "draw:shadow");
+                placement.shadowOffsetX = Attr(graphic, "draw:shadow-offset-x");
+                placement.shadowOffsetY = Attr(graphic, "draw:shadow-offset-y");
+                placement.shadowColor = Attr(graphic, "draw:shadow-color");
+                placement.shadowOpacity = Attr(graphic, "draw:shadow-opacity");
+                placement.shadowBlur = Attr(graphic, "draw:shadow-blur");
+                if (placement.shadowBlur.empty()) placement.shadowBlur = Attr(graphic, "loext:shadow-blur");
                 placement.markerStart = Attr(graphic, "draw:marker-start");
                 placement.markerEnd = Attr(graphic, "draw:marker-end");
                 placement.textAreaVertical = Attr(graphic, "draw:textarea-vertical-align");
@@ -909,6 +1108,14 @@ private:
                 placement.fillImageName = Attr(graphic, "draw:fill-image-name");
                 placement.repeat = Attr(graphic, "style:repeat");
                 if (!name.empty()) graphicStyles_[name] = placement;
+            }
+            if (auto* rp = style->FirstChildElement("style:table-row-properties")) {
+                // A fixed height, or the least a row may have.
+                RowHeight height;
+                height.heightPt = ParseLengthPt(Attr(rp, "style:row-height"));
+                height.exact = height.heightPt > 0.0f;
+                if (!height.exact) height.heightPt = ParseLengthPt(Attr(rp, "style:min-row-height"));
+                if (height.heightPt > 0.0f && !name.empty()) rowHeights_[name] = height;
             }
             if (auto* cp = style->FirstChildElement("style:table-column-properties")) {
                 // Absolute width wins; a relative "1234*" width is still a
@@ -1053,8 +1260,12 @@ private:
         auto it = styles_.find(name);
         if (it == styles_.end() || depth > 16) return OdtTextProps{};
         OdtTextProps props = it->second;
-        if (!props.parentStyleName.empty()) {
+        if (!props.parentStyleName.empty() && styles_.count(props.parentStyleName)) {
             props.MergeParent(ResolveStyle(props.parentStyleName, depth + 1));
+        } else if (props.paragraphFamily && hasDefaultParagraph_) {
+            // A paragraph style based on nothing starts from the document's
+            // default paragraph style.
+            props.MergeParent(defaultParagraph_);
         }
         return props;
     }
@@ -1102,7 +1313,18 @@ private:
         // a paragraph can carry one; elsewhere (a table cell) their text is
         // flattened as before.
         bool framesAsRuns = false;
+        // A table cell's: its drawn shapes become runs (a frame's words stay
+        // in the cell's own lines).
+        bool shapesAsRuns = false;
         bool pendingLineBreak = false;
+        // A table cell's paragraphs so far, and the style of the last one
+        // (CollectCellRuns: an empty paragraph is an empty line).
+        int cellParagraphs = 0;
+        OdtTextProps pendingBreakProps;        // the style of the text whose line break is pending
+        OdtTextProps lastCellParagraph;
+        float cellSpaceAbovePt = 0.0f, cellSpaceBelowPt = 0.0f;   // the first paragraph's space before, the last's after
+        float cellLineHeightPt = 0.0f, cellLineSpacing = 0.0f;    // the first paragraph's line height, or multiple
+        bool cellLineHeightAtLeast = false;
         bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
         std::vector<std::string> bookmarks;    // text:bookmark(-start) names met
     };
@@ -1278,6 +1500,46 @@ private:
         return true;
     }
 
+    // An embedded chart object ("Object 1/content.xml" holding a
+    // chart:chart): its class, its series' ranges in the chart's own table
+    // and their styles become the frame's chart (RichTextFrame::chart), with
+    // the same chart as drawn shapes beside it. A class this model has no
+    // kind for is left to the object's replacement picture.
+    bool ParseChartObject(tinyxml2::XMLElement* frame, InlineContext& ctx) {
+        auto* object = frame->FirstChildElement("draw:object");
+        if (!object) return false;
+        std::string href = Attr(object, "xlink:href");
+        if (href.rfind("./", 0) == 0) href = href.substr(2);
+        if (href.empty()) return false;
+        std::string contentXml;
+        if (!zip_.ReadEntry(href + "/content.xml", contentXml)) return false;
+        RichChart data;
+        if (!ReadOdfChartObject(contentXml, data)) return false;   // UltraCanvasOdfChart
+
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.imageWidthPt = ParseLengthPt(Attr(frame, "svg:width"));
+        run.imageHeightPt = ParseLengthPt(Attr(frame, "svg:height"));
+        RichTextFrame content;
+        content.name = Attr(frame, "draw:name");
+        if (content.name.empty()) content.name = "Chart";
+        RichShape group;
+        if (!UCRichDocument::ChartAsShapes(data, run.imageWidthPt, run.imageHeightPt, doc_->frames, group)) return false;
+        content.shapes.push_back(std::move(group));
+        content.drawingWidthPt = run.imageWidthPt;
+        content.drawingHeightPt = run.imageHeightPt;
+        content.chart = std::move(data);
+        run.imageAltText = content.name;
+        if (std::string(Attr(frame, "text:anchor-type")) == "as-char") run.imageWrap = RichTextRun::ImageWrap::Inline;
+        else ApplyFloatPlacement(frame, run);
+        run.frameIndex = static_cast<int>(doc_->frames.size());
+        doc_->frames.push_back(std::move(content));
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
+        return true;
+    }
+
     bool ParseImageFrame(tinyxml2::XMLElement* frame, InlineContext& ctx) {
         auto* image = frame->FirstChildElement("draw:image");
         if (!image) return false;
@@ -1303,7 +1565,28 @@ private:
             run.imageWidthPt = widthPt;
             run.imageHeightPt = heightPt;
             run.imageAltText = altText;
-            if (anchorType != "as-char") ApplyFloatPlacement(frame, run);
+            if (anchorType != "as-char") {
+                ApplyFloatPlacement(frame, run);
+                // Turned (draw:transform): the box before the turn gives its
+                // place, as for a shape.
+                if (frame->Attribute("draw:transform")) {
+                    RichShape box;
+                    ReadShapeBox(frame, box);
+                    run.imageRotationDeg = box.rotationDeg;
+                    if (box.rotationDeg != 0.0f) {
+                        if (run.imageFloatAlign == RichTextAlign::Default || !frame->Attribute("svg:x")) {
+                            run.imageFloatAlign = RichTextAlign::Default;
+                            run.imageOffsetXPt = box.xPt;
+                        }
+                        if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) run.imageOffsetYPt = box.yPt;
+                    }
+                }
+            } else if (frame->Attribute("draw:transform")) {
+                // Turned in the line: the turn alone (its place is the line's).
+                RichShape box;
+                ReadShapeBox(frame, box);
+                run.imageRotationDeg = box.rotationDeg;
+            }
             run.lineBreakBefore = ctx.pendingLineBreak;
             ctx.pendingLineBreak = false;
             ctx.runs.push_back(std::move(run));
@@ -1327,7 +1610,17 @@ private:
     void ParseFrame(tinyxml2::XMLElement* frame, const OdtTextProps& props,
                     const std::string& linkTarget, InlineContext& ctx) {
         if (ParseFormulaObject(frame, props, linkTarget, ctx)) return;
-        if (ParseImageFrame(frame, ctx)) return;
+        if (ParseChartObject(frame, ctx)) return;
+        const size_t runsBefore = ctx.runs.size();
+        if (ParseImageFrame(frame, ctx)) {
+            // A picture in the line stands in a line of the font around it.
+            for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                if (!ctx.runs[r].IsInlineImage() || ctx.runs[r].IsFloatingImage()) continue;
+                if (props.fontSizePt > 0.0f) ctx.runs[r].fontSizePt = props.fontSizePt;
+                if (!props.fontFamily.empty()) ctx.runs[r].fontFamily = props.fontFamily;
+            }
+            return;
+        }
         if (auto* textBox = frame->FirstChildElement("draw:text-box")) {
             if (ctx.framesAsRuns && frameDepth_ == 0) ParseTextFrame(frame, textBox, ctx);
             else ctx.textBoxes.push_back(textBox);
@@ -1354,7 +1647,10 @@ private:
         auto origin = [&](const std::string& relation) {
             if (relation == "page" || relation == "page-start-margin" || relation == "page-end-margin") return Origin::Page;
             if (relation == "page-content") return Origin::Margin;
-            if (relation.empty() && pageAnchored) return Origin::Page;
+            // Anchored to the page there is no paragraph to count from: a
+            // fold mark "0.9 cm from the paragraph" is 0.9 cm from the
+            // sheet's edge, as Writer places it.
+            if (pageAnchored) return Origin::Page;
             return Origin::Paragraph;
         };
         const Origin across = origin(GraphicAttribute(style, &GraphicPlacement::horizontalRel));
@@ -1370,7 +1666,8 @@ private:
         } else if (position == "from-left" || position == "from-inside" || (position.empty() && x)) {
             run.imageFloatAlign = RichTextAlign::Default;
             const float offset = ParseLengthPt(x ? x : "");
-            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? offset : std::max(0.0f, offset);
+            // Left of its area too: a letterhead's banner starts in the margin.
+            run.imageOffsetXPt = offset;
         } else {
             run.imageFloatAlign = RichTextAlign::Left;
         }
@@ -1379,7 +1676,9 @@ private:
         run.floatVerticalAlign = down == "middle" ? VAlign::Middle : down == "bottom" ? VAlign::Bottom : VAlign::Top;
         if (down.empty() || down == "from-top") {
             const float offset = ParseLengthPt(Attr(frame, "svg:y"));
-            run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, offset) : offset;
+            // Above its paragraph too: a banner anchored in the first
+            // paragraph reaches up to the page's top edge.
+            run.imageOffsetYPt = offset;
         }
     }
 
@@ -1535,7 +1834,12 @@ private:
         shape.yPt = ParseLengthPt(Attr(element, "svg:y"));
         const std::string transform = Attr(element, "draw:transform");
         if (transform.empty()) return;
-        double angle = 0.0, tx = 0.0, ty = 0.0;
+        // The transforms apply in the order they are listed, to the box's
+        // centre: Word writes "translate(-w/2 -h/2) rotate(a) translate(cx cy)"
+        // (turned about its centre, then put in place), Writer
+        // "rotate(a) translate(x y)" (turned about its corner).
+        const double hw = shape.widthPt * 0.5, hh = shape.heightPt * 0.5;
+        double angle = 0.0, cx = hw, cy = hh;
         bool moved = false;
         for (size_t at = 0; at < transform.size();) {
             const size_t open = transform.find('(', at);
@@ -1549,21 +1853,21 @@ private:
                 double turn = 0.0;
                 WordFormatInternal::ReadNumbers(args, &turn, 1);
                 angle += turn;
+                const double x = cx, y = cy;
+                cx = x * std::cos(turn) + y * std::sin(turn);
+                cy = -x * std::sin(turn) + y * std::cos(turn);
             } else if (name == "translate") {
                 std::istringstream values(args);
                 std::string first, second;
                 values >> first >> second;
-                tx += ParseLengthPt(first);
-                ty += ParseLengthPt(second);
+                cx += ParseLengthPt(first);
+                cy += ParseLengthPt(second);
                 moved = true;
             }
             at = close + 1;
         }
         if (!moved) return;
         // Where its centre ends up gives its upright box.
-        const double hw = shape.widthPt * 0.5, hh = shape.heightPt * 0.5;
-        const double cx = tx + hw * std::cos(angle) + hh * std::sin(angle);
-        const double cy = ty - hw * std::sin(angle) + hh * std::cos(angle);
         shape.xPt = static_cast<float>(cx - hw);
         shape.yPt = static_cast<float>(cy - hh);
         constexpr double kDegrees = 180.0 / 3.14159265358979323846;
@@ -1618,6 +1922,20 @@ private:
             }
             shape.arrowStart = !look(&GraphicPlacement::markerStart).empty();
             shape.arrowEnd = !look(&GraphicPlacement::markerEnd).empty();
+        }
+        if (look(&GraphicPlacement::shadow) == "visible") {
+            // Its drop shadow: Writer's is grey, 0.3 cm down and right,
+            // where the style says no more.
+            const std::string colour = look(&GraphicPlacement::shadowColor);
+            shape.shadowColor = colour.empty() ? "#808080" : colour;
+            const std::string dx = look(&GraphicPlacement::shadowOffsetX), dy = look(&GraphicPlacement::shadowOffsetY);
+            shape.shadowOffsetXPt = dx.empty() ? 8.5f : ParseLengthPt(dx);
+            shape.shadowOffsetYPt = dy.empty() ? 8.5f : ParseLengthPt(dy);
+            const std::string opacity = look(&GraphicPlacement::shadowOpacity);
+            float percent = 100.0f;
+            if (!opacity.empty() && opacity.back() == '%') TryParseFloat(opacity.substr(0, opacity.size() - 1), percent);
+            shape.shadowOpacity = std::clamp(percent / 100.0f, 0.0f, 1.0f);
+            shape.shadowBlurPt = std::max(0.0f, ParseLengthPt(look(&GraphicPlacement::shadowBlur)));
         }
         if (anchor) {
             const std::string vertical = look(&GraphicPlacement::textAreaVertical);
@@ -1680,10 +1998,17 @@ private:
                     }
                 }
                 if (!ok) continue;
-                minX = std::min(minX, member.xPt);
-                minY = std::min(minY, member.yPt);
-                maxX = std::max(maxX, member.xPt + member.widthPt);
-                maxY = std::max(maxY, member.yPt + member.heightPt);
+                // The room a member takes is its box as it is turned: a
+                // banner turned a quarter stands tall, not wide.
+                const double turn = static_cast<double>(member.rotationDeg) * 3.14159265358979323846 / 180.0;
+                const float hw = member.widthPt * 0.5f, hh = member.heightPt * 0.5f;
+                const float ex = static_cast<float>(std::abs(hw * std::cos(turn)) + std::abs(hh * std::sin(turn)));
+                const float ey = static_cast<float>(std::abs(hw * std::sin(turn)) + std::abs(hh * std::cos(turn)));
+                const float cx = member.xPt + hw, cy = member.yPt + hh;
+                minX = std::min(minX, cx - ex);
+                minY = std::min(minY, cy - ey);
+                maxX = std::max(maxX, cx + ex);
+                maxY = std::max(maxY, cy + ey);
                 shape.children.push_back(std::move(member));
             }
             if (shape.children.empty()) return false;
@@ -1779,7 +2104,7 @@ private:
         shape.yPt -= boxY;
         frame.shapes.push_back(std::move(shape));
         if (std::string(Attr(element, "text:anchor-type")) == "as-char") {
-            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            run.imageWrap = RichTextRun::ImageWrap::Inline;         // a drawing standing in the line
         } else {
             ApplyFloatPlacement(element, run);
             // The box, not the element's svg:x / svg:y (a line, a group and
@@ -1788,10 +2113,10 @@ private:
             const std::string position = GraphicAttribute(Attr(element, "draw:style-name"), &GraphicPlacement::horizontalPos);
             if (run.imageFloatAlign == RichTextAlign::Default || position.empty()) {
                 run.imageFloatAlign = RichTextAlign::Default;
-                run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? boxX : std::max(0.0f, boxX);
+                run.imageOffsetXPt = boxX;
             }
             if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) {
-                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, boxY) : boxY;
+                run.imageOffsetYPt = boxY;
             }
         }
         run.imageAltText = frame.name;
@@ -1900,7 +2225,11 @@ private:
                     ctx.runs.back().field = count ? RichTextRun::Field::PageCount : RichTextRun::Field::PageNumber;
                 }
             } else if (tag == "text:line-break") {
+                // A second break in a row is an empty line - in the font of
+                // the break that began it, not of the one that ends it.
+                if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.pendingBreakProps);
                 ctx.pendingLineBreak = true;
+                ctx.pendingBreakProps = props;
             } else if (tag == "text:bookmark" || tag == "text:bookmark-start") {
                 const std::string name = Attr(elem, "text:name");
                 if (!name.empty()) ctx.bookmarks.push_back(name);
@@ -1926,7 +2255,7 @@ private:
             } else if (tag == "draw:frame") {
                 ParseFrame(elem, props, linkTarget, ctx);
             } else if (IsShapeTag(tag)) {
-                if (ctx.framesAsRuns && frameDepth_ == 0) ParseDrawingShape(elem, ctx);
+                if ((ctx.framesAsRuns || ctx.shapesAsRuns) && frameDepth_ == 0) ParseDrawingShape(elem, ctx);
             } else if (tag == "text:note") {
                 // A footnote or endnote: its body's paragraphs become the
                 // note, the citation a reference run numbered once all are
@@ -2032,7 +2361,8 @@ private:
             || block.type == RichBlockType::CodeBlock) {
             runBase = OdtTextProps{};
         }
-        if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::ListItem) {
+        if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::ListItem
+            || block.type == RichBlockType::Heading) {
             block.paragraphFontSizePt = paraProps.fontSizePt;
             block.paragraphFontFamily = paraProps.fontFamily;
         }
@@ -2050,10 +2380,27 @@ private:
         if (inTableOfContents_ && block.type == RichBlockType::Paragraph) MakeContentsEntry(block, styleName);
 
         bool pageBreak = inMainFlow_ && paraProps.pageBreakBefore;
-        if (pageBreak) {
+        block.columnBreakBefore = inMainFlow_ && frameDepth_ == 0 && paraProps.columnBreakBefore;
+        // One break, not two, where a page break is followed by the empty
+        // paragraph that starts another page style (as the writer spells a
+        // section of its own header and footer after a page break).
+        const bool afterBreak = !doc_->blocks.empty() && doc_->blocks.back().type == RichBlockType::PageBreak;
+        const auto ownStyle = styles_.find(styleName);
+        const bool namesMaster = ownStyle != styles_.end() && !ownStyle->second.masterPageName.empty();
+        if (pageBreak && !(afterBreak && namesMaster && block.runs.empty())) {
             RichDocBlock pageBreakBlock;
             pageBreakBlock.type = RichBlockType::PageBreak;
             doc_->blocks.push_back(std::move(pageBreakBlock));
+        }
+        // A paragraph whose own style names a master page starts pages of
+        // that page style (ApplyMasterPages), at the block it becomes.
+        if (inMainFlow_ && frameDepth_ == 0) {
+            auto own = styles_.find(styleName);
+            if (own != styles_.end() && !own->second.masterPageName.empty()
+                && own->second.masterPageName != currentMasterName_) {
+                currentMasterName_ = own->second.masterPageName;
+                masterStarts_.emplace_back(doc_->blocks.size(), currentMasterName_);
+            }
         }
 
         // An empty bordered paragraph is the horizontal-rule idiom.
@@ -2177,8 +2524,97 @@ private:
              elem = elem->NextSiblingElement()) {
             std::string tag = elem->Name() ? elem->Name() : "";
             if (tag == "text:p" || tag == "text:h") {
-                if (!ctx.runs.empty()) ctx.pendingLineBreak = true;
-                ParseInlineNodes(elem, ResolveStyle(Attr(elem, "text:style-name")), "", ctx);
+                // Each paragraph is a line of the cell, an empty one too: a
+                // letter spaces its address, date and text with them. One
+                // that left nothing behind is an empty line of its own.
+                const OdtTextProps paragraph = ResolveStyle(Attr(elem, "text:style-name"));
+                // The room between two paragraphs - the one's space after and
+                // the other's before - is a line of that height between them;
+                // above the first and below the last it is the cell's.
+                const bool counts = doc_->paragraphSpacingInCells;
+                auto room = [counts](float margin) {
+                    return (!counts || std::isnan(margin)) ? 0.0f : std::max(0.0f, margin);
+                };
+                if (ctx.cellParagraphs > 0) {
+                    if (ctx.pendingLineBreak) {
+                        AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                    } else if (ctx.runs.empty()) {
+                        // An empty first paragraph: the cell's first line,
+                        // in its own font.
+                        RichTextRun first;
+                        ApplyPropsToRun(first, ctx.lastCellParagraph);
+                        ctx.runs.push_back(std::move(first));
+                    }
+                    float between = room(ctx.lastCellParagraph.marginBottom) + room(paragraph.marginTop);
+                    // Writer sets a paragraph of proportional line height
+                    // (122%) that much higher lines - all but the first in
+                    // its cell: the room is above the paragraph's line.
+                    if (!cellLineMultiples_ && !std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 1.01f) {
+                        const float size = paragraph.fontSizePt > 0.0f ? paragraph.fontSizePt : 12.0f;
+                        between += (paragraph.lineSpacing - 1.0f) * size * 1.15f;
+                    }
+                    if (between > 0.5f) {
+                        RichTextRun spacer;
+                        spacer.lineBreakBefore = true;
+                        spacer.emptyLineHeightPt = between;
+                        ctx.runs.push_back(std::move(spacer));
+                    }
+                    ctx.pendingLineBreak = true;
+                } else {
+                    ctx.cellSpaceAbovePt = room(paragraph.marginTop);
+                    // The cell's lines take its first paragraph's height.
+                    if (!std::isnan(paragraph.lineHeightPt) && paragraph.lineHeightPt > 0.0f) {
+                        ctx.cellLineHeightPt = paragraph.lineHeightPt;
+                        ctx.cellLineHeightAtLeast = paragraph.lineHeightAtLeast;
+                    }
+                }
+                ctx.cellSpaceBelowPt = room(paragraph.marginBottom);
+                ctx.cellParagraphs++;
+                ctx.lastCellParagraph = paragraph;
+                const size_t runsBefore = ctx.runs.size();
+                ParseInlineNodes(elem, paragraph, "", ctx);
+                // A paragraph's own line multiple is its runs': tighter
+                // lines (70%) always, wider ones where every line takes them.
+                if (!std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 0.0f
+                    && (std::isnan(paragraph.lineHeightPt) || paragraph.lineHeightPt <= 0.0f)
+                    && (paragraph.lineSpacing < 0.99f || (paragraph.lineSpacing > 1.01f && cellLineMultiples_))) {
+                    for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                        if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = paragraph.lineSpacing;
+                    }
+                } else if (ctx.cellLineHeightPt > 0.0f && ctx.cellParagraphs > 1
+                           && (std::isnan(paragraph.lineHeightPt) || paragraph.lineHeightPt <= 0.0f)) {
+                    // Not of the height in points the cell's first sets: its own font's lines.
+                    for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                        if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = 1.0f;
+                    }
+                }
+            } else if (tag == "table:table" && frameDepth_ == 0) {
+                // A table in the cell: a frame of its own standing in the
+                // cell's line, as wide as the table says.
+                RichTextFrame nested;
+                nested.nestedTable = true;
+                const size_t start = doc_->blocks.size();
+                ParseTable(elem);
+                nested.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                     std::make_move_iterator(doc_->blocks.end()));
+                doc_->blocks.resize(start);
+                if (nested.blocks.empty()) continue;
+                if (ctx.cellParagraphs > 0) {
+                    if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                    ctx.pendingLineBreak = true;
+                }
+                ctx.cellParagraphs++;
+                ctx.cellSpaceBelowPt = 0.0f;
+                ctx.lastCellParagraph = OdtTextProps{};
+                RichTextRun run;
+                run.text = RichTextRun::kObjectReplacement;
+                run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+                run.imageWidthPt = std::max(0.0f, nested.blocks.front().tableWidthPt);
+                run.frameIndex = static_cast<int>(doc_->frames.size());
+                doc_->frames.push_back(std::move(nested));
+                run.lineBreakBefore = ctx.pendingLineBreak;
+                ctx.pendingLineBreak = false;
+                ctx.runs.push_back(std::move(run));
             } else if (tag == "text:list" || tag == "text:list-item"
                        || tag == "text:list-header" || tag == "table:table"
                        || tag == "table:table-row" || tag == "table:table-cell"
@@ -2186,6 +2622,21 @@ private:
                 CollectCellRuns(elem, ctx);   // descend to reach the paragraphs
             }
         }
+    }
+
+    // An empty line of a cell: a run without text after a line break, in the
+    // font of the paragraph it stands for (its size is the line's height).
+    void AppendEmptyLine(InlineContext& ctx, const OdtTextProps& props) {
+        RichTextRun run;
+        ApplyPropsToRun(run, props);
+        run.lineBreakBefore = true;
+        // Not of the height in points the cell's first paragraph sets: a
+        // line of its own font.
+        if (ctx.cellLineHeightPt > 0.0f && (std::isnan(props.lineHeightPt) || props.lineHeightPt <= 0.0f)) {
+            run.lineSpacing = 1.0f;
+        }
+        ctx.runs.push_back(std::move(run));
+        ctx.pendingLineBreak = false;
     }
 
     void ApplyListLabel(RichDocBlock& block, const std::string& listStyleName, int odfLevel) const {
@@ -2233,6 +2684,11 @@ private:
         auto parseRow = [&](tinyxml2::XMLElement* rowElem, bool header) {
             RichTableRow row;
             row.header = header;
+            auto height = rowHeights_.find(Attr(rowElem, "table:style-name"));
+            if (height != rowHeights_.end()) {
+                row.heightPt = height->second.heightPt;
+                row.heightExact = height->second.exact;
+            }
             size_t gridColumn = 0;
             for (auto* cellElem = rowElem->FirstChildElement(); cellElem;
                  cellElem = cellElem->NextSiblingElement()) {
@@ -2270,11 +2726,23 @@ private:
                     }
                 }
                 InlineContext ctx;
+                ctx.shapesAsRuns = frameDepth_ == 0;
                 // A cell holds block content (paragraphs, headings, lists,
                 // even nested tables). The flat cell model keeps only runs, so
                 // every block's text is flattened into the cell separated by
                 // line breaks rather than dropping non-paragraph blocks.
                 CollectCellRuns(cellElem, ctx);
+                // The cell's last paragraphs, when they are empty.
+                if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                // An empty cell is as tall as a line of its paragraph's font
+                // (a heading row's 8 pt, not the view's): an empty run says
+                // which.
+                if (ctx.runs.empty() && ctx.cellParagraphs > 0
+                    && (ctx.lastCellParagraph.fontSizePt > 0.0f || !ctx.lastCellParagraph.fontFamily.empty())) {
+                    RichTextRun font;
+                    ApplyPropsToRun(font, ctx.lastCellParagraph);
+                    ctx.runs.push_back(std::move(font));
+                }
                 // A cell has no room for block structure: text boxes anchored
                 // in it flatten into line-broken cell text so nothing is lost.
                 // Index loop: nested frames may append more text boxes.
@@ -2286,6 +2754,13 @@ private:
                     }
                 }
                 cell.runs = std::move(ctx.runs);
+                cell.lineHeightPt = ctx.cellLineHeightPt;
+                cell.lineHeightAtLeast = ctx.cellLineHeightAtLeast;
+                cell.lineSpacing = ctx.cellLineSpacing;
+                // The first paragraph's space before and the last one's
+                // after are room inside the cell, as Writer keeps them.
+                if (ctx.cellSpaceAbovePt > 0.0f) cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + ctx.cellSpaceAbovePt;
+                if (ctx.cellSpaceBelowPt > 0.0f) cell.paddingBottomPt = std::max(0.0f, cell.paddingBottomPt) + ctx.cellSpaceBelowPt;
                 row.cells.push_back(std::move(cell));
             }
             block.tableRows.push_back(std::move(row));
@@ -2300,6 +2775,8 @@ private:
             block.tableWidthPercent = placement->second.widthPercent;
             block.tableAlign = placement->second.align;
             block.tableIndentPt = placement->second.indentPt;
+            block.spaceBeforePt = placement->second.spaceBeforePt;
+            block.spaceAfterPt = placement->second.spaceAfterPt;
         }
         const std::vector<std::string> savedDefaults = std::move(columnDefaultCellStyles_);
         columnDefaultCellStyles_.clear();
@@ -2587,7 +3064,7 @@ private:
     // The page the first master page lays the document on: size, margins, and
     // where the body starts once a header / footer takes its room (ODF puts
     // them inside the page margins and moves the body away from them).
-    void LoadPageSetup(tinyxml2::XMLElement* stylesRoot, tinyxml2::XMLElement* master) {
+    void LoadPageSetup(tinyxml2::XMLElement* stylesRoot, tinyxml2::XMLElement* master, RichPageSetup& page) {
         if (!stylesRoot || !master) return;
         const std::string layoutName = Attr(master, "style:page-layout-name");
         auto* automatic = stylesRoot->FirstChildElement("office:automatic-styles");
@@ -2598,7 +3075,6 @@ private:
         }
         auto* props = layout ? layout->FirstChildElement("style:page-layout-properties") : nullptr;
         if (!props) return;
-        RichPageSetup& page = doc_->page;
         page.widthPt = ParseLengthPt(Attr(props, "fo:page-width"));
         page.heightPt = ParseLengthPt(Attr(props, "fo:page-height"));
         const float margin = ParseLengthPt(Attr(props, "fo:margin"));
@@ -2614,14 +3090,34 @@ private:
         // height, which (as Writer reads it) includes the spacing to the
         // body. A header taller than that pushes the body down further;
         // the view measures it.
-        auto room = [&](const char* styleTag, const char* spacingAttr) {
+        // A header or footer of empty paragraphs is not kept as one (there
+        // is nothing to show), but its lines take their room all the same:
+        // Word's export gives every page style one, and the text starts a
+        // line lower for it.
+        auto emptyLines = [&](tinyxml2::XMLElement* region) {
+            float height = 0.0f;
+            if (!region || std::string(Attr(region, "style:display")) == "false") return height;
+            for (auto* p = region->FirstChildElement("text:p"); p; p = p->NextSiblingElement("text:p")) {
+                if (p->FirstChild()) return 0.0f;      // it has content: the view measures it
+                const float size = ResolveStyle(Attr(p, "text:style-name")).fontSizePt;
+                height += (size > 0.0f ? size : 12.0f) * 1.3f;
+            }
+            return height;
+        };
+        auto room = [&](const char* styleTag, const char* spacingAttr, tinyxml2::XMLElement* region) {
             auto* hfStyle = layout->FirstChildElement(styleTag);
             auto* hf = hfStyle ? hfStyle->FirstChildElement("style:header-footer-properties") : nullptr;
-            if (!hf) return 0.0f;
-            return std::max(ParseLengthPt(Attr(hf, "fo:min-height")), ParseLengthPt(Attr(hf, spacingAttr)));
+            const float spacing = hf ? ParseLengthPt(Attr(hf, spacingAttr)) : 0.0f;
+            const float least = hf ? ParseLengthPt(Attr(hf, "fo:min-height")) : 0.0f;
+            const float lines = emptyLines(region);
+            return std::max({least, spacing, lines > 0.0f ? lines + spacing : 0.0f});
         };
-        if (master->FirstChildElement("style:header")) page.marginTopPt += room("style:header-style", "fo:margin-bottom");
-        if (master->FirstChildElement("style:footer")) page.marginBottomPt += room("style:footer-style", "fo:margin-top");
+        if (auto* header = master->FirstChildElement("style:header")) {
+            page.marginTopPt += room("style:header-style", "fo:margin-bottom", header);
+        }
+        if (auto* footer = master->FirstChildElement("style:footer")) {
+            page.marginBottomPt += room("style:footer-style", "fo:margin-top", footer);
+        }
     }
 
     void LoadMetadata() {
@@ -2655,8 +3151,11 @@ public:
             error = "Cannot create file: " + filePath;
             return false;
         }
-        // ODF requires the mimetype entry first and uncompressed.
-        static const char* kMimeType = "application/vnd.oasis.opendocument.text";
+        // ODF requires the mimetype entry first and uncompressed. A template
+        // (.ott) is the same package under its own media type.
+        mimeType_ = IsWordTemplateExtension(filePath) ? "application/vnd.oasis.opendocument.text-template"
+                                                      : "application/vnd.oasis.opendocument.text";
+        const std::string kMimeType = mimeType_;
         // Body and page furniture first: writing them collects the automatic
         // styles that content.xml and styles.xml each declare.
         std::string body = WriteBlocks(doc.blocks);
@@ -2674,9 +3173,16 @@ public:
             || !zip_.AddEntry("content.xml", BuildContentXml(body))
             || !zip_.AddEntry("styles.xml", BuildStylesXml(masterStyles))
             || !zip_.AddEntry("meta.xml", BuildMetaXml())
+            || (HasSettings() && !zip_.AddEntry("settings.xml", BuildSettingsXml()))
             || !zip_.AddEntry("META-INF/manifest.xml", BuildManifestXml())) {
             error = "Failed to write document package: " + zip_.GetLastError();
             return false;
+        }
+        for (size_t i = 0; i < chartObjects_.size(); ++i) {
+            if (!zip_.AddEntry("Object " + std::to_string(i + 1) + "/content.xml", chartObjects_[i])) {
+                error = "Failed to write a chart: " + zip_.GetLastError();
+                return false;
+            }
         }
         for (size_t i = 0; i < doc.media.size(); ++i) {
             if (!zip_.AddEntry(PictureHref(i), doc.media[i].data.data(),
@@ -2695,6 +3201,7 @@ public:
 private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
+    std::string mimeType_ = "application/vnd.oasis.opendocument.text";   // "...text-template" for an .ott
     int noteCounter_ = 0;                 // text:note ids, ftn1 / edn2 ...
     int tocCount_ = 0;
     const std::vector<RichDocBlock>* blocks_ = nullptr;   // the blocks being written (body or furniture)
@@ -2741,6 +3248,13 @@ private:
         size_t spaceRun = 0;
         auto flushSpaces = [&]() {
             if (spaceRun == 0) return;
+            // A run of nothing but spaces is all text:s: a plain space
+            // after another run's space, or after a picture, is collapsed away.
+            if (out.empty() && spaceRun == text.size()) {
+                out += "<text:s text:c=\"" + std::to_string(spaceRun) + "\"/>";
+                spaceRun = 0;
+                return;
+            }
             out += ' ';
             if (spaceRun > 1) {
                 out += "<text:s text:c=\"" + std::to_string(spaceRun - 1) + "\"/>";
@@ -2783,16 +3297,53 @@ private:
         }
         xml << "<draw:frame draw:name=\""
             << EscapeXml(run.imageAltText.empty() ? std::string("Image") : run.imageAltText) << "\"";
+        bool turned = false;
         if (run.IsFloatingImage()) {
             xml << " draw:style-name=\"" << FloatingFrameStyle(run) << "\" text:anchor-type=\"paragraph\"";
-            if (run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
-            if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) {
-                xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+            if (std::fmod(static_cast<double>(run.imageRotationDeg), 360.0) != 0.0) {
+                // Turned: its size and a draw:transform, as a turned shape.
+                RichShape box;
+                box.widthPt = widthPt;
+                box.heightPt = heightPt;
+                box.rotationDeg = run.imageRotationDeg;
+                xml << ShapeBoxAttributes(box, run.imageOffsetXPt, run.imageOffsetYPt) << ">";
+                turned = true;
+            } else {
+                if (run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
+                if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) {
+                    xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+                }
             }
         } else {
             xml << " text:anchor-type=\"as-char\"";
+            if (std::fmod(static_cast<double>(run.imageRotationDeg), 360.0) != 0.0) {
+                // Turned in the line: its size as before the turn and a
+                // draw:transform, as a turned shape. Anchored as a character
+                // it stands on the baseline - down counts from there, so the
+                // top of the box round the turned picture is its height
+                // above. (Writer turns it only as a drawing object, which a
+                // graphic style with a stroke and fill makes it; as a plain
+                // picture it clips the turned picture to its old box.)
+                RichShape box;
+                box.widthPt = widthPt;
+                box.heightPt = heightPt;
+                box.rotationDeg = run.imageRotationDeg;
+                constexpr double kRad = 3.14159265358979323846 / 180.0;
+                const double c = std::abs(std::cos(run.imageRotationDeg * kRad)), sn = std::abs(std::sin(run.imageRotationDeg * kRad));
+                const float boundWidth = static_cast<float>(widthPt * c + heightPt * sn);
+                const float boundHeight = static_cast<float>(widthPt * sn + heightPt * c);
+                if (graphicStylesXml_.find("\"grTurned\"") == std::string::npos) {
+                    graphicStylesXml_ += "<style:style style:name=\"grTurned\" style:family=\"graphic\">"
+                                         "<style:graphic-properties draw:stroke=\"none\" draw:fill=\"none\""
+                                         " style:vertical-pos=\"top\" style:vertical-rel=\"baseline\"/></style:style>\n";
+                }
+                xml << " draw:style-name=\"grTurned\""
+                    << ShapeBoxAttributes(box, (boundWidth - widthPt) * 0.5f, (boundHeight - heightPt) * 0.5f - boundHeight) << ">";
+                turned = true;
+            }
         }
-        xml << " svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt) << "\">"
+        if (!turned) xml << " svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt) << "\">";
+        xml
             << "<draw:image xlink:href=\"" << PictureHref(run.mediaIndex)
             << "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>"
             << "</draw:frame>";
@@ -2822,6 +3373,13 @@ private:
             const std::string arrow = Pt(std::max(6.0f, shape.lineWidthPt * 3.5f));
             if (shape.arrowStart) look += " draw:marker-start=\"UC_Arrow\" draw:marker-start-width=\"" + arrow + "\"";
             if (shape.arrowEnd) look += " draw:marker-end=\"UC_Arrow\" draw:marker-end-width=\"" + arrow + "\"";
+        }
+        if (shape.HasShadow()) {
+            look += " draw:shadow=\"visible\" draw:shadow-offset-x=\"" + Pt(shape.shadowOffsetXPt)
+                  + "\" draw:shadow-offset-y=\"" + Pt(shape.shadowOffsetYPt) + "\" draw:shadow-color=\""
+                  + EscapeXml(shape.shadowColor) + "\" draw:shadow-opacity=\""
+                  + std::to_string(std::lround(std::clamp(shape.shadowOpacity, 0.0f, 1.0f) * 100.0f)) + "%\"";
+            if (shape.shadowBlurPt > 0.0f) look += " draw:shadow-blur=\"" + Pt(shape.shadowBlurPt) + "\"";
         }
         const char* vertical = anchor == RichShape::TextAnchor::Middle ? "middle"
                              : anchor == RichShape::TextAnchor::Bottom ? "bottom" : "top";
@@ -3142,10 +3700,37 @@ private:
 
     // A drawing, anchored to its paragraph and placed as its run says: a lone
     // shape (with the frame's words), else a group of its shapes.
+    // A chart as ODF has one: an object of its own in the package
+    // ("Object N/content.xml": a chart:chart with its series, and the table
+    // their ranges point into), shown by a draw:frame.
+    std::vector<std::string> chartObjects_;       // "Object <n>/content.xml", n from 1
+    static std::string BuildChartObjectXml(const RichChart& chart, float widthPt, float heightPt) {
+        return WriteOdfChartObject(chart, widthPt, heightPt);   // UltraCanvasOdfChart, shared with the .odp writer
+    }
+
     void WriteDrawing(std::ostringstream& xml, const RichTextRun& run, const RichTextFrame& frame) {
-        const float x = run.imageFloatAlign == RichTextAlign::Default ? run.imageOffsetXPt : 0.0f;
-        const float y = run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top ? run.imageOffsetYPt : 0.0f;
-        const std::string anchor = " text:anchor-type=\"paragraph\"";
+        // In a table cell a drawing text stops above and goes on below
+        // stands in the line (so every view sets it): anchored as a
+        // character, on the baseline.
+        const bool inLine = run.imageWrap == RichTextRun::ImageWrap::Inline
+                         || (writingCell_ && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom);
+        if (frame.chart.IsChart() && !frame.chart.series.empty() && run.imageWidthPt > 0.0f && run.imageHeightPt > 0.0f) {
+            // A chart stays a chart: an object of its own, not its shapes.
+            chartObjects_.push_back(BuildChartObjectXml(frame.chart, run.imageWidthPt, run.imageHeightPt));
+            xml << "<draw:frame draw:style-name=\"" << FloatingFrameStyle(run, nullptr, " draw:ole-draw-aspect=\"1\"", inLine) << "\"";
+            if (!frame.name.empty()) xml << " draw:name=\"" << EscapeXml(frame.name) << "\"";
+            xml << (inLine ? " text:anchor-type=\"as-char\"" : " text:anchor-type=\"paragraph\"");
+            if (!inLine && run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
+            if (!inLine && run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+            xml << " svg:width=\"" << Pt(run.imageWidthPt) << "\" svg:height=\"" << Pt(run.imageHeightPt) << "\">"
+                << "<draw:object xlink:href=\"./Object " << chartObjects_.size()
+                << "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>";
+            return;
+        }
+        const float x = inLine ? 0.0f : run.imageFloatAlign == RichTextAlign::Default ? run.imageOffsetXPt : 0.0f;
+        const float y = inLine ? 0.0f
+                      : run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top ? run.imageOffsetYPt : 0.0f;
+        const std::string anchor = inLine ? " text:anchor-type=\"as-char\"" : " text:anchor-type=\"paragraph\"";
         if (frame.shapes.size() == 1 && frame.shapes.front().kind != RichShape::Kind::Group) {
             RichShape shape = frame.shapes.front();
             shape.xPt = shape.yPt = 0.0f;
@@ -3153,7 +3738,8 @@ private:
             shape.heightPt = run.imageHeightPt;
             if (shape.name.empty()) shape.name = frame.name;
             const std::string style = FloatingFrameStyle(run, nullptr,
-                                                         ShapeLookAttributes(shape, frame.paddingPt, frame.textAnchor));
+                                                         ShapeLookAttributes(shape, frame.paddingPt, frame.textAnchor),
+                                                         inLine);
             WriteShapeElement(xml, shape, x, y, style, anchor, &frame.blocks, frame.paddingPt, frame.textAnchor, 0);
             return;
         }
@@ -3174,7 +3760,7 @@ private:
         const float scaleY = group.heightPt > 0.0f && run.imageHeightPt > 0.0f ? run.imageHeightPt / group.heightPt : 1.0f;
         if (scaleX != 1.0f || scaleY != 1.0f) ScaleShape(group, scaleX, scaleY, 0);
         if (group.name.empty()) group.name = frame.name;
-        WriteShapeElement(xml, group, x, y, FloatingFrameStyle(run), anchor, nullptr, 0.0f,
+        WriteShapeElement(xml, group, x, y, FloatingFrameStyle(run, nullptr, "", inLine), anchor, nullptr, 0.0f,
                           RichShape::TextAnchor::Top, 0);
     }
 
@@ -3203,8 +3789,9 @@ private:
     // An automatic graphic style saying how a floating picture or text frame
     // wraps, where it sits and what that counts from, and a frame's fill,
     // border and padding; one per distinct combination.
+    bool writingCell_ = false;                    // a table cell's runs are being written
     std::string FloatingFrameStyle(const RichTextRun& run, const RichTextFrame* frame = nullptr,
-                                   const std::string& shapeLook = "") {
+                                   const std::string& shapeLook = "", bool inLine = false) {
         using Wrap = RichTextRun::ImageWrap;
         using Origin = RichTextRun::FloatOrigin;
         using VAlign = RichTextRun::FloatVerticalAlign;
@@ -3215,7 +3802,9 @@ private:
         const std::string position = run.imageFloatAlign == RichTextAlign::Right ? "right"
                                    : run.imageFloatAlign == RichTextAlign::Center ? "center"
                                    : run.imageFloatAlign == RichTextAlign::Default ? "from-left" : "left";
-        const std::string verticalPosition = run.floatVerticalAlign == VAlign::Middle ? "middle"
+        // In the line (anchored as a character): on the baseline.
+        const std::string verticalPosition = inLine ? "top"
+                                           : run.floatVerticalAlign == VAlign::Middle ? "middle"
                                            : run.floatVerticalAlign == VAlign::Bottom ? "bottom" : "from-top";
         auto relation = [](Origin origin, bool across, Origin other) -> std::string {
             if (origin == Origin::Page) return "page";
@@ -3223,7 +3812,8 @@ private:
             return "paragraph";
         };
         const std::string horizontalRel = relation(run.floatHorizontalFrom, true, run.floatVerticalFrom);
-        const std::string verticalRel = relation(run.floatVerticalFrom, false, run.floatHorizontalFrom);
+        const std::string verticalRel = inLine ? "baseline"
+                                      : relation(run.floatVerticalFrom, false, run.floatHorizontalFrom);
         std::string look;
         if (frame) {
             look += frame->backgroundColor.empty()
@@ -3351,6 +3941,16 @@ private:
     void WriteRun(std::ostringstream& xml, const RichTextRun& run) {
         if (run.lineBreakBefore) xml << "<text:line-break/>";
         if (run.IsInlineImage()) {
+            // In the line it stands in a line of its run's font: a span says which.
+            if (!run.IsFloatingImage() && run.fontSizePt > 0.0f) {
+                RichTextRun font;
+                font.fontSizePt = run.fontSizePt;
+                font.fontFamily = run.fontFamily;
+                xml << "<text:span text:style-name=\"" << TextStyleNameFor(font) << "\">";
+                WriteInlineImage(xml, run);
+                xml << "</text:span>";
+                return;
+            }
             WriteInlineImage(xml, run);
             return;
         }
@@ -3397,6 +3997,7 @@ private:
             && (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading)) {
             const std::string parent = StyleIdToOdfName(block.styleId);
             if (block.HasParagraphGeometry() || block.align != RichTextAlign::Default || block.rightToLeft
+                || block.columnBreakBefore
                 || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
                 return GeometryStyleFor(block, parent);
             }
@@ -3408,7 +4009,7 @@ private:
             default: break;
         }
         if (block.HasParagraphGeometry() || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()
-            || block.rightToLeft) {
+            || block.rightToLeft || block.columnBreakBefore) {
             return GeometryStyleFor(block);
         }
         return AlignedStyle(block.align);
@@ -3428,6 +4029,7 @@ private:
         std::ostringstream props;
         if (const char* align = AlignValue(block.align)) props << " fo:text-align=\"" << align << "\"";
         if (block.rightToLeft) props << " style:writing-mode=\"rl-tb\"";
+        if (block.columnBreakBefore) props << " fo:break-before=\"column\"";
         if (block.leftIndentPt != 0.0f) props << " fo:margin-left=\"" << Pt(block.leftIndentPt) << "\"";
         if (block.rightIndentPt != 0.0f) props << " fo:margin-right=\"" << Pt(block.rightIndentPt) << "\"";
         if (block.firstLineIndentPt != 0.0f) props << " fo:text-indent=\"" << Pt(block.firstLineIndentPt) << "\"";
@@ -3533,6 +4135,42 @@ private:
         }
     }
 
+    // A cell's paragraph: aligned, `above` points below the one before it,
+    // and otherwise without space before or after.
+    // The style of one line of a cell: the cell's alignment and line height,
+    // the room above it, and - for a line without words - the font it is a
+    // line of (`mark`).
+    std::string CellParagraphStyle(const RichTableCell& cell, float above, const RichTextRun* mark, float multiple) {
+        const char* value = AlignValue(cell.align);
+        std::string props = (value ? std::string(" fo:text-align=\"") + value + "\"" : std::string())
+                          + " fo:margin-top=\"" + Pt(above) + "\" fo:margin-bottom=\"0pt\"";
+        if (multiple > 0.0f && cell.lineHeightPt > 0.0f) {
+            // Its own multiple, not the cell's height in points.
+            props += " fo:line-height=\"" + std::to_string(std::lround(multiple * 100.0f)) + "%\"";
+            if (std::abs(multiple - 1.0f) > 0.01f) usesCellLineMultiples_ = true;
+        } else if (cell.lineHeightPt > 0.0f) {
+            props += std::string(cell.lineHeightAtLeast ? " style:line-height-at-least=\"" : " fo:line-height=\"")
+                   + Pt(cell.lineHeightPt) + "\"";
+        } else if (multiple > 0.0f || cell.lineSpacing > 0.0f) {
+            props += " fo:line-height=\"" + std::to_string(std::lround((multiple > 0.0f ? multiple : cell.lineSpacing) * 100.0f))
+                   + "%\"";
+            usesCellLineMultiples_ = true;
+        }
+        std::string text;
+        if (mark && mark->fontSizePt > 0.0f) text += " fo:font-size=\"" + Pt(mark->fontSizePt) + "\"";
+        if (mark && !mark->fontFamily.empty()) text += " fo:font-family=\"" + EscapeXml(mark->fontFamily) + "\"";
+        const std::string key = props + "|" + text;
+        auto known = cellParagraphStyles_.find(key);
+        if (known != cellParagraphStyles_.end()) return known->second;
+        const std::string name = "PCell" + std::to_string(cellParagraphStyles_.size() + 1);
+        cellParagraphStyles_[key] = name;
+        columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\""
+                         " style:parent-style-name=\"Standard\"><style:paragraph-properties" + props + "/>"
+                       + (text.empty() ? std::string() : "<style:text-properties" + text + "/>") + "</style:style>\n";
+        return name;
+    }
+    std::map<std::string, std::string> cellParagraphStyles_;   // by their properties
+
     static const char* AlignedStyle(RichTextAlign align) {
         switch (align) {
             case RichTextAlign::Center: return "PCenter";
@@ -3597,9 +4235,11 @@ private:
             const char* align = block.tableAlign == RichTextAlign::Center ? "center"
                               : block.tableAlign == RichTextAlign::Right ? "right" : "left";
             props << " table:align=\"" << align << "\"";
-            if (block.tableIndentPt > 0.0f && std::string(align) == "left") {
+            if (block.tableIndentPt != 0.0f && std::string(align) == "left") {
                 props << " fo:margin-left=\"" << Pt(block.tableIndentPt) << "\"";
             }
+            if (block.spaceBeforePt >= 0.0f) props << " fo:margin-top=\"" << Pt(block.spaceBeforePt) << "\"";
+            if (block.spaceAfterPt >= 0.0f) props << " fo:margin-bottom=\"" << Pt(block.spaceAfterPt) << "\"";
             columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"table\">"
                              "<style:table-properties" + props.str() + "/></style:style>\n";
             xml << " table:style-name=\"" << name << "\"";
@@ -3628,9 +4268,20 @@ private:
         // that is the only way a row span survives the write — the reader has
         // always recovered them, so dropping them here lost the merge silently.
         std::vector<int> rowSpanRemaining(columnCount, 0);
+        size_t rowNumber = 0;
         for (const auto& row : block.tableRows) {
             if (row.header) xml << "<table:table-header-rows>";
-            xml << "<table:table-row>";
+            rowNumber++;
+            if (row.heightPt > 0.0f) {
+                // The row's height, in an automatic row style.
+                const std::string name = "Table" + std::to_string(tableNumber) + ".R" + std::to_string(rowNumber);
+                columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"table-row\">"
+                                 "<style:table-row-properties style:" + (row.heightExact ? "row-height" : "min-row-height")
+                               + "=\"" + Pt(row.heightPt) + "\"/></style:style>\n";
+                xml << "<table:table-row table:style-name=\"" << name << "\">";
+            } else {
+                xml << "<table:table-row>";
+            }
 
             size_t cellIndex = 0;
             for (size_t col = 0; col < columnCount; ) {
@@ -3653,9 +4304,66 @@ private:
                 if (rowSpan > 1) {
                     xml << " table:number-rows-spanned=\"" << rowSpan << "\"";
                 }
-                xml << "><text:p text:style-name=\"" << AlignedStyle(cell.align) << "\">";
-                WriteRuns(xml, cell.runs);
-                xml << "</text:p></table:table-cell>";
+                // The cell's lines as paragraphs without spacing of their
+                // own (it is the cell's padding, and would be counted twice
+                // when the file is read again); a line of a set height
+                // (RichTextRun::emptyLineHeightPt) is the space above the
+                // paragraph that follows it.
+                xml << ">";
+                writingCell_ = true;
+                std::vector<RichTextRun> piece;
+                float above = 0.0f;
+                bool afterTable = false;          // a nested table was the last thing written
+                auto flush = [&]() {
+                    // A paragraph without words is a line of its font,
+                    // which its style states.
+                    bool words = false;
+                    for (const RichTextRun& run : piece) words = words || !run.text.empty();
+                    const RichTextRun* mark = !words && !piece.empty() ? &piece.front() : nullptr;
+                    float multiple = 0.0f;        // the line's own, before the cell's
+                    for (const RichTextRun& run : piece) {
+                        if (run.lineSpacing > 0.0f) { multiple = run.lineSpacing; break; }
+                    }
+                    xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell, above, mark, multiple) << "\">";
+                    WriteRuns(xml, piece);
+                    xml << "</text:p>";
+                    piece.clear();
+                    above = 0.0f;
+                };
+                // Every line of the cell is a paragraph; a table nested in
+                // the cell is written as that table, between them.
+                bool open = true;                 // a paragraph is begun: a line break ends it
+                bool written = false;
+                for (const RichTextRun& run : cell.runs) {
+                    if (run.lineBreakBefore && run.text.empty() && run.emptyLineHeightPt > 0.0f) {
+                        if (open) { flush(); written = true; }
+                        above = run.emptyLineHeightPt;
+                        open = false;             // the break after a spacer is the new paragraph's start
+                        continue;
+                    }
+                    const RichTextFrame* nested = run.IsTextFrame() ? doc_->FrameFor(run) : nullptr;
+                    if (nested && nested->nestedTable) {
+                        if (open && (!piece.empty() || (run.lineBreakBefore && written))) { flush(); written = true; }
+                        piece.clear();
+                        for (const RichDocBlock& inner : nested->blocks) {
+                            if (inner.type == RichBlockType::Table) WriteTable(xml, inner, ++tableCount_);
+                        }
+                        writingCell_ = true;
+                        written = true;
+                        open = false;
+                        afterTable = true;
+                        continue;
+                    }
+                    if (run.lineBreakBefore && open) { flush(); written = true; }
+                    piece.push_back(run);
+                    piece.back().lineBreakBefore = false;
+                    open = true;
+                    afterTable = false;
+                }
+                if (open || !written) flush();
+                (void)afterTable;
+                writingCell_ = false;
+                xml << "</table:table-cell>";
                 for (int s = 1; s < columnSpan; ++s) {
                     xml << "<table:covered-table-cell/>";
                 }
@@ -3805,6 +4513,18 @@ private:
     // A section in columns, as a text:section with a section style. Only
     // the body has sections.
     std::string sectionStylesXml_;
+    // The page styles the body's sections use: what a section says of its
+    // header, footer and margins. The first is the document's own.
+    struct PageStyleKey {
+        int furniture = -1;
+        float top = -1.0f, bottom = -1.0f, headerTop = -1.0f, footerBottom = -1.0f;
+        bool operator==(const PageStyleKey& other) const {
+            return furniture == other.furniture && top == other.top && bottom == other.bottom
+                && headerTop == other.headerTop && footerBottom == other.footerBottom;
+        }
+    };
+    std::vector<PageStyleKey> pageStyles_{PageStyleKey{}};
+    PageStyleKey currentPageStyle_;
     int sectionCount_ = 0;
     bool sectionOpen_ = false;
 
@@ -3817,7 +4537,28 @@ private:
         }
         const RichSectionSetup& setup = i == 0 ? (blocks[0].sectionStart ? blocks[0].section : doc_->firstSection)
                                                : blocks[i].section;
-        if (i > 0 && setup.newPage) body << "<text:p text:style-name=\"PPageBreak\"/>\n";
+        // Pages of another header, footer or margins are another master
+        // page: an empty paragraph whose style names it starts them (and
+        // breaks the page, as naming a master page does).
+        const PageStyleKey pageStyle{setup.furniture, setup.marginTopPt, setup.marginBottomPt,
+                                     setup.headerTopPt, setup.footerBottomPt};
+        if (i > 0 && !(pageStyle == currentPageStyle_)) {
+            currentPageStyle_ = pageStyle;
+            size_t index = 0;
+            while (index < pageStyles_.size() && !(pageStyles_[index] == pageStyle)) ++index;
+            if (index == pageStyles_.size()) pageStyles_.push_back(pageStyle);
+            // Index 0 is the document's own page style, "Standard".
+            const std::string master = index == 0 ? std::string("Standard") : "MP" + std::to_string(index);
+            const std::string name = "PMaster" + std::to_string(index);
+            if (sectionStylesXml_.find("\"" + name + "\"") == std::string::npos) {
+                sectionStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\""
+                                     " style:parent-style-name=\"Standard\" style:master-page-name=\"" + master + "\">"
+                                     "<style:paragraph-properties fo:break-before=\"page\"/></style:style>\n";
+            }
+            body << "<text:p text:style-name=\"" << name << "\"/>\n";
+        } else if (i > 0 && setup.newPage) {
+            body << "<text:p text:style-name=\"PPageBreak\"/>\n";
+        }
         if (setup.columns <= 1) return;
         const std::string name = "Sect" + std::to_string(++sectionCount_);
         sectionStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"section\">"
@@ -3858,7 +4599,12 @@ private:
                     if (!block.styleId.empty() && doc_->FindStyle(block.styleId)) {
                         body << "<text:h text:style-name=\"" << EscapeXml(ParagraphStyleFor(block)) << "\"";
                     } else {
-                        body << "<text:h text:style-name=\"Heading_20_" << std::clamp(block.headingLevel, 1, 6) << "\"";
+                        // Its own font, size, spacing and indents on top of
+                        // the heading style, where it has any.
+                        const std::string level = "Heading_20_" + std::to_string(std::clamp(block.headingLevel, 1, 6));
+                        const bool own = block.HasParagraphGeometry() || block.align != RichTextAlign::Default
+                            || block.columnBreakBefore || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty();
+                        body << "<text:h text:style-name=\"" << (own ? GeometryStyleFor(block, level) : level) << "\"";
                     }
                     body << " text:outline-level=\"" << std::clamp(block.headingLevel, 1, 6) << "\">";
                     WriteBookmarks(body, block);
@@ -4035,51 +4781,97 @@ private:
     // The page layout and the master page with its headers and footers. The
     // model's top margin is where the body starts; ODF's is where the
     // header starts, the header's height and spacing following it.
+    // settings.xml: the compatibility options the document's layout was made
+    // with, when they are not the ones a reader assumes.
+    bool HasSettings() const {
+        return !doc_->fontLineGap || !doc_->paragraphSpacingInCells || !doc_->breakAfterSlash || usesCellLineMultiples_;
+    }
+    bool usesCellLineMultiples_ = false;          // a cell written with a line multiple (RichTableCell::lineSpacing)
+    std::string BuildSettingsXml() const {
+        auto item = [](const char* name, bool value) {
+            return std::string("<config:config-item config:name=\"") + name + "\" config:type=\"boolean\">"
+                 + (value ? "true" : "false") + "</config:config-item>";
+        };
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+               "<office:document-settings xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+               "xmlns:config=\"urn:oasis:names:tc:opendocument:xmlns:config:1.0\" office:version=\"1.3\">"
+               "<office:settings><config:config-item-set config:name=\"ooo:configuration-settings\">"
+             + item("AddExternalLeading", doc_->fontLineGap)
+             + item("AddParaSpacingToTableCells", doc_->paragraphSpacingInCells)
+             + "</config:config-item-set>"
+               // What Writer has no setting for, in a set of its own (Writer
+               // keeps to its own sets and leaves this one alone).
+               "<config:config-item-set config:name=\"ultracanvas:layout-settings\">"
+             + item("UltraCanvasBreakAfterSlash", doc_->breakAfterSlash)
+             + item("UltraCanvasCellLineMultiples", usesCellLineMultiples_)
+             + "</config:config-item-set></office:settings></office:document-settings>\n";
+    }
+
     std::string BuildMasterStyles() {
         const UCRichDocument& doc = *doc_;
-        const RichPageFurniture& later = doc.pageFurniture;
-        const RichPageFurniture& first = doc.firstPageDiffers ? doc.firstPageFurniture : doc.pageFurniture;
-        const bool hasHeader = !later.header.empty() || !first.header.empty();
-        const bool hasFooter = !later.footer.empty() || !first.footer.empty();
-        const RichPageSetup& page = doc.page;
-        if (!page.HasPage() && !hasHeader && !hasFooter) return "";
-
-        std::ostringstream props;
-        std::ostringstream headerStyle;
-        std::ostringstream footerStyle;
-        if (page.HasPage()) {
-            props << " fo:page-width=\"" << Pt(page.widthPt) << "\" fo:page-height=\"" << Pt(page.heightPt) << "\""
-                  << " style:print-orientation=\"" << (page.widthPt > page.heightPt ? "landscape" : "portrait") << "\""
-                  << " fo:margin-left=\"" << Pt(page.marginLeftPt) << "\" fo:margin-right=\"" << Pt(page.marginRightPt) << "\"";
-        }
-        // A header's room is the space between where it starts and where the
-        // body does: its minimum height, spacing to the body included.
-        auto room = [](float margin, float edge, std::ostringstream& out, const char* tag, const char* spacingAttr) {
-            const float start = (edge > 0.0f && edge < margin) ? edge : margin * 0.5f;
-            const float total = std::max(0.0f, margin - start);
-            const float spacing = std::min(7.0f, total * 0.5f);
-            out << "<style:" << tag << "><style:header-footer-properties fo:min-height=\"" << Pt(total)
-                << "\" " << spacingAttr << "=\"" << Pt(spacing) << "\" style:dynamic-spacing=\"false\"/></style:" << tag << ">";
-            return start;
-        };
-        float top = page.marginTopPt, bottom = page.marginBottomPt;
-        if (hasHeader) top = room(page.marginTopPt, page.headerTopPt, headerStyle, "header-style", "fo:margin-bottom");
-        if (hasFooter) bottom = room(page.marginBottomPt, page.footerBottomPt, footerStyle, "footer-style", "fo:margin-top");
-        if (page.HasPage()) props << " fo:margin-top=\"" << Pt(top) << "\" fo:margin-bottom=\"" << Pt(bottom) << "\"";
-        pageLayout_ = "<style:page-layout style:name=\"PL1\"><style:page-layout-properties" + props.str() + "/>"
-                    + headerStyle.str() + footerStyle.str() + "</style:page-layout>\n";
+        bool any = doc.page.HasPage() || pageStyles_.size() > 1;
+        for (const RichPageFurniture* furniture : doc.AllFurniture()) any = any || !furniture->IsEmpty();
+        if (!any) return "";
 
         std::ostringstream xml;
-        xml << "<office:master-styles>\n<style:master-page style:name=\"Standard\" style:page-layout-name=\"PL1\">";
-        if (hasHeader) {
-            xml << "<style:header>" << WriteBlocks(later.header) << "</style:header>";
-            if (doc.firstPageDiffers) xml << "<style:header-first>" << WriteBlocks(first.header) << "</style:header-first>";
+        xml << "<office:master-styles>\n";
+        pageLayout_.clear();
+        // One master page and page layout per page style: the document's
+        // own ("Standard"), then each a section brought.
+        for (size_t index = 0; index < pageStyles_.size(); ++index) {
+            const PageStyleKey& key = pageStyles_[index];
+            const bool ownSet = key.furniture >= 0 && key.furniture < static_cast<int>(doc.sectionFurniture.size());
+            const RichSectionFurniture* own = ownSet ? &doc.sectionFurniture[static_cast<size_t>(key.furniture)] : nullptr;
+            const bool firstDiffers = own ? own->firstPageDiffers : doc.firstPageDiffers;
+            const RichPageFurniture& later = own ? own->pages : doc.pageFurniture;
+            const RichPageFurniture& first = firstDiffers ? (own ? own->firstPage : doc.firstPageFurniture) : later;
+            const bool hasHeader = !later.header.empty() || !first.header.empty();
+            const bool hasFooter = !later.footer.empty() || !first.footer.empty();
+            RichPageSetup page = doc.page;
+            if (key.top >= 0.0f) page.marginTopPt = key.top;
+            if (key.bottom >= 0.0f) page.marginBottomPt = key.bottom;
+            if (key.headerTop >= 0.0f) page.headerTopPt = key.headerTop;
+            if (key.footerBottom >= 0.0f) page.footerBottomPt = key.footerBottom;
+
+            std::ostringstream props;
+            std::ostringstream headerStyle;
+            std::ostringstream footerStyle;
+            if (page.HasPage()) {
+                props << " fo:page-width=\"" << Pt(page.widthPt) << "\" fo:page-height=\"" << Pt(page.heightPt) << "\""
+                      << " style:print-orientation=\"" << (page.widthPt > page.heightPt ? "landscape" : "portrait") << "\""
+                      << " fo:margin-left=\"" << Pt(page.marginLeftPt) << "\" fo:margin-right=\"" << Pt(page.marginRightPt) << "\"";
+            }
+            // A header's room is the space between where it starts and where the
+            // body does: its minimum height, spacing to the body included.
+            auto room = [](float margin, float edge, std::ostringstream& out, const char* tag, const char* spacingAttr) {
+                const float start = (edge > 0.0f && edge < margin) ? edge : margin * 0.5f;
+                const float total = std::max(0.0f, margin - start);
+                const float spacing = std::min(7.0f, total * 0.5f);
+                out << "<style:" << tag << "><style:header-footer-properties fo:min-height=\"" << Pt(total)
+                    << "\" " << spacingAttr << "=\"" << Pt(spacing) << "\" style:dynamic-spacing=\"false\"/></style:" << tag << ">";
+                return start;
+            };
+            float top = page.marginTopPt, bottom = page.marginBottomPt;
+            if (hasHeader) top = room(page.marginTopPt, page.headerTopPt, headerStyle, "header-style", "fo:margin-bottom");
+            if (hasFooter) bottom = room(page.marginBottomPt, page.footerBottomPt, footerStyle, "footer-style", "fo:margin-top");
+            if (page.HasPage()) props << " fo:margin-top=\"" << Pt(top) << "\" fo:margin-bottom=\"" << Pt(bottom) << "\"";
+            const std::string layout = "PL" + std::to_string(index + 1);
+            pageLayout_ += "<style:page-layout style:name=\"" + layout + "\"><style:page-layout-properties" + props.str() + "/>"
+                         + headerStyle.str() + footerStyle.str() + "</style:page-layout>\n";
+
+            xml << "<style:master-page style:name=\"" << (index == 0 ? std::string("Standard") : "MP" + std::to_string(index))
+                << "\" style:page-layout-name=\"" << layout << "\">";
+            if (hasHeader) {
+                xml << "<style:header>" << WriteBlocks(later.header) << "</style:header>";
+                if (firstDiffers) xml << "<style:header-first>" << WriteBlocks(first.header) << "</style:header-first>";
+            }
+            if (hasFooter) {
+                xml << "<style:footer>" << WriteBlocks(later.footer) << "</style:footer>";
+                if (firstDiffers) xml << "<style:footer-first>" << WriteBlocks(first.footer) << "</style:footer-first>";
+            }
+            xml << "</style:master-page>\n";
         }
-        if (hasFooter) {
-            xml << "<style:footer>" << WriteBlocks(later.footer) << "</style:footer>";
-            if (doc.firstPageDiffers) xml << "<style:footer-first>" << WriteBlocks(first.footer) << "</style:footer-first>";
-        }
-        xml << "</style:master-page>\n</office:master-styles>\n";
+        xml << "</office:master-styles>\n";
         return xml.str();
     }
 
@@ -4096,9 +4888,13 @@ private:
             << "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
             << "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
             << "office:version=\"1.3\">\n<office:styles>\n";
-        if (doc_->defaultTabStopPt > 0.0f) {
-            xml << "<style:default-style style:family=\"paragraph\"><style:paragraph-properties "
-                   "style:tab-stop-distance=\"" << Pt(doc_->defaultTabStopPt) << "\"/></style:default-style>\n";
+        if (doc_->defaultTabStopPt > 0.0f || !doc_->letterKerning) {
+            xml << "<style:default-style style:family=\"paragraph\">";
+            if (doc_->defaultTabStopPt > 0.0f) {
+                xml << "<style:paragraph-properties style:tab-stop-distance=\"" << Pt(doc_->defaultTabStopPt) << "\"/>";
+            }
+            if (!doc_->letterKerning) xml << "<style:text-properties style:letter-kerning=\"false\"/>";
+            xml << "</style:default-style>\n";
         }
         // Paragraphs that state no spacing (a document built from Markdown)
         // keep a small gap below, as the view gives them.
@@ -4213,17 +5009,24 @@ private:
             << "xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" "
             << "manifest:version=\"1.3\">\n"
             << "<manifest:file-entry manifest:full-path=\"/\" "
-               "manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>\n"
+               "manifest:media-type=\"" << mimeType_ << "\"/>\n"
             << "<manifest:file-entry manifest:full-path=\"content.xml\" "
                "manifest:media-type=\"text/xml\"/>\n"
             << "<manifest:file-entry manifest:full-path=\"styles.xml\" "
                "manifest:media-type=\"text/xml\"/>\n"
+            << (HasSettings() ? "<manifest:file-entry manifest:full-path=\"settings.xml\" manifest:media-type=\"text/xml\"/>\n" : "")
             << "<manifest:file-entry manifest:full-path=\"meta.xml\" "
                "manifest:media-type=\"text/xml\"/>\n";
         for (size_t i = 0; i < doc_->media.size(); ++i) {
             xml << "<manifest:file-entry manifest:full-path=\"" << PictureHref(i)
                 << "\" manifest:media-type=\"" << EscapeXml(doc_->media[i].mimeType)
                 << "\"/>\n";
+        }
+        for (size_t i = 0; i < chartObjects_.size(); ++i) {
+            xml << "<manifest:file-entry manifest:full-path=\"Object " << (i + 1)
+                << "/\" manifest:media-type=\"application/vnd.oasis.opendocument.chart\"/>\n"
+                << "<manifest:file-entry manifest:full-path=\"Object " << (i + 1)
+                << "/content.xml\" manifest:media-type=\"text/xml\"/>\n";
         }
         xml << "</manifest:manifest>\n";
         return xml.str();
@@ -4233,10 +5036,10 @@ private:
 } // namespace
 
 bool UCWordDocumentIO::LoadOdt(const std::string& filePath, UCRichDocument& outDocument,
-                               std::string& outError) {
+                               std::string& outError, const std::string& password) {
     outDocument = UCRichDocument{};
     OdtReader reader;
-    if (!reader.Load(filePath, outDocument, outError)) return false;
+    if (!reader.Load(filePath, outDocument, outError, password)) return false;
     outDocument.ReadCheckboxPrefixes();
     return true;
 }

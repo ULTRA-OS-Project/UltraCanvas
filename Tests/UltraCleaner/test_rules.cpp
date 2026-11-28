@@ -60,7 +60,8 @@ TEST(RuleRootsUseOnlyKnownTokens) {
     // one of the other platforms, never fail because of a typo.
     static const std::set<std::string> known = {
         "HOME", "TEMP", "SYSTEMTEMP", "CACHE", "DATA", "STATE",
-        "LOCALAPPDATA", "APPDATA", "DOWNLOADS", "TRASH", "WINDIR"
+        "LOCALAPPDATA", "APPDATA", "DOWNLOADS", "TRASH", "WINDIR",
+        "PROGRAMDATA"
     };
     for (const auto& rule : BuiltinRules()) {
         for (const auto& root : rule.roots) {
@@ -106,6 +107,58 @@ TEST(DestructiveCategoriesAreNotPreTicked) {
     REQUIRE(installers->safeByDefault == false);
     // …and it must never sweep a Downloads folder that was filled yesterday.
     REQUIRE(installers->minAgeDays >= 30);
+}
+
+TEST(WindowsCrashRulesCoverUserAndSystemLocations) {
+    // The roots are pinned so that an edit to the table cannot quietly drop
+    // one of them.
+    const auto hasRoot = [](const CleanRule* rule, const char* root) {
+        if (!rule) return false;
+        for (const auto& candidate : rule->roots) {
+            if (candidate == root) return true;
+        }
+        return false;
+    };
+    const CleanRule* user = FindRule("crash.windows");
+    REQUIRE(hasRoot(user, "{LOCALAPPDATA}/CrashDumps"));
+    REQUIRE(hasRoot(user, "{LOCALAPPDATA}/Microsoft/Windows/WER/ReportArchive"));
+    REQUIRE(hasRoot(user, "{LOCALAPPDATA}/Microsoft/Windows/WER/ReportQueue"));
+
+    const CleanRule* system = FindRule("crash.windows.system");
+    REQUIRE(hasRoot(system, "{PROGRAMDATA}/Microsoft/Windows/WER/ReportArchive"));
+    REQUIRE(hasRoot(system, "{PROGRAMDATA}/Microsoft/Windows/WER/ReportQueue"));
+
+    const CleanRule* kernel = FindRule("crash.windows.kernel");
+    REQUIRE(hasRoot(kernel, "{WINDIR}/Minidump"));
+    REQUIRE(hasRoot(kernel, "{WINDIR}/LiveKernelReports"));
+
+    const CleanRule* memory = FindRule("crash.windows.memorydump");
+    REQUIRE(hasRoot(memory, "{WINDIR}"));
+}
+
+TEST(SystemCrashRulesAreNarrowAndNotPreTicked) {
+    for (const char* id : { "crash.windows.system", "crash.windows.kernel",
+                            "crash.windows.memorydump" }) {
+        const CleanRule* rule = FindRule(id);
+        REQUIRE(rule != nullptr);
+        REQUIRE(rule->category == CleanCategory::CrashReports);
+        REQUIRE(rule->platforms == PlatformMask::Windows);
+        REQUIRE(rule->safeByDefault == false);
+        REQUIRE(rule->minAgeDays >= 1);
+    }
+
+    // Inside the Windows folder only dump files are named, never a
+    // directory's whole contents.
+    const CleanRule* kernel = FindRule("crash.windows.kernel");
+    REQUIRE(kernel->mode == RuleMode::RemoveMatchingFiles);
+    REQUIRE(kernel->namePatterns == std::vector<std::string>{ "*.dmp" });
+
+    // The memory dump is one file by name, and the walk stays at the top of
+    // the Windows folder.
+    const CleanRule* memory = FindRule("crash.windows.memorydump");
+    REQUIRE(memory->mode == RuleMode::RemoveMatchingFiles);
+    REQUIRE(memory->namePatterns == std::vector<std::string>{ "MEMORY.DMP" });
+    REQUIRE(memory->maxDepth == 1);
 }
 
 TEST(SharedTempRulesExcludeSessionSockets) {

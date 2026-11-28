@@ -50,6 +50,12 @@
 # current for any branch, and the branch the session starts on has its copy
 # fetched here - both hooks then see the branch as it is on origin.
 #
+# Version: 1.9.0 - Python's websockets package (pip, as CI): the loopback server of UltraNet's
+#                  WebSocket tests, twelve of which skipped here; libavahi-client-dev, without
+#                  which the mDNS plug-in was not built
+# Version: 1.8.0 - libc++'s headers unpacked privately for scripts/check_libcxx_syntax.py (the
+#                  Windows rows' library); not installed: libc++-dev removes libunwind-dev, and GStreamer with it
+# Version: 1.7.0 - xvfb, xauth and xclip, for the window tests CI runs on a virtual display
 # Version: 1.6.0 - Tesseract, Leptonica and the English OCR data (the OCR plugin)
 # Version: 1.5.0 - the fetch refspec widened to every branch and the session's
 #                  branch copy fetched, for the Stop hooks on a shallow clone
@@ -59,7 +65,7 @@
 # Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
 # Version: 1.1.0 - every library CI installs, not only libsodium
 # Version: 1.0.0
-# Last Modified: 2026-10-21
+# Last Modified: 2026-11-18
 # Author: UltraCanvas Framework
 set -u
 
@@ -70,6 +76,14 @@ PACKAGES=(
     cmake pkg-config build-essential
     libcairo2-dev libpango1.0-dev libharfbuzz-dev libvips-dev libglib2.0-dev libfreetype-dev dbus
     libtinyxml2-dev libfmt-dev
+    # libheif's plug-ins: the HEVC and AV1 decoders CI installs (HEIC and
+    # AVIF open; ImageFormatsTest insists), and the AV1 encoder, which CI's
+    # libheif built from source links in - without it this image writes no
+    # AVIF, and the store's and UltraSite's picture variants go untested
+    libheif-plugin-libde265 libheif-plugin-aomdec libheif-plugin-aomenc
+    # Brotli's encoder: UltraSite's .br copies (BuildOptions::precompress),
+    # as CI installs libbrotli-dev for JPEG XL
+    libbrotli-dev
     libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
     # CorelDRAW import, colour management, Unicode, barcodes
     libcdr-dev librevenge-dev zlib1g-dev libboost-dev liblcms2-dev libicu-dev libzbar-dev
@@ -92,6 +106,10 @@ PACKAGES=(
     # CoAP (libcoap3), SNMP (net-snmp), SSH (libssh) - as CI installs since
     # 2026-10; without them a change to one of the five compiled nowhere
     libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
+    # and its mDNS plug-in (ChatCube's people on the local network), which
+    # builds on Avahi's client library - the library alone: the Avahi daemon
+    # is one of the services not started here, and what needs it skips
+    libavahi-client-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
     libsodium-dev libsqlite3-dev libpq-dev libmariadb-dev
     # an sshd to run the SSH tunnel tests against (a private one, on a high
@@ -103,6 +121,9 @@ PACKAGES=(
     libhunspell-dev hunspell-en-us
     # the OCR plugin (Tesseract, Leptonica) and the English data its test reads with
     libtesseract-dev libleptonica-dev tesseract-ocr-eng
+    # the window tests CI runs on a virtual display (xvfb-run), and xclip, the
+    # other program ClipboardIncrTest copies to and from when it is installed
+    xvfb xauth xclip
 )
 
 # The comma-decimal locale the locale tests run under.
@@ -145,6 +166,60 @@ register_branch_copy() {
         "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || true
 }
 register_branch_copy
+
+# ---- libc++'s headers, for scripts/check_libcxx_syntax.py ------------------
+#
+# The Windows rows compile against libc++, and scripts/check_libcxx_syntax.py
+# type-checks a change against it here - the one check of the Windows build a
+# session can run (AGENTS.md, house rule 2). It needs libc++'s headers, which
+# the image lacks. They are NOT installed: on Ubuntu 24.04 libc++-dev needs
+# LLVM's libunwind-18-dev, which conflicts with the libunwind-dev that
+# libgstreamer1.0-dev needs, so apt removes one for the other and GStreamer's
+# pkg-config file stops resolving - the build then leaves the media backends
+# out without a word (seen 2026-11-17). The script downloads the two dev
+# packages and unpacks them into a private folder instead (no root, no package
+# changed). A few seconds the first time; nothing once they are there.
+fetch_libcxx_headers() {
+    local repo="${CLAUDE_PROJECT_DIR:-.}" script
+    script="$repo/scripts/check_libcxx_syntax.py"
+    [ -f "$script" ] && command -v clang++ >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 || return 0
+    # Installed already, or unpacked by an earlier start: nothing to do.
+    compgen -G "/usr/lib/llvm-*/include/c++/v1/__config" >/dev/null && return 0
+    compgen -G "${ULTRACANVAS_LIBCXX_ROOT:-$HOME/.cache/ultracanvas/libcxx}/usr/lib/llvm-*/include/c++/v1/__config" \
+        >/dev/null && return 0
+    timeout 120 python3 "$script" --fetch-libcxx >>"${TMPDIR:-/tmp}/ultracanvas-session-start.log" 2>&1 ||
+        echo "Cloud setup: libc++'s headers could not be fetched (see ${TMPDIR:-/tmp}/ultracanvas-session-start.log);" \
+             "scripts/check_libcxx_syntax.py cannot run in this session."
+}
+fetch_libcxx_headers
+
+# ---- Python's `websockets`, for UltraNet's WebSocket tests -----------------
+#
+# UltraNetTests starts a loopback WebSocket server in Python for its
+# ws_loopback_* and ws_* tests (Tests/UltraNet/test_websocket.cpp), and CI
+# installs the package it is written with ("Install python websockets
+# package" in build.yml). Without it those tests skip - twelve of them here,
+# checked 2026-11-18 - and the receiver thread, the frame handling, the
+# pings and the size limit ran nowhere in a cloud session. It is installed
+# with pip, as CI does, not from PACKAGES: the server uses the package's
+# asyncio API (websockets.asyncio.server, 13.0 and later), and Ubuntu 24.04's
+# python3-websockets is 10.4, which imports and then cannot start it. For the
+# user, no root: nothing of the system's Python is changed. A few seconds the
+# first time; nothing once it imports.
+install_python_websockets() {
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 -c 'from websockets.asyncio.server import serve' >/dev/null 2>&1 && return 0
+    local log="${TMPDIR:-/tmp}/ultracanvas-session-start.log"
+    if command -v pip3 >/dev/null 2>&1 &&
+       { timeout 120 pip3 install --user --quiet --break-system-packages websockets >>"$log" 2>&1 ||
+         timeout 120 pip3 install --user --quiet websockets >>"$log" 2>&1; } &&
+       python3 -c 'from websockets.asyncio.server import serve' >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "Cloud setup: Python's websockets package could not be installed (see $log);" \
+         "UltraNet's WebSocket tests skip in this session."
+}
+install_python_websockets
 
 mapfile -t missing < <(missing_packages)
 need_locale=0

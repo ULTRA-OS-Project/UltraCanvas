@@ -1,10 +1,12 @@
 # Apps/UltraPress/CMakeLists.txt
-# UltraPress - a website and shop builder that publishes WebAssembly
-# (Docs/Research/UltraPressDesignProposal.md). Phase 1 begins with the
+# UltraPress - a website and shop builder that publishes WebAssembly or
+# HTML + JavaScript (Docs/Research/UltraPressDesignProposal.md,
+# Docs/Research/UltraSiteStaticSitesProposal.md). Phase 1 begins with the
 # headless engine - the content model, the block registry, the HTML shadow
-# emitter and the static publisher - and `ultrapress` on top of it: the
+# emitter and the static publisher - and `UltraPress` on top of it: the
 # commands and, given a site folder, the editor window on the element
 # renderer.
+# Version: 0.9.0 - the HTML + JavaScript output (engine/UltraPressSite.cpp, on UltraSite)
 # Version: 0.8.4 - the settings file (ui/UltraPressSettings.cpp), the start window on the framework's page
 # Version: 0.8.2 - the recent sites (ui/UltraPressRecent.cpp)
 # Version: 0.8.1 - the start window (ui/UltraPressStart.cpp)
@@ -23,6 +25,7 @@ set(ULTRAPRESS_ENGINE_SOURCES
     engine/UltraPressImport.cpp
     engine/UltraPressDeploy.cpp
     engine/UltraPressMedia.cpp
+    engine/UltraPressSite.cpp
 )
 
 add_library(UltraPressEngine STATIC ${ULTRAPRESS_ENGINE_SOURCES})
@@ -46,6 +49,14 @@ if(TINYXML2_FOUND)
     endif()
 endif()
 
+# The HTML + JavaScript output (engine/UltraPressSite.cpp) is UltraSite's,
+# built wherever the core is; without it Publish offers the WebAssembly
+# output alone and says so.
+if(TARGET UltraSite)
+    target_link_libraries(UltraPressEngine PUBLIC UltraSite)
+    target_compile_definitions(UltraPressEngine PUBLIC ULTRAPRESS_HAS_ULTRASITE=1)
+endif()
+
 # The version comes from the first line of Docs/UltraPress/CHANGELOG.md
 # through cmake/UltraCanvasVersion.cmake - never a literal in the source.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
@@ -65,7 +76,7 @@ target_link_libraries(UltraPressRender PUBLIC UltraPressEngine ${ULTRACANVAS_LIB
 # ── UltraPressHosting: the hosts a site is published to ─────────────────────
 # UltraCloud accounts (FTP, SFTP, WebDAV, Nextcloud) kept by the program, and
 # the Uploader the engine's deploy sends the files through. Only where the
-# module is built; without it `ultrapress publish --to` says so.
+# module is built; without it `UltraPress publish --to` says so.
 if(TARGET UltraCloud)
     add_library(UltraPressHosting STATIC hosting/UltraPressHosting.cpp)
     set_target_properties(UltraPressHosting PROPERTIES
@@ -83,63 +94,64 @@ if(TARGET UltraCloud)
     endif()
 endif()
 
-# ── ultrapress: the one program - the commands and the window ──────────────
-# `ultrapress new|check|page|publish|import ...` runs a command; given a site
+# ── UltraPress: the one program - the commands and the window ──────────────
+# `UltraPress new|check|page|publish|import ...` runs a command; given a site
 # folder it opens the editor window. There were two programs, `ultrapress`
 # and `UltraPress`, until the macOS build showed why there cannot be: on a
 # case-insensitive filesystem (macOS, Windows) the two names are one, so the
 # generator wrote both targets' CMakeFiles into one directory and both
 # binaries to one path, and make stopped with "No rule to make target
-# ultrapress.dir/depend". UltraFIBU made the same move (one `ultrafibu`).
-add_executable(ultrapress ui/main.cpp ui/UltraPressWindow.cpp ui/UltraPressMediaDialog.cpp ui/UltraPressTheme.cpp
+# ultrapress.dir/depend". UltraFIBU made the same move (one `UltraFIBU`).
+# The one program that was left is named `UltraPress`, as the app is.
+add_executable(UltraPress ui/main.cpp ui/UltraPressWindow.cpp ui/UltraPressMediaDialog.cpp ui/UltraPressTheme.cpp
     ui/UltraPressStart.cpp ui/UltraPressSettings.cpp cli/UltraPressCli.cpp)
-target_compile_features(ultrapress PRIVATE cxx_std_20)
-target_include_directories(ultrapress PRIVATE
+target_compile_features(UltraPress PRIVATE cxx_std_20)
+target_include_directories(UltraPress PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/cli)
 # The hosts and, for the window's "Host..." button, UltraCloud's shared
 # add-account dialog - both ahead of the render library and the core on the
 # link line, for the archive-order reason above.
 if(TARGET UltraPressHosting)
-    target_link_libraries(ultrapress PRIVATE UltraPressHosting)
+    target_link_libraries(UltraPress PRIVATE UltraPressHosting)
     if(TARGET UltraCloudUI)
-        target_link_libraries(ultrapress PRIVATE UltraCloudUI)
-        target_compile_definitions(ultrapress PRIVATE ULTRAPRESS_HAS_ULTRACLOUD_UI=1)
+        target_link_libraries(UltraPress PRIVATE UltraCloudUI)
+        target_compile_definitions(UltraPress PRIVATE ULTRAPRESS_HAS_ULTRACLOUD_UI=1)
     endif()
 endif()
-target_link_libraries(ultrapress PRIVATE UltraPressRender)
-# `ultrapress import --media` fetches the export's attachments through
+target_link_libraries(UltraPress PRIVATE UltraPressRender)
+# `UltraPress import --media` fetches the export's attachments through
 # UltraNet, where the build has it; without it the command lists them.
 if(TARGET UltraNet)
-    target_link_libraries(ultrapress PRIVATE UltraNet)
-    target_compile_definitions(ultrapress PRIVATE ULTRAPRESS_HAS_ULTRANET=1)
+    target_link_libraries(UltraPress PRIVATE UltraNet)
+    target_compile_definitions(UltraPress PRIVATE ULTRAPRESS_HAS_ULTRANET=1)
 endif()
 # ULTRAPRESS_VERSION (the first line of Docs/UltraPress/CHANGELOG.md) is shown
 # in the window title; UCAPP_ICON_PATH is the window and taskbar icon - the
 # 256 px render of media/appicon/UltraPress.svg, embedded in the Windows
 # executable as well, where Explorer and the taskbar read it off the binary.
-target_compile_definitions(ultrapress PRIVATE
+target_compile_definitions(UltraPress PRIVATE
     ULTRAPRESS_VERSION="${ULTRAPRESS_VERSION}"
     UCAPP_ICON_PATH="media/appicon/UltraPress.png")
-set_target_properties(ultrapress PROPERTIES
+set_target_properties(UltraPress PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-ultracanvas_embed_windows_manifest(ultrapress)
-ultracanvas_embed_app_icon(ultrapress "${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.png")
-# The commands are half of this program, like ultrafibu's: on Windows
-# ultrapress.exe is a GUI program and ultrapress.com its console companion,
+ultracanvas_embed_windows_manifest(UltraPress)
+ultracanvas_embed_app_icon(UltraPress "${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.png")
+# The commands are half of this program, like UltraFIBU's: on Windows
+# UltraPress.exe is a GUI program and UltraPress.com its console companion,
 # which a prompt runs for the bare name and waits for
 # (cmake/UltraCanvasWindowsGuiApp.cmake).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
-ultracanvas_windows_console_companion(ultrapress)
+ultracanvas_windows_console_companion(UltraPress)
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
-    install(TARGETS ultrapress RUNTIME DESTINATION bin)
+    install(TARGETS UltraPress RUNTIME DESTINATION bin)
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraPress.desktop DESTINATION share/applications)
     install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.png DESTINATION share/icons/hicolor/256x256/apps)
     install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.svg DESTINATION share/icons/hicolor/scalable/apps)
 endif()
 
 if(TARGET UltraPressHosting)
-    message(STATUS "  [✓] UltraPress - ENABLED, commands, window and hosts (targets: UltraPressEngine, UltraPressRender, UltraPressHosting, ultrapress)")
+    message(STATUS "  [✓] UltraPress - ENABLED, commands, window and hosts (targets: UltraPressEngine, UltraPressRender, UltraPressHosting, UltraPress)")
 else()
-    message(STATUS "  [✓] UltraPress - ENABLED, commands and window; no hosts, UltraCloud not built (targets: UltraPressEngine, UltraPressRender, ultrapress)")
+    message(STATUS "  [✓] UltraPress - ENABLED, commands and window; no hosts, UltraCloud not built (targets: UltraPressEngine, UltraPressRender, UltraPress)")
 endif()

@@ -1,0 +1,1 @@
+{% for message in messages %}<div class="alert alert-{{ message.tags|default:'primary' }}" role="status">{{ message }}</div>{% endfor %}

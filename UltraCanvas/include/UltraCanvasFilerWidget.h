@@ -104,6 +104,37 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.61.1 - DetailsColumnTitle: the Details headings in the language shown
+// Version: 1.61.0 - openMenuProvider: a host's entries right after "Open with" in a file's
+//                  context menu (UltraFiler's "Edit in UltraPaint" / "Edit in ArtCreator")
+// Version: 1.60.0 - SetFavoriteHighlight (FilerFavoriteHighlight: Fill, Border, Shade) and
+//                  SetFavoriteHeartShown: how a favorite stands out beyond the heart
+// Version: 1.59.1 - a rescan of the folder shown keeps the thumbnails, text pages, folder peeks and
+//                  picture proportions of the files that did not change (PruneThumbnailCache)
+// Version: 1.59.0 - IsDragInProgress; letting a selection rectangle go fires onSelectionChanged once
+//                  more, so a host that waited for the drag to end sees the final selection
+// Version: 1.58.0 - folderIconIsLineArt: a one-colour folder icon drawn in the view's text colour,
+//                  so a black line icon reads on a dark theme
+// Version: 1.57.0 - Run in background: onBackgroundProgress, HasBackgroundOperation,
+//                  BringOperationToFront - a long operation's window gives way to the host's status bar
+// Version: 1.56.0 - the progress window's figures: FileOperation and ArchiveJob count what is done
+//                  (items, bytes) and take totals only from the counting the work does anyway;
+//                  the route and Pause (FileOperation::paused, ArchiveJob::paused; ArchiveJobLook)
+// Version: 1.55.0 - PendingExtract::existingChoice, kept and targetFolder (the Extract dialog's folder,
+//                  asked about when it exists); DecideExistingFile; ExtractExistingChoice: what Extract into
+//                  existing does with a file that is there already
+// Version: 1.54.1 - BuildOperationEntryList: the summary's reason column takes the list's width
+// Version: 1.54.0 - PasteReplaceCondition::IfOlder (bring an earlier version back);
+//                  PasteConflictAction::KeepBothUnlessIdentical (no duplicate of a file that is there)
+// Version: 1.53.0 - PasteReplaceCondition: Replace in the name-conflict question can replace only a
+//                  file that is newer, bigger or different, chosen in a foldable options panel;
+//                  the summary's "Copy skipped items again" has the same panel (ask, keep both,
+//                  replace ...) and no longer re-skips everything under a standing Skip
+// Version: 1.52.0 - RenderFileThumbnail: a word-processing document (odt, docx, doc) is its first
+//                  page as laid out, not a page of its text lines
+// Version: 1.51.0 - FilerStyle: toolGlyphColor / toolHoverColor / toolPressedColor (the hidden-items
+//                  notice's gear) and scrollbarTrackColor / scrollbarThumbColor /
+//                  scrollbarThumbHeldColor, from the theme in FromTheme
 // Version: 1.50.0 - SetTransferDialogStyle: the move / copy question as a summary with the entry's icon
 //          and breadcrumb paths (the default) or as two cards, source and destination
 // Version: 1.49.1 - a text file's preview page is paper in either look: its text dark ink, not the theme's
@@ -163,10 +194,11 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasProgressDialog.h"   // ProgressFigures (FilerBackgroundProgress)
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
@@ -191,6 +223,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <set>
 #include <string>
@@ -208,6 +241,7 @@ namespace UltraCanvas {
 
 
     class UltraCanvasMenu;
+    class UltraCanvasCollapsiblePanel;
     class UltraCanvasButton;
     class UltraCanvasTextInput;
     struct DialogConfig;
@@ -225,7 +259,31 @@ namespace UltraCanvas {
         // taken there; nothing already in the existing folder is removed.
         // (Replace on a folder removes the existing folder first, with
         // everything in it that the pasted one does not have.)
-        Merge
+        Merge,
+        // Files only: Keep both, except for a pasted file identical to the
+        // existing one (the same size and modified time), which is skipped -
+        // no duplicate of a file that is there, and nothing overwritten.
+        KeepBothUnlessIdentical
+    };
+
+    // When Replace replaces a FILE whose name is taken: always, or only when
+    // the pasted file wins a comparison with the existing one - newer
+    // (modified later), bigger, or different (another size or another
+    // modified time). A file that does not win is left as it is and listed
+    // in the summary at the end, with why. Folders are merged or replaced as
+    // before; the files a merge brings in are compared one by one.
+    // IfOlder is the other way round from IfNewer: the pasted file was
+    // modified earlier - an earlier version brought back from a backup.
+    enum class PasteReplaceCondition { Unconditionally, IfNewer, IfOlder, IfLarger, IfDifferent };
+
+    // How the summary's "Copy skipped items again" answers a name that is
+    // taken, chosen in its options panel: as the host's policy says (no
+    // choice made), ask about each, keep both, or replace - unconditionally
+    // or on a condition.
+    enum class FilerRetryConflicts { Policy, Ask, KeepBoth, KeepBothUnlessIdentical, Replace };
+    struct FilerRetryConflictAnswer {
+        FilerRetryConflicts how = FilerRetryConflicts::Policy;
+        PasteReplaceCondition condition = PasteReplaceCondition::Unconditionally;
     };
 
     // ===== WHAT THE HOST DECIDED ABOUT CONFLICTS AND FAILURES =====
@@ -454,6 +512,25 @@ namespace UltraCanvas {
         Icon
     };
 
+    // ===== HOW A FAVORITE STANDS OUT =====
+    // Beyond the heart (SetFavoriteHeartShown), a favorite entry
+    // (SetFavoriteMarkProvider) can carry one of these, in the colour
+    // SetFavoriteHighlight gives:
+    //   NoHighlight — nothing more (the default).
+    //   Fill        — the whole item, picture and name, on a solid colour; the
+    //                 name and columns turn white or dark, whichever reads.
+    //   Border      — a 2 px frame around the item.
+    //   Shade       — the colour at the top, fading out towards the bottom.
+    // A selected item keeps the selection colour (a border still shows on
+    // it); a treemap cell, whose colour is its file type, only takes the
+    // border.
+    enum class FilerFavoriteHighlight {
+        NoHighlight,
+        Fill,
+        Border,
+        Shade
+    };
+
     // ===== HOW A DETAILS COLUMN SPLITTER RESIZES =====
     // What dragging the splitter on a Details column's right edge does:
     //   PushFollowing      — only that column changes width; the columns after
@@ -632,10 +709,15 @@ namespace UltraCanvas {
     // Spreadsheet, Bitmap, Vector, Audio, Video) is installed by the widget and
     // can be replaced via SetNewDocumentTypes().
     struct FilerNewDocumentType {
-        std::string label;          // menu label, e.g. "Spreadsheet"
+        std::string label;          // menu label, e.g. "Spreadsheet" - the text
+                                    // shown, so already in the reader's language
         std::string extension;      // created file extension, e.g. "ods"
         std::string templatePath;   // optional file copied as the new document;
                                     // empty = an empty file is created
+        std::string fileName;       // the new file's name without extension, e.g.
+                                    // TrC("file name", "New spreadsheet"); empty =
+                                    // TrF("New {0}", label). A whole name per kind
+                                    // translates; "New " + a label does not
     };
 
     // ===== A FINISHED COPY / MOVE =====
@@ -643,6 +725,21 @@ namespace UltraCanvas {
     // UltraCanvasFilerWidget::onTransferFinished once the operation is over
     // (its windows closed, the folders refreshed). The counts are of the
     // entries the user chose - a folder is one item however much it holds.
+    // A long operation sent to the background from its progress window ("Run
+    // in background"): what the host shows of it instead - a status-bar gauge
+    // and a line - reported on every tick while it runs, and once more with
+    // `active` false when it has ended or come back to its window.
+    struct FilerBackgroundProgress {
+        bool active = false;
+        std::string title;          // "Copying", "Extracting"
+        std::string from;           // the route: "ULTRA OS" -> "Projekte"
+        std::string to;
+        double fraction = -1.0;     // 0..1; negative: no total known
+        std::string currentFile;
+        ProgressFigures figures;
+        bool paused = false;        // paused before it went to the background
+    };
+
     struct FilerTransferResult {
         bool moved = false;          // a move; false = a copy
         bool cancelled = false;      // stopped from the progress window
@@ -722,6 +819,15 @@ namespace UltraCanvas {
         Color extensionBarBackground  = Color(190, 190, 196, 235);
         Color extensionTagBackground  = Color(80, 80, 86, 235);
         Color extensionTagTextColor   = Color(255, 255, 255, 240);
+        // The small tool button beside the hidden-items notice (its gear):
+        // the glyph, and the button's fill under the pointer and held down.
+        Color toolGlyphColor       = Color(85, 85, 92, 255);
+        Color toolHoverColor       = Color(232, 232, 236, 255);
+        Color toolPressedColor     = Color(218, 218, 224, 255);
+        // The scroll bars: the track, the thumb, and the thumb while dragged.
+        Color scrollbarTrackColor     = Color(0, 0, 0, 30);
+        Color scrollbarThumbColor     = Color(90, 90, 96, 180);
+        Color scrollbarThumbHeldColor = Color(70, 70, 78, 220);
 
         std::string fontFamily;          // empty = system default
         float fontSize        = 12.0f;   // Windows standard UI size (9pt @ 96dpi)
@@ -751,7 +857,10 @@ namespace UltraCanvas {
         // bar and a bar's background with ink on it, hairlines for the
         // grid, the hover fill, the soft accent for the selection with the
         // accent round it, the accent for the bars, the well with the accent
-        // for the rename editor; the interface font at the body size, the
+        // for the rename editor; muted ink for the notice's gear on the hover
+        // and pressed fills; the scroll bars as a veil over the well (a shade
+        // off it for the track, the muted ink for the thumb, the ink while it
+        // is dragged); the interface font at the body size, the
         // small text at the caption size. The hover icon menu and the
         // extension tag keep their own dark overlays unless a theme names
         // "filer.icon-menu", "filer.on-icon-menu", "filer.icon-menu-done",
@@ -811,10 +920,11 @@ namespace UltraCanvas {
 
     // ===== A FILE'S PICTURE =====
     // A file's content as a small picture, made the way the Filer's tiles
-    // make theirs: a photo or drawing itself, a PDF's first page, a book's
-    // cover, a 3D model, a font specimen, a video's poster frame, the preview
-    // a layered image carries - and for a text document (Word, LibreOffice,
-    // Markdown, a spreadsheet, plain text) a page with its first lines.
+    // make theirs: a photo or drawing itself, a PDF's or a word-processing
+    // document's (Word, LibreOffice) first page, a book's cover, a 3D model,
+    // a font specimen, a video's poster frame, the preview a layered image
+    // carries - and for another text document (Markdown, RTF, a
+    // spreadsheet, plain text) a page with its first lines.
     // `width` x `height` are logical pixels, drawn at `scale` device pixels
     // each. Blocking - it decodes and renders - so call it from a worker
     // thread. nullptr when this build can make no picture of the format (a
@@ -1421,6 +1531,16 @@ namespace UltraCanvas {
         // cached. Pass an empty function to drop the marks and the gutter.
         void SetFavoriteMarkProvider(std::function<bool(const FilerEntry&)> provider);
         bool HasFavoriteMarkProvider() const { return bool(favoriteMarkProvider); }
+        // How a favorite stands out beyond the heart (FilerFavoriteHighlight),
+        // and in which colour - used as given, so a host that follows the
+        // theme passes the colour for the look shown. A repaint, no relayout.
+        void SetFavoriteHighlight(FilerFavoriteHighlight look, const Color& color);
+        FilerFavoriteHighlight GetFavoriteHighlight() const { return favoriteHighlight; }
+        const Color& GetFavoriteHighlightColor() const { return favoriteHighlightColor; }
+        // Whether a favorite carries the heart (on by default). Off, the row
+        // views give back the gutter they keep for it.
+        void SetFavoriteHeartShown(bool shown);
+        bool IsFavoriteHeartShown() const { return favoriteHeartShown; }
         // The menu label of a badge mode ("Bar"), shared by the Display
         // submenu and by an application's settings page.
         static const char* ExtensionBadgeLabel(FilerExtensionBadge badge);
@@ -1559,9 +1679,12 @@ namespace UltraCanvas {
         std::vector<std::string> GetDisabledDetailViewFormats() const;
         void SetDisabledDetailViewFormats(const std::vector<std::string>& exts);
 
-        // The menu label of a preview kind ("Vector graphics"), shared by the
-        // Display submenus and by an application listing the formats.
+        // The English name of a preview kind ("Vector graphics"): a stable
+        // name for tests, logs and identifiers - never shown as it is.
         static const char* PreviewTypeLabel(FilerPreviewType type);
+        // The same name in the reader's language (Tr), as the Display
+        // submenus show it - what an application listing the formats shows.
+        static std::string PreviewTypeText(FilerPreviewType type);
         // The eight kinds in the order the menus and lists show them.
         static const std::vector<FilerPreviewType>& AllPreviewTypes();
 
@@ -1685,6 +1808,15 @@ namespace UltraCanvas {
             return renamingIndex >= 0 || draggingItems || marqueeActive ||
                    compressDlg.active;
         }
+        // True while the pointer is dragging in the widget: a selection
+        // rectangle being drawn, or entries being dragged. While a rectangle
+        // is drawn, onSelectionChanged fires on every file it takes in or
+        // lets go; a host that follows the selection with something that
+        // opens, closes or reflows (a preview pane) waits until this is
+        // false. Letting the rectangle go fires onSelectionChanged once more,
+        // with this false, so a host that waited sees where it ended. (An
+        // entry drag never changes the selection.)
+        bool IsDragInProgress() const { return draggingItems || marqueeActive; }
 
         // ===== FILE OPERATIONS (also wired to the context / icon menus) =====
         // Copy / Cut mirror the selection to the OS clipboard (file-manager
@@ -1894,6 +2026,15 @@ namespace UltraCanvas {
         // confirmation on the host's status line; the widget shows nothing
         // of its own beyond the summary window for skipped entries.
         std::function<void(const FilerTransferResult&)> onTransferFinished;
+        // A copy, move, delete, pack or unpack whose window the user sent to
+        // the background: its progress, for the host's status bar (see
+        // FilerBackgroundProgress). Without a handler the window offers no
+        // "Run in background" button - there would be nowhere to show it.
+        std::function<void(const FilerBackgroundProgress&)> onBackgroundProgress;
+        // An operation runs in the background now, and the call that opens
+        // its window again (the host's "Show" beside its gauge).
+        bool HasBackgroundOperation() const;
+        void BringOperationToFront();
         // The same for a delete (see FilerDeleteResult). A delete on a remote
         // drive is the host's own and does not report here.
         std::function<void(const FilerDeleteResult&)> onDeleteFinished;
@@ -2012,6 +2153,14 @@ namespace UltraCanvas {
         // Extras > Set folder icon.
         std::function<std::string(const FilerEntry&)> folderIconProvider;
 
+        // Whether an icon folderIconProvider answered is one-colour line art
+        // (a black outline with no colours of its own, a cloud, a server),
+        // asked with the icon's path. True draws it as a mask in the view's
+        // text colour (FilerStyle::textColor, the theme's ink), so it reads
+        // on a dark theme, where drawn as it is it stays black. Unset, or
+        // false, draws the icon in its own colours.
+        std::function<bool(const std::string& iconPath)> folderIconIsLineArt;
+
         // The name an entry is drawn under, asked while the entry is drawn.
         // Return the name to show in place of the file name, or "" to keep it.
         // Like a launcher's own name (FilerEntry::linkDisplayName), it changes
@@ -2049,6 +2198,12 @@ namespace UltraCanvas {
         // that noticed it, so the host may set label text from it.
         std::function<void()> onSelectionInfoChanged;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
+        // Host entries placed right after "Open with" in the context menu of
+        // a file or a selection, asked every time the menu opens with the
+        // entries it acts on - so a host offers an entry only where it applies
+        // (UltraFiler's "Edit in UltraPaint" for pictures); an empty result
+        // adds nothing. Not asked for the menu of the folder's background.
+        std::function<std::vector<MenuItemData>(const std::vector<FilerEntry>& targets)> openMenuProvider;
         // Host-provided tail of the context menu's Extras submenu, called
         // every time the menu opens (so item flags can follow the host's
         // state); non-empty results are appended behind a separator. The
@@ -2154,6 +2309,9 @@ namespace UltraCanvas {
         FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
         // SetFavoriteMarkProvider: which entries carry the heart.
         std::function<bool(const FilerEntry&)> favoriteMarkProvider;
+        FilerFavoriteHighlight favoriteHighlight = FilerFavoriteHighlight::NoHighlight;
+        Color favoriteHighlightColor = Color(253, 226, 228, 255);
+        bool favoriteHeartShown = true;
         // Display > File icons: whose icons an entry with no picture of its
         // own is drawn with.
         FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
@@ -2291,6 +2449,7 @@ namespace UltraCanvas {
             bool sortable;
         };
         static const DetailsColumnSpec kDetailsColumnSpecs[kFilerDetailsColumnCount];
+        static std::string DetailsColumnTitle(FilerDetailsColumn id);
         // Current width of every Details column, indexed by FilerDetailsColumn
         // — the widths the splitters edit, kept across rescans, sorting and
         // view switches. Index 0 (Name) is derived at layout time from what
@@ -2603,6 +2762,10 @@ namespace UltraCanvas {
             // Not before this: a retry that runs immediately runs inside the
             // same moment that just failed, and spends the attempts on it.
             std::chrono::steady_clock::time_point retryAfter{};
+            // A file that changed on disk is decoded again; until the new
+            // thumbnail is in, the tile keeps showing the one it had rather
+            // than falling back to its type glyph (PruneThumbnailCache).
+            std::shared_ptr<UCPixmap> stalePixmap;
         };
         struct ThumbRequest {
             std::string path;
@@ -2684,7 +2847,19 @@ namespace UltraCanvas {
         void StartThumbnailWorkersLocked();
         void StopThumbnailWorkers();
         void ThumbnailWorkerMain();
-        void DropThumbnailCache();              // on rescan / view change
+        void DropThumbnailCache();              // on a new folder / view change
+        // A rescan of the folder already shown (a delete, a rename, a copy
+        // in, the folder watch): what was drawn for the files that are still
+        // there, unchanged, is kept - only the slots of files gone or
+        // modified (path, modification time and size) are dropped. Dropping
+        // everything redrew the whole folder with type glyphs and then the
+        // thumbnails a moment later, after deleting one file.
+        // A file in `changedPaths` (still listed, new content) is decoded
+        // again in the background, its old thumbnail drawn until the new one
+        // is in.
+        void PruneThumbnailCache(const std::unordered_set<std::string>& keepPaths,
+                                 const std::unordered_set<std::string>& changedPaths = {});
+        std::string thumbCacheFolder;           // the folder the slots were drawn for
         void PostThumbnailRedraw();
         static std::string ThumbSlotKey(const std::string& path, int w, int h,
                                         ImageFitMode fit, float scale);
@@ -2998,14 +3173,16 @@ namespace UltraCanvas {
         // Refuses a command that would write into the listing on screen when
         // that listing cannot be written to - today, a remote drive: the
         // widget can browse one (remoteListing) but has no way to change it.
-        // Reports through ReportError and answers true when it refused, so a
-        // command reads `if (RefuseWriteHere("delete")) return;`.
+        // Reports `refusal` - the whole translated sentence for the command,
+        // "Cannot rename on a drive: ..." - followed by what a drive can do,
+        // through ReportError, and answers true when it refused, so a command
+        // reads `if (RefuseWriteHere(Tr("Cannot ... on a drive: ..."))) return;`.
         //
         // Without this the command would reach std::filesystem with a path
         // like "ultracloud://acc/x", which resolves to nothing: the operation
         // fails anyway, but with an error about a missing file rather than an
         // answer about where it was pointed.
-        bool RefuseWriteHere(const char* what);
+        bool RefuseWriteHere(const std::string& refusal);
 
         // True while the listing on screen is a remote drive's.
         bool ShowingRemoteFolder() const;
@@ -3247,6 +3424,9 @@ namespace UltraCanvas {
         std::string HiddenNoticeText() const;
         // Create / show / hide the strip's button for the current listing.
         void UpdateHiddenNoticeButton();
+        // The notice's gear in the style's tool colours; again on SetStyle,
+        // so a theme change reaches it
+        void StyleHiddenNoticeSettingsButton();
         void PositionHiddenNoticeButton(IRenderContext* ctx);
         void DrawHiddenItemsNotice(IRenderContext* ctx);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
@@ -3276,6 +3456,11 @@ namespace UltraCanvas {
         // of the item, vertically centred, and the width the row views keep
         // free for it left of the icon (0 without a provider).
         void DrawFavoriteMark(IRenderContext* ctx, const ItemLayout& item);
+        // The favorite highlight under the item (Fill, Shade) and over it
+        // (Border). Under returns true when it set the name colours for this
+        // item, which the caller puts back after drawing it.
+        bool DrawFavoriteHighlightUnder(IRenderContext* ctx, const ItemLayout& item);
+        void DrawFavoriteHighlightOver(IRenderContext* ctx, const ItemLayout& item);
         int  FavoriteMarkGutter() const;
         // The box an entry's icon is drawn in, per view - the geometry the
         // badges are placed against, so their hit tests land where they are
@@ -3701,6 +3886,27 @@ namespace UltraCanvas {
             // rename, that walk is longer than the move itself.
             std::atomic<uint64_t> totalUnits{0};
             std::atomic<uint64_t> doneUnits{0};
+            // The progress window's figures. What is done is counted as the
+            // work goes (one atomic add per file); the totals are known only
+            // when the operation is one entry and the work counted it anyway
+            // before starting on it (CountTreeBytes / CountTreeEntries) -
+            // nothing is walked for the window's sake.
+            std::atomic<uint64_t> doneItems{0};
+            std::atomic<uint64_t> doneBytes{0};
+            std::atomic<uint64_t> totalItems{0};
+            std::atomic<uint64_t> totalBytes{0};
+            std::atomic<bool> totalsKnown{false};
+            bool singleEntry = false;   // one entry queued: its count is the total
+            bool countsBytes = false;   // a copy moves bytes; a delete does not
+            // The route the window shows: "ULTRA OS" -> "Projekte".
+            std::string routeFrom;
+            std::string routeTo;
+            // Pause in the window: the worker waits between files and between
+            // the chunks of a big one (FileOpItemCredit::Cancelled).
+            std::atomic<bool> paused{false};
+            // "Run in background": no window opens again; the host hears the
+            // progress through onBackgroundProgress instead.
+            bool background = false;
             std::mutex mutex;
             std::string currentFile;                  // guarded by mutex
             std::vector<std::string> deferredErrors;  // guarded by mutex
@@ -3737,7 +3943,18 @@ namespace UltraCanvas {
             bool heedCancel = true;
             uint64_t done = 0;      // of `total`, so far
             uint64_t credited = 0;  // units already added to op->doneUnits
+            // An entry of the queue as it was asked for, not one a folder
+            // merge spliced in: only its count can be the operation's total.
+            bool topLevel = true;
+            // What this entry added to the window's figures, for Rollback.
+            uint64_t itemsCounted = 0;
+            uint64_t bytesCounted = 0;
+            // Waits while the window is paused; true once the user cancelled.
             bool Cancelled() const;
+            // One file or folder handled, with its bytes (a copy); and bytes
+            // of a big file as its chunks go.
+            void CountItem(uint64_t bytes = 0);
+            void CountBytes(uint64_t bytes);
             void SetFile(const std::string& file);
             void Step(uint64_t units, const std::string& file);
             void Finish();          // credit the rest of the slice
@@ -3832,6 +4049,10 @@ namespace UltraCanvas {
             std::string path;
             std::string reason;
             std::string folder;
+            // Skipped because its name was taken where it went (a Skip, or a
+            // Replace whose condition the pasted file did not meet): what the
+            // summary's options for copying again are about.
+            bool nameTaken = false;
         };
         // The summary's "Copy skipped items again": the skipped entries
         // grouped by destination, pasted one group after the other (one
@@ -3842,7 +4063,19 @@ namespace UltraCanvas {
             bool cut = false;
         };
         std::unique_ptr<PasteRetry> pasteRetry;
-        void RetrySkippedPaste(const std::vector<SkippedItem>& items, bool cut);
+        FilerRetryConflictAnswer retryConflicts;   // for the whole retry
+        // Set by ContinuePasteRetry for the StartPaste it is about to make,
+        // and taken by it in place of the host's conflict policy.
+        std::optional<FilerRetryConflictAnswer> nextPasteConflicts;
+        void RetrySkippedPaste(const std::vector<SkippedItem>& items, bool cut,
+                               FilerRetryConflictAnswer conflicts = FilerRetryConflictAnswer());
+        // The last choices of the conflict question's options panel, for the
+        // next question of the session: the replace condition, and whether
+        // the panel was open.
+        PasteReplaceCondition lastReplaceCondition = PasteReplaceCondition::Unconditionally;
+        // ... and whether its Keep both skips identical files.
+        bool lastKeepBothSkipsIdentical = false;
+        bool replaceOptionsOpen = false;
         void ContinuePasteRetry();
 
         struct PendingPaste {
@@ -3866,6 +4099,8 @@ namespace UltraCanvas {
             bool cut = false;
             PasteConflictAction action = PasteConflictAction::KeepBoth;
             bool applyToAll = false;   // reuse `action` for later file conflicts
+            // What a Replace of a file asks of the pasted file first.
+            PasteReplaceCondition replaceCondition = PasteReplaceCondition::Unconditionally;
             // The same for folders whose name is taken: Merge, Replace or
             // Skip, remembered apart from the file answer because Merge means
             // nothing for a file.
@@ -3956,7 +4191,9 @@ namespace UltraCanvas {
                                   const std::vector<SkippedItem>& skipped,
                                   const std::string& facts,
                                   const std::string& retryLabel,
-                                  std::function<void()> onRetry);
+                                  std::function<void()> onRetry,
+                                  std::shared_ptr<UltraCanvasCollapsiblePanel> options = nullptr,
+                                  std::shared_ptr<void> optionsState = nullptr);
 
         // ===== THE OPERATION DIALOG =====
         // Every question a copy, move or delete asks is one of these: a
@@ -4007,6 +4244,12 @@ namespace UltraCanvas {
             std::function<std::string()> liveFacts;
             // The same for `content`: brings its elements up to date.
             std::function<void()> liveContent;
+            // A foldable panel of further choices under the note (the
+            // conflict question's replace conditions); the dialog grows and
+            // shrinks with it. `optionsState` - what its controls report into
+            // - lives as long as the dialog.
+            std::shared_ptr<UltraCanvasCollapsiblePanel> options;
+            std::shared_ptr<void> optionsState;
         };
         // Shows the dialog; `onAnswer(buttonIndex, applyToAll)` runs for the
         // button that was pressed, `onDismiss` when the dialog went without
@@ -4038,12 +4281,14 @@ namespace UltraCanvas {
                                 const std::string& from, const std::string& destDir);
         // The entry list the operation dialogs share (the delete confirmation's
         // list, generalised): at most kOperationListRows rows, `visibleRows`
-        // of them at a time, the rest behind a scrollbar.
+        // of them at a time, the rest behind a scrollbar. `width` is the room
+        // the list has (0: not known): a reason column takes what the name
+        // leaves of it, so a longer translation is not cut short.
         std::shared_ptr<UltraCanvasUIElement> BuildOperationEntryList(
                 const std::string& id, const std::vector<FilerEntry>& listed,
                 const std::vector<std::string>& rowNotes,
                 const std::vector<std::string>& rowLabels, bool details,
-                int visibleRows, int& outHeight);
+                int visibleRows, int& outHeight, int width = 0);
         // At most this many rows in an operation dialog's list.
         static constexpr size_t kOperationListRows = 200;
 
@@ -4196,8 +4441,37 @@ namespace UltraCanvas {
             PasteConflictAction action = PasteConflictAction::KeepBoth;
             bool applyToAll = false;
             bool changed = false;
+            // "Extract into existing": what happens to a file that is there
+            // already (ExtractExistingChoice), and the files it left as they
+            // were, with why - listed once the queue is through.
+            int existingChoice = 0;
+            std::vector<SkippedItem> kept;
+            // The Extract dialog's own folder (its name field, the folder
+            // the icon was dropped on) for its one archive; empty: each
+            // archive's stem beside it, as ExtractSelection unpacks.
+            std::string targetFolder;
         };
+        // Where an archive of the pending extract unpacks to.
+        std::string ExtractDestinationFor(const FilerEntry& archive) const;
+        // What Extract into existing does with one file that is there
+        // already, by ExtractExistingChoice `choice`: 0 write over it, 1 leave
+        // it (`whyKept` says why), 2 write the archive's file to `writeAs`.
+        // Reads only the file at `destPath`; safe on the archive worker.
+        static int DecideExistingFile(int choice, const std::string& destPath,
+                                      uint64_t entrySize, int64_t entryModifiedTime,
+                                      std::string& writeAs, std::string& whyKept);
         std::unique_ptr<PendingExtract> pendingExtract;
+        // What the extract question's options panel says happens to a file
+        // that exists already, by the order of its choices: replace always;
+        // replace when the archive's file is newer, older, bigger, or the
+        // files differ; skip identical files and keep both for the rest.
+        enum ExtractExistingChoice {
+            ExtractReplaceAlways = 0, ExtractReplaceIfNewer, ExtractReplaceIfOlder,
+            ExtractReplaceIfLarger, ExtractReplaceIfDifferent, ExtractKeepBothUnlessIdentical
+        };
+        // The last answer of the session, and whether the panel was open.
+        int lastExtractExistingChoice = ExtractReplaceAlways;
+        bool extractOptionsOpen = false;
 
         // ===== ARCHIVE WORKER (compress / extract with a progress window) =====
         // Packing and unpacking are the widget's only file operations that can
@@ -4213,6 +4487,15 @@ namespace UltraCanvas {
             std::atomic<bool>     cancelRequested{false};
             std::atomic<uint64_t> doneBytes{0};
             std::atomic<uint64_t> totalBytes{0};
+            std::atomic<bool>     paused{false};   // the reporter waits while set
+            bool                  background = false;   // Run in background: no window
+            // What its window shows, to open it again (BringOperationToFront).
+            std::string           title;
+            std::string           caption;
+            std::string           routeFrom;
+            std::string           routeTo;
+            bool                  showFigures = true;
+            bool                  pausable = true;
             std::mutex            fileMutex;
             std::string           currentFile;      // guarded by fileMutex
             std::string           destination;      // archive path / target folder
@@ -4232,6 +4515,22 @@ namespace UltraCanvas {
         using ArchiveProgressReporter =
                 std::function<bool(uint64_t done, uint64_t total,
                                    const std::string& file)>;
+        // What the window of an archive job shows besides the ring: the route
+        // ("photos.zip" -> "photos"), the strip of figures (bytes), Pause.
+        struct ArchiveJobLook {
+            std::string from;
+            std::string to;
+            bool figures = true;
+            bool pausable = true;
+        };
+        void StartArchiveJob(const std::string& title,
+                             const std::string& caption,
+                             const std::string& destination,
+                             bool packing,
+                             std::function<bool(const ArchiveProgressReporter&)> work,
+                             std::function<void(bool ok, bool cancelled)> onFinished,
+                             const ArchiveJobLook& look);
+        // ... with no route, the figures and Pause.
         void StartArchiveJob(const std::string& title,
                              const std::string& caption,
                              const std::string& destination,
@@ -4239,6 +4538,18 @@ namespace UltraCanvas {
                              std::function<bool(const ArchiveProgressReporter&)> work,
                              std::function<void(bool ok, bool cancelled)> onFinished);
         void PollArchiveJob();      // UI timer: ring, detail line, completion
+        // The archive job's progress window, opened at its start and again
+        // when it is brought back from the background.
+        void OpenArchiveJobDialog(ArchiveJob* job);
+        // Set by "Run in background" on an archive job: the jobs that follow
+        // it in the same queue (the next archive of an extract) start in the
+        // background too, until the queue is through.
+        bool archiveJobsInBackground = false;
+        // The host's report for an operation in the background.
+        void ReportBackgroundProgress(bool active, const std::string& title,
+                                      const std::string& from, const std::string& to,
+                                      double fraction, const std::string& file,
+                                      const ProgressFigures& figures, bool paused);
         void FinishArchiveJob();    // joins the worker and closes the window
         // Unpacks (archive -> destination folder) pairs one job at a time,
         // each behind its own progress window, then refreshes and reports

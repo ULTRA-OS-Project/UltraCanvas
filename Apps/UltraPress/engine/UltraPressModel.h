@@ -4,6 +4,8 @@
 // ordered tree of blocks. Everything here is data; the renderers (the HTML
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
+// Version: 0.9.1 - Page::tags
+// Version: 0.9.0 - Site::output (WebAssembly or HTML + JavaScript), Theme::darkColors
 // Version: 0.8.3 - IsSiteAddress: what the site's url has to be
 // Version: 0.8.2 - SitePathText: '\' becomes '/' on Windows only
 // Version: 0.7.1 - Hosting's comment names the data folder the hosts live in
@@ -53,6 +55,7 @@ struct Page {
     std::string language;                // empty: the site's
     std::string templateName = "default";
     bool pinned = false;                 // sorts first in the page list
+    std::vector<std::string> tags;       // a post's tags: the blog's pages per tag (the HTML + JavaScript output)
     PageSeo seo;
     std::vector<Block> blocks;
 
@@ -74,12 +77,22 @@ struct Menu {
 
 // The theme model of Phase 1: named colours and the type family. The HTML
 // shadow does not use it (it is unstyled on purpose); the element renderer
-// will.
+// and the HTML + JavaScript output do.
 struct Theme {
     std::string name = "default";
     std::vector<std::pair<std::string, std::string>> colors;   // name → #rrggbb, insertion order kept
+    // The same names for the dark look of the HTML + JavaScript output
+    // ("dark" in theme.json). Empty: the published site is light only.
+    std::vector<std::pair<std::string, std::string>> darkColors;
     std::string fontFamily = "Ubuntu";
 };
+
+// What Publish writes (Docs/Research/UltraSiteStaticSitesProposal.md):
+// "html" - every page as styled HTML with small script modules, through
+// UltraSite (UltraPressSite.h); "wasm" - the HTML shadow of every page and
+// the WebAssembly renderer that draws it (UltraPressPublish.h).
+constexpr const char* kOutputHtml = "html";
+constexpr const char* kOutputWasm = "wasm";
 
 // Where "Publish" puts the site: an UltraPress host account (an UltraCloud
 // account id - FTP, SFTP, WebDAV, Nextcloud - kept by the ultrapress program
@@ -107,6 +120,7 @@ struct Site {
     std::vector<Menu> menus;
     std::vector<Page> pages;
     Hosting hosting;
+    std::string output = kOutputHtml;     // "html" or "wasm": what Publish writes ("output" in site.json)
 
     const Page* FindPage(const std::string& slug) const;
     const Menu* FindMenu(const std::string& name) const;

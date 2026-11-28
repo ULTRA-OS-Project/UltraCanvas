@@ -1,0 +1,91 @@
+name: Vector output in LibreOffice
+
+# Our vector writers' output, drawn by another program.
+#
+# The writers are tested by reading their files back with our own readers,
+# which can agree with them and still both be wrong. Before the fill-rule fix
+# the EMF and WMF writers set WINDING, which LibreOffice ignores, and the
+# CDR and ODG writers lost a ring's middle; every round trip passed, and the
+# files drew wrong in LibreOffice. This job writes fixture drawings through
+# every writer (Tests/VectorExportFixtures.cpp), has LibreOffice convert each
+# to PNG, and checks what is where (scripts/check_libreoffice_render.py).
+# Against the writers from before that fix it fails on 8 files.
+#
+# Only the core and the Vector plugin are built, every other app and module
+# off - the plugin needs nothing more. LibreOffice is Ubuntu 24.04's, without
+# its GUI.
+#
+# Trigger policy matches image-codecs.yml: `pull_request` covers feature
+# branches, so listing them under `push` too would run this twice per commit.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/Plugins/Vector/**'
+      - 'UltraCanvas/core/DataFormats/**'
+      - 'UltraCanvas/include/DataFormats/**'
+      - 'Tests/VectorExportFixtures.cpp'
+      - 'Tests/VectorFormatsTests.cmake'
+      - 'scripts/check_libreoffice_render.py'
+      - 'scripts/ci-apt.sh'
+      - '.github/workflows/vector-libreoffice.yml'
+  pull_request:
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  render:
+    # Pinned: the expected failures in the script are this LibreOffice's.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the core's dependencies and LibreOffice
+        run: |
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install --no-install-recommends \
+            cmake ninja-build clang pkg-config build-essential \
+            libcairo2-dev libpango1.0-dev libharfbuzz-dev libvips-dev \
+            libglib2.0-dev libfreetype-dev libtinyxml2-dev libfmt-dev zlib1g-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxfixes-dev \
+            libgl1-mesa-dev libgtk-3-dev \
+            libreoffice-draw-nogui python3-pil fonts-dejavu-core
+          soffice --version
+
+      # Every BUILD_* option and every ULTRACANVAS_{PLUGIN,USE,ENABLE}_*
+      # option off, read from the CMake files so a new app or module is off
+      # here too, then the Vector plugin and its tests on.
+      - name: Configure the core and the Vector plugin
+        run: |
+          off=$(grep -h -oE '^option\((BUILD_[A-Z_]+|ULTRACANVAS_(PLUGIN|USE|ENABLE)_[A-Z_]+)' \
+                  CMakeLists.txt UltraCanvas/CMakeLists.txt |
+                sed 's/^option(/-D/; s/$/=OFF/' | sort -u)
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release $off \
+                -DULTRACANVAS_PLUGIN_VECTOR=ON -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON
+
+      - name: Build the fixture writer
+        run: cmake --build build --target VectorExportFixtures
+
+      - name: Draw the writers' output in LibreOffice
+        run: |
+          python3 scripts/check_libreoffice_render.py \
+            --fixtures "$(find build -type f -name VectorExportFixtures -perm -u+x | head -1)" \
+            --out lo-render
+
+      # The fixtures and LibreOffice's PNGs, to look at when the check fails.
+      - name: Keep the drawings
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: vector-libreoffice
+          path: lo-render
+          if-no-files-found: ignore
+          retention-days: 14

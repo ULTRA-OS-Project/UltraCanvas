@@ -29,6 +29,8 @@ constexpr const char* kMerchants = "merchants";
 constexpr const char* kReview = "review";
 constexpr const char* kReports = "reports";
 constexpr const char* kTerms = "terms";
+constexpr const char* kUsers = "users";
+constexpr const char* kOperators = "operators";
 constexpr const char* kAudit = "audit";
 constexpr const char* kSettings = "settings";
 
@@ -78,7 +80,7 @@ bool OperatorWindow::Create() {
 
     LoadSettingsPage();
     if (!settingsError_.empty()) SetStatus(settingsError_, true);
-    if (settings_.Complete()) ShowPage(pages_.count(startPage_) ? startPage_ : kDashboard);
+    if (settings_.Complete()) { ShowPage(pages_.count(startPage_) ? startPage_ : kDashboard); RefreshWhoAmI(); }
     else { ShowPage(kSettings); SetStatus(Tr("Name the marketplace service and the operator token to begin."), false); }
     return true;
 }
@@ -114,6 +116,8 @@ void OperatorWindow::BuildShell() {
     sidebar_->AddItem(kReview, Tr("App review"), Theme::Icon("list-check.svg"));
     sidebar_->AddItem(kReports, Tr("Reports"), Theme::Icon("envelope.svg"));
     sidebar_->AddItem(kTerms, Tr("Terms and notices"), Theme::Icon("clipboard-list.svg"));
+    sidebar_->AddItem(kUsers, Tr("Users"), Theme::Icon("user-plus.svg"));
+    sidebar_->AddItem(kOperators, Tr("Operators"), Theme::Icon("settings.svg"));
     sidebar_->AddItem(kAudit, Tr("Audit log"), Theme::Icon("clock-five.svg"));
     sidebar_->AddItem(kSettings, Tr("Settings"), Theme::Icon("settings.svg"));
     sidebar_->onSelectionChanged = [this](const std::string& id) { if (currentPage_ != id) ShowPage(id); };
@@ -138,7 +142,9 @@ void OperatorWindow::BuildShell() {
     BuildReviewPage();
     BuildReportsPage();
     BuildTermsPage();
+    BuildUsersPage();
     BuildAuditPage();
+    BuildOperatorsPage();
     BuildSettingsPage();
 
     body->AddChild(side);
@@ -189,9 +195,19 @@ void OperatorWindow::ShowPage(const std::string& id) {
         else if (id == kReview) RefreshReview();
         else if (id == kReports) RefreshReports();
         else if (id == kTerms) RefreshTerms();
+        else if (id == kUsers) RefreshUsers();
+        else if (id == kOperators) RefreshOperators();
         else if (id == kAudit) RefreshAudit();
     }
     Relayout();
+}
+
+std::string OperatorWindow::RoleWord(const std::string& role) {
+    if (role == "admin") return Tr("admin");
+    if (role == "reviewer") return Tr("reviewer");
+    if (role == "support") return Tr("support");
+    if (role == "auditor") return Tr("auditor");
+    return role;
 }
 
 // The dark box under the sidebar: the service, who is signed in, and the
@@ -200,7 +216,10 @@ void OperatorWindow::UpdateSidebarNote(const std::string& numbers) {
     if (!sidebarNote_) return;
     std::string text = numbers;
     if (!settings_.url.empty()) text += (text.empty() ? "" : "\n") + settings_.url;
-    if (!settings_.name.empty()) text += (text.empty() ? "" : "\n") + TrF("Signed in as {0}, operator", settings_.name);
+    if (settings_.SignedIn() || !settings_.name.empty()) {
+        const std::string who = settings_.name.empty() ? Tr("operator") : settings_.name;
+        text += (text.empty() ? "" : "\n") + (settings_.role.empty() ? TrF("Signed in as {0}, operator", who) : TrF("Signed in as {0}, {1}", who, RoleWord(settings_.role)));
+    }
     sidebarNote_->SetText(text);
     if (sidebarNoteBox_) sidebarNoteBox_->SetVisible(!text.empty());
 }
@@ -540,13 +559,33 @@ void OperatorWindow::BuildSettingsPage() {
     sUrl_->SetPlaceholder("https://market.example");
     surface->AddChild(Theme::Field("uoS.urlRow", Tr("Service URL"), sUrl_));
     sToken_ = Theme::Pin(CreatePasswordInput("uoS.token", 0, 0, 480, Theme::kControlHeight));
-    sToken_->SetPlaceholder(Tr("the service's ULTRASTORE_MARKET_OPERATOR_TOKEN"));
+    sToken_->SetPlaceholder(Tr("the service's ULTRASTORE_MARKET_OPERATOR_TOKEN, or the session a sign-in gives"));
     surface->AddChild(Theme::Field("uoS.tokenRow", Tr("Operator token"), sToken_));
     sName_ = Theme::Pin(CreateTextInput("uoS.name", 0, 0, 300, Theme::kControlHeight));
     sName_->SetPlaceholder(Tr("shown in the window, and as the assignee of a report"));
     surface->AddChild(Theme::Field("uoS.nameRow", Tr("Your name"), sName_));
     settingsInfo_ = Theme::Caption("uoS.info", "");
     surface->AddChild(settingsInfo_);
+    body->AddChild(surface);
+    BuildSignInSection(body);
+    auto accounts = Theme::Section("uoS.accounts", Tr("The account service"));
+    accounts->AddChild(Theme::Caption("uoS.accounts.hint", Tr("The Users page drives the account service (Server/UltraStoreAccount). Signed in, your session reaches it too; the token below is for the bootstrap admin, or when the two services share no secret. Both empty when the store runs no accounts.")));
+    sAccountUrl_ = Theme::Pin(CreateTextInput("uoS.accountUrl", 0, 0, 480, Theme::kControlHeight));
+    sAccountUrl_->SetPlaceholder("https://store.example/account");
+    accounts->AddChild(Theme::Field("uoS.accountUrlRow", Tr("Account service URL"), sAccountUrl_));
+    sAccountToken_ = Theme::Pin(CreatePasswordInput("uoS.accountToken", 0, 0, 480, Theme::kControlHeight));
+    sAccountToken_->SetPlaceholder(Tr("the service's ULTRASTORE_ACCOUNT_OPERATOR_TOKEN"));
+    accounts->AddChild(Theme::Field("uoS.accountTokenRow", Tr("Account operator token"), sAccountToken_));
+    auto checkAccounts = Theme::Button("uoS.checkAccounts", Tr("Check the account service"), 190);
+    checkAccounts->onClick = [this]() {
+        SaveSettingsPage();
+        OperatorClient client(settings_);
+        Fetch<std::string>(Tr("Asking the account service"), [client]() { return client.AccountHealth(); }, [this](const std::string& health) {
+            SetStatus(health == "ok" ? Tr("The account service answers: ok") : TrF("The account service answers: {0}", health), health != "ok");
+        });
+    };
+    accounts->AddChild(checkAccounts);
+    body->AddChild(accounts);
     auto buttons = Theme::Row("uoS.buttons", Theme::kInnerGap, true);
     auto save = Theme::Button("uoS.save", Tr("Save"), 100, Theme::ButtonKind::Primary);
     save->onClick = [this]() { SaveSettingsPage(); };
@@ -561,7 +600,6 @@ void OperatorWindow::BuildSettingsPage() {
     };
     buttons->AddChild(check);
     surface->AddChild(buttons);
-    body->AddChild(surface);
     body->AddChild(Theme::Caption("uoS.hint", TrF("The settings are kept in {0}, readable by you alone; ULTRASTORE_OPERATOR_URL and ULTRASTORE_OPERATOR_TOKEN in the environment override them.", settingsPath_)));
 }
 
@@ -570,14 +608,19 @@ void OperatorWindow::LoadSettingsPage() {
     sUrl_->SetText(settings_.url);
     sToken_->SetText(settings_.token);
     sName_->SetText(settings_.name);
+    if (sAccountUrl_) sAccountUrl_->SetText(settings_.accountUrl);
+    if (sAccountToken_) sAccountToken_->SetText(settings_.accountToken);
     settingsInfo_->SetText(settings_.Complete() ? "" : Tr("Both the URL and the token are needed before any page can ask the service."));
 }
 
 void OperatorWindow::SaveSettingsPage() {
     settings_.url = sUrl_->GetText();
-    settings_.token = sToken_->GetText();
+    if (settings_.token != sToken_->GetText()) { settings_.token = sToken_->GetText(); settings_.role.clear(); haveWhoAmI_ = false; }
     settings_.name = sName_->GetText();
     while (!settings_.url.empty() && settings_.url.back() == '/') settings_.url.pop_back();
+    if (sAccountUrl_) settings_.accountUrl = sAccountUrl_->GetText();
+    if (sAccountToken_) settings_.accountToken = sAccountToken_->GetText();
+    while (!settings_.accountUrl.empty() && settings_.accountUrl.back() == '/') settings_.accountUrl.pop_back();
     if (const auto saved = settings_.Save(settingsPath_); !saved) { SetStatus(saved.error.message, true); return; }
     settingsInfo_->SetText(settings_.Complete() ? "" : Tr("Both the URL and the token are needed before any page can ask the service."));
     SetStatus(Tr("Settings saved"));

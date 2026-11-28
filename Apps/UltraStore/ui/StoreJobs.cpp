@@ -14,6 +14,7 @@
 
 #include "StoreTheme.h"
 
+#include "UltraCanvasSystemLanguage.h"
 #include "UltraCanvasUtils.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -44,8 +45,19 @@ StoreWindow::QueueEntry* StoreWindow::FindEntry(uint64_t jobId) {
     return nullptr;
 }
 
+std::string StoreWindow::BuyerCountryNow(const std::string& setting) const {
+    // The platform's own languages first (the environment says nothing on
+    // Windows and macOS), then the environment's locale.
+    std::string system = CountryOfLanguageTags(UltraCanvas::SystemLanguageTags());
+    if (system.empty()) system = SystemCountry();
+    return BuyerCountry(setting, me_ ? me_->profile.country : std::string(), system);
+}
+
 void StoreWindow::Enqueue(Job job) {
     job.id = nextJobId_++;
+    // Read here, on the UI thread: the job runs on another, and the account
+    // it would read may be signed out meanwhile.
+    if (job.kind == JobKind::Buy) job.country = BuyerCountryNow(settings_.country);
     if (job.showInQueue) {
         QueueEntry entry;
         entry.jobId = job.id;
@@ -260,7 +272,7 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                 }
             } else {
                 progress(Tr("Asking the payment service"), -1.0);
-                const auto started = StartCheckout(catalog->paymentUrl, job.appId, settings_.CodeInForce(Today()), http);
+                const auto started = StartCheckout(catalog->paymentUrl, job.appId, settings_.CodeInForce(Today()), http, job.country);
                 if (!started) return fail(started.error);
                 order = started.Value();
                 remember({order.orderId, order.secret, job.appId, order.amount, order.currency, order.checkoutUrl, Today()});
@@ -297,6 +309,25 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
             if (const auto all = engine_->Registry().Licences()) { result.licences = all.Value(); result.haveLicences = true; }
             result.message = TrF("Bought {0} for {1} {2}: receipt no. {3}", nameOf(job.appId), order.amount, order.currency, order.receiptNo) +
                              (catalog->licenceKey.empty() ? " " + Tr("(the licence is kept unverified: the catalog names no licence key)") : std::string());
+            return result;
+        }
+        case JobKind::AccountSync: {
+            if (!account_.SignedIn()) return fail(Error{ErrorCode::NotAvailable, Tr("Not signed in")});
+            progress(Tr("Licences in step with the account"), -1.0);
+            const AccountClient client(account_.url);
+            const auto sync = SyncLicencesWithAccount(engine_->Registry(), client, account_.token, catalog ? catalog->licenceKey : std::string());
+            if (!sync) return fail(sync.error);
+            // A licence fetched gets its file beside the app's versions, as a purchase here would.
+            for (const std::string& app : sync.Value().fetched) {
+                if (const auto record = engine_->Registry().GetLicence(app)) WriteLicenceFile(LicenceFilePath(engine_->Root(), app), record.Value().token);
+            }
+            if (const auto all = engine_->Registry().Licences()) { result.licences = all.Value(); result.haveLicences = true; }
+            std::string message;
+            if (!sync.Value().attached.empty()) message += TrN("{n} licence attached to the account.", "{n} licences attached to the account.", static_cast<long long>(sync.Value().attached.size()));
+            if (!sync.Value().fetched.empty()) message += (message.empty() ? "" : " ") + TrN("{n} licence fetched from the account.", "{n} licences fetched from the account.", static_cast<long long>(sync.Value().fetched.size()));
+            if (!sync.Value().noSeat.empty()) message += (message.empty() ? "" : " ") + TrN("{n} licence has no seat left for this machine.", "{n} licences have no seat left for this machine.", static_cast<long long>(sync.Value().noSeat.size()));
+            if (!sync.Value().failed.empty()) message += (message.empty() ? "" : " ") + TrF("{0}: {1}", sync.Value().failed.front().first, sync.Value().failed.front().second.message);
+            result.message = message.empty() ? Tr("The licences are in step with the account") : message;
             return result;
         }
         case JobKind::Collect: {

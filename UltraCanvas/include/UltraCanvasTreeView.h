@@ -1,5 +1,14 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.17.0 - 2026-11-27 - a selected row's text reads on the selection: with no selection
+//                   text colour set it is white (black only on a light selection, under 3:1
+//                   for white) - it was the row's black on the blue - and it wins over a
+//                   node's own text colour
+// Version: 1.16.0 - 2026-11-21 - TreeNodeIcon::drawnInTextColor: a one-colour line icon drawn in
+//                   the row's text colour, so a black icon reads on a dark theme
+// Version: 1.15.0 - 2026-11-16 - TreeNodeData::dimmed: a row drawn in the tree's muted text colour
+//                   (dimmedTextColor, the theme's inkMuted) - for an entry the tree normally
+//                   leaves out, such as a hidden folder shown on demand
 // Version: 1.14.1 - 2026-11-14 - GetNodeAtY stops at the foot of the rows' viewport (the padding
 //                   and the border are over no row); ScrollTo does nothing for a row that is not
 //                   on show, instead of jumping to the top
@@ -136,7 +145,13 @@ struct TreeNodeIcon {
     int width = 16;
     int height = 16;
     bool visible = true;
-    
+    // A one-colour line icon (a black outline with no colours of its own):
+    // drawn as a mask in the row's text colour (NodeTextColor), so it is the
+    // theme's ink on any ground - light on a dark theme, the selection text
+    // colour on the selected row - where drawn as it is it stays black. Leave
+    // it false for a coloured icon, whose colours would all become the ink.
+    bool drawnInTextColor = false;
+
     TreeNodeIcon() = default;
     TreeNodeIcon(const std::string& path, int w = 16, int h = 16) 
         : iconPath(path), width(w), height(h) {}
@@ -201,6 +216,11 @@ struct TreeNodeData {
     // placeholder child whose text says "loading"; the host keeps such a child
     // only for the expand button, hidden (visible = false).
     bool loading = false;
+    // The row reads as secondary - an entry the host normally leaves out (a
+    // hidden folder shown because the user went there): its label is drawn in
+    // the tree's dimmedTextColor, which follows the theme, instead of the
+    // text colour. A textColor of its own and the selection text still win.
+    bool dimmed = false;
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText) 
@@ -326,6 +346,7 @@ private:
     Color hoverColor;           // Hovered row background
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
+    Color dimmedTextColor = Color(0x80, 0x80, 0x88); // a dimmed row's label (TreeNodeData::dimmed)
     Color expandButtonColor = Color(0xE0, 0xE0, 0xE0); // +/- node icon background
     Color expandButtonBorderColor = Colors::Gray;       // its 1 px border
     Color expandButtonSymbolColor = Colors::Black;      // the + / - itself
@@ -351,9 +372,9 @@ private:
     // the row: white on the selection background, the selection colour on
     // any other row.
     Color focusRingColor = Colors::Transparent;
-    // The text of a selected row. Transparent (the default) keeps the row's
-    // own text colour, as before; the theme sets the colour that reads on
-    // the accent (ThemeRoles::onAccent).
+    // The text of a selected row. Transparent (the default) picks white,
+    // or black on a light selectionColor; the theme sets the colour
+    // that reads on the accent (ThemeRoles::onAccent).
     Color selectionTextColor = Colors::Transparent;
 
     // The node currently highlighted as a drag-and-drop target, if any.
@@ -672,6 +693,9 @@ public:
     // text colour (a node's own colour wins either way)
     void SetSelectionTextColor(const Color &color) { selectionTextColor = color; RequestRedraw(); }
     Color GetSelectionTextColor() const { return selectionTextColor; }
+    // The text colour a selected row is drawn in: the one set, else white,
+    // or black on a selection too light for white (under 3:1).
+    Color SelectedRowTextColor() const;
     void SetHoverColor(const Color &color) { hoverColor = color; }
     // The focus ring's colour; Colors::Transparent restores the automatic
     // choice (white on a selected row, the selection colour elsewhere).
@@ -686,6 +710,8 @@ public:
     Color GetHoverColor() const { return hoverColor; }
     Color GetLineColor() const { return lineColor; }
     Color GetTextColor() const { return textColor; }
+    void SetDimmedTextColor(const Color &color) { dimmedTextColor = color; RequestRedraw(); }
+    Color GetDimmedTextColor() const { return dimmedTextColor; }
     void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
     // The +/- box whole: its fill, its border and the + / - (TreeExpanderStyle::Box).
     void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol) {
@@ -868,13 +894,20 @@ protected:
 
     // Read-only access for subclass renderers.
     int   GetTextPadding() const { return textPadding; }
-    // The colour a node's label takes: the node's own, else the selection
-    // text colour on a selected row, else the tree's text colour
+    // The colour a node's label takes: on a selected row the selection text
+    // colour (SelectedRowTextColor), so it reads on the selection; else the
+    // node's own, else the muted colour on a dimmed row, else the tree's
+    // text colour
     Color NodeTextColor(const TreeNode* node) const {
+        if (node->selected) return SelectedRowTextColor();
         if (node->data.textColor != Colors::Black) return node->data.textColor;
-        if (node->selected && selectionTextColor.a > 0) return selectionTextColor;
+        if (node->data.dimmed) return dimmedTextColor;
         return textColor;
     }
+    // Draws a node's left or right icon into `rect`: as it is, or in the
+    // row's text colour when the icon says so (drawnInTextColor).
+    void DrawNodeIcon(IRenderContext* ctx, const TreeNode* node, const TreeNodeIcon& icon,
+                      const Rect2Dd& rect) const;
     Color GetExpandButtonColor() const { return expandButtonColor; }
     Color GetExpandButtonBorderColor() const { return expandButtonBorderColor; }
     Color GetExpandButtonSymbolColor() const { return expandButtonSymbolColor; }

@@ -158,6 +158,8 @@ private:
     // dialog onto the desktop.
     void Lock(const std::string& reason);
     void ShowLockScreen();
+    void OpenRecoveryDialog();
+    void OpenRecoverVaultDialog();
     void NoteActivity();
     void ApplyPreferences(const Preferences& edited);
 
@@ -190,6 +192,8 @@ private:
     bool                               locked_ = false;
     std::string                        lockMessage_;   // what the lock screen says
     std::shared_ptr<LockScreenDialog>  lockDialog_;
+    // "Forgot password", over the lock screen; kept alive while it is up.
+    std::shared_ptr<UltraCanvasModalDialog> recoverDialog_;
     int64_t                            lastActivity_ = 0;
 
     std::string                        clipboardCode_;   // what we copied, to clear only that

@@ -4,8 +4,10 @@
 // chosen page on the right, a bar at the foot with the page's "Restore
 // defaults" on the left and Close on the right.
 //
-//   | Appearance     | Time & date                                        |
-//   |   Look         | How times and dates are written in the lists:      |
+//   | General        | Time & date                                        |
+//   |   Startup      | How times and dates are written in the lists:      |
+//   | Appearance     |                                                    |
+//   |   Look         |                                                    |
 //   |   Time & date  |   (o) 14:05   ( ) 2:05 PM                          |
 //   | Messages       |   (o) 31.10.2026 ...                               |
 //   |   Sending      |                                                    |
@@ -24,9 +26,10 @@
 // straight away; there is nothing to confirm. In ChatCube's own colours, the
 // light or the dark look.
 //
+// Version: 0.1.2 - General > Startup: manually, or when the computer starts
 // Version: 0.1.1 - the look applies at once too
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

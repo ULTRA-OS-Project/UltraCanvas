@@ -1,5 +1,7 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.8 - the profile picture: SetOwnPicture, SharePicture, HandlePictureBody; the contacts' pictures
+//                  filled in on every conversation and message the host is given
 // Version: 0.1.7 - TransferProgress while a picture, video or file goes out or comes in
 // Version: 0.1.6 - a contact added by someone else (the relay's contact.added, the local network's
 //                  "contact" frame): their chat appears before their first message
@@ -24,8 +26,10 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <system_error>
 
@@ -391,7 +395,12 @@ void DirectProvider::SetState(UltraIMConnectionState state, const std::string& e
 }
 
 void DirectProvider::Emit(const UltraIMEvent& event) {
-    if (sink_) sink_(event);
+    if (!sink_) return;
+    // The contacts' pictures on what the host is told (every event passes here).
+    UltraIMEvent out = event;
+    if (!out.conversation.conversationId.empty()) FillPictures(out.conversation);
+    if (!out.message.senderId.empty()) FillPictures(out.message);
+    sink_(out);
 }
 
 void DirectProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResultCallback onResult) {
@@ -619,6 +628,8 @@ void DirectProvider::AfterLogin() {
             }
             EnsureDirectConversation(contact.userId);
         }
+        // Contacts from before a picture was set, or before pictures were sent.
+        SharePicture();
         Wake();
     });
     RefreshGroups();
@@ -691,6 +702,8 @@ void DirectProvider::FetchAccountProfile(UltraIMAccountProfileCallback onResult)
         profile.email = email_;
         profile.phoneNumber = phone_;
     }
+    profile.pictureSupported = true;
+    profile.picturePath = store_.GetSetting("picture_path");
     // What only the relay knows: whether the codes came back, and recovery.
     std::shared_ptr<RelayClient> relay = Relay();
     if (!relay || !HasRelaySession()) {
@@ -923,6 +936,15 @@ void DirectProvider::UpdateAccountProfile(const UltraIMAccountProfile& profile, 
         finish(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
                                     "Type the phone number with + and the country code (+49 151 ...)"));
         return;
+    }
+    // The picture first: one that cannot be taken changes nothing else.
+    if (profile.pictureChanged) {
+        UltraIMResult refused = UltraIMResult::Ok();
+        if (!SetOwnPicture(profile.picturePath, refused)) {
+            finish(refused);
+            return;
+        }
+        SharePicture();
     }
     displayName_ = name;
     store_.SetSetting("display_name", name);
@@ -1336,6 +1358,9 @@ void DirectProvider::FetchUser(const std::string& userId, std::function<void(boo
 }
 
 UltraIMConversation DirectProvider::EnsureDirectConversation(const std::string& userId) {
+    // A contact (added by us, or who added us) has the owner's picture once;
+    // someone who only wrote to us does not.
+    SharePictureWith(userId);
     UltraIMConversation conversation;
     if (store_.GetConversation(userId, conversation)) return conversation;
     StoredContact contact;
@@ -1357,10 +1382,37 @@ UltraIMConversation DirectProvider::EnsureDirectConversation(const std::string& 
     return conversation;
 }
 
-void DirectProvider::UpsertGroup(const JSONValue& group) {
+UltraIMConversation DirectProvider::UpsertGroup(const JSONValue& group) {
     const std::string id = group["conversation"].GetString();
-    if (!IsGroupId(id)) return;
-    if (group["removed"].GetBoolean(false)) {
+    if (!IsGroupId(id)) return {};
+    const bool removed = group["removed"].GetBoolean(false);
+    // The relay's pushes (the socket's thread) and its replies to our own
+    // requests (UltraNet's request thread) arrive in no set order. From
+    // relay 1.6 each record carries the group's revision, one more with
+    // every change: one older than the newest we applied is dropped, and so
+    // is a record at the revision of our removal from the group, which the
+    // others' record of that same change would otherwise undo. A relay
+    // before 1.6 sends none (0), and every record is applied as it comes.
+    // The check and the write are one step under groupOrderMutex_, or two
+    // records could both pass the check and the older be written last.
+    std::unique_lock<std::mutex> order(groupOrderMutex_);
+    const int64_t revision = group["revision"].GetInteger(0);
+    if (revision > 0) {
+        GroupRevision& newest = groupRevisions_[id];
+        const bool stale = revision < newest.revision ||
+                           (revision == newest.revision && newest.removed && !removed);
+        if (stale) {
+            order.unlock();
+            // What we hold is newer: the caller is told that.
+            UltraIMConversation current;
+            if (!store_.GetConversation(id, current)) return {};
+            FillGroupDetails(current);
+            return current;
+        }
+        newest.revision = revision;
+        newest.removed = removed;
+    }
+    if (removed) {
         store_.RemoveConversation(id);
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1368,8 +1420,9 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
             publicGroups_.erase(id);
             groupDescriptions_.erase(id);
         }
+        order.unlock();
         EmitRemoved(id);
-        return;
+        return {};
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -1388,7 +1441,20 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     for (const auto& m : group["members"].GetElements()) conversation.memberIds.push_back(m.GetString());
     store_.UpsertConversation(conversation);
     store_.GetConversation(id, conversation);
+    order.unlock();
+    // What this record says wins over the re-read: with a relay before 1.6
+    // nothing orders the records, and an older one applied after our write
+    // would otherwise be read back - a rename's caller then told the old
+    // title. (The store ends right either way: the relay pushes the new
+    // state too, in order on the socket.)
+    conversation.title = group["title"].GetString();
+    conversation.isGroup = true;
+    conversation.memberIds.clear();
+    for (const auto& m : group["members"].GetElements()) conversation.memberIds.push_back(m.GetString());
     FillGroupDetails(conversation);
+    conversation.ownerId = group["owner"].GetString();
+    conversation.isPublic = group["public"].GetBoolean(false);
+    conversation.description = group["description"].GetString();
     // A member we have no key for yet: fetched, and the group told again
     // with their name once it is here.
     for (const auto& member : conversation.memberIds) {
@@ -1403,6 +1469,7 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     event.conversationId = id;
     event.conversation = conversation;
     Emit(event);
+    return conversation;
 }
 
 void DirectProvider::RefreshGroups() {
@@ -1420,6 +1487,7 @@ void DirectProvider::FetchConversations(UltraIMConversationsCallback onResult) {
     for (auto& c : list) {
         if (!c.isGroup && !c.directContactId.empty()) c.presence = EffectivePresence(c.directContactId);
         if (c.isGroup) FillGroupDetails(c);
+        FillPictures(c);
     }
     onResult(UltraIMResult::Ok(), list);
 }
@@ -1427,7 +1495,10 @@ void DirectProvider::FetchConversations(UltraIMConversationsCallback onResult) {
 void DirectProvider::FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                                    UltraIMMessagesCallback onResult) {
     std::vector<UltraIMMessage> messages = store_.Messages(conversationId, beforeMessageId, limit);
-    for (UltraIMMessage& m : messages) FillReply(m);
+    for (UltraIMMessage& m : messages) {
+        FillReply(m);
+        FillPictures(m);
+    }
     onResult(UltraIMResult::Ok(), messages);
 }
 
@@ -1439,7 +1510,10 @@ void DirectProvider::SearchMessages(const UltraIMMessageSearch& search, UltraIMS
         return;
     }
     UltraIMSearchPage page = store_.Search(search);
-    for (UltraIMMessage& m : page.messages) FillReply(m);
+    for (UltraIMMessage& m : page.messages) {
+        FillReply(m);
+        FillPictures(m);
+    }
     onResult(UltraIMResult::Ok(), page);
 }
 
@@ -1451,6 +1525,7 @@ void DirectProvider::FetchContacts(UltraIMContactsCallback onResult) {
         contact.providerId = providerId_;
         contact.displayName = c.displayName;
         contact.presence = EffectivePresence(c.userId);
+        contact.avatarPath = PictureOf(c.userId);
         out.push_back(contact);
     }
     onResult(UltraIMResult::Ok(), out);
@@ -1567,11 +1642,7 @@ void DirectProvider::CreateGroup(const std::string& title, const std::vector<std
     body.Set("members", members);
     relay->Request("POST", "/v1/groups", &body, [this, onResult](const RelayResponse& r) {
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(r.body["conversation"].GetString(), conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -1635,18 +1706,14 @@ void DirectProvider::RenameGroup(const std::string& conversationId, const std::s
     if (!target) return onResult(target, {});
     JSONValue body = JSONValue::MakeObject();
     body.Set("title", JSONValue(title));
-    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, conversationId, onResult](const RelayResponse& r) {
+    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, onResult](const RelayResponse& r) {
         // A relay before 1.3.0 has the group's address for GET alone.
         if (r.status == 405)
             return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
                                                  "This relay cannot rename groups yet - it needs ChatCube relay 1.3.0 "
                                                  "or later (its operator updates it)"), {});
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(conversationId, conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -1682,7 +1749,10 @@ void DirectProvider::AddMembersFrom(std::shared_ptr<RelayClient> relay, std::str
     relay->Request("POST", "/v1/groups/" + groupId + "/members", &body,
                    [this, relay, groupId, conversationId, ids, index, onResult](const RelayResponse& r) {
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
+        const UltraIMConversation conversation = UpsertGroup(r.body);
+        // The last member's reply is the group as it now is: reported as
+        // the relay gave it, not read back from the store (see UpsertGroup).
+        if (index + 1 >= ids.size()) return onResult(UltraIMResult::Ok(), conversation);
         AddMembersFrom(relay, groupId, conversationId, ids, index + 1, onResult);
     });
 }
@@ -1783,7 +1853,7 @@ void DirectProvider::JoinGroup(const std::string& conversationId, UltraIMConvers
     const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
     if (!target) return onResult(target, {});
     relay->Request("POST", "/v1/groups/" + groupId + "/join", nullptr,
-                   [this, conversationId, onResult](const RelayResponse& r) {
+                   [this, onResult](const RelayResponse& r) {
         if (r.status == 405) return onResult(NoPublicGroupsYet(), {});
         if (r.status == 403)
             return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
@@ -1793,11 +1863,7 @@ void DirectProvider::JoinGroup(const std::string& conversationId, UltraIMConvers
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
         // The members' keys come with UpsertGroup (fetched when missing):
         // what we send there is sealed for each of them.
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(conversationId, conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -1812,7 +1878,7 @@ void DirectProvider::SetGroupDescription(const std::string& conversationId, cons
                                              "A description holds at most 500 characters"), {});
     JSONValue body = JSONValue::MakeObject();
     body.Set("description", JSONValue(description));
-    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, conversationId, onResult](const RelayResponse& r) {
+    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, onResult](const RelayResponse& r) {
         if (r.status == 405 || r.status == 422)
             return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
                                                  "This relay keeps no group descriptions yet - it needs ChatCube "
@@ -1821,11 +1887,7 @@ void DirectProvider::SetGroupDescription(const std::string& conversationId, cons
             return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
                                                  "Only the owner changes a public group's description"), {});
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(conversationId, conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -1894,17 +1956,13 @@ void DirectProvider::SetGroupPublic(const std::string& conversationId, bool isPu
     JSONValue body = JSONValue::MakeObject();
     body.Set("public", JSONValue(isPublic));
     relay->Request("PUT", "/v1/groups/" + groupId + "/public", &body,
-                   [this, conversationId, onResult](const RelayResponse& r) {
+                   [this, onResult](const RelayResponse& r) {
         if (r.status == 405) return onResult(NoPublicGroupsYet(), {});
         if (r.status == 403)
             return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
                                                  "Only the group's owner makes it public or private"), {});
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(conversationId, conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -2088,6 +2146,10 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
         HandleEditBody(envelope, body);
         return;
     }
+    if (type == "picture") {
+        HandlePictureBody(envelope, body);
+        return;
+    }
     if (type != "text") return;
 
     const bool group = IsGroupId(envelope.conversation);
@@ -2242,6 +2304,162 @@ std::string DirectProvider::MediaPath(const std::string& fileId, const std::stri
         if (std::isalnum(static_cast<unsigned char>(c)) || c == '-') name += c;
     }
     return UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8(name + suffix));
+}
+
+// ============================================================================
+// THE PROFILE PICTURE
+// ============================================================================
+// The owner's picture goes to each contact as a sealed "picture" body, like
+// a message: over the link, else through the relay's queue, which holds it
+// sealed until the contact is back - the relay never has it in the clear and
+// keeps nothing once it is delivered. A contact keeps the newest version it
+// was sent; one that only wrote to us is sent none.
+
+namespace {
+
+// One sealed body: a part of a file is as large (kChunkBytes).
+constexpr size_t kMaxPictureBytes = 32 * 1024;
+
+// The kind of picture from its first bytes: ".jpg", ".png", ".webp", or ""
+// for anything else - what the sender says it is is never taken.
+std::string PictureSuffix(const std::vector<uint8_t>& b) {
+    if (b.size() >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return ".jpg";
+    if (b.size() >= 8 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') return ".png";
+    if (b.size() >= 12 && std::memcmp(b.data(), "RIFF", 4) == 0 && std::memcmp(b.data() + 8, "WEBP", 4) == 0)
+        return ".webp";
+    return std::string();
+}
+
+int64_t VersionNumber(const std::string& version) {
+    int64_t n = 0;
+    for (char c : version) {
+        if (c < '0' || c > '9') return 0;
+        if (n > (INT64_MAX - 9) / 10) return 0;
+        n = n * 10 + (c - '0');
+    }
+    return n;
+}
+
+void RemoveMediaFile(const std::string& path) {
+    if (path.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path), ec);
+}
+
+} // namespace
+
+bool DirectProvider::SetOwnPicture(const std::string& path, UltraIMResult& error) {
+    // A new version every time, removing included, so a contact that has the
+    // old one hears of the change.
+    const std::string version = std::to_string(std::max<int64_t>(NowMs(), VersionNumber(store_.GetSetting("picture_version")) + 1));
+    std::string kept;
+    if (!path.empty()) {
+        std::vector<uint8_t> bytes;
+        if (!ReadWholeFile(path, bytes) || bytes.empty()) {
+            error = UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "The picture could not be read");
+            return false;
+        }
+        if (bytes.size() > kMaxPictureBytes) {
+            error = UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                         "The picture is larger than 32 KB; choose it again to make it smaller");
+            return false;
+        }
+        const std::string suffix = PictureSuffix(bytes);
+        if (suffix.empty()) {
+            error = UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                         "The picture must be a JPEG, PNG or WebP file");
+            return false;
+        }
+        kept = MediaPath("own-picture-" + version, suffix);
+        if (!WriteWholeFile(kept, bytes)) {
+            error = UltraIMResult::Error(UltraIMResultCode::PluginError, "The picture could not be stored");
+            return false;
+        }
+    }
+    const std::string before = store_.GetSetting("picture_path");
+    store_.SetSetting("picture_path", kept);
+    store_.SetSetting("picture_version", version);
+    if (before != kept && IsMediaFile(before)) RemoveMediaFile(before);
+    return true;
+}
+
+void DirectProvider::SharePictureWith(const std::string& userId) {
+    if (userId.empty() || userId == identity_.userId || !identity_.IsValid()) return;
+    const std::string version = store_.GetSetting("picture_version");
+    if (version.empty()) return;                        // never set: nothing to tell
+    StoredContact contact;
+    if (!store_.GetContact(userId, contact)) return;    // contacts only
+    const std::string sentKey = "picture_sent/" + userId;
+    if (store_.GetSetting(sentKey) == version) return;
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("type", JSONValue("picture"));
+    body.Set("version", JSONValue(version));
+    const std::string path = store_.GetSetting("picture_path");
+    if (!path.empty()) {
+        std::vector<uint8_t> bytes;
+        if (!ReadWholeFile(path, bytes) || bytes.empty() || bytes.size() > kMaxPictureBytes) return;
+        body.Set("data", JSONValue(Base64(bytes)));
+    }
+    // Into the outbox: delivered like a message, the relay's queue holding
+    // it for someone away.
+    QueueBody(kDirectConversation, {userId}, "p-" + UltraIM_NewClientMessageId(), UltraCanvas::JSON::Serialize(body),
+              NowMs());
+    store_.SetSetting(sentKey, version);
+}
+
+void DirectProvider::SharePicture() {
+    for (const auto& c : store_.ListContacts()) SharePictureWith(c.userId);
+}
+
+void DirectProvider::HandlePictureBody(const Envelope& envelope, const JSONValue& body) {
+    const std::string& from = envelope.from;
+    StoredContact contact;
+    if (from.empty() || from == identity_.userId || !store_.GetContact(from, contact)) return;
+    // Only a newer one: two versions can arrive in either order.
+    const int64_t version = VersionNumber(body["version"].GetString());
+    const std::string versionKey = "contact_picture_version/" + from;
+    if (version <= 0 || version <= VersionNumber(store_.GetSetting(versionKey))) return;
+    const std::string pathKey = "contact_picture/" + from;
+    const std::string before = store_.GetSetting(pathKey);
+    std::string kept;
+    const std::string data = body["data"].GetString();
+    if (!data.empty()) {
+        const std::vector<uint8_t> bytes = FromBase64(data);
+        const std::string suffix = PictureSuffix(bytes);
+        if (bytes.empty() || bytes.size() > kMaxPictureBytes || suffix.empty()) return;
+        // A new name for each version: a picture cached under the old name is
+        // never shown in its place.
+        kept = MediaPath("picture-" + from + "-" + std::to_string(version), suffix);
+        if (!WriteWholeFile(kept, bytes)) return;
+    }
+    store_.SetSetting(pathKey, kept);
+    store_.SetSetting(versionKey, std::to_string(version));
+    if (before != kept && IsMediaFile(before)) RemoveMediaFile(before);
+    // Their chat with the new picture (Emit fills it in).
+    UltraIMConversation conversation;
+    if (store_.GetConversation(from, conversation)) {
+        conversation.presence = EffectivePresence(from);
+        UltraIMEvent updated;
+        updated.type = UltraIMEventType::ConversationUpdate;
+        updated.providerId = providerId_;
+        updated.conversationId = from;
+        updated.conversation = conversation;
+        Emit(updated);
+    }
+}
+
+std::string DirectProvider::PictureOf(const std::string& userId) {
+    if (userId.empty()) return std::string();
+    return store_.GetSetting("contact_picture/" + userId);
+}
+
+void DirectProvider::FillPictures(UltraIMConversation& conversation) {
+    if (!conversation.isGroup && !conversation.directContactId.empty())
+        conversation.avatarPath = PictureOf(conversation.directContactId);
+}
+
+void DirectProvider::FillPictures(UltraIMMessage& message) {
+    if (!message.isOwn && message.senderAvatarPath.empty()) message.senderAvatarPath = PictureOf(message.senderId);
 }
 
 UltraIMResult DirectProvider::SendImage(const std::string& conversationId, const std::string& localPath,

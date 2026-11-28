@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Market - Search</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#c2410c}a:hover{color:#9a3412}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+<a href="MarketHome.dc.html" aria-label="UltraStore Market home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Market</span>
+</a>
+<a href="#deliver" style="display: flex; align-items: center; gap: 8px; text-decoration: none; color: #0f172a; min-height: 44px"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg><span style="display: flex; flex-direction: column; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Deliver to</span><span style="font-weight: 700; font-size: 14px">Berlin 10115</span></span></a>
+<form role="search" style="flex: 1 1 360px; display: flex; align-items: stretch; height: 46px; border-radius: 999px; border: 2px solid {{accent}}; overflow: hidden; background: #ffffff">
+<label for="dept-s" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Department</label>
+<select id="dept-s" style="border: 0; border-right: 1px solid #e2e8f0; background: #f8fafc; padding: 0 12px; font: inherit; font-size: 13px; font-weight: 600; color: #334155; outline: none"><option>All</option></select>
+<label for="search-s" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search products</label>
+<input id="search-s" type="search" value="{{query}}" style="flex: 1 1 auto; min-width: 0; border: 0; padding: 0 16px; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+<button type="submit" aria-label="Search" style="width: 56px; border: 0; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+</form>
+<nav aria-label="Account" style="display: flex; gap: 4px; align-items: center">
+<a href="#account" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 12px; border-radius: 12px; text-decoration: none; color: #0f172a; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Hello, Anna</span><span style="font-weight: 700; font-size: 14px">Account</span></a>
+<a href="#orders" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 12px; border-radius: 12px; text-decoration: none; color: #0f172a; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Returns &amp;</span><span style="font-weight: 700; font-size: 14px">Orders</span></a>
+<a href="MarketBasket.dc.html" aria-label="Basket, 3 items" style="position: relative; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1.3"></circle><circle cx="17" cy="20" r="1.3"></circle></svg>Basket<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-size: 12px; font-weight: 800">3</span></a>
+</nav>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 24px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.03em">{{heading}} <span style="color: #64748b; font-weight: 600; font-size: 16px">· {{count}} results from {{sellerCount}} sellers</span></h1>
+<p style="margin: 0; color: #64748b; font-size: 14px">Every result is a listing by a verified seller. Sponsored listings are marked.</p>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+
+<aside style="flex: 0 0 240px; min-width: 0; display: flex; flex-direction: column; gap: 22px">
+<nav aria-label="Departments" style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Department</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{depts}}" as="d" hint-placeholder-count="8">
+<button type="button" onClick="{{d.pick}}" aria-pressed="{{d.selected}}" style="{{d.chipStyle}}">{{d.label}} <span style="{{d.countStyle}}">{{d.count}}</span></button>
+</sc-for>
+</div>
+</nav>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Price</h2>
+<div role="group" aria-label="Price" style="display: flex; flex-direction: column; gap: 4px">
+<sc-for list="{{prices}}" as="p" hint-placeholder-count="4">
+<button type="button" onClick="{{p.pick}}" aria-pressed="{{p.selected}}" style="{{p.style}}">{{p.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Customer rating</h2>
+<div role="group" aria-label="Rating" style="display: flex; flex-direction: column; gap: 4px">
+<sc-for list="{{ratings}}" as="r" hint-placeholder-count="3">
+<button type="button" onClick="{{r.pick}}" aria-pressed="{{r.selected}}" style="{{r.style}}"><span style="color: #f59e0b; letter-spacing: 1px">{{r.stars}}</span> {{r.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Delivery</h2>
+<div role="group" aria-label="Delivery" style="display: flex; padding: 4px; border-radius: 999px; background: #f1f5f9">
+<sc-for list="{{deliveries}}" as="v" hint-placeholder-count="3">
+<button type="button" onClick="{{v.pick}}" aria-pressed="{{v.selected}}" style="{{v.style}}">{{v.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Condition</h2>
+<div role="group" aria-label="Condition" style="display: flex; padding: 4px; border-radius: 999px; background: #f1f5f9">
+<sc-for list="{{conditions}}" as="c" hint-placeholder-count="3">
+<button type="button" onClick="{{c.pick}}" aria-pressed="{{c.selected}}" style="{{c.style}}">{{c.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Seller</h2>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #ea580c">Official brand shops only</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #ea580c">Shipped by UltraStore</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #ea580c">Ships from Germany</label>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Brand</h2>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #ea580c">Nordlicht</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #ea580c">Fjell</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #ea580c">Haus &amp; Hof</label>
+<a href="#brands" style="font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; height: 32px">All brands</a>
+</div>
+</aside>
+
+<section aria-live="polite" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center">
+<span style="font-size: 13px; color: #64748b">Active:</span>
+<sc-for list="{{active}}" as="a" hint-placeholder-count="2">
+<button type="button" onClick="{{a.clear}}" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 12px; border-radius: 999px; border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{a.label}} <span aria-hidden="true">×</span></button>
+</sc-for>
+<sc-if value="{{noActive}}" hint-placeholder-val="{{true}}">
+<span style="font-size: 13px; color: #94a3b8">no filters</span>
+</sc-if>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #475569">Sort by
+<select style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a">
+<option>Relevance</option>
+<option>Price, low to high</option>
+<option>Price, high to low</option>
+<option>Customer rating</option>
+<option>Newest arrivals</option>
+</select>
+</label>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<sc-for list="{{items}}" as="it" hint-placeholder-count="10">
+<article style="display: flex; gap: 18px; padding: 16px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; background: #ffffff">
+<div aria-hidden="true" style="{{it.tileStyle}}">
+<span style="font-family: Manrope, Inter, sans-serif; font-size: 40px; font-weight: 800; letter-spacing: -0.04em; color: rgba(15,23,42,0.18)">{{it.mark}}</span>
+<span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #64748b">[PHOTO]</span>
+<span style="{{it.badgeStyle}}">{{it.badge}}</span>
+</div>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<span style="{{it.sponsoredStyle}}">Sponsored</span>
+<a href="{{it.href}}" style="font-weight: 600; font-size: 16px; color: #0f172a; text-decoration: none; line-height: 1.35">{{it.name}}</a>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap"><span aria-hidden="true" style="color: #f59e0b; letter-spacing: 1px">{{it.stars}}</span><span style="color: #64748b">{{it.ratingText}}</span><span style="color: #cbd5e1">|</span><span style="color: #64748b">{{it.bought}}</span></div>
+<span style="font-size: 13px; color: #334155">{{it.summary}}</span>
+<span style="font-size: 13px; color: #64748b">{{it.sellerText}}</span>
+</div>
+<div style="flex: 0 0 200px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 22px">{{it.price}}</span>
+<span style="{{it.wasStyle}}">{{it.was}}</span>
+<span style="{{it.deliveryStyle}}">{{it.deliveryText}}</span>
+<button type="button" style="margin-top: auto; height: 40px; padding: 0 18px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">Add to basket</button>
+</div>
+</article>
+</sc-for>
+</div>
+
+<sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+<div style="padding: 48px 24px; border-radius: 20px; background: #f8fafc; text-align: center; color: #64748b">No listings match these filters. Clear one and try again.</div>
+</sc-if>
+
+<nav aria-label="Pages" style="display: flex; justify-content: center; gap: 6px; padding-top: 8px">
+<a href="#p1" aria-current="page" style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 700">1</a>
+<a href="#p2" style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none; font-weight: 600">2</a>
+<a href="#p3" style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none; font-weight: 600">3</a>
+<span style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: #64748b">…</span>
+<a href="#p12" style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none; font-weight: 600">12</a>
+<a href="#next" style="display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none; font-weight: 600">Next</a>
+</nav>
+</section>
+
+</div>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore Market</span>
+<span>· the ULTRA OS marketplace</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#sell" style="color: #475569; text-decoration: none; font-weight: 500">Sell on UltraStore</a>
+<a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a>
+<a href="#returns" style="color: #475569; text-decoration: none; font-weight: 500">Returns</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+<a href="#imprint" style="color: #475569; text-decoration: none; font-weight: 500">Imprint</a>
+<a href="#language" style="color: #475569; text-decoration: none; font-weight: 500">English · EUR</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ea580c","options":["#ea580c","#2563eb","#0f172a","#0f766e"]},"$preview":{"width":1440,"height":2200}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { dept: 'all', price: 'all', rating: 0, delivery: 'any', condition: 'any' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#ea580c';
+    const DEPTS = [
+      { id: 'all', label: 'All' },
+      { id: 'electronics', label: 'Electronics', tint: '#eff6ff' },
+      { id: 'home', label: 'Home & kitchen', tint: '#fff7ed' },
+      { id: 'fashion', label: 'Fashion', tint: '#fdf2f8' },
+      { id: 'garden', label: 'Garden', tint: '#f0fdf4' },
+      { id: 'toys', label: 'Toys', tint: '#fefce8' },
+      { id: 'sports', label: 'Sports & outdoors', tint: '#ecfeff' },
+      { id: 'beauty', label: 'Beauty', tint: '#faf5ff' }
+    ];
+    // Sample listings: price in EUR, was = regular price when on offer, rating and count, delivery 'tomorrow' | 'days' | 'paid', condition 'new' | 'refurbished'
+    const ITEMS = [
+      { id: 'aura2', name: 'Nordlicht Aura 2 wireless headphones, active noise cancelling, 40-hour battery', dept: 'electronics', brand: 'Nordlicht', seller: 'Nordlicht Audio', official: true, shippedBy: 'UltraStore', price: 129, was: 169, rating: 4.6, count: 1284, bought: '3,000+ bought last month', delivery: 'tomorrow', condition: 'new', summary: 'Adaptive ANC, multipoint, 254 g, folds into the case.', href: 'MarketProduct.dc.html', deal: true },
+      { id: 'aura2r', name: 'Nordlicht Aura 2 wireless headphones, refurbished, like new', dept: 'electronics', brand: 'Nordlicht', seller: 'Refurb Depot', shippedBy: 'the seller', price: 119, rating: 4.4, count: 212, bought: '400+ bought last month', delivery: 'days', condition: 'refurbished', summary: 'Tested and cleaned, new ear cushions, 12-month warranty from the seller.' },
+      { id: 'orbit', name: 'Orbit S smart watch, GPS, 10-day battery, 5 ATM', dept: 'electronics', brand: 'Orbit', seller: 'Orbit Wearables', official: true, shippedBy: 'UltraStore', price: 89, rating: 4.5, count: 2318, bought: '5,000+ bought last month', delivery: 'tomorrow', condition: 'new', summary: 'Sleep, heart rate and routes without an account; exports GPX.', sponsored: true },
+      { id: 'router', name: 'Nordlicht mesh router, 2 pack, Wi-Fi 6', dept: 'electronics', brand: 'Nordlicht', seller: 'Nordlicht Audio', official: true, shippedBy: 'UltraStore', price: 119, rating: 4.3, count: 640, bought: '1,000+ bought last month', delivery: 'tomorrow', condition: 'new', summary: 'Two nodes cover 200 m²; set up from the browser, no app.' },
+      { id: 'luma', name: 'Luma desk lamp, dimmable, 2700 to 5000 K, USB-C', dept: 'home', brand: 'Luma', seller: 'Haus & Hof GmbH', shippedBy: 'UltraStore', price: 39.2, was: 49, rating: 4.7, count: 980, bought: '2,000+ bought last month', delivery: 'tomorrow', condition: 'new', summary: 'Flicker-free, memory of the last setting, 12 W.', deal: true },
+      { id: 'pico', name: 'Pico espresso maker, 15 bar, steam wand, 1.2 L tank', dept: 'home', brand: 'Pico', seller: 'Barista Supply', shippedBy: 'the seller', price: 152.15, was: 179, rating: 4.2, count: 455, bought: '500+ bought last month', delivery: 'days', condition: 'new', summary: 'Portafilter 51 mm, warms up in 40 seconds, 2-year warranty.', deal: true },
+      { id: 'kettle', name: 'Haus & Hof kettle, 1.7 L, steel, temperature settings', dept: 'home', brand: 'Haus & Hof', seller: 'Haus & Hof GmbH', shippedBy: 'UltraStore', price: 36.5, rating: 4.5, count: 1203, bought: '1,000+ bought last month', delivery: 'tomorrow', condition: 'new', summary: '40 to 100 °C, keeps warm 30 minutes, quiet boil.' },
+      { id: 'stride', name: 'Stride Flow running shoes, sizes 36 to 47, 4 colours', dept: 'fashion', brand: 'Stride', seller: 'Stride Sports', official: true, shippedBy: 'the seller', price: 74.95, rating: 4.3, count: 904, bought: '900+ bought last month', delivery: 'days', condition: 'new', summary: 'Road shoe, 8 mm drop, 240 g; free exchange of size.' },
+      { id: 'fjell', name: 'Fjell 28 L daypack, water-repellent, laptop sleeve', dept: 'sports', brand: 'Fjell', seller: 'Bergwerk Outdoor', shippedBy: 'UltraStore', price: 55.9, was: 79.9, rating: 4.8, count: 2210, bought: '2,000+ bought last month', delivery: 'tomorrow', condition: 'new', summary: 'Recycled fabric, 15-inch sleeve, rain cover included.', deal: true },
+      { id: 'bottle', name: 'Fjell insulated bottle, 750 ml, keeps cold 24 h', dept: 'sports', brand: 'Fjell', seller: 'Bergwerk Outdoor', shippedBy: 'UltraStore', price: 24.9, rating: 4.6, count: 3310, bought: '4,000+ bought last month', delivery: 'paid', condition: 'new', summary: 'Steel, dishwasher safe, fits a bike cage.' },
+      { id: 'vela', name: 'Vela yoga mat, 6 mm, cork on natural rubber', dept: 'sports', brand: 'Vela', seller: 'Vela Studio', shippedBy: 'the seller', price: 42, rating: 4.4, count: 388, bought: '300+ bought last month', delivery: 'days', condition: 'new', summary: '183 × 61 cm, no PVC, carrying strap.' },
+      { id: 'terra', name: 'Terra ceramic planters, set of 3, frost-proof, with saucers', dept: 'garden', brand: 'Terra', seller: 'Green Thumb Garden', shippedBy: 'the seller', price: 25.9, was: 39.9, rating: 4.1, count: 170, bought: '200+ bought last month', delivery: 'days', condition: 'new', summary: '14, 18 and 24 cm, drainage holes, glazed inside.', deal: true },
+      { id: 'seeds', name: 'Green Thumb herb seeds, 12 varieties, organic', dept: 'garden', brand: 'Green Thumb', seller: 'Green Thumb Garden', shippedBy: 'the seller', price: 9.9, rating: 4.7, count: 2650, bought: '3,000+ bought last month', delivery: 'paid', condition: 'new', summary: 'Basil to thyme, sowing calendar on the back, untreated seed.' },
+      { id: 'mika', name: 'Mika wooden train set, 42 pieces, from 3 years', dept: 'toys', brand: 'Mika', seller: 'Spielkiste', shippedBy: 'UltraStore', price: 34.9, rating: 4.8, count: 5106, bought: '6,000+ bought last month', delivery: 'tomorrow', condition: 'new', summary: 'Beech wood, water-based paint, fits the usual track systems.' },
+      { id: 'atlas', name: 'Atlas world map puzzle, 1,000 pieces, 68 × 48 cm', dept: 'toys', brand: 'Atlas', seller: 'Spielkiste', shippedBy: 'the seller', price: 18.5, rating: 4.6, count: 1772, bought: '1,000+ bought last month', delivery: 'paid', condition: 'new', summary: 'Thick board, matt finish, poster included.' },
+      { id: 'aura', name: 'Aura skincare set, 3 pieces, fragrance-free', dept: 'beauty', brand: 'Aura', seller: 'Aura Cosmetics', official: true, shippedBy: 'UltraStore', price: 29.9, rating: 4.5, count: 760, bought: '800+ bought last month', delivery: 'tomorrow', condition: 'new', summary: 'Cleanser, serum and cream; vegan; made in Austria.' },
+      { id: 'orbitr', name: 'Orbit S smart watch, refurbished, good', dept: 'electronics', brand: 'Orbit', seller: 'Refurb Depot', shippedBy: 'the seller', price: 64, rating: 4.2, count: 95, bought: '100+ bought last month', delivery: 'days', condition: 'refurbished', summary: 'Light scratches on the case, new strap, battery over 90 %.' }
+    ];
+    const s = this.state;
+    const matchPrice = (i) => s.price === 'all' || (s.price === 'under25' ? i.price < 25 : s.price === '25to100' ? (i.price >= 25 && i.price <= 100) : i.price > 100);
+    const matchRating = (i) => i.rating >= s.rating;
+    const matchDelivery = (i) => s.delivery === 'any' || (s.delivery === 'free' ? i.delivery !== 'paid' : i.delivery === 'tomorrow');
+    const matchCondition = (i) => s.condition === 'any' || i.condition === s.condition;
+    const matchRest = (i) => matchPrice(i) && matchRating(i) && matchDelivery(i) && matchCondition(i);
+    const chipBase = 'display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer; ';
+    const depts = DEPTS.map((d) => {
+      const selected = d.id === s.dept;
+      const count = ITEMS.filter((i) => (d.id === 'all' || i.dept === d.id) && matchRest(i)).length;
+      return {
+        ...d,
+        selected,
+        count,
+        chipStyle: chipBase + (selected
+          ? 'border: 1px solid ' + accent + '; background: ' + accent + '; color: #ffffff; font-weight: 700'
+          : 'border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; font-weight: 600'),
+        countStyle: 'font-size: 12px; font-weight: 700; ' + (selected ? 'color: #fed7aa' : 'color: #64748b'),
+        pick: () => this.setState({ dept: d.id })
+      };
+    });
+    const rowBase = 'display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 10px; font: inherit; font-size: 14px; text-align: left; cursor: pointer; ';
+    const rowStyle = (on) => rowBase + (on ? 'border: 1px solid ' + accent + '; background: #fff7ed; color: #9a3412; font-weight: 700' : 'border: 1px solid transparent; background: transparent; color: #334155; font-weight: 500');
+    const prices = [
+      { id: 'all', label: 'Any price' },
+      { id: 'under25', label: 'Under 25 EUR' },
+      { id: '25to100', label: '25 to 100 EUR' },
+      { id: 'over100', label: 'Over 100 EUR' }
+    ].map((p) => ({ ...p, selected: p.id === s.price, style: rowStyle(p.id === s.price), pick: () => this.setState({ price: p.id }) }));
+    const ratings = [
+      { id: 4, stars: '★★★★☆', label: '4 and up' },
+      { id: 3, stars: '★★★☆☆', label: '3 and up' },
+      { id: 0, stars: '★☆☆☆☆', label: 'Any rating' }
+    ].map((r) => ({ ...r, selected: r.id === s.rating, style: rowStyle(r.id === s.rating), pick: () => this.setState({ rating: r.id }) }));
+    const segBase = 'flex: 1 1 0; height: 36px; border-radius: 999px; border: 0; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; ';
+    const segStyle = (on) => segBase + (on ? 'background: #ffffff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,0.12)' : 'background: transparent; color: #475569');
+    const deliveries = [
+      { id: 'any', label: 'Any' },
+      { id: 'free', label: 'Free' },
+      { id: 'tomorrow', label: 'Tomorrow' }
+    ].map((v) => ({ ...v, selected: v.id === s.delivery, style: segStyle(v.id === s.delivery), pick: () => this.setState({ delivery: v.id }) }));
+    const conditions = [
+      { id: 'any', label: 'Any' },
+      { id: 'new', label: 'New' },
+      { id: 'refurbished', label: 'Refurbished' }
+    ].map((c) => ({ ...c, selected: c.id === s.condition, style: segStyle(c.id === s.condition), pick: () => this.setState({ condition: c.id }) }));
+    const deptLabel = (id) => (DEPTS.find((d) => d.id === id) || DEPTS[0]).label;
+    const deptTint = (id) => (DEPTS.find((d) => d.id === id) || DEPTS[1]).tint || '#f1f5f9';
+    const eur = (n) => n.toFixed(2) + ' EUR';
+    const stars = (r) => '★★★★★'.slice(0, Math.round(r)) + '☆☆☆☆☆'.slice(0, 5 - Math.round(r));
+    const list = ITEMS.filter((i) => (s.dept === 'all' || i.dept === s.dept) && matchRest(i));
+    const items = list.map((i) => ({
+      ...i,
+      href: i.href || ('#' + i.id),
+      mark: i.name.split(/\s+/).filter((w) => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map((w) => w[0].toUpperCase()).join(''),
+      tileStyle: 'position: relative; flex: 0 0 150px; height: 150px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: ' + deptTint(i.dept),
+      badge: i.deal ? '-' + Math.round((1 - i.price / i.was) * 100) + ' %' : (i.condition === 'refurbished' ? 'Refurbished' : ''),
+      badgeStyle: 'position: absolute; left: 8px; top: 8px; height: 22px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 800; display: ' + (i.deal || i.condition === 'refurbished' ? 'inline-flex' : 'none') + '; align-items: center; ' + (i.deal ? 'background: #dc2626; color: #ffffff' : 'background: #e2e8f0; color: #334155'),
+      sponsoredStyle: 'font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; display: ' + (i.sponsored ? 'block' : 'none'),
+      stars: stars(i.rating),
+      ratingText: i.rating.toFixed(1) + ' · ' + i.count.toLocaleString('en-GB') + ' ratings',
+      sellerText: 'Sold by ' + i.seller + (i.official ? ' · official brand shop' : '') + ' · shipped by ' + i.shippedBy + (i.condition === 'refurbished' ? ' · 12-month warranty' : ''),
+      price: eur(i.price),
+      was: i.was ? 'Regular price ' + eur(i.was) : '',
+      wasStyle: 'font-size: 13px; color: #64748b; text-decoration: line-through; display: ' + (i.was ? 'block' : 'none'),
+      deliveryText: i.delivery === 'tomorrow' ? 'Free delivery tomorrow' : (i.delivery === 'days' ? 'Free delivery, 2 to 4 days' : 'Delivery 2.90 EUR · free from 29 EUR'),
+      deliveryStyle: 'font-size: 13px; font-weight: 600; ' + (i.delivery === 'paid' ? 'color: #64748b' : 'color: #15803d')
+    }));
+    const sellers = new Set(list.map((i) => i.seller));
+    const active = [];
+    if (s.dept !== 'all') active.push({ label: deptLabel(s.dept), clear: () => this.setState({ dept: 'all' }) });
+    if (s.price !== 'all') active.push({ label: prices.find((p) => p.id === s.price).label, clear: () => this.setState({ price: 'all' }) });
+    if (s.rating !== 0) active.push({ label: s.rating + ' stars and up', clear: () => this.setState({ rating: 0 }) });
+    if (s.delivery !== 'any') active.push({ label: s.delivery === 'free' ? 'Free delivery' : 'Delivery tomorrow', clear: () => this.setState({ delivery: 'any' }) });
+    if (s.condition !== 'any') active.push({ label: s.condition === 'new' ? 'New' : 'Refurbished', clear: () => this.setState({ condition: 'any' }) });
+    return {
+      accent,
+      query: s.dept === 'all' ? '' : deptLabel(s.dept).toLowerCase(),
+      depts,
+      prices,
+      ratings,
+      deliveries,
+      conditions,
+      items,
+      active,
+      noActive: active.length === 0,
+      count: items.length,
+      sellerCount: sellers.size,
+      empty: items.length === 0,
+      heading: s.dept === 'all' ? 'All departments' : deptLabel(s.dept)
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -285,8 +285,7 @@ using DisplayTest::RowShows;
 // ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual-display step), where a
 // skip would pass for a run, so it fails instead.
 void SkipRing(const char* why) {
-    const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
-    if (required && std::string(required) == "1") {
+    if (UltraCanvas::DisplayTest::DisplayRequired()) {
         TEST(std::string("focus ring on screen: a display was required, and ") + why, false);
     } else {
         std::cerr << "SKIP: focus ring on screen (" << why << ")" << std::endl;

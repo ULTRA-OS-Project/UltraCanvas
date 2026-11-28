@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Your report - UltraStore{% endblock %}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Your report</h1>
+  <p class="text-secondary">About {{ report.target }}, sent {{ report.created|date:"j F Y" }}.</p>
+  <p><span class="badge {% if report.state == 'open' %}bg-warning-subtle text-warning-emphasis{% else %}bg-success-subtle text-success-emphasis{% endif %}">{{ report.get_state_display }}</span></p>
+  <p>{{ report.outcome|default:"The operator has not answered yet." }}</p>
+</div>
+{% endblock %}

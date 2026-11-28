@@ -4,6 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.19.0 - a one-character text, centred both ways, is centred on its ink (a "+", an "x")
 // Version: 2.18.0 - one string is the identifier, as on every element: UltraCanvasLabel(identifier),
 //                  CreateLabel(identifier). It was the text; ("", text) is a label with text and no name
 // Version: 2.17.0 - a font size or family set by hand (SetFontSize, SetFont) survives ApplyTheme: the
@@ -232,6 +233,8 @@ namespace UltraCanvas {
         // (UltraCanvasTextLayoutCache); the inline images are not in the key,
         // and their setter resets it.
         UltraCanvasTextLayoutCache textLayout;
+        // A one-character text centred on its ink (DrawTextCentredOnInk).
+        UltraCanvasTextLayoutCache inkLayout;
         bool isMarkup = false;
 
         bool internalLayoutValid = false;

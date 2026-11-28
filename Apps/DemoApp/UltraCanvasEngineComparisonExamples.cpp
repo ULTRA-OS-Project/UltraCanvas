@@ -28,7 +28,7 @@ namespace {
 // stretching column, so it gets the tab's width).
 std::shared_ptr<UltraCanvasLabel> MakeCaption(const std::string& id, const std::string& text) {
     auto caption = DemoKit::CreateText(id, text);
-    caption->SetTextColor(Color(90, 90, 100, 255));
+    caption->SetTextColor(DemoKit::Themed(Color(90, 90, 100, 255)));
     caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return caption;
 }
@@ -40,7 +40,7 @@ std::shared_ptr<UltraCanvasLabel> MakeSideHeading(const std::string& id, const s
     heading->SetFontSize(11);
     heading->SetFontWeight(FontWeight::Bold);
     heading->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-    heading->SetBackgroundColor(background);
+    heading->SetBackgroundColor(DemoKit::ThemedFill(background));
     heading->SetPadding(3, 4);
     heading->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return heading;
@@ -68,7 +68,7 @@ std::shared_ptr<UltraCanvasContainer> MakeFamilyTabs(const std::string& id,
 
     auto inner = std::make_shared<UltraCanvasTabbedContainer>(id + "Tabs", 0, 0, 0, 0);
     inner->SetTabPosition(TabPosition::Top);
-    inner->SetTabStyle(TabStyle::Classic);
+    DemoKit::StyleTabs(inner);
     inner->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     for (const ComparisonTab& tab : tabs) inner->AddTab(tab.title, tab.build());
@@ -157,7 +157,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChartEng
 
     auto families = std::make_shared<UltraCanvasTabbedContainer>("EngineCompareFamilies", 0, 0, 0, 0);
     families->SetTabPosition(TabPosition::Top);
-    families->SetTabStyle(TabStyle::Modern);
+    DemoKit::StyleTabs(families);
     families->AddTab(Tr("Lines & Points"), MakeFamilyTabs("EngineCompareLines", LineFamilyTabs()));
     families->AddTab(Tr("Bars & Flows"), MakeFamilyTabs("EngineCompareBars", BarFamilyTabs()));
     families->AddTab(Tr("Finance & Mosaics"), MakeFamilyTabs("EngineCompareFinance", FinanceAndGridTabs()));

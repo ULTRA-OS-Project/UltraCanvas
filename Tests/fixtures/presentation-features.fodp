@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:officeooo="http://openoffice.org/2009/office"
+ xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+ xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+ office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.presentation">
+ <!-- A flat OpenDocument presentation written by hand for PresentationOdpTest:
+      each slide holds the cases the reader has to get right (white space,
+      nested and unnumbered lists, inherited styles, groups, hyperlinked shapes,
+      slide furniture, a hidden slide, a table with a covered cell, an embedded
+      object, an inline picture, a comment on the page). LibreOffice 24.2 opens
+      it and saves it again with the same text. -->
+ <office:styles>
+  <style:style style:name="Emphasis" style:family="text">
+   <style:text-properties fo:font-style="italic"/>
+  </style:style>
+ </office:styles>
+ <office:automatic-styles>
+  <style:page-layout style:name="PM1">
+   <style:page-layout-properties fo:page-width="25.4cm" fo:page-height="19.05cm" style:print-orientation="landscape"/>
+  </style:page-layout>
+  <style:style style:name="dp1" style:family="drawing-page">
+   <style:drawing-page-properties presentation:visibility="visible"/>
+  </style:style>
+  <style:style style:name="dp2" style:family="drawing-page">
+   <style:drawing-page-properties presentation:visibility="hidden"/>
+  </style:style>
+  <style:style style:name="T1" style:family="text" style:parent-style-name="Emphasis">
+   <style:text-properties fo:font-weight="bold"/>
+  </style:style>
+  <style:style style:name="T2" style:family="text">
+   <style:text-properties style:text-underline-style="solid" fo:font-weight="700"/>
+  </style:style>
+  <text:list-style style:name="L1">
+   <text:list-level-style-bullet text:level="1" text:bullet-char="•"/>
+   <text:list-level-style-number text:level="2" style:num-format="1" style:num-suffix="."/>
+  </text:list-style>
+  <text:list-style style:name="L2">
+   <text:list-level-style-number text:level="1" style:num-format=""/>
+  </text:list-style>
+ </office:automatic-styles>
+ <office:master-styles>
+  <style:master-page style:name="Default" style:page-layout-name="PM1"/>
+ </office:master-styles>
+ <office:body>
+  <office:presentation>
+   <draw:page draw:name="page1" draw:style-name="dp1" draw:master-page-name="Default">
+    <draw:frame draw:name="Title" presentation:class="title" svg:x="2.54cm" svg:y="1in" svg:width="20cm" svg:height="72pt">
+     <draw:text-box><text:p>  Welcome<text:s/> to
+        ODP  </text:p></draw:text-box>
+    </draw:frame>
+    <draw:frame presentation:class="subtitle" svg:x="10mm" svg:y="0cm" svg:width="5cm" svg:height="1cm">
+     <draw:text-box><text:p>A <text:span text:style-name="Emphasis">flat</text:span> deck</text:p></draw:text-box>
+    </draw:frame>
+    <draw:frame presentation:class="outline" presentation:placeholder="true" svg:x="0cm" svg:y="0cm" svg:width="1cm" svg:height="1cm">
+     <draw:text-box><text:p>Click to add text</text:p></draw:text-box>
+    </draw:frame>
+    <draw:frame presentation:class="footer" svg:x="0cm" svg:y="18cm" svg:width="5cm" svg:height="1cm">
+     <draw:text-box><text:p>Footer text</text:p></draw:text-box>
+    </draw:frame>
+    <draw:frame draw:name="Body" presentation:class="outline" svg:x="2cm" svg:y="5cm" svg:width="20cm" svg:height="10cm">
+     <draw:text-box>
+      <text:list text:style-name="L1">
+       <text:list-item><text:p><text:span text:style-name="T1">First</text:span> point</text:p></text:list-item>
+       <text:list-item>
+        <text:list>
+         <text:list-item><text:p>Sub one</text:p></text:list-item>
+         <text:list-header><text:p>No bullet</text:p></text:list-header>
+        </text:list>
+       </text:list-item>
+       <text:list-item><text:p>Line<text:line-break/>break</text:p></text:list-item>
+       <text:list-item><text:p>A <text:a xlink:href="https://example.org/">link</text:a><text:tab/><text:span text:style-name="T2">here</text:span></text:p></text:list-item>
+      </text:list>
+     </draw:text-box>
+    </draw:frame>
+    <draw:g>
+     <draw:custom-shape draw:name="Shape" svg:x="1cm" svg:y="16cm" svg:width="4cm" svg:height="1cm">
+      <text:p>Grouped</text:p>
+     </draw:custom-shape>
+     <draw:rect svg:x="6cm" svg:y="16cm" svg:width="1cm" svg:height="1cm"/>
+    </draw:g>
+    <draw:a xlink:href="https://example.org/">
+     <draw:frame draw:name="LinkedBox" svg:x="8cm" svg:y="16cm" svg:width="4cm" svg:height="1cm">
+      <draw:text-box><text:p>Linked box</text:p></draw:text-box>
+     </draw:frame>
+    </draw:a>
+    <presentation:notes>
+     <draw:page-thumbnail presentation:class="page" draw:page-number="1" svg:x="1cm" svg:y="1cm" svg:width="10cm" svg:height="7cm"/>
+     <draw:frame presentation:class="notes" svg:x="1cm" svg:y="10cm" svg:width="10cm" svg:height="10cm">
+      <draw:text-box><text:p>Speaker note one</text:p><text:p>Speaker note two</text:p></draw:text-box>
+     </draw:frame>
+    </presentation:notes>
+   </draw:page>
+   <draw:page draw:name="page2" draw:style-name="dp2" draw:master-page-name="Default">
+    <draw:frame presentation:class="title" svg:x="1cm" svg:y="1cm" svg:width="20cm" svg:height="2cm">
+     <draw:text-box><text:p>Hidden</text:p></draw:text-box>
+    </draw:frame>
+    <draw:frame draw:name="Grid" svg:x="1cm" svg:y="4cm" svg:width="10cm" svg:height="3cm">
+     <table:table>
+      <table:table-column table:number-columns-repeated="2"/>
+      <table:table-header-rows>
+       <table:table-row><table:table-cell><text:p>A</text:p></table:table-cell><table:table-cell><text:p>B</text:p></table:table-cell></table:table-row>
+      </table:table-header-rows>
+      <table:table-row><table:table-cell table:number-columns-spanned="2"><text:p>C</text:p></table:table-cell><table:covered-table-cell/></table:table-row>
+     </table:table>
+    </draw:frame>
+    <draw:frame draw:name="Chart" svg:x="12cm" svg:y="4cm" svg:width="5cm" svg:height="5cm">
+     <draw:object xlink:href="./Object 1"/>
+     <draw:image xlink:href="./ObjectReplacements/Object 1"/>
+    </draw:frame>
+    <draw:frame draw:name="Logo" svg:x="18cm" svg:y="4cm" svg:width="2cm" svg:height="2cm">
+     <draw:image><office:binary-data>iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==</office:binary-data></draw:image>
+     <svg:title>Company logo</svg:title>
+    </draw:frame>
+   </draw:page>
+   <draw:page draw:name="page3" draw:style-name="dp1" draw:master-page-name="Default">
+    <officeooo:annotation svg:x="1cm" svg:y="1cm" svg:width="1cm" svg:height="1cm">
+     <dc:creator>Reviewer</dc:creator>
+     <text:p>a comment</text:p>
+    </officeooo:annotation>
+    <draw:frame draw:name="Remarks" svg:x="1cm" svg:y="1cm" svg:width="20cm" svg:height="5cm">
+     <draw:text-box>
+      <text:p>Visible <text:span>text</text:span></text:p>
+      <text:p>Page <text:page-number>3</text:page-number></text:p>
+      <text:list text:style-name="L2">
+       <text:list-item><text:p>Numbering off</text:p></text:list-item>
+      </text:list>
+     </draw:text-box>
+    </draw:frame>
+   </draw:page>
+  </office:presentation>
+ </office:body>
+</office:document>

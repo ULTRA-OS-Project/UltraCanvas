@@ -35,8 +35,8 @@
   - [Serialization](#serialization)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Simple API — five nodes, six links, one layout](#simple-api-—-five-nodes-six-links-one-layout)
-  - [Verbose API — Workflow editor with handles](#verbose-api-—-workflow-editor-with-handles)
+  - [Simple API — five nodes, six links, one layout](#simple-api--five-nodes-six-links-one-layout)
+  - [Verbose API — Workflow editor with handles](#verbose-api--workflow-editor-with-handles)
   - [Link styles showcase](#link-styles-showcase)
   - [Multi-select with keyboard](#multi-select-with-keyboard)
   - [JSON round-trip](#json-round-trip)
@@ -1354,5 +1354,5 @@ and waypoints are all written by `ToJson()` and read by `FromJson()`.
 - [UltraCanvasGourceTreeExamples](UltraCanvasGourceTreeExamples.md) — radial filesystem tree
 - [UltraCanvasAdjacencyDiagramExamples](UltraCanvasAdjacencyDiagramExamples.md) — architectural room adjacency
 - [UltraCanvasArcDiagramExamples](UltraCanvasArcDiagramExamples.md) — nodes on a baseline with arc edges
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demos
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — tab control used by the demos

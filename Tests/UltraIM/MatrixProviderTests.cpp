@@ -13,6 +13,7 @@
 // python3), unless ULTRAIM_TEST_MATRIX_REQUIRED is set (CI); the nio part
 // skips without matrix-nio[e2e] in that python, unless
 // ULTRAIM_TEST_MATRIX_NIO_REQUIRED is set.
+// Version: 0.2.6 - Bob's profile picture (avatar_url) as a thumbnail on the chat, the contacts, his messages
 // Version: 0.2.5 - the group renamed, Bob kicked, invited back, and leaving it
 // Version: 0.2.4 - what can be deleted (one's own, for everyone only)
 // Version: 0.2.3 - searching a room (an encrypted one): words and kinds
@@ -627,6 +628,78 @@ void TestEndToEnd() {
         return e.type == UltraIMEventType::TypingChange && e.contactId == "@alice:localhost" && e.isTyping;
     }));
     CHECK(alice->SetTyping(dm.conversationId, false));
+
+    // Bob's profile picture: set on the homeserver (his avatar_url, which it
+    // puts on his membership in the room); Alice's side fetches its
+    // thumbnail and shows it on their chat, in her contacts and beside his
+    // messages.
+    {
+        static const uint8_t kFace[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x08, 0x02, 0x00, 0x00, 0x00, 0x4c, 0x5c, 0xf6,
+    0x9c, 0x00, 0x00, 0x00, 0xc8, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0xed, 0xd1, 0x41, 0x0d, 0x00,
+    0x00, 0x08, 0xc4, 0xb0, 0x93, 0x83, 0x44, 0x24, 0x22, 0x0b, 0x19, 0xf0, 0x68, 0x32, 0x05, 0x6b,
+    0xaa, 0x47, 0x87, 0xc5, 0x02, 0x00, 0x00, 0x04, 0x00, 0x80, 0x00, 0x00, 0x10, 0x00, 0x00, 0x02,
+    0x00, 0x40, 0x00, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00, 0x04, 0x00, 0x80, 0x00,
+    0x00, 0x10, 0x00, 0x00, 0x02, 0x00, 0x40, 0x00, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00,
+    0x00, 0x04, 0x00, 0x80, 0x00, 0x00, 0x10, 0x00, 0x00, 0x02, 0x00, 0x40, 0x00, 0x00, 0x08, 0x00,
+    0x00, 0x01, 0x00, 0x20, 0x00, 0x00, 0x04, 0x00, 0x80, 0x00, 0x00, 0x10, 0x00, 0x00, 0x02, 0x00,
+    0x40, 0x00, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0xc0, 0x05, 0x00, 0x00, 0x04, 0x00, 0x80,
+    0x00, 0x00, 0x10, 0x00, 0x00, 0x02, 0x00, 0x40, 0x00, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x20,
+    0x00, 0x00, 0x04, 0x00, 0x80, 0x00, 0x00, 0x10, 0x00, 0x00, 0x02, 0x00, 0x40, 0x00, 0x00, 0x08,
+    0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00, 0x04, 0x00, 0x80, 0x00, 0x00, 0x10, 0x00, 0x00, 0x02,
+    0x00, 0x40, 0x00, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00, 0x04, 0x00, 0x80, 0x00,
+    0x00, 0x10, 0x00, 0x00, 0x02, 0x00, 0x40, 0x00, 0x00, 0x08, 0xc0, 0x87, 0x16, 0x6d, 0x6c, 0x05,
+    0x47, 0x2c, 0x6d, 0xa3, 0xd4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60,
+    0x82,
+        };
+        MatrixHttp raw;
+        raw.SetBaseUrl(hs.url);
+        UltraCanvas::JSONValue login = UltraCanvas::JSONValue::MakeObject();
+        login.Set("type", UltraCanvas::JSONValue("m.login.password"));
+        login.Set("user", UltraCanvas::JSONValue("bob"));
+        login.Set("password", UltraCanvas::JSONValue("bob-pass"));
+        MatrixResponse in = raw.Await("POST", "/_matrix/client/v3/login", &login, 15000);
+        CHECK(in.Ok());
+        raw.SetToken(in.body["access_token"].GetString());
+        const std::vector<uint8_t> face(kFace, kFace + sizeof(kFace));
+        MatrixResponse up = raw.Upload("/_matrix/media/v3/upload?filename=face.png", "image/png", face, 15000);
+        const std::string mxc = up.body["content_uri"].GetString();
+        CHECK(up.Ok() && mxc.rfind("mxc://", 0) == 0);
+        UltraCanvas::JSONValue avatar = UltraCanvas::JSONValue::MakeObject();
+        avatar.Set("avatar_url", UltraCanvas::JSONValue(mxc));
+        CHECK(raw.Await("PUT", "/_matrix/client/v3/profile/" + PathSegment("@bob:localhost") + "/avatar_url", &avatar,
+                        15000).Ok());
+        UltraIMEvent pictured;
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == dm.conversationId &&
+                   !e.conversation.avatarPath.empty();
+        }, &pictured, 60));
+        const std::string bobFace = pictured.conversation.avatarPath;
+        const std::vector<uint8_t> thumb = ReadBytes(bobFace);
+        const bool png = thumb.size() > 8 && thumb[0] == 0x89 && thumb[1] == 'P';
+        const bool jpeg = thumb.size() > 3 && thumb[0] == 0xFF && thumb[1] == 0xD8;
+        CHECK(png || jpeg);
+        bool listed = false;
+        alice->FetchContacts([&](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
+            for (const auto& c : list) listed = listed || (c.contactId == "@bob:localhost" && c.avatarPath == bobFace);
+        });
+        CHECK(listed);
+        bool beside = false;
+        std::mutex m;
+        std::condition_variable cv;
+        bool done = false;
+        alice->FetchMessages(dm.conversationId, "", 50, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& list) {
+            std::lock_guard<std::mutex> lock(m);
+            for (const auto& msg : list) beside = beside || (!msg.isOwn && msg.senderAvatarPath == bobFace);
+            done = true;
+            cv.notify_all();
+        });
+        std::unique_lock<std::mutex> lock(m);
+        cv.wait_for(lock, std::chrono::seconds(20), [&]() { return done; });
+        CHECK(beside);
+        std::printf("  profile picture: Bob's avatar_url fetched as a thumbnail at Alice's (%zu bytes)\n", thumb.size());
+    }
 
     // A picture, a video and a file: uploaded (as ciphertext in an encrypted
     // room), the echo pointing at the file sent; Bob gets the picture by

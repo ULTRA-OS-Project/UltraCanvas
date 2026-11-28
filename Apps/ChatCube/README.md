@@ -9,12 +9,20 @@ protect it when you want them to.
 ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
 uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
-(`.../matrix`), Telegram (`.../telegram`) and the direct messages of
-Mastodon (`.../mastodon`); XMPP and other messengers with an open API come
-later as further providers.
+(`.../matrix`), Telegram (`.../telegram`), the direct messages of
+Mastodon (`.../mastodon`), the team chats Mattermost (`.../mattermost`)
+and Zulip (`.../zulip`), Signal (`.../signal`, through signal-cli), XMPP
+(`.../xmpp`) and IRC (`.../irc`).
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
+
+ChatCube also builds for Android, from the same code: the networks are
+linked into the app instead of loaded as modules, Telegram and Signal are
+left out, and on a narrow window - a phone, or a desktop window made
+narrower than 640 pixels - the chat list and the open chat take turns, with
+a back arrow. Building, packaging and what is not there yet:
+[`android/README.md`](android/README.md).
 
 ## Using it
 
@@ -53,8 +61,15 @@ The first ChatCube draft, which this replaces, is kept under
    then works on your local network alone - the ChatCubes there find each other (mDNS) and
    talk directly. *Also find people on this network* does that next to a
    relay.
-2. **Edit profile** - the person button beside your ID - changes your name,
-   e-mail address and phone number, and how signing in is protected.
+2. **Edit profile** - the person button beside your ID - changes your
+   picture, name, e-mail address and phone number, and how signing in is
+   protected. *Choose a picture* opens a picture, the crop window places it
+   in the circle (drag it, zoom with the slider or the wheel), and *Save
+   profile* sends it to all your contacts, end to end encrypted like a
+   message - your relay never sees it. A contact you add later gets it too;
+   *Remove* takes it away again everywhere. Your contacts' pictures appear
+   in your chat list, at the head of the chat and beside their messages in
+   a group.
    Changing the protection asks for what protects it now (the current
    password, the code UltraAuthenticator shows); a new authenticator is a QR
    code - UltraAuthenticator's *Add account* scans it from the screen, a
@@ -136,7 +151,55 @@ The first ChatCube draft, which this replaces, is kept under
    Messages are text, pictures, videos and sound - Mastodon takes no other
    file - and come every few seconds (ChatCube asks the server; Mastodon
    has no typing, read ticks or calls).
-5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
+   **Mattermost** and **Zulip**, the team chats, have the third row of
+   buttons: your server, your user name or e-mail (Zulip: the e-mail) and
+   your password; a Mattermost account with two-factor sign-in then asks
+   for the code from your authenticator app. Mattermost brings your direct
+   and group messages and your teams' channels (`Town Square (Team A)`),
+   replies as threads; Zulip your direct and group messages and every topic
+   of your streams (`#general > greetings`) as a chat of its own, news the
+   moment it is sent. Files of any kind go both ways. An address in *Add*
+   that more than one signed-in network takes - `@user` on Telegram and
+   Mattermost, an e-mail address on Zulip and Mattermost - asks which; when
+   none of them is signed in it names them.
+   **Signal** shows a QR code: scan it with the Signal app on your phone
+   (*Settings > Linked devices*) and ChatCube becomes a linked device, as
+   Signal Desktop is. It needs [signal-cli](https://github.com/AsamK/signal-cli)
+   installed (or the address of a signal-cli daemon you run); ChatCube sees
+   messages from the moment it is linked. Numbers (`+49 ...`) and Signal
+   usernames (`name.01`) can be added.
+   **XMPP** takes your address (`erin@example.org`) and password - the server
+   is found from the address, or typed in its own field (`chat.example.org`,
+   `xmpps://chat.example.org`, or a `wss://` address). ChatCube connects
+   over TLS, or through WebSocket where the server offers only that. Your contacts and rooms come along, with the server's history.
+   **IRC** takes the server (`irc.libera.chat`; TLS unless it starts with
+   `irc://`), your nickname and, for a registered nickname, the password.
+   Add `#channel` to join a channel or a nickname for a private chat; the
+   network's own conversation shows its notices and takes IRC commands.
+   IRC has no files - share a link.
+5. The icons beside the message field are its features: the paperclip,
+   smileys & stickers, a screenshot, a location, a voice and a video
+   message. Some are in the field's row, the rest behind the **+** at its
+   left, which opens a menu of them (the + is not shown while nothing is
+   behind it); *Settings > Display > Feature icons* puts each one in the
+   field, behind the +, or away. The smiley opens a grid of the set used
+   last - an emoji goes into the text at the caret, a sticker into the
+   strip as a 256 x 256 picture - and the arrow beside it lists the sets,
+   each by one example (Smileys, Hands, Hearts, Animals, Food & drink,
+   Celebrations & things, and the example sticker set *Cubes*). Location
+   opens a window with an OpenStreetMap map (UltraCanvasMapView): search a
+   place by name or address (Nominatim), click the map to put the pin there
+   (it is named by what is there), or press *My position* - where the
+   system's location service says this computer is (UltraCanvasGeolocation:
+   GeoClue, Location Services, Windows' location; hidden where there is
+   none); the wheel and +/- zoom, a drag moves the map. Insert writes
+   "📍 the place" and its openstreetmap.org link into the message. In the
+   chat any message holding an openstreetmap.org link with a marker shows
+   as a map card - the map, its pin and the place's name - and a click on
+   the card opens the place in the browser; other programs show the text.
+   The map and the search need tile.openstreetmap.org and
+   nominatim.openstreetmap.org.
+6. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
    blue `✓✓` read, *Not sent* when it could not go - and, hovering over the
@@ -144,11 +207,13 @@ The first ChatCube draft, which this replaces, is kept under
    have no check mark). The paperclip puts a picture, a video or any file
    in a strip above the message field - so does Ctrl+V with a picture on
    the clipboard (a screenshot, a copy from a browser or a drawing program)
-   or a file copied in a file manager, and so do files dropped on the
+   or a file copied in a file manager, the Screenshot feature (the window
+   hides, a window is clicked or an area dragged on the frozen screen), a
+   sticker, and files dropped on the
    window (on a chat in the list, that chat opens and takes them; anywhere
    else, the open chat does) - each with a × to take it out again;
-   Enter or the send button sends them to the open chat (ChatCube Direct,
-   Telegram and Matrix, encrypted rooms included), with what you typed as
+   Enter or the send button sends them to the open chat (every network but
+   IRC; Mastodon takes pictures, videos and sound only), with what you typed as
    the caption of the first picture or video. A photo shows as its picture,
    a video as its preview under a play mark with its length, a file as its
    name and size - an SVG drawing, which goes as a file, with its picture
@@ -184,9 +249,10 @@ The first ChatCube draft, which this replaces, is kept under
 
    The field over the messages searches the chat: what you type finds the
    messages with those words in all of its history, and the list shows only
-   them (with how many) until the × shows the whole chat again. The chips
-   under it - *All*, *Pictures*, *Videos*, *Audio*, *Files*, *Links* - show
-   only that kind of message, with or without words.
+   them (with how many) until the × shows the whole chat again. Beside it,
+   in the same row, a segmented control - *All*, then pictures, videos,
+   audio, files and links as icons that name themselves in a tooltip -
+   shows only that kind of message, with or without words.
 
    The microphone beside the field records a **voice message** - the bar in
    its place shows how long, × throws it away, the send button sends it -
@@ -196,9 +262,10 @@ The first ChatCube draft, which this replaces, is kept under
    it, **Cancel** throws it away. Both need a microphone (and a camera) the
    system lets ChatCube use. On Matrix and Telegram a voice message is
    theirs too (Telegram's needs the recording in Ogg Opus, which ChatCube
-   writes when this build has the Opus encoder; otherwise it goes as a file).
+   writes when this build has the Opus encoder; otherwise it goes as a file);
+   the other networks get it as a sound file, and IRC takes neither.
 
-6. **Call** rings the open contact, **Video** makes it a video call (1:1;
+7. **Call** rings the open contact, **Video** makes it a video call (1:1;
    the buttons are off for groups and while not connected). A bar across
    the top shows the call: *Accept* / *Decline* when it rings here, *Mute*,
    *Camera off* (video) and *Hang up* during it, with its duration. A video
@@ -206,11 +273,11 @@ The first ChatCube draft, which this replaces, is kept under
    you turns the camera off the other sees "camera off" instead of a frozen
    picture.
 
-7. **A right-click on a chat** in the list opens its menu, and leaves the
+8. **A right-click on a chat** in the list opens its menu, and leaves the
    open chat as it is. Every chat: *Open*, *Mark as read* / *Mark as
    unread* (a dot until you open it) and *Pin to top* / *Unpin* (pinned
    chats stay first, with a pin). A person: *Voice call*, *Video call*,
-   *Copy ChatCube ID* (*Copy address* on Matrix and Telegram), *Add to
+   *Copy ChatCube ID* (*Copy address* on the other networks), *Add to
    group* and *Delete chat* - the chat and its messages go from this
    computer; they keep theirs. A group: *Members*, each with *Send a
    message*, *Copy ID* and, for the group's owner, *Remove from group*;
@@ -228,25 +295,62 @@ The first ChatCube draft, which this replaces, is kept under
    Telegram groups only administrators rename or take people out) says so
    on the status line. Pins and unread marks are kept in the settings file.
 
-8. **Settings** - the gear beside the copy button at the top of the sidebar
+9. **Settings** - the gear beside the copy button at the top of the sidebar
    - opens a window laid out as UltraFiler's: the sections on the left, the
    chosen page on the right, *Restore defaults* and *Close* at the foot.
+   *General*: the startup - *Manually* (when you open it) or *When the
+   computer starts* (minimized, as you sign in). That choice is kept in the
+   computer's own list of programs that start at sign-in (the Task Manager's
+   Startup tab, macOS Login Items, `~/.config/autostart`), not in
+   `settings.json`, so switching it off there shows here too.
    *Appearance*: the look - System, Light or Dark, shown at once - and how
    times and dates are written (`14:05` or `2:05 PM`; `31.10.2026`,
-   `2026-10-31` or `10/31/2026`). *Messages*: whether Enter or Ctrl+Enter
-   sends, and whether typing is shown to the other side and to you.
-   *Networks*: where each network stands, your ChatCube ID to copy, signing
-   out of Matrix or Telegram, and whether the people on this network are
+   `2026-10-31` or `10/31/2026`). *Display*: the feature icons - for each,
+   in the message field, behind the + button, or not shown. *Messages*: whether Enter or Ctrl+Enter
+   sends, and whether typing is shown to the other side and to you. Someone
+   typing shows in the chat's header and in its row of the list, in the
+   accent colour - in a group with their name ("Anna is typing…", "Anna and
+   Ben are typing…").
+   *Networks*: where each network stands (and the version of its module),
+   your ChatCube ID to copy, signing out of any other network you are signed
+   in to, and whether the people on this network are
    listed in the sidebar. *Extras*: the data folder, to open or copy, and the
    version. A change applies at once and is kept in
    `<settings folder>/ChatCube/settings.json` (`~/.config/UltraCanvas`,
    `%APPDATA%\UltraCanvas`, `~/Library/Application Support/UltraCanvas`).
 
+## The networks at a glance
+
+What each network does in ChatCube - ✓ yes, – not there (the network has
+no such thing, or ChatCube does not do it yet):
+
+| Network | Sign-in | Files | Edit, delete | Replies | Typing | Read ticks | Groups | Calls | End-to-end | Search |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ChatCube Direct | your key on this computer | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ voice, video | ✓ | ✓ |
+| Matrix | homeserver, user, password | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ rooms | – | ✓ encrypted rooms | ✓ |
+| Telegram | phone number, code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | ✓ |
+| Mastodon | the server's page in the browser | pictures, videos, sound | ✓ | ✓ | – | – | ✓ several people | – | – | ✓ |
+| Mattermost | server, user, password (MFA) | ✓ | ✓ | ✓ threads | ✓ | – | ✓ channels | – | – | ✓ |
+| Zulip | organization, e-mail, password | ✓ | ✓ | – (quotes) | ✓ | – | ✓ stream topics | – | – | ✓ |
+| Signal | QR code (signal-cli) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | what this ChatCube saw |
+| XMPP | address, password | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ rooms | – | – (TLS to the server) | ✓ |
+| IRC | server, nickname | – | – | ✓ | ✓ | – | ✓ channels | – | – | ✓ |
+
+What to type in *Add* for each: a ChatCube ID; `@name:server` (Matrix);
+`@user`, `+49 …` or a t.me link (Telegram); `@user@server` (Mastodon);
+`@user` or an e-mail (Mattermost); an e-mail (Zulip); `+49 …` or a
+username `name.01` (Signal); `name@domain` (XMPP); `#channel` or a nickname
+(IRC). An address more than one signed-in network takes asks which.
+
 ## Building and running
 
 ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
 UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider modules are built next
-to it in `<build>/Plugins/UltraIM/`. Matrix encryption needs a Rust toolchain
+to it in `<build>/Plugins/UltraIM/`. Only the modules in use are loaded:
+ChatCube Direct, and the networks signed in to (UltraIM keeps them in
+`ultraim-providers.txt` in ChatCube's data folder); another network's module
+is loaded when its button is pressed, and one signed out of is not loaded at
+the next start. Matrix encryption needs a Rust toolchain
 (cargo) at build time; without one the Matrix module cannot open encrypted
 rooms. Telegram needs `libtdjson` from TDLib (Telegram Database Library) at
 run time, not at build time: the configure step fetches TDLib 1.8.69 prebuilt into
@@ -264,7 +368,8 @@ data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
 
 `ChatCube --minimized` starts with the window minimized, so messages
-arrive in the background - what UltraDesktop's *Start with the desktop*
+arrive in the background - what *Settings > General > Startup* puts in the
+computer's startup list, and what UltraDesktop's *Start with the desktop*
 asks for (a running copy is left alone; a second start would only bring
 its window forward).
 
@@ -295,6 +400,9 @@ CHATCUBE_RELAY_DB=/tmp/relay.sqlite3 .venv/bin/chatcube-relay &      # http://12
 # Bob, who answers everything for ten minutes
 build/chatcube-peer --relay http://127.0.0.1:8790 --data /tmp/bob --name Bob --create --print-id
 build/chatcube-peer --data /tmp/bob --add <your ChatCube ID> --echo 600
+# ... with a face: --picture sets Bob's profile picture (a square JPEG,
+# PNG or WebP of at most 32 KB) and sends it to his contacts
+build/chatcube-peer --data /tmp/bob --picture bob.jpg --echo 600
 ```
 
 Then add Bob's ID in ChatCube and write to him.
@@ -325,6 +433,9 @@ card or the sidebar moves them; the pictures then show where they landed.
 | `ui/ChatCubeViews.*` | list models and delegates: conversation rows, chat bubbles, date separators |
 | `ui/ChatCubeSettings.*` | the preferences the Settings window sets, in `settings.json` |
 | `ui/ChatCubeSettingsWindow.*` | the Settings window: the tree of pages, each page, Restore defaults |
+| `ui/ChatCubeFeatures.*` | the feature icons around the message field and where each one is (the field, behind the +, off) |
+| `ui/ChatCubeEmoji.*` | the smiley button's sets and picker: the emoji grids, the sticker grid, the list of sets by example |
+| `ui/ChatCubeLocationWindow.*` | Insert a location: Nominatim search, the map with its pin (UltraCanvasMapView), My position (UltraCanvasGeolocation); the location text and its parsing for the map cards |
 | `ui/ChatCubeTheme.*` | the look: the light and the dark theme, avatars, icons, the colours the views paint with |
 | `peer/main.cpp` | `chatcube-peer` |
 | `tools/screenshot.sh`, `tools/xinput.c` | screenshots of the app under Xvfb, driven through XTest |

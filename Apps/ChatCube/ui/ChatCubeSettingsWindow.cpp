@@ -3,7 +3,9 @@
 // chosen page on the right, the page's "Restore defaults" and Close at the
 // foot - the layout of UltraFiler's settings window, in ChatCube's colours.
 //
-// Pages: Appearance > Look (system, light or dark, at once), Appearance >
+// Pages: General > Startup (ChatCube started by hand, or when the computer
+// starts - an entry in the computer's own startup list, UltraCanvasLaunchAtLogin),
+// Appearance > Look (system, light or dark, at once), Appearance >
 // Time & date (a 24- or 12-hour clock; the date as day.month.year,
 // year-month-day or month/day/year), Messages > Sending (Enter or Ctrl+Enter
 // sends), Messages > Typing (whether the other side is told I am typing, and
@@ -14,7 +16,15 @@
 // through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.5.1 - General > Startup: manually, or when the computer starts (in the background)
+// Version: 0.4.8 - the XMPP note: TLS on its own, WebSocket only where that is all
+// Version: 0.4.7 - a note on the IRC account
+// Version: 0.4.6 - a note on the XMPP account
+// Version: 0.4.5 - a note on the Signal account (signal-cli)
+// Version: 0.4.4 - a note on the Mattermost and Zulip accounts
 // Version: 0.4.3 - Mastodon in the notes on accounts, the data folder and the networks
+// Version: 0.5.0 - Display > Feature icons: where each icon around the message field is - in the
+//                  field, behind the + button, or not shown
 // Version: 0.4.2 - the look follows a change while open (OnLook): a choice on the Look page shows at once
 // Version: 0.4.1 - every text a person reads through Tr (UltraLocalisation)
 // Version: 0.4.0 - Networks > Relay: the relay server, no longer asked on the sign-in page
@@ -22,7 +32,7 @@
 // Version: 0.2.0 - Networks > Proxy: the proxy Matrix and the relay are
 //                  reached through, shared by every ULTRA OS application
 // Version: 0.1.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettingsWindow.h"
@@ -33,9 +43,11 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasLaunchAtLogin.h"     // General > Startup
 #include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSwitch.h"
@@ -76,9 +88,13 @@ constexpr int kControlHeight = 24;
 
 // Page ids double as tree node ids.
 constexpr const char* kPageStart       = "start";
+constexpr const char* kPageGeneral     = "general";
+constexpr const char* kPageStartup     = "general/startup";
 constexpr const char* kPageAppearance  = "appearance";
 constexpr const char* kPageLook        = "appearance/look";
 constexpr const char* kPageTime        = "appearance/time";
+constexpr const char* kPageDisplay     = "display";
+constexpr const char* kPageFeatures    = "display/features";
 constexpr const char* kPageMessages    = "messages";
 constexpr const char* kPageSending     = "messages/sending";
 constexpr const char* kPageTyping      = "messages/typing";
@@ -113,6 +129,11 @@ struct ChatCubeSettingsWindow::State {
     std::shared_ptr<UltraCanvasButton>    restoreButton;
     std::string                           shownPage;
 
+    // General > Startup: read from the computer's startup list each time
+    // the page is shown (FillStartup)
+    std::shared_ptr<UltraCanvasRadio> manualStartRadio, bootStartRadio;
+    UltraCanvasRadioGroup             startupGroup;
+    std::shared_ptr<UltraCanvasLabel> startupStatus;
     // Appearance > Look
     std::shared_ptr<UltraCanvasRadio> systemRadio, lightRadio, darkRadio;
     UltraCanvasRadioGroup             lookGroup;
@@ -121,6 +142,8 @@ struct ChatCubeSettingsWindow::State {
     UltraCanvasRadioGroup             clockGroup;
     std::vector<std::pair<DateStyle, std::shared_ptr<UltraCanvasRadio>>> dateRadios;
     UltraCanvasRadioGroup             dateGroup;
+    // Display > Feature icons: one dropdown a feature, kAllFeatures' order
+    std::vector<std::shared_ptr<UltraCanvasDropdown>> featureDrops;
     // Messages > Sending
     std::shared_ptr<UltraCanvasRadio> enterRadio, ctrlEnterRadio;
     UltraCanvasRadioGroup             sendKeyGroup;
@@ -303,8 +326,12 @@ std::shared_ptr<UltraCanvasSwitch> MakeSwitch(const std::string& id, const std::
         style.base.textHoverColor = L().ink;
         toggle.SetVisualStyle(style);
     });
+    // A longer translation wraps onto a second line instead of being cut off.
+    sw->SetLabelWrap(true);
     sw->size.width = CSSLayout::Dimension::Px(kTextWidth);
-    sw->size.height = CSSLayout::Dimension::Px(kControlHeight);
+    sw->size.height = CSSLayout::Dimension::Auto();
+    sw->boxConstraints = CSSLayout::BoxConstraints{};
+    sw->boxConstraints->minHeight = CSSLayout::Dimension::Px(kControlHeight);
     sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     sw->onStateChanged = [onChange](CheckedState, CheckedState now) {
         if (onChange) onChange(now == CheckedState::Checked);
@@ -335,6 +362,84 @@ std::shared_ptr<UltraCanvasTextInput> MakeTextField(const std::string& id, const
         field.SetStyle(st);
     });
     return t;
+}
+
+// ===== GENERAL > STARTUP =====
+// Not a key in settings.json: the computer's own list of what starts at
+// sign-in is the record, so an entry switched off there (the Task Manager's
+// Startup tab, Login Items, the desktop's autostart settings) reads as
+// Manually here.
+
+LaunchAtLoginEntry StartupEntry() {
+    LaunchAtLoginEntry entry;
+    entry.id = "org.ultraos.ChatCube";
+    entry.displayName = "ChatCube";
+    entry.comment = Tr("Chat directly with the people you know");
+    entry.iconName = "ChatCube";
+    entry.arguments = {"--minimized"};      // messages arrive; the window waits
+    return entry;
+}
+
+// The page shows what the startup list says now, with the handlers quiet.
+void FillStartup(State* d) {
+    if (!d->manualStartRadio) return;
+    const bool atBoot = IsLaunchAtLoginEnabled(StartupEntry().id);
+    const bool wasSyncing = d->syncing;
+    d->syncing = true;
+    d->startupGroup.SelectButton(atBoot ? d->bootStartRadio : d->manualStartRadio);
+    d->syncing = wasSyncing;
+    if (!LaunchAtLoginAvailable()) {
+        d->startupStatus->SetText(Tr("This copy of ChatCube cannot add itself to the programs that start with the "
+                                     "computer (a Flatpak, a Snap or an MSIX package, or a system without such a "
+                                     "list). Add it there by hand to start it with the computer."));
+    } else if (atBoot) {
+        d->startupStatus->SetText(TrF("Started as: {0}", LaunchAtLoginCommand(StartupEntry())));
+    } else {
+        d->startupStatus->SetText(std::string());
+    }
+}
+
+// Puts ChatCube in the startup list or takes it out; on failure the page
+// goes back to what the list says, and says why.
+void ApplyStartup(State* d, bool atBoot) {
+    std::string error;
+    const bool done = SetLaunchAtLogin(StartupEntry(), atBoot, error);
+    FillStartup(d);
+    if (!done) d->startupStatus->SetText(error);    // "The startup list could not be changed: ..."
+    if (d->window) d->window->RequestRedraw();
+}
+
+std::shared_ptr<UltraCanvasContainer> BuildStartupPage(State* d) {
+    PageParts parts = MakePage("cc-set-page-startup", Tr("Startup"), Tr("When ChatCube starts:"));
+    d->manualStartRadio = MakeChoice("cc-set-startup-manual", Tr("Manually - when you open it"), true);
+    d->bootStartRadio = MakeChoice("cc-set-startup-boot",
+                                   Tr("When the computer starts - in the background, as you sign in"), false);
+    d->startupGroup.AddRadioButton(d->manualStartRadio);
+    d->startupGroup.AddRadioButton(d->bootStartRadio);
+    d->startupGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+        if (!selected || d->syncing) return;
+        ApplyStartup(d, selected.get() == d->bootStartRadio.get());
+    };
+    parts.body->AddChild(d->manualStartRadio);
+    parts.body->AddChild(d->bootStartRadio);
+    d->startupStatus = MakeText("cc-set-startup-status", "", kTextWidth, kTextFontSize, &Look::inkMuted);
+    d->startupStatus->SetSelectable(true);
+    parts.body->AddChild(d->startupStatus);
+    if (!LaunchAtLoginAvailable()) {
+        d->manualStartRadio->SetDisabled(true);
+        d->bootStartRadio->SetDisabled(true);
+    }
+    FillStartup(d);
+    d->resets[kPageStartup] = [d]() { ApplyStartup(d, false); };
+
+    AddNote(parts, "cc-set-startup-note1",
+            Tr("Started with the computer, ChatCube opens with its window minimized: messages and calls arrive "
+               "from the moment you sign in, and the window is there when you want it."));
+    AddNote(parts, "cc-set-startup-note2",
+            Tr("The choice is kept in the computer's own list of programs that start when you sign in - the "
+               "Startup tab of the Task Manager on Windows, Login Items on macOS, the desktop's autostart "
+               "settings on Linux. Switched off there, it reads Manually here."));
+    return parts.page;
 }
 
 // ===== APPEARANCE > LOOK =====
@@ -412,6 +517,68 @@ std::shared_ptr<UltraCanvasContainer> BuildTimePage(State* d) {
 
     AddNote(parts, "cc-set-time-note1",
             Tr("Times are this computer's local time. A change shows at once, in the open conversation too."));
+    return parts.page;
+}
+
+// ===== DISPLAY > FEATURE ICONS =====
+
+std::shared_ptr<UltraCanvasContainer> BuildFeaturesPage(State* d) {
+    PageParts parts = MakePage("cc-set-page-features", Tr("Feature icons"),
+                               Tr("Where each icon beside the message field is:"));
+    const FeaturePlace places[] = {FeaturePlace::Field, FeaturePlace::Menu, FeaturePlace::Off};
+    d->featureDrops.clear();
+    for (Feature feature : kAllFeatures) {
+        const std::string key = FeatureKey(feature);
+        auto row = std::make_shared<UltraCanvasContainer>("cc-set-feature-" + key);
+        row->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.width = CSSLayout::Dimension::Px(kTextWidth);
+        row->SetPadding(4, 0, 4, 0);
+        auto icon = std::make_shared<UltraCanvasImageElement>("cc-set-feature-icon-" + key, 0, 0, 20, 20);
+        icon->LoadFromFile(IconPath(FeatureIcon(feature)));
+        icon->SetFitMode(ImageFitMode::Contain);
+        icon->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->AddChild(icon);
+        auto words = std::make_shared<UltraCanvasContainer>("cc-set-feature-words-" + key);
+        words->layout.SetFlexColumn().SetFlexGap(1);
+        words->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        words->AddChild(MakeLabel("cc-set-feature-name-" + key, FeatureName(feature)));
+        words->AddChild(MakeText("cc-set-feature-text-" + key, FeatureDescription(feature), 230, kNoteFontSize,
+                                 &Look::inkMuted));
+        row->AddChild(words);
+        auto drop = std::make_shared<UltraCanvasDropdown>("cc-set-feature-place-" + key, 0, 0, 180, kControlHeight);
+        drop->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        OnLook(drop, [](UltraCanvasDropdown& dd) {
+            DropdownStyle st = DropdownStyle::FromTheme(UltraCanvasTheme::Current(), dd.GetStyle());
+            st.fontSize = kTextFontSize;
+            st.cornerRadius = 6.0f;
+            dd.SetStyle(st);
+        });
+        int selected = 0;
+        for (int i = 0; i < 3; ++i) {
+            drop->AddItem(PlaceName(places[i]), PlaceKey(places[i]));
+            if (d->settings->features.Get(feature) == places[i]) selected = i;
+        }
+        drop->SetSelectedIndex(selected, false);
+        drop->onSelectionChanged = [d, feature](int, const DropdownItem& item) {
+            d->settings->features.Set(feature, PlaceFromKey(item.value, DefaultPlace(feature)));
+            ApplyAndSave(d);
+        };
+        d->featureDrops.push_back(drop);
+        row->AddChild(drop);
+        parts.body->AddChild(row);
+    }
+    d->resets[kPageFeatures] = [d]() {
+        d->settings->features = FeaturePlaces();
+        size_t i = 0;
+        for (Feature feature : kAllFeatures) {
+            const FeaturePlace p = d->settings->features.Get(feature);
+            d->featureDrops[i++]->SetSelectedIndex(p == FeaturePlace::Field ? 0 : p == FeaturePlace::Menu ? 1 : 2, false);
+        }
+    };
+    AddNote(parts, "cc-set-features-note1",
+            Tr("Behind the + button: the + beside the field opens a menu of these; it is shown only while "
+               "something is behind it. A change shows at once."));
     return parts.page;
 }
 
@@ -548,6 +715,21 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
     AddNote(parts, "cc-set-accounts-note1",
             Tr("Signing in to Matrix, Telegram or Mastodon is done from the sidebar, with the Matrix, Telegram "
             "and Mastodon buttons under your ChatCube ID."));
+    AddNote(parts, "cc-set-accounts-note-teams",
+            Tr("Mattermost and Zulip, the team chats, have their buttons in the row below: your server, "
+            "your user name or e-mail and your password - and the code from your authenticator app when your "
+            "account asks for one."));
+    AddNote(parts, "cc-set-accounts-note-signal",
+            Tr("Signal links this computer to the Signal account on your phone, as Signal Desktop does: a QR "
+            "code to scan in Signal's Linked devices. ChatCube talks to Signal through signal-cli, which must "
+            "be installed (it needs Java 21), or through a signal-cli daemon whose address you give."));
+    AddNote(parts, "cc-set-accounts-note-xmpp",
+            Tr("XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your "
+            "server from the address and connects over TLS, or through WebSocket where the server offers only that."));
+    AddNote(parts, "cc-set-accounts-note-irc",
+            Tr("IRC, in the last row, connects to a server with your nickname - over TLS unless the address "
+            "starts with irc:// - and signs in with your password when the nickname is registered. Type a "
+            "#channel in Add to join it."));
     AddNote(parts, "cc-set-accounts-note2",
             Tr("Your ChatCube ID is a key made on this computer and has no password; there is nothing to sign "
             "out of. Send the ID to the people who should reach you."));
@@ -692,8 +874,12 @@ std::shared_ptr<UltraCanvasContainer> BuildAboutPage(State* d) {
 
 std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
     PageParts parts = MakePage("cc-set-page-start", Tr("Settings"), Tr("Open a section on the left and choose the page to set:"));
+    AddNote(parts, "cc-set-start-note-general",
+            Tr("General - whether ChatCube starts when the computer does, or only when you open it."));
     AddNote(parts, "cc-set-start-note1",
             Tr("Appearance - the light or the dark look, and how times and dates are written."));
+    AddNote(parts, "cc-set-start-note-display",
+            Tr("Display - which feature icons are beside the message field and which behind its + button."));
     AddNote(parts, "cc-set-start-note2",
             Tr("Messages - the key that sends, and whether typing is shown, to the other side and to you."));
     AddNote(parts, "cc-set-start-note3",
@@ -719,6 +905,7 @@ void ShowPage(State* d, const std::string& nodeId) {
     d->shownPage = nodeId;
     for (auto& [id, page] : d->pages) page->SetVisible(id == nodeId);
     if (nodeId == kPageAccounts) FillAccounts(d);     // where each network stands now
+    if (nodeId == kPageStartup) FillStartup(d);       // what the startup list says now
     UpdateRestoreButton(d);
     if (d->window) d->window->RequestRedraw();
 }
@@ -788,9 +975,13 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     rootData.nodeId = "settings";
     rootData.text = Tr("Settings");
     d->tree->SetRootNode(rootData);
+    AddTreeNode(d, "settings", kPageGeneral, Tr("General"));
+    AddTreeNode(d, kPageGeneral, kPageStartup, Tr("Startup"));
     AddTreeNode(d, "settings", kPageAppearance, Tr("Appearance"));
     AddTreeNode(d, kPageAppearance, kPageLook, Tr("Look"));
     AddTreeNode(d, kPageAppearance, kPageTime, Tr("Time & date"));
+    AddTreeNode(d, "settings", kPageDisplay, Tr("Display"));
+    AddTreeNode(d, kPageDisplay, kPageFeatures, Tr("Feature icons"));
     AddTreeNode(d, "settings", kPageMessages, Tr("Messages"));
     AddTreeNode(d, kPageMessages, kPageSending, Tr("Sending"));
     AddTreeNode(d, kPageMessages, kPageTyping, Tr("Typing"));
@@ -812,8 +1003,10 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     OnLook(d->pageArea, [](UltraCanvasContainer& c) { c.SetBackgroundColor(L().panel); });
     content->AddChild(d->pageArea);
 
+    AddPage(d, kPageStartup, BuildStartupPage(d));
     AddPage(d, kPageLook, BuildLookPage(d));
     AddPage(d, kPageTime, BuildTimePage(d));
+    AddPage(d, kPageFeatures, BuildFeaturesPage(d));
     AddPage(d, kPageSending, BuildSendingPage(d));
     AddPage(d, kPageTyping, BuildTypingPage(d));
     AddPage(d, kPageAccounts, BuildAccountsPage(d));

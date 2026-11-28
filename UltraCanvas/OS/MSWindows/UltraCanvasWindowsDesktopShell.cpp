@@ -56,6 +56,9 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.11.1 - the loudspeaker's messages go through Tr
+// Version: 1.11.0 - GetPointerPosition (GetCursorPos)
+// Version: 1.10.0 - ShowWindowThumbnail / HideWindowThumbnail: DWM live thumbnails (DwmRegisterThumbnail)
 // Version: 1.9.0 - the exclusive global shortcut: a low-level hook that swallows the key (StartExclusive)
 // Version: 1.8.0 - OpenDisplaySettings: Settings > Display (ms-settings:display)
 // Version: 1.7.0 - CaptureWindowImage (PrintWindow with the full content);
@@ -75,7 +78,7 @@
 // Version: 1.2.0 - DesktopReplacement::Instead, EndSession, LaunchShortcut;
 //                  our own Shell_TrayWnd is not Explorer's taskbar
 // Version: 1.1.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 // IVirtualDesktopManager, DWMWA_CLOAKED and the cloaking events are declared
@@ -92,6 +95,7 @@
 #endif
 
 #include "UltraCanvasDesktopShellBackend.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasDiskCache.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasNativeFileIcons.h"
@@ -1531,10 +1535,29 @@ bool SetCurrentVirtualDesktop(int index) {
     return true;
 }
 
-bool SetVirtualDesktopCount(int) {
-    // Windows offers no call that adds or removes a desktop; the count is
-    // the user's, in Task View.
-    return false;
+bool SetVirtualDesktopCount(int count) {
+    // Windows offers no call that adds or removes a desktop, only Explorer's
+    // shortcuts: Win+Ctrl+D adds one at the end and switches to it. So the
+    // count only grows - removing one would move its windows, which is the
+    // user's to do in Task View - and the desktop that was current is
+    // switched back to once Explorer has written the new layout.
+    count = std::clamp(count, 1, 32);
+    const VirtualDesktopLayout before = ReadVirtualDesktops();
+    if (count <= before.Count()) return count == before.Count();
+    if (!ExplorerTaskbarRunning()) return false;
+    for (int added = before.Count(); added < count; ++added) {
+        if (!SendShortcut({VK_LCONTROL, VK_LWIN}, 'D')) return false;
+    }
+    VirtualDesktopLayout after = ReadVirtualDesktops();
+    for (int wait = 0; wait < 40 && (after.Count() < count || after.current != after.Count() - 1); ++wait) {
+        Sleep(50);
+        after = ReadVirtualDesktops();
+    }
+    if (after.Count() < count) return false;
+    for (int step = after.current - before.current; step > 0; --step) {
+        if (!SendShortcut({VK_LCONTROL, VK_LWIN}, VK_LEFT)) return false;
+    }
+    return true;
 }
 
 bool MoveWindowToVirtualDesktop(uint64_t id, int index) {
@@ -1586,6 +1609,20 @@ namespace {
     }
 } // namespace
 
+// Virtual-screen pixels, those of EnumDisplayMonitors (the process is
+// per-monitor DPI aware). Fails on a desktop without the input (a locked
+// session's secure desktop).
+bool GetPointerPosition(int& x, int& y) {
+    POINT at{};
+    if (!GetCursorPos(&at)) {
+        x = y = 0;
+        return false;
+    }
+    x = at.x;
+    y = at.y;
+    return true;
+}
+
 std::vector<DesktopScreenInfo> ListScreens() {
     std::vector<DesktopScreenInfo> screens;
     EnumDisplayMonitors(nullptr, nullptr, CollectMonitor, reinterpret_cast<LPARAM>(&screens));
@@ -1594,6 +1631,48 @@ std::vector<DesktopScreenInfo> ListScreens() {
 
 // Call it from the thread the window belongs to (the UI thread): the appbar
 // windows are made there.
+// ===== MINIMIZED WINDOWS WITHOUT EXPLORER =====
+
+namespace {
+    // A minimized window shown as a title bar on the screen (Windows parks
+    // them along the bottom edge when ARW_HIDE is off): moved off the
+    // screen, where Explorer keeps minimized windows, still minimized.
+    BOOL CALLBACK UnparkMinimizedWindow(HWND hwnd, LPARAM) {
+        if (!IsWindowVisible(hwnd) || !IsIconic(hwnd)) return TRUE;
+        RECT rect = {};
+        if (!GetWindowRect(hwnd, &rect) || (rect.left <= -30000 && rect.top <= -30000)) return TRUE;
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return TRUE;
+        placement.flags |= WPF_SETMINPOSITION;
+        placement.ptMinPosition.x = -32000;
+        placement.ptMinPosition.y = -32000;
+        placement.showCmd = SW_SHOWMINNOACTIVE;
+        SetWindowPlacement(hwnd, &placement);
+        // The placement only says where the next minimize goes; a window
+        // minimized already is moved there now.
+        SetWindowPos(hwnd, nullptr, -32000, -32000, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        return TRUE;
+    }
+}
+
+bool KeepMinimizedWindowsHidden() {
+    // Explorer's taskbar looks after them while it runs.
+    if (ExplorerTaskbarRunning()) return false;
+    MINIMIZEDMETRICS metrics = {};
+    metrics.cbSize = sizeof(metrics);
+    // The shell guard sets it at sign-in; an Explorer started and ended
+    // later in the session puts it back as it ends.
+    if (SystemParametersInfoW(SPI_GETMINIMIZEDMETRICS, sizeof(metrics), &metrics, 0) &&
+        (metrics.iArrange & ARW_HIDE) == 0) {
+        metrics.iArrange |= ARW_HIDE;
+        SystemParametersInfoW(SPI_SETMINIMIZEDMETRICS, sizeof(metrics), &metrics, 0);
+    }
+    EnumWindows(UnparkMinimizedWindow, 0);
+    return true;
+}
+
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     const HWND owner = ToHwnd(id);
     if (id == 0 || !IsWindow(owner)) return false;
@@ -1726,6 +1805,45 @@ bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
 bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error) {
     const int area[4] = {x, y, width, height};
     return CaptureScreenPixels(out, error, area);
+}
+
+// DWM draws the source into the destination itself, live: what Explorer's
+// taskbar thumbnails are. A minimized window shows as it last looked, which
+// PrintWindow cannot give - it draws nothing for a minimized window.
+uint64_t ShowWindowThumbnail(uint64_t destinationId, uint64_t sourceId, int x, int y, int width, int height) {
+    const HWND destination = ToHwnd(destinationId);
+    const HWND source = ToHwnd(sourceId);
+    if (!IsWindow(destination) || !IsWindow(source) || destination == source) return 0;
+    HTHUMBNAIL thumbnail = nullptr;
+    if (FAILED(DwmRegisterThumbnail(destination, source, &thumbnail)) || !thumbnail) return 0;
+    // The source's proportions, centred in the rectangle.
+    RECT target = {x, y, x + width, y + height};
+    SIZE size = {};
+    if (SUCCEEDED(DwmQueryThumbnailSourceSize(thumbnail, &size)) && size.cx > 0 && size.cy > 0) {
+        const double scale = std::min({1.0, static_cast<double>(width) / size.cx,
+                                       static_cast<double>(height) / size.cy});
+        const int w = std::max(1, static_cast<int>(size.cx * scale + 0.5));
+        const int h = std::max(1, static_cast<int>(size.cy * scale + 0.5));
+        target.left = x + (width - w) / 2;
+        target.top = y + (height - h) / 2;
+        target.right = target.left + w;
+        target.bottom = target.top + h;
+    }
+    DWM_THUMBNAIL_PROPERTIES properties = {};
+    properties.dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY;
+    properties.rcDestination = target;
+    properties.fVisible = TRUE;
+    properties.opacity = 255;
+    properties.fSourceClientAreaOnly = FALSE;
+    if (FAILED(DwmUpdateThumbnailProperties(thumbnail, &properties))) {
+        DwmUnregisterThumbnail(thumbnail);
+        return 0;
+    }
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(thumbnail));
+}
+
+void HideWindowThumbnail(uint64_t thumbnail) {
+    DwmUnregisterThumbnail(reinterpret_cast<HTHUMBNAIL>(static_cast<uintptr_t>(thumbnail)));
 }
 
 bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {
@@ -2074,14 +2192,14 @@ namespace {
         IMMDeviceEnumerator* enumerator = nullptr;
         if (FAILED(CoCreateInstance(kClsidMMDeviceEnumerator, nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
                                     reinterpret_cast<void**>(&enumerator)))) {
-            error = "Windows audio is not available.";
+            error = Tr("Windows audio is not available.");
             return nullptr;
         }
         IMMDevice* device = nullptr;
         const HRESULT found = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
         Release(enumerator);
         if (FAILED(found) || !device) {
-            error = "No loudspeaker is set as the default output.";
+            error = Tr("No loudspeaker is set as the default output.");
             return nullptr;
         }
         IPropertyStore* properties = nullptr;
@@ -2099,7 +2217,7 @@ namespace {
                                                 reinterpret_cast<void**>(&volume));
         Release(device);
         if (FAILED(opened) || !volume) {
-            error = "The output's volume control could not be opened.";
+            error = Tr("The output's volume control could not be opened.");
             return nullptr;
         }
         return volume;
@@ -2118,7 +2236,7 @@ DesktopAudioOutput ReadAudioOutput() {
         out.volumePercent = static_cast<int>(level * 100.0f + 0.5f);
         out.muted = muted != FALSE;
     } else {
-        out.error = "The output's volume could not be read.";
+        out.error = Tr("The output's volume could not be read.");
     }
     Release(volume);
     return out;
@@ -2131,7 +2249,7 @@ bool SetAudioOutputVolume(int percent, std::string& error) {
     if (!volume) return false;
     const float level = static_cast<float>(std::clamp(percent, 0, 100)) / 100.0f;
     const bool ok = SUCCEEDED(volume->SetMasterVolumeLevelScalar(level, nullptr));
-    if (!ok) error = "The output's volume could not be set.";
+    if (!ok) error = Tr("The output's volume could not be set.");
     Release(volume);
     return ok;
 }
@@ -2142,7 +2260,7 @@ bool SetAudioOutputMuted(bool muted, std::string& error) {
     IAudioEndpointVolume* volume = DefaultOutputVolume(name, error);
     if (!volume) return false;
     const bool ok = SUCCEEDED(volume->SetMute(muted ? TRUE : FALSE, nullptr));
-    if (!ok) error = "The output could not be muted.";
+    if (!ok) error = Tr("The output could not be muted.");
     Release(volume);
     return ok;
 }

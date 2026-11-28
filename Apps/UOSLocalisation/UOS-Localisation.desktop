@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UOS-Localisation, the ULTRA OS translation
+# editor. The install rules put media/appicon/UOS-Localisation.{png,svg} into
+# the hicolor theme, which is where `Icon=UOS-Localisation` is looked up.
+Type=Application
+Version=1.5
+Name=UOS-Localisation
+GenericName=Translation Editor
+Comment=Translate ULTRA OS applications: every set of an application's texts in one grid
+Exec=UOS-Localisation
+TryExec=UOS-Localisation
+Icon=UOS-Localisation
+Terminal=false
+StartupNotify=true
+StartupWMClass=UOS-Localisation
+Categories=Development;Translation;
+Keywords=translation;localisation;localization;language;catalogue;ULTRA OS;

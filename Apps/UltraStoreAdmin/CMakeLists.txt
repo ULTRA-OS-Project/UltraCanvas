@@ -34,6 +34,7 @@ add_library(UltraStoreAdminCore STATIC
     core/Affiliates.cpp
     core/PageFrame.cpp
     core/WebSite.cpp
+    core/WebStoreHtml.cpp
     core/Market.cpp
     core/Finance.cpp
 )
@@ -44,6 +45,12 @@ target_compile_features(UltraStoreAdminCore PUBLIC cxx_std_20)
 target_include_directories(UltraStoreAdminCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core)
 target_include_directories(UltraStoreAdminCore PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
 target_link_libraries(UltraStoreAdminCore PUBLIC UltraStoreCore)
+# The web store as HTML + JavaScript (core/WebStoreHtml.cpp) is UltraSite's;
+# without it the publish offers the WebAssembly store alone and says so.
+if(TARGET UltraSite)
+    target_link_libraries(UltraStoreAdminCore PUBLIC UltraSite)
+    target_compile_definitions(UltraStoreAdminCore PRIVATE ULTRASTOREADMIN_HAS_ULTRASITE=1)
+endif()
 # The VirtualFS bridge lists an archive's entries (the entry to start is
 # suggested from them); the core defines ULTRACANVAS_HAS_VIRTUALFS on its
 # interface when it has a provider.

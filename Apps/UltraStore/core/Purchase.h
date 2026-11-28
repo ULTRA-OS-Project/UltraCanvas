@@ -56,8 +56,19 @@ struct Order {
     bool Over() const { return status == "paid" || status == "cancelled" || status == "failed" || status == "chargeback" || status == "refunded"; }
 };
 
+// Where the buyer is, for the tax in the price (the store's README,
+// *Payment*): two capital letters, or "" when nothing says. The first of
+// these that is a country: what the person set in the store's settings, the
+// country of the account they are signed in to, the region of the system's
+// language. The last is a guess, which is why the first two go before it.
+std::string BuyerCountry(const std::string& setting, const std::string& accountCountry, const std::string& systemCountry);
+
 // POST /v1/checkout: the order, with the checkout URL to open in the browser.
-Result<Order> StartCheckout(const std::string& paymentUrl, const std::string& appId, const std::string& code, const HttpCall& http);
+// `country` (BuyerCountry) goes with it when there is one: the service takes
+// the VAT of that country out of the price and names it on the invoice;
+// without it the service reckons with the seller's.
+Result<Order> StartCheckout(const std::string& paymentUrl, const std::string& appId, const std::string& code, const HttpCall& http,
+                            const std::string& country = {});
 // GET /v1/orders/{id}?secret=: the order as it stands.
 Result<Order> OrderStatus(const std::string& paymentUrl, const std::string& orderId, const std::string& secret, const HttpCall& http);
 // POST /v1/orders/{id}/subscription/cancel: the buyer ends a subscription;

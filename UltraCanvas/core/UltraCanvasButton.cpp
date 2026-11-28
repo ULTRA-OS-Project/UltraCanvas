@@ -1,5 +1,8 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.15.1 - the one-character centring is the shared DrawTextCentredOnInk
+// Version: 2.15.0 - a one-character label ("+", "x", a check mark) is centred on its ink, across and down:
+//                  centred on its line box, a "+" sat 2.5 px low in a round 48 px button
 // Version: 2.14.0 - SetColors / SetTextColors with fewer than four colours derive the others for the look:
 //                  under a dark theme the disabled face and text sink toward the ground instead of
 //                  turning light grey; a font size or family set by hand survives ApplyTheme
@@ -1017,6 +1020,16 @@ namespace UltraCanvas {
             const double height = layout->GetLayoutHeight();
             ctx->DrawTextLayout(*layout, Point2Dd(rect.x, rect.y + (rect.height - height) / 2));
             return;
+        }
+        // One character - "+", "x", "<", a check mark - centred on its ink
+        // (DrawTextCentredOnInk, UltraCanvasTextLayoutCache.h): centred on
+        // its line box, a 26 px "+" sat 2.5 px low in a round 48 px button.
+        if (!useMarkup && style.textAlign == TextAlignment::Center && IsSingleCharacterText(text)) {
+            FontStyle font;
+            font.fontFamily = style.fontFamily;
+            font.fontSize = style.fontSize;
+            font.fontWeight = style.fontWeight;
+            if (DrawTextCentredOnInk(ctx, shortenedLayout, text, font, rect)) return;
         }
         shortenedLayout.Reset();   // shortened at the end again: nothing to keep
 

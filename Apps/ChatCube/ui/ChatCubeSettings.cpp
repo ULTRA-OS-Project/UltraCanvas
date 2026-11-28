@@ -1,10 +1,11 @@
 // Apps/ChatCube/ui/ChatCubeSettings.cpp
 // ChatCube's preferences in <settings folder>/ChatCube/settings.json.
+// Version: 0.4.0 - features.<key> (field, menu, off) and features.emoji-set
 // Version: 0.3.1 - ChatMarks under "chats.pinned" and "chats.unread"
 // Version: 0.3.0 - the relay server (networks.relay)
 // Version: 0.2.0 - the look is system, light or dark
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettings.h"
@@ -49,6 +50,11 @@ void Settings::Load() {
     showTyping = file.GetBool("messages.show-typing", defaults.showTyping);
     showNearby = file.GetBool("networks.show-nearby", defaults.showNearby);
     relayServer = file.GetString("networks.relay", defaults.relayServer);
+    for (Feature f : kAllFeatures) {
+        features.Set(f, PlaceFromKey(file.GetString(std::string("features.") + FeatureKey(f), ""),
+                                     defaults.features.Get(f)));
+    }
+    emojiSet = file.GetString("features.emoji-set", defaults.emojiSet);
 }
 
 bool Settings::Save() const {
@@ -62,6 +68,8 @@ bool Settings::Save() const {
     file.Set("messages.show-typing", showTyping);
     file.Set("networks.show-nearby", showNearby);
     file.Set("networks.relay", relayServer);
+    for (Feature f : kAllFeatures) file.Set(std::string("features.") + FeatureKey(f), PlaceKey(features.Get(f)));
+    file.Set("features.emoji-set", emojiSet);
     return file.Save();
 }
 

@@ -33,6 +33,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -62,8 +63,7 @@ static int failCount = 0;
 // .github/workflows/build.yml).
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
-        const char* req = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");   \
-        if (req && *req && std::string(req) != "0") {                         \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
             std::cerr << "FAIL: a display was required, and " << reason       \
                       << std::endl;                                           \
             return 1;                                                         \

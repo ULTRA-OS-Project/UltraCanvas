@@ -31,6 +31,7 @@ those elements, the tabbed container and the text area
   - [Readability](#readability)
 - [Using it](#using-it)
   - [Following the theme](#following-the-theme)
+  - [Colours chosen for the light look](#colours-chosen-for-the-light-look)
 - [Fonts and text roles](#fonts-and-text-roles)
 - [The theme from the host](#the-theme-from-the-host)
 - [The policy](#the-policy)
@@ -207,7 +208,7 @@ Whether a new element follows is the application-wide default,
 (`FollowHost`, `Light`, `Dark`) in `Initialize`, so every element built
 after it takes the theme at the end of its constructor; an `Own`
 application turns it on itself when its theme is in place. A style **set by
-hand** (`SetStyle`, a dialog's too; `SetConfig` on an album, `SetAppearance`
+hand** (`SetStyle`; `SetConfig` on an album, `SetAppearance`
 on a toolbar, `SetVisualStyle` on a switch) stops the following for that
 element, so it keeps its look through every change, as before; an element
 that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
@@ -223,7 +224,15 @@ a caption with a size of its own no longer jumps to the body size when the
 look changes, and needs no `SetFollowTheme(false)` for it. A list hands the
 theme on to its delegate (`IItemDelegate::ApplyTheme`), also to one set
 with `SetDelegate` after the list was made; the default delegate keeps a
-text colour or size the application set on it.
+text colour or size the application set on it. A modal dialog's `SetStyle`
+follows the same rule for its type sizes: a style that changes only sizes
+(the message, details and button sizes an application runs its UI at, as
+the file display's and the Save settings' dialogs set) keeps the dialog
+following, and every theme change after keeps those sizes; a style that
+changes the message or details colour stops the following, as any
+`SetStyle` by hand does. A dialog left open while the theme changes is
+re-styled whole - its surface, message, buttons by their role and the
+elements added to it.
 
 ```cpp
 UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
@@ -284,7 +293,8 @@ border), a columns tree's section header (`columns-tree.group-header`,
 `filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`),
 the colour picker's markers (`color-picker.marker`,
 `color-picker.marker-outline`, white and black), the rich text edit's
-paper (`rich-text.page`, the well), the busy indicator's second arc
+paper and desk (`rich-text.page`, the lighter of the well and the panel;
+`rich-text.desk`, the panel a shade darker), the busy indicator's second arc
 (`busy-indicator.second-arc`, its orange), the recorder's pulse
 (`audio-recorder.pulse`, its red), the video player's, recorder's and
 tile's dark stages and bars (`video-player.stage`,
@@ -299,6 +309,25 @@ brand.SetRole("rating.on", Color(242, 165, 58));                 // the brand's 
 brand.SetRole("calendar.weekend", brand.roles.inkMuted);         // weekends quiet, not red
 CheckboxVisualStyle box = CheckboxVisualStyle::FromTheme(brand); // the accent for the mark: not named
 RatingStyle stars = RatingStyle::FromTheme(brand, RatingStyle());
+```
+
+### Colours chosen for the light look
+
+An element (or a page) that draws with colours of its own - a caption's
+grey, a pale panel, an unlit segment - can carry them into a dark theme
+without a second palette: `ForDarkLook` turns a colour's lightness over
+into the dark look's range and keeps its hue, so white lands near the
+panel, black near white ink, a pale green panel becomes a dark green one
+and grey text light grey. Alpha is kept. `ForThisLook` does it under a dark
+theme and returns the colour unchanged under a light one. The gauge draws
+its greys through it (`UltraCanvasGaugeDiagramElement`), and the demo app's
+pages through `DemoKit::Themed`. Value colours - an accent, a warning red,
+a chart's palette - are better left as they are.
+
+```cpp
+const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+Color caption = theme.ForThisLook(Color(110, 110, 120));     // grey text, light grey in the dark
+Color panel = UltraCanvasTheme::ForDarkLook(Color(232, 245, 233)); // a pale green panel, dark green
 ```
 
 ## Fonts and text roles
@@ -359,10 +388,14 @@ double ratio = UltraCanvasTheme::Contrast(derived.onAccent, derived.accent);   /
 ```
 
 `DeriveAccent` keeps the readability the test enforces: text on the
-accent is white or the dark ink, whichever reads better, and the accent is
-moved toward black or white a step at a time until that text reaches
-4.5:1 (7:1 for high contrast) - a yellow or a mid-grey accent is nudged, a
-blue stays itself; `accentHover` is the accent moved 8 % toward the ink;
+accent is white on any accent white already reaches 3:1 on - the blues,
+reds, purples, oranges and mid greens a desktop offers - and the dark ink
+only on a light accent (yellow, light cyan, a pastel). WCAG 2 contrast
+alone would put black on the Windows blue `0,120,215` (4.67:1 against
+white's 4.499:1), which is hard to read; so the accent is moved toward
+black (white text) or white (dark ink) a step at a time until the text
+reaches 4.5:1 (7:1 for high contrast) - that blue becomes `0,113,202`, a
+yellow stays itself; `accentHover` is the accent moved 8 % toward the ink;
 `accentSoft` the accent at 18 % over the panel when dark, 14 % when light;
 `focus` the accent unless it fails 3:1 on the ground, then `lineStrong`.
 

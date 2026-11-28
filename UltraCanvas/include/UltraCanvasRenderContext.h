@@ -1,5 +1,10 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.15.0 - ITextLayout::GetCursorRect: the strong cursor in fractional pixels (GetCursorPos rounds
+//                   toward zero)
+// Version: 2.14.0 - LayoutLineExtent::fontHeight: the height of a line's fonts, line gap included, which a
+//                   line spacing factor multiplies
+// Version: 2.13.0 - CreateDocumentTextLayout (glyphs where the font puts them) and TextAttributeFactory::CreateFontFeatures
 // Version: 2.12.0 - TextAttributeFactory::CreateLetterSpacing takes fractional pixels
 // Version: 2.11.0 - GetFontStyle: the font DrawText draws in now; TextTopCentredOnCaps(row) in it;
 //                   ITextLayout::GetCapHeight measures the font the text starts in, font attributes included
@@ -509,6 +514,12 @@ namespace UltraCanvas {
         // declaration, which Clang (unlike GCC) rejects.
         std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup);
         std::unique_ptr<ITextLayout> CreateTextLayout();
+        // A layout for a document's text: every glyph stays where its font
+        // puts it, to a fraction of a pixel, where an interface's text has
+        // them on whole pixels. Whole pixels make a word a per cent or two
+        // narrower than the font says, and a paragraph then breaks its lines
+        // elsewhere than in the program that wrote the document.
+        std::unique_ptr<ITextLayout> CreateDocumentTextLayout(const std::string& text);
         // How many layouts CreateTextLayout made on this context: a test's
         // measure of an element's layout cache (UltraCanvasTextLayoutCache) -
         // "ten draws, one layout".
@@ -680,6 +691,11 @@ namespace UltraCanvas {
     protected:
         // The backend's layout for `text`; CreateTextLayout counts and calls it.
         virtual std::unique_ptr<ITextLayout> MakeTextLayout(const std::string& text, bool isMarkup) = 0;
+        // CreateDocumentTextLayout's layout; a backend without one of its
+        // own gives its ordinary layout.
+        virtual std::unique_ptr<ITextLayout> MakeDocumentTextLayout(const std::string& text) {
+            return MakeTextLayout(text, false);
+        }
 
     private:
         unsigned long textLayoutsCreated = 0;
@@ -917,6 +933,13 @@ namespace UltraCanvas {
         int lengthBytes = 0;
         float top = 0.0f;
         float height = 0.0f;
+        // The height of the line's fonts: ascent, descent and the line gap
+        // their designers gave them, the tallest in the line - what a line
+        // spacing factor (ITextLayout::SetLineSpacing) multiplies, from
+        // baseline to baseline. A layout ends at its last line's descent, so
+        // that line's `height` lacks the room the factor gives the others.
+        // 0 = not known.
+        float fontHeight = 0.0f;
     };
 
     // ===== UCTextAttribute =====
@@ -1005,6 +1028,11 @@ namespace UltraCanvas {
 
         // absolute line height, may be used with CreateShapeSpacer to preserve space
         std::unique_ptr<ITextAttribute> CreateAbsoluteLineHeight(double lineHeight);
+
+        // OpenType features for the range, as CSS font-feature-settings spells
+        // them: "kern=0" sets the letters without pair kerning (as Word does
+        // unless a document turns kerning on), "liga=0" without ligatures.
+        std::unique_ptr<ITextAttribute> CreateFontFeatures(const std::string& features);
     };
 
     // ===== UCTextAttributeList =====
@@ -1132,6 +1160,17 @@ namespace UltraCanvas {
         virtual double IndexToBaseline(int byteIndex) const = 0;
         virtual UCLayoutLineXPos IndexToLineX(int byteIndex, bool trailing) const = 0;
         virtual UCCursorPos GetCursorPos(int byteIndex) const = 0;
+        // The strong cursor at `byteIndex` where the layout puts it, in
+        // fractional pixels. GetCursorPos gives whole pixels, cut toward zero:
+        // lines 18.625 px apart (DejaVu Serif at 12 pt) put the second line's
+        // cursor at 18 and the third at 37, so a caret, or anything measured
+        // from one, drifted up to a pixel off the line it stood on. The
+        // default is GetCursorPos's rectangle.
+        virtual Rect2Df GetCursorRect(int byteIndex) const {
+            const Rect2Di pos = GetCursorPos(byteIndex).strongPos;
+            return Rect2Df(static_cast<float>(pos.x), static_cast<float>(pos.y),
+                           static_cast<float>(pos.width), static_cast<float>(pos.height));
+        }
         virtual UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,
                                               int oldTrailing, int direction) const = 0;
 
@@ -1149,6 +1188,12 @@ namespace UltraCanvas {
     {
         ++textLayoutsCreated;
         return MakeTextLayout(text, isMarkup);
+    }
+
+    inline std::unique_ptr<ITextLayout> IRenderContext::CreateDocumentTextLayout(const std::string& text)
+    {
+        ++textLayoutsCreated;
+        return MakeDocumentTextLayout(text);
     }
 
     inline std::unique_ptr<ITextLayout> IRenderContext::CreateTextLayout()

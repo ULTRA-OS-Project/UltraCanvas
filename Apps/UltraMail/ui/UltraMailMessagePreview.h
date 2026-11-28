@@ -3,6 +3,11 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.19.0 - a link of a message the warning strip warns of asks first: "Do you
+//                   really want to open the link?" with the strip's reasons
+//                   (LinkNeedsConfirmation, LinkCautionText)
+// Version: 0.18.0 - onAddContact (the warning strip's "Add to contacts"); SetContacts
+//                  shows the message again when its sender joined the address book
 // Version: 0.17.0 - SetWarningStrip: the warning strip's kinds (Settings > Display >
 //                   Email warnings)
 // Version: 0.16.0 - signed and encrypted mail: decrypted and its signatures checked
@@ -65,6 +70,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -92,7 +98,10 @@ public:
     // back to when it scans a body for the first time.
     void SetStore(LocalStore* store) { store_ = store; }
     // The address book and the icon cache behind the sender badge.
-    void SetContacts(ContactIndex contacts) { badges_.SetContacts(std::move(contacts)); }
+    // The address book, for the sender badge. When the shown message's sender
+    // joined it (or left it), the message is shown again: its badge and its
+    // warning strip depend on it.
+    void SetContacts(ContactIndex contacts);
     void SetIconCache(const SenderIconCache* cache) { icons_ = cache; badges_.SetIconCache(cache); }
     // Asked for the icon the shown sender's badge lacks; IconCached shows it
     // once it has arrived.
@@ -144,6 +153,10 @@ public:
                        const std::string& selfAddr)> onForward;
     // Delegated to the app: move the shown message to Trash (server + local).
     std::function<void(const MessageEnvelope&)> onDelete;
+    // The warning strip's "Add to contacts", for a "Re:" / "Fw:" from a sender
+    // the reader never wrote to (unsolicited-reply): the reader knows them.
+    // Without it the button is not shown.
+    std::function<void(const MessageEnvelope&)> onAddContact;
     // Delegated to the app: move the shown message to the Junk mailbox.
     std::function<void(const MessageEnvelope&)> onJunk;
     // Delegated to the app: clear \Seen on the shown message (server + local).
@@ -207,10 +220,32 @@ public:
     // sender's mail - for the message shown. Asked for as the menu opens.
     std::function<std::vector<UltraCanvas::MenuItemData>(const MessageEnvelope&)> senderMenuItems;
 
+    // A web link of the shown message asks before it opens while the warning
+    // strip warns of the message (a scam, phishing, parts that do not add
+    // up): "Do you really want to open the link?", with the strip's verdict
+    // and reasons. Not for a sender the reader only blocked, nor for the
+    // caution every mail about crypto gets.
+    bool LinkNeedsConfirmation() const { return linkCaution_.has_value(); }
+    // The question's text for `href`: the link, then why it is suspicious -
+    // the strip's verdict, where the link goes when that is not the
+    // sender's domain, the domain mismatch and the scan's reasons. "" while
+    // no link needs confirming.
+    std::string LinkCautionText(const std::string& href) const;
+
 private:
     // A link of the body was clicked: web addresses open in the browser, mail
-    // addresses through onComposeTo.
+    // addresses through onComposeTo. A web link of a message the warning strip
+    // warns of asks first (ConfirmSuspiciousLink).
     void ActivateLink(const std::string& href);
+    void ConfirmSuspiciousLink(const std::string& href);
+    // What the warning strip said, kept for a click on a link: set while the
+    // strip warns of the shown message.
+    struct LinkCaution {
+        std::string verdict;               // the strip's title, without its mark
+        std::string senderDomain;          // the From address's domain
+        std::vector<std::string> reasons;  // the strip's evidence, a line each
+    };
+    std::optional<LinkCaution> linkCaution_;
     // Render a body into bodyHost_: HTML through the HTMLReader element
     // builder (CSSLayout engine), plain text into a read-only text area.
     void RenderBody(const std::string& body, bool isHtml);
@@ -293,6 +328,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> warning_;     // scam / spam strip
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    warningAddContact_;   // "Add to contacts"
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyHost_;
     // The body and, with the attachments at the right, their column.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyRow_;

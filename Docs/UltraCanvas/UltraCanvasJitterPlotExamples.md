@@ -27,10 +27,10 @@
   - [Overrides](#overrides)
 - [Factory Functions](#factory-functions)
 - [Usage Examples](#usage-examples)
-  - [Example 1: Brazil School Scores — Classic Gaussian Jitter](#example-1-brazil-school-scores-—-classic-gaussian-jitter)
-  - [Example 2: Brazil School Scores — Beeswarm Packing](#example-2-brazil-school-scores-—-beeswarm-packing)
+  - [Example 1: Brazil School Scores — Classic Gaussian Jitter](#example-1-brazil-school-scores--classic-gaussian-jitter)
+  - [Example 2: Brazil School Scores — Beeswarm Packing](#example-2-brazil-school-scores--beeswarm-packing)
   - [Example 3: Continental Population (Simple Jitter)](#example-3-continental-population-simple-jitter)
-  - [Example 4: Market Capitalization — Logarithmic Y-Axis](#example-4-market-capitalization-—-logarithmic-y-axis)
+  - [Example 4: Market Capitalization — Logarithmic Y-Axis](#example-4-market-capitalization--logarithmic-y-axis)
   - [Example 5: Hybrid Jitter + Box Plot Overlay (Interactive)](#example-5-hybrid-jitter--box-plot-overlay-interactive)
   - [Example 6: Scientific Cross-Mean Markers (Publication Style)](#example-6-scientific-cross-mean-markers-publication-style)
   - [Example 7: Raincloud Plot (Half-Violin + Jitter)](#example-7-raincloud-plot-half-violin--jitter)
@@ -324,7 +324,7 @@ double GetColorDomainMin() const;
 double GetColorDomainMax() const;
 ```
 
-Palettes come from [`UltraCanvasColormap`](UltraCanvasColormap.md) — sequential
+Palettes come from [`UltraCanvasColormap`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasColormap.h) — sequential
 (`Viridis`, `Inferno`, `Blues`, …), diverging (`RdBu`, `Spectral`, `Coolwarm`, …),
 or `Custom` with your own anchors. With diverging normalization on, `[min, mid]`
 maps to `[0, 0.5]` and `[mid, max]` to `[0.5, 1]`, so the midpoint lands on the

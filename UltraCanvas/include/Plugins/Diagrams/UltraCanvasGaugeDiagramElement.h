@@ -1,8 +1,13 @@
 // Plugins/Gauges/UltraCanvasGaugeDiagramElement.h
 // Comprehensive gauge element supporting analog, digital, progress, and specialized gauge modes
+// Version: 2.7.0 - follows the theme: in a dark one its neutral greys and the default text,
+//                  background, track and clock colours take the dark look
+//                  (UltraCanvasTheme::ForDarkLook); a colour set by hand is kept
+// Version: 2.6.0 - LinearBar's track takes SetTrackColor too
+// Version: 2.5.0 - SetRingCompact / SetRingValueText: CircularRing as a small inline marker
 // Version: 2.4.0 - SetClockHandColor / SetClockTickColor: an analog clock on a dark face
 // Version: 2.3.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 // V2.3.0 changelog: the six linear (bar) modes fit the box they are given.
 //   One layout for all of them: the full card (title, bar, value line) where
@@ -234,6 +239,18 @@ public:
     // ===== ROUND-GAUGE (CircularRing) STYLE =====
     void SetRingThickness(float t);
     float GetRingThickness() const { return ringThickness; }
+    // CircularRing as an inline marker - a ring of 12 to 40 px in a row of
+    // text or buttons. Compact: the ring fills the element, with no title,
+    // no padding and no minimum radius (the radius is half the shorter side
+    // less half the ring and its outline); off, the ring keeps the card
+    // layout, which needs about 60 px. Off by default.
+    void SetRingCompact(bool compact);
+    bool GetRingCompact() const { return ringCompact; }
+    // Whether CircularRing draws its value in the centre (on by default).
+    // Off: the ring alone, for a marker whose colour and fill say enough;
+    // a centre label or icon, when set, is centred on its own.
+    void SetRingValueText(bool show);
+    bool GetRingValueText() const { return ringValueText; }
     void SetRingStyle(GaugeRingStyle s);
     GaugeRingStyle GetRingStyle() const { return ringStyle; }
     void SetRingSegmentStyle(GaugeRingSegmentStyle s);
@@ -390,6 +407,15 @@ public:
     void SetLowLevelLimit(double limit);
     double GetLowLevelLimit() const { return lowLevelLimit; }
     // Colour used by both warnings (default red).
+    // ===== THEME =====
+    // Under a dark theme the gauge's own greys - captions, ticks, unlit
+    // segments, the face - and its default text, background, track, ring
+    // border and clock colours are drawn in the dark look. A colour given
+    // with its setter is drawn as given; the value colours (the gauge
+    // colour, ranges, warnings) are kept either way.
+    void ApplyTheme(const UltraCanvasTheme& theme) override;
+    bool IsDarkLook() const { return darkLook; }
+
     void SetWarningColor(const Color& c);
     const Color& GetWarningColor() const { return warningColor; }
 
@@ -410,6 +436,8 @@ private:
 
     // Round-gauge (CircularRing) styling
     float ringThickness = 6.0f;
+    bool ringCompact = false;      // SetRingCompact: the ring fills the element
+    bool ringValueText = true;     // SetRingValueText: the value in the ring's centre
     GaugeRingStyle ringStyle = GaugeRingStyle::SolidArc;
     GaugeRingSegmentStyle ringSegmentStyle = GaugeRingSegmentStyle::Blocks;
     int ringSegmentCount = 36;
@@ -468,6 +496,23 @@ private:
     bool lowLevelWarning = false;        // blink the fill at/below the limit
     double lowLevelLimit = 10.0;         // limit (gauge units) for the blink
     Color warningColor = Color(230, 55, 45, 255);
+
+    // Theme: whether the dark look is on, and which colours the
+    // application set (kept as given whatever the look)
+    enum : unsigned {
+        ByHandText = 1u << 0, ByHandBackground = 1u << 1, ByHandTrack = 1u << 2,
+        ByHandClockHand = 1u << 3, ByHandClockTick = 1u << 4, ByHandRingBorder = 1u << 5
+    };
+    bool darkLook = false;
+    unsigned coloursByHand = 0;
+    // A colour chosen for the light look, in the current one
+    Color Look(const Color& lightLookColour) const {
+        return darkLook ? UltraCanvasTheme::ForDarkLook(lightLookColour) : lightLookColour;
+    }
+    // A colour field: as set by hand, or its default in the current look
+    Color Own(const Color& colour, unsigned byHandBit) const {
+        return (coloursByHand & byHandBit) ? colour : Look(colour);
+    }
     uint32_t warningBlinkTimerId = 0;
     bool warningBlinkOn = true;          // current blink phase (true = shown)
 

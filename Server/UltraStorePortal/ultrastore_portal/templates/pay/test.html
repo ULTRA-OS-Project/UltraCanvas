@@ -1,0 +1,16 @@
+{% extends "pay/base.html" %}
+{% block title %}Paying for {{ order.app_name }} - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <div class="alert alert-warning"><b>The test payment provider.</b> No money moves: this page stands where the payment provider's does on a developer's machine.</div>
+  <h1>{{ order.app_name }}</h1>
+  <p class="font-title fs-2 my-3">{{ amount }} {{ order.currency }}</p>
+  {% if order.cycle %}<p class="text-secondary">A subscription: {{ list_price }} {{ order.currency }} every {{ order.cycle }} after this payment.</p>{% endif %}
+  <form method="post" action="{% url 'pay:test' order.public_id %}" class="d-flex flex-wrap align-items-center gap-2">
+    {% csrf_token %}
+    <button class="btn btn-primary btn-lg" name="outcome" value="paid">Pay {{ amount }} {{ order.currency }}</button>
+    <button class="btn btn-outline-secondary" name="outcome" value="failed">Let the payment fail</button>
+    <button class="btn btn-outline-secondary" name="outcome" value="cancelled">Cancel</button>
+  </form>
+</div>
+{% endblock %}

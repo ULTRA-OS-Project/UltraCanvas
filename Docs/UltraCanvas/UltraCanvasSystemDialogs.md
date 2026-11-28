@@ -9,9 +9,9 @@ them all live under *ULTRA OS modules → System dialogs*
 ## Contents
 
 - [Two implementations, one call](#two-implementations-one-call)
-- [File dialogs — `UltraCanvasFileLoader`](#file-dialogs-—-ultracanvasfileloader)
-- [Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager](#print-dialog-—-ultracanvasnativedialogs--iodevicemanager)
-- [Message and input dialogs — `UltraCanvasDialogManager`](#message-and-input-dialogs-—-ultracanvasdialogmanager)
+- [File dialogs — `UltraCanvasFileLoader`](#file-dialogs--ultracanvasfileloader)
+- [Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager](#print-dialog--ultracanvasnativedialogs--iodevicemanager)
+- [Message and input dialogs — `UltraCanvasDialogManager`](#message-and-input-dialogs--ultracanvasdialogmanager)
 - [See also](#see-also)
 
 ## Two implementations, one call
@@ -115,6 +115,25 @@ UltraCanvasDialogManager::ShowInputDialog("Name of the new folder:", "New folder
 
 `InputType::Password` masks the field. Native message dialogs block and call
 the callback before returning; the framework's do not block.
+
+What the short form cannot say goes in an `InputDialogConfig`, shown with
+`ShowInputDialog(config, onResult, parent)`. `iconAboveInput` puts a picture
+(an SVG or bitmap path) centred above the field, drawn in the dialog's text
+colour so it follows the theme - the lock of UltraViewer's Unlock dialog and
+of `UltraCanvasFileLoader::RequestDocumentPassword`; `iconAboveInputSize` is
+its side (48 by default). A picture that cannot be read leaves no gap. With
+native dialogs on, the native dialog is shown without it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasWindow> window; std::string resources; -->
+```cpp
+InputDialogConfig unlock;
+unlock.title = "Unlock report.odt";
+unlock.inputLabel = "Password for report.odt:";
+unlock.inputType = InputType::Password;
+unlock.iconAboveInput = resources + "media/icons/unlock.svg";
+UltraCanvasDialogManager::ShowInputDialog(unlock,
+    [](DialogResult r, const std::string& password) { /* ... */ }, window.get());
+```
 
 ## See also
 

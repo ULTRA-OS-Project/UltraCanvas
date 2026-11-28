@@ -12,6 +12,7 @@
 // for updates); a *withdrawn* one only when it is installed (no new
 // installs, existing ones keep updating).
 //
+// Version: 0.4.0 - PlanLaunch: the runtime layer on the library path, LibraryPathVariable
 // Version: 0.3.0 - categories from the fixed list: CategoryName, PrimaryCategory; search finds the name
 // Version: 0.2.1 - PeriodPrice; the texts through Tr
 // Version: 0.2.0 - codes: CheckCode, DiscountedPrice, PriceLabel with a code
@@ -26,6 +27,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace UltraStore {
@@ -119,6 +121,34 @@ std::string FormatBytes(uint64_t bytes);
 // (UTF-8); empty when the record names no entry.
 std::string LaunchPath(const InstalledRecord& record);
 
+// How an installed app is started: the program and its arguments, the
+// folder it starts in, and what its runtime layer adds to the environment.
+struct LaunchPlan {
+    std::vector<std::string> argv;    // empty: nothing to start
+    std::string workingDirectory;     // the app's version folder
+    std::vector<std::pair<std::string, std::string>> environment;
+};
+
+// The variable the dynamic loader searches on `os`: LD_LIBRARY_PATH (Linux
+// and the other POSIX systems), PATH (Windows), DYLD_LIBRARY_PATH (macOS).
+std::string LibraryPathVariable(OS os);
+
+// The plan for starting `app` (its registry row) on `os`. argv is
+// LaunchPath (a macOS bundle through `open`). The app's runtime layer - the
+// components it was installed with, at the exact versions of its `depends`,
+// and theirs in turn, as `installed` holds them - goes first on the library
+// path, the app's own before any of theirs: a component's lib/ on Linux,
+// its folder on Windows (the suite package's layouts), ahead of
+// `currentLibraryPath`, the variable's value now. The first runtime among
+// them is named in the framework's kRuntimeDirVariable
+// (ULTRACANVAS_RUNTIME_DIR, UltraCanvasConfig.h), where the framework looks
+// for media/ and UltraNet's plug-ins after the app's own folders. A dependency not installed is
+// skipped (the installer put it there; nothing else can). On macOS nothing
+// is added: an app there is a bundle with its own Frameworks/, and `open`
+// passes no environment.
+LaunchPlan PlanLaunch(const InstalledRecord& app, const std::vector<InstalledRecord>& installed, OS os,
+                      const std::string& currentLibraryPath);
+
 // The two-letter language of a POSIX locale string: "de_AT.UTF-8" -> "de",
 // "pt-BR" -> "pt"; "C", "POSIX" and an empty string give the fallback.
 std::string LanguageFromLocale(const std::string& locale, const std::string& fallback = "en");
@@ -126,5 +156,20 @@ std::string LanguageFromLocale(const std::string& locale, const std::string& fal
 // LanguageFromLocale over the environment (LC_ALL, LC_MESSAGES, LANG), "en"
 // when none says.
 std::string SystemLanguage();
+
+// The country a locale or a language tag names, two capital letters:
+// "de_AT.UTF-8" -> "AT", "pt-BR" -> "BR", "zh-Hant-TW" -> "TW"; "" when it
+// names none ("de", "C", "es-419"). The region of somebody's language is a
+// guess at where they are - the last one the store makes (Purchase.h,
+// BuyerCountry).
+std::string CountryFromLocale(const std::string& locale);
+
+// The first country any of these tags names (the system's languages, best
+// first), "" when none does.
+std::string CountryOfLanguageTags(const std::vector<std::string>& tags);
+
+// CountryFromLocale over the environment (LC_ALL, LC_MESSAGES, LANG), ""
+// when none says.
+std::string SystemCountry();
 
 } // namespace UltraStore

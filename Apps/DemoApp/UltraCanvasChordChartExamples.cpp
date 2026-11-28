@@ -157,7 +157,7 @@ namespace UltraCanvas {
     {
         auto panel = std::make_shared<UltraCanvasContainer>(idPrefix + "Panel",
                                                            kChordPanelWidth, 0);
-        panel->SetBackgroundColor(Color(247, 247, 250, 255));
+        panel->SetBackgroundColor(DemoKit::Themed(Color(247, 247, 250, 255)));
         panel->SetPadding(8, 10);
         panel->layout.SetFlexColumn().SetFlexGap(4)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -395,7 +395,7 @@ namespace UltraCanvas {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ChordTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         tabs->AddTab(Tr("Global Merchandise Trade"), MakeTradeTab());

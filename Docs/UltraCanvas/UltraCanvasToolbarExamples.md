@@ -32,7 +32,7 @@
   - [Flat Style Toolbar](#flat-style-toolbar)
   - [Vertical Sidebar Toolbar](#vertical-sidebar-toolbar)
   - [Ribbon-Style Toolbar (Grouped)](#ribbon-style-toolbar-grouped)
-  - [Badges and Reordering — a Taskbar](#badges-and-reordering-—-a-taskbar)
+  - [Badges and Reordering — a Taskbar](#badges-and-reordering--a-taskbar)
 - [Implementation Notes](#implementation-notes)
 - [See Also](#see-also)
 
@@ -642,10 +642,10 @@ running->ClearItemBadge("webcam");                                // off again
 
 ## See Also
 
-- [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - Building block for toolbar buttons
 - [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
 - [Toolbar Layout](UltraCanvasToolbarLayout.md) - A toolbar built from groups of commands, kept in the settings (`MaterializeToolbar`)
-- [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
+- [UltraCanvasMenu](UltraCanvasMenuExamples.md) - Used internally for dropdown buttons and overflow menus
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally
-- [UltraCanvasSegmentedControl](UltraCanvasSegmentedControl.md) - Alternative for grouped toggle choices
+- [UltraCanvasSegmentedControl](UltraCanvasSegmentedControlExamples.md) - Alternative for grouped toggle choices

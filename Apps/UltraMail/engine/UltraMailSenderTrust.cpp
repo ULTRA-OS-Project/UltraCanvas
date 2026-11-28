@@ -1,16 +1,22 @@
 // Apps/UltraMail/engine/UltraMailSenderTrust.cpp
+// Version: 0.2.0 - the reason in the reader's language (Tr / TrF)
 // Version: 0.1.1 - a scam's reason names scams as well as phishing (romance, crypto)
 // Version: 0.1.0
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSenderTrust.h"
 
 #include "UltraMailContactStore.h"
 #include "UltraMailSenderBrands.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
 
 namespace UltraMail {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -120,36 +126,54 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
     status.inAddressBook = contacts.Lookup(who.address, section);
     status.section       = section;
 
+    // An offer of services (an SEO "audit") is spam from a stranger and
+    // ordinary business from a contact: when that is all the scan found, a
+    // contact's message is not called spam for it.
+    ThreatLevel level = who.level;
+    if (status.inAddressBook && level == ThreatLevel::Suspicious && !who.findings.empty()) {
+        bool onlyStrangerFindings = true;
+        std::size_t start = 0;
+        while (start <= who.findings.size()) {
+            std::size_t comma = who.findings.find(',', start);
+            if (comma == std::string::npos) comma = who.findings.size();
+            const std::string code = who.findings.substr(start, comma - start);
+            if (!code.empty() && !FindingOnlyFromStrangers(code)) onlyStrangerFindings = false;
+            start = comma + 1;
+        }
+        if (onlyStrangerFindings) level = who.bulk ? ThreatLevel::Advertisement : ThreatLevel::Clean;
+    }
+
     // Danger first: a message whose links lie is a scam whoever it claims to be
     // from — an address book entry says nothing about *this* message.
-    if (who.level == ThreatLevel::Scam) {
+    if (level == ThreatLevel::Scam) {
         status.cls    = SenderClass::Scam;
-        status.reason = "This message shows scam or phishing markers — check the reasons "
-                        "below before clicking, paying or answering anything in it.";
+        status.reason = Tr("This message shows scam or phishing markers — check the "
+                                        "reasons below before clicking, paying or answering "
+                                        "anything in it.");
         return status;
     }
-    if (who.level == ThreatLevel::Suspicious || (who.junkFolder && !status.inAddressBook)) {
+    if (level == ThreatLevel::Suspicious || (who.junkFolder && !status.inAddressBook)) {
         status.cls    = SenderClass::Spam;
-        status.reason = who.junkFolder && who.level != ThreatLevel::Suspicious
-            ? "This message is in the junk folder."
-            : "Parts of this message do not add up — treat its links with care.";
+        status.reason = who.junkFolder && level != ThreatLevel::Suspicious
+            ? Tr("This message is in the junk folder.")
+            : Tr("Parts of this message do not add up — treat its links with care.");
         return status;
     }
 
     if (status.inAddressBook) {
         status.cls = IsPrivateSection(section) ? SenderClass::Friend : SenderClass::Business;
-        status.reason = "In your address book (" + DisplayName(section) + ").";
+        status.reason = TrF("In your address book ({0}).", DisplayName(section));
         return status;
     }
 
     // Bulk mail is called what it is even when it comes from a known service:
     // a campaign newsletter really is advertising, and saying so is the point
     // of the dark-blue badge.
-    if (who.level == ThreatLevel::Advertisement || who.bulk) {
+    if (level == ThreatLevel::Advertisement || who.bulk) {
         status.cls = SenderClass::Advertisement;
         status.reason = status.brandName.empty()
-            ? "Bulk mail — this looks like advertising or a newsletter."
-            : "Bulk mail from " + status.brandName + " — a newsletter or an offer.";
+            ? Tr("Bulk mail — this looks like advertising or a newsletter.")
+            : TrF("Bulk mail from {0} — a newsletter or an offer.", status.brandName);
         return status;
     }
 
@@ -161,14 +185,13 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
     // only a source of icons.)
     if (status.knownService) {
         status.cls    = SenderClass::Business;
-        status.reason = status.brandName + " \xE2\x80\x94 " +
-                        DisplayName(status.brandCategory) +
-                        ", not yet in your address book.";
+        status.reason = TrF("{0} — {1}, not yet in your address book.",
+                                         status.brandName, DisplayName(status.brandCategory));
         return status;
     }
 
     status.cls = SenderClass::New;
-    status.reason = "New sender — this address is not in your address book.";
+    status.reason = Tr("New sender — this address is not in your address book.");
     return status;
 }
 

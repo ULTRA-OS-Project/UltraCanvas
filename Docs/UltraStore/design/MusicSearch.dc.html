@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Music - Search</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#15803d}a:hover{color:#166534}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="padding: 12px 24px; min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 20px">
+<a href="MusicHome.dc.html" aria-label="UltraStore Music home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Music</span>
+</a>
+<form role="search" style="flex: 1 1 360px; max-width: 560px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #ffffff; border: 2px solid #0f172a">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search</label>
+<input id="search-q" type="search" value="{{query}}" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+<button type="button" aria-label="Clear" style="width: 28px; height: 28px; border: 0; border-radius: 999px; background: #f1f5f9; color: #0f172a; cursor: pointer; font-size: 14px; font-weight: 700">×</button>
+</form>
+<nav aria-label="Account" style="margin-left: auto; display: flex; gap: 8px; align-items: center">
+<span style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; background: #dcfce7; color: #15803d; font-weight: 700; font-size: 13px">Premium</span>
+<button type="button" aria-label="Account" style="width: 40px; height: 40px; border-radius: 999px; border: 0; background: #dcfce7; color: #15803d; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">AK</button>
+</nav>
+</div>
+</header>
+
+<main style="flex: 1 1 auto; padding: 20px 32px 32px; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<sc-for list="{{types}}" as="t" hint-placeholder-count="6">
+<button type="button" onClick="{{t.pick}}" aria-pressed="{{t.selected}}" style="{{t.style}}">{{t.label}} <span style="{{t.countStyle}}">{{t.count}}</span></button>
+</sc-for>
+<span aria-hidden="true" style="width: 1px; height: 24px; background: #e2e8f0; margin: 0 6px"></span>
+<sc-for list="{{genres}}" as="g" hint-placeholder-count="7">
+<button type="button" onClick="{{g.pick}}" aria-pressed="{{g.selected}}" style="{{g.style}}">{{g.label}}</button>
+</sc-for>
+<span style="margin-left: auto; font-size: 13px; color: #64748b">{{count}} results</span>
+</div>
+
+<sc-if value="{{showTop}}" hint-placeholder-val="{{true}}">
+<section aria-label="Top result" style="display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 24px; align-items: stretch">
+<a href="MusicArtist.dc.html" style="display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 22px; border-radius: 20px; background: #f8fafc; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a; position: relative; min-height: 220px">
+<span aria-hidden="true" style="width: 96px; height: 96px; border-radius: 999px; background: linear-gradient(135deg, #ec4899, #581c87); box-shadow: 0 10px 24px rgba(15,23,42,0.2)"></span>
+<span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1">Kesselhaus Quartet</span>
+<span style="font-size: 13px; color: #64748b">Artist · 1.2M monthly listeners</span>
+<span aria-hidden="true" style="position: absolute; right: 20px; bottom: 20px; width: 52px; height: 52px; border-radius: 999px; background: {{accent}}; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(22,163,74,0.35)"><svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"></path></svg></span>
+</a>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em">Songs</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column">
+<li style="display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: 10px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: linear-gradient(135deg, #ec4899, #581c87); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 14px">Blue Hour</span><span style="font-size: 12px; color: #64748b">Kesselhaus Quartet</span></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums">6:40</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: 10px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: linear-gradient(135deg, #a855f7, #3b0764); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 14px">Kesselhaus</span><span style="font-size: 12px; color: #64748b">Kesselhaus Quartet</span></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums">5:12</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: 10px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 14px">Breakwater</span><span style="font-size: 12px; color: #64748b">Lena Marlow, Kesselhaus Quartet</span></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums">5:26</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-radius: 10px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 6px; background: linear-gradient(135deg, #f472b6, #9d174d); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 14px">Night Shift</span><span style="font-size: 12px; color: #64748b">Kesselhaus Quartet</span></span><span style="font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums">7:03</span></li>
+</ol>
+</div>
+</section>
+</sc-if>
+
+<section aria-live="polite" style="display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em">{{heading}}</h2>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px">
+<sc-for list="{{items}}" as="it" hint-placeholder-count="12">
+<a href="{{it.href}}" style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 16px; background: #f8fafc; text-decoration: none; color: #0f172a">
+<span aria-hidden="true" style="{{it.coverStyle}}">{{it.mark}}</span>
+<span style="font-weight: 700; font-size: 14px; line-height: 1.3">{{it.title}}</span>
+<span style="font-size: 12px; color: #64748b; margin-top: -6px">{{it.meta}}</span>
+</a>
+</sc-for>
+</div>
+<sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+<div style="padding: 48px 24px; border-radius: 20px; background: #f8fafc; text-align: center; color: #64748b">Nothing matches. Try another type or genre.</div>
+</sc-if>
+</section>
+
+<section aria-labelledby="browse-title" style="display: flex; flex-direction: column; gap: 14px; padding-top: 8px">
+<h2 id="browse-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em">Browse all</h2>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px">
+<a href="#g-pop" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #db2777; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Pop</a>
+<a href="#g-jazz" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #7c3aed; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Jazz</a>
+<a href="#g-electronic" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #0891b2; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Electronic</a>
+<a href="#g-classical" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #b45309; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Classical</a>
+<a href="#g-hiphop" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #0f172a; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Hip-hop</a>
+<a href="#g-rock" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #dc2626; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Rock</a>
+<a href="#g-ambient" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #0f766e; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Ambient</a>
+<a href="#g-folk" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #4d7c0f; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Folk</a>
+<a href="#g-podcasts" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #1d4ed8; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Podcasts</a>
+<a href="#g-audiobooks" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #a16207; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Audiobooks</a>
+<a href="#g-charts" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #be123c; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">Charts</a>
+<a href="#g-new" style="display: flex; align-items: flex-start; padding: 16px; aspect-ratio: 16 / 9; border-radius: 14px; background: #15803d; color: #ffffff; text-decoration: none; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px">New releases</a>
+</div>
+</section>
+
+</main>
+
+<div aria-label="Now playing" style="position: sticky; bottom: 0; display: grid; grid-template-columns: 1fr 2fr 1fr; align-items: center; gap: 16px; padding: 12px 24px; background: #0f172a; color: #ffffff; border-top: 1px solid #1e293b">
+<div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+<span aria-hidden="true" style="width: 56px; height: 56px; border-radius: 8px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); flex: 0 0 auto"></span>
+<div style="display: flex; flex-direction: column; line-height: 1.25; min-width: 0"><span style="font-weight: 700; font-size: 14px">Undertow</span><span style="font-size: 12px; color: #94a3b8">Lena Marlow · Low Tide</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; align-items: center">
+<div style="display: flex; align-items: center; gap: 10px">
+<button type="button" aria-label="Previous" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18 5l-10 7 10 7z"></path><rect x="4.5" y="5" width="2.5" height="14" rx="1"></rect></svg></button>
+<button type="button" aria-label="Pause" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: #ffffff; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></button>
+<button type="button" aria-label="Next" style="width: 36px; height: 36px; border: 0; background: transparent; color: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5l10 7-10 7z"></path><rect x="17" y="5" width="2.5" height="14" rx="1"></rect></svg></button>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; width: 100%; max-width: 560px; font-size: 12px; color: #94a3b8; font-variant-numeric: tabular-nums"><span>1:24</span><span aria-hidden="true" style="flex: 1 1 auto; height: 4px; border-radius: 2px; background: #334155; overflow: hidden; display: block"><span style="display: block; width: 37%; height: 100%; background: #ffffff"></span></span><span>3:48</span></div>
+</div>
+<div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12px; color: #94a3b8"><span style="color: #4ade80; font-weight: 700">This laptop</span><span style="height: 22px; padding: 0 8px; border-radius: 5px; background: #1e293b; color: #cbd5e1; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">FLAC 24/96</span></div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#16a34a","options":["#16a34a","#2563eb","#0f172a","#7c3aed"]},"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { type: 'all', genre: 'all' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#16a34a';
+    // Sample catalogue matching the query "kessel": type 'song' | 'artist' | 'album' | 'playlist' | 'podcast'
+    const ITEMS = [
+      { id: 'kq', title: 'Kesselhaus Quartet', type: 'artist', genre: 'jazz', meta: 'Artist', grad: 'linear-gradient(135deg, #ec4899, #581c87)', round: true, href: 'MusicArtist.dc.html' },
+      { id: 'blue-hour', title: 'Blue Hour (Live at the Kesselhaus)', type: 'album', genre: 'jazz', meta: '2026 · Kesselhaus Quartet', grad: 'linear-gradient(135deg, #ec4899, #581c87)' },
+      { id: 'kesselhaus-album', title: 'Kesselhaus', type: 'album', genre: 'jazz', meta: '2023 · Kesselhaus Quartet', grad: 'linear-gradient(135deg, #a855f7, #3b0764)' },
+      { id: 'song-blue-hour', title: 'Blue Hour', type: 'song', genre: 'jazz', meta: 'Kesselhaus Quartet · 6:40', grad: 'linear-gradient(135deg, #ec4899, #581c87)' },
+      { id: 'song-kesselhaus', title: 'Kesselhaus', type: 'song', genre: 'jazz', meta: 'Kesselhaus Quartet · 5:12', grad: 'linear-gradient(135deg, #a855f7, #3b0764)' },
+      { id: 'breakwater', title: 'Breakwater', type: 'song', genre: 'pop', meta: 'Lena Marlow, Kesselhaus Quartet · 5:26', grad: 'linear-gradient(135deg, #0ea5e9, #1e3a8a)', href: 'MusicAlbum.dc.html' },
+      { id: 'kesselhaus-talk', title: 'Kesselhaus Talk', type: 'podcast', genre: 'jazz', meta: 'Podcast · 12 episodes', grad: 'linear-gradient(135deg, #f472b6, #9d174d)' },
+      { id: 'friday-sessions', title: 'Kesselhaus Friday sessions', type: 'playlist', genre: 'jazz', meta: 'Playlist · Kesselhaus Records · 64 songs', grad: 'linear-gradient(135deg, #1e1b4b, #0f172a)' },
+      { id: 'kessel-radio', title: 'Kesselhaus Quartet radio', type: 'playlist', genre: 'jazz', meta: 'Playlist · made for you · 50 songs', grad: 'linear-gradient(135deg, #14b8a6, #134e4a)' },
+      { id: 'kessel-elektro', title: 'Kessel', type: 'artist', genre: 'electronic', meta: 'Artist', grad: 'linear-gradient(135deg, #22d3ee, #0e7490)', round: true },
+      { id: 'dampf', title: 'Dampf', type: 'album', genre: 'electronic', meta: '2025 · Kessel', grad: 'linear-gradient(135deg, #67e8f9, #155e75)' },
+      { id: 'song-dampf', title: 'Dampf (Club mix)', type: 'song', genre: 'electronic', meta: 'Kessel · 7:40', grad: 'linear-gradient(135deg, #67e8f9, #155e75)' },
+      { id: 'kesselring', title: 'Kesselring: Cello Suites', type: 'album', genre: 'classical', meta: '2021 · Mara Kesselring', grad: 'linear-gradient(135deg, #fde68a, #b45309)' },
+      { id: 'mara', title: 'Mara Kesselring', type: 'artist', genre: 'classical', meta: 'Artist', grad: 'linear-gradient(135deg, #fbbf24, #92400e)', round: true },
+      { id: 'song-suite', title: 'Suite No. 1 in G major: Prelude', type: 'song', genre: 'classical', meta: 'Mara Kesselring · 2:38', grad: 'linear-gradient(135deg, #fde68a, #b45309)' },
+      { id: 'kessel-folk', title: 'Kessel &amp; Krug', type: 'artist', genre: 'folk', meta: 'Artist', grad: 'linear-gradient(135deg, #a3e635, #3f6212)', round: true },
+      { id: 'song-krug', title: 'Krug', type: 'song', genre: 'folk', meta: 'Kessel &amp; Krug · 3:21', grad: 'linear-gradient(135deg, #a3e635, #3f6212)' },
+      { id: 'late-kessel', title: 'Late night at the Kesselhaus', type: 'playlist', genre: 'ambient', meta: 'Playlist · Anna · 38 songs', grad: 'linear-gradient(135deg, #1e1b4b, #0f172a)' }
+    ];
+    const s = this.state;
+    const chip = (on) => 'display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 0; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: #f1f5f9; color: #0f172a');
+    const matchGenre = (i) => s.genre === 'all' || i.genre === s.genre;
+    const types = [
+      { id: 'all', label: 'All' },
+      { id: 'song', label: 'Songs' },
+      { id: 'artist', label: 'Artists' },
+      { id: 'album', label: 'Albums' },
+      { id: 'playlist', label: 'Playlists' },
+      { id: 'podcast', label: 'Podcasts' }
+    ].map((t) => {
+      const on = t.id === s.type;
+      const count = ITEMS.filter((i) => (t.id === 'all' || i.type === t.id) && matchGenre(i)).length;
+      return { ...t, selected: on, count, style: chip(on), countStyle: 'font-size: 12px; font-weight: 700; ' + (on ? 'color: #cbd5e1' : 'color: #64748b'), pick: () => this.setState({ type: t.id }) };
+    });
+    const genres = [
+      { id: 'all', label: 'Any genre' },
+      { id: 'jazz', label: 'Jazz' },
+      { id: 'pop', label: 'Pop' },
+      { id: 'electronic', label: 'Electronic' },
+      { id: 'classical', label: 'Classical' },
+      { id: 'folk', label: 'Folk' },
+      { id: 'ambient', label: 'Ambient' }
+    ].map((g) => {
+      const on = g.id === s.genre;
+      return { ...g, selected: on, style: chip(on).replace('border: 0; ', 'border: 1px solid ' + (on ? '#0f172a' : '#e2e8f0') + '; ').replace('background: #f1f5f9', 'background: #ffffff'), pick: () => this.setState({ genre: g.id }) };
+    });
+    const list = ITEMS.filter((i) => (s.type === 'all' || i.type === s.type) && matchGenre(i));
+    const items = list.map((i) => ({
+      ...i,
+      href: i.href || ('#' + i.id),
+      mark: i.title.replace('&amp;', '&').split(/\s+/).filter((w) => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map((w) => w[0].toUpperCase()).join(''),
+      coverStyle: 'position: relative; aspect-ratio: 1; border-radius: ' + (i.round ? '999px' : '10px') + '; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 40px; letter-spacing: -0.04em; background: ' + i.grad
+    }));
+    const typeLabel = types.find((t) => t.id === s.type).label;
+    return {
+      accent,
+      query: 'kessel',
+      types,
+      genres,
+      items,
+      count: items.length,
+      empty: items.length === 0,
+      showTop: s.type === 'all' && (s.genre === 'all' || s.genre === 'jazz'),
+      heading: (s.type === 'all' ? 'Everything' : typeLabel) + (s.genre === 'all' ? '' : ' · ' + genres.find((g) => g.id === s.genre).label)
+    };
+  }
+}
+</script>
+</body>
+</html>

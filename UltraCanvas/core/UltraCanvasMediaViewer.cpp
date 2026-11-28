@@ -1,6 +1,18 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.31.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) is a presentation too
+// Version: 1.30.0 - a word-processing document (.odt, .docx, .doc) opens in the document view as its
+//                   pages: read by UCWordDocumentIO, laid out by UltraCanvasRichTextEdit as its print
+//                   and PDF export are, shown by the PDF view (zoom, page strip, search); a protected
+//                   .docx / .odt waits for Unlock (MediaLock::WordDocument)
+// Version: 1.29.0 - a presentation opens as its slides in the document view (UltraCanvasPresentationPages):
+//                  zoom, thumbnails, page keys, search, its speaker notes on the info bar; the O key
+//                  toggles the outline; F5 / Shift+F5 start the slide show (whole screen, Escape ends it)
+// Version: 1.28.1 - the Unlock dialog shows the Unlock button's lock, centred above the password field
+// Version: 1.28.0 - a presentation (.pptx and kin, .odp / .otp / .fodp) opens in the text view as
+//                  the outline of its slides, rendered as Markdown, as a LaTeX file does
+// Version: 1.27.1 - an empty video is left to the player, which refuses it now
 // Version: 1.27.0 - Save as for a video the player opened: every type FileLoader's
 //                  ConvertVideoFile writes, converted on a worker thread behind a progress
 //                  ring with Cancel (ShowVideoSaveDialog, VideoSaveJob)
@@ -64,7 +76,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-25
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -128,6 +140,12 @@
 #endif
 #include "UltraCanvasLanguageDetect.h" // the language of a .txt
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
+#include "UltraCanvasPresentationPptx.h"   // IsPptxExtension: a deck → its outline → markdown
+#include "UltraCanvasPresentationOdp.h"    // IsOdpExtension
+#include "UltraCanvasPresentationPpt.h"    // IsPptExtension
+#include "UltraCanvasPresentationPages.h"  // a deck's slides as the document view's pages
+#include "UltraCanvasRichTextEdit.h"        // a word-processing document laid out as its printed pages
+#include "UltraCanvasOfficeEncryption.h"   // CheckOfficePassword: a protected deck waits for Unlock
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
 #include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
@@ -2486,6 +2504,71 @@ bool UltraCanvasMediaViewer::IsDocumentFile(const std::string& path) {
 #endif
 }
 
+bool UltraCanvasMediaViewer::IsWordProcessingFile(const std::string& path) {
+    // Shown through the PDF view, so only where it is built in. The .tex the
+    // same reader takes stays a text file: it is shown as the document it
+    // describes, in the text view's Markdown mode.
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    const std::string e = LowerExt(path);
+    return e == "odt" || e == "docx" || e == "doc";
+#else
+    (void)path;
+    return false;
+#endif
+}
+
+#ifdef ULTRACANVAS_PLUGIN_PDF
+namespace {
+    // A word-processing document as the pages its print would be: read by
+    // UCWordDocumentIO, laid out by the rich-text element - the document's
+    // page size and margins, fonts, pictures, tables, header and footer, on
+    // white paper in either theme - exported as a PDF in memory and opened
+    // by the PDF engine, so the document view shows it as it shows any PDF:
+    // zoom, the page strip, page keys, search over its real text.
+    enum class WordPagesResult { Opened, NeedsPassword, WrongPassword, Failed };
+
+    WordPagesResult OpenWordDocumentPages(const std::string& path, const std::string& password,
+                                          std::unique_ptr<IPDFDocument>& out, std::string& error) {
+        auto document = std::make_shared<UCRichDocument>();
+        if (!UCWordDocumentIO::Load(path, *document, error, password)) {
+            // A protected .docx or .odt says so, so the viewer asks for
+            // (another) password rather than showing the reader's words.
+            std::string unused;
+            switch (CheckOfficePassword(path, password, unused)) {
+                case OfficeDecryptStatus::PasswordRequired:
+                case OfficeDecryptStatus::WrongPassword:
+                    return password.empty() ? WordPagesResult::NeedsPassword : WordPagesResult::WrongPassword;
+                default:
+                    return WordPagesResult::Failed;
+            }
+        }
+        auto layout = std::make_shared<UltraCanvasRichTextEdit>("MV_WordPages", 0, 0, 1, 1);
+        layout->SetShowFontNotice(false);
+        layout->SetDocument(document);
+        std::vector<uint8_t> bytes;
+        if (!layout->ExportToPdf(bytes, error)) return WordPagesResult::Failed;
+        auto pages = PDFEngineFactory::Create();
+        if (!pages || !pages->OpenFromBytes(bytes)) {
+            error = "its pages could not be shown";
+            return WordPagesResult::Failed;
+        }
+        out = std::move(pages);
+        return WordPagesResult::Opened;
+    }
+}
+#endif
+
+namespace {
+    // What the details panel calls a file the document view shows.
+    std::string DocumentTypeName(const std::string& path) {
+        if (!UltraCanvasMediaViewer::IsWordProcessingFile(path)) return "PDF document";
+        std::string ext = LowerExt(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        return "Word-processing document (" + ext + ")";
+    }
+}
+
 bool UltraCanvasMediaViewer::IsSpreadsheetFile(const std::string& path) {
     // Spreadsheets open in UltraCanvasSpreadsheet (ODS / XLSX / XLS / CSV / TSV)
     // - every format its LoadFromFile reads. The engine is always compiled into
@@ -2619,6 +2702,11 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     // harmless here since we only need the match result.
     static SyntaxTokenizer tokenizer;
     return tokenizer.SetLanguageByExtension(e);
+}
+
+bool UltraCanvasMediaViewer::IsPresentationFile(const std::string& path) {
+    const std::string e = LowerExt(path);
+    return !e.empty() && (IsPptxExtension(e) || IsOdpExtension(e) || IsPptExtension(e));
 }
 
 bool UltraCanvasMediaViewer::IsHtmlFile(const std::string& path) {
@@ -2778,9 +2866,14 @@ MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     // picture - no pages, no page inventory, no password - where the PDF view
     // (built in) shows the document.
     if (IsDocumentFile(path))    return MediaKind::Document;
+    // A word-processing document: its pages, in the same view.
+    if (IsWordProcessingFile(path)) return MediaKind::Document;
     // Before the text check: an EPS is PostScript source, and its own drawing
     // is the more useful answer to "what is in this file".
     if (IsVectorDocumentFile(path)) return MediaKind::Vector;
+    // A deck is shown as its slides' outline in the text view - before the
+    // text check, which would take a flat .fodp for XML source.
+    if (IsPresentationFile(path)) return MediaKind::Text;
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
     if (IsModelFile(path))       return MediaKind::Model;
     if (IsEBookFile(path))       return MediaKind::Book;
@@ -2803,9 +2896,9 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     if (IsImageFile(path)) return true;
     // Documents / spreadsheets / 3D models / e-books / UCD containers / text /
     // video / audio (video & audio gated by their backend being present).
-    return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
+    return IsDocumentFile(path) || IsWordProcessingFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
            IsEBookFile(path) || IsUCDFile(path) || IsVectorDocumentFile(path) ||
-           IsFontFile(path) ||
+           IsFontFile(path) || IsPresentationFile(path) ||
            IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
 }
 
@@ -3001,6 +3094,7 @@ void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
 // that still has the file open makes a move / rename of it fail, which is exactly
 // what a preview pane hosting this viewer runs into.
 void UltraCanvasMediaViewer::CloseFile() {
+    StopPresenting();
     StopPlayback();
     ReleaseViewBackends();
     playlist.clear();
@@ -3055,6 +3149,7 @@ static std::vector<std::string> SupportedOpenExtensions() {
     add(PlainTextExtensions());
     add(EBookExtensions());
     add({ "pdf", "ods", "xlsx", "xls", "csv", "tsv", "ucd" });
+    add({ "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp" });
     add({ "ttf", "otf", "ttc", "otc", "pfa", "pfb", "woff", "woff2",
           "pcf", "bdf", "fon", "fnt" });
     add(PreviewableModelExtensions());
@@ -3165,14 +3260,11 @@ bool UltraCanvasMediaViewer::CanSaveVideoFile(const std::string& path) {
            !UltraCanvasFileLoader::GetVideoSaveExtensions().empty();
 }
 
-// The player taking a file does not make it a film: the backend opens it
-// asynchronously, so an empty or damaged file "loads" and fails later. What
-// the headers say settles it for the containers ReadVideoFileInfo reads; for
-// any other the player's word stands, as long as there is something to save.
+// The player taking a file does not make it a film. It refuses an empty or
+// missing one itself, but a damaged file is handed to the backend, which opens
+// it asynchronously and fails later. What the headers say settles it for the
+// containers ReadVideoFileInfo reads; for any other the player's word stands.
 static bool ShownVideoHasTracks(const std::string& path) {
-    std::error_code ec;
-    const uintmax_t size = fs::file_size(PathFromUtf8(path), ec);
-    if (ec || size == 0) return false;
     VideoFileInfo info;
     if (ReadVideoFileInfo(path, info)) return info.hasVideo || info.hasAudio;
     static const char* const readByHeaders[] = { "mp4", "m4v", "mov", "3gp", "3g2", "mkv", "webm", "avi" };
@@ -3605,6 +3697,8 @@ void UltraCanvasMediaViewer::UpdateBreadcrumb() {
 
 void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!surface) return;
+    // The slide show is of the deck it started on.
+    if (presenting) StopPresenting();
     // Whatever was on its way is here now - or was replaced by this.
     EndLoading();
 
@@ -3642,7 +3736,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     unlocked = false;
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (kind == MediaKind::Document && pdfView) {
+    if (kind == MediaKind::Document && pdfView && !IsWordProcessingFile(path)) {
         // Render the document through the dedicated PDF element (MuPDF), not the
         // image/libvips path. Drop the now-hidden image so it frees memory.
         ShowView(MediaKind::Document);
@@ -3657,6 +3751,58 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
                 ShowLockedPDFNote(path);
             } else if (infoLabel) {
                 infoLabel->SetText("Failed to open document: " + BaseName(path));
+            }
+        }
+        handled = true;
+    }
+#endif
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (!handled && IsWordProcessingFile(path) && pdfView) {
+        // A .odt / .docx / .doc: its pages as print lays them out, page width
+        // filling the view (a preview pane is narrow). A protected one waits
+        // for Unlock; a damaged one says why.
+        ShowView(MediaKind::Document);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        std::unique_ptr<IPDFDocument> pages;
+        std::string error;
+        switch (OpenWordDocumentPages(path, std::string(), pages, error)) {
+            case WordPagesResult::Opened:
+                pv->SetDocument(std::move(pages));
+                pv->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitWidth);
+                break;
+            case WordPagesResult::NeedsPassword:
+            case WordPagesResult::WrongPassword:
+                pv->SetDocument(nullptr);
+                locked = MediaLock::WordDocument;
+                ShowLockedPDFNote(path);
+                break;
+            case WordPagesResult::Failed:
+                pv->SetDocument(nullptr);
+                if (infoLabel) infoLabel->SetText(TrF("Failed to open document: {0} ({1})", BaseName(path), error));
+                break;
+        }
+        handled = true;
+    }
+    if (!handled && IsPresentationFile(path) && pdfView && !presentationOutline) {
+        // A deck: its slides as pages, shown as a PDF's are - zoom, the
+        // thumbnail strip, the page keys, search. A protected one waits for
+        // Unlock; a damaged one says why rather than showing its bytes.
+        ShowView(MediaKind::Document);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        auto pages = std::make_unique<UltraCanvasPresentationPages>();
+        if (pages->Open(path)) {
+            pv->SetDocument(std::move(pages));
+            pv->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitPage);
+        } else {
+            pv->SetDocument(nullptr);
+            if (pages->GetLastOpenError() == PDFOpenError::NeedsPassword) {
+                locked = MediaLock::Presentation;
+                ShowLockedPDFNote(path);
+            } else if (infoLabel) {
+                infoLabel->SetText(TrF("Failed to open presentation: {0} ({1})", BaseName(path),
+                                       pages->GetLastErrorText()));
             }
         }
         handled = true;
@@ -3723,7 +3869,30 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
                 importedDocument = true;
             }
         }
-        if (!importedDocument && !ReadTextFile(path, content)) {
+        // A deck: the outline of its slides, rendered the same way. A
+        // password-protected one waits for Unlock, as a protected PDF does;
+        // a damaged one says why rather than showing its bytes.
+        bool deckFailed = false;
+        if (IsPresentationFile(path)) {
+            std::string error;
+            if (auto deck = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
+                content = deck->ToMarkdown();
+                importedDocument = true;
+            } else {
+                deckFailed = true;
+                ta->SetText("");
+                std::string unused;
+                if (CheckOfficePassword(path, std::string(), unused) == OfficeDecryptStatus::PasswordRequired) {
+                    locked = MediaLock::Presentation;
+                    ShowLockedPDFNote(path);
+                } else if (infoLabel) {
+                    infoLabel->SetText(TrF("Failed to open presentation: {0} ({1})", BaseName(path), error));
+                }
+            }
+        }
+        if (deckFailed) {
+            // the reason is on the info line
+        } else if (!importedDocument && !ReadTextFile(path, content)) {
             if (infoLabel) infoLabel->SetText("Failed to open text file: " + BaseName(path));
         } else {
             // A .txt names no language, so the text is asked: a snippet of
@@ -4069,6 +4238,15 @@ void UltraCanvasMediaViewer::ShowLockedPDFNote(const std::string& path) {
              "Unlock, in the bar below (or Enter), asks for its password and opens it.\n");
 }
 
+void UltraCanvasMediaViewer::ShowOutlineInTextView(const std::string& markdown) {
+    if (!textView) return;
+    auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
+    ta->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+    ta->SetHighlightSyntax(false);
+    ta->SetDisplayOnly(true);
+    ta->SetText(markdown);
+}
+
 void UltraCanvasMediaViewer::Unlock() {
     AskForPassword(std::string());
 }
@@ -4081,8 +4259,12 @@ void UltraCanvasMediaViewer::AskForPassword(const std::string& note) {
                                "Password for " + BaseName(path) + ":";
     std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
     askingForPassword = true;
-    UltraCanvasDialogManager::ShowInputDialog(prompt, "Unlock " + BaseName(path), std::string(),
-        InputType::Password,
+    InputDialogConfig unlock;
+    unlock.title = "Unlock " + BaseName(path);
+    unlock.inputLabel = prompt;
+    unlock.inputType = InputType::Password;
+    unlock.iconAboveInput = ViewerIconPath("unlock.svg");   // the Unlock button's lock, centred above the field
+    UltraCanvasDialogManager::ShowInputDialog(unlock,
         [this, self, path](DialogResult r, const std::string& password) {
             if (self.expired()) return;
             askingForPassword = false;
@@ -4138,6 +4320,74 @@ MediaUnlockResult UltraCanvasMediaViewer::UnlockWithPassword(const std::string& 
                            SurfaceAdjustmentsFor(path));
     }
 #ifdef ULTRACANVAS_PLUGIN_PDF
+    else if (locked == MediaLock::Presentation && pdfView && !presentationOutline) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        auto pages = std::make_unique<UltraCanvasPresentationPages>();
+        if (!pages->Open(path, password)) {
+            if (pages->GetLastOpenError() == PDFOpenError::WrongPassword ||
+                pages->GetLastOpenError() == PDFOpenError::NeedsPassword) {
+                error = "That password is not right.";
+                return MediaUnlockResult::WrongPassword;
+            }
+            error = pages->GetLastErrorText().empty() ? "the presentation would not open" : pages->GetLastErrorText();
+            return MediaUnlockResult::Failed;
+        }
+        locked = MediaLock::NotLocked;
+        if (noteView) {
+            static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
+            noteView->SetVisible(false);
+        }
+        noteShown = false;
+        pv->SetDocument(std::move(pages));
+        pv->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitPage);
+        ShowView(MediaKind::Document);
+    }
+#endif
+    else if (locked == MediaLock::Presentation && textView) {
+        // The password checked first (one key derivation), so a wrong one is
+        // told from a deck that would not open with the right one.
+        std::string checkError;
+        const OfficeDecryptStatus check = CheckOfficePassword(path, password, checkError);
+        if (check == OfficeDecryptStatus::WrongPassword || check == OfficeDecryptStatus::PasswordRequired) {
+            error = "That password is not right.";
+            return MediaUnlockResult::WrongPassword;
+        }
+        auto deck = UltraCanvasFileLoader::LoadTextDocument(path, error, password);
+        if (!deck) return MediaUnlockResult::Failed;
+        locked = MediaLock::NotLocked;
+        if (noteView) {
+            static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
+            noteView->SetVisible(false);
+        }
+        noteShown = false;
+        ShowView(MediaKind::Text);
+        textView->SetVisible(true);
+        ShowOutlineInTextView(deck->ToMarkdown());
+    }
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    else if (locked == MediaLock::WordDocument && pdfView) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        std::unique_ptr<IPDFDocument> pages;
+        switch (OpenWordDocumentPages(path, password, pages, error)) {
+            case WordPagesResult::Opened: break;
+            case WordPagesResult::NeedsPassword:
+            case WordPagesResult::WrongPassword:
+                error = "That password is not right.";
+                return MediaUnlockResult::WrongPassword;
+            case WordPagesResult::Failed:
+                if (error.empty()) error = "the document would not open";
+                return MediaUnlockResult::Failed;
+        }
+        locked = MediaLock::NotLocked;
+        if (noteView) {
+            static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
+            noteView->SetVisible(false);
+        }
+        noteShown = false;
+        pv->SetDocument(std::move(pages));
+        pv->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitWidth);
+        ShowView(MediaKind::Document);
+    }
     else if (locked == MediaLock::PDF && pdfView) {
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
         if (!pv->LoadFromPath(path, password)) {
@@ -4773,6 +5023,39 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
 
+    if ((activeKind == MediaKind::Text || activeKind == MediaKind::Document) && IsPresentationFile(path)) {
+        // A deck - its slides or its outline: what it is, whether it is
+        // protected (locked, or opened with its password), the slide shown
+        // and its speaker notes.
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   PRESENTATION";
+        if (locked != MediaLock::NotLocked) os << "   \xC2\xB7   password-protected";
+        else if (unlocked) os << "   \xC2\xB7   unlocked";
+        std::string notes;
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        if (activeKind == MediaKind::Document && pdfView && locked == MediaLock::NotLocked) {
+            auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+            if (pv->HasDocument()) {
+                os << "   \xC2\xB7   " << TrF("slide {0} / {1}", pv->GetCurrentPage(), pv->GetPageCount());
+                if (auto* pages = dynamic_cast<UltraCanvasPresentationPages*>(pv->GetDocument()))
+                    notes = pages->GetNotes(pv->GetCurrentPage());
+            }
+        }
+#endif
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        if (!notes.empty()) {
+            // The speaker notes, on one line.
+            for (char& c : notes)
+                if (c == '\n') c = ' ';
+            os << "   \xC2\xB7   " << TrF("Notes: {0}", notes);
+        }
+        infoLabel->SetText(os.str());
+        return;
+    }
+
 #ifdef ULTRACANVAS_PLUGIN_PDF
     if (locked == MediaLock::PDF) {
         std::ostringstream os;
@@ -4787,7 +5070,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     if (activeKind == MediaKind::Document && pdfView) {
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
         std::ostringstream os;
-        os << BaseName(path) << "   \xC2\xB7   PDF";
+        os << BaseName(path) << "   \xC2\xB7   " << (IsWordProcessingFile(path) ? "DOCUMENT" : "PDF");
         // Opened with its password: protected, though it looks like any other.
         if (unlocked) os << "   \xC2\xB7   unlocked";
         if (pv->HasDocument()) {
@@ -5066,7 +5349,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     }
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (locked == MediaLock::PDF) {
+    if (locked == MediaLock::PDF || locked == MediaLock::WordDocument) {
         std::ostringstream dos;
         dos << "Document information\n\n";
         dos << "File: " << BaseName(path) << "\n";
@@ -5074,7 +5357,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         std::error_code dec;
         auto dsz = fs::file_size(UltraCanvas::PathFromUtf8(path), dec);
         if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
-        dos << "Type: PDF document\n";
+        dos << "Type: " << DocumentTypeName(path) << "\n";
         dos << "Encryption: password-protected\n";
         dos << "Shown: nothing until it is unlocked - Unlock (in the bar below, or Enter) opens it\n";
         ShowDetailsText(dos.str());
@@ -5090,7 +5373,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         std::error_code dec;
         auto dsz = fs::file_size(UltraCanvas::PathFromUtf8(path), dec);
         if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
-        dos << "Type: PDF document\n";
+        dos << "Type: " << DocumentTypeName(path) << "\n";
         if (unlocked) dos << "Encryption: password-protected - unlocked with its password\n";
         if (pv->HasDocument()) dos << "Pages: " << pv->GetPageCount() << "\n";
         ShowDetailsText(dos.str());
@@ -5476,6 +5759,70 @@ void UltraCanvasMediaViewer::ToggleSlideshow() {
     else                  PlaySlideshow();
 }
 
+bool UltraCanvasMediaViewer::ShowingSlides() const {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (!pdfView || presentationOutline || locked != MediaLock::NotLocked) return false;
+    if (activeKind != MediaKind::Document || !IsPresentationFile(GetCurrentPath())) return false;
+    return static_cast<UltraCanvasPDFView*>(pdfView.get())->HasDocument();
+#else
+    return false;
+#endif
+}
+
+void UltraCanvasMediaViewer::SetPresentationOutline(bool outline) {
+    if (presentationOutline == outline) return;
+    if (outline && presenting) StopPresenting();
+    presentationOutline = outline;
+    // The deck on show is shown again the other way.
+    if (!playlist.empty() && IsPresentationFile(GetCurrentPath())) LoadCurrent(false);
+}
+
+bool UltraCanvasMediaViewer::StartPresenting(bool fromCurrentSlide) {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (presenting) return true;
+    if (!ShowingSlides()) return false;
+    auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+    if (IsSlideshowPlaying()) PauseSlideshow();
+    presenting = true;
+    presentingRestoreTopBars = topBarsVisible;
+    presentingRestoreInfoBar = infoBarVisible;
+    presentingRestoreThumbs = pv->GetShowThumbnailStrip();
+    SetTopBarsVisible(false);
+    SetInfoBarVisible(false);
+    pv->SetShowThumbnailStrip(false);
+    pv->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitPage);
+    if (!fromCurrentSlide) pv->GoToFirstPage();
+    if (auto* win = GetWindow()) {
+        presentingRestoreFullscreen = win->IsFullscreen();
+        if (!presentingRestoreFullscreen) win->SetFullscreen(true);
+    }
+    FocusForKeyboard();
+    RequestRedraw();
+    return true;
+#else
+    (void)fromCurrentSlide;
+    return false;
+#endif
+}
+
+void UltraCanvasMediaViewer::StopPresenting() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (!presenting) return;
+    presenting = false;
+    if (pdfView) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        pv->SetShowThumbnailStrip(presentingRestoreThumbs);
+        pv->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitPage);
+    }
+    SetTopBarsVisible(presentingRestoreTopBars);
+    SetInfoBarVisible(presentingRestoreInfoBar);
+    if (auto* win = GetWindow())
+        if (!presentingRestoreFullscreen && win->IsFullscreen()) win->SetFullscreen(false);
+    UpdateInfoBar();
+    RequestRedraw();
+#endif
+}
+
 void UltraCanvasMediaViewer::SetSlideshowIntervalSeconds(double sec) {
     slideshowIntervalSec = std::max(0.5, sec);
     if (slideshowPlaying) { PauseSlideshow(); slideshowPlaying = true; PlaySlideshow(); }
@@ -5794,6 +6141,36 @@ bool UltraCanvasMediaViewer::HandleFilteredKey(const UCEvent& event) {
 
 bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
     if (event.type != UCEventType::KeyDown) return false;
+
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    // The slide show owns the keyboard: forward, back, first, last, out.
+    if (presenting && pdfView) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        switch (event.virtualKey) {
+            case UCKeys::Escape: StopPresenting(); return true;
+            case UCKeys::Right: case UCKeys::Down: case UCKeys::PageDown: case UCKeys::Space:
+            case UCKeys::Return: case UCKeys::N:
+                pv->GoToNextPage();
+                return true;
+            case UCKeys::Left: case UCKeys::Up: case UCKeys::PageUp: case UCKeys::Backspace: case UCKeys::P:
+                pv->GoToPrevPage();
+                return true;
+            case UCKeys::Home: pv->GoToFirstPage(); return true;
+            case UCKeys::End: pv->GoToLastPage(); return true;
+            default: return true;   // nothing else while presenting
+        }
+    }
+    if (event.virtualKey == UCKeys::F5 && !event.ctrl && !event.alt && ShowingSlides()) {
+        StartPresenting(event.shift);
+        return true;
+    }
+#endif
+    // O: a deck as its outline, or as its slides.
+    if (event.virtualKey == UCKeys::O && !event.ctrl && !event.alt && !event.meta && !event.shift &&
+        IsPresentationFile(GetCurrentPath()) && locked == MediaLock::NotLocked) {
+        SetPresentationOutline(!presentationOutline);
+        return true;
+    }
 
     // Copy / Select All in the text the viewer shows.
     if (HandleTextCopyKey(event)) return true;

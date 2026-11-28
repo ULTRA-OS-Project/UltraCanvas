@@ -16,6 +16,9 @@
 // X11 only (it reads the X server's stacking order, shapes and the screen's
 // pixels); runs headless under Xvfb. Skips - rather than fails - without a
 // display.
+// Version: 1.3.0 - its window's parent is the window it belongs to; none for an always-on-top window
+// Version: 1.2.0 - closes when another window of the application takes the focus (not a dialog of its
+//                  own), when its window is hidden, and when its window is moved
 // Version: 1.1.0 - Escape sent to the menu's own window closes it (the keyboard goes to the window it belongs to)
 // Version: 1.0.0
 // Last Modified: 2026-11-13
@@ -25,6 +28,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -53,6 +57,11 @@ static int failCount = 0;
 
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
@@ -254,6 +263,8 @@ int main() {
     int width = 0, height = 0;
     menuWindow->GetWindowSize(width, height);
     TEST("its window is the menu's size", width == menuSize.width && height == menuSize.height);
+    TEST("its window's parent is the window it belongs to (above that one only)",
+         menuWindow->GetConfig().parentWindow == target.get());
 
     // Inside the panel, right of the labels: the menu, not the window over it
     const Color inside = ScreenPixel(display, menuWindowX + menuSize.width - 6, menuWindowY + menuSize.height / 2);
@@ -344,6 +355,126 @@ int main() {
     }
     Frames(app);
     TEST("focus leaving the application closes it", !menu->IsVisible());
+
+    // Focus going to another window of the same application - a second
+    // document window brought to the front - closes it too: it floated above
+    // the window that came to the front
+    auto focusWindow = [&app](const std::shared_ptr<UltraCanvasWindowBase>& window, UCEventType type) {
+        UCEvent event;
+        event.type = type;
+        event.targetWindow = window;
+        event.nativeWindowHandle = window->GetNativeHandle();
+        app.DispatchEvent(event);
+    };
+    focusWindow(target, UCEventType::WindowFocus);
+    menu->OpenMenu(Point2Di(60, 40), *target, settings);
+    Frames(app);
+    focusWindow(target, UCEventType::WindowBlur);
+    focusWindow(cover, UCEventType::WindowFocus);
+    Frames(app);
+    TEST("another window of the application brought to the front closes it",
+         !menu->IsVisible() && target->GetPopupWindow(*menu) == nullptr);
+
+    // ...but not its own window taking the focus (focus follows the pointer
+    // onto it with no window manager)
+    {
+        menu->OpenMenu(Point2Di(60, 40), *target, settings);
+        Frames(app);
+        auto ownWindow = Shared(app, target->GetPopupWindow(*menu));
+        if (ownWindow) {
+            focusWindow(target, UCEventType::WindowBlur);
+            focusWindow(ownWindow, UCEventType::WindowFocus);
+            Frames(app);
+            TEST("its own window taking the focus leaves it open", menu->IsVisible());
+        }
+        menu->CloseMenu();
+        Frames(app);
+        focusWindow(target, UCEventType::WindowFocus);
+    }
+
+    // ...nor a dialog of its own window (one the popup opened, say)
+    {
+        auto dialog = OpenWindow("Dialog", 200, 200, 120, 80, kCoverColor);
+        if (dialog) {
+            dialog->SetTransientParent(target.get());
+            focusWindow(cover, UCEventType::WindowBlur);
+            focusWindow(target, UCEventType::WindowFocus);
+            menu->OpenMenu(Point2Di(60, 40), *target, settings);
+            Frames(app);
+            focusWindow(target, UCEventType::WindowBlur);
+            focusWindow(dialog, UCEventType::WindowFocus);
+            Frames(app);
+            TEST("a dialog of its window taking the focus leaves it open", menu->IsVisible());
+            menu->CloseMenu();
+            dialog->Close();
+            Frames(app);
+            focusWindow(target, UCEventType::WindowFocus);
+        }
+    }
+
+    // A window kept above the others: its popups are above every window,
+    // with no parent
+    {
+        WindowConfig config;
+        config.title = "OnTop";
+        config.type = WindowType::Borderless;
+        config.x = 600;
+        config.y = 100;
+        config.width = 300;
+        config.height = 200;
+        config.alwaysOnTop = true;
+        auto onTop = CreateWindow(config);
+        if (onTop && onTop->IsCreated()) {
+            onTop->Show();
+            Frames(app);
+            menu->OpenMenu(Point2Di(20, 20), *onTop, settings);
+            Frames(app);
+            UltraCanvasWindowBase* own = onTop->GetPopupWindow(*menu);
+            TEST("an always-on-top window's menu has a window of its own with no parent (above every window)",
+                 own && own->GetConfig().parentWindow == nullptr);
+            menu->CloseMenu();
+            Frames(app);
+            onTop->Close();
+            Frames(app);
+        }
+    }
+
+    // Its window hidden: it closes, rather than floating on with nothing of
+    // its window beneath it
+    menu->OpenMenu(Point2Di(60, 40), *target, settings);
+    Frames(app);
+    target->Hide();
+    Frames(app);
+    TEST("its window hidden closes it", !menu->IsVisible() && target->GetPopupWindow(*menu) == nullptr);
+    target->Show();
+    Frames(app);
+
+    // Its window moved - dragged by a title bar the window manager keeps the
+    // press on to itself - closes it. The X11 backend reports a move as a
+    // WindowResize (ConfigureNotify); one that only resizes leaves it open.
+    auto configure = [&app, &target]() {
+        UCEvent event;
+        event.type = UCEventType::WindowResize;
+        event.width = target->GetConfig().width;
+        event.height = target->GetConfig().height;
+        event.targetWindow = target;
+        event.nativeWindowHandle = target->GetNativeHandle();
+        app.DispatchEvent(event);
+    };
+    menu->OpenMenu(Point2Di(60, 40), *target, settings);
+    Frames(app);
+    configure();
+    Frames(app);
+    TEST("a configure that does not move its window leaves it open", menu->IsVisible());
+    XMoveWindow(display, static_cast<Window>(target->GetNativeHandle()), 140, 130);
+    XSync(display, False);
+    configure();
+    Frames(app);
+    TEST("its window moved closes it", !menu->IsVisible() && target->GetPopupWindow(*menu) == nullptr);
+    XMoveWindow(display, static_cast<Window>(target->GetNativeHandle()), 100, 100);
+    XSync(display, False);
+    configure();
+    Frames(app);
 
     // A popup that reaches past the window's edge takes the pointer there too
     bool buttonClicked = false;

@@ -2,6 +2,13 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.10.0 - ApplyPreset: connectors (bent, curved), double and notched arrows, stars of 6 to 32 points,
+//                   hepta-, deca- and dodecagons, snipped and rounded rectangles, callouts, more flowchart shapes
+// Version: 1.9.1 - ChartAsShapes: bubble, radar and stock charts
+// Version: 1.9.0 - ChartAsShapes: a chart's data as drawn shapes (moved from the DOCX reader)
+// Version: 1.8.0 - WithFramesInline: a frame's or nested table's words in a table cell's lines
+// Version: 1.7.1 - ToHTML: a nested list inside its parent item (<li>one<ul>...</ul></li>), not beside it
+// Version: 1.7.0 - ToHTML: the headingId and codeBlock hooks of RichDocumentHTMLOptions
 // Version: 1.6.0 - RichShape::PatternBit: Word's preset pattern tiles
 // Version: 1.5.0 - Drawn shapes: RichShape presets; plain text, Markdown and HTML
 //                  spell a drawing's group members' words
@@ -30,6 +37,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <tuple>
 
 namespace UltraCanvas {
 
@@ -679,6 +687,373 @@ std::string UCRichDocument::FileExtensionForMimeType(const std::string& mimeType
     return "bin";
 }
 
+// A chart as drawn shapes - see the header.
+bool UCRichDocument::ChartAsShapes(const RichChart& chart, float width, float height,
+                                   std::vector<RichTextFrame>& frames, RichShape& group) {
+    using Kind = RichChart::Kind;
+    if (!chart.IsChart() || width < 40.0f || height < 40.0f) return false;
+    struct Series {
+        std::string name, color;
+        std::vector<double> values;
+        std::vector<double> across;         // a scatter chart's x of each value
+        bool joined = true, marked = true;
+    };
+    static const char* const kPalette[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
+    std::vector<Series> series;
+    for (const RichChartSeries& given : chart.series) {
+        if (given.values.empty()) continue;
+        Series one;
+        one.name = given.name;
+        one.color = given.color.empty() ? kPalette[series.size() % 6] : given.color;
+        one.values = given.values;
+        for (size_t i = 0; i < one.values.size(); i++) {
+            one.across.push_back(given.xValues.size() == one.values.size() ? given.xValues[i] : static_cast<double>(i + 1));
+        }
+        one.joined = given.joined;
+        one.marked = given.marked;
+        series.push_back(std::move(one));
+    }
+    if (series.empty()) return false;
+    const std::vector<std::string>& categories = chart.categories;
+    const std::vector<std::string>& pointColors = chart.pointColors;
+    const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
+    // (As shapes a bubble chart is its points, a radar or stock chart its
+    // series as lines over the categories.)
+    const bool scatter = chart.kind == Kind::Scatter || chart.kind == Kind::Bubble;
+    const bool lines = chart.kind == Kind::Line || chart.kind == Kind::Area || scatter
+                    || chart.kind == Kind::Radar || chart.kind == Kind::Stock;
+    const bool horizontal = chart.kind == Kind::Bar;
+    const bool percent = chart.percent;
+    const bool stacked = chart.stacked && chart.kind != Kind::Line && !scatter;
+    const bool legend = chart.legend;
+    size_t count = categories.size();
+    double highest = 0.0;
+    for (const Series& one : series) {
+        count = std::max(count, one.values.size());
+        for (double value : one.values) highest = std::max(highest, value);
+    }
+    if (count == 0) return false;
+    if (stacked) {
+        // Stacked: a category's values one on the other - as shares of
+        // their sum where the chart says per cent.
+        highest = 0.0;
+        for (size_t c = 0; c < count; c++) {
+            double sum = 0.0;
+            for (const Series& one : series) sum += c < one.values.size() ? std::max(0.0, one.values[c]) : 0.0;
+            if (percent && sum > 0.0) {
+                for (Series& one : series) {
+                    if (c < one.values.size()) one.values[c] = std::max(0.0, one.values[c]) * 100.0 / sum;
+                }
+                sum = 100.0;
+            }
+            highest = std::max(highest, sum);
+        }
+    }
+    // The value axis: a round step, five or so of them to the top.
+    // (The reader stays free of the UI stack, so the step is worked out
+    // here, by the rule of the chart engine's NiceNumber.)
+    auto roundStep = [](double rough) {
+        if (!(rough > 0.0) || !std::isfinite(rough)) return 1.0;
+        const double magnitude = std::pow(10.0, std::floor(std::log10(rough)));
+        const double share = rough / magnitude;
+        return (share <= 1.0 ? 1.0 : share <= 2.0 ? 2.0 : share <= 5.0 ? 5.0 : 10.0) * magnitude;
+    };
+    const double step = roundStep(highest / 5.0);
+    const int steps = std::max(1, static_cast<int>(std::ceil(highest / step - 1e-9)));
+    const double top = step * steps;
+
+    const float legendWidth = legend ? std::min(90.0f, width * 0.25f) : 0.0f;
+    // (Beside horizontal bars the categories take the room at the left.)
+    const float left = horizontal ? std::min(70.0f, width * 0.25f) : 26.0f;
+    const float plotTop = 8.0f, right = width - legendWidth - 6.0f, bottom = height - 18.0f;
+    const float plotWidth = std::max(10.0f, right - left), plotHeight = std::max(10.0f, bottom - plotTop);
+
+    group = RichShape();
+    group.kind = RichShape::Kind::Group;
+    group.widthPt = width;
+    group.heightPt = height;
+    {
+        // The chart's area: nothing to see, but it keeps the drawing as
+        // large as the chart where a group is as large as its members
+        // (ODF's draw:g).
+        RichShape area;
+        area.widthPt = width;
+        area.heightPt = height;
+        group.children.push_back(std::move(area));
+    }
+    auto words = [&](float x, float y, float w, float h, const std::string& text, RichTextAlign align) {
+        RichTextFrame label;
+        label.shapeText = true;
+        RichDocBlock paragraph;
+        paragraph.align = align;
+        paragraph.spaceBeforePt = 0.0f;
+        paragraph.spaceAfterPt = 0.0f;
+        RichTextRun letters;
+        letters.text = text;
+        letters.fontSizePt = 7.0f;
+        paragraph.runs.push_back(std::move(letters));
+        label.blocks.push_back(std::move(paragraph));
+        RichShape box;
+        box.xPt = x;
+        box.yPt = y;
+        box.widthPt = w;
+        box.heightPt = h;
+        box.textPaddingPt = 0.0f;
+        box.textFrame = static_cast<int>(frames.size());
+        frames.push_back(std::move(label));
+        group.children.push_back(std::move(box));
+    };
+    auto rule = [&](float x, float y, float w, float h, const char* color) {
+        RichShape line;
+        line.kind = RichShape::Kind::Line;
+        line.xPt = x;
+        line.yPt = y;
+        line.widthPt = w;
+        line.heightPt = h;
+        line.lineColor = color;
+        line.lineWidthPt = 0.5f;
+        group.children.push_back(std::move(line));
+    };
+    auto filled = [&](float x, float y, float w, float h, const std::string& color) {
+        if (w <= 0.0f || h <= 0.0f) return;
+        RichShape box;
+        box.xPt = x;
+        box.yPt = y;
+        box.widthPt = w;
+        box.heightPt = h;
+        box.fillColor = color;
+        group.children.push_back(std::move(box));
+    };
+    // What the legend names: the series - or, for a pie, its slices.
+    std::vector<std::pair<std::string, std::string>> keys;      // name, colour
+    if (pie) {
+        // A pie: the first series' values as slices, clockwise from
+        // twelve o'clock, each a path of arcs in the pie's square.
+        const Series& one = series.front();
+        double total = 0.0;
+        for (double value : one.values) total += std::max(0.0, value);
+        if (total <= 0.0) return false;
+        const float side = std::max(10.0f, std::min(width - legendWidth - 12.0f, height - 12.0f));
+        const float pieLeft = (width - legendWidth - side) * 0.5f, pieTop = (height - side) * 0.5f;
+        constexpr double kTurn = 6.283185307179586;
+        double angle = -kTurn / 4.0;
+        for (size_t i = 0; i < one.values.size(); i++) {
+            const std::string color = i < pointColors.size() && !pointColors[i].empty() ? pointColors[i] : kPalette[i % 6];
+            keys.emplace_back(i < categories.size() ? categories[i] : one.name, color);
+            const double sweep = std::max(0.0, one.values[i]) / total * kTurn;
+            if (sweep <= 0.0) continue;
+            RichShape slice;
+            slice.kind = RichShape::Kind::Path;
+            slice.xPt = pieLeft;
+            slice.yPt = pieTop;
+            slice.widthPt = side;
+            slice.heightPt = side;
+            slice.fillColor = color;
+            slice.lineColor = "#FFFFFF";
+            slice.lineWidthPt = 0.75f;
+            auto at = [](double a) { return std::pair<float, float>(static_cast<float>(0.5 + 0.5 * std::cos(a)),
+                                                                    static_cast<float>(0.5 + 0.5 * std::sin(a))); };
+            RichShape::PathPoint point;
+            point.op = RichShape::PathPoint::Op::Move;
+            point.x = point.y = 0.5f;
+            slice.path.push_back(point);
+            point.op = RichShape::PathPoint::Op::Line;
+            std::tie(point.x, point.y) = at(angle);
+            slice.path.push_back(point);
+            const int pieces = std::max(1, static_cast<int>(std::ceil(sweep / (kTurn / 4.0) - 1e-9)));
+            const double piece = sweep / pieces, reach = 4.0 / 3.0 * std::tan(piece / 4.0) * 0.5;
+            for (int k = 0; k < pieces; k++) {
+                const double from = angle + piece * k, to = from + piece;
+                RichShape::PathPoint arc;
+                arc.op = RichShape::PathPoint::Op::Curve;
+                arc.c1x = static_cast<float>(0.5 + 0.5 * std::cos(from) - reach * std::sin(from));
+                arc.c1y = static_cast<float>(0.5 + 0.5 * std::sin(from) + reach * std::cos(from));
+                arc.c2x = static_cast<float>(0.5 + 0.5 * std::cos(to) + reach * std::sin(to));
+                arc.c2y = static_cast<float>(0.5 + 0.5 * std::sin(to) - reach * std::cos(to));
+                std::tie(arc.x, arc.y) = at(to);
+                slice.path.push_back(arc);
+            }
+            RichShape::PathPoint close;
+            close.op = RichShape::PathPoint::Op::Close;
+            slice.path.push_back(close);
+            group.children.push_back(std::move(slice));
+            angle += sweep;
+        }
+    } else if (scatter) {
+        // Points over two value axes: each runs from a round number
+        // under its lowest value (nought, unless the values lie far
+        // from it) to one over its highest, or as the file states.
+        for (const Series& one : series) keys.emplace_back(one.name, one.color);
+        struct Axis { double low = 0.0, high = 1.0, step = 1.0; };
+        auto axisOver = [&](bool along) {
+            double low = 0.0, high = 0.0;
+            bool any = false;
+            for (const Series& one : series) {
+                for (double v : along ? one.across : one.values) {
+                    low = any ? std::min(low, v) : v;
+                    high = any ? std::max(high, v) : v;
+                    any = true;
+                }
+            }
+            if (low > 0.0 && low < high * 5.0 / 6.0) low = 0.0;
+            if (high < 0.0 && high > low * 5.0 / 6.0) high = 0.0;
+            if (high <= low) { high = low + 1.0; if (low > 0.0) low = std::max(0.0, low - 1.0); }
+            // What the file states for this axis.
+            const double statedLowValue = along ? chart.xMin : chart.valueMin;
+            const double statedHighValue = along ? chart.xMax : chart.valueMax;
+            const bool statedLow = std::isfinite(statedLowValue), statedHigh = std::isfinite(statedHighValue);
+            if (statedLow) low = statedLowValue;
+            if (statedHigh) high = statedHighValue;
+            if (high <= low) high = low + 1.0;
+            Axis axis;
+            axis.step = roundStep((high - low) / 5.0);
+            axis.low = statedLow ? low : std::floor(low / axis.step + 1e-9) * axis.step;
+            axis.high = statedHigh ? high : std::ceil(high / axis.step - 1e-9) * axis.step;
+            return axis;
+        };
+        const Axis xAxis = axisOver(true), yAxis = axisOver(false);
+        auto label = [](double v, double step) {
+            if (std::abs(v) < step * 1e-9) v = 0.0;
+            std::ostringstream text;
+            text.imbue(std::locale::classic());
+            text << v;
+            return text.str();
+        };
+        auto share = [](const Axis& axis, double v) {
+            return static_cast<float>(std::clamp((v - axis.low) / (axis.high - axis.low), 0.0, 1.0));
+        };
+        // The grid: a rule and its value at each step of both axes, the
+        // axes themselves where the other's nought is (else at its low end).
+        const float noughtX = left + plotWidth * share(xAxis, 0.0), noughtY = bottom - plotHeight * share(yAxis, 0.0);
+        for (double v = std::ceil(yAxis.low / yAxis.step - 1e-9) * yAxis.step; v <= yAxis.high + yAxis.step * 1e-6; v += yAxis.step) {
+            const float y = bottom - plotHeight * share(yAxis, v);
+            rule(left, y, plotWidth, 0.0f, "#D0D0D0");
+            words(0.0f, y - 5.0f, left - 4.0f, 10.0f, label(v, yAxis.step), RichTextAlign::Right);
+        }
+        for (double v = std::ceil(xAxis.low / xAxis.step - 1e-9) * xAxis.step; v <= xAxis.high + xAxis.step * 1e-6; v += xAxis.step) {
+            const float x = left + plotWidth * share(xAxis, v);
+            rule(x, plotTop, 0.0f, plotHeight, "#D0D0D0");
+            words(x - 20.0f, bottom + 3.0f, 40.0f, 12.0f, label(v, xAxis.step), RichTextAlign::Center);
+        }
+        rule(left, noughtY, plotWidth, 0.0f, "#808080");
+        rule(noughtX, plotTop, 0.0f, plotHeight, "#808080");
+        for (const Series& one : series) {
+            if (one.joined && one.values.size() > 1) {
+                RichShape path;
+                path.kind = RichShape::Kind::Path;
+                path.xPt = left;
+                path.yPt = plotTop;
+                path.widthPt = plotWidth;
+                path.heightPt = plotHeight;
+                path.lineColor = one.color;
+                path.lineWidthPt = 1.5f;
+                for (size_t c = 0; c < one.values.size(); c++) {
+                    RichShape::PathPoint point;
+                    point.op = c == 0 ? RichShape::PathPoint::Op::Move : RichShape::PathPoint::Op::Line;
+                    point.x = share(xAxis, one.across[c]);
+                    point.y = 1.0f - share(yAxis, one.values[c]);
+                    path.path.push_back(point);
+                }
+                group.children.push_back(std::move(path));
+            }
+            if (!one.marked) continue;
+            for (size_t c = 0; c < one.values.size(); c++) {
+                constexpr float kMark = 5.0f;
+                RichShape mark;
+                mark.kind = RichShape::Kind::Ellipse;
+                mark.xPt = left + plotWidth * share(xAxis, one.across[c]) - kMark * 0.5f;
+                mark.yPt = bottom - plotHeight * share(yAxis, one.values[c]) - kMark * 0.5f;
+                mark.widthPt = kMark;
+                mark.heightPt = kMark;
+                mark.fillColor = one.color;
+                group.children.push_back(std::move(mark));
+            }
+        }
+    } else {
+        for (const Series& one : series) keys.emplace_back(one.name, one.color);
+        auto value = [&](int i) {
+            std::ostringstream text;
+            text.imbue(std::locale::classic());
+            text << step * i;
+            return text.str() + (percent ? "%" : "");
+        };
+        const float slot = (horizontal ? plotHeight : plotWidth) / static_cast<float>(count);
+        if (horizontal) {
+            // Bars lying down: the values along the foot, the
+            // categories up the left, the first at the bottom.
+            for (int i = 0; i <= steps; i++) {
+                const float x = left + plotWidth * static_cast<float>(i) / static_cast<float>(steps);
+                rule(x, plotTop, 0.0f, plotHeight, i == 0 ? "#808080" : "#D0D0D0");
+                words(x - 20.0f, bottom + 3.0f, 40.0f, 12.0f, value(i), RichTextAlign::Center);
+            }
+            rule(left, bottom, plotWidth, 0.0f, "#808080");
+            for (size_t c = 0; c < count && c < categories.size(); c++) {
+                words(0.0f, bottom - slot * (static_cast<float>(c) + 0.5f) - 5.0f, left - 4.0f, 10.0f, categories[c],
+                      RichTextAlign::Right);
+            }
+        } else {
+            // The grid and its values, from the foot up.
+            for (int i = 0; i <= steps; i++) {
+                const float y = bottom - plotHeight * static_cast<float>(i) / static_cast<float>(steps);
+                rule(left, y, plotWidth, 0.0f, i == 0 ? "#808080" : "#D0D0D0");
+                words(0.0f, y - 5.0f, left - 4.0f, 10.0f, value(i), RichTextAlign::Right);
+            }
+            rule(left, plotTop, 0.0f, plotHeight, "#808080");
+            for (size_t c = 0; c < count && c < categories.size(); c++) {
+                words(left + slot * static_cast<float>(c), bottom + 3.0f, slot, 12.0f, categories[c], RichTextAlign::Center);
+            }
+        }
+        if (lines) {
+            for (const Series& one : series) {
+                RichShape path;
+                path.kind = RichShape::Kind::Path;
+                path.xPt = left;
+                path.yPt = plotTop;
+                path.widthPt = plotWidth;
+                path.heightPt = plotHeight;
+                path.lineColor = one.color;
+                path.lineWidthPt = 1.5f;
+                for (size_t c = 0; c < one.values.size(); c++) {
+                    RichShape::PathPoint point;
+                    point.op = c == 0 ? RichShape::PathPoint::Op::Move : RichShape::PathPoint::Op::Line;
+                    point.x = (static_cast<float>(c) + 0.5f) / static_cast<float>(count);
+                    point.y = 1.0f - static_cast<float>(std::clamp(one.values[c] / top, 0.0, 1.0));
+                    path.path.push_back(point);
+                }
+                group.children.push_back(std::move(path));
+            }
+        } else {
+            // Columns (or bars): side by side in their category's slot,
+            // or one on the other.
+            const float extent = horizontal ? plotWidth : plotHeight;
+            const float thick = slot * 0.7f / (stacked ? 1.0f : static_cast<float>(series.size()));
+            for (size_t c = 0; c < count; c++) {
+                float base = 0.0f;
+                for (size_t s = 0; s < series.size(); s++) {
+                    if (c >= series[s].values.size()) continue;
+                    const float length = extent * static_cast<float>(std::clamp(series[s].values[c] / top, 0.0, 1.0));
+                    const float across = slot * static_cast<float>(c) + slot * 0.15f
+                                       + (stacked ? 0.0f : thick * static_cast<float>(s));
+                    if (horizontal) filled(left + base, bottom - across - thick, length, thick, series[s].color);
+                    else filled(left + across, bottom - base - length, thick, length, series[s].color);
+                    if (stacked) base += length;
+                }
+            }
+        }
+    }
+    if (legend) {
+        const float x = right + 10.0f;
+        float y = plotTop + std::max(0.0f, (plotHeight - 11.0f * static_cast<float>(keys.size())) * 0.5f);
+        for (const auto& [name, color] : keys) {
+            filled(x, y + 2.0f, 6.0f, 6.0f, color);
+            words(x + 9.0f, y, std::max(10.0f, width - x - 9.0f), 10.0f, name, RichTextAlign::Left);
+            y += 11.0f;
+        }
+    }
+
+    return true;
+}
+
 bool UCRichDocument::SniffImagePixelSize(const std::vector<uint8_t>& data, int& width, int& height) {
     width = height = 0;
     if (data.size() >= 24 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G') {
@@ -733,10 +1108,57 @@ namespace {
 // WithFramesInlineIn's work; `depth` stops a frame that (in a damaged file)
 // contains itself.
 std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std::vector<RichDocBlock>& in,
+                                       int depth);
+
+// `blocks` as the runs of one table cell: a paragraph a line, a table's row
+// a line with a tab between its cells.
+void AppendAsCellRuns(const UCRichDocument& document, const std::vector<RichDocBlock>& blocks,
+                      std::vector<RichTextRun>& out, int depth) {
+    auto append = [&](const std::vector<RichTextRun>& runs, bool newLine) {
+        bool first = true;
+        for (const RichTextRun& run : runs) {
+            out.push_back(run);
+            if (first) out.back().lineBreakBefore = newLine && out.size() > 1;
+            first = false;
+        }
+        if (first && newLine && !out.empty()) {
+            RichTextRun empty;
+            empty.lineBreakBefore = true;
+            out.push_back(std::move(empty));
+        }
+    };
+    for (const RichDocBlock& block : FramesInline(document, blocks, depth + 1)) {
+        if (block.type != RichBlockType::Table) {
+            append(block.runs, true);
+            continue;
+        }
+        for (const RichTableRow& row : block.tableRows) {
+            bool firstCell = true;
+            for (const RichTableCell& cell : row.cells) {
+                if (firstCell) {
+                    append(cell.runs, true);
+                } else {
+                    RichTextRun tab;
+                    tab.text = "\t";
+                    out.push_back(std::move(tab));
+                    append(cell.runs, false);
+                }
+                firstCell = false;
+            }
+        }
+    }
+}
+
+std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std::vector<RichDocBlock>& in,
                                        int depth) {
     bool any = false;
     for (const RichDocBlock& block : in) {
         for (const RichTextRun& run : block.runs) any = any || run.IsTextFrame();
+        for (const RichTableRow& row : block.tableRows) {
+            for (const RichTableCell& cell : row.cells) {
+                for (const RichTextRun& run : cell.runs) any = any || run.IsTextFrame();
+            }
+        }
     }
     if (!any) return in;
     std::vector<RichDocBlock> out;
@@ -779,6 +1201,27 @@ std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std
         if (hadFrame && kept.empty() && block.type == RichBlockType::Paragraph) continue;
         RichDocBlock copy = block;
         if (hadFrame) copy.runs = std::move(kept);
+        // A table's cells: a frame's or nested table's words in the cell's
+        // own lines.
+        for (RichTableRow& row : copy.tableRows) {
+            for (RichTableCell& cell : row.cells) {
+                bool framed = false;
+                for (const RichTextRun& run : cell.runs) framed = framed || run.IsTextFrame();
+                if (!framed) continue;
+                std::vector<RichTextRun> runs;
+                for (const RichTextRun& run : cell.runs) {
+                    const RichTextFrame* frame = run.IsTextFrame() ? document.FrameFor(run) : nullptr;
+                    if (!run.IsTextFrame()) {
+                        runs.push_back(run);
+                    } else if (frame && depth < 8) {
+                        const size_t before = runs.size();
+                        AppendAsCellRuns(document, frame->blocks, runs, depth);
+                        if (runs.size() > before) runs[before].lineBreakBefore = run.lineBreakBefore && before > 0;
+                    }
+                }
+                cell.runs = std::move(runs);
+            }
+        }
         out.push_back(std::move(copy));
     }
     return out;
@@ -971,6 +1414,118 @@ bool RichShape::ApplyPreset(const std::string& preset) {
         polygon({{0.5f, 0}, {0.6f, 0.4f}, {1, 0.5f}, {0.6f, 0.6f}, {0.5f, 1}, {0.4f, 0.6f}, {0, 0.5f}, {0.4f, 0.4f}});
         return true;
     }
+    // Lines that turn, as connectors draw them: open, never filled.
+    auto open = [&](std::initializer_list<std::pair<float, float>> points) {
+        kind = Kind::Path;
+        bool first = true;
+        for (const auto& [x, y] : points) {
+            PathPoint point;
+            point.op = first ? Op::Move : Op::Line;
+            point.x = x;
+            point.y = y;
+            path.push_back(point);
+            first = false;
+        }
+    };
+    if (preset == "bentConnector2") { open({{0, 0}, {1, 0}, {1, 1}}); return true; }
+    if (preset.rfind("bentConnector", 0) == 0) { open({{0, 0}, {0.5f, 0}, {0.5f, 1}, {1, 1}}); return true; }
+    if (preset.rfind("curvedConnector", 0) == 0) {
+        kind = Kind::Path;
+        PathPoint start;
+        start.op = Op::Move;
+        path.push_back(start);
+        PathPoint curve;
+        curve.op = Op::Curve;
+        curve.c1x = 0.5f;
+        curve.c2x = 0.5f;
+        curve.c2y = 1;
+        curve.x = 1;
+        curve.y = 1;
+        path.push_back(curve);
+        return true;
+    }
+    if (preset == "leftRightArrow") {
+        polygon({{0, 0.5f}, {0.2f, 0}, {0.2f, 0.25f}, {0.8f, 0.25f}, {0.8f, 0}, {1, 0.5f}, {0.8f, 1}, {0.8f, 0.75f},
+                 {0.2f, 0.75f}, {0.2f, 1}});
+        return true;
+    }
+    if (preset == "upDownArrow") {
+        polygon({{0.5f, 0}, {1, 0.2f}, {0.75f, 0.2f}, {0.75f, 0.8f}, {1, 0.8f}, {0.5f, 1}, {0, 0.8f}, {0.25f, 0.8f},
+                 {0.25f, 0.2f}, {0, 0.2f}});
+        return true;
+    }
+    if (preset == "notchedRightArrow") {
+        polygon({{0, 0.25f}, {0.6f, 0.25f}, {0.6f, 0}, {1, 0.5f}, {0.6f, 1}, {0.6f, 0.75f}, {0, 0.75f}, {0.12f, 0.5f}});
+        return true;
+    }
+    // Regular stars and polygons, their points round the box.
+    auto ring = [&](int corners, float inner) {
+        kind = Kind::Path;
+        const int points = inner > 0 ? corners * 2 : corners;
+        for (int i = 0; i < points; ++i) {
+            const double angle = -3.14159265358979323846 / 2 + 2 * 3.14159265358979323846 * i / points;
+            const double reach = inner > 0 && i % 2 ? inner : 1.0;
+            PathPoint point;
+            point.op = i == 0 ? Op::Move : Op::Line;
+            point.x = static_cast<float>(0.5 + 0.5 * reach * std::cos(angle));
+            point.y = static_cast<float>(0.5 + 0.5 * reach * std::sin(angle));
+            path.push_back(point);
+        }
+        PathPoint close;
+        close.op = Op::Close;
+        path.push_back(close);
+    };
+    if (preset == "star6") { ring(6, 0.58f); return true; }
+    if (preset == "star7") { ring(7, 0.6f); return true; }
+    if (preset == "star8") { ring(8, 0.62f); return true; }
+    if (preset == "star10") { ring(10, 0.7f); return true; }
+    if (preset == "star12") { ring(12, 0.75f); return true; }
+    if (preset == "star16" || preset == "star24" || preset == "star32") { ring(16, 0.8f); return true; }
+    if (preset == "heptagon") { ring(7, 0); return true; }
+    if (preset == "decagon") { ring(10, 0); return true; }
+    if (preset == "dodecagon") { ring(12, 0); return true; }
+    if (preset == "snip1Rect") { polygon({{0, 0}, {0.83f, 0}, {1, 0.17f}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "snip2SameRect") { polygon({{0.17f, 0}, {0.83f, 0}, {1, 0.17f}, {1, 1}, {0, 1}, {0, 0.17f}}); return true; }
+    if (preset == "plaque" || preset == "round1Rect" || preset == "round2SameRect" || preset == "round2DiagRect"
+        || preset == "snipRoundRect") {
+        kind = Kind::RoundRectangle;
+        return true;
+    }
+    if (preset == "flowChartManualInput") { polygon({{0, 0.2f}, {1, 0}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "flowChartManualOperation") { polygon({{0, 0}, {1, 0}, {0.8f, 1}, {0.2f, 1}}); return true; }
+    if (preset == "flowChartOffpageConnector") { polygon({{0, 0}, {1, 0}, {1, 0.8f}, {0.5f, 1}, {0, 0.8f}}); return true; }
+    if (preset == "flowChartPunchedCard") { polygon({{0.2f, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0.2f}}); return true; }
+    if (preset == "flowChartPredefinedProcess" || preset == "flowChartInternalStorage") return true;   // a box
+    if (preset == "flowChartDocument" || preset == "flowChartMultidocument") {
+        kind = Kind::Path;
+        auto add = [&](Op op, float x, float y) {
+            PathPoint point;
+            point.op = op;
+            point.x = x;
+            point.y = y;
+            path.push_back(point);
+        };
+        add(Op::Move, 0, 0);
+        add(Op::Line, 1, 0);
+        add(Op::Line, 1, 0.83f);
+        PathPoint wave;
+        wave.op = Op::Curve;
+        wave.c1x = 0.7f;
+        wave.c1y = 0.67f;
+        wave.c2x = 0.3f;
+        wave.c2y = 1.08f;
+        wave.x = 0;
+        wave.y = 0.87f;
+        path.push_back(wave);
+        add(Op::Close, 0, 0);
+        return true;
+    }
+    if (preset == "wedgeRectCallout" || preset == "wedgeRoundRectCallout" || preset == "wedgeEllipseCallout") {
+        // The box and its tail, pointing down to the left.
+        polygon({{0, 0}, {1, 0}, {1, 0.8f}, {0.42f, 0.8f}, {0.29f, 1}, {0.25f, 0.8f}, {0, 0.8f}});
+        return true;
+    }
+    if (preset == "can" || preset == "cube" || preset == "bevel" || preset == "foldedCorner") return true;   // a box
     return false;
 }
 
@@ -981,7 +1536,7 @@ std::vector<RichDocBlock> UCRichDocument::WithFramesInlineIn(const std::vector<R
 UCRichDocument UCRichDocument::WithFramesInline() const {
     UCRichDocument flat = *this;
     flat.blocks = WithFramesInlineIn(blocks);
-    for (RichPageFurniture* furniture : {&flat.pageFurniture, &flat.firstPageFurniture}) {
+    for (RichPageFurniture* furniture : flat.AllFurniture()) {
         furniture->header = WithFramesInlineIn(furniture->header);
         furniture->footer = WithFramesInlineIn(furniture->footer);
     }
@@ -1658,6 +2213,11 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
     std::ostringstream html;
     int openListLevel = -1;   // -1 = no list open
     std::vector<bool> listOrderedStack;
+    // Whether each open list's last item is still open: a deeper list goes
+    // inside it (<li>one<ul>...</ul></li>), which is the only place HTML
+    // allows one, so an item is closed by the next at its level or by the
+    // end of its list.
+    std::vector<bool> itemOpen;
     int openQuotes = 0;
     const HtmlImageSource& imageSource = options.imageSource;
     auto runsHtml = [&](const std::vector<RichTextRun>& runs) {
@@ -1666,8 +2226,10 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
 
     auto closeListsTo = [&](int level) {
         while (openListLevel > level) {
+            if (itemOpen.back()) html << "</li>\n";
             html << (listOrderedStack.back() ? "</ol>\n" : "</ul>\n");
             listOrderedStack.pop_back();
+            itemOpen.pop_back();
             --openListLevel;
         }
     };
@@ -1692,6 +2254,10 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
             case RichBlockType::Heading: {
                 int level = std::clamp(block.headingLevel, 1, 6);
                 html << "<h" << level << (block.rightToLeft ? " dir=\"rtl\"" : "");
+                if (options.headingId) {
+                    const std::string id = options.headingId(level, ConcatenateRunText(block.runs));
+                    if (!id.empty()) html << " id=\"" << EscapeHtml(id) << "\"";
+                }
                 if (const char* alignCss = AlignCss(block.align)) html << " style=\"text-align:" << alignCss << "\"";
                 html << ">" << runsHtml(block.runs) << "</h" << level << ">\n";
                 break;
@@ -1703,7 +2269,20 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                     && listOrderedStack.back() != block.orderedList) {
                     closeListsTo(block.listLevel - 1);
                 }
+                // The item open at this level ends where this one begins.
+                if (openListLevel == block.listLevel && itemOpen.back()) {
+                    html << "</li>\n";
+                    itemOpen.back() = false;
+                }
                 while (openListLevel < block.listLevel) {
+                    // A deeper list goes inside the item above it; a level
+                    // with no item of its own (a list that starts deeper)
+                    // gets an empty one to hold it.
+                    if (openListLevel >= 0) {
+                        if (!itemOpen.back()) html << "<li>";
+                        itemOpen.back() = true;
+                        html << "\n";
+                    }
                     if (!block.orderedList) {
                         html << "<ul>\n";
                     } else {
@@ -1715,6 +2294,7 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                         html << (type ? std::string("<ol type=\"") + type + "\">\n" : std::string("<ol>\n"));
                     }
                     listOrderedStack.push_back(block.orderedList);
+                    itemOpen.push_back(false);
                     ++openListLevel;
                 }
                 // <li value> carries a number the item holds itself, which
@@ -1728,10 +2308,15 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                     html << (block.checked ? "<input type=\"checkbox\" disabled checked> "
                                            : "<input type=\"checkbox\" disabled> ");
                 }
-                html << runsHtml(block.runs) << "</li>\n";
+                html << runsHtml(block.runs);
+                itemOpen.back() = true;
                 break;
             }
             case RichBlockType::CodeBlock:
+                if (options.codeBlock) {
+                    html << options.codeBlock(block.codeLanguage, ConcatenateRunText(block.runs)) << "\n";
+                    break;
+                }
                 html << "<pre><code>" << EscapeHtml(ConcatenateRunText(block.runs))
                      << "</code></pre>\n";
                 break;

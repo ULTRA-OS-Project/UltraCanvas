@@ -1,4 +1,5 @@
 // Apps/UltraStore/core/StoreQuery.cpp
+// Version: 0.4.0 - PlanLaunch: the runtime layer on the library path
 // Version: 0.3.0 - categories from the fixed list, named in the person's language
 // Version: 0.2.1 - the code, price and size texts through Tr
 // Version: 0.2.0 - codes
@@ -6,6 +7,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreQuery.h"
 
+#include "UltraCanvasConfig.h"     // kRuntimeDirVariable
 #include "UltraCanvasPathUtf8.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -273,6 +275,68 @@ std::string LaunchPath(const InstalledRecord& record) {
     return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(record.folder) / UltraCanvas::PathFromUtf8(record.entry));
 }
 
+std::string LibraryPathVariable(OS os) {
+    switch (os) {
+        case OS::Windows: return "PATH";
+        case OS::MacOS:   return "DYLD_LIBRARY_PATH";
+        default:          return "LD_LIBRARY_PATH";
+    }
+}
+
+LaunchPlan PlanLaunch(const InstalledRecord& app, const std::vector<InstalledRecord>& installed, OS os,
+                      const std::string& currentLibraryPath) {
+    LaunchPlan plan;
+    const std::string path = LaunchPath(app);
+    if (path.empty()) return plan;
+    plan.workingDirectory = app.folder;
+    const bool bundle = path.size() >= 4 && path.compare(path.size() - 4, 4, ".app") == 0;
+    if (os == OS::MacOS && bundle) plan.argv = {"open", path};
+    else plan.argv = {path};
+    if (os == OS::MacOS) return plan;
+
+    // The layer, breadth first from the app's own depends: each exact
+    // version once, a component before the ones it needs in turn.
+    std::vector<const InstalledRecord*> layers;
+    std::set<std::string> seen;
+    std::vector<Dependency> queue = app.depends;
+    for (size_t next = 0; next < queue.size(); ++next) {
+        const Dependency dep = queue[next];
+        if (!seen.insert(dep.id + "@" + dep.version).second) continue;
+        const auto it = std::find_if(installed.begin(), installed.end(), [&](const InstalledRecord& r) {
+            return r.kind != ComponentKind::App && r.id == dep.id && r.version == dep.version;
+        });
+        if (it == installed.end()) continue;
+        layers.push_back(&*it);
+        queue.insert(queue.end(), it->depends.begin(), it->depends.end());
+    }
+    if (layers.empty()) return plan;
+
+    // The paths are the target's, spelled as `os` spells them: a POSIX
+    // component's lib/ joined with '/', whatever this host's separator is -
+    // std::filesystem would join with a backslash on a Windows host, and the plan is
+    // a function of `os` alone (the tests plan for every system on each).
+    const char separator = os == OS::Windows ? ';' : ':';
+    std::string value;
+    for (const InstalledRecord* layer : layers) {
+        if (!value.empty()) value += separator;
+        if (os == OS::Windows) {
+            value += layer->folder;
+        } else {
+            std::string folder = layer->folder;
+            while (folder.size() > 1 && folder.back() == '/') folder.pop_back();
+            value += folder + "/lib";
+        }
+    }
+    if (!currentLibraryPath.empty()) value += separator + currentLibraryPath;
+    plan.environment.emplace_back(LibraryPathVariable(os), value);
+    for (const InstalledRecord* layer : layers) {
+        if (layer->kind != ComponentKind::Runtime) continue;
+        plan.environment.emplace_back(UltraCanvas::kRuntimeDirVariable, layer->folder);
+        break;
+    }
+    return plan;
+}
+
 std::string LanguageFromLocale(const std::string& locale, const std::string& fallback) {
     if (locale.empty() || locale == "C" || locale == "POSIX" || locale.rfind("C.", 0) == 0) return fallback;
     std::string lang;
@@ -291,6 +355,44 @@ std::string SystemLanguage() {
         return LanguageFromLocale(value);
     }
     return "en";
+}
+
+std::string CountryFromLocale(const std::string& locale) {
+    // The subtags up to the encoding or the modifier: de_AT.UTF-8@euro -> de, AT.
+    std::vector<std::string> parts(1);
+    for (char c : locale) {
+        if (c == '.' || c == '@') break;
+        if (c == '_' || c == '-') { parts.emplace_back(); continue; }
+        parts.back() += c;
+    }
+    // The region is the first two-letter subtag after the language; a
+    // four-letter one before it is the script (zh-Hant-TW), three digits a
+    // region of the world and no country (es-419).
+    for (size_t i = 1; i < parts.size(); ++i) {
+        const std::string& part = parts[i];
+        if (part.size() != 2 || !std::isalpha(static_cast<unsigned char>(part[0])) || !std::isalpha(static_cast<unsigned char>(part[1]))) continue;
+        std::string country;
+        for (char c : part) country += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return country;
+    }
+    return {};
+}
+
+std::string CountryOfLanguageTags(const std::vector<std::string>& tags) {
+    for (const std::string& tag : tags) {
+        const std::string country = CountryFromLocale(tag);
+        if (!country.empty()) return country;
+    }
+    return {};
+}
+
+std::string SystemCountry() {
+    for (const char* name : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
+        const std::string value = UltraCanvas::GetEnvUtf8(name);   // path-string-ok: GetEnvUtf8 is the UTF-8 read
+        if (value.empty()) continue;
+        return CountryFromLocale(value);
+    }
+    return {};
 }
 
 } // namespace UltraStore

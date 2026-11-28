@@ -1,4 +1,18 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.28.0 - the scan's reasons of a message that warns are written again in the
+//                   reader's language when it is shown (SecurityFor); a web link of a message the warning strip warns of asks before it
+//                   opens: "Do you really want to open the link?", why it is
+//                   suspicious (the strip's verdict, the link's own domain when it is
+//                   not the sender's, the strip's reasons); "Do not open" is the default
+// Version: 0.27.0 - the links of a plain-text mail look like links: in the accent colour,
+//                   underlined (they opened on a click, but read as plain text)
+// Version: 0.26.0 - a "Re:" / "Fw:" from a stranger (unsolicited-reply) is named in the
+//                   warning strip ("fraud"), with "Add to contacts" for a sender the
+//                   reader knows; SetContacts shows the message again when its sender
+//                   joined the address book
+// Version: 0.25.0 - fake designer goods (counterfeit-goods) and SEO offers from strangers
+//                   (seo-solicitation, called spam) are named in the warning strip, with
+//                   their own advice
 // Version: 0.24.0 - an HTML message sits on its own white page, framed and set in on a dark look; the header, the bars and the warning strip follow a change of the look
 // Version: 0.23.1 - the warning strip's advice, footnotes and crypto caution title go
 //                   through Tr (they were English only)
@@ -74,7 +88,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailStorage.h"
@@ -92,9 +106,11 @@
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"      // OpenURL
 
 #include "UltraMailMimeCodec.h"
+#include "UltraMailSenderBrands.h"   // RegistrableDomain
 #include "UltraMailTheme.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -189,7 +205,8 @@ public:
 };
 
 // The plain-text body: a read-only text area whose links (web and mail
-// addresses written in the text) work like the HTML view's links - the one under the pointer is
+// addresses written in the text) work like the HTML view's links - drawn as
+// links (the accent colour, underlined), the one under the pointer is
 // reported (to the status line, or as a tooltip that follows the pointer
 // along it) and a click on it opens it. A drag still selects text.
 class PlainBodyArea : public UltraCanvasTextArea {
@@ -231,6 +248,26 @@ public:
         }
         return UltraCanvasTextArea::OnEvent(event);
     }
+
+    // The links written in a line, drawn as links: what PlainLinkAt finds
+    // is what LinkUnder reports and a click opens. The colour is the look's
+    // accent, read whenever the line is laid out (InvalidateLineSpans on a
+    // change of the look).
+    std::vector<TextAreaLineSpan> GetLineSpans(int /*lineIndex*/,
+                                               const std::string& lineText) override {
+        std::vector<TextAreaLineSpan> spans;
+        for (const auto& [start, end] : PlainLinkSpans(lineText)) {
+            TextAreaLineSpan span;
+            span.startByte = static_cast<int>(start);
+            span.endByte = static_cast<int>(end);
+            span.style = TokenStyle(Theme::Accent(), false, false, /*underline=*/true);
+            spans.push_back(span);
+        }
+        return spans;
+    }
+
+    // Public for the look's follower in RenderBody.
+    using UltraCanvasTextArea::InvalidateLineSpans;
 
     // The pointing hand over a link, as over a link in formatted mail.
     UCMouseCursor GetMouseCursor() const override {
@@ -525,6 +562,20 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     warning_->AddChild(warningText_);
     warningTitle_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     warningText_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // "Add to contacts": shown for a "Re:" / "Fw:" from a stranger, which the
+    // reader may know after all - once added, the warning goes.
+    warningAddContact_ = CreateButton("prevWarningAddContact", 0, 0, 120, Theme::kControlHeight,
+                                      Tr("Add to contacts"));
+    Theme::FitToLabel(warningAddContact_, 120);
+    Theme::StyleSecondary(warningAddContact_);
+    warningAddContact_->SetTooltip(Tr("You know this sender: add them to your address book, "
+                                      "and their replies are no longer flagged"));
+    warningAddContact_->onClick = [this]() {
+        if (onAddContact && hasMessage_ && !curEnv_.fromAddr.empty()) onAddContact(curEnv_);
+    };
+    warning_->AddChild(warningAddContact_);
+    warningAddContact_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start).SetFlexShrink(0);
+    warningAddContact_->SetVisible(false);
     root_->AddChild(warning_);
     warning_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     warning_->SetVisible(false);
@@ -848,6 +899,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
     Theme::StyleTextArea(text, /*bordered=*/false);
+    // The links in the new look's accent.
+    Theme::Follow(text, "links", [](PlainBodyArea& a) { a.InvalidateLineSpans(); });
     {
         // The message list's scrollbar (ScrollbarStyle::Modern), not the text
         // area's classic 15px square one.
@@ -1034,6 +1087,15 @@ void MessagePreview::ActivateLink(const std::string& href) {
         onComposeTo(selfName, selfAddr, href);
         return;
     }
+    // A web link of a message the warning strip warns of asks first.
+    std::string scheme = href.substr(0, 8);
+    for (char& c : scheme) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const bool web = scheme.rfind("http://", 0) == 0 || scheme.rfind("https://", 0) == 0 ||
+                     scheme.rfind("www.", 0) == 0;
+    if (web && linkCaution_) {
+        ConfirmSuspiciousLink(href);
+        return;
+    }
     OpenMessageLink(href);
 }
 
@@ -1072,7 +1134,7 @@ void MessagePreview::UpdateRemoteBar() {
     // Never offer to trust a sender whose message looks like spam or a scam.
     remoteAlways_->SetVisible(!remoteDangerous_ && !curEnv_.fromAddr.empty());
     if (!remoteDangerous_ && !curEnv_.fromAddr.empty())
-        remoteAlways_->SetText("Always from " + curEnv_.fromAddr);
+        remoteAlways_->SetText("Always from " + SenderLists::Normalize(curEnv_.fromAddr));
 }
 
 void MessagePreview::FetchTrustedHostImages() {
@@ -1174,7 +1236,8 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
     // verdict, so the list can colour the row without parsing every .eml.
     // Also when the stored verdict came from older rules (kThreatRulesRevision):
     // what an earlier version let through is judged again.
-    if (!sec.Scanned() || sec.scannedAt < kThreatRulesRevision) {
+    const bool scanNow = !sec.Scanned() || sec.scannedAt < kThreatRulesRevision;
+    if (scanNow) {
         const ThreatReport report = ScanRawMessage(raw);
         sec.level  = report.level;
         sec.score  = report.score;
@@ -1191,6 +1254,18 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
     if (sec.attachments < 0) {
         sec.attachments = MimeCodec::CountAttachments(raw);
         changed = true;
+    }
+    // The reasons were written in the language of the day the message was
+    // scanned. Where the reader is told them - the warning strip, the link
+    // question - they are written again in today's, from a fresh scan that
+    // came to the same findings (so the text never tells another verdict
+    // than the badge). Only for a message that warns: the cost is a scan.
+    if (!scanNow && sec.level >= ThreatLevel::Suspicious && !sec.reason.empty()) {
+        const ThreatReport fresh = ScanRawMessage(raw);
+        if (fresh.Codes() == sec.findings && fresh.Summary() != sec.reason) {
+            sec.reason = fresh.Summary();
+            changed = true;
+        }
     }
     if (!changed) return sec;
     if (store_) store_->SetSecurity(env.accountId, env.folder, env.uid, sec);
@@ -1270,10 +1345,19 @@ std::string HighlightDomains(const std::string& text, std::vector<std::string> d
 void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                                          const MessageSecurity& security,
                                          const std::string& raw) {
+    linkCaution_.reset();
     if (!warning_ || !warningTitle_ || !warningText_) return;
+    // A "Re:" / "Fw:" from someone the reader never wrote to: they may know
+    // the sender after all, and say so by adding them.
+    const bool strangerReply = security.HasFinding("unsolicited-reply");
+    if (warningAddContact_)
+        warningAddContact_->SetVisible(strangerReply && !status.inAddressBook && onAddContact &&
+                                       !curEnv_.fromAddr.empty());
 
     const bool romance = security.HasFinding("romance-scam");
     const bool loan = security.HasFinding("loan-offer-fraud");
+    const bool counterfeit = security.HasFinding("counterfeit-goods");
+    const bool seoOffer = security.HasFinding("seo-solicitation");
     const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
                            security.HasFinding("government-impersonation");
     // An .html "invoice": the page opens in the browser, outside the reader.
@@ -1324,6 +1408,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     // Settings > Display > Email warnings: the strip for the kind told (the
     // same order as the title below) may be switched off. The badge still says.
     const bool kindShown = romance                         ? warningStrip_.romance
+                         : counterfeit                     ? warningStrip_.scam
                          : phishing || lookalike || webPage ? warningStrip_.phishing
                          : cryptoScam                      ? warningStrip_.cryptoScam
                          : loan                            ? warningStrip_.loan
@@ -1342,17 +1427,22 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     Theme::SetFrame(warning_, 1.0f, scam ? Theme::TrustScam : Theme::TrustSpam, Theme::kControlRadius);
     Theme::SetInk(warningTitle_, scam ? Theme::TrustScam : Theme::TrustSpam);
     const std::string what = romance                ? Tr("romance scam")
+                           : counterfeit            ? Tr("counterfeit goods")
+                           : seoOffer && !phishing  ? Tr("spam")
+                           : strangerReply && !phishing && !webPage && !lookalike
+                                                    ? Tr("fraud")
                            : phishing || lookalike || webPage ? Tr("phishing")
                            : cryptoScam ? Tr("cryptocurrency scam")
                            : loan       ? Tr("loan scam")
                            : std::string();
-    warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
-        (!what.empty() ? (scam ? TrF("Warning: This is likely a {0}* email!", what)
-                               : TrF("Warning: This may be a {0}* email!", what))
-         : status.cls == SenderClass::Scam
+    const std::string verdict =
+        !what.empty() ? (scam ? TrF("Warning: This is likely a {0}* email!", what)
+                              : TrF("Warning: This may be a {0}* email!", what))
+        : status.cls == SenderClass::Scam
               ? Tr("This message looks like a scam or phishing attempt")
-         : blocked ? Tr("You blocked this sender")
-              : Tr("Parts of this message do not add up")));
+        : blocked ? Tr("You blocked this sender")
+              : Tr("Parts of this message do not add up");
+    warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") + verdict);
 
     // The strip's text is markup: the domains the reader should compare are
     // bold and in the strip's colour wherever they appear, and the evidence is
@@ -1363,8 +1453,12 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         return HighlightDomains(plain, domains, accent);
     };
     std::string text;
+    // The same evidence as plain lines, for the question a click on one of
+    // the message's links asks (LinkCautionText).
+    std::vector<std::string> evidence;
     int item = 0;
-    const auto numbered = [&item, &mark](const std::string& plain) {
+    const auto numbered = [&item, &mark, &evidence](const std::string& plain) {
+        evidence.push_back(plain);
         return "  " + std::to_string(++item) + ".  " + mark(plain) + "\n";
     };
     if (phishing) {
@@ -1377,6 +1471,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         text += numbered(link);
     } else if (!onlyBlocked && !status.reason.empty()) {
         text = mark(status.reason) + "\n";
+        evidence.push_back(status.reason);
     }
     // The scan's reasons, "• one\n• two": numbered on from the domains when
     // there is a mismatch, as bullets otherwise.
@@ -1390,20 +1485,35 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
             if (line.empty()) continue;
             static const std::string bullet = "\xE2\x80\xA2 ";   // "• "
             const bool isBullet = line.compare(0, bullet.size(), bullet) == 0;
-            if (phishing && isBullet)
+            if (phishing && isBullet) {
                 text += numbered(line.substr(bullet.size()));
-            else
+            } else {
                 text += mark(line) + "\n";
+                evidence.push_back(isBullet ? line.substr(bullet.size()) : line);
+            }
         }
     }
     std::string advice;
     if (onlyBlocked)
         advice = Tr("Right-click the sender to unblock them. \"Mark as spam\" moves the "
                  "message to the junk folder.");
+    else if (counterfeit && !romance)
+        advice = Tr("Do not order or pay: a luxury watch or bag at a fraction of its price is a "
+                 "fake, or never arrives, and the card details you enter go to the seller. "
+                 "Buy from the brand's own shops or its authorised dealers.");
+    else if (seoOffer && !romance && !phishing)
+        advice = Tr("Do not answer or ask for the \"report\": the same offer goes to every "
+                 "address on a list, and an answer only confirms yours for more. \"Mark as "
+                 "spam\" moves the message to the junk folder.");
     else if (loan)
         advice = Tr("Do not pay any fee, insurance or charge to receive a loan, and do not "
                  "send copies of your passport or bank details. Ask your own bank if you need "
                  "credit.");
+    else if (strangerReply && !romance && !phishing && !webPage)
+        advice = Tr("Do not pay, open attachments or follow links in it until you have checked "
+                 "with the sender at an address or phone number you already know. A forwarded "
+                 "invoice or a \"reply\" from a stranger is how fake bills and changed bank "
+                 "details arrive. If you do know the sender, add them to your contacts.");
     else if (webPage && !romance)
         advice = Tr("Do not open the attached web page, and do not sign in or pay on a page it "
                  "opens. If you are unsure whether you owe something, contact the company at an "
@@ -1428,6 +1538,12 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     else if (phishing || lookalike || webPage)
         footnote = "* " + Tr("Phishing emails are emails that try to get your credentials "
                    "to hack your accounts on other websites.");
+    else if (strangerReply && !cryptoScam)
+        footnote = "* " + Tr("Fraudsters start with \"Re:\", \"Fw:\" or \"WG:\" so that a "
+                   "first message looks like part of a conversation you already had - an "
+                   "invoice passed on by a colleague, an answer to your enquiry. A genuine "
+                   "reply comes from someone you wrote to, and UltraMail keeps everyone you "
+                   "write to in your address book.");
     else if (loan && !cryptoScam)
         footnote = "* " + Tr("Loan scams offer credit or \"project funding\" - often "
                    "millions at a few percent - to strangers by email. Only a bank may lend, and "
@@ -1442,6 +1558,97 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     warningText_->SetTextIsMarkup(true);
     warningText_->SetText(text);
     warning_->SetVisible(true);
+
+    // A link of this message asks before it opens - unless the reader only
+    // blocked the sender, which says nothing about where its links go.
+    if (!onlyBlocked) {
+        LinkCaution caution;
+        caution.verdict = verdict;
+        caution.verdict.erase(std::remove(caution.verdict.begin(), caution.verdict.end(), '*'),
+                              caution.verdict.end());   // the footnote's mark
+        if (phishing) {
+            caution.senderDomain = mismatch.senderDomain;
+        } else if (const std::size_t at = curEnv_.fromAddr.rfind('@'); at != std::string::npos) {
+            caution.senderDomain = curEnv_.fromAddr.substr(at + 1);
+            for (char& c : caution.senderDomain)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        for (const std::string& line : evidence) {
+            // status.reason may hold several lines of its own.
+            std::size_t pos = 0;
+            while (pos <= line.size()) {
+                std::size_t nl = line.find('\n', pos);
+                if (nl == std::string::npos) nl = line.size();
+                if (nl > pos) caution.reasons.push_back(line.substr(pos, nl - pos));
+                pos = nl + 1;
+            }
+        }
+        linkCaution_ = std::move(caution);
+    }
+}
+
+std::string MessagePreview::LinkCautionText(const std::string& href) const {
+    if (!linkCaution_) return std::string();
+    // A long link (a tracking address, a sign-in token) is cut: the host and
+    // the start of the path are what the reader can judge.
+    std::string shown = href;
+    if (shown.size() > 160) {
+        std::size_t cut = 157;
+        while (cut > 0 && (static_cast<unsigned char>(shown[cut]) & 0xC0) == 0x80) --cut;
+        shown = shown.substr(0, cut) + "\xE2\x80\xA6";   // "…"
+    }
+    std::string text = shown + "\n\n" + Tr("Suspicious because of:") + "\n";
+    std::vector<std::string> said;
+    const auto add = [&](const std::string& line) {
+        if (line.empty() || std::find(said.begin(), said.end(), line) != said.end()) return;
+        said.push_back(line);
+        text += "\xE2\x80\xA2 " + line + "\n";   // "• "
+    };
+    add(linkCaution_->verdict);
+    // Where this link goes, when that is not the sender's own domain - and
+    // the strip's reasons do not already name it.
+    const std::string host = LinkHost(href);
+    const bool named = std::any_of(linkCaution_->reasons.begin(), linkCaution_->reasons.end(),
+                                   [&host](const std::string& r) { return r.find(host) != std::string::npos; });
+    if (!host.empty() && !named && !linkCaution_->senderDomain.empty() &&
+        RegistrableDomain(host) != RegistrableDomain(linkCaution_->senderDomain))
+        add(TrF("This link goes to {0}, not to the sender's domain {1}.", host,
+                linkCaution_->senderDomain));
+    for (const std::string& reason : linkCaution_->reasons) add(reason);
+    if (!text.empty() && text.back() == '\n') text.pop_back();
+    return text;
+}
+
+void MessagePreview::ConfirmSuspiciousLink(const std::string& href) {
+    DialogConfig cfg;
+    cfg.title = Tr("Suspicious link");
+    cfg.dialogType = DialogType::Warning;
+    cfg.heading = Tr("Do you really want to open the link?");
+    cfg.message = LinkCautionText(href);
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 560;
+    cfg.height = 220;                         // the floor; it grows with the reasons
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: the link stays closed
+    // The safe answer is the one Return and Escape give: the link stays closed.
+    dialog->AddCustomButton(Tr("Do not open"), DialogResult::Cancel, DialogButtonRole::Default);
+    dialog->AddCustomButton(Tr("Open link"), DialogResult::Yes, DialogButtonRole::Destructive);
+    dialog->onResult = [href](DialogResult result) {
+        if (result == DialogResult::Yes) OpenMessageLink(href);
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, root_ ? root_->GetWindow() : nullptr);
+}
+
+void MessagePreview::SetContacts(ContactIndex contacts) {
+    const bool shown = hasMessage_ && !curEnv_.fromAddr.empty();
+    const bool before = shown && badges_.Contacts().Contains(curEnv_.fromAddr);
+    badges_.SetContacts(std::move(contacts));
+    // The sender joined (or left) the address book: their badge and the
+    // warning strip change with it ("Add to contacts" was pressed).
+    if (shown && before != badges_.Contacts().Contains(curEnv_.fromAddr)) {
+        const MessageEnvelope again = curEnv_;   // Show replaces curEnv_
+        Show(again);
+    }
 }
 
 void MessagePreview::ShowBodyNote(const std::string& note) {
@@ -1462,6 +1669,7 @@ void MessagePreview::BodyArrived(const MessageEnvelope& env) {
 void MessagePreview::Clear() {
     hasMessage_ = false;
     bodyMissing_ = false;
+    linkCaution_.reset();
     ++showToken_;
     curHtml_.clear();
     inlineImages_ = InlineImages{};
@@ -1483,6 +1691,7 @@ void MessagePreview::Clear() {
     if (header_)  header_->SetVisible(false);
     if (rule_)    rule_->SetVisible(false);
     if (warning_) warning_->SetVisible(false);
+    if (warningAddContact_) warningAddContact_->SetVisible(false);
     if (from_)    from_->SetText("");
     if (to_)      to_->SetText("");
     if (date_)    date_->SetText("");

@@ -22,12 +22,58 @@ over these.
 | `AdminSales.dc.html` | the sales ledger with its filters, totals and *Record a sale by hand* | page |
 | `AdminFinance.dc.html` | the monthly statement, net by month, revenue by app, the affiliate report, VAT by country, the archive | page |
 | `AdminPublish.dc.html` | Publish: the changes since the last sequence, the check's warnings, sign and publish, upload, history | page |
+| `AdminMarketplace.dc.html` | the merchant's Marketplace page with its three states stacked: apply for a shop (name, contact, email, website, about the publisher, signed with the key), waiting for the operator with *Check the application*, the shop open with the profile the merchant edits itself and the key that signs; the notices, the terms, a release submitted, the submissions | page |
 | `SuperDashboard.dc.html` | the operator's (super admin's) dashboard: merchants, review queue, reports, compliance, operator actions | page |
-| `SuperMerchants.dc.html` | the merchants: verification requests, the table with terms, warnings, reports, payouts and status | page |
+| `SuperMerchants.dc.html` | the merchants: the applications for a shop with *Approve* (the merchant id, a message) and *Reject* (the reason), verification requests, the table with terms, warnings, reports, payouts and status | page |
 | `SuperMerchantDetail.dc.html` | one merchant's file: apps, history, compliance, money, open reports, with the Suspend dialog open | page |
-| `SuperReview.dc.html` | app review and release: the queue, the automatic checks, the reviewer's checklist, the store card, the decision | page |
+| `SuperReview.dc.html` | app review and release: the queue, the automatic checks, the reviewer's checklist, the store card, the decision; *Download build* fetches the package the merchant uploaded into the package store, and the automatic checks are the review pipeline's with their findings (built 2026-11-20) | page |
 | `SuperReports.dc.html` | reports from users and merchants about apps and merchants, one opened with findings and actions | page |
 | `SuperTerms.dc.html` | the merchant terms by version and who accepted, the enforcement policy, warnings by clause, notices sent, send a notice | page |
+| `GamesHome.dc.html` | the games shop variant's Discover: game of the week, the genre tiles, Editor's picks with covers, New releases, Learning games by age, Retro corner and Board games, Free to play, why play from UltraStore | page |
+| `GamesDetail.dc.html` | one game's page (Skyline Siege): genre and PEGI badges, players and controller, Play the demo / Buy, trailer and screenshots, About, the rating explained, What's new, System requirements, What it installs, information, more tactics games | page |
+| `GamesGenres.dc.html` | Browse games by genre: the genre chips, the price, the age rating, the players filter work (state in the script); covers carry the PEGI mark | page |
+| `GamesPhoneHome.dc.html` | the games shop's Discover on a phone: game of the week, genre chips, Editor's picks, Learning games, the bottom tab bar | 390 × 844 |
+| `MarketHome.dc.html` | the marketplace variant's home: the search-first header with the department select, the delivery address and the basket, the department strip, the sale banner, Today's deals with the countdown and the claimed bar, Shop by department, Best sellers with ratings, Top sellers, New arrivals, why buy here | page |
+| `MarketProduct.dc.html` | one product's page (Nordlicht Aura 2): the gallery, the rating, the price with the regular price, colour variants, the buy box with delivery and the seller, other offers, product details, Compare with similar items, customer reviews with the distribution and a seller's reply, questions and answers, Customers also bought | page |
+| `MarketSearch.dc.html` | search and browse: the department chips with counts, the price, the customer rating, the delivery and the condition filters work and show as removable active filters (state in the script); listings with the seller, the delivery and a sponsored mark | page |
+| `MarketBasket.dc.html` | the basket grouped by seller with the quantity, Save for later and the delivery choice per seller, the free-delivery threshold, Saved for later, the order summary with the voucher, the payment methods and Proceed to checkout; the checkout steps in the header | page |
+| `MarketPhoneHome.dc.html` | the marketplace's home on a phone: delivery address and basket, search, department chips, the sale, Today's deals, Best sellers, Buy again, the bottom tab bar | 390 × 844 |
+| `VideoHome.dc.html` | the video portal variant's home: the sections rail with subscriptions and Explore, topic chips, the video grid with durations, the watched bar and a live viewer count, Shorts, From your subscriptions, why watch here | page |
+| `VideoWatch.dc.html` | the watch page: the player with chapters on the seek bar, captions, quality, speed, picture in picture and theatre, the channel row with Subscribe and Support, like, share, download and save, the description with chapters and the licence, comments with a pinned one and the creator's reply, up next with autoplay, the transcript | page |
+| `VideoChannel.dc.html` | a channel (ULTRA OS Project): banner, avatar, handle and counts, Subscribe and Support, the tabs, search in the channel; the sort (Latest, Popular, Oldest) and the kind (All, Videos, Live, Shorts) filters work (state in the script); an upcoming stream and a short in the grid | page |
+| `VideoStudio.dc.html` | the creator's Studio: the channel figures, an upload in progress with the format check, chapters from UltraVideo's markers and captions from the subtitle track, the details form (title, description, thumbnail, playlist, language, visibility, audience, licence), the videos table with visibility, views, comments, likes and a copyright claim | page |
+| `VideoPhoneWatch.dc.html` | the watch page on a phone: the player on top, title, channel and Subscribe, the action chips, the current chapter, comments, up next, the bottom tab bar with Upload | 390 × 844 |
+| `MusicHome.dc.html` | the music streaming variant's home: the library rail with playlists, artists, podcasts and downloads, the jump-back-in tiles, mixes made for you, new releases, the charts with movement, podcasts with the position, why listen here; the now-playing bar | page |
+| `MusicAlbum.dc.html` | an album (Low Tide): the cover and facts, play, shuffle, saved, downloaded, the artist's share of the subscription, the track table with plays, likes and durations, the credits and the quality, more by the artist | page |
+| `MusicArtist.dc.html` | an artist (Kesselhaus Quartet): the header with monthly listeners, follow and support, popular songs; the discography's kind (albums, singles and EPs, live, appears on) and sort (newest, oldest) filters work (state in the script); about, on tour, fans also like | page |
+| `MusicSearch.dc.html` | search: the type (songs, artists, albums, playlists, podcasts) and genre filters work over a sample result set (state in the script), the top result with songs, the result grid, browse all by genre | page |
+| `MusicPhoneNowPlaying.dc.html` | Now playing on a phone: the cover, title, like, the position, shuffle, previous, play, next, repeat, the playing device and quality, share and queue, lyrics | 390 × 844 |
+| `AccountSignUp.dc.html` | sign in or create an account: the brand panel, the steps (account, verify, profile, done) work in the script - email and password with the strength check, country and year of birth, consent; the email code; the profile basics and what the account keeps; the welcome with two-factor as the next step; sign in with a passkey | page |
+| `AccountProfile.dc.html` | the account page: the account rail; profile (avatar, display name, handle, the private email, language, country, year of birth, about); security (password, two-factor with recovery codes, passkeys, sign-in history); devices with the licence seats they hold; notifications; privacy and data (history on the account, public profile, the data archive, delete the account) | page |
+| `AccountBilling.dc.html` | payment methods (a reference to the method, the billing address, VAT); subscriptions (switch, cancel, resume); purchases and licences with seats and *Install on a machine*; orders and invoices (PDF, XRechnung, returns, credit notes) | page |
+| `AccountPhoneProfile.dc.html` | the account on a phone: the profile head, the Premium card, the account sections, this device, sign out, the bottom tab bar with Account | 390 × 844 |
+| `AccountRecovery.dc.html` | reset the password (email, the email code and the two-factor code, the new password, done) and set up two-factor (the app, the QR code or the key, the recovery codes, on) - both step flows work in the script; the delete-account confirmation with what happens | page |
+| `SuperUsers.dc.html` | the operator's users: the counts with the data-archive and deletion requests, the table with a working status filter (active, suspended, deleting, with a request), one user's file with history and the actions (notice, sign out everywhere, reset two-factor, archive, suspend or reinstate, delete on request) and what the operator cannot see; a line under the title says what of it the account service backs | page |
+| `SuperOperators.dc.html` | the operator accounts: the sign-in (email and password at the marketplace service, the session as the window's token, who is signed in with the role - *Sign in* and *Sign out* work in the script and change the sidebar), the roles table (admin, reviewer, support, auditor: what each may and may not), the accounts table with a working role picker and disable/enable per account, a new account, one's own name and password; a line under the title says it is built | page |
+| `AccountPhoneSignIn.dc.html` | sign in on a phone: email and password, a passkey, or confirming on a signed-in machine nearby | 390 × 844 |
+| `BooksHome.dc.html` | the e-book and audiobook shop variant's home: the book of the month in both editions with the sample, continue listening and reading with the place kept between the editions, the genres, the editor's picks with the length badge, Books Plus (one credit a month, the book kept), a series with the next part on pre-order, short listens for tonight, why read and listen here | page |
+| `BooksDetail.dc.html` | a title (The Salt Garden): the cover, the sample and the first chapter, the narrator, ratings for narration and story, the chapters both editions share, reviews that say listened or read to the end; the editions (audiobook for a credit, e-book, both kept in step), buy, the return rule, and what of the price goes to the author, the narrator, the publisher and the store | page |
+| `BooksBrowse.dc.html` | browse: the format (audiobooks, e-books, both editions), genre, language and *Included with Plus* filters work over a sample catalogue (state in the script), the cover grid with length and price | page |
+| `BooksLibrary.dc.html` | your library: the sections rail (in progress, finished, on this machine, borrowed from Plus) with collections and the download folder, the titles in progress with the device the place was last kept on, bookmarks, highlights and the files, the table of all titles, this year's hours, pages and the authors' share | page |
+| `BooksPhoneListen.dc.html` | listening on a phone: the cover, the chapter picker, the position in the chapter and what is left in the book, 30-second skips, previous and next chapter, speed, the sleep timer, bookmark, *read here* in the e-book, downloaded and the place kept with the laptop | 390 × 844 |
+| `TradeHome.dc.html` | the B2B trade variant's home: the products / suppliers search switch works in the script, the request-for-quotation box, the categories, ready-to-ship products priced by quantity tier with the minimum order and a working category filter, verified suppliers with their record, how trade assurance works | page |
+| `TradeProduct.dc.html` | a product (an industrial IoT gateway): the three quantity price tiers, a quantity field that picks the tier and computes the goods, the pallet shipping, the total and the 30 % deposit (state in the script), samples, lead time, the specification, buyers' reports, the order in escrow, the supplier's record | page |
+| `TradeSupplier.dc.html` | a supplier's profile (a verified manufacturer): the record (response time, on-time delivery, orders, escrow volume, disputes), what the operator verified (register, VAT id, factory visit, ISO certificates), main products, capabilities, recent orders through the store, an inquiry form | page |
+| `TradeRFQ.dc.html` | the buyer desk: the requests for quotation, one request's quotes compared in a table sorted by landed cost, unit price, lead time or minimum order (the sort works in the script), *Ask back* and *Award*, the award turning into an order with the five escrow steps, the orders in escrow | page |
+| `TradePhoneHome.dc.html` | sourcing on a phone: search, the categories, the request-for-quotation card with the quotes in, ready-to-ship products with the price band and the minimum order, the bottom tab bar (source, quotes, orders, messages) | 390 × 844 |
+| `AffiliateDashboard.dc.html` | UltraAffiliates, the affiliate's dashboard in the web shop's chrome with a rail of its own: the period switch (7, 30, 90 days, the year) works in the script and changes the tiles (clicks, sales, new customers, earned); *Your money today* (balance with the next payout, held back with the next release, pending, paid); earnings by week as stacked bars by source (links, customers' later purchases, the share of affiliates brought in); where it came from; campaigns with clicks, sales and rate; what sold; the latest commissions with the rate, what is held back of each and the state | page |
+| `AffiliateLinks.dc.html` | the link maker: where the link leads (the shop, a product, becoming an affiliate), the product, the campaign as a field and as chips - all working in the script - then the link with *Copy*, what it earns, and its QR code with a colour, a caption, *Save as SVG* and PNG at two sizes; the links in use with clicks, sales and what they earned. **The QR code drawn is the real code of the link shown**: the script holds the portal's `qr.py` in small (byte mode, level Q, versions 1 to 10), compared with it path for path | page |
+| `AffiliateProducts.dc.html` | products to promote: how a commission is made (5 % from the store, a boost of 1 to 45 % from the seller, 90 days), then the catalogue across the shops with a working search, shop chips with counts, *Boosted only* and three sorts (state in the script); a card says what a link earns in percent and about per sale, the parts of it, a boost with its last day, and - for goods - a fixed amount per piece; *Get the link* and *QR* | page |
+| `AffiliatePayouts.dc.html` | payouts and statements: the way of a commission in four tiles (pending, the balance, held back, paid), the next payout with where it goes, what is released when, the payouts with their references, one statement opened line by line (commission, held back, in this payout) with its sums and *Save as PDF / CSV*, and where the affiliate is paid | page |
+| `AffiliateApply.dc.html` | becoming an affiliate: a panel with what the programme pays, and the four steps working in the script - you (the name in links, where you advertise, the terms), the phone number with its six digits, the identity check (how the document is shown, what the store writes down, no picture kept), done and waiting for the review | page |
+| `AffiliatePhoneHome.dc.html`, `AffiliatePhoneLink.dc.html` | the affiliate on a phone: the balance card with held back and pending, four tiles, *Make a link and its QR code*, the latest commissions, a tab bar (dashboard, links, products, payouts); and a link with its QR code - the product, the campaign chips (working, the code follows), the code large, *Copy the link*, *Share*, *Save the code* | 390 × 844 |
+| `AdminAffiliates.dc.html` | the merchant's Affiliates page in the admin backend's look: what affiliates brought and what it cost, *Add a boost* (on one app, a category or everything; a slider from 1 to 45 that works and redraws what a sale of 100.00 leaves the merchant, the affiliate and the store; from, until, renewals), the boosts in force, what a link to each product earns today, the affiliates who sold - never who bought - with *Report* | page |
+| `SuperAffiliates.dc.html` | the operator's Affiliates page: applications waiting, payouts to pay, blocked and banned, the month's commissions by who paid them; the affiliates by state (the filter and the selection work in the script) with the review of one - what the identity document says, written down, no picture kept; the payouts to pay with the transfer's reference; the record of a block (the rule, what happened, the evidence, the money, what the affiliate said); the programme's numbers | page |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -111,6 +157,157 @@ rating field. VAT by country and the statements archive on the Finance
 page are proposals beyond the admin backend's README; the rest of the admin
 pages follow its *The window* table.
 
+The UltraAffiliates screens draw the programme of
+[its design](../../Research/UltraAffiliatesDesignProposal.md) with the
+owner's decisions in it: the rules and numbers on them (5 %, the boost, 90
+days, 30 days pending, 5 % held back for six months, a payout a month from
+25.00, 10 % for whoever brought an affiliate in) are the programme's own.
+`Server/UltraStorePortal` has them built in a plainer form (0.10.0 to
+0.12.0): its pages are the reference for what exists, these for what they
+should look like. Beyond what is built: the charts and the period switch,
+results by campaign, the catalogue across several shops with its filters, a
+QR code's colour and caption, saving a statement as PDF or CSV, and the
+merchant's *Report*. Every affiliate, sale, amount and payout on them is
+sample data; the products outside the app store (a game, a book, headphones)
+stand for shops that do not sell through the portal yet.
+
+The `Games*` pages are the **games shop variant** of the same design: the
+shop's chrome, type and shapes with the accent violet `#7C3AED` (the
+`accent` prop; UltraStore blue is one of its options), covers in the
+genre's gradient with a two-letter mark where the apps have icons, and the
+genres Action, 3D, Simulation, Tactics, Adventure, Learning (education, by
+age band), Retro, Board games, Puzzle, Racing, Role-playing and Sports.
+The game page adds what a game needs beyond an app: the PEGI rating with
+its content descriptors, players and local co-op, controller support, a
+trailer, system requirements (minimum and recommended), a demo as the
+free action, and the campaign content as a layer bought after the demo.
+The repository holds no games-shop proposal: the catalog's fixed category
+list has `games` (`Docs/UltraStore/README.md`) and nothing more, so
+genre, age rating and descriptors, players, input and requirements are
+proposed catalog fields. Every game, studio, count, date and `[PRICE]` on
+those pages is invented sample data; none of them exists.
+
+The `Market*` pages are the **marketplace variant**: the shop as a general
+marketplace in the manner of Amazon, eBay or Temu, with many verified
+sellers (the merchants of the store README's marketplace tier) in one
+basket, physical goods with delivery and returns, star ratings from
+delivered orders, deals with a countdown, departments instead of
+categories, and a basket grouped by seller with the checkout steps. The
+accent is orange `#EA580C` (the `accent` prop). The words are the standard
+string set's `media/locale/en/base/Shopping.json` (Basket, Add to basket,
+Proceed to checkout, Free shipping, Estimated delivery, Deal, Best
+sellers, Guest checkout, Voucher code, Compare, In stock, Low stock);
+payment is the store's own, as [the store's README](../README.md)
+*Payment* decides it: the payment service `Server/UltraStorePay` and
+Skrill Quick Checkout's hosted page (cards, the Skrill wallet, local
+methods), card data never in the marketplace, with the seller's invoice
+on every order. These variants are UltraStore's own business, not
+UltraPress's shop module. Nothing of
+this exists in the catalog or the services yet: products, sellers,
+prices, ratings, stock, delivery and every figure are invented sample
+data, and the pictures are drawn `[PHOTO]` placeholders.
+
+The `Video*` pages are the **video portal variant**: the shop's chrome as
+a portal in the manner of YouTube or Vimeo, with channels, subscriptions,
+uploads, live streams, Shorts and comments, the accent red `#DC2626` (the
+`accent` prop). What exists in the repository: the UltraCanvas video
+element plays a file or a URL through GStreamer, Media Foundation or
+AVFoundation, with poster frames and the codec registry that says what a
+build decodes ([`UltraCanvasVideo.md`](../../UltraCanvas/UltraCanvasVideo.md),
+[`UltraCanvasMediaCodecRegistry.md`](../../UltraCanvas/UltraCanvasMediaCodecRegistry.md)),
+and UltraVideo exports MP4 and WebM, which the Studio's upload builds on
+(chapters from the timeline's markers, captions from the subtitle track).
+What does not exist: a portal service with channels, uploads, renditions,
+comments, subscriptions and support payments, which would go through the
+store's own payment service. The portal is UltraStore's own business, not
+UltraPress's. Every channel, video, count and figure is invented sample
+data; the ULTRA OS Project channel is the team's own, its videos invented;
+the pictures are drawn `[THUMBNAIL]` placeholders.
+
+The `Music*` pages are the **music streaming variant**: the shop's chrome
+as a streaming service in the manner of Spotify, with the library rail,
+mixes, albums, artists, playlists, podcasts, downloads and the now-playing
+bar on every desktop page, the accent green `#16A34A` (the `accent`
+prop). What exists in the repository: UltraCanvas Audio plays WAV, MP3
+and FLAC always and OGG, Opus and AAC with the system codecs, gapless
+through miniaudio, with the audio player element and the analysis for
+visualisation ([`UltraCanvasAudio.md`](../../UltraCanvas/UltraCanvasAudio.md)),
+and the store sells subscriptions (`monthly`, `yearly`) through its own
+payment service, which is what Premium would be. What does not exist: a
+streaming service with a catalogue, licences, renditions, mixes computed
+on the machine, downloads and the artists' share. The service is
+UltraStore's own business, not UltraPress's. Every artist, album, song,
+count and figure is invented sample data; the covers are drawn `[COVER]`
+placeholders.
+
+The `Account*` pages are the **account** every shop on the canvas shares:
+sign up, sign in and the profile, security, devices, notifications,
+privacy, payment methods, subscriptions, licences and orders. **Built**
+(2026-11-19, the store's README, *The account tier*): the account service
+`Server/UltraStoreAccount` holds the person, the sessions as devices, the
+second factor, the licences with their seats, the notices, the archive and
+the deletion; the store's window has the *Sign in* pill, the sign-in page
+with its steps and the account page with its rail
+(`Apps/UltraStore/ui/StoreAccountPage.cpp`); the operator's window has the
+*Users* page (`Apps/UltraStoreOperator/ui/OperatorUsersPage.cpp`). What the
+pages draw that is not built: passkeys (WebAuthn needs the platform's
+authenticator), the avatar, the sign-in location, and the payment methods,
+subscriptions and orders pages - those are the payment service's, which
+does not yet record the account at checkout; the account page shows the
+licences it holds instead. An account service ties licences and their
+seats, subscriptions and the library (wish list, playlists, watch later,
+saved games) to a person across machines; installing a free app still
+needs none. The operator's `SuperUsers` page is the other side: accounts as
+far as the store needs them, suspend and reinstate with a reason in the
+audit log, the data-archive and deletion requests with their deadlines, and
+never the password, the payment method or the listening history; the
+artboard says on its face what of it the service backs. Two-factor sign-in
+is UltraAuthenticator or any TOTP app, recovery codes in UltraPassword if
+wanted; payment stays on Skrill Quick Checkout's page through the store's
+payment service, the account keeping only a reference to the method.
+Customer messaging is a notice on the account, written by the operator or
+the service and sent by mail; a merchant's message to a buyer is relayed
+through the marketplace service later. Every person, device, order and
+figure is invented sample data.
+
+The `Books*` pages are the **e-book and audiobook shop variant**: the
+shop's chrome as a book shop in the manner of Audible, with both editions
+of a title, the place kept between listening and reading, a library of
+files the buyer keeps, and Books Plus, the accent amber `#D97706` (the
+`accent` prop). What exists in the repository: UltraViewer reads EPUB,
+FB2, MOBI, PRC, AZW and AZW3 in `UltraCanvasEBookViewer` (the chapter
+toolbar, the table of contents, reflowing content) and PDF in
+`UltraCanvasPDFView`
+([`UltraCanvasMediaViewer.md`](../../UltraCanvas/UltraCanvasMediaViewer.md)),
+UltraCanvas Audio plays MP3, WAV and FLAC always and M4A/M4B (AAC) with
+FAAD2, fdk-aac or the GStreamer plugins
+([`UltraCanvasAudio.md`](../../UltraCanvas/UltraCanvasAudio.md)), and the
+store sells subscriptions (`monthly`, `yearly`) through its own payment
+service and Skrill Quick Checkout, which is what Books Plus would be. What
+does not exist: a book catalogue with editions, narrators, chapters shared
+by the audiobook and the e-book, the place kept across machines, credits,
+pre-orders and the publishers' share. The files are the buyer's: EPUB and
+M4B without DRM, so UltraViewer and any other reader open them. The shop
+is UltraStore's own business, not UltraPress's. Every book, author,
+narrator, review, count and figure is invented sample data; the covers are
+drawn `[COVER]` placeholders.
+
+The `Trade*` pages are the **B2B trade variant**: a sourcing marketplace
+in the manner of Alibaba, where verified manufacturers sell to companies at
+quantity prices, a buyer asks several suppliers for quotations and the
+money of an order sits in escrow until the goods are in. The accent is teal
+`#0f766e` (the `accent` prop). What exists in the repository: merchants
+and their verification by the operator (the `Super*` pages and the
+marketplace service's applications), the store's payment service with
+subscriptions and refunds, the marketplace service with submissions and
+their review. What does not exist: company buyer accounts, products priced
+by quantity tier, requests for quotation and quotes, orders with escrow
+milestones, inspection reports and disputes - every order on these pages
+is a contract the store would have to hold between two companies, which is
+a different business from selling software. Every supplier, product,
+price, count and figure is invented sample data; the photos are gradient
+placeholders.
+
 The `Super*` pages are a **proposal** for a third tier, later: the operator
 of UltraStore running a marketplace in which other publishers (merchants)
 open shops. Where its records live is settled in the store's README,
@@ -119,3 +316,22 @@ reviews and releases their submissions with the catalog publish, handles
 reports, warns, suspends and reinstates merchants and apps, and keeps every
 merchant on the current terms. The dark sidebar marks that tier; every
 merchant, user, report and figure on those pages is invented sample data.
+
+The merchant's self-service (2026-11-19, the store's README, *The operator
+tier*, *How does a merchant join?*) is **built**: `AdminMarketplace` is the
+admin backend's *Marketplace* page (`Apps/UltraStoreAdmin/ui/AdminWindow.cpp`)
+and the applications section of `SuperMerchants` is the operator's
+(`Apps/UltraStoreOperator/ui/OperatorPages.cpp`), both on the marketplace
+service's applications and the merchant's own profile. What the artboards
+draw that is not built: `SuperMerchants`' verification checklist (the
+register extract, the VAT id) and its payouts column, which need the
+payment service's figures per merchant.
+
+The operator accounts with roles (2026-11-19, the store's README, *Who
+sits at the operator's window?*) are **built**: `SuperOperators` is the
+operator window's *Operators* page and the sign-in section of its
+*Settings* page (`Apps/UltraStoreOperator/ui/OperatorOperatorsPage.cpp`), on
+the marketplace service's operator accounts and the session the account
+service verifies too. The sidebar's *Signed in as Alex, operator* on the
+other `Super*` pages now says *admin*, and every one of them has the
+*Operators* item (2026-11-20).

@@ -1,3 +1,16 @@
+#### 2026-11-26 *0.1.3*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
+#### 2026-11-25 *0.1.2*
+- **Started again from a terminal, UltraNotifications answers in your
+  language.** "UltraNotifications is already running: brought it forward." -
+  and the plain "... is already running." of a `--background` start - were
+  English whatever the language. They come from the framework's standard set
+  now (`UltraCanvasSingleInstance::HandOffMessage`).
+
 #### 2026-11-14 *0.1.1*
 - **Dark look**: the window, the Quit footer and the message centre (list,
   sources, detail, the unread and urgent marks) take the system look instead

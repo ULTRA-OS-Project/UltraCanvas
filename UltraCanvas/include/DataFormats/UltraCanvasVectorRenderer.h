@@ -1,5 +1,6 @@
 // UltraCanvasVectorRenderer.h
 // Vector Graphics Rendering for UltraCanvas
+// Version: 2.2.0 - FillCurrentPath: the fill under the style's fill rule
 // Version: 2.1.1
 // Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
@@ -145,6 +146,7 @@ namespace UltraCanvas {
         bool BuildElementPath(const VectorElement& element);
         void RenderShape(const VectorElement& element);
         void FillAndStroke(const VectorStyle& style);
+        void FillCurrentPath(const VectorStyle& style);
         void RenderLine(const VectorLine& line);
         void RenderText(const VectorText& text);
         void RenderImage(const VectorImage& image);

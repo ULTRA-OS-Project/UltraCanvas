@@ -54,15 +54,15 @@ namespace UltraCanvas {
             auto title = DemoKit::CreateText(id, text);
             title->SetFontSize(11);
             title->SetFontWeight(FontWeight::Bold);
-            title->SetTextColor(Color(73, 80, 87, 255));
+            title->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
             return title;
         };
         // A grey info panel of a sidebar, as tall as its text.
         auto makeInfoPanel = [](const std::string& id, float fontSize, const Color& background) {
             auto panel = DemoKit::CreateText(id, "");
             panel->SetFontSize(fontSize);
-            panel->SetTextColor(Color(33, 37, 41, 255));
-            panel->SetBackgroundColor(background);
+            panel->SetTextColor(DemoKit::Themed(Color(33, 37, 41, 255)));
+            panel->SetBackgroundColor(DemoKit::ThemedFill(background));
             panel->SetPadding(10);
             return panel;
         };
@@ -172,15 +172,16 @@ namespace UltraCanvas {
         auto centerCard = DemoKit::AddCard(contentContainer, "fishboneCenter", "", "",
                                            660 + 2 * DemoKit::kCardPadding + 2);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("fishboneTabs", 0, 0, 660, 580);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(centerCard, tabbedContainer);
 
         auto statusBar = DemoKit::CreateText("fishboneStatus",
                 Tr("Ready - click a cause to select it, hover for tooltips"));
         statusBar->SetFontSize(11);
-        statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
+        statusBar->SetBackgroundColor(DemoKit::Themed(Color(233, 236, 239, 255)));
         statusBar->SetPadding(15);
-        statusBar->SetTextColor(Color(73, 80, 87, 255));
+        statusBar->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
         DemoKit::Add(centerCard, statusBar);
 
         // ===== RIGHT SIDEBAR =====
@@ -268,7 +269,7 @@ namespace UltraCanvas {
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     diagram->GetIdentifier() + "Tab", 0, 0, 660, 542);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(diagram);
             tabbedContainer->AddTab(spec.tabTitle, tabContent);
             allDiagrams.push_back(diagram);

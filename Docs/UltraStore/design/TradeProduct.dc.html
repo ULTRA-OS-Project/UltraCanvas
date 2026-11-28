@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Trade - Product (IoT gateway)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+<a href="TradeHome.dc.html" aria-label="UltraStore Trade home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Trade</span>
+</a>
+<form role="search" style="flex: 1 1 420px; display: flex; align-items: stretch; height: 46px; border-radius: 999px; border: 2px solid {{accent}}; overflow: hidden; background: #ffffff">
+<div role="group" aria-label="Search for" style="display: flex; border-right: 1px solid #e2e8f0; background: #f8fafc">
+<button type="button" onClick="{{modeProducts}}" aria-pressed="{{isProducts}}" style="{{productsStyle}}">Products</button>
+<button type="button" onClick="{{modeSuppliers}}" aria-pressed="{{isSuppliers}}" style="{{suppliersStyle}}">Suppliers</button>
+</div>
+<label for="search-trade" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search</label>
+<input id="search-trade" type="search" placeholder="{{placeholder}}" style="flex: 1 1 auto; min-width: 0; border: 0; padding: 0 16px; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+<button type="submit" aria-label="Search" style="width: 56px; border: 0; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+</form>
+<nav aria-label="Account" style="display: flex; gap: 4px; align-items: center">
+<a href="TradeRFQ.dc.html" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 12px; border-radius: 12px; text-decoration: none; color: #0f172a; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Nordlicht Handel GmbH</span><span style="font-weight: 700; font-size: 14px">Buyer desk</span></a>
+<a href="#messages" aria-label="Messages, 2 unread" style="position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5z"></path></svg><span style="position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">2</span></a>
+<a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px">Get quotes</a>
+</nav>
+</div>
+<nav aria-label="Trade" style="border-top: 1px solid #f1f5f9">
+<div style="max-width: 1280px; margin: 0 auto; padding: 0 32px; box-sizing: border-box; display: flex; gap: 2px; flex-wrap: wrap; align-items: center">
+<a href="TradeHome.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Categories</a><a href="TradeHome.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #0f172a; font-weight: 700; font-size: 14px; border-bottom: 2px solid {{accent}}">Ready to ship</a><a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Request for quotation</a><a href="TradeSupplier.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Verified suppliers</a><a href="#assurance" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Trade assurance</a><a href="#logistics" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Logistics</a>
+<a href="#sell" style="margin-left: auto; display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 600; font-size: 14px">Become a supplier</a>
+</div>
+</nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 24px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 40px">
+<nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; display: flex; gap: 8px; flex-wrap: wrap"><a href="TradeHome.dc.html" style="color: #64748b; text-decoration: none">Electronics &amp; components</a><span>›</span><a href="TradeHome.dc.html" style="color: #64748b; text-decoration: none">Industrial IoT</a><span>›</span><span style="color: #0f172a">Gateways</span></nav>
+
+<section style="display: grid; grid-template-columns: 460px minmax(0, 1fr) 320px; gap: 28px; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div aria-hidden="true" style="height: 400px; border-radius: 20px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Gateway, front</div>
+<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px"><div aria-hidden="true" style="height: 72px; border-radius: 10px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><div aria-hidden="true" style="height: 72px; border-radius: 10px; background: linear-gradient(135deg, #64748b, #1e293b); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><div aria-hidden="true" style="height: 72px; border-radius: 10px; background: linear-gradient(135deg, #38bdf8, #0369a1); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><div aria-hidden="true" style="height: 72px; border-radius: 10px; background: linear-gradient(135deg, #475569, #0f172a); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><div aria-hidden="true" style="height: 72px; border-radius: 10px; background: linear-gradient(135deg, #22d3ee, #155e75); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div></div>
+<span style="font-size: 12px; color: #64748b">Photos, the data sheet (PDF) and the CE declaration are the supplier's uploads, checked by the operator with the listing.</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<div style="display: flex; gap: 8px; flex-wrap: wrap"><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #ccfbf1; color: #115e59; font-size: 12px; font-weight: 700; white-space: nowrap; "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path></svg> Verified manufacturer</span><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700; white-space: nowrap; ">Trade assurance</span><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; white-space: nowrap; ">Ready to ship</span></div>
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15">Industrial IoT gateway, 4G LTE, 2 × RS-485 Modbus, DIN rail, −40 to +70 °C</h1>
+<span style="font-size: 13px; color: #64748b">Model NF-GW4-485 · 1,840 pieces sold on the store · 4.8 of 5 from 62 buyer ratings</span>
+
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0">
+<span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Price by quantity · per piece, ex works Bremen, excl. VAT</span>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<sc-for list="{{tiers}}" as="t" hint-placeholder-count="3">
+<div style="{{t.style}}"><span style="font-size: 12px; color: #64748b">{{t.range}} pieces</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800">{{t.price}}</span></div>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: #64748b">The minimum order is 100 pieces. Samples at €62.00 each, the sample price credited against an order of 500 or more.</span>
+</div>
+
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; font-size: 13px">
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: #f8fafc"><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Lead time</dt><dd style="margin: 0; font-weight: 700">{{lead}}</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: #f8fafc"><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Customisation</dt><dd style="margin: 0; font-weight: 700">Logo, firmware, connector set · from 500</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: #f8fafc"><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Packing</dt><dd style="margin: 0; font-weight: 700">20 per carton, 48 cartons per pallet</dd></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: #f8fafc"><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Payment</dt><dd style="margin: 0; font-weight: 700">30 % deposit, balance before shipping · escrow</dd></div>
+</dl>
+
+<section aria-labelledby="specs-title" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="specs-title" style="margin: 0; font-size: 18px; font-weight: 700">Specification</h2>
+<table style="border-collapse: collapse; width: 100%; font-size: 13px"><tbody><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Model</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">NF-GW4-485</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Cellular</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">4G LTE Cat 4, fallback 3G/2G, 2 × SIM</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Serial</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">2 × RS-485 (Modbus RTU), 1 × RS-232</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Ethernet</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">2 × 10/100, 1 × WAN</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Inputs</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">4 × digital, 2 × analogue 4–20 mA</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Supply</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">9–36 V DC, DIN rail, 3.2 W</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Temperature</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">−40 to +70 °C</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Housing</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">IP30, aluminium, 110 × 90 × 35 mm</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Certification</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">CE, RED, RoHS; EN 61000-6-2/-4</td></tr><tr><th scope="row" style="text-align: left; padding: 8px 10px; font-weight: 600; color: #64748b; width: 160px; border-bottom: 1px solid #f1f5f9">Warranty</th><td style="padding: 8px 10px; border-bottom: 1px solid #f1f5f9">24 months, RMA within the EU</td></tr></tbody></table>
+</section>
+
+<section aria-labelledby="rev-title" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="rev-title" style="margin: 0; font-size: 18px; font-weight: 700">What buyers say</h2>
+<div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #334155">
+<div style="padding: 12px 14px; border-radius: 12px; border: 1px solid #e2e8f0"><strong>Order of 1,200 · Rotterdam</strong> · "Delivered in 11 days, every unit registered on the network first time. The RS-485 termination jumper is documented, which the last gateway we bought was not."</div>
+<div style="padding: 12px 14px; border-radius: 12px; border: 1px solid #e2e8f0"><strong>Order of 300 · Lyon</strong> · "Firmware with our logo and the default APN as agreed. One carton was short by two; the supplier shipped them the next day and the escrow was released after."</div>
+</div>
+</section>
+</div>
+
+<aside aria-label="Order" style="position: sticky; top: 16px; display: flex; flex-direction: column; gap: 14px; padding: 20px; box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06)">
+<label for="qty" style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: #64748b">Quantity (pieces)
+<div style="display: flex; align-items: stretch; height: 48px; border-radius: 12px; border: 1px solid #cbd5e1; overflow: hidden">
+<button type="button" onClick="{{less}}" aria-label="Less" style="width: 48px; border: 0; background: #f8fafc; font: inherit; font-size: 20px; cursor: pointer">−</button>
+<input id="qty" type="number" value="{{qty}}" onInput="{{setQty}}" min="100" step="10" style="flex: 1 1 auto; min-width: 0; border: 0; text-align: center; font: inherit; font-size: 18px; font-weight: 700; color: #0f172a; outline: none">
+<button type="button" onClick="{{more}}" aria-label="More" style="width: 48px; border: 0; background: #f8fafc; font: inherit; font-size: 20px; cursor: pointer">+</button>
+</div></label>
+<sc-if value="{{belowMoq}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: #991b1b; font-weight: 600">Below the minimum order of 100 pieces: ask for a sample instead.</span></sc-if>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px">
+<div style="display: flex; justify-content: space-between"><dt style="color: #64748b">Unit price at this quantity</dt><dd style="margin: 0; font-weight: 700">{{unit}}</dd></div>
+<div style="display: flex; justify-content: space-between"><dt style="color: #64748b">Goods</dt><dd style="margin: 0; font-weight: 700">{{goods}}</dd></div>
+<div style="display: flex; justify-content: space-between"><dt style="color: #64748b">Shipping to Hamburg, pallet, DAP</dt><dd style="margin: 0; font-weight: 700">{{shipping}}</dd></div>
+<div style="display: flex; justify-content: space-between; padding-top: 6px; border-top: 1px solid #e2e8f0"><dt style="font-weight: 700">Order total, excl. VAT</dt><dd style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800">{{total}}</dd></div>
+<div style="display: flex; justify-content: space-between; font-size: 12px"><dt style="color: #64748b">Deposit now (30 %)</dt><dd style="margin: 0; font-weight: 600">{{deposit}}</dd></div>
+</dl>
+<a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; justify-content: center; height: 52px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 16px">Start the order</a>
+<button type="button" style="height: 44px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Send an inquiry</button>
+<button type="button" style="height: 44px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Request a sample · €62.00</button>
+<span style="font-size: 12px; color: #64748b; display: flex; gap: 6px; align-items: flex-start"><span style="color: #1e40af; flex: 0 0 auto"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path></svg></span>The order is a signed contract and the money sits with the store's payment service until you confirm receipt or 14 days pass without a claim.</span>
+<div style="display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid #e2e8f0">
+<a href="TradeSupplier.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); flex: 0 0 auto"></span><span style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Nordfertigung GmbH</span><span style="font-size: 12px; color: #64748b">Bremen, DE · on the store 14 years</span></span></a>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; font-size: 12px"><div><dt style="color: #64748b">Responds</dt><dd style="margin: 0; font-weight: 700">≤ 4 h</dd></div><div><dt style="color: #64748b">On time</dt><dd style="margin: 0; font-weight: 700">97 %</dd></div><div><dt style="color: #64748b">Repeat buyers</dt><dd style="margin: 0; font-weight: 700">61 %</dd></div></dl>
+</div>
+</aside>
+</section>
+</main>
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore Trade</span>
+<span>· manufacturers and bulk buyers, on the ULTRA OS marketplace</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#sell" style="color: #475569; text-decoration: none; font-weight: 500">Become a supplier</a>
+<a href="#assurance" style="color: #475569; text-decoration: none; font-weight: 500">Trade assurance</a>
+<a href="#logistics" style="color: #475569; text-decoration: none; font-weight: 500">Logistics</a>
+<a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#0f766e","options":["#0f766e","#2563eb","#0f172a","#b45309"]},"$preview":{"width":1440,"height":1860}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'products', qty: 800 };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#0f766e';
+    const mode = this.state.mode;
+    const seg = (on) => 'border: 0; height: 100%; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: transparent; color: #334155');
+    const search = { isProducts: mode === 'products', isSuppliers: mode === 'suppliers', productsStyle: seg(mode === 'products'), suppliersStyle: seg(mode === 'suppliers'),
+      placeholder: mode === 'products' ? 'Search products, e.g. "IoT gateway RS-485", "corrugated boxes"' : 'Search suppliers by name, product or country',
+      modeProducts: () => this.setState({ mode: 'products' }), modeSuppliers: () => this.setState({ mode: 'suppliers' }) };
+    const qty = this.state.qty;
+    const TIERS = [[100, 499, 48.0], [500, 1999, 44.5], [2000, Infinity, 41.0]];
+    const active = TIERS.find(([lo, hi]) => qty >= lo && qty <= hi) || (qty < 100 ? TIERS[0] : TIERS[2]);
+    const eur = (n) => '€' + n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const tiers = TIERS.map(([lo, hi, p]) => ({ range: hi === Infinity ? '≥ ' + lo.toLocaleString('en-GB') : lo + ' – ' + hi.toLocaleString('en-GB'), price: eur(p),
+      style: 'display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 2px solid ' + (active[0] === lo ? accent + '; background: #ffffff' : '#e2e8f0; background: #ffffff') }));
+    const belowMoq = qty < 100;
+    const goods = qty * active[2];
+    const pallets = Math.ceil(qty / 960);
+    const shipping = belowMoq ? 0 : 180 * pallets;
+    const total = goods + shipping;
+    const order = { qty, tiers, belowMoq, unit: eur(active[2]), goods: eur(goods), shipping: eur(shipping), total: eur(total), deposit: eur(total * 0.3),
+      lead: qty <= 500 ? '12 days (stock)' : qty <= 2000 ? '21 days' : '35 days (production run)',
+      setQty: (e) => this.setState({ qty: Math.max(0, parseInt(e.target.value, 10) || 0) }),
+      less: () => this.setState({ qty: Math.max(0, qty - 10) }), more: () => this.setState({ qty: qty + 10 }) };
+    return { accent, ...search, ...order };
+  }
+}
+</script>
+</body>
+</html>

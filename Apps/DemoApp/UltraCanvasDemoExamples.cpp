@@ -185,13 +185,13 @@ namespace UltraCanvas {
         page->layout.SetFlexColumn().SetFlexGap(6)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         page->SetPadding(8, 10, 8, 10);
-        page->SetBackgroundColor(Colors::White);
+        page->SetBackgroundColor(DemoKit::Themed(Colors::White));
 
         // As tall as its wrapped lines: a long file name or translation wraps.
         auto header = DemoKit::CreateHeading("TextSampleHeader_" + language,
                 TrF("{0} — {1} (highlighted live by UltraCanvasTextArea's syntax renderer)", language, fileName));
         header->SetFontSize(12);
-        header->SetTextColor(Color(40, 110, 40, 255));
+        header->SetTextColor(DemoKit::Themed(Color(40, 110, 40, 255)));
         DemoKit::Add(page, header);
 
         auto codeView = std::make_shared<UltraCanvasTextArea>("TextSampleArea_" + language);
@@ -246,7 +246,7 @@ namespace UltraCanvas {
         // Vertical tab bar on the left: one tab per supported file type.
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("TextDocumentTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Left);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(26);
         // Many file types — the tab column scrolls when it does not fit the
@@ -269,7 +269,7 @@ namespace UltraCanvas {
             page->layout.SetFlexColumn()
                         .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            page->SetBackgroundColor(Colors::White);
+            page->SetBackgroundColor(DemoKit::Themed(Colors::White));
 
             auto note = DemoKit::CreateText("TextTypeNote_" + lang,
                     TrF("{0}\n\nUltraCanvasTextArea highlights this file type — no bundled\n"

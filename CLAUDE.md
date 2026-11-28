@@ -49,9 +49,12 @@ Quick pointers:
 - A pull request whose change is platform-specific (a platform layer,
   packaging, a bundled library, or code that behaves differently on Windows /
   macOS / ARM - file names, paths, `#ifdef _WIN32`) gets the `ci:distro`
-  label, or three of the six build rows are not built; a left-out row still
+  label (and `ci:intel` when it touches macOS), or Linux arm64, Windows ARM
+  (and macOS Intel) are not built; a left-out row still
   reads green in seconds, so count only the rows that built - see rule 8 of
-  *Branch and pull-request rules* in `AGENTS.md`
+  *Branch and pull-request rules* in `AGENTS.md`; an Android change also gets
+  `ci:emulator` (x86_64 and the emulator jobs, which a pull request
+  otherwise skips)
 - When you open a pull request, rename the chat so its title starts with
   the PR number (`#<n> <title>`, via `set_session_title`) — see rule 7 of
   *Branch and pull-request rules* in `AGENTS.md`

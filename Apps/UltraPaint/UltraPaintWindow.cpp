@@ -3,6 +3,20 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.6.0 - the text bar's font list (the framework's font picker): the fonts of the image's
+//                  text layers under "In this document", the recent fonts kept in the settings
+// Version: 2.5.0 - closing a tab with unsaved changes asks Save / Don't save / Cancel; Save
+//                  closes the tab once the image is written (Save As for an untitled one)
+// Version: 2.4.0 - the start page in place of a blank canvas while no image is open: Create new
+//                  bitmap, Paste image and Clipboard history (the 20 images copied last, as
+//                  thumbnails to pick from); the window runs with no image, the commands
+//                  that need one doing nothing
+// Version: 2.3.1 - the pasted layers' names in the person's language
+// Version: 2.3.0 - the blend mode on a row of its own beside "Blend mode", the list as wide as the panel
+// Version: 2.2.0 - every text a person reads goes through Tr / TrF / TrN (UltraLocalisation): whole
+//                  sentences with placeholders, the undo labels too; the filters' DisplayName /
+//                  DisplayCategory / DisplayTitle and the dialogs' BlendModeDisplayName
+// Version: 2.1.0 - Scale Image: the resampling method and Sharpen after scaling, remembered for next time
 // Version: 2.0.1 - Curves counts its histogram backdrop with UltraCanvasHistogramModel, as the
 //                  image viewer's Curves dialog does; the RGB backdrop adds the three channels
 // Version: 2.0.0 - images in tabs: one window holds several, each with its own paint surface
@@ -69,7 +83,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -156,7 +170,7 @@ namespace {
     }
 
     std::string FileNameOf(const std::string& path) {
-        if (path.empty()) return "Untitled";
+        if (path.empty()) return Tr("Untitled");
         return PathToUtf8(PathFromUtf8(path).filename());
     }
 
@@ -383,10 +397,10 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
             if (auto dlg = settingsDialog.lock()) dlg->Close();
             return true;
         }
-        ConfirmDiscard(TrN("{n} image in this window has unsaved changes. Close anyway?",
-                           "{n} images in this window have unsaved changes. Close anyway?", unsaved),
-                       [this]() {
-            for (const auto& tab : documentTabs) if (tab->document) tab->document->SetModified(false);
+        // Each unsaved image asks in turn: Save, Don't save or Cancel.
+        std::weak_ptr<bool> alive = lifeToken;
+        ReviewUnsavedTabs([this, alive]() {
+            if (alive.expired()) return;
             window->Close();   // comes back through here, and closes the settings window
         });
         return false;
@@ -401,8 +415,10 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     };
 
     // ----- the first documents -----
-    NewImage(lastNewImage);
+    // No blank canvas: the start page offers what to begin with, until a
+    // file given on the command line takes its place.
     SelectTool(PaintToolId::Brush);
+    ShowStartPage(true);
     OpenPaths(paths);
     return true;
 }
@@ -509,14 +525,14 @@ void UltraPaintWindow::BuildMenuBar() {
     std::vector<MenuItemData>* filterGroup = nullptr;
     for (const auto& f : PaintFilterCatalogue()) {
         const PaintFilter* fp = &f;
-        auto item = M::Action(f.name, MenuIconPath(f.id + ".svg"), [this, fp]() { CmdFilter(*fp); });
+        auto item = M::Action(f.DisplayName(), MenuIconPath(f.id + ".svg"), [this, fp]() { CmdFilter(*fp); });
         if (f.category == "Adjust") {
             adjustItems.push_back(item);
         } else {
             if (f.category != lastCategory) {
                 lastCategory = f.category;
                 if (!filterItems.empty()) filterItems.push_back(M::Separator());
-                filterItems.push_back(M::Header(f.category));
+                filterItems.push_back(M::Header(f.DisplayCategory()));
             }
             filterItems.push_back(item);
         }
@@ -524,99 +540,99 @@ void UltraPaintWindow::BuildMenuBar() {
     }
     // Curves sits with the adjustments, right after Levels.
     adjustItems.insert(adjustItems.begin() + std::min<size_t>(4, adjustItems.size()),
-                       M::ActionWithShortcut("Curves...", "Ctrl+M", MenuIconPath("curves.svg"), [this]() { CmdCurves(); }));
+                       M::ActionWithShortcut(Tr("Curves..."), "Ctrl+M", MenuIconPath("curves.svg"), [this]() { CmdCurves(); }));
     // Colour to Alpha changes transparency rather than tone, so it sits on its own at the end.
     adjustItems.push_back(M::Separator());
-    adjustItems.push_back(M::Action("Colour to Alpha...", MenuIconPath("colour-to-alpha.svg"), [this]() { CmdColourToAlpha(); }));
+    adjustItems.push_back(M::Action(Tr("Colour to Alpha..."), MenuIconPath("colour-to-alpha.svg"), [this]() { CmdColourToAlpha(); }));
 
     menuBar = MenuBuilder("up-menubar", 0, 0, 0, kMenuHeight)
         .SetType(MenuType::Menubar)
-        .AddSubmenu("File", {
-            M::ActionWithShortcut("New...", "Ctrl+N", MenuIconPath("new.svg"), [this]() { CmdNew(); }),
-            M::ActionWithShortcut("New Window", "Ctrl+Alt+N", MenuIconPath("new-window.svg"), [this]() { CmdNewWindow(); }),
-            M::ActionWithShortcut("Open...", "Ctrl+O", MenuIconPath("open.svg"), [this]() { CmdOpen(); }),
-            M::Action("Import Image...", MenuIconPath("import.svg"), [this]() { CmdImport(); }),
+        .AddSubmenu(Tr("File"), {
+            M::ActionWithShortcut(Tr("New..."), "Ctrl+N", MenuIconPath("new.svg"), [this]() { CmdNew(); }),
+            M::ActionWithShortcut(Tr("New Window"), "Ctrl+Alt+N", MenuIconPath("new-window.svg"), [this]() { CmdNewWindow(); }),
+            M::ActionWithShortcut(Tr("Open..."), "Ctrl+O", MenuIconPath("open.svg"), [this]() { CmdOpen(); }),
+            M::Action(Tr("Import Image..."), MenuIconPath("import.svg"), [this]() { CmdImport(); }),
             M::Separator(),
-            M::ActionWithShortcut("Save", "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
-            M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
-            M::ActionWithShortcut("Export with Options...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
-            M::Action("Password Protection...", MenuIconPath("password.svg"), [this]() { CmdPassword(); }),
+            M::ActionWithShortcut(Tr("Save"), "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
+            M::ActionWithShortcut(Tr("Save As..."), "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
+            M::ActionWithShortcut(Tr("Export with Options..."), "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
+            M::Action(Tr("Password Protection..."), MenuIconPath("password.svg"), [this]() { CmdPassword(); }),
             M::Separator(),
             M::ActionWithShortcut(Tr("Close Tab"), "Ctrl+W", MenuIconPath("close-tab.svg"), [this]() { CmdCloseTab(); }),
             M::ActionWithShortcut(Tr("Next Tab"), "Ctrl+Tab", [this]() { CmdNextTab(1); }),
             M::ActionWithShortcut(Tr("Previous Tab"), "Ctrl+Shift+Tab", [this]() { CmdNextTab(-1); }),
             M::Separator(),
-            M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
+            M::ActionWithShortcut(Tr("Quit"), "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
         })
-        .AddSubmenu("Edit", {
-            M::ActionWithShortcut("Undo", "Ctrl+Z", MenuIconPath("undo.svg"), [this]() { CmdUndo(); }),
-            M::ActionWithShortcut("Redo", "Ctrl+Y", MenuIconPath("redo.svg"), [this]() { CmdRedo(); }),
+        .AddSubmenu(Tr("Edit"), {
+            M::ActionWithShortcut(Tr("Undo"), "Ctrl+Z", MenuIconPath("undo.svg"), [this]() { CmdUndo(); }),
+            M::ActionWithShortcut(Tr("Redo"), "Ctrl+Y", MenuIconPath("redo.svg"), [this]() { CmdRedo(); }),
             M::Separator(),
-            M::ActionWithShortcut("Cut", "Ctrl+X", MenuIconPath("cut.svg"), [this]() { CmdCut(); }),
-            M::ActionWithShortcut("Copy", "Ctrl+C", MenuIconPath("copy.svg"), [this]() { CmdCopy(false); }),
-            M::ActionWithShortcut("Copy Merged", "Ctrl+Shift+C", MenuIconPath("copy-merged.svg"), [this]() { CmdCopy(true); }),
-            M::ActionWithShortcut("Paste as New Layer", "Ctrl+V", MenuIconPath("paste-layer.svg"), [this]() { CmdPaste(); }),
-            M::ActionWithShortcut("Paste as New Image", "Ctrl+Shift+V", MenuIconPath("paste-image.svg"), [this]() { CmdPasteAsNew(); }),
-            M::ActionWithShortcut("Paste Last Copied Image", "Ctrl+Alt+V", MenuIconPath("paste-last.svg"), [this]() { CmdPasteLastImage(); }),
+            M::ActionWithShortcut(Tr("Cut"), "Ctrl+X", MenuIconPath("cut.svg"), [this]() { CmdCut(); }),
+            M::ActionWithShortcut(Tr("Copy"), "Ctrl+C", MenuIconPath("copy.svg"), [this]() { CmdCopy(false); }),
+            M::ActionWithShortcut(Tr("Copy Merged"), "Ctrl+Shift+C", MenuIconPath("copy-merged.svg"), [this]() { CmdCopy(true); }),
+            M::ActionWithShortcut(Tr("Paste as New Layer"), "Ctrl+V", MenuIconPath("paste-layer.svg"), [this]() { CmdPaste(); }),
+            M::ActionWithShortcut(Tr("Paste as New Image"), "Ctrl+Shift+V", MenuIconPath("paste-image.svg"), [this]() { CmdPasteAsNew(); }),
+            M::ActionWithShortcut(Tr("Paste Last Copied Image"), "Ctrl+Alt+V", MenuIconPath("paste-last.svg"), [this]() { CmdPasteLastImage(); }),
             M::Separator(),
-            M::ActionWithShortcut("Delete", "Del", MenuIconPath("delete.svg"), [this]() { CmdDelete(); }),
-            M::ActionWithShortcut("Fill with Foreground", "Alt+Backspace", MenuIconPath("fill-fg.svg"), [this]() { CmdFill(true); }),
-            M::ActionWithShortcut("Fill with Background", "Ctrl+Backspace", MenuIconPath("fill-bg.svg"), [this]() { CmdFill(false); }),
+            M::ActionWithShortcut(Tr("Delete"), "Del", MenuIconPath("delete.svg"), [this]() { CmdDelete(); }),
+            M::ActionWithShortcut(Tr("Fill with Foreground"), "Alt+Backspace", MenuIconPath("fill-fg.svg"), [this]() { CmdFill(true); }),
+            M::ActionWithShortcut(Tr("Fill with Background"), "Ctrl+Backspace", MenuIconPath("fill-bg.svg"), [this]() { CmdFill(false); }),
             M::Separator(),
-            M::Action("Settings...", MenuIconPath("settings.svg"), [this]() { CmdSettings(); }),
+            M::Action(Tr("Settings..."), MenuIconPath("settings.svg"), [this]() { CmdSettings(); }),
         })
-        .AddSubmenu("Image", {
-            M::Action("Scale Image...", MenuIconPath("scale.svg"), [this]() { CmdScaleImage(); }),
-            M::Action("Canvas Size...", MenuIconPath("canvas-size.svg"), [this]() { CmdCanvasSize(); }),
-            M::ActionWithShortcut("Crop to Selection", "Ctrl+Shift+X", MenuIconPath("crop-selection.svg"), [this]() { CmdCropToSelection(); }),
+        .AddSubmenu(Tr("Image"), {
+            M::Action(Tr("Scale Image..."), MenuIconPath("scale.svg"), [this]() { CmdScaleImage(); }),
+            M::Action(Tr("Canvas Size..."), MenuIconPath("canvas-size.svg"), [this]() { CmdCanvasSize(); }),
+            M::ActionWithShortcut(Tr("Crop to Selection"), "Ctrl+Shift+X", MenuIconPath("crop-selection.svg"), [this]() { CmdCropToSelection(); }),
             M::Separator(),
-            M::Action("Flip Horizontal", MenuIconPath("flip-h.svg"), [this]() { CommitTextEdit(); if (document) document->FlipHorizontal(); }),
-            M::Action("Flip Vertical", MenuIconPath("flip-v.svg"), [this]() { CommitTextEdit(); if (document) document->FlipVertical(); }),
-            M::Action("Rotate 90° Clockwise", MenuIconPath("rotate-cw.svg"), [this]() { CommitTextEdit(); if (document) { document->Rotate90(true); surface->ZoomToFit(); } }),
-            M::Action("Rotate 90° Counter-clockwise", MenuIconPath("rotate-ccw.svg"), [this]() { CommitTextEdit(); if (document) { document->Rotate90(false); surface->ZoomToFit(); } }),
-            M::Action("Rotate 180°", MenuIconPath("rotate-180.svg"), [this]() { CommitTextEdit(); if (document) document->Rotate180(); }),
+            M::Action(Tr("Flip Horizontal"), MenuIconPath("flip-h.svg"), [this]() { CommitTextEdit(); if (document) document->FlipHorizontal(); }),
+            M::Action(Tr("Flip Vertical"), MenuIconPath("flip-v.svg"), [this]() { CommitTextEdit(); if (document) document->FlipVertical(); }),
+            M::Action(Tr("Rotate 90° Clockwise"), MenuIconPath("rotate-cw.svg"), [this]() { CommitTextEdit(); if (document) { document->Rotate90(true); surface->ZoomToFit(); } }),
+            M::Action(Tr("Rotate 90° Counter-clockwise"), MenuIconPath("rotate-ccw.svg"), [this]() { CommitTextEdit(); if (document) { document->Rotate90(false); surface->ZoomToFit(); } }),
+            M::Action(Tr("Rotate 180°"), MenuIconPath("rotate-180.svg"), [this]() { CommitTextEdit(); if (document) document->Rotate180(); }),
             M::Separator(),
-            M::Action("Flatten Image", MenuIconPath("flatten.svg"), [this]() { CmdFlatten(); }),
+            M::Action(Tr("Flatten Image"), MenuIconPath("flatten.svg"), [this]() { CmdFlatten(); }),
         })
-        .AddSubmenu("Layer", {
-            M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", MenuIconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
-            M::ActionWithShortcut("Duplicate Layer", "Ctrl+J", MenuIconPath("layer-duplicate.svg"), [this]() { CmdLayerDuplicate(); }),
-            M::Action("Delete Layer", MenuIconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); }),
+        .AddSubmenu(Tr("Layer"), {
+            M::ActionWithShortcut(Tr("New Layer"), "Ctrl+Shift+N", MenuIconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
+            M::ActionWithShortcut(Tr("Duplicate Layer"), "Ctrl+J", MenuIconPath("layer-duplicate.svg"), [this]() { CmdLayerDuplicate(); }),
+            M::Action(Tr("Delete Layer"), MenuIconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); }),
             M::Separator(),
-            M::ActionWithShortcut("Merge Down", "Ctrl+Shift+M", MenuIconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); }),
-            M::Action("Move Layer Up", MenuIconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
-            M::Action("Move Layer Down", MenuIconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
+            M::ActionWithShortcut(Tr("Merge Down"), "Ctrl+Shift+M", MenuIconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); }),
+            M::Action(Tr("Move Layer Up"), MenuIconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
+            M::Action(Tr("Move Layer Down"), MenuIconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
             M::Separator(),
-            M::Action("Edit Text", MenuIconPath("text.svg"), [this]() { CmdEditText(); }),
-            M::Action("Rasterize Layer", MenuIconPath("rasterize.svg"), [this]() { CmdRasterizeLayer(); }),
+            M::Action(Tr("Edit Text"), MenuIconPath("text.svg"), [this]() { CmdEditText(); }),
+            M::Action(Tr("Rasterize Layer"), MenuIconPath("rasterize.svg"), [this]() { CmdRasterizeLayer(); }),
             M::Separator(),
-            M::Action("Layer Properties...", MenuIconPath("layer-props.svg"), [this]() { CmdLayerProperties(); }),
+            M::Action(Tr("Layer Properties..."), MenuIconPath("layer-props.svg"), [this]() { CmdLayerProperties(); }),
         })
-        .AddSubmenu("Select", {
-            M::ActionWithShortcut("All", "Ctrl+A", MenuIconPath("select-all.svg"), [this]() { CmdSelectAll(); }),
-            M::ActionWithShortcut("None", "Ctrl+Shift+A", MenuIconPath("select-none.svg"), [this]() { CmdSelectNone(); }),
-            M::ActionWithShortcut("Invert", "Ctrl+I", MenuIconPath("select-invert.svg"), [this]() { CmdSelectInvert(); }),
-            M::Action("From Layer Alpha", MenuIconPath("select-alpha.svg"), [this]() { CmdSelectFromAlpha(); }),
+        .AddSubmenu(Tr("Select"), {
+            M::ActionWithShortcut(Tr("All"), "Ctrl+A", MenuIconPath("select-all.svg"), [this]() { CmdSelectAll(); }),
+            M::ActionWithShortcut(Tr("None"), "Ctrl+Shift+A", MenuIconPath("select-none.svg"), [this]() { CmdSelectNone(); }),
+            M::ActionWithShortcut(Tr("Invert"), "Ctrl+I", MenuIconPath("select-invert.svg"), [this]() { CmdSelectInvert(); }),
+            M::Action(Tr("From Layer Alpha"), MenuIconPath("select-alpha.svg"), [this]() { CmdSelectFromAlpha(); }),
             M::Separator(),
-            M::Action("Feather...", MenuIconPath("select-feather.svg"), [this]() { CmdSelectModify(0); }),
-            M::Action("Grow...", MenuIconPath("select-grow.svg"), [this]() { CmdSelectModify(1); }),
-            M::Action("Shrink...", MenuIconPath("select-shrink.svg"), [this]() { CmdSelectModify(2); }),
+            M::Action(Tr("Feather..."), MenuIconPath("select-feather.svg"), [this]() { CmdSelectModify(0); }),
+            M::Action(Tr("Grow..."), MenuIconPath("select-grow.svg"), [this]() { CmdSelectModify(1); }),
+            M::Action(Tr("Shrink..."), MenuIconPath("select-shrink.svg"), [this]() { CmdSelectModify(2); }),
         })
-        .AddSubmenu("Adjust", adjustItems)
-        .AddSubmenu("Filter", filterItems)
-        .AddSubmenu("View", {
-            M::ActionWithShortcut("Zoom In", "+", MenuIconPath("zoom-in.svg"), [this]() { surface->ZoomIn(); }),
-            M::ActionWithShortcut("Zoom Out", "-", MenuIconPath("zoom-out.svg"), [this]() { surface->ZoomOut(); }),
-            M::ActionWithShortcut("Fit to Window", "Ctrl+0", MenuIconPath("zoom-fit.svg"), [this]() { surface->ZoomToFit(); }),
-            M::ActionWithShortcut("Actual Pixels", "Ctrl+1", MenuIconPath("zoom-100.svg"), [this]() { surface->ZoomToActual(); }),
+        .AddSubmenu(Tr("Adjust"), adjustItems)
+        .AddSubmenu(Tr("Filter"), filterItems)
+        .AddSubmenu(Tr("View"), {
+            M::ActionWithShortcut(Tr("Zoom In"), "+", MenuIconPath("zoom-in.svg"), [this]() { if (surface) surface->ZoomIn(); }),
+            M::ActionWithShortcut(Tr("Zoom Out"), "-", MenuIconPath("zoom-out.svg"), [this]() { if (surface) surface->ZoomOut(); }),
+            M::ActionWithShortcut(Tr("Fit to Window"), "Ctrl+0", MenuIconPath("zoom-fit.svg"), [this]() { if (surface) surface->ZoomToFit(); }),
+            M::ActionWithShortcut(Tr("Actual Pixels"), "Ctrl+1", MenuIconPath("zoom-100.svg"), [this]() { if (surface) surface->ZoomToActual(); }),
             M::Separator(),
-            WithIcon(M::Checkbox("Pixel Grid (at 8x and above)", true, [this](bool on) { surface->SetShowPixelGrid(on); }),
+            WithIcon(M::Checkbox(Tr("Pixel Grid (at 8x and above)"), true, [this](bool on) { if (surface) surface->SetShowPixelGrid(on); }),
                      MenuIconPath("pixel-grid.svg")),
-            WithIcon(M::Checkbox("Show Selection Outline", true, [this](bool on) { surface->SetShowSelection(on); }),
+            WithIcon(M::Checkbox(Tr("Show Selection Outline"), true, [this](bool on) { if (surface) surface->SetShowSelection(on); }),
                      MenuIconPath("selection-outline.svg")),
         })
-        .AddSubmenu("Help", {
-            M::Action("About UltraPaint", MenuIconPath("about.svg"), [this]() { CmdAbout(); }),
+        .AddSubmenu(Tr("Help"), {
+            M::Action(Tr("About UltraPaint"), MenuIconPath("about.svg"), [this]() { CmdAbout(); }),
         })
         .Build();
     menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -631,22 +647,22 @@ void UltraPaintWindow::BuildToolbar() {
     app.style = ToolbarStyle::Flat;
     app.hoverBackgroundColor = Color(0, 0, 0, 18);
     toolbar->SetAppearance(app);
-    toolbar->AddButton("up-tb-new", "", TexterIconPath("add-document.svg"), [this]() { CmdNew(); })->SetTooltip("New image (Ctrl+N)");
-    toolbar->AddButton("up-tb-open", "", TexterIconPath("folder-open.svg"), [this]() { CmdOpen(); })->SetTooltip("Open (Ctrl+O)");
-    toolbar->AddButton("up-tb-save", "", TexterIconPath("save.svg"), [this]() { CmdSave(); })->SetTooltip("Save (Ctrl+S)");
+    toolbar->AddButton("up-tb-new", "", TexterIconPath("add-document.svg"), [this]() { CmdNew(); })->SetTooltip(Tr("New image (Ctrl+N)"));
+    toolbar->AddButton("up-tb-open", "", TexterIconPath("folder-open.svg"), [this]() { CmdOpen(); })->SetTooltip(Tr("Open (Ctrl+O)"));
+    toolbar->AddButton("up-tb-save", "", TexterIconPath("save.svg"), [this]() { CmdSave(); })->SetTooltip(Tr("Save (Ctrl+S)"));
     toolbar->AddSeparator("up-tb-s1");
     undoButton = toolbar->AddButton("up-tb-undo", "", TexterIconPath("undo.svg"), [this]() { CmdUndo(); });
-    undoButton->SetTooltip("Undo (Ctrl+Z)");
+    undoButton->SetTooltip(Tr("Undo (Ctrl+Z)"));
     redoButton = toolbar->AddButton("up-tb-redo", "", TexterIconPath("redo.svg"), [this]() { CmdRedo(); });
-    redoButton->SetTooltip("Redo (Ctrl+Y)");
+    redoButton->SetTooltip(Tr("Redo (Ctrl+Y)"));
     toolbar->AddSeparator("up-tb-s2");
-    toolbar->AddButton("up-tb-zoomout", "", TexterIconPath("zoom-out.svg"), [this]() { surface->ZoomOut(); })->SetTooltip("Zoom out (-)");
-    toolbar->AddButton("up-tb-zoomin", "", TexterIconPath("zoom-in.svg"), [this]() { surface->ZoomIn(); })->SetTooltip("Zoom in (+)");
-    toolbar->AddButton("up-tb-fit", "", IconPath("zoom-fit.svg"), [this]() { surface->ZoomToFit(); })->SetTooltip("Fit to window (Ctrl+0)");
-    toolbar->AddButton("up-tb-100", "", IconPath("zoom-100.svg"), [this]() { surface->ZoomToActual(); })->SetTooltip("Actual pixels (Ctrl+1)");
+    toolbar->AddButton("up-tb-zoomout", "", TexterIconPath("zoom-out.svg"), [this]() { if (surface) surface->ZoomOut(); })->SetTooltip(Tr("Zoom out (-)"));
+    toolbar->AddButton("up-tb-zoomin", "", TexterIconPath("zoom-in.svg"), [this]() { if (surface) surface->ZoomIn(); })->SetTooltip(Tr("Zoom in (+)"));
+    toolbar->AddButton("up-tb-fit", "", IconPath("zoom-fit.svg"), [this]() { if (surface) surface->ZoomToFit(); })->SetTooltip(Tr("Fit to window (Ctrl+0)"));
+    toolbar->AddButton("up-tb-100", "", IconPath("zoom-100.svg"), [this]() { if (surface) surface->ZoomToActual(); })->SetTooltip(Tr("Actual pixels (Ctrl+1)"));
     toolbar->AddSeparator("up-tb-s3");
-    toolbar->AddButton("up-tb-layer", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer (Ctrl+Shift+N)");
-    toolbar->AddButton("up-tb-export", "", IconPath("export.svg"), [this]() { CmdExport(); })->SetTooltip("Export with options (Ctrl+E)");
+    toolbar->AddButton("up-tb-layer", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip(Tr("New layer (Ctrl+Shift+N)"));
+    toolbar->AddButton("up-tb-export", "", IconPath("export.svg"), [this]() { CmdExport(); })->SetTooltip(Tr("Export with options (Ctrl+E)"));
     for (auto& c : toolbar->Children()) {
         if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
             ButtonStyle flat = b->GetStyle();
@@ -780,7 +796,7 @@ void UltraPaintWindow::BuildRightPanel() {
     rightPanel->SetBackgroundColor(GroupBoxVisualStyle::SectionPageColor());
 
     // ----- colour -----
-    auto colourPanel = PanelCard("up-color-card", "Colour");
+    auto colourPanel = PanelCard("up-color-card", Tr("Colour"));
     const float cardInner = CardInnerWidth(*colourPanel);
     colorPicker = CreateColorPicker("up-color", foreground.ToColor(), 0, 0, cardInner, 300);
     colorPicker->SetStyle(ColorPickerStyle::Light());
@@ -846,11 +862,11 @@ void UltraPaintWindow::BuildRightPanel() {
     rightPanel->AddChild(colourPanel);
 
     // ----- tool options: captioned with the active tool's name -----
-    optionsPanel = PanelCard("up-options", "Tool Options");
+    optionsPanel = PanelCard("up-options", Tr("Tool Options"));
     rightPanel->AddChild(optionsPanel);
 
     // ----- layers -----
-    layersPanel = PanelCard("up-layers", "Layers");
+    layersPanel = PanelCard("up-layers", Tr("Layers"));
 
     auto buttons = std::make_shared<UltraCanvasToolbar>("up-layer-buttons", 0, 0, 0, 30);
     ToolbarAppearance app = buttons->GetAppearance();
@@ -862,13 +878,13 @@ void UltraPaintWindow::BuildRightPanel() {
     app.activeBackgroundColor = Colors::ListRowSelected;
     buttons->SetAppearance(app);
     buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    buttons->AddButton("up-l-add", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer");
-    buttons->AddButton("up-l-dup", "", IconPath("layer-duplicate.svg"), [this]() { CmdLayerDuplicate(); })->SetTooltip("Duplicate layer");
-    buttons->AddButton("up-l-del", "", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); })->SetTooltip("Delete layer");
-    buttons->AddButton("up-l-up", "", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); })->SetTooltip("Move up");
-    buttons->AddButton("up-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip("Move down");
-    buttons->AddButton("up-l-merge", "", IconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); })->SetTooltip("Merge down");
-    buttons->AddButton("up-l-props", "", IconPath("layer-props.svg"), [this]() { CmdLayerProperties(); })->SetTooltip("Layer properties");
+    buttons->AddButton("up-l-add", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip(Tr("New layer"));
+    buttons->AddButton("up-l-dup", "", IconPath("layer-duplicate.svg"), [this]() { CmdLayerDuplicate(); })->SetTooltip(Tr("Duplicate layer"));
+    buttons->AddButton("up-l-del", "", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); })->SetTooltip(Tr("Delete layer"));
+    buttons->AddButton("up-l-up", "", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); })->SetTooltip(Tr("Move up"));
+    buttons->AddButton("up-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip(Tr("Move down"));
+    buttons->AddButton("up-l-merge", "", IconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); })->SetTooltip(Tr("Merge down"));
+    buttons->AddButton("up-l-props", "", IconPath("layer-props.svg"), [this]() { CmdLayerProperties(); })->SetTooltip(Tr("Layer properties"));
     // Flat, as the main toolbar's, and just round their 24 px icons: the
     // seven of them fit the card's width (in the toolbar's own size, the
     // last one was cut off by the panel's edge).
@@ -888,8 +904,15 @@ void UltraPaintWindow::BuildRightPanel() {
     auto opRow = std::make_shared<UltraCanvasContainer>("up-l-oprow", 0, 0, 0, kRowH);
     opRow->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     opRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    auto opLabel = CreateLabel("up-l-oplabel", 0, 0, 52, kRowH, "Opacity");
+    auto opLabel = CreateLabel("up-l-oplabel", 0, 0, 52, kRowH, Tr("Opacity"));
     opLabel->SetFontSize(11);
+    // At least the English width, wider for a longer word ("Deckkraft")
+    opLabel->size.width = CSSLayout::Dimension::Auto();
+    {
+        CSSLayout::BoxConstraints limits = opLabel->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(52.0f);
+        opLabel->boxConstraints = limits;
+    }
     opLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     opRow->AddChild(opLabel);
     layerOpacity = CreateHorizontalSlider("up-l-opacity", 0, 0, 100, kRowH, 0, 100);
@@ -901,15 +924,32 @@ void UltraPaintWindow::BuildRightPanel() {
         if (document) document->SetLayerOpacity(document->GetActiveLayerIndex(), v / 100.0f);
     };
     opRow->AddChild(layerOpacity);
+    layersPanel->AddChild(opRow);
+
+    // The blend mode on a row of its own, the list as wide as the panel: a
+    // mode's name runs much longer in some languages than "Normal"
+    auto blendRow = std::make_shared<UltraCanvasContainer>("up-l-blendrow", 0, 0, 0, kRowH);
+    blendRow->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    blendRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto blendLabel = CreateLabel("up-l-blendlabel", 0, 0, 52, kRowH, Tr("Blend mode"));
+    blendLabel->SetFontSize(11);
+    blendLabel->size.width = CSSLayout::Dimension::Auto();
+    {
+        CSSLayout::BoxConstraints limits = blendLabel->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(52.0f);
+        blendLabel->boxConstraints = limits;
+    }
+    blendLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    blendRow->AddChild(blendLabel);
     layerBlend = CreateDropdown("up-l-blend", 0, 0, 96, kRowH);
-    for (RasterBlendMode m : AllRasterBlendModes()) layerBlend->AddItem(RasterBlendModeName(m));
+    for (RasterBlendMode m : AllRasterBlendModes()) layerBlend->AddItem(UltraPaintDialogParts::BlendModeDisplayName(m));
     layerBlend->SetSelectedIndex(0, false);
     layerBlend->onSelectionChanged = [this](int i, const DropdownItem&) {
         if (document) document->SetLayerBlendMode(document->GetActiveLayerIndex(), AllRasterBlendModes()[static_cast<size_t>(std::max(0, i))]);
     };
-    layerBlend->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    opRow->AddChild(layerBlend);
-    layersPanel->AddChild(opRow);
+    layerBlend->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    blendRow->AddChild(layerBlend);
+    layersPanel->AddChild(blendRow);
 
     layerRows = std::make_shared<UltraCanvasContainer>("up-layer-rows", 0, 0, 0, 0);
     layerRows->layout.SetFlexColumn().SetFlexGap(2).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -936,6 +976,14 @@ void UltraPaintWindow::BuildStatusBar() {
     statusPos  = mk("up-st-pos", 130, false);
     statusZoom = mk("up-st-zoom", 80, false);
     statusSize = mk("up-st-size", 160, false);
+    // "{0} x {1} px, {n} layers" runs longer in some languages: 160 at least,
+    // as wide as the text when it needs more
+    statusSize->size.width = CSSLayout::Dimension::Auto();
+    {
+        CSSLayout::BoxConstraints limits = statusSize->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(160.0f);
+        statusSize->boxConstraints = limits;
+    }
     statusHint = mk("up-st-hint", 0, true);
     window->AddChild(statusBar);
 }
@@ -998,8 +1046,8 @@ void UltraPaintWindow::InstallShortcuts() {
                 case UCKeys::J: CmdLayerDuplicate(); return true;
                 case UCKeys::M: if (e.shift) CmdLayerMergeDown(); else CmdCurves(); return true;
                 case UCKeys::Backspace: CmdFill(false); return true;
-                case UCKeys::Key0: surface->ZoomToFit(); return true;
-                case UCKeys::Key1: surface->ZoomToActual(); return true;
+                case UCKeys::Key0: if (surface) surface->ZoomToFit(); return true;
+                case UCKeys::Key1: if (surface) surface->ZoomToActual(); return true;
                 default: break;
             }
             return false;
@@ -1068,6 +1116,7 @@ void UltraPaintWindow::BuildDocumentTabs() {
     tabPages->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     canvasColumn->AddChild(tabPages);
     tabStrip->SetContentHost(tabPages);
+    BuildStartPage();
 
     tabStrip->onTabChange = [this](int, int newIndex) {
         if (closingTab) return;   // RemoveTabNow picks the tab on show itself
@@ -1124,6 +1173,7 @@ void UltraPaintWindow::WireSurface(const std::shared_ptr<UltraCanvasPaintSurface
 
 void UltraPaintWindow::AddDocumentTab(std::shared_ptr<UCRasterDocument> doc) {
     if (!doc || !tabStrip) return;
+    ShowStartPage(false);
     auto tab = std::make_shared<DocumentTab>();
     tab->surface = CreatePaintSurface("up-surface-" + std::to_string(++surfaceSerial));
     tab->surface->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -1160,6 +1210,155 @@ void UltraPaintWindow::ShowInTab(std::shared_ptr<UCRasterDocument> doc) {
         return;
     }
     AddDocumentTab(std::move(doc));
+}
+
+// ===========================================================================
+// THE START PAGE
+// ===========================================================================
+
+namespace {
+    std::shared_ptr<UCRasterLayer> DecodeClipboardImage(std::vector<uint8_t>& bytes);   // under PASTE
+}
+
+void UltraPaintWindow::BuildStartPage() {
+    startPage = std::make_shared<UltraCanvasContainer>("up-start", 0, 0, 0, 0);
+    startPage->layout.SetFlexColumn().SetFlexGap(14)
+              .SetFlexAlignItems(CSSLayout::AlignItems::Center)
+              .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+    startPage->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    startPage->SetVisible(false);
+    canvasColumn->AddChild(startPage);
+
+    // Files dropped anywhere on the window while the start page shows open
+    // the way a drop on the canvas does (there is no canvas to drop on).
+    window->InstallEventFilter("up-start-drop", [this](const UCEvent& e) -> bool {
+        if (e.type != UCEventType::Drop || e.droppedFiles.empty()) return false;
+        if (!startPage || !startPage->IsVisible()) return false;
+        HandleDroppedFiles(e.droppedFiles);
+        return true;
+    }, { UCEventType::Drop });
+
+    // Each a pastel of its own, with dark ink: they read the same under a
+    // light and a dark theme.
+    auto add = [this](const std::string& id, const std::string& text, const std::string& icon,
+                      const Color& face, const Color& hover, const std::string& tooltip,
+                      std::function<void()> action) {
+        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 300, 64, text);
+        b->SetIcon(icon);
+        b->SetIconPosition(ButtonIconPosition::Left);
+        b->SetIconSize(32, 32);
+        b->SetIconSpacing(14);
+        b->SetFontSize(15.0f);
+        b->SetColors(face, hover);
+        b->SetTextColors(Color(40, 44, 52, 255));
+        b->SetBorder(1.0f, Color(0, 0, 0, 30));
+        b->SetCornerRadius(10.0f);
+        b->SetTooltip(tooltip);
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        b->onClick = std::move(action);
+        startPage->AddChild(b);
+    };
+    add("up-start-new", Tr("Create new bitmap"), IconPath("new.svg"),
+        Color(205, 239, 217, 255), Color(184, 229, 199, 255),
+        Tr("A new, empty image: its size and background are asked first (Ctrl+N)"),
+        [this]() { CmdNew(); });
+    add("up-start-paste", Tr("Paste image"), MenuIconPath("paste-image.svg"),
+        Color(255, 222, 196, 255), Color(250, 205, 170, 255),
+        Tr("The picture on the clipboard as a new image (Ctrl+V)"),
+        [this]() { CmdPasteAsNew(); });
+#ifdef ULTRAPAINT_HAVE_CLIPBOARD_HISTORY
+    add("up-start-history", Tr("Clipboard history"), MenuIconPath("paste-last.svg"),
+        Color(206, 226, 250, 255), Color(184, 212, 246, 255),
+        Tr("The last 20 images copied, to pick one from"),
+        [this]() { CmdClipboardHistory(); });
+#endif
+}
+
+void UltraPaintWindow::ShowStartPage(bool show) {
+    if (!startPage || startPage->IsVisible() == show) return;
+    startPage->SetVisible(show);
+    if (tabStrip) tabStrip->SetVisible(!show);
+    if (tabPages) tabPages->SetVisible(!show);
+    if (show) {
+        // Nothing is open: the panels that show an image are emptied.
+        if (magnifierFrame) magnifierFrame->SetVisible(false);
+        if (layerRows) layerRows->ClearChildren();
+        if (undoButton) undoButton->SetDisabled(true);
+        if (redoButton) redoButton->SetDisabled(true);
+        for (const auto& label : {statusPos, statusZoom, statusSize}) if (label) label->SetText("");
+        if (window) window->SetWindowTitle("UltraPaint " ULTRAPAINT_VERSION);
+    }
+    if (canvasColumn) {
+        canvasColumn->InvalidateLayout();
+        canvasColumn->RequestRedraw();
+    }
+}
+
+void UltraPaintWindow::CmdClipboardHistory() {
+#ifdef ULTRAPAINT_HAVE_CLIPBOARD_HISTORY
+    namespace fs = std::filesystem;
+    constexpr size_t kShown = 20;
+    std::vector<ClipboardHistoryEntry> entries;
+    std::error_code ec;
+    // Only a history the desktop or UltraClipboard keeps: none is started here.
+    if (UltraCanvasClipboardHistory::IsAvailable() &&
+        fs::is_directory(PathFromUtf8(UltraCanvasClipboardHistory::DefaultDirectory()), ec)) {
+        UltraCanvasClipboardHistory history;
+        if (history.Open()) {
+            ClipboardHistoryQuery query;
+            query.kinds = {ClipboardEntryKind::Image};
+            query.newestFirst = true;
+            query.limit = kShown;
+            entries = history.List(query);
+        }
+    }
+    if (entries.empty()) {
+        UltraCanvasDialogManager::ShowInformation(Tr("There is no image in the clipboard history"), "UltraPaint",
+                                                  nullptr, window.get());
+        return;
+    }
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+    std::vector<UltraPaintPickerItem> items;
+    std::vector<int64_t> ids;
+    for (const auto& e : entries) {
+        UltraPaintPickerItem item;
+        if (!e.thumbnailPath.empty() && fs::is_regular_file(PathFromUtf8(e.thumbnailPath), ec))
+            item.thumbnailPath = e.thumbnailPath;
+        item.caption = TrF("{0} x {1}", e.width, e.height);
+        item.tooltip = TrF("Copied {0}", FormatClipboardAge(e.lastUsedAt, now));
+        items.push_back(std::move(item));
+        ids.push_back(e.id);
+    }
+    auto dlg = std::make_shared<UltraPaintImagePickerDialog>(Tr("Clipboard History"), items,
+                                                             MenuIconPath("paste-image.svg"));
+    std::weak_ptr<bool> alive = lifeToken;
+    dlg->onPick = [this, alive, ids, entries](int index) {
+        if (alive.expired() || index < 0 || index >= static_cast<int>(ids.size())) return;
+        UltraCanvasClipboardHistory history;
+        ClipboardSnapshot snapshot;
+        std::shared_ptr<UCRasterLayer> layer;
+        if (history.Open() && history.ReadFormats(ids[index], snapshot.formats)) {
+            if (const ClipboardFormat* image = snapshot.FindImage()) {
+                std::string extension;
+                std::vector<uint8_t> bytes = ClipboardImageFile(*image, extension);
+                layer = DecodeClipboardImage(bytes);
+            }
+        }
+        if (!layer || !layer->IsValid()) {
+            if (statusHint) statusHint->SetText(Tr("That image could not be read from the clipboard history"));
+            return;
+        }
+        const int64_t at = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        PasteAsNewImage(layer, PastedFrom::CopiedWhen);
+        if (statusHint) {
+            statusHint->SetText(PastedText(PastedFrom::CopiedWhen, FormatClipboardAge(entries[index].lastUsedAt, at),
+                                           layer->GetWidth(), layer->GetHeight(), true));
+        }
+    };
+    ShowDialog(dlg);
+#endif
 }
 
 bool UltraPaintWindow::IsPristine(const DocumentTab& tab) const {
@@ -1236,16 +1435,107 @@ void UltraPaintWindow::CloseTab(int index) {
     if (index < 0 || index >= static_cast<int>(documentTabs.size())) return;
     if (index == activeTab) CommitTextEdit();
     auto doc = documentTabs[index]->document;
-    if (!doc || !doc->IsModified()) { RemoveTabNow(index); return; }
+    const bool modified = doc && doc->IsModified();
+    // The image on show, unchanged, goes at once. Any other image is brought
+    // to the front first, so the person sees what they are closing, and the
+    // close waits for their yes.
+    if (!doc || (!modified && index == activeTab)) { RemoveTabNow(index); return; }
     if (index != activeTab && tabStrip) tabStrip->SetActiveTab(index);   // the image the question is about
     const std::string name = tabStrip ? tabStrip->GetTabTitle(index) : std::string();
     std::weak_ptr<bool> alive = lifeToken;
     std::weak_ptr<UCRasterDocument> weakDoc = doc;
-    ConfirmDiscard(TrF("{0} has unsaved changes. Close it anyway?", name), [this, alive, weakDoc]() {
+    auto removeIt = [this, alive, weakDoc]() {
         if (alive.expired()) return;
         auto d = weakDoc.lock();
         const int at = d ? TabIndexOf(d.get()) : -1;   // the tabs may have moved meanwhile
         if (at >= 0) RemoveTabNow(at);
+    };
+    if (!modified) {
+        ConfirmDiscard(TrF("Close {0}?", name), removeIt);
+        return;
+    }
+    // Unsaved: Save (then close, once it is saved), Don't save, or Cancel.
+    AskSaveBeforeClosing(name, [this, alive, weakDoc, removeIt](SaveAnswer answer) {
+        if (alive.expired()) return;
+        if (answer == SaveAnswer::Discard) { removeIt(); return; }
+        if (answer != SaveAnswer::Save) return;
+        auto d = weakDoc.lock();
+        const int at = d ? TabIndexOf(d.get()) : -1;
+        if (at < 0) return;
+        // Saving works on the image on show: this one, brought to the front
+        // above (or back to it, should another tab have been picked since).
+        if (at != activeTab && tabStrip) tabStrip->SetActiveTab(at);
+        CmdSave(removeIt);   // Save As for an untitled image; a cancelled save keeps the tab
+    });
+}
+
+void UltraPaintWindow::AskSaveBeforeClosing(const std::string& name, const std::function<void(SaveAnswer)>& onAnswer) {
+    DialogConfig config;
+    config.title = "UltraPaint";
+    config.message = TrF("Save the changes to {0} before closing it?", name);
+    config.dialogType = DialogType::Question;
+    config.buttons = DialogButtons::NoButtons;
+    config.width = 460;
+    config.height = 170;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->AddCustomButton(Tr("Don't save"), DialogResult::No, DialogButtonRole::Destructive);
+    dialog->AddCustomButton(Tr("Save"), DialogResult::Yes, DialogButtonRole::Default);
+    dialog->SetFollowTheme(true);
+    UltraCanvasDialogManager::ShowDialog(dialog, [onAnswer](DialogResult result) {
+        if (!onAnswer) return;
+        if (result == DialogResult::Yes) onAnswer(SaveAnswer::Save);
+        else if (result == DialogResult::No) onAnswer(SaveAnswer::Discard);
+        else onAnswer(SaveAnswer::Cancel);
+    }, window.get());
+}
+
+void UltraPaintWindow::ReviewUnsavedTabs(const std::function<void()>& done) {
+    CommitTextEdit();
+    ReviewUnsavedFrom(std::make_shared<std::vector<const UCRasterDocument*>>(), done);
+}
+
+void UltraPaintWindow::ReviewUnsavedFrom(std::shared_ptr<std::vector<const UCRasterDocument*>> letGo,
+                                         const std::function<void()>& done) {
+    // The first image, in the strip's order, with changes nobody has
+    // answered for yet.
+    int index = -1;
+    for (size_t i = 0; i < documentTabs.size(); ++i) {
+        const auto& d = documentTabs[i]->document;
+        if (d && d->IsModified() && std::find(letGo->begin(), letGo->end(), d.get()) == letGo->end()) {
+            index = static_cast<int>(i);
+            break;
+        }
+    }
+    if (index < 0) {
+        // Every one answered: the ones let go of lose their mark now, so
+        // closing does not ask about them again.
+        for (const auto& tab : documentTabs)
+            if (tab->document && std::find(letGo->begin(), letGo->end(), tab->document.get()) != letGo->end())
+                tab->document->SetModified(false);
+        if (done) done();
+        return;
+    }
+    if (index != activeTab && tabStrip) tabStrip->SetActiveTab(index);   // the image the question is about
+    const std::string name = tabStrip ? tabStrip->GetTabTitle(index) : std::string();
+    std::weak_ptr<bool> alive = lifeToken;
+    std::weak_ptr<UCRasterDocument> weakDoc = documentTabs[index]->document;
+    AskSaveBeforeClosing(name, [this, alive, weakDoc, letGo, done](SaveAnswer answer) {
+        if (alive.expired() || answer == SaveAnswer::Cancel) return;
+        auto d = weakDoc.lock();
+        if (!d) { ReviewUnsavedFrom(letGo, done); return; }   // closed meanwhile
+        if (answer == SaveAnswer::Discard) {
+            letGo->push_back(d.get());
+            ReviewUnsavedFrom(letGo, done);
+            return;
+        }
+        const int at = TabIndexOf(d.get());
+        if (at < 0) { ReviewUnsavedFrom(letGo, done); return; }
+        if (at != activeTab && tabStrip) tabStrip->SetActiveTab(at);
+        // Saved, it has no changes left; a save cancelled or failed stops here.
+        CmdSave([this, alive, letGo, done]() {
+            if (!alive.expired()) ReviewUnsavedFrom(letGo, done);
+        });
     });
 }
 
@@ -1273,8 +1563,8 @@ void UltraPaintWindow::RemoveTabNow(int index) {
     tabStrip->RemoveTab(index);
     closingTab = false;
     if (documentTabs.empty()) {
-        // The window stays, with a blank canvas.
-        NewImage(lastNewImage);
+        // The window stays, with the start page.
+        ShowStartPage(true);
         return;
     }
     // The strip keeps its active index where it was, which after a removal
@@ -1362,7 +1652,7 @@ void UltraPaintWindow::NewImage(const UltraPaintNewImageResult& r) {
     // A new image always gets a tab of its own; the window's first is made
     // here too.
     AddDocumentTab(std::make_shared<UCRasterDocument>(r.width, r.height, bg));
-    if (statusHint) statusHint->SetText("New " + std::to_string(r.width) + " x " + std::to_string(r.height) + " image");
+    if (statusHint) statusHint->SetText(TrF("New {0} x {1} image", r.width, r.height));
 }
 
 void UltraPaintWindow::OpenFile(const std::string& path) {
@@ -1382,9 +1672,9 @@ void UltraPaintWindow::AskForFilePassword(const std::string& path,
                                           const std::function<void()>& notOpened,
                                           const std::string& note) {
     const std::string prompt = (note.empty() ? std::string() : note + "\n") +
-                               "Password for " + FileNameOf(path) + ":";
+                               TrF("Password for {0}:", FileNameOf(path));
     std::weak_ptr<bool> alive = lifeToken;
-    UltraCanvasDialogManager::ShowInputDialog(prompt, "Open " + FileNameOf(path), std::string(), InputType::Password,
+    UltraCanvasDialogManager::ShowInputDialog(prompt, TrF("Open {0}", FileNameOf(path)), std::string(), InputType::Password,
         [this, alive, path, attempt, notOpened](DialogResult r, const std::string& password) {
             if (alive.expired()) return;
             auto* app = UltraCanvasApplicationBase::GetCurrent();
@@ -1405,16 +1695,16 @@ void UltraPaintWindow::AskForFilePassword(const std::string& path,
                     if (!alive.expired()) AskForFilePassword(path, attempt, notOpened, why);
                 });
             };
-            if (password.empty()) { askAgain("Type the password."); return; }
+            if (password.empty()) { askAgain(Tr("Type the password.")); return; }
             std::string error;
             switch (attempt(password, error)) {
                 case PasswordTry::Opened:
                     return;
                 case PasswordTry::Wrong:
-                    askAgain("That password is not right.");
+                    askAgain(Tr("That password is not right."));
                     return;
                 case PasswordTry::Failed:
-                    UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error), "Open",
+                    UltraCanvasDialogManager::ShowError(TrF("Could not open {0}", path) + "\n" + ShortError(error), Tr("Open"),
                         [alive, notOpened](DialogResult) { if (!alive.expired() && notOpened) notOpened(); },
                         window.get());
                     return;
@@ -1426,11 +1716,11 @@ bool UltraPaintWindow::LoadIntoWindow(const std::string& path) {
     auto doc = std::make_shared<UCRasterDocument>();
     std::string error;
     if (!doc->LoadFromFile(path, error)) {
-        UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error), "Open", nullptr, window.get());
+        UltraCanvasDialogManager::ShowError(TrF("Could not open {0}", path) + "\n" + ShortError(error), Tr("Open"), nullptr, window.get());
         return false;
     }
     ShowInTab(doc);
-    if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
+    if (statusHint) statusHint->SetText(TrF("Opened {0}", FileNameOf(path)));
     return true;
 }
 
@@ -1445,8 +1735,8 @@ void UltraPaintWindow::HandleDroppedFiles(const std::vector<std::string>& files)
     }
     if (usable.empty()) {
         if (statusHint) {
-            statusHint->SetText(files.empty() ? "Nothing was dropped"
-                                              : "UltraPaint cannot open " + FileNameOf(files.front()));
+            statusHint->SetText(files.empty() ? Tr("Nothing was dropped")
+                                              : TrF("UltraPaint cannot open {0}", FileNameOf(files.front())));
         }
         return;
     }
@@ -1462,10 +1752,10 @@ void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
     // and the background. Whatever the user orbits to is what gets rendered.
     std::vector<ModelViewAction> actions;
     if (fromDrop && document && document->IsValid()) {
-        actions.push_back(ModelViewAction{"merge", "Merge image", false});
+        actions.push_back(ModelViewAction{"merge", Tr("Merge image"), false});
         actions.push_back(ModelViewAction{"tab", Tr("Open in new tab"), true});
     } else {
-        actions.push_back(ModelViewAction{"open", "Open", true});
+        actions.push_back(ModelViewAction{"open", Tr("Open"), true});
     }
 
     ShowModelViewDialog(path, actions, window.get(),
@@ -1476,8 +1766,8 @@ void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
         std::string error;
         std::shared_ptr<UCRasterLayer> layer = dialog.Rasterize(error);
         if (!layer) {
-            UltraCanvasDialogManager::ShowError("Could not render " + path + "\n" + ShortError(error),
-                                                "Import", nullptr, window.get());
+            UltraCanvasDialogManager::ShowError(TrF("Could not render {0}", path) + "\n" + ShortError(error),
+                                                Tr("Import"), nullptr, window.get());
             return;
         }
 
@@ -1548,7 +1838,7 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         request.naturalHeight = preloaded->GetHeight();
         if (!fromDrop) {
             ShowInTab(preloaded);
-            if (statusHint) statusHint->SetText("Opened " + FileNameOf(path) + " (password-protected)");
+            if (statusHint) statusHint->SetText(TrF("Opened {0} (password-protected)", FileNameOf(path)));
             return;
         }
     } else if (IsVectorPath(path)) {
@@ -1567,8 +1857,8 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
             return;
         }
         if (!info.ok) {
-            UltraCanvasDialogManager::ShowError("Could not read " + path + "\n" + ShortError(info.error),
-                                                "Open", nullptr, window.get());
+            UltraCanvasDialogManager::ShowError(TrF("Could not read {0}", path) + "\n" + ShortError(info.error),
+                                                Tr("Open"), nullptr, window.get());
             return;
         }
         request.vector = true;
@@ -1580,8 +1870,8 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         preloaded = std::make_shared<UCRasterDocument>();
         std::string error;
         if (!preloaded->LoadFromFile(path, error)) {
-            UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error),
-                                                "Open", nullptr, window.get());
+            UltraCanvasDialogManager::ShowError(TrF("Could not open {0}", path) + "\n" + ShortError(error),
+                                                Tr("Open"), nullptr, window.get());
             return;
         }
         request.naturalWidth = preloaded->GetWidth();
@@ -1589,7 +1879,7 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         if (!fromDrop) {
             // Opening a bitmap from the File menu asks nothing.
             ShowInTab(preloaded);
-            if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
+            if (statusHint) statusHint->SetText(TrF("Opened {0}", FileNameOf(path)));
             return;
         }
     }
@@ -1727,11 +2017,11 @@ void UltraPaintWindow::ApplyLoaded(const std::string& path, const UltraPaintImpo
             break;
         case UltraPaintImportResult::Action::NewTab:
             AddDocumentTab(incoming);
-            if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
+            if (statusHint) statusHint->SetText(TrF("Opened {0}", FileNameOf(path)));
             break;
         case UltraPaintImportResult::Action::Open:
             ShowInTab(incoming);
-            if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
+            if (statusHint) statusHint->SetText(TrF("Opened {0}", FileNameOf(path)));
             break;
         default:
             break;
@@ -1749,8 +2039,8 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
         std::string error;
         auto layer = RasterizeModelFile(path, options, error);
         if (!layer) {
-            UltraCanvasDialogManager::ShowError("Could not render " + path + "\n" + ShortError(error),
-                                                "Import", nullptr, window.get());
+            UltraCanvasDialogManager::ShowError(TrF("Could not render {0}", path) + "\n" + ShortError(error),
+                                                Tr("Import"), nullptr, window.get());
             return nullptr;
         }
         auto doc = std::make_shared<UCRasterDocument>(layer->GetWidth(), layer->GetHeight(),
@@ -1772,8 +2062,8 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
         std::string error;
         auto layer = RasterizeVectorFile(path, options, error);
         if (!layer) {
-            UltraCanvasDialogManager::ShowError("Could not rasterize " + path + "\n" + ShortError(error),
-                                                "Open", nullptr, window.get());
+            UltraCanvasDialogManager::ShowError(TrF("Could not rasterize {0}", path) + "\n" + ShortError(error),
+                                                Tr("Open"), nullptr, window.get());
             return nullptr;
         }
         // A rasterized drawing starts as an unsaved image: writing it back to
@@ -1792,8 +2082,8 @@ std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::stri
     auto doc = std::make_shared<UCRasterDocument>();
     std::string error;
     if (!doc->LoadFromFile(path, error)) {
-        UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error),
-                                            "Open", nullptr, window.get());
+        UltraCanvasDialogManager::ShowError(TrF("Could not open {0}", path) + "\n" + ShortError(error),
+                                            Tr("Open"), nullptr, window.get());
         return nullptr;
     }
     return doc;
@@ -1835,9 +2125,12 @@ void UltraPaintWindow::LoadDocumentAsking(const std::string& path, const UltraPa
                 return;
             }
         }
-        note = before.size() == 1 ? "The password given before does not open this one."
-                                  : "None of the " + std::to_string(before.size()) +
-                                    " passwords given before opens this one.";
+        // One password has a sentence of its own; TrN's forms all carry the count
+        note = before.size() == 1
+                   ? Tr("The password given before does not open this one.")
+                   : TrN("None of the {n} password given before opens this one.",
+                         "None of the {n} passwords given before opens this one.",
+                         static_cast<long long>(before.size()));
     }
     // Its password first. The answer is tried in the question's own
     // callback; the document comes back on the next turn of the loop, once
@@ -1895,8 +2188,8 @@ void UltraPaintWindow::MergeDocument(const std::shared_ptr<UCRasterDocument>& in
     SelectTool(PaintToolId::Move);
     if (statusHint) {
         const bool cropped = image->GetWidth() > canvasW || image->GetHeight() > canvasH;
-        statusHint->SetText("Merged " + FileNameOf(path) + " as a new layer" +
-                            (cropped ? " (cropped to the canvas)" : ""));
+        statusHint->SetText(cropped ? TrF("Merged {0} as a new layer (cropped to the canvas)", FileNameOf(path))
+                                    : TrF("Merged {0} as a new layer", FileNameOf(path)));
     }
 }
 
@@ -1925,15 +2218,15 @@ bool UltraPaintWindow::SaveToPath(const std::string& path, const FileSaveImageSi
     const bool resized = !size.IsOriginal() && !UCRasterDocument::IsProjectFile(path) &&
                          UltraCanvasFileLoader::GetImageExportOptions(path, size, options);
     if (!document->SaveToFile(path, error, resized ? &options : nullptr)) {
-        UltraCanvasDialogManager::ShowError("Could not save " + path + "\n" + ShortError(error), "Save", nullptr, window.get());
+        UltraCanvasDialogManager::ShowError(TrF("Could not save {0}", path) + "\n" + ShortError(error), Tr("Save"), nullptr, window.get());
         return false;
     }
     UpdateTitle();
     if (statusHint) {
         const bool protectedFile = document->HasUCDPassword() && UCRasterDocument::IsUCDFile(path);
-        statusHint->SetText(resized ? "Saved " + FileNameOf(path) + " at " + std::to_string(size.width) +
-                                              " x " + std::to_string(size.height) + " px"
-                                    : "Saved " + FileNameOf(path) + (protectedFile ? " (password-protected)" : ""));
+        statusHint->SetText(resized ? TrF("Saved {0} at {1} x {2} px", FileNameOf(path), size.width, size.height)
+                            : protectedFile ? TrF("Saved {0} (password-protected)", FileNameOf(path))
+                                            : TrF("Saved {0}", FileNameOf(path)));
     }
     return true;
 }
@@ -1962,20 +2255,19 @@ void UltraPaintWindow::UpdateStatus() {
     statusPos->SetText(buf);
     std::snprintf(buf, sizeof(buf), "%.0f %%", surface->GetZoom() * 100.0);
     statusZoom->SetText(buf);
-    std::snprintf(buf, sizeof(buf), "%d x %d px, %d layer%s", document->GetWidth(), document->GetHeight(),
-                  document->GetLayerCount(), document->GetLayerCount() == 1 ? "" : "s");
-    statusSize->SetText(buf);
+    statusSize->SetText(TrF("{0} x {1} px, {2}", document->GetWidth(), document->GetHeight(),
+                            TrN("{n} layer", "{n} layers", document->GetLayerCount())));
 }
 
 void UltraPaintWindow::UpdateUndoButtons() {
     if (!document) return;
     if (undoButton) {
         undoButton->SetDisabled(!document->CanUndo());
-        undoButton->SetTooltip(document->CanUndo() ? "Undo " + document->GetUndoLabel() + " (Ctrl+Z)" : "Undo (Ctrl+Z)");
+        undoButton->SetTooltip(document->CanUndo() ? TrF("Undo {0} (Ctrl+Z)", document->GetUndoLabel()) : Tr("Undo (Ctrl+Z)"));
     }
     if (redoButton) {
         redoButton->SetDisabled(!document->CanRedo());
-        redoButton->SetTooltip(document->CanRedo() ? "Redo " + document->GetRedoLabel() + " (Ctrl+Y)" : "Redo (Ctrl+Y)");
+        redoButton->SetTooltip(document->CanRedo() ? TrF("Redo {0} (Ctrl+Y)", document->GetRedoLabel()) : Tr("Redo (Ctrl+Y)"));
     }
 }
 
@@ -1991,7 +2283,7 @@ PaintTool* UltraPaintWindow::ActiveTool() const {
 void UltraPaintWindow::SelectTool(PaintToolId id) {
     if (id != PaintToolId::Text) CommitTextEdit();
     ShowTextBar(id == PaintToolId::Text);
-    if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
+    if (auto* old = ActiveTool()) { if (old->id != id && surface) old->Deactivate(toolContext); }
     activeTool = id;
     PaintTool* t = ActiveTool();
     // The slot of the tool's group shows it (on an adaptive toolbar) and is
@@ -2002,12 +2294,13 @@ void UltraPaintWindow::SelectTool(PaintToolId id) {
         if (slot->IsPressed() != on) slot->SetPressed(on);
     }
     if (!t) return;
+    if (statusHint) statusHint->SetText(t->name + ": " + t->hint);
+    RebuildToolOptions();
+    if (!surface) return;   // the start page: SwitchToTab activates it on the first image
     t->Activate(toolContext);
     surface->SetToolCursor(t->Cursor());
     surface->SetCursorRadius(t->CursorRadius(toolContext));
     surface->SetCursorSquare(t->CursorSquare(toolContext));
-    if (statusHint) statusHint->SetText(t->name + ": " + t->hint);
-    RebuildToolOptions();
     UpdateMagnifierVisibility();
     surface->Refresh();
 }
@@ -2088,14 +2381,14 @@ void UltraPaintWindow::ApplySettings() {
     magnifierFrame->size.height = CSSLayout::Dimension::Px(size);
     PlaceMagnifier(magnifierCorner);
     UpdateMagnifierVisibility();
-    if (magnifier && magnifier->IsVisible() && pointerInside)
+    if (magnifier && magnifier->IsVisible() && pointerInside && surface)
         magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
 }
 
 void UltraPaintWindow::UpdateMagnifierVisibility() {
     if (!magnifierFrame) return;
     PaintTool* t = ActiveTool();
-    const bool show = settings.magnifierEnabled && t && t->WantsMagnifier() && document;
+    const bool show = settings.magnifierEnabled && t && t->WantsMagnifier() && document && surface;
     if (show == magnifierFrame->IsVisible()) return;
     magnifierFrame->SetVisible(show);
     if (show) {
@@ -2129,7 +2422,7 @@ void UltraPaintWindow::PlaceMagnifier(int corner) {
 }
 
 void UltraPaintWindow::UpdateMagnifier(double imageX, double imageY, const Point2Di& view) {
-    if (!magnifier || !magnifierFrame || !magnifierFrame->IsVisible()) return;
+    if (!magnifier || !magnifierFrame || !magnifierFrame->IsVisible() || !surface) return;
     magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, imageX, imageY);
 
     // The canvas may have been resized since the glass was placed (the window
@@ -2166,14 +2459,14 @@ void UltraPaintWindow::RebuildToolOptions() {
     if (!t) return;
     optionsPanel->SetTitle(t->name);
     t->BuildOptions(toolContext, *optionsPanel, [this]() {
-        if (auto* a = ActiveTool()) {
+        if (auto* a = ActiveTool(); a && surface) {
             surface->SetCursorRadius(a->CursorRadius(toolContext));
             surface->SetCursorSquare(a->CursorSquare(toolContext));
         }
     });
     // Zoom and Pan have nothing to set: say so rather than show an empty card.
     if (optionsPanel->GetChildren().empty())
-        PaintOptionWidgets::AddCaption(*optionsPanel, "up-options-none", "No options for this tool");
+        PaintOptionWidgets::AddCaption(*optionsPanel, "up-options-none", Tr("No options for this tool"));
     rightPanel->RequestRedraw();
 }
 
@@ -2227,7 +2520,7 @@ void UltraPaintWindow::RebuildLayerPanel() {
         row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         auto vis = std::make_shared<UltraCanvasCheckbox>("up-lvis-" + std::to_string(i), 0, 0, 24, 24, "");
         vis->SetChecked(layer->visible);
-        vis->SetTooltip("Visible");
+        vis->SetTooltip(Tr("Visible"));
         vis->onStateChanged = [this, i](CheckedState, CheckedState s) { document->SetLayerVisible(i, s == CheckedState::Checked); };
         vis->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->AddChild(vis);
@@ -2254,7 +2547,7 @@ void UltraPaintWindow::RebuildLayerPanel() {
             renameField = field;
         } else {
             std::string label = layer->name;
-            if (layer->locked) label += "  [locked]";
+            if (layer->locked) label = TrF("{0}  [locked]", layer->name);
             auto btn = std::make_shared<UltraCanvasButton>("up-lsel-" + std::to_string(i), 0, 0, 0, 24, label);
             btn->SetCanToggled(true);
             btn->SetPressed(i == active);
@@ -2263,9 +2556,9 @@ void UltraPaintWindow::RebuildLayerPanel() {
                 // Text tool, until it is merged or rasterized.
                 btn->SetIcon(MenuIconPath("text.svg"));
                 btn->SetIconSize(16, 16);
-                btn->SetTooltip("Text layer - click its text with the Text tool to edit it. Double-click to rename");
+                btn->SetTooltip(Tr("Text layer - click its text with the Text tool to edit it. Double-click to rename"));
             } else {
-                btn->SetTooltip("Double-click to rename");
+                btn->SetTooltip(Tr("Double-click to rename"));
             }
             // A row of a list, as UltraMail's: no box, the name from the
             // left, a soft grey under the pointer and the active layer on
@@ -2367,7 +2660,7 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
     auto layer = layerIndex >= 0 ? document->GetLayer(layerIndex) : nullptr;
     if (layer && layer->text && layer->text->document) {
         if (layer->locked) {
-            if (statusHint) statusHint->SetText("The text layer is locked");
+            if (statusHint) statusHint->SetText(Tr("The text layer is locked"));
             return;
         }
         document->SetActiveLayerIndex(layerIndex);
@@ -2447,8 +2740,9 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
     PlaceTextEditor();
     textEditor->SetFocus(true);
     if (statusHint) {
-        statusHint->SetText(std::string(textSession->layer ? "Editing the text" : "Typing a new text") +
-                            ": Escape, Ctrl+Enter or a click outside finishes; Ctrl+Z takes back typing");
+        statusHint->SetText(textSession->layer
+            ? Tr("Editing the text: Escape, Ctrl+Enter or a click outside finishes; Ctrl+Z takes back typing")
+            : Tr("Typing a new text: Escape, Ctrl+Enter or a click outside finishes; Ctrl+Z takes back typing"));
     }
     surface->Refresh();
 }
@@ -2498,15 +2792,15 @@ void UltraPaintWindow::CommitTextEdit() {
         // Nothing typed: no layer. An edited text emptied goes with its layer.
         if (index >= 0 && document->GetLayerCount() > 1) {
             document->RemoveLayer(index);
-            if (statusHint) statusHint->SetText("The text was emptied, so its layer was removed");
+            if (statusHint) statusHint->SetText(Tr("The text was emptied, so its layer was removed"));
         } else if (statusHint) {
-            statusHint->SetText("Nothing was typed");
+            statusHint->SetText(Tr("Nothing was typed"));
         }
         return;
     }
     if (index >= 0 && session->layer->text && session->layer->text->document &&
         session->layer->text->document->ToHTML() == words->ToHTML()) {
-        if (statusHint) statusHint->SetText("The text is unchanged");
+        if (statusHint) statusHint->SetText(Tr("The text is unchanged"));
         return;   // looked at, not changed: no undo step
     }
     RasterTextContent content = session->content;
@@ -2516,16 +2810,17 @@ void UltraPaintWindow::CommitTextEdit() {
     std::shared_ptr<UCRasterLayer> rendered;
     if (index >= 0) {
         rendered = RenderTextLayerLike(*session->layer, content, error);
-        if (rendered) document->ReplaceLayer(index, rendered, "Edit Text");
+        if (rendered) document->ReplaceLayer(index, rendered, Tr("Edit Text"));
     } else {
         rendered = RenderTextLayer(content, document->GetWidth(), document->GetHeight(), error);
-        if (rendered) document->AddLayer(rendered, -1, "Text");
+        if (rendered) document->AddLayer(rendered, -1, Tr("Text"));
     }
     if (!rendered) {
-        UltraCanvasDialogManager::ShowError("Could not draw the text: " + error, "Text", nullptr, window.get());
+        UltraCanvasDialogManager::ShowError(TrF("Could not draw the text: {0}", error), Tr("Text"), nullptr, window.get());
     } else if (statusHint) {
-        statusHint->SetText(std::string(index >= 0 ? "Changed" : "Added") + " the text layer \"" + rendered->name +
-                            "\" - it stays editable until it is merged or rasterized");
+        statusHint->SetText(index >= 0
+            ? TrF("Changed the text layer \"{0}\" - it stays editable until it is merged or rasterized", rendered->name)
+            : TrF("Added the text layer \"{0}\" - it stays editable until it is merged or rasterized", rendered->name));
     }
 }
 
@@ -2613,7 +2908,7 @@ void UltraPaintWindow::ApplyTextOption(const std::string& option) {
         { "align", Tr("Text Alignment") }, { "line-spacing", Tr("Line Spacing") },
         { "letter-spacing", Tr("Letter Spacing") } };
     if (rendered) document->ReplaceLayer(index, rendered, labels.at(option));
-    else if (statusHint) statusHint->SetText("Could not draw the text: " + error);
+    else if (statusHint) statusHint->SetText(TrF("Could not draw the text: {0}", error));
 }
 
 // ===========================================================================
@@ -2645,8 +2940,26 @@ void UltraPaintWindow::BuildTextBar() {
     textBar->onControlDone = [this]() {
         if (textSession && textEditor && textEditorHost && textEditorHost->IsVisible()) textEditor->SetFocus(true);
     };
+    // The font list: the image's fonts on top, then the ones chosen last
+    // (kept in the settings), then every installed font.
+    textBar->onFontListOpening = [this]() { textBar->SetDocumentFonts(DocumentFonts()); };
+    textBar->SetRecentFonts(settings.recentFonts);
+    textBar->onRecentFontsChanged = [this](const std::vector<std::string>& fonts) {
+        settings.recentFonts = fonts;
+        settings.SaveRecentFonts();
+    };
     textBar->SetVisible(false);
     window->AddChild(textBar);
+}
+
+std::vector<std::string> UltraPaintWindow::DocumentFonts() const {
+    std::vector<std::string> fonts;
+    if (textSession && textEditor) AddTextFormatFonts(fonts, textSession->content.fontFamily, textEditor->GetDocument().get());
+    if (document) {
+        for (const auto& layer : document->GetLayers())
+            if (layer && layer->text) AddTextFormatFonts(fonts, layer->text->fontFamily, layer->text->document.get());
+    }
+    return fonts;
 }
 
 void UltraPaintWindow::ShowTextBar(bool show) {
@@ -2716,17 +3029,18 @@ void UltraPaintWindow::AskRasterize(const std::string& action) {
     if (!document) return;
     auto layer = document->GetActiveLayer();
     if (!layer || !layer->IsTextLayer()) return;
-    const std::string question =
-        "\"" + layer->name + "\" is a text layer. Rasterize it, so that " +
-        (action.empty() ? std::string("it can be painted on") : action + " can work on it") +
-        "?\n\nThe text can then no longer be edited (Undo makes it text again).";
+    const std::string question = action.empty()
+        ? TrF("\"{0}\" is a text layer. Rasterize it, so that it can be painted on?\n\n"
+              "The text can then no longer be edited (Undo makes it text again).", layer->name)
+        : TrF("\"{0}\" is a text layer. Rasterize it, so that {1} can work on it?\n\n"
+              "The text can then no longer be edited (Undo makes it text again).", layer->name, action);
     std::weak_ptr<UCRasterLayer> weak = layer;
-    UltraCanvasDialogManager::ShowConfirmation(question, "Rasterize Layer", [this, weak](bool yes) {
+    UltraCanvasDialogManager::ShowConfirmation(question, Tr("Rasterize Layer"), [this, weak](bool yes) {
         auto l = weak.lock();
         if (!yes || !l || !document) return;
         const int index = LayerIndexOf(*document, l);
         if (index >= 0 && document->RasterizeLayer(index) && statusHint)
-            statusHint->SetText("\"" + l->name + "\" is a bitmap layer now");
+            statusHint->SetText(TrF("\"{0}\" is a bitmap layer now", l->name));
     }, window.get());
 }
 
@@ -2775,7 +3089,7 @@ void UltraPaintWindow::CmdEditText() {
     const int index = document->GetActiveLayerIndex();
     auto layer = document->GetLayer(index);
     if (!layer || !layer->text) {
-        if (statusHint) statusHint->SetText("The active layer is not a text layer");
+        if (statusHint) statusHint->SetText(Tr("The active layer is not a text layer"));
         return;
     }
     SelectTool(PaintToolId::Text);
@@ -2786,7 +3100,7 @@ void UltraPaintWindow::CmdRasterizeLayer() {
     CommitTextEdit();
     if (!document) return;
     if (!document->RasterizeLayer(document->GetActiveLayerIndex()) && statusHint)
-        statusHint->SetText("The active layer is not a text layer");
+        statusHint->SetText(Tr("The active layer is not a text layer"));
 }
 
 // ===========================================================================
@@ -2803,8 +3117,8 @@ void UltraPaintWindow::CmdNew() {
 
 void UltraPaintWindow::CmdNewWindow() {
     if (!OpenWindow({})) {
-        UltraCanvasDialogManager::ShowError("Could not open another UltraPaint window",
-                                            "New Window", nullptr, window.get());
+        UltraCanvasDialogManager::ShowError(Tr("Could not open another UltraPaint window"),
+                                            Tr("New Window"), nullptr, window.get());
     }
 }
 
@@ -2829,11 +3143,11 @@ std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
 void UltraPaintWindow::CmdOpen() {
     CommitTextEdit();
     FileDialogOptions opts;
-    opts.SetTitle("Open image")
-        .AddFilter("Images, drawings and layered images", OpenableExtensions());
-    UltraCanvasFileLoader::AddLoadTypes(opts, "Layered images (layers and text kept)",
+    opts.SetTitle(Tr("Open image"))
+        .AddFilter(Tr("Images, drawings and layered images"), OpenableExtensions());
+    UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Layered images (layers and text kept)"),
                                         { MediaFormatCategory::LayeredImage });
-    opts.AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.AddFilter(Tr("All files"), std::vector<std::string>{ "*" })
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
@@ -2846,9 +3160,9 @@ void UltraPaintWindow::CmdOpen() {
 void UltraPaintWindow::CmdImport() {
     CommitTextEdit();
     FileDialogOptions opts;
-    opts.SetTitle("Import image")
-        .AddFilter("Images, drawings and layered images", OpenableExtensions())
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.SetTitle(Tr("Import image"))
+        .AddFilter(Tr("Images, drawings and layered images"), OpenableExtensions())
+        .AddFilter(Tr("All files"), std::vector<std::string>{ "*" })
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
@@ -2860,60 +3174,66 @@ void UltraPaintWindow::CmdImport() {
 
 std::string UltraPaintWindow::SaveLossQuestion(const std::string& path, bool layers) const {
     if (!document) return std::string();
-    std::vector<std::string> lost;
     // A layered document saved to a flat format loses its layers.
-    if (layers && document->GetLayerCount() > 1 && !UCRasterDocument::IsProjectFile(path))
-        lost.push_back("flattens the layers in the file (the open image keeps them)");
+    const bool flattens = layers && document->GetLayerCount() > 1 && !UCRasterDocument::IsProjectFile(path);
     // Only an UltraCanvas document carries a password.
-    if (document->HasUCDPassword() && !UCRasterDocument::IsUCDFile(path))
-        lost.push_back("drops the password protection (only a .ucd keeps it)");
-    if (lost.empty()) return std::string();
-    std::string q = "Saving to " + FileNameOf(path) + " " + lost.front();
-    if (lost.size() > 1) q += ", and " + lost.back();
-    return q + ". Continue?";
+    const bool dropsPassword = document->HasUCDPassword() && !UCRasterDocument::IsUCDFile(path);
+    const std::string name = FileNameOf(path);
+    if (flattens && dropsPassword)
+        return TrF("Saving to {0} flattens the layers in the file (the open image keeps them), and drops the "
+                   "password protection (only a .ucd keeps it). Continue?", name);
+    if (flattens)
+        return TrF("Saving to {0} flattens the layers in the file (the open image keeps them). Continue?", name);
+    if (dropsPassword)
+        return TrF("Saving to {0} drops the password protection (only a .ucd keeps it). Continue?", name);
+    return std::string();
 }
 
-void UltraPaintWindow::CmdSave() {
+void UltraPaintWindow::CmdSave(const std::function<void()>& afterSaved) {
     CommitTextEdit();
     if (!document) return;
-    if (document->GetFilePath().empty()) { CmdSaveAs(); return; }
+    if (document->GetFilePath().empty()) { CmdSaveAs(afterSaved); return; }
     // What the file would lose, said once.
     const std::string question = SaveLossQuestion(document->GetFilePath(), true);
     if (!question.empty()) {
-        ConfirmDiscard(question, [this]() { SaveToPath(document->GetFilePath()); });
+        ConfirmDiscard(question, [this, afterSaved]() {
+            if (SaveToPath(document->GetFilePath()) && afterSaved) afterSaved();
+        });
         return;
     }
-    SaveToPath(document->GetFilePath());
+    if (SaveToPath(document->GetFilePath()) && afterSaved) afterSaved();
 }
 
-void UltraPaintWindow::CmdSaveAs() {
+void UltraPaintWindow::CmdSaveAs(const std::function<void()>& afterSaved) {
     CommitTextEdit();
     if (!document) return;
     FileDialogOptions opts;
     std::string def = document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath());
     // The name first: the type it ends in is the one the dialog starts on.
-    opts.SetTitle("Save image as").SetDefaultFileName(def);
+    opts.SetTitle(Tr("Save image as")).SetDefaultFileName(def);
     // FileLoader's types: every bitmap type this build writes, and the
     // layered images, which keep the layers and the text as text.
     UltraCanvasFileLoader::AddImageSaveTypes(opts);
     UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::LayeredImage);
-    opts.AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.AddFilter(Tr("All files"), std::vector<std::string>{ "*" })
         // The picture's size, so the Settings of a bitmap type offer to write
         // it at another size.
         .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
-                                                       const FileSaveImageSize& size) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, afterSaved](DialogResult r, const std::string& path,
+                                                                   const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
         // The type was picked here, so its layers go without a word; a
         // password going is not something a file type says.
         const std::string question = SaveLossQuestion(path, false);
         if (!question.empty()) {
-            ConfirmDiscard(question, [this, path, size]() { SaveToPath(path, size); });
+            ConfirmDiscard(question, [this, path, size, afterSaved]() {
+                if (SaveToPath(path, size) && afterSaved) afterSaved();
+            });
             return;
         }
-        SaveToPath(path, size);
+        if (SaveToPath(path, size) && afterSaved) afterSaved();
     });
 }
 
@@ -2922,9 +3242,9 @@ void UltraPaintWindow::CmdExport() {
 #ifdef HAS_LIBVIPS
     if (!document) return;
     FileDialogOptions opts;
-    opts.SetTitle("Export image");
+    opts.SetTitle(Tr("Export image"));
     UltraCanvasFileLoader::AddImageSaveTypes(opts);   // every bitmap type this build writes
-    opts.AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.AddFilter(Tr("All files"), std::vector<std::string>{ "*" })
         .SetDefaultFileName(document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath()))
         .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
@@ -2943,16 +3263,16 @@ void UltraPaintWindow::CmdExport() {
             dlg->onSave = [this, path](const UCImageSave::ImageExportOptions& options) {
                 std::string error;
                 if (!document->SaveToFile(path, error, &options))
-                    UltraCanvasDialogManager::ShowError("Could not export " + path + "\n" + ShortError(error), "Export", nullptr, window.get());
-                else if (statusHint) statusHint->SetText("Exported " + FileNameOf(path));
+                    UltraCanvasDialogManager::ShowError(TrF("Could not export {0}", path) + "\n" + ShortError(error), Tr("Export"), nullptr, window.get());
+                else if (statusHint) statusHint->SetText(TrF("Exported {0}", FileNameOf(path)));
             };
             ShowDialog(dlg);
         } catch (const std::exception& e) {
-            UltraCanvasDialogManager::ShowError(std::string("Export failed: ") + e.what(), "Export", nullptr, window.get());
+            UltraCanvasDialogManager::ShowError(TrF("Export failed: {0}", e.what()), Tr("Export"), nullptr, window.get());
         }
     });
 #else
-    UltraCanvasDialogManager::ShowError("Export needs a build with libvips.", "Export", nullptr, window.get());
+    UltraCanvasDialogManager::ShowError(Tr("Export needs a build with libvips."), Tr("Export"), nullptr, window.get());
 #endif
 }
 
@@ -2972,11 +3292,12 @@ void UltraPaintWindow::CmdPassword() {
         UpdateTitle();
         if (!statusHint) return;
         const bool asUCD = UCRasterDocument::IsUCDFile(document->GetFilePath());
-        if (r.remove) statusHint->SetText(asUCD ? "Password protection removed - Save writes the file without it"
-                                                : "Password protection removed");
-        else statusHint->SetText(std::string(had ? "Password changed" : "Password set") +
-                                 (asUCD ? " - Save writes the file protected"
-                                        : " - it protects the image saved as an UltraCanvas document (.ucd)"));
+        if (r.remove) statusHint->SetText(asUCD ? Tr("Password protection removed - Save writes the file without it")
+                                                : Tr("Password protection removed"));
+        else if (asUCD) statusHint->SetText(had ? Tr("Password changed - Save writes the file protected")
+                                                : Tr("Password set - Save writes the file protected"));
+        else statusHint->SetText(had ? Tr("Password changed - it protects the image saved as an UltraCanvas document (.ucd)")
+                                     : Tr("Password set - it protects the image saved as an UltraCanvas document (.ucd)"));
     };
     ShowDialog(dlg);
 }
@@ -2991,9 +3312,23 @@ void UltraPaintWindow::CmdQuit() {
     }
     auto go = []() { if (auto* app = UltraCanvasApplication::GetInstance()) app->RequestExit(); };
     if (unsaved == 0) { go(); return; }
-    ConfirmDiscard(unsaved == 1 ? "An image has unsaved changes. Quit anyway?"
-                                : std::to_string(unsaved) + " images have unsaved changes. Quit anyway?",
-                   go);
+    // Window by window, each unsaved image asks Save, Don't save or Cancel;
+    // a Cancel anywhere keeps the application running.
+    std::vector<std::weak_ptr<UltraPaintWindow>> windows;
+    for (const auto& editor : OpenWindows()) if (editor) windows.push_back(editor);
+    auto next = std::make_shared<std::function<void(size_t)>>();
+    *next = [windows, go, weakNext = std::weak_ptr<std::function<void(size_t)>>(next)](size_t i) {
+        while (i < windows.size() && !windows[i].lock()) ++i;
+        if (i >= windows.size()) { go(); return; }
+        auto editor = windows[i].lock();
+        auto self = weakNext.lock();
+        if (!self) return;
+        if (editor->window) editor->window->RaiseAndFocus();
+        editor->ReviewUnsavedTabs([self, i]() { (*self)(i + 1); });
+    };
+    // While a question is open, its callback holds the chain; once the last
+    // window has answered (or one cancels) it goes with it.
+    (*next)(0);
 }
 
 // ===========================================================================
@@ -3020,23 +3355,23 @@ void UltraPaintWindow::CmdCopy(bool merged) {
         }
     } catch (...) {}
 #endif
-    if (statusHint) statusHint->SetText("Copied " + std::to_string(layer->GetWidth()) + " x " + std::to_string(layer->GetHeight()) + " pixels");
+    if (statusHint) statusHint->SetText(TrF("Copied {0} x {1} pixels", layer->GetWidth(), layer->GetHeight()));
 }
 
 void UltraPaintWindow::CmdCut() {
-    if (StopsAtTextLayer("Cut")) return;
+    if (StopsAtTextLayer(Tr("Cut"))) return;
     if (!document) return;
     CmdCopy(false);
     document->DeleteSelection();
 }
 
 void UltraPaintWindow::CmdDelete() {
-    if (StopsAtTextLayer("Delete")) return;
+    if (StopsAtTextLayer(Tr("Delete"))) return;
     if (document) document->DeleteSelection();
 }
 
 void UltraPaintWindow::CmdFill(bool fg) {
-    if (StopsAtTextLayer("Fill")) return;
+    if (StopsAtTextLayer(Tr("Fill"))) return;
     if (document) document->FillSelection(fg ? foreground : background);
 }
 
@@ -3054,6 +3389,26 @@ namespace {
         (void)bytes;
 #endif
         return nullptr;
+    }
+}
+
+// The status line after a paste: what came in and its size - a whole
+// sentence for each source, so a translation can order it freely.
+std::string UltraPaintWindow::PastedText(PastedFrom from, const std::string& detail, int w, int h, bool asNewImage) {
+    using F = PastedFrom;
+    if (asNewImage) {
+        switch (from) {
+            case F::File:       return TrF("Pasted {0} as a new image, {1} x {2} pixels", detail, w, h);
+            case F::LastCopied: return TrF("Pasted the last copied image as a new image, {0} x {1} pixels", w, h);
+            case F::CopiedWhen: return TrF("Pasted the image copied {0} as a new image, {1} x {2} pixels", detail, w, h);
+            default:            return TrF("Pasted as a new image, {0} x {1} pixels", w, h);
+        }
+    }
+    switch (from) {
+        case F::File:       return TrF("Pasted {0}, {1} x {2} pixels", detail, w, h);
+        case F::LastCopied: return TrF("Pasted the last copied image, {0} x {1} pixels", w, h);
+        case F::CopiedWhen: return TrF("Pasted the image copied {0}, {1} x {2} pixels", detail, w, h);
+        default:            return TrF("Pasted {0} x {1} pixels", w, h);
     }
 }
 
@@ -3099,9 +3454,9 @@ UltraPaintWindow::PasteSource UltraPaintWindow::ReadPasteSource() {
 
 void UltraPaintWindow::CmdPaste() {
     CommitTextEdit();
-    if (!document) return;
+    if (!document) { CmdPasteAsNew(); return; }   // the start page: the paste becomes the image
     PasteSource source = ReadPasteSource();
-    std::string layerName = "Pasted";
+    std::string layerName = TrC("layer name", "Pasted");
     if (!source.file.empty()) {
         // A copied file comes in whole, flattened, at its natural size -
         // drawings and models included, rendered the way a drop renders the
@@ -3110,22 +3465,22 @@ void UltraPaintWindow::CmdPaste() {
         const std::string file = source.file;
         LoadDocumentAsking(file, UltraPaintImportResult{}, [this, file](std::shared_ptr<UCRasterDocument> incoming) {
             if (!document) return;
-            PasteAsLayer(incoming->Flatten(), FileNameOf(file), false, FileNameOf(file) + ", ");
+            PasteAsLayer(incoming->Flatten(), FileNameOf(file), false, PastedFrom::File, FileNameOf(file));
         });
         return;   // LoadDocumentAsking says why when it cannot
     }
     auto img = source.image;
     if (!img || !img->IsValid()) {
         OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) {
-            PasteAsLayer(std::move(last), "Last copied image", false, "the last copied image, ");
+            PasteAsLayer(std::move(last), TrC("layer name", "Last copied image"), false, PastedFrom::LastCopied);
         });
         return;
     }
-    PasteAsLayer(img, layerName, source.fromHere, source.file.empty() ? std::string() : FileNameOf(source.file) + ", ");
+    PasteAsLayer(img, layerName, source.fromHere);
 }
 
 void UltraPaintWindow::PasteAsLayer(std::shared_ptr<UCRasterLayer> img, const std::string& layerName, bool fromHere,
-                                    const std::string& what) {
+                                    PastedFrom from, const std::string& detail) {
     if (!document || !img || !img->IsValid()) return;
     auto layer = std::make_shared<UCRasterLayer>(document->GetWidth(), document->GetHeight(), layerName);
     // paste where it was copied from when that still fits, else centred
@@ -3138,8 +3493,7 @@ void UltraPaintWindow::PasteAsLayer(std::shared_ptr<UCRasterLayer> img, const st
     document->AddLayer(layer);
     SelectTool(PaintToolId::Move);
     if (statusHint) {
-        statusHint->SetText("Pasted " + what + std::to_string(img->GetWidth()) + " x " +
-                            std::to_string(img->GetHeight()) + " pixels");
+        statusHint->SetText(PastedText(from, detail, img->GetWidth(), img->GetHeight(), false));
     }
 }
 
@@ -3149,10 +3503,10 @@ void UltraPaintWindow::CmdPasteLastImage() {
     std::string when;
     auto img = LastCopiedImage(when);
     if (!img) {
-        if (statusHint) statusHint->SetText("There is no image in the clipboard history");
+        if (statusHint) statusHint->SetText(Tr("There is no image in the clipboard history"));
         return;
     }
-    PasteAsLayer(img, "Last copied image", false, "the image copied " + when + ", ");
+    PasteAsLayer(img, TrC("layer name", "Last copied image"), false, PastedFrom::CopiedWhen, when);
 }
 
 // Paste found nothing - text was copied after the picture, say, or nothing
@@ -3163,12 +3517,11 @@ void UltraPaintWindow::OfferLastCopiedImage(const std::function<void(std::shared
     std::string when;
     auto img = LastCopiedImage(when);
     if (!img) {
-        if (statusHint) statusHint->SetText("Nothing to paste");
+        if (statusHint) statusHint->SetText(Tr("Nothing to paste"));
         return;
     }
-    const std::string question = "There is no picture on the clipboard. Paste the image copied " + when + " (" +
-                                 std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) +
-                                 " pixels)?";
+    const std::string question = TrF("There is no picture on the clipboard. Paste the image copied {0} ({1} x {2} pixels)?",
+                                     when, img->GetWidth(), img->GetHeight());
     UltraCanvasDialogManager::ShowConfirmation(question, "UltraPaint", [use, img](bool yes) {
         if (yes) use(img);
     }, window.get());
@@ -3226,9 +3579,8 @@ void UltraPaintWindow::CmdPasteAsNew() {
             // A new image, in a tab of its own.
             AddDocumentTab(fromFile);
             if (statusHint) {
-                statusHint->SetText("Pasted " + FileNameOf(file) + " as a new image, " +
-                                    std::to_string(fromFile->GetWidth()) + " x " +
-                                    std::to_string(fromFile->GetHeight()) + " pixels");
+                statusHint->SetText(PastedText(PastedFrom::File, FileNameOf(file),
+                                               fromFile->GetWidth(), fromFile->GetHeight(), true));
             }
         });
         return;   // LoadDocumentAsking says why when it cannot
@@ -3236,14 +3588,14 @@ void UltraPaintWindow::CmdPasteAsNew() {
     auto img = source.image;
     if (!img || !img->IsValid()) {
         OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) {
-            PasteAsNewImage(std::move(last), "the last copied image");
+            PasteAsNewImage(std::move(last), PastedFrom::LastCopied);
         });
         return;
     }
     PasteAsNewImage(img);
 }
 
-void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img, const std::string& what) {
+void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img, PastedFrom from) {
     if (!img || !img->IsValid()) return;
     // A new image, in a tab of its own.
     auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
@@ -3253,9 +3605,7 @@ void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img, const
     doc->SetModified(true);
     AddDocumentTab(doc);
     if (statusHint) {
-        statusHint->SetText("Pasted " + (what.empty() ? std::string() : what + " ") + "as a new image, " +
-                            std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) +
-                            " pixels");
+        statusHint->SetText(PastedText(from, std::string(), img->GetWidth(), img->GetHeight(), true));
     }
 }
 
@@ -3266,8 +3616,12 @@ void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img, const
 void UltraPaintWindow::CmdScaleImage() {
     CommitTextEdit();
     if (!document) return;
-    auto dlg = std::make_shared<UltraPaintResizeDialog>(document->GetWidth(), document->GetHeight(), false);
-    dlg->onAccept = [this](const UltraPaintResizeResult& r) { document->ScaleImage(r.width, r.height); surface->ZoomToFit(); };
+    auto dlg = std::make_shared<UltraPaintResizeDialog>(document->GetWidth(), document->GetHeight(), false, lastScaleOptions);
+    dlg->onAccept = [this](const UltraPaintResizeResult& r) {
+        lastScaleOptions = r.scale;   // offered again next time
+        document->ScaleImage(r.width, r.height, r.scale);
+        surface->ZoomToFit();
+    };
     ShowDialog(dlg);
 }
 
@@ -3295,7 +3649,7 @@ void UltraPaintWindow::CmdCropToSelection() {
         if (tool->ApplyPendingCrop(toolContext)) return;
     }
     if (!document->GetSelection().IsActive()) {
-        if (statusHint) statusHint->SetText("Nothing is selected: drag an area with a selection tool, or with the Crop tool, first");
+        if (statusHint) statusHint->SetText(Tr("Nothing is selected: drag an area with a selection tool, or with the Crop tool, first"));
         return;
     }
     document->CropTo(document->GetSelection().GetBounds());
@@ -3313,7 +3667,7 @@ void UltraPaintWindow::CmdLayerDuplicate() { CommitTextEdit(); if (document) doc
 void UltraPaintWindow::CmdLayerDelete() {
     CommitTextEdit();
     if (!document) return;
-    if (document->GetLayerCount() <= 1) { if (statusHint) statusHint->SetText("The last layer cannot be deleted"); return; }
+    if (document->GetLayerCount() <= 1) { if (statusHint) statusHint->SetText(Tr("The last layer cannot be deleted")); return; }
     document->RemoveLayer(document->GetActiveLayerIndex());
 }
 void UltraPaintWindow::CmdLayerMergeDown() { CommitTextEdit(); if (document) document->MergeLayerDown(document->GetActiveLayerIndex()); }
@@ -3350,9 +3704,9 @@ void UltraPaintWindow::CmdLayerProperties() {
 // SELECT COMMANDS
 // ===========================================================================
 
-void UltraPaintWindow::CmdSelectAll() { CommitTextEdit(); if (document) { document->GetSelection().SelectAll(); document->CommitSelectionChange("Select All"); } }
-void UltraPaintWindow::CmdSelectNone() { CommitTextEdit(); if (document) { document->GetSelection().SelectNone(); document->CommitSelectionChange("Deselect"); } }
-void UltraPaintWindow::CmdSelectInvert() { CommitTextEdit(); if (document) { document->GetSelection().Invert(); document->CommitSelectionChange("Invert Selection"); } }
+void UltraPaintWindow::CmdSelectAll() { CommitTextEdit(); if (document) { document->GetSelection().SelectAll(); document->CommitSelectionChange(Tr("Select All")); } }
+void UltraPaintWindow::CmdSelectNone() { CommitTextEdit(); if (document) { document->GetSelection().SelectNone(); document->CommitSelectionChange(Tr("Deselect")); } }
+void UltraPaintWindow::CmdSelectInvert() { CommitTextEdit(); if (document) { document->GetSelection().Invert(); document->CommitSelectionChange(Tr("Invert Selection")); } }
 
 void UltraPaintWindow::CmdSelectFromAlpha() {
     CommitTextEdit();
@@ -3365,23 +3719,24 @@ void UltraPaintWindow::CmdSelectFromAlpha() {
         for (int x = 0; x < layer->GetWidth(); ++x) mask[static_cast<size_t>(y) * layer->GetWidth() + x] = row[static_cast<size_t>(x) * 4 + 3];
     }
     document->GetSelection().SetMask(mask);
-    document->CommitSelectionChange("Select from Alpha");
+    document->CommitSelectionChange(Tr("Select from Alpha"));
 }
 
 void UltraPaintWindow::CmdSelectModify(int kind) {
     CommitTextEdit();
     if (!document) return;
-    if (!document->GetSelection().IsActive()) { if (statusHint) statusHint->SetText("Nothing is selected"); return; }
-    const char* titles[] = { "Feather Selection", "Grow Selection", "Shrink Selection" };
-    const char* prompts[] = { "Feather radius (pixels):", "Grow by (pixels):", "Shrink by (pixels):" };
-    UltraCanvasDialogManager::ShowInputDialog(prompts[kind], titles[kind], "4", InputType::Number,
+    if (!document->GetSelection().IsActive()) { if (statusHint) statusHint->SetText(Tr("Nothing is selected")); return; }
+    const std::string title = kind == 0 ? Tr("Feather Selection") : kind == 1 ? Tr("Grow Selection") : Tr("Shrink Selection");
+    const std::string prompt = kind == 0 ? Tr("Feather radius (pixels):")
+                             : kind == 1 ? Tr("Grow by (pixels):") : Tr("Shrink by (pixels):");
+    UltraCanvasDialogManager::ShowInputDialog(prompt, title, "4", InputType::Number,
         [this, kind](DialogResult r, const std::string& text) {
             if (r != DialogResult::OK) return;
             const int n = std::clamp(std::atoi(text.c_str()), 0, 500);
             if (n <= 0) return;
             UCRasterSelection& sel = document->GetSelection();
             if (kind == 0) sel.Feather(n); else if (kind == 1) sel.Grow(n); else sel.Shrink(n);
-            document->CommitSelectionChange(kind == 0 ? "Feather" : kind == 1 ? "Grow Selection" : "Shrink Selection");
+            document->CommitSelectionChange(kind == 0 ? Tr("Feather") : kind == 1 ? Tr("Grow Selection") : Tr("Shrink Selection"));
         }, window.get());
 }
 
@@ -3435,7 +3790,7 @@ std::shared_ptr<UCRasterLayer> UltraPaintWindow::SyncPreviewTarget() {
     previewDocument = document;
     if (!active || active->locked || active->IsTextLayer()) {
         if (statusHint && active) {
-            statusHint->SetText(active->locked ? "The active layer is locked" : "The active layer is a text layer");
+            statusHint->SetText(active->locked ? Tr("The active layer is locked") : Tr("The active layer is a text layer"));
         }
         return nullptr;
     }
@@ -3494,7 +3849,7 @@ void UltraPaintWindow::ShowPreview(const std::function<PixelFX::PFXImage(const P
         }
     } catch (const std::exception& e) {
         layer->CopyFrom(*previewOriginal, 0, 0);
-        if (statusHint) statusHint->SetText(std::string("Filter failed: ") + e.what());
+        if (statusHint) statusHint->SetText(TrF("Filter failed: {0}", e.what()));
     }
     previewShownHash = PixelHash(*layer);
     document->NotifyChanged(layer->GetRect());
@@ -3513,12 +3868,12 @@ void UltraPaintWindow::EndPreview(bool commit, const std::string& label,
         document->InvalidateComposite();
         if (commit && op) {
             if (!document->ApplyFilterToLayer(label, LayerIndexOf(*document, layer), op) && statusHint)
-                statusHint->SetText(label + " could not be applied");
+                statusHint->SetText(TrF("{0} could not be applied", label));
         } else {
             document->NotifyChanged(layer->GetRect());
         }
     } else if (commit && op && statusHint) {
-        statusHint->SetText(label + " could not be applied");
+        statusHint->SetText(TrF("{0} could not be applied", label));
     }
     previewOriginal.reset();
     previewLayer.reset();
@@ -3529,22 +3884,22 @@ void UltraPaintWindow::EndPreview(bool commit, const std::string& label,
 #endif
 
 void UltraPaintWindow::CmdFilter(const PaintFilter& filter) {
-    if (StopsAtTextLayer(filter.name)) return;
+    if (StopsAtTextLayer(filter.DisplayTitle())) return;
 #ifdef HAS_LIBVIPS
     if (!document || !filter.apply) return;
     auto layer = document->GetActiveLayer();
-    if (!layer || layer->locked) { if (statusHint) statusHint->SetText("The active layer is locked"); return; }
-    if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
+    if (!layer || layer->locked) { if (statusHint) statusHint->SetText(Tr("The active layer is locked")); return; }
+    if (previewActive) { if (statusHint) statusHint->SetText(Tr("Finish the open filter dialog first")); return; }
     auto apply = filter.apply;
     if (!filter.HasParams()) {
         std::vector<float> none;
-        if (!document->ApplyFilter(filter.name, [apply, none](const PixelFX::PFXImage& img) { return apply(img, none); }) && statusHint)
-            statusHint->SetText(filter.name + " could not be applied");
+        if (!document->ApplyFilter(filter.DisplayTitle(), [apply, none](const PixelFX::PFXImage& img) { return apply(img, none); }) && statusHint)
+            statusHint->SetText(TrF("{0} could not be applied", filter.DisplayName()));
         return;
     }
     BeginPreview();
     auto dlg = std::make_shared<UltraPaintFilterDialog>(filter);
-    const std::string label = filter.name.substr(0, filter.name.find("..."));
+    const std::string label = filter.DisplayTitle();
     dlg->onPreview = [this, apply](const std::vector<float>& values) {
         if (values.empty()) { ShowPreview(nullptr); return; }
         ShowPreview([apply, values](const PixelFX::PFXImage& img) { return apply(img, values); });
@@ -3558,17 +3913,17 @@ void UltraPaintWindow::CmdFilter(const PaintFilter& filter) {
     ShowPreview([apply, v = dlg->GetValues()](const PixelFX::PFXImage& img) { return apply(img, v); });
 #else
     (void)filter;
-    UltraCanvasDialogManager::ShowError("Filters need a build with libvips.", "Filter", nullptr, window.get());
+    UltraCanvasDialogManager::ShowError(Tr("Filters need a build with libvips."), Tr("Filter"), nullptr, window.get());
 #endif
 }
 
 void UltraPaintWindow::CmdCurves() {
-    if (StopsAtTextLayer("Curves")) return;
+    if (StopsAtTextLayer(Tr("Curves"))) return;
 #ifdef HAS_LIBVIPS
     if (!document) return;
     auto layer = document->GetActiveLayer();
-    if (!layer || layer->locked) { if (statusHint) statusHint->SetText("The active layer is locked"); return; }
-    if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
+    if (!layer || layer->locked) { if (statusHint) statusHint->SetText(Tr("The active layer is locked")); return; }
+    if (previewActive) { if (statusHint) statusHint->SetText(Tr("Finish the open filter dialog first")); return; }
     auto dlg = std::make_shared<UltraCanvasCurvesDialog>(ToneCurveSet());
     // histogram backdrop from the layer - again whenever the layer the
     // curves work on changes while the dialog is open. The layer is straight
@@ -3592,21 +3947,21 @@ void UltraPaintWindow::CmdCurves() {
         };
     };
     dlg->onCurvesChanged = [this, opFor](const ToneCurveSet& set) { ShowPreview(opFor(set)); };
-    dlg->onAccept = [this, opFor](const ToneCurveSet& set) { EndPreview(!set.IsIdentity(), "Curves", opFor(set)); };
-    dlg->onCancel = [this]() { EndPreview(false, "Curves", nullptr); };
+    dlg->onAccept = [this, opFor](const ToneCurveSet& set) { EndPreview(!set.IsIdentity(), Tr("Curves"), opFor(set)); };
+    dlg->onCancel = [this]() { EndPreview(false, Tr("Curves"), nullptr); };
     ShowDialog(dlg);
 #else
-    UltraCanvasDialogManager::ShowError("Curves needs a build with libvips.", "Curves", nullptr, window.get());
+    UltraCanvasDialogManager::ShowError(Tr("Curves needs a build with libvips."), Tr("Curves"), nullptr, window.get());
 #endif
 }
 
 void UltraPaintWindow::CmdColourToAlpha() {
-    if (StopsAtTextLayer("Colour to Alpha")) return;
+    if (StopsAtTextLayer(Tr("Colour to Alpha"))) return;
 #ifdef HAS_LIBVIPS
     if (!document) return;
     auto layer = document->GetActiveLayer();
-    if (!layer || layer->locked) { if (statusHint) statusHint->SetText("The active layer is locked"); return; }
-    if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
+    if (!layer || layer->locked) { if (statusHint) statusHint->SetText(Tr("The active layer is locked")); return; }
+    if (previewActive) { if (statusHint) statusHint->SetText(Tr("Finish the open filter dialog first")); return; }
     BeginPreview();
 
     UltraPaintColourToAlphaParams initial;
@@ -3628,13 +3983,13 @@ void UltraPaintWindow::CmdColourToAlpha() {
         if (enabled) ShowPreview(opFor(p)); else ShowPreview(nullptr);
     };
     dlg->onAccept = [this, opFor](const UltraPaintColourToAlphaParams& p) {
-        EndPreview(p.transparency > 0, "Colour to Alpha", opFor(p));
+        EndPreview(p.transparency > 0, Tr("Colour to Alpha"), opFor(p));
     };
-    dlg->onCancel = [this]() { EndPreview(false, "Colour to Alpha", nullptr); };
+    dlg->onCancel = [this]() { EndPreview(false, Tr("Colour to Alpha"), nullptr); };
     ShowDialog(dlg);
     ShowPreview(opFor(initial));
 #else
-    UltraCanvasDialogManager::ShowError("Colour to Alpha needs a build with libvips.", "Colour to Alpha", nullptr, window.get());
+    UltraCanvasDialogManager::ShowError(Tr("Colour to Alpha needs a build with libvips."), Tr("Colour to Alpha"), nullptr, window.get());
 #endif
 }
 
@@ -3657,15 +4012,15 @@ void UltraPaintWindow::CmdSettings() {
 }
 
 void UltraPaintWindow::CmdAbout() {
-    std::string text = "UltraPaint " ULTRAPAINT_VERSION "\n\n"
-                       "Bitmap editor built on the UltraCanvas framework.\n"
-                       "Raster editing: UCRasterDocument, brush engine, UltraCanvasPaintSurface.\n"
+    std::string text = std::string("UltraPaint " ULTRAPAINT_VERSION "\n\n") +
+                       Tr("Bitmap editor built on the UltraCanvas framework.") + "\n" +
+                       Tr("Raster editing: UCRasterDocument, brush engine, UltraCanvasPaintSurface.") + "\n" +
 #ifdef HAS_LIBVIPS
-                       "Filters and file formats: PixelFX (libvips " + PixelFX::GetVersion() + ").";
+                       TrF("Filters and file formats: PixelFX (libvips {0}).", PixelFX::GetVersion());
 #else
-                       "This build has no libvips: filters and most file formats are unavailable.";
+                       Tr("This build has no libvips: filters and most file formats are unavailable.");
 #endif
-    UltraCanvasDialogManager::ShowInformation(text, "About UltraPaint", nullptr, window.get());
+    UltraCanvasDialogManager::ShowInformation(text, Tr("About UltraPaint"), nullptr, window.get());
 }
 
 } // namespace UltraCanvas

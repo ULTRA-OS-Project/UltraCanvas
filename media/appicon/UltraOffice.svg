@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UltraOffice app icon: a slide, a spreadsheet and a text page fanned out
+     like a hand of cards - the three kinds of document the program opens.
+     No tile behind them; paths only, so it renders the same without any font. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <g transform="translate(128 128) scale(1) translate(-128 -116)">
+  <!-- the slide, back left: a title bar and a chart bar -->
+  <g transform="rotate(-18 128 270)">
+    <rect x="72" y="30" width="112" height="172" rx="14" fill="#f08a5d"/>
+    <rect x="84" y="48" width="44" height="12" rx="6" fill="#ffffff"/>
+    <path d="M90 180v-48" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+  </g>
+  <!-- the spreadsheet, back right: a header row and a grid -->
+  <g transform="rotate(18 128 270)">
+    <rect x="72" y="30" width="112" height="172" rx="14" fill="#2fa86c"/>
+    <path d="M72 68h112" stroke="#ffffff" stroke-width="8"/>
+    <path d="M72 102h112M72 136h112M72 170h112M146 68v134" stroke="#ffffff" stroke-width="5"/>
+  </g>
+  <!-- the page, in front: folded corner and lines of text -->
+  <path d="M92 24h50l34 34v140a14 14 0 0 1-14 14H92a14 14 0 0 1-14-14V38a14 14 0 0 1 14-14z" fill="#ffffff" stroke="#2e66bf" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M142 24v22a12 12 0 0 0 12 12h22" fill="#cfdcf3" stroke="#2e66bf" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M96 90h62M96 116h62M96 142h62M96 168h40" stroke="#2e66bf" stroke-width="10" stroke-linecap="round"/>
+  </g>
+</svg>

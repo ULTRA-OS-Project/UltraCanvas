@@ -1,8 +1,12 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
+// Version: 2.14.0 - the dark look: ApplyTheme, Look / Own on the greys and the colour fields
+// Version: 2.13.0 - LinearBar's track takes SetTrackColor (it was a fixed light grey)
+// Version: 2.12.0 - SetRingCompact / SetRingValueText: CircularRing as a small inline marker (the ring
+//                  fills the element, no padding or minimum radius; the centre value can be left out)
 // Version: 2.11.0 - the analog clock's hands, ticks, rim and numbers in settable colours
 // Version: 2.10.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 // V2.10.0 changelog: LinearBar low-value fixes and warnings:
 //   - The fill pill keeps the bar's full corner radius at every value: it
@@ -129,6 +133,12 @@ namespace {
 UltraCanvasGaugeDiagramElement::UltraCanvasGaugeDiagramElement(
     const std::string& id, float x, float y, float width, float height)
     : UltraCanvasUIElement(id, x, y,width, height) {
+    ApplyThemeIfFollowing();
+}
+
+void UltraCanvasGaugeDiagramElement::ApplyTheme(const UltraCanvasTheme& theme) {
+    darkLook = theme.dark;
+    RequestRedraw();
 }
 
 UltraCanvasGaugeDiagramElement::~UltraCanvasGaugeDiagramElement() {
@@ -313,15 +323,25 @@ void UltraCanvasGaugeDiagramElement::SetTickPosition(GaugeTickPosition p) { tick
 void UltraCanvasGaugeDiagramElement::SetOrientation(GaugeOrientation o) { orientation = o; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetBatteryStyle(GaugeBatteryStyle s) { batteryStyle = s; RequestRedraw(); }
 
+void UltraCanvasGaugeDiagramElement::SetRingCompact(bool compact) {
+    ringCompact = compact;
+    RequestRedraw();
+}
+
+void UltraCanvasGaugeDiagramElement::SetRingValueText(bool show) {
+    ringValueText = show;
+    RequestRedraw();
+}
+
 void UltraCanvasGaugeDiagramElement::SetRingThickness(float t) { ringThickness = std::max(1.0f, t); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingStyle(GaugeRingStyle s) { ringStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingSegmentStyle(GaugeRingSegmentStyle s) { ringSegmentStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingSegmentCount(int count) { ringSegmentCount = std::max(4, count); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingSegmentRounded(bool rounded) { ringSegmentRounded = rounded; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingBorder(bool enabled) { ringBorder = enabled; RequestRedraw(); }
-void UltraCanvasGaugeDiagramElement::SetRingBorderColor(const Color& c) { ringBorderColor = c; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetRingBorderColor(const Color& c) { ringBorderColor = c; coloursByHand |= ByHandRingBorder; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetFillStyle(GaugeFillStyle s) { fillStyle = s; RequestRedraw(); }
-void UltraCanvasGaugeDiagramElement::SetTrackColor(const Color& c) { trackColor = c; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetTrackColor(const Color& c) { trackColor = c; coloursByHand |= ByHandTrack; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingFaded(bool faded) { ringFaded = faded; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetFillFaded(bool faded) { fillFaded = faded; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingGradientColors(const std::vector<Color>& colors) {
@@ -342,8 +362,8 @@ void UltraCanvasGaugeDiagramElement::SetArcAngles(double startDeg, double endDeg
 }
 
 void UltraCanvasGaugeDiagramElement::SetGaugeColor(const Color& c) { gaugeColor = c; RequestRedraw(); }
-void UltraCanvasGaugeDiagramElement::SetBackgroundColor(const Color& c) { bgColor = c; RequestRedraw(); }
-void UltraCanvasGaugeDiagramElement::SetTextColor(const Color& c) { textColor = c; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetBackgroundColor(const Color& c) { bgColor = c; coloursByHand |= ByHandBackground; RequestRedraw(); }
+void UltraCanvasGaugeDiagramElement::SetTextColor(const Color& c) { textColor = c; coloursByHand |= ByHandText; RequestRedraw(); }
 
 void UltraCanvasGaugeDiagramElement::AddRange(const GaugeRangeSegment& range) {
     ranges.push_back(range); RequestRedraw();
@@ -352,6 +372,7 @@ void UltraCanvasGaugeDiagramElement::AddRange(const GaugeRangeSegment& range) {
 void UltraCanvasGaugeDiagramElement::SetClockHandColor(const Color& c) {
     clockHandColor = c;
     clockMinuteHandColor = c;
+    coloursByHand |= ByHandClockHand;
     RequestRedraw();
 }
 
@@ -359,6 +380,7 @@ void UltraCanvasGaugeDiagramElement::SetClockTickColor(const Color& c) {
     clockTickColor = c;
     clockRimColor = c;
     clockLabelColor = c;
+    coloursByHand |= ByHandClockTick;
     RequestRedraw();
 }
 void UltraCanvasGaugeDiagramElement::ClearRanges() { ranges.clear(); RequestRedraw(); }
@@ -445,6 +467,10 @@ Point2Df UltraCanvasGaugeDiagramElement::AngleToPoint(
 //             in the actually-available space (between title-zone and value-zone).
 Point2Df UltraCanvasGaugeDiagramElement::GetGaugeCenter() const {
     const auto b = GetLocalBounds();
+    // A compact ring sits in the middle of the element (SetRingCompact).
+    if (mode == GaugeMode::CircularRing && ringCompact)
+        return Point2Df(static_cast<float>(b.x) + static_cast<float>(b.width) / 2.0f,
+                        static_cast<float>(b.y) + static_cast<float>(b.height) / 2.0f);
     float titleSpace = title.empty() ? 0.0f : kTitleHeight;
     // V2.7.1: CircularRing draws the value in the centre of the ring, not in a
     // separate zone below it, so it must not reserve bottomSpace — doing so was
@@ -483,6 +509,14 @@ Point2Df UltraCanvasGaugeDiagramElement::GetGaugeCenter() const {
 //           outward from the radius by ~18px, so we need to shrink radius accordingly
 float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
     const auto b = GetLocalBounds();
+    // A compact ring fills the element: half the shorter side, less half the
+    // stroke, the outline a SegmentedRing draws round it, and a pixel for
+    // the antialiasing - so nothing is drawn past the element's edge.
+    if (mode == GaugeMode::CircularRing && ringCompact) {
+        const float outline = ringBorder ? std::max(1.5f, ringThickness * 0.16f) : 0.0f;
+        const float half = static_cast<float>(std::min(b.width, b.height)) / 2.0f;
+        return std::max(1.0f, half - ringThickness / 2.0f - outline - 1.0f);
+    }
     float titleSpace = title.empty() ? 0.0f : kTitleHeight;
     // V2.7.1: CircularRing centres its value inside the ring, so it reserves no
     // bottom value/unit zone — this lets the ring grow to fill the card.
@@ -744,7 +778,7 @@ void UltraCanvasGaugeDiagramElement::DrawTitleText(IRenderContext* ctx, const Po
     if (title.empty()) return;
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(12.0f);
-    ctx->SetTextPaint(Color(130, 130, 145, 255));
+    ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
     ctx->SetFontWeight(FontWeight::Normal);
     Size2Di dims = ctx->GetTextLineDimensions(title);
     ctx->DrawText(title, Point2Df(pos.x - dims.width / 2.0f, pos.y + dims.height));
@@ -754,7 +788,7 @@ void UltraCanvasGaugeDiagramElement::DrawUnitText(IRenderContext* ctx, const Poi
     if (unit.empty()) return;
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(10.0f);
-    ctx->SetTextPaint(Color(150, 150, 160, 255));
+    ctx->SetTextPaint(Look(Color(150, 150, 160, 255)));
     Size2Di dims = ctx->GetTextLineDimensions(unit);
     ctx->DrawText(unit, Point2Df(pos.x - dims.width / 2.0f, pos.y));
 }
@@ -772,7 +806,7 @@ void UltraCanvasGaugeDiagramElement::DrawArcTicks(
 
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(9.0f);
-    ctx->SetTextPaint(Color(130, 130, 145, 255));
+    ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
 
     for (int i = 0; i <= majorCount; i++) {
         double deg = startAngle + i * degStep;
@@ -780,7 +814,7 @@ void UltraCanvasGaugeDiagramElement::DrawArcTicks(
         float innerR = radius - 8.0f;
         float outerR = radius - 1.0f;
 
-        ctx->SetStrokePaint(Color(160, 160, 175, 200));
+        ctx->SetStrokePaint(Look(Color(160, 160, 175, 200)));
         ctx->SetStrokeWidth(1.5f);
         ctx->SetLineCap(LineCap::Round);
         ctx->ClearPath();
@@ -807,7 +841,7 @@ void UltraCanvasGaugeDiagramElement::DrawArcTicks(
                 double mDeg = deg + j * degStep / (minorTickCount + 1);
                 double mRad = mDeg * M_PI / 180.0;
                 float mInnerR = radius - 5.0f;
-                ctx->SetStrokePaint(Color(180, 180, 195, 150));
+                ctx->SetStrokePaint(Look(Color(180, 180, 195, 150)));
                 ctx->SetStrokeWidth(0.8f);
                 ctx->ClearPath();
                 ctx->MoveTo(
@@ -828,7 +862,7 @@ void UltraCanvasGaugeDiagramElement::DrawExternalPointers(
 
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(10.0f);
-    ctx->SetTextPaint(textColor);
+    ctx->SetTextPaint(Own(textColor, ByHandText));
 
     bool vertical = (orientation == GaugeOrientation::Vertical);
     float arrowSize = 6.0f;
@@ -913,14 +947,14 @@ void UltraCanvasGaugeDiagramElement::DrawSubDial(
     int subTicks = 4;
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(7.0f);
-    ctx->SetTextPaint(textColor);
+    ctx->SetTextPaint(Own(textColor, ByHandText));
 
     for (int i = 0; i <= subTicks; i++) {
         double a = 180.0 + (180.0 * i / subTicks);
         double rad = a * M_PI / 180.0;
         float innerR = subRadius - 4.0f;
         float outerR = subRadius - 1.0f;
-        ctx->SetStrokePaint(Color(180, 180, 195, 150));
+        ctx->SetStrokePaint(Look(Color(180, 180, 195, 150)));
         ctx->SetStrokeWidth(0.8f);
         ctx->ClearPath();
         ctx->MoveTo(
@@ -937,7 +971,7 @@ void UltraCanvasGaugeDiagramElement::DrawSubDial(
         ctx->SetFontFamily("Sans");
         ctx->SetFontSize(subTextFontSize);
         ctx->SetFontWeight(FontWeight::Normal);
-        ctx->SetTextPaint(Color(130, 130, 145, 255));
+        ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
         std::string subVal = "0";
         if (!subDial.unit.empty()) subVal += " " + subDial.unit;
         Size2Di sd = ctx->GetTextLineDimensions(subVal);
@@ -947,7 +981,7 @@ void UltraCanvasGaugeDiagramElement::DrawSubDial(
     } else {
         ctx->SetFontFamily("Sans");
         ctx->SetFontSize(7.0f);
-        ctx->SetTextPaint(Color(130, 130, 145, 200));
+        ctx->SetTextPaint(Look(Color(130, 130, 145, 200)));
         ctx->SetFontWeight(FontWeight::Normal);
         const char* edgeMarks[] = {"0", "30"};
         const double edgeAngles[] = {180.0, 360.0};
@@ -1178,7 +1212,10 @@ void UltraCanvasGaugeDiagramElement::RenderSpeedometer(
     float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - unitH
                    - (unit.empty() ? 0.0f : kValueUnitGap);
     DrawValueText(ctx, FormatValue(currentValue),
-                  Point2Df(center.x, valueY), 24.0f, textColor);
+                  Point2Df(center.x, valueY), 24.0f,
+                  // the speedometer's face is dark in either look: light text
+                  // on it, unless the application chose one
+                  (coloursByHand & ByHandText) ? textColor : Color(235, 236, 240, 255));
     if (!unit.empty()) {
         DrawUnitText(ctx, Point2Df(center.x, valueY + kValueUnitGap + 24.0f));
     }
@@ -1193,7 +1230,7 @@ void UltraCanvasGaugeDiagramElement::RenderSemicircular(
     double totalSweep = arcEndDeg - arcStartDeg;
 
     // Background semicircle
-    ctx->SetFillPaint(bgColor);
+    ctx->SetFillPaint(Own(bgColor, ByHandBackground));
     float startRadBg = static_cast<float>(arcStartDeg * M_PI / 180.0);
     float endRadBg = static_cast<float>(arcEndDeg * M_PI / 180.0);
     ctx->ClearPath();
@@ -1218,7 +1255,7 @@ void UltraCanvasGaugeDiagramElement::RenderSemicircular(
                 float ly = static_cast<float>(adjCenter.y + (adjRadius * 0.55f) * std::sin(midRad));
                 ctx->SetFontFamily("Sans");
                 ctx->SetFontSize(9.0f);
-                ctx->SetTextPaint(Color(130, 130, 145, 255));
+                ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
                 Size2Di d = ctx->GetTextLineDimensions(r.label);
                 ctx->DrawText(r.label, Point2Df(lx - d.width / 2.0f, ly - d.height / 2.0f));
             }
@@ -1234,7 +1271,7 @@ void UltraCanvasGaugeDiagramElement::RenderSemicircular(
 
         ctx->SetFontFamily("Sans");
         ctx->SetFontSize(9.0f);
-        ctx->SetTextPaint(Color(130, 130, 145, 255));
+        ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
 
         for (int i = 0; i <= majorCount; i++) {
             double deg = arcStartDeg + i * degStep;
@@ -1242,7 +1279,7 @@ void UltraCanvasGaugeDiagramElement::RenderSemicircular(
 
             float innerR = adjRadius + 2.0f;
             float outerR = adjRadius + 6.0f;
-            ctx->SetStrokePaint(Color(160, 160, 175, 200));
+            ctx->SetStrokePaint(Look(Color(160, 160, 175, 200)));
             ctx->SetStrokeWidth(1.2f);
             ctx->ClearPath();
             ctx->MoveTo(
@@ -1274,7 +1311,7 @@ void UltraCanvasGaugeDiagramElement::RenderSemicircular(
     float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - unitH
                    - (unit.empty() ? 0.0f : kValueUnitGap);
     DrawValueText(ctx, FormatValue(currentValue),
-                  Point2Df(adjCenter.x, valueY), 22.0f, textColor);
+                  Point2Df(adjCenter.x, valueY), 22.0f, Own(textColor, ByHandText));
     if (!unit.empty()) {
         DrawUnitText(ctx, Point2Df(adjCenter.x, valueY + kValueUnitGap + 22.0f));
     }
@@ -1290,7 +1327,7 @@ void UltraCanvasGaugeDiagramElement::RenderQuadrant(
     double totalSweep = arcEndDeg - arcStartDeg;
 
     // Background wedge
-    ctx->SetFillPaint(bgColor);
+    ctx->SetFillPaint(Own(bgColor, ByHandBackground));
     float startRadBg = static_cast<float>(arcStartDeg * M_PI / 180.0);
     float endRadBg = static_cast<float>(arcEndDeg * M_PI / 180.0);
     ctx->ClearPath();
@@ -1319,7 +1356,7 @@ void UltraCanvasGaugeDiagramElement::RenderQuadrant(
 
         ctx->SetFontFamily("Sans");
         ctx->SetFontSize(9.0f);
-        ctx->SetTextPaint(Color(130, 130, 145, 255));
+        ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
 
         for (int i = 0; i <= majorCount; i++) {
             double deg = arcStartDeg + i * degStep;
@@ -1327,7 +1364,7 @@ void UltraCanvasGaugeDiagramElement::RenderQuadrant(
 
             float innerR = radius - 9.0f;
             float outerR = radius - 2.0f;
-            ctx->SetStrokePaint(Color(160, 160, 175, 200));
+            ctx->SetStrokePaint(Look(Color(160, 160, 175, 200)));
             ctx->SetStrokeWidth(1.2f);
             ctx->ClearPath();
             ctx->MoveTo(
@@ -1359,7 +1396,7 @@ void UltraCanvasGaugeDiagramElement::RenderQuadrant(
     float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - unitH
                    - (unit.empty() ? 0.0f : kValueUnitGap);
     DrawValueText(ctx, FormatValue(currentValue),
-                  Point2Df(center.x, valueY), 20.0f, textColor);
+                  Point2Df(center.x, valueY), 20.0f, Own(textColor, ByHandText));
     if (!unit.empty()) {
         DrawUnitText(ctx, Point2Df(center.x, valueY + kValueUnitGap + 20.0f));
     }
@@ -1371,15 +1408,15 @@ void UltraCanvasGaugeDiagramElement::RenderCompass(
     Point2Df adjCenter = center;
     adjCenter.y -= radius * 0.25f;
 
-    ctx->SetFillPaint(bgColor);
+    ctx->SetFillPaint(Own(bgColor, ByHandBackground));
     ctx->FillCircle(adjCenter, radius + 6.0f);
-    ctx->SetStrokePaint(Color(200, 200, 215, 255));
+    ctx->SetStrokePaint(Look(Color(200, 200, 215, 255)));
     ctx->SetStrokeWidth(1.0f);
     ctx->DrawCircle(adjCenter, radius);
 
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(8.0f);
-    ctx->SetTextPaint(Color(130, 130, 145, 255));
+    ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
 
     for (int deg = 0; deg < 360; deg += 30) {
         double mathDeg = deg - 90.0;
@@ -1419,7 +1456,7 @@ void UltraCanvasGaugeDiagramElement::RenderCompass(
         double deg = i * 90.0 - 90.0;
         double rad = deg * M_PI / 180.0;
         float labelR = radius - 24.0f;
-        ctx->SetTextPaint((i == 0) ? Color(220, 60, 60, 255) : Color(100, 100, 115, 255));
+        ctx->SetTextPaint((i == 0) ? Color(220, 60, 60, 255) : Look(Color(100, 100, 115, 255)));
         Size2Di d = ctx->GetTextLineDimensions(dirs[i]);
         float lx = static_cast<float>(adjCenter.x + labelR * std::cos(rad) - d.width / 2);
         float ly = static_cast<float>(adjCenter.y + labelR * std::sin(rad) - d.height / 2);
@@ -1441,12 +1478,12 @@ void UltraCanvasGaugeDiagramElement::RenderCompass(
     ctx->MoveTo(adjCenter.x, adjCenter.y);
     ctx->LineTo(tipX, tipY);
     ctx->Stroke();
-    ctx->SetStrokePaint(Color(160, 160, 175, 255));
+    ctx->SetStrokePaint(Look(Color(160, 160, 175, 255)));
     ctx->ClearPath();
     ctx->MoveTo(adjCenter.x, adjCenter.y);
     ctx->LineTo(backX, backY);
     ctx->Stroke();
-    ctx->SetFillPaint(Color(160, 160, 175, 255));
+    ctx->SetFillPaint(Look(Color(160, 160, 175, 255)));
     ctx->FillCircle(adjCenter, 3.0f);
 
     if (!title.empty()) {
@@ -1456,30 +1493,30 @@ void UltraCanvasGaugeDiagramElement::RenderCompass(
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(0) << heading << "\xC2\xB0";
     float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - kValueHeight + 18.0f;
-    DrawValueText(ctx, oss.str(), Point2Df(adjCenter.x, valueY), 20.0f, textColor);
+    DrawValueText(ctx, oss.str(), Point2Df(adjCenter.x, valueY), 20.0f, Own(textColor, ByHandText));
 }
 
 void UltraCanvasGaugeDiagramElement::RenderAnalogClock(
     IRenderContext* ctx, const Point2Df& center, float radius) {
     const auto b = GetLocalBounds();
 
-    ctx->SetFillPaint(bgColor);
+    ctx->SetFillPaint(Own(bgColor, ByHandBackground));
     ctx->FillCircle(center, radius + 4.0f);
-    ctx->SetStrokePaint(clockRimColor);
+    ctx->SetStrokePaint(Own(clockRimColor, ByHandClockTick));
     ctx->SetStrokeWidth(1.0f);
     ctx->DrawCircle(center, radius);
 
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(12.0f);
     ctx->SetFontWeight(FontWeight::Normal);
-    ctx->SetTextPaint(clockLabelColor);
+    ctx->SetTextPaint(Own(clockLabelColor, ByHandClockTick));
 
     for (int h = 1; h <= 12; h++) {
         double deg = h * 30.0 - 90.0;
         double rad = deg * M_PI / 180.0;
         float innerR = radius - 10.0f;
         float outerR = radius - 2.0f;
-        ctx->SetStrokePaint(clockTickColor);
+        ctx->SetStrokePaint(Own(clockTickColor, ByHandClockTick));
         ctx->SetStrokeWidth(1.2f);
         ctx->SetLineCap(LineCap::Round);
         ctx->ClearPath();
@@ -1510,7 +1547,7 @@ void UltraCanvasGaugeDiagramElement::RenderAnalogClock(
 
     double hourAngle = (hour + minute / 60.0) * 30.0 - 90.0;
     double hourRad = hourAngle * M_PI / 180.0;
-    ctx->SetStrokePaint(clockHandColor);
+    ctx->SetStrokePaint(Own(clockHandColor, ByHandClockHand));
     ctx->SetStrokeWidth(3.0f);
     ctx->SetLineCap(LineCap::Round);
     ctx->ClearPath();
@@ -1522,7 +1559,7 @@ void UltraCanvasGaugeDiagramElement::RenderAnalogClock(
 
     double minAngle = minute * 6.0 - 90.0;
     double minRad = minAngle * M_PI / 180.0;
-    ctx->SetStrokePaint(clockMinuteHandColor);
+    ctx->SetStrokePaint(Own(clockMinuteHandColor, ByHandClockHand));
     ctx->SetStrokeWidth(1.8f);
     ctx->ClearPath();
     ctx->MoveTo(center.x, center.y);
@@ -1542,7 +1579,7 @@ void UltraCanvasGaugeDiagramElement::RenderAnalogClock(
         static_cast<float>(center.y + (radius * 0.82f) * std::sin(secRad)));
     ctx->Stroke();
 
-    ctx->SetFillPaint(clockHandColor);
+    ctx->SetFillPaint(Own(clockHandColor, ByHandClockHand));
     ctx->FillCircle(center, 3.0f);
     ctx->SetFillPaint(Color(220, 60, 60, 255));
     ctx->FillCircle(center, 1.5f);
@@ -1557,15 +1594,15 @@ void UltraCanvasGaugeDiagramElement::RenderStopwatch(
     const auto b = GetLocalBounds();
     Point2Df c = center;
 
-    ctx->SetFillPaint(bgColor);
+    ctx->SetFillPaint(Own(bgColor, ByHandBackground));
     ctx->FillCircle(c, radius + 4.0f);
-    ctx->SetStrokePaint(Color(200, 200, 215, 255));
+    ctx->SetStrokePaint(Look(Color(200, 200, 215, 255)));
     ctx->SetStrokeWidth(1.0f);
     ctx->DrawCircle(c, radius);
 
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(9.0f);
-    ctx->SetTextPaint(Color(130, 130, 145, 255));
+    ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
 
     for (int i = 0; i < 60; i++) {
         double deg = i * 6.0 - 90.0;
@@ -1573,7 +1610,7 @@ void UltraCanvasGaugeDiagramElement::RenderStopwatch(
         bool isMajor = (i % 5) == 0;
         float innerR = isMajor ? radius - 10.0f : radius - 5.0f;
         float outerR = radius - 2.0f;
-        ctx->SetStrokePaint(isMajor ? Color(160, 160, 175, 220) : Color(190, 190, 205, 150));
+        ctx->SetStrokePaint(isMajor ? Look(Color(160, 160, 175, 220)) : Look(Color(190, 190, 205, 150)));
         ctx->SetStrokeWidth(isMajor ? 1.2f : 0.7f);
         ctx->SetLineCap(LineCap::Round);
         ctx->ClearPath();
@@ -1630,7 +1667,7 @@ void UltraCanvasGaugeDiagramElement::RenderStopwatch(
 
     ctx->SetFillPaint(gaugeColor);
     ctx->FillCircle(c, 4.0f);
-    ctx->SetFillPaint(Color(238, 239, 245, 255));
+    ctx->SetFillPaint(Look(Color(238, 239, 245, 255)));
     ctx->FillCircle(c, 2.0f);
 
     ctx->SetFontFamily("Sans");
@@ -1734,7 +1771,7 @@ void UltraCanvasGaugeDiagramElement::DrawLinearTitle(IRenderContext* ctx, const 
     if (!layout.showTitle || title.empty()) return;
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(12.0f);
-    ctx->SetTextPaint(Color(130, 130, 145, 255));
+    ctx->SetTextPaint(Look(Color(130, 130, 145, 255)));
     ctx->SetFontWeight(FontWeight::Normal);
     const Size2Di dims = ctx->GetTextLineDimensions(title);
     ctx->DrawText(title, Point2Df(static_cast<float>(GetLocalBounds().width) / 2.0f - dims.width / 2.0f, layout.titleTop));
@@ -1744,7 +1781,7 @@ void UltraCanvasGaugeDiagramElement::DrawLinearValue(IRenderContext* ctx, const 
     if (!layout.showValue) return;
     const std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
     DrawValueText(ctx, vt, Point2Df(static_cast<float>(GetLocalBounds().width) / 2.0f, layout.valueTop),
-                  13.0f, textColor);
+                  13.0f, Own(textColor, ByHandText));
 }
 
 void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
@@ -1761,7 +1798,8 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
     // The track's ends are half circles of the bar's thickness - the shorter
     // side. Half the longer side, as the vertical bar used, is more than a
     // rectangle can round and drew past the element.
-    ctx->SetFillPaint(Color(225, 226, 235, 255));
+    // SetTrackColor: a fixed light grey glared on a dark status bar.
+    ctx->SetFillPaint(Own(trackColor, ByHandTrack));
     ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), std::min(barW, barH) / 2.0f);
 
     // Diameter of a rounded end = the bar's cross dimension, no more than its length.
@@ -1856,7 +1894,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearLED(IRenderContext* ctx) {
             double segValue = minValue + (i + 0.5) * (maxValue - minValue) / segmentCount;
             segColor = GetColorForValue(segValue);
         } else {
-            segColor = Color(225, 226, 235, 255);
+            segColor = Look(Color(225, 226, 235, 255));
         }
         ctx->SetFillPaint(segColor);
 
@@ -1894,7 +1932,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearSegmented(IRenderContext* ctx) 
     for (int i = 0; i < segmentCount; i++) {
         bool lit = (i < litSegments);
         double segValue = minValue + (i + 0.5) * (maxValue - minValue) / segmentCount;
-        Color segColor = lit ? GetColorForValue(segValue) : Color(225, 226, 235, 255);
+        Color segColor = lit ? GetColorForValue(segValue) : Look(Color(225, 226, 235, 255));
         ctx->SetFillPaint(segColor);
         if (vertical) {
             float sy = barY + barH - (i + 1) * (segLen + gap) + gap;
@@ -1963,7 +2001,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearMultiPointer(IRenderContext* ct
     DrawLinearTitle(ctx, layout);
     const float barX = layout.bar.x, barY = layout.bar.y, barW = layout.bar.width, barH = layout.bar.height;
 
-    ctx->SetFillPaint(Color(225, 226, 235, 255));
+    ctx->SetFillPaint(Look(Color(225, 226, 235, 255)));
     ctx->FillRectangle(Rect2Df(barX, barY, barW, barH));
 
     double ratio = ValueToRatio(currentValue);
@@ -2072,7 +2110,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearWithArrow(IRenderContext* ctx) 
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(12.0f);
     ctx->SetFontWeight(FontWeight::Light);
-    ctx->SetTextPaint(textColor);
+    ctx->SetTextPaint(Own(textColor, ByHandText));
     if (vertical) {
         // Beside the arrow, kept inside the element at the ends of the bar.
         float ly = arrowY - labelSize.height / 2.0f;
@@ -2090,7 +2128,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearWithArrow(IRenderContext* ctx) 
     if (rangeLabelsShown && vertical) {
         ctx->SetFontFamily("Sans");
         ctx->SetFontSize(9.0f);
-        ctx->SetTextPaint(Color(140, 140, 150, 255));
+        ctx->SetTextPaint(Look(Color(140, 140, 150, 255)));
         Size2Di dMax = ctx->GetTextLineDimensions(maxLabel);
         Size2Di dMin = ctx->GetTextLineDimensions(minLabel);
         const float maxY = std::max(0.0f, barY - dMax.height / 2.0f);
@@ -2118,7 +2156,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
     float barH = layout.bar.height;
     float barY = layout.bar.y;
 
-    ctx->SetFillPaint(Color(225, 226, 235, 255));
+    ctx->SetFillPaint(Look(Color(225, 226, 235, 255)));
     ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), 4.0f);
 
     // V2.6: Piecewise ratio — each segment between consecutive thresholds gets equal bar width
@@ -2244,7 +2282,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
         if (!t.label.empty() && showLabels && stationLabels) {
             ctx->SetFontFamily("Sans");
             ctx->SetFontSize(10.0f);
-            ctx->SetTextPaint(textColor);
+            ctx->SetTextPaint(Own(textColor, ByHandText));
             ctx->SetFontWeight(FontWeight::Bold);
             Size2Di d = ctx->GetTextLineDimensions(t.label);
             float labelX = mx - d.width / 2.0f;
@@ -2263,7 +2301,7 @@ void UltraCanvasGaugeDiagramElement::RenderLinearScale(IRenderContext* ctx) {
             std::string valLabel = FormatValue(t.value) + (unit.empty() ? "" : (" " + unit));
             ctx->SetFontFamily("Sans");
             ctx->SetFontSize(9.0f);
-            ctx->SetTextPaint(Color(140, 140, 155, 255));
+            ctx->SetTextPaint(Look(Color(140, 140, 155, 255)));
             Size2Di dv = ctx->GetTextLineDimensions(valLabel);
             float valLabelX = mx - dv.width / 2.0f;
             if (valLabelX < static_cast<float>(b.x) + 2.0f) valLabelX = static_cast<float>(b.x) + 2.0f;
@@ -2310,12 +2348,27 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
 
     DrawRingTrackAndValue(ctx, center, radius);
 
+    // The ring alone (SetRingValueText(false)): a centre label or icon,
+    // when one is set, sits in the middle by itself.
+    if (!ringValueText) {
+        if (ringCenterContent == GaugeRingCenterContent::TextLabel && !ringCenterLabel.empty()) {
+            const float innerR = std::max(4.0f, radius - ringThickness);
+            ctx->SetFontFamily("Sans");
+            ctx->SetFontWeight(FontWeight::Bold);
+            ctx->SetTextPaint(Own(textColor, ByHandText));
+            ctx->SetFontSize(std::min(13.0f, std::max(7.0f, innerR * 0.7f)));
+            const Size2Di ld = ctx->GetTextLineDimensions(ringCenterLabel);
+            ctx->DrawText(ringCenterLabel, Point2Df(center.x - ld.width / 2.0f, center.y - ld.height / 2.0f));
+        } else if (ringCenterContent == GaugeRingCenterContent::Icon) {
+            DrawRingCenterIcon(ctx, center, std::min(13.0f, std::max(4.0f, radius - ringThickness)));
+        }
+    } else
     // Centre value text. When a liquid fill covers the disc the configured
     // textColor is used as-is (the demo picks a contrasting colour per card).
     {
         std::string label = FormatValue(currentValue) + (unit.empty() ? "" : unit);
         ctx->SetFontFamily("Sans");
-        ctx->SetTextPaint(textColor);
+        ctx->SetTextPaint(Own(textColor, ByHandText));
         ctx->SetFontWeight(FontWeight::Light);
 
         // V2.7.1: Scale the value text to the ring so it always fits inside the
@@ -2344,7 +2397,7 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
         if (ringCenterContent == GaugeRingCenterContent::TextLabel && !ringCenterLabel.empty()) {
             ctx->SetFontSize(std::min(13.0f, std::max(9.0f, fontSize * 0.5f)));
             ctx->SetFontWeight(FontWeight::Bold);
-            ctx->SetTextPaint(textColor);
+            ctx->SetTextPaint(Own(textColor, ByHandText));
             Size2Di ld = ctx->GetTextLineDimensions(ringCenterLabel);
             ctx->DrawText(ringCenterLabel,
                           Point2Df(center.x - ld.width / 2.0f, valueTop + d.height + 6.0f));
@@ -2353,7 +2406,8 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
         }
     }
 
-    if (!title.empty()) {
+    // A compact ring has no room for a title.
+    if (!title.empty() && !ringCompact) {
         DrawTitleText(ctx, Point2Df(center.x, static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
     }
 }
@@ -2401,7 +2455,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
 
     if (ringStyle == GaugeRingStyle::SolidArc) {
         // Continuous track + rounded value arc.
-        DrawArcSection(ctx, center, radius, startRad, endRad, trackColor, thickness);
+        DrawArcSection(ctx, center, radius, startRad, endRad, Own(trackColor, ByHandTrack), thickness);
         if (ratio > 0.0001) {
             float fillEnd = startRad + static_cast<float>(ratio * sweep);
             ctx->ClearPath();
@@ -2479,14 +2533,14 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             if (borderW > 0.0f) {
                 ctx->ClearPath();
                 ctx->Arc(center.x, center.y, radius, s, e);
-                ctx->SetStrokePaint(ringBorderColor);
+                ctx->SetStrokePaint(Own(ringBorderColor, ByHandRingBorder));
                 ctx->SetStrokeWidth(thickness + 2.0f * borderW);
                 ctx->SetLineCap(cap);
                 ctx->Stroke();
             }
             ctx->ClearPath();
             ctx->Arc(center.x, center.y, radius, s, e);
-            if (lit) setLitStroke(); else ctx->SetStrokePaint(trackColor);
+            if (lit) setLitStroke(); else ctx->SetStrokePaint(Own(trackColor, ByHandTrack));
             ctx->SetStrokeWidth(thickness);
             ctx->SetLineCap(cap);
             ctx->Stroke();
@@ -2516,7 +2570,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             }
             ctx->ClearPath();
             ctx->Arc(center.x, center.y, radius, s, e);
-            if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(trackColor);
+            if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(Own(trackColor, ByHandTrack));
             ctx->SetStrokeWidth(thickness);
             ctx->SetLineCap(LineCap::Round);
             ctx->Stroke();
@@ -2533,7 +2587,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
             float iy = center.y + (radius - halfLen) * sinA;
             float ox = center.x + (radius + halfLen) * cosA;
             float oy = center.y + (radius + halfLen) * sinA;
-            if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(trackColor);
+            if (i < litCount) setLitStroke(); else ctx->SetStrokePaint(Own(trackColor, ByHandTrack));
             ctx->SetStrokeWidth(barW);
             ctx->SetLineCap(LineCap::Butt);
             ctx->ClearPath();
@@ -2549,8 +2603,8 @@ void UltraCanvasGaugeDiagramElement::DrawRingTrackAndValue(
         for (int i = 0; i < count; i++) {
             float a = startRad + (i + 0.5f) * (sweep / static_cast<float>(count));
             Point2Df p(center.x + radius * std::cos(a), center.y + radius * std::sin(a));
-            Color dotColor = (i < litCount) ? fillC : trackColor;
-            ctx->DrawFilledCircle(p, dotR, dotColor, ringBorderColor, borderW);
+            Color dotColor = (i < litCount) ? fillC : Own(trackColor, ByHandTrack);
+            ctx->DrawFilledCircle(p, dotR, dotColor, Own(ringBorderColor, ByHandRingBorder), borderW);
         }
     }
 }
@@ -2574,7 +2628,7 @@ void UltraCanvasGaugeDiagramElement::DrawRingLiquidFill(
     ctx->ClipPath();
 
     // Soft track behind the liquid so an empty area still reads as a disc.
-    Color discBg = trackColor;
+    Color discBg = Own(trackColor, ByHandTrack);
     discBg.a = 60;
     ctx->SetFillPaint(discBg);
     ctx->FillCircle(center, innerRadius);
@@ -2720,11 +2774,11 @@ void UltraCanvasGaugeDiagramElement::RenderBattery(IRenderContext* ctx) {
 
     double ratio = ValueToRatio(currentValue);
 
-    ctx->SetStrokePaint(Color(180, 180, 195, 255));
+    ctx->SetStrokePaint(Look(Color(180, 180, 195, 255)));
     ctx->SetStrokeWidth(2.0f);
     ctx->DrawRoundedRectangle(Rect2Df(batX, batY, batW, batH), 4.0f);
 
-    ctx->SetFillPaint(Color(180, 180, 195, 255));
+    ctx->SetFillPaint(Look(Color(180, 180, 195, 255)));
     ctx->FillRectangle(Rect2Df(batX + batW, batY + (batH - terminalH) / 2.0f, terminalW, terminalH));
 
     Color fillC = GetColorForValue(currentValue);
@@ -2750,7 +2804,7 @@ void UltraCanvasGaugeDiagramElement::RenderBattery(IRenderContext* ctx) {
         float segW = (batW - 2.0f * fillMargin - gap * (segs - 1)) / segs;
         for (int i = 0; i < segs; i++) {
             if (i < litSegs) ctx->SetFillPaint(fillC);
-            else ctx->SetFillPaint(Color(225, 226, 235, 255));
+            else ctx->SetFillPaint(Look(Color(225, 226, 235, 255)));
             float sx = batX + fillMargin + i * (segW + gap);
             ctx->FillRectangle(Rect2Df(sx, batY + fillMargin, segW, batH - 2.0f * fillMargin));
         }
@@ -2778,7 +2832,7 @@ void UltraCanvasGaugeDiagramElement::RenderBattery(IRenderContext* ctx) {
     float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
     DrawValueText(ctx, oss.str(),
                   Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                  16.0f, textColor);
+                  16.0f, Own(textColor, ByHandText));
 }
 
 // V2.1 FIX: Thermometer with proper layout for tube + bulb + value below
@@ -2804,11 +2858,11 @@ void UltraCanvasGaugeDiagramElement::RenderThermometer(IRenderContext* ctx) {
     double ratio = ValueToRatio(currentValue);
     float fillH = static_cast<float>(tubeH * ratio);
 
-    ctx->SetStrokePaint(Color(180, 180, 195, 255));
+    ctx->SetStrokePaint(Look(Color(180, 180, 195, 255)));
     ctx->SetStrokeWidth(1.2f);
     ctx->DrawRoundedRectangle(Rect2Df(tubeX, tubeY, tubeW, tubeH), 6.0f);
 
-    ctx->SetStrokePaint(Color(180, 180, 195, 255));
+    ctx->SetStrokePaint(Look(Color(180, 180, 195, 255)));
     ctx->DrawCircle(Point2Df(tubeX + tubeW / 2.0f, bulbY + bulbR), bulbR);
 
     // Fill
@@ -2821,12 +2875,12 @@ void UltraCanvasGaugeDiagramElement::RenderThermometer(IRenderContext* ctx) {
     if (showLabels) {
         ctx->SetFontFamily("Sans");
         ctx->SetFontSize(9.0f);
-        ctx->SetTextPaint(Color(140, 140, 150, 255));
+        ctx->SetTextPaint(Look(Color(140, 140, 150, 255)));
         int marks = std::max(2, majorTickCount);
         for (int i = 0; i <= marks; i++) {
             double val = minValue + (maxValue - minValue) * i / marks;
             float my = tubeY + tubeH - static_cast<float>(static_cast<double>(tubeH) * i / marks);
-            ctx->SetStrokePaint(Color(180, 180, 195, 200));
+            ctx->SetStrokePaint(Look(Color(180, 180, 195, 200)));
             ctx->SetStrokeWidth(0.8f);
             ctx->ClearPath();
             ctx->MoveTo(tubeX + tubeW + 2.0f, my);
@@ -2843,7 +2897,7 @@ void UltraCanvasGaugeDiagramElement::RenderThermometer(IRenderContext* ctx) {
     float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
     DrawValueText(ctx, vt,
                   Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                  13.0f, textColor);
+                  13.0f, Own(textColor, ByHandText));
 }
 
 // V2.1 FIX: Cylinder with proper layout - title top, cylinder middle, value bottom
@@ -2869,7 +2923,7 @@ void UltraCanvasGaugeDiagramElement::RenderCylinder(IRenderContext* ctx) {
 
     double ratio = ValueToRatio(currentValue);
 
-    ctx->SetStrokePaint(Color(180, 180, 195, 255));
+    ctx->SetStrokePaint(Look(Color(180, 180, 195, 255)));
     ctx->SetStrokeWidth(1.0f);
     ctx->DrawRoundedRectangle(Rect2Df(cylX, cylY, cylW, cylH), ellipseH / 2.0f);
 
@@ -2895,7 +2949,7 @@ void UltraCanvasGaugeDiagramElement::RenderCylinder(IRenderContext* ctx) {
     float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
     DrawValueText(ctx, vt,
                   Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                  13.0f, textColor);
+                  13.0f, Own(textColor, ByHandText));
 }
 
 // V2.1 FIX: Digital - value centered, title at bottom (LCD style)
@@ -2959,7 +3013,7 @@ void UltraCanvasGaugeDiagramElement::RenderDigital(IRenderContext* ctx) {
     if (!title.empty()) {
         ctx->SetFontFamily("Sans");
         ctx->SetFontSize(10.0f);
-        ctx->SetTextPaint(Color(140, 140, 150, 255));
+        ctx->SetTextPaint(Look(Color(140, 140, 150, 255)));
         ctx->SetFontWeight(FontWeight::Normal);
         Size2Di td = ctx->GetTextLineDimensions(title);
         ctx->DrawText(title, Point2Df(

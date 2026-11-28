@@ -216,7 +216,15 @@ def user_json(user, online: bool | None = None) -> dict[str, Any]:
 def group_json(group) -> dict[str, Any]:
     return {"group_id": group.group_id, "conversation": GROUP_PREFIX + group.group_id,
             "title": group.title, "owner": group.owner, "members": group.members, "public": group.public,
-            "description": group.description}
+            "description": group.description, "revision": group.revision}
+
+
+def removed_json(before, after) -> dict[str, Any]:
+    """What the member taken out is told: the group as it was, marked removed,
+    at the revision the removal made - so a record from before it that
+    arrives late does not put the group back."""
+    revision = after.revision if after else before.revision + 1
+    return {**group_json(before), "removed": True, "revision": revision}
 
 
 # ============================================================================
@@ -771,9 +779,8 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         if member != user_id and group.owner != user_id:
             raise error(403, "forbidden", "Only the owner removes other members")
         store.remove_member(group_id, member)
-        await hub.send(member, {"type": "group.update",
-                                "group": {**group_json(group), "removed": True}})
         updated = store.get_group(group_id)
+        await hub.send(member, {"type": "group.update", "group": removed_json(group, updated)})
         if updated:
             await push_group(updated)
         return {"status": "ok"}
@@ -803,8 +810,9 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         store.ban(group_id, member)
         if member in group.members:
             store.remove_member(group_id, member)
-            await hub.send(member, {"type": "group.update", "group": {**group_json(group), "removed": True}})
-            await push_group(store.get_group(group_id))
+            updated = store.get_group(group_id)
+            await hub.send(member, {"type": "group.update", "group": removed_json(group, updated)})
+            await push_group(updated)
         return {"status": "ok"}
 
     @app.delete("/v1/groups/{group_id}/blocked/{member}")

@@ -70,7 +70,7 @@ namespace UltraCanvas {
             auto title = DemoKit::CreateText(id, text);
             title->SetFontSize(11);
             title->SetFontWeight(FontWeight::Bold);
-            title->SetTextColor(Color(73, 80, 87, 255));
+            title->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
             return title;
         };
 
@@ -141,7 +141,7 @@ namespace UltraCanvas {
                 "- Hover for full text\n"
                 "- Double-click an item"));
         helpBox->SetFontSize(9);
-        helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
+        helpBox->SetBackgroundColor(DemoKit::Themed(Color(255, 243, 205, 255)));
         helpBox->SetPadding(10);
         DemoKit::Add(leftSidebar, helpBox);
 
@@ -151,15 +151,16 @@ namespace UltraCanvas {
         auto centerCard = DemoKit::AddCard(contentContainer, "swotCenter", "", "",
                                            660 + 2 * DemoKit::kCardPadding + 2);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("swotTabs", 0, 0, 660, 580);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(centerCard, tabbedContainer);
 
         auto statusBar = DemoKit::CreateText("swotStatusBar",
                 Tr("Ready - click items to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
-        statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
+        statusBar->SetBackgroundColor(DemoKit::Themed(Color(233, 236, 239, 255)));
         statusBar->SetPadding(15);
-        statusBar->SetTextColor(Color(73, 80, 87, 255));
+        statusBar->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
         DemoKit::Add(centerCard, statusBar);
 
         // ===== RIGHT SIDEBAR (stats + about) =====
@@ -170,7 +171,7 @@ namespace UltraCanvas {
 
         auto statsPanel = DemoKit::CreateText("swotStatsPanel", "");
         statsPanel->SetFontSize(10);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        statsPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         statsPanel->SetPadding(12);
         DemoKit::Add(rightSidebar, statsPanel);
 
@@ -178,7 +179,7 @@ namespace UltraCanvas {
 
         auto aboutPanel = DemoKit::CreateText("swotAboutPanel", "");
         aboutPanel->SetFontSize(9);
-        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        aboutPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         aboutPanel->SetPadding(12);
         DemoKit::Add(rightSidebar, aboutPanel);
 
@@ -221,7 +222,7 @@ namespace UltraCanvas {
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     diagram->GetIdentifier() + "Tab", 0, 0, 660, 542);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(diagram);
             tabbedContainer->AddTab(spec.tabTitle, tabContent);
             allDiagrams.push_back(diagram);

@@ -1,3 +1,47 @@
+#### 2026-11-26 *0.1.15*
+- **Every text in 29 languages.** The application had no translation, so
+  it showed English whatever the language; its whole catalogue is now
+  translated into all 29 (machine drafts, reviewed by -; Brazilian
+  Portuguese uses the Portuguese).
+
+#### 2026-11-25 *0.1.14*
+- **Started again from a terminal, UltraClipboard answers in your language.**
+  "UltraClipboard is already running: brought it forward." was English
+  whatever the language. It comes from the framework's standard set now
+  (`UltraCanvasSingleInstance::HandOffMessage`).
+- **Opened again from another virtual desktop, UltraClipboard comes to the
+  desktop you are on (Linux, X11).** With its window on desktop 1, the
+  desktop's clipboard button, *Search* or *Edit* from the quick panel, or a
+  second start did nothing on desktop 2: the window was only marked "wants
+  attention" where it was. It now moves to the current desktop and comes to
+  the front (the framework's `RaiseAndFocus`); while one of its dialogs is
+  open, the window comes over behind that dialog.
+
+#### 2026-11-20 *0.1.13*
+- **Copied slides preview as they look**: their fonts, spacing and bullets,
+  turned and freeform shapes, gradients, connectors and arrowheads, styled
+  tables with merged cells, cropped pictures, charts and SmartArt.
+
+#### 2026-11-19 *0.1.12*
+- **Tidier rows.** A text entry no longer lists its lines and size under its
+  title ("Formatted text · 1 line · 230 bytes" is "Formatted text"), and the
+  time ("vor 4 Std.", "5 min ago") stands at the right end of the row.
+- **The row's icons stay in reach while a preview is open.** The preview
+  covers the right part of the list, and with it the icons at the row's right
+  edge; the selected row and the previewed one now show Copy, Edit, Save as
+  and Delete just left of the preview.
+- **Spreadsheets and documents in the preview.** Resting on copied files
+  previews a spreadsheet (.ods, .xlsx, .xls, .csv) in the viewer, scrollable,
+  and a word-processing document (.odt, .docx, .doc) as its first page, laid
+  out with its fonts, pictures and tables. The page is drawn in the
+  background and the preview opens when it is ready (once per document, again
+  after it is saved); a PDF was previewed already.
+- **Slides in the preview.** A copied PowerPoint deck (.pptx, .pptm, .ppsx,
+  .potx) previews its slides as they are laid out - titles, bullets, colours,
+  shapes, pictures and tables - drawn in the background; *1 / 12* in the
+  preview's info line says which, and PageUp / PageDown (or a click on the
+  picture's left or right) turn them.
+
 #### 2026-11-14 *0.1.11*
 - **Dark look**: the window's bars, list, rows, icon buttons, filter,
   status line, Undo and preview frame take the system look (the theme's

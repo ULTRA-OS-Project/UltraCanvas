@@ -65,6 +65,41 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.53.0 - Edit in ArtCreator: a drawing's context menu starts ArtCreator with it
+// Version: 1.52.0 - Edit in UltraPaint: a picture's context menu starts UltraPaint with it
+//                  (BuildOpenMenuItems, on every folder display's openMenuProvider)
+// Version: 1.51.0 - IsOpen (MobilePC hands a later start's folders to an open window)
+// Version: 1.50.0 - Settings > Display > Favorite folders applied to every file display
+//                  (ApplyFavoriteHighlight): a fill, border or shade, its colour, the heart
+// Version: 1.49.1 - the preview pane is left as it is while a selection rectangle is drawn in the
+//                  folder display, and follows the selection once it is let go
+// Version: 1.49.0 - the path bar in the colours of Settings > Display > Path bar: #E4E6E9 for the
+//                  folders on the way and #0078D7 for the folder shown, by default, as before
+// Version: 1.48.1 - the Computer page's drive cards follow a dark / light switch (ApplyLook rebuilds them)
+// Version: 1.48.0 - dark theme: the line-art icons (cloud, network, server, FTP, computer, phone)
+//                  in the tree and the file displays drawn in the theme's ink; any light
+//                  drive colour in the tree comes down to the ground's depth, not only the
+//                  exact default; the Computer page shows a symbol (RAM
+//                  chip, server, cloud, phone) for a drive with no size, and why a phone has none
+// Version: 1.47.0 - Run in background: the operation on the status bar (words, bar, Show), its
+//                  bar's track in the theme's colour
+// Version: 1.46.1 - the Computer page's card of a RAM disc without a size of its own (Windows
+//                  without ImDisk) no longer shows the system drive's pie: "No size of its own"
+// Version: 1.46.0 - Settings > Display > Display mode: the settings are read before the window is
+//                  built and the mode is the theme policy, so the window is built in its look
+// Version: 1.45.5 - the "New ▾" button's Folder entry is translated, like the context
+//                  menu's New > Folder
+// Version: 1.45.4 - the path bars under Dark: dark grey segments, the current folder's segment in the
+//                  arrow's strong blue with white, the seams in the ground; set again by ApplyLook on
+//                  every theme change instead of following the theme themselves
+// Version: 1.45.3 - split view under a dark theme: the right-hand pane takes the current theme when
+//                  it joins the window (it was built at start-up, under the light look, and out of
+//                  the window missed every change since); the preview's viewers likewise when the
+//                  pane is put up again; the folder preview follows the theme (its style set by
+//                  hand had stopped it)
+// Version: 1.45.2 - the status line's quieter half ("3 drives, 424.5 GB free ...") takes the
+//                  look's statusQuiet (a fixed #6b6b73 before, near unreadable on the dark well),
+//                  and is written again on a theme change
 // Version: 1.45.1 - the drive rows of the folder tree keep a dark tint under a dark theme while
 //                  their colour is the default (a light blue band before), again on a theme change;
 //                  the path bars take the theme's colours (a light grey strip before) and follow it;
@@ -131,7 +166,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -145,10 +180,11 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
-#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files
+#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files, UltraPaint / ArtCreator to edit
+#include "UltraCanvasHostedApps.h"     // an editor carried by the same program (MobilePC)
 #include "UltraCanvasDiskCache.h"         // the cache entry of Extras > Open location
 #include "UltraCanvasFileAssociations.h"
-#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
+#include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon; CanLoadVectorDocument
 #include "UltraCanvasMacBundle.h"      // a pinned application bundle, by path
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
@@ -198,6 +234,17 @@ namespace fs = std::filesystem;
 namespace UltraCanvas {
 
 namespace {
+
+    // A theme change reaches only what is in a window at the time (the
+    // application hands it to each window's tree). A part the filer keeps
+    // out of the window while hidden - the split view's right-hand pane, the
+    // preview pane's viewers - missed every change made meanwhile, and the
+    // one it was built under may be the light look of start-up. Put back, it
+    // takes the current theme: an element that follows re-styles, any other
+    // ignores it.
+    void CatchUpTheme(const std::shared_ptr<UltraCanvasUIElement>& part) {
+        if (part) part->OnThemeChanged(UltraCanvasTheme::Current());
+    }
 
     // Suffix marking the lazy placeholder child of an unexpanded folder node.
     constexpr const char* kPlaceholderSuffix = "\n#placeholder";
@@ -993,10 +1040,35 @@ namespace {
     // goes to rather than steps through, wear it.
     void StyleFlatToolButton(const std::shared_ptr<UltraCanvasButton>& b) { StyleToggleButton(b, false); }
 
-    BreadcrumbStyle MakePathBreadcrumbStyle() {
-        // The arrow shape with the theme's colours (Arrow() alone is the
-        // light look); the bar follows the theme from there (SetFollowTheme)
-        BreadcrumbStyle s = BreadcrumbStyle::FromTheme(UltraCanvasTheme::Current(), BreadcrumbStyle::Arrow());
+    // White or a near-black, whichever reads better on `ground`.
+    Color InkOn(const Color& ground) {
+        const Color dark(32, 32, 36, 255);
+        return UltraCanvasTheme::Contrast(ground, Colors::White) >= UltraCanvasTheme::Contrast(ground, dark)
+                   ? Colors::White : dark;
+    }
+
+    // The path bar: the arrow shape in the colours of Settings > Display >
+    // Path bar - the folders on the way (#E4E6E9 by default) and the folder
+    // shown (#0078D7, white on it), as the arrow bar was before it took the
+    // theme's grey and soft accent. The text on each is white or dark,
+    // whichever reads. Under a dark theme the default light grey would glare
+    // on the dark row, so the folders keep the theme's raised grey there
+    // unless a colour of the user's own was chosen; the seam between two
+    // segments is the row's ground in either look. ApplyLook sets it again on
+    // a theme change - the bar does not follow the theme by itself.
+    BreadcrumbStyle MakePathBreadcrumbStyle(const Color& folderColor, const Color& currentColor) {
+        const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+        BreadcrumbStyle s = BreadcrumbStyle::FromTheme(theme, BreadcrumbStyle::Arrow());
+        if (!theme.highContrast) {
+            const bool themedFolders = theme.dark && folderColor == UltraFilerSettings::kDefaultPathBarFolderColor;
+            if (!themedFolders) {
+                s.itemBackgroundColor = folderColor;
+                s.itemTextColor = InkOn(folderColor);
+            }
+            s.currentItemBackgroundColor = currentColor;
+            s.currentItemTextColor = InkOn(currentColor);
+            s.separatorColor = theme.roles.ground;
+        }
         s.overflowMode = BreadcrumbOverflowMode::Collapse;
         s.keepFirstItemOnCollapse = true;
         s.minVisibleAfterCollapse = 2;
@@ -1007,12 +1079,37 @@ namespace {
         return s;
     }
 
+    // The icons of ours that are one-colour line art - a black outline with
+    // no colours of their own. Drawn as they are, they stay black on a dark
+    // theme; the tree and the file displays draw them in the theme's ink
+    // instead (TreeNodeIcon::drawnInTextColor, folderIconIsLineArt). An icon
+    // the user set on a folder is never one of these, so it keeps its colours.
+    bool IsLineArtIcon(const std::string& iconPath) {
+        // Resolved once: the file displays ask for every folder they paint.
+        static const std::vector<std::string> lineArt = [] {
+            std::vector<std::string> paths;
+            for (const char* file : {"cloud.svg", "network.svg", "server.svg", "ftp.svg",
+                                     "computer.svg", "menu/phone.svg", "ram-chip.svg"})
+                paths.push_back(IconPath(file));
+            return paths;
+        }();
+        return std::find(lineArt.begin(), lineArt.end(), iconPath) != lineArt.end();
+    }
+
+    // A tree row's 16 px icon, drawn in the row's text colour when it is
+    // line art.
+    TreeNodeIcon TreeIcon(const std::string& iconPath) {
+        TreeNodeIcon icon(iconPath, 16, 16);
+        icon.drawnInTextColor = IsLineArtIcon(iconPath);
+        return icon;
+    }
+
     TreeNodeData MakeFolderNodeData(const std::string& nodeId, const std::string& label,
                                     const std::string& iconFile) {
         TreeNodeData data;
         data.nodeId = nodeId;
         data.text = label;
-        data.leftIcon = TreeNodeIcon(IconPath(iconFile), 16, 16);
+        data.leftIcon = TreeIcon(IconPath(iconFile));
         return data;
     }
 
@@ -1167,13 +1264,15 @@ namespace {
     }
 
     // The status bar's left line: `primary` in bold, `secondary` after it in
-    // the quieter grey - the way the file display's info bar drew them.
+    // the quieter grey - the way the file display's info bar drew them. The
+    // grey is the theme's (FilerLook::statusQuiet): a fixed one is lost on
+    // the dark well.
     std::string StatusInfoMarkup(const std::string& primary,
                                  const std::string& secondary) {
         std::string markup;
         if (!primary.empty()) markup = "<b>" + EscapeStatusMarkup(primary) + "</b>";
         if (!secondary.empty()) {
-            markup += "<span foreground=\"#6b6b73\">";
+            markup += "<span foreground=\"" + Look().statusQuiet.ToHexString() + "\">";
             if (!primary.empty()) markup += "  ·  ";
             markup += EscapeStatusMarkup(secondary) + "</span>";
         }
@@ -1296,6 +1395,14 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     config.height = 800;
     config.resizable = true;
     config.type = WindowType::Standard;
+
+    // The persisted settings (the preview's transparent-image backdrop, the
+    // tree, the tabs ...) are read before anything is built: Display >
+    // Display mode decides the theme, and the window and every surface
+    // below take their colours from it as they are made. ApplySettings,
+    // further down, pushes the rest onto the widgets once they exist.
+    settings.Load();
+    ApplyDisplayMode();
 
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
@@ -1451,6 +1558,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     folderPreviewStyle.smallFontSize = UiFontSize();
     folderPreviewStyle.folderIconScale = 0.7f;
     folderPreview->SetStyle(folderPreviewStyle);
+    // The theme's colours over this shape, as the tabs' displays: the style
+    // set by hand had stopped the following, so the pane kept the light look
+    folderPreview->SetFollowTheme(true);
     folderPreview->SetViewType(FilerViewType::ThumbnailsSmall);
     folderPreview->SetHoverIconMenuEnabled(false);
     // The pane is narrow; prefetching every subfolder of a merely previewed
@@ -1507,9 +1617,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // It overlays the folder preview rather than hiding behind it.
     folderPreviewPromoteButton->SetZIndex(OverlayZOrder::Overlays);
 
-    // Persisted settings (transparent-image backdrop of the preview, ...) and
-    // the recently used files / folders / applications behind the clock button.
-    settings.Load();
+    // The settings read at the top onto the widgets, and the recently used
+    // files / folders / applications behind the clock button.
     ApplySettings();
     // After ApplySettings(), which puts the History limit in force: a
     // list longer than the limit allows is then trimmed as the file is read,
@@ -1605,9 +1714,22 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusProgress->SetTitle("");             // no caption: the label is the caption
     statusProgress->SetUnit("");
     statusProgress->SetGaugeColor(Look().accent);
+    statusProgress->SetTrackColor(Look().line);   // the gauge's own light track glares on dark
     statusProgress->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     statusProgress->SetVisible(false);
     statusRow->AddChild(statusProgress);
+
+    // Beside the bar while a copy, delete, pack or unpack runs in the
+    // background: opens its progress window again.
+    statusShowButton = std::make_shared<UltraCanvasButton>("ufl-status-show", 0, 0, 64, 18);
+    statusShowButton->SetText(Tr("Show"));
+    statusShowButton->SetFontSize(UiFontSize());
+    statusShowButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusShowButton->SetVisible(false);
+    statusShowButton->onClick = [this]() {
+        if (backgroundOpSource) backgroundOpSource->BringOperationToFront();
+    };
+    statusRow->AddChild(statusShowButton);
 
     window->AddChild(statusRow);
 
@@ -1666,12 +1788,28 @@ void UltraFilerWindow::ApplyLook() {
         folderTree->SetBackgroundColor(look.ground);
     }
     if (statusRow) statusRow->SetBackgroundColor(look.statusBar);
+    // The path bars: the window's, and the split view's two (styled while
+    // the right one is out of the window too)
+    for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
+        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
     if (statusInfoLabel) statusInfoLabel->SetTextColor(look.inkMuted);
     if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
     if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
-    if (statusProgress) statusProgress->SetGaugeColor(look.accent);
+    UpdateStatusBar();   // the left line's markup carries the quiet grey itself
+    if (statusProgress) {
+        statusProgress->SetGaugeColor(look.accent);
+        statusProgress->SetTrackColor(look.line);
+    }
     ApplyTreeColors();   // the default drive rows have a light and a dark tint
+    ApplyFavoriteHighlightEverywhere();   // ... and the default favorite colour
     if (computerPane) computerPane->SetBackgroundColor(look.panel);
+    // The Computer page's drive cards take their colours when they are
+    // built: the ring's border and free slice, the percentage in its hole,
+    // the symbol's ink, the lines under it. A dark / light switch while the
+    // window is open left them in the old look - after dark to light the
+    // percentage was white on the white hole. Built again from the sizes
+    // already read (volumeSpaces), so nothing is measured again.
+    if (!computerDriveCards.empty()) RebuildComputerDriveCards(knownVolumes);
     ApplyTabStripStyle();   // the strips' colours are the theme's
     if (splitViewShown) StyleSplitHeaders();
     if (window) window->RequestRedraw();
@@ -1703,6 +1841,10 @@ void UltraFilerWindow::Show() {
     // The first fit: the text is measured with the window's render context,
     // which is there once the window is.
     ScheduleTreeFit();
+}
+
+bool UltraFilerWindow::IsOpen() const {
+    return window && window->GetState() != WindowState::Closed;
 }
 
 void UltraFilerWindow::OpenFolders(const std::vector<std::string>& paths) {
@@ -1937,6 +2079,47 @@ bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
     return true;
 }
 
+std::vector<MenuItemData> UltraFilerWindow::BuildOpenMenuItems(const std::vector<FilerEntry>& targets) {
+    // Every target a file on the disk: an entry inside an archive or on a
+    // remote drive is a path no other program can open.
+    if (targets.empty()) return {};
+    std::vector<std::string> paths;
+    bool pictures = true;   // all of them raster pictures: UltraPaint
+    bool drawings = true;   // all of them drawings a vector reader takes: ArtCreator
+    for (const FilerEntry& entry : targets) {
+        if (entry.isDirectory || entry.isShortcut) return {};
+        std::error_code ec;
+        if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) || ec) return {};
+        paths.push_back(entry.path);
+        if (entry.category != FilerFileCategory::Image) pictures = false;
+        // What ArtCreator opens is what the framework's vector readers read
+        // (SVG, EPS, DXF, CDR, ... - whichever plug-ins this build has); a
+        // raster picture is UltraPaint's even where a reader would take it.
+        if (entry.category == FilerFileCategory::Image ||
+            !UltraCanvasFileLoader::CanLoadVectorDocument(entry.path))
+            drawings = false;
+    }
+    // Only where the editor can be started: installed beside UltraFiler or
+    // on the PATH, or carried by the same program (MobilePC).
+    auto editIn = [this, &paths](const char* program, const char* icon) -> std::vector<MenuItemData> {
+        if (UltraCanvasHostedApps::IdForProgram(program).empty() &&
+            UltraCanvasDesktopShell::FindProgram(program).empty())
+            return {};
+        const std::string name = program;
+        return {MenuItemData::Action(
+                TrF("Edit in {0}", name),
+                NormalizePath(GetResourcesDir() + "media/appicon/" + icon),
+                [this, name, paths]() {
+                    std::string error;
+                    if (!UltraCanvasDesktopShell::LaunchProgram(name, paths, &error) && statusLabel)
+                        statusLabel->SetText(TrF("{0} could not be started: {1}", name, error));
+                })};
+    };
+    if (pictures) return editIn("UltraPaint", "UltraPaint.png");
+    if (drawings) return editIn("ArtCreator", "ArtCreator.png");
+    return {};
+}
+
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
     if (path.empty()) return;
     // The pane and the window would otherwise both hold the file open, which
@@ -2018,7 +2201,21 @@ void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target
     target.SetTarSettings(settings.tar);
 }
 
+void UltraFilerWindow::ApplyDisplayMode() {
+    UltraCanvasApplication* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    const ThemePolicy wanted =
+            settings.displayMode == FilerDisplayMode::Light ? ThemePolicy::Light
+          : settings.displayMode == FilerDisplayMode::Dark  ? ThemePolicy::Dark
+                                                            : ThemePolicy::FollowHost;
+    // Set only on a change: SetThemePolicy builds and applies the theme
+    // again, and every element of the window re-styles with it.
+    if (app->GetThemePolicy() != wanted) app->SetThemePolicy(wanted);
+}
+
 void UltraFilerWindow::ApplySettings() {
+    // Display > Display mode first, so what follows reads the new look.
+    ApplyDisplayMode();
     // Display > Tab style. The strip does not exist yet on the call during
     // start-up; BuildTabbedContainer applies the style itself then.
     ApplyTabStripStyle();
@@ -2104,7 +2301,14 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
-    // Display > Path bar: the strips are rebuilt only when the choice moved.
+    // Display > Favorite folders: how a favorite stands out, on every display.
+    ApplyFavoriteHighlightEverywhere();
+    // Display > Path bar: its colours, on the window's strip and the split
+    // view's two (a restyle, no rebuild)...
+    for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
+        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor,
+                                                           settings.pathBarCurrentColor));
+    // ... and the strips are rebuilt only when the drive-name choice moved.
     if (pathBarVolumeNamesApplied != settings.pathBarVolumeNames) {
         pathBarVolumeNamesApplied = settings.pathBarVolumeNames;
         RefreshPathBars();
@@ -2556,6 +2760,7 @@ void UltraFilerWindow::WireFolderIconProvider(UltraCanvasFilerWidget* target) {
     target->folderIconProvider = [this](const FilerEntry& entry) {
         return FolderIconPath(entry.path);
     };
+    target->folderIconIsLineArt = [](const std::string& icon) { return IsLineArtIcon(icon); };
 }
 
 void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) {
@@ -2563,6 +2768,23 @@ void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) 
     target->SetFavoriteMarkProvider([this](const FilerEntry& entry) {
         return favorites.IsFavorite(entry.path);
     });
+    ApplyFavoriteHighlight(target);
+}
+
+void UltraFilerWindow::ApplyFavoriteHighlight(UltraCanvasFilerWidget* target) {
+    if (!target) return;
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+    target->SetFavoriteHighlight(settings.favoriteHighlight,
+            settings.EffectiveFavoriteHighlightColor(theme.dark, theme.roles.ground));
+    target->SetFavoriteHeartShown(settings.favoriteHeart);
+}
+
+void UltraFilerWindow::ApplyFavoriteHighlightEverywhere() {
+    for (FilerTabState* state : FolderDisplayStates())
+        if (state->filer) ApplyFavoriteHighlight(state->filer.get());
+    ApplyFavoriteHighlight(folderPreview.get());
+    for (const auto& f : historyFilers) ApplyFavoriteHighlight(f.get());
+    for (const auto& f : favoritesFilers) ApplyFavoriteHighlight(f.get());
 }
 
 void UltraFilerWindow::RepaintFavoriteMarks() {
@@ -2654,9 +2876,8 @@ void UltraFilerWindow::RefreshFolderIcons(const std::vector<std::string>& folder
             for (const std::string& nodeId : {folder, kPinnedChildPrefix + folder}) {
                 TreeNode* node = folderTree->FindNode(nodeId);
                 if (!node) continue;
-                node->data.leftIcon = TreeNodeIcon(
-                        icon.empty() ? IconPath(DefaultTreeIconFile(node)) : icon,
-                        16, 16);
+                node->data.leftIcon = TreeIcon(
+                        icon.empty() ? IconPath(DefaultTreeIconFile(node)) : icon);
             }
         }
         folderTree->RequestRedraw();
@@ -2803,8 +3024,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     row->AddChild(favoritesButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
-    breadcrumb->SetStyle(MakePathBreadcrumbStyle());
-    breadcrumb->SetFollowTheme(true);
+    breadcrumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
@@ -2900,7 +3120,7 @@ void UltraFilerWindow::ShowNewEntryMenu() {
     // Mirror of the filer context menu's "New >" submenu: the folder first,
     // set apart from the document kinds.
     newEntryMenu->AddItem(MenuItemData::ActionWithShortcut(
-            "Folder", "Ctrl+F", [this]() { CreateNewFolderCommand(); }));
+            Tr("Folder"), "Ctrl+F", [this]() { CreateNewFolderCommand(); }));
     if (filer) {
         newEntryMenu->AddItem(MenuItemData::Separator());
         for (const FilerNewDocumentType& t : filer->GetNewDocumentTypes()) {
@@ -5342,7 +5562,7 @@ void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
     // A folder with an icon of its own - one the user set, or a well-known
     // user folder - carries it in the tree too, not only in the file display.
     const std::string icon = FolderIconPath(path);
-    if (!icon.empty()) data.leftIcon = TreeNodeIcon(icon, 16, 16);
+    if (!icon.empty()) data.leftIcon = TreeIcon(icon);
     if (!folderTree->AddNode(parentId, data))
         return;
     // The placeholder child that gives the node its expand button is added
@@ -5810,6 +6030,49 @@ void UltraFilerWindow::RunNextNetworkJob() {
     });
 }
 
+namespace {
+    // A light drive colour for a dark tree: the same hue, at the lightness a
+    // row tinted into the dark ground has (about 22 %), its saturation held
+    // to a quiet 45 % so a pastel does not turn into a loud blue. A colour
+    // already dark enough (luminance under 110) is returned as it is.
+    Color DarkVariantOfDriveColor(const Color& c, const Color& ground) {
+        const int luminance = (c.r * 299 + c.g * 587 + c.b * 114) / 1000;
+        if (luminance < 110) return c;
+        const float r = c.r / 255.0f, g = c.g / 255.0f, b = c.b / 255.0f;
+        const float maxC = std::max({r, g, b}), minC = std::min({r, g, b});
+        const float lightness = (maxC + minC) / 2.0f;
+        const float delta = maxC - minC;
+        if (delta < 0.02f) {
+            // Grey: a step above the ground, so the rows still stand out.
+            const auto up = [](uint8_t v) { return static_cast<uint8_t>(std::min(255, v + 22)); };
+            return Color(up(ground.r), up(ground.g), up(ground.b), 255);
+        }
+        float saturation = delta / (1.0f - std::fabs(2.0f * lightness - 1.0f));
+        float hue;
+        if (maxC == r)      hue = std::fmod((g - b) / delta, 6.0f);
+        else if (maxC == g) hue = (b - r) / delta + 2.0f;
+        else                hue = (r - g) / delta + 4.0f;
+        hue *= 60.0f;
+        if (hue < 0.0f) hue += 360.0f;
+        saturation = std::min(saturation, 0.45f);
+        const float l = 0.22f;
+        const float chroma = (1.0f - std::fabs(2.0f * l - 1.0f)) * saturation;
+        const float x = chroma * (1.0f - std::fabs(std::fmod(hue / 60.0f, 2.0f) - 1.0f));
+        const float m = l - chroma / 2.0f;
+        float rr = 0, gg = 0, bb = 0;
+        if (hue < 60)       { rr = chroma; gg = x; }
+        else if (hue < 120) { rr = x; gg = chroma; }
+        else if (hue < 180) { gg = chroma; bb = x; }
+        else if (hue < 240) { gg = x; bb = chroma; }
+        else if (hue < 300) { rr = x; bb = chroma; }
+        else                { rr = chroma; bb = x; }
+        const auto to8 = [m](float v) {
+            return static_cast<uint8_t>(std::clamp((v + m) * 255.0f + 0.5f, 0.0f, 255.0f));
+        };
+        return Color(to8(rr), to8(gg), to8(bb), 255);
+    }
+}
+
 void UltraFilerWindow::ApplyTreeColors() {
     if (!folderTree) return;
     folderTree->SetSelectionColor(settings.treeSelectedFolderColor);
@@ -5829,14 +6092,24 @@ void UltraFilerWindow::ApplyTreeColors() {
     // tree's default colour", which is the theme's ink).
     // The default drive colour is a light blue made for a light ground;
     // under a dark theme it is the accent tinted into the ground instead,
-    // so the drive rows stand out as quietly as they do in light. A colour
-    // the user chose is theirs, in either look.
+    // so the drive rows stand out as quietly as they do in light.
+    //
+    // Any other light colour drew the same light pastel band across a dark
+    // tree, with dark text on it - (228, 232, 250), a shade off the default,
+    // was reported from a settings file: every save writes the colour out,
+    // and the exact match above missed it. Under a dark theme a light colour keeps its
+    // hue and comes down to the ground's depth (DarkVariantOfDriveColor);
+    // a dark colour the user chose stays as it is, in either look.
     Color drive = settings.treeDriveBackgroundColor;
     const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
-    if (theme.dark && drive == UltraFilerSettings::kDefaultTreeDriveBackgroundColor) {
+    if (theme.dark) {
         const ThemeRoles& r = theme.roles;
-        const auto mix = [](uint8_t a, uint8_t b) { return static_cast<uint8_t>(a + (b - a) * 0.18); };
-        drive = Color(mix(r.ground.r, r.accent.r), mix(r.ground.g, r.accent.g), mix(r.ground.b, r.accent.b), 255);
+        if (drive == UltraFilerSettings::kDefaultTreeDriveBackgroundColor) {
+            const auto mix = [](uint8_t a, uint8_t b) { return static_cast<uint8_t>(a + (b - a) * 0.18); };
+            drive = Color(mix(r.ground.r, r.accent.r), mix(r.ground.g, r.accent.g), mix(r.ground.b, r.accent.b), 255);
+        } else {
+            drive = DarkVariantOfDriveColor(drive, r.ground);
+        }
     }
     const int luminance = (drive.r * 299 + drive.g * 587 + drive.b * 114) / 1000;
     const Color driveTextColor = luminance < 128 ? Colors::White : Color(32, 32, 36, 255);
@@ -6326,7 +6599,12 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
                     AddTreeFolderNode(anchor->data.nodeId, chain[idx], label,
                                       "folder-brown.svg");
                     next = folderTree->FindNode(chain[idx]);
-                    if (next) PlaceTreeRowByName(anchor, next);
+                    if (next) {
+                        // Drawn lighter: a folder the tree only shows because
+                        // the display went there.
+                        next->data.dimmed = true;
+                        PlaceTreeRowByName(anchor, next);
+                    }
                 }
             }
             anchor = next;
@@ -6370,7 +6648,7 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
                                                "folder-brown.svg");
         // The bookmark shows the folder's own icon, like its regular row does.
         const std::string icon = FolderIconPath(path);
-        if (!icon.empty()) data.leftIcon = TreeNodeIcon(icon, 16, 16);
+        if (!icon.empty()) data.leftIcon = TreeIcon(icon);
         folderTree->AddNode(kPinnedNodeId, data);
     }
     // An empty section is just a header over nothing: hide it entirely while
@@ -6831,6 +7109,12 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // second file and opening again when one is left. The next selection
         // made without Ctrl brings it back in step.
         if (SelectionChangedWithCtrl()) return;
+        // A drag in the folder display - a selection rectangle being drawn -
+        // changes the selection with every file it crosses: the preview
+        // would open on one file, fold away on the second and open again,
+        // moving the files under the pointer. It waits for the drag to end;
+        // letting the rectangle go reports the selection once more.
+        if (tab->filer && tab->filer->IsDragInProgress()) return;
         UpdatePreviewPane();
     };
     // A drive's folder being fetched, or fetched again: what it waits for is
@@ -7019,6 +7303,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     tab->filer->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     tab->filer->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    tab->filer->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
     WireDisplayFormatCallbacks(tab->filer.get());
     WireFolderIconProvider(tab->filer.get());
     WireFavoriteMarkProvider(tab->filer.get());
@@ -7344,6 +7629,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         histFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         histFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        histFiler->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
         WireDisplayFormatCallbacks(histFiler.get());
         WireFolderIconProvider(histFiler.get());
         WireFavoriteMarkProvider(histFiler.get());
@@ -7608,6 +7894,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         favFiler->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
         favFiler->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
         favFiler->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+        favFiler->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
         WireDisplayFormatCallbacks(favFiler.get());
         WireFolderIconProvider(favFiler.get());
         favFiler->onViewTypeChanged = [this](FilerViewType) {
@@ -7748,6 +8035,7 @@ void UltraFilerWindow::BuildComputerPage() {
     computerFolders->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };
     computerFolders->onAccess = [this](const std::vector<FilerEntry>& t) { HandleAccess(t); };
     computerFolders->extrasMenuProvider = [this]() { return BuildExtrasMenuItems(); };
+    computerFolders->openMenuProvider = [this](const std::vector<FilerEntry>& t) { return BuildOpenMenuItems(t); };
     WireDisplayFormatCallbacks(computerFolders.get());
     // The tiles carry the tree's icons for these folders - the house for
     // Home, the cloud for a cloud folder - and otherwise whatever the folder
@@ -7768,6 +8056,8 @@ void UltraFilerWindow::BuildComputerPage() {
         }
         return FolderIconPath(entry.path);
     };
+    // OneDrive's and Dropbox's cloud in the theme's ink, not black.
+    computerFolders->folderIconIsLineArt = [](const std::string& icon) { return IsLineArtIcon(icon); };
     computerPane->AddChild(computerFolders);
 
     // The card rows, wrapping into as many lines as they need;
@@ -7916,6 +8206,10 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         std::string path, label, icon;
         std::string under;   // the line at the foot of the card
         ComputerSection section = ComputerSection::All;   // the tree section it belongs to
+        bool noOwnSize = false;   // a RAM disc that is a folder on the system drive
+        // The picture shown instead of the ring when no size is known.
+        std::string symbol;
+        bool neverSized = false;  // an FTP server or a cloud account
     };
     std::vector<CardSource> sources;
     // A RAM disc that is also a mounted volume (ImDisk's drive letter,
@@ -7925,7 +8219,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
     for (const MountedVolume& volume : volumes) {
         if (ramPaths.count(volume.path)) continue;
         sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path,
-                           ComputerSection::All});
+                           ComputerSection::All, false, "drive.png"});
     }
     if (remoteDrives) {
         for (const RemoteDrive& d : remoteDrives->Drives()) {
@@ -7935,7 +8229,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
             std::string under = DeviceKindWord(d.deviceKind);
             if (!d.serverUrl.empty()) under += " - " + d.serverUrl;   // the manufacturer
             sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under,
-                               ComputerSection::All});
+                               ComputerSection::All, false, DeviceIconFile(d.deviceKind)});
         }
     }
     // The RAM discs, then the FTP servers and cloud accounts: in the
@@ -7947,16 +8241,18 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         std::string under = disc.mountPath;
         if (!disc.trueRam) under += " - " + Tr("on disk");
         sources.push_back({disc.mountPath, disc.name, "drive.png", under,
-                           ComputerSection::Ram});
+                           ComputerSection::Ram, !disc.trueRam, "ram-chip.svg"});
     }
     if (remoteDrives) {
         // The server under the name, or for an account signed into through
         // the browser, the provider.
         for (const RemoteDrive& d : remoteDrives->Drives()) {
             if (d.isDevice) continue;
+            // An FTP / SFTP server by its server, the rest by the cloud.
+            const char* symbol = d.providerId == "ftp" ? "ftp.svg" : "cloud.svg";
             sources.push_back({d.rootPath, d.displayName, "cloud.svg",
                                d.serverUrl.empty() ? d.providerId : d.serverUrl,
-                               ComputerSection::Remote});
+                               ComputerSection::Remote, false, symbol, true});
         }
     }
 
@@ -8032,6 +8328,20 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         pie->onSliceClick = [this, path](size_t) { NavigateTo(path); };
         card->AddChild(pie);
 
+        // In the ring's place when no size is known (ApplyVolumeSpaceToCard
+        // swaps the two): what the drive is, drawn in the theme's muted ink
+        // so the black line icons read on a dark page too. Hidden is
+        // display: none, so the card keeps one picture's height.
+        auto symbol = CreateImageFromFile(id + "-symbol", 0, 0, kComputerPieSize, kComputerPieSize,
+                                          IconPath(source.symbol));
+        symbol->SetFitMode(ImageFitMode::Contain);
+        symbol->SetMaskColor(Look().inkMuted);
+        symbol->SetClickable(true);
+        symbol->onClick = [this, path]() { NavigateTo(path); };
+        symbol->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        symbol->SetVisible(false);
+        card->AddChild(symbol);
+
         // The drive's name is the button that opens it.
         card->AddChild(MakeToolButton(id + "-open", label, source.icon, 0,
                                       [this, path]() { NavigateTo(path); }));
@@ -8060,7 +8370,8 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         card->AddChild(mount);
 
         rowFor(source)->AddChild(card);
-        computerDriveCards.push_back({path, pie, usage, space});
+        computerDriveCards.push_back({path, pie, usage, space, source.noOwnSize,
+                                      source.neverSized, symbol});
 
         // What is already known about the volume goes up at once; the fresh
         // reading replaces it when the worker answers. A volume never seen
@@ -8076,10 +8387,24 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
 }
 
 void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
+    // Whether the worker has answered for this path: until it has, a drive
+    // shows a neutral ring rather than a symbol it may not keep.
+    const bool answered = volumeSpaces.count(space.path) != 0;
     for (ComputerDriveCard& card : computerDriveCards) {
         if (card.path != space.path || !card.pie) continue;
+        // A size to show: the ring. None to show - a RAM disc that is a
+        // folder on the system drive, an FTP server or cloud account, or a
+        // drive or phone that was asked and gave none - the symbol of what
+        // the drive is, in the ring's place: a grey ring reading "n/a" says
+        // nothing a picture of the drive does not say better.
+        const bool sized = !card.noOwnSize && space.known && space.totalBytes > 0;
+        const bool showSymbol = !sized && card.symbol &&
+                                (card.noOwnSize || card.neverSized || answered);
+        card.pie->SetVisible(!showSymbol);
+        if (card.symbol) card.symbol->SetVisible(showSymbol);
+
         std::vector<ChartDataPoint> slices;
-        if (space.known && space.totalBytes > 0) {
+        if (sized) {
             const double used = static_cast<double>(VolumeUsedBytes(space));
             const double free = static_cast<double>(space.freeBytes);
             const double percent = VolumeUsedPercent(space);
@@ -8093,21 +8418,45 @@ void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
             std::snprintf(kpi, sizeof kpi, "%.0f%%", percent);
             card.pie->SetCenterKPI(kpi, "used");
         } else {
-            // Nothing known (yet), or a drive that reports no size (an FTP
-            // server, a cloud account): a neutral full ring saying so in its
-            // hole, and "Size not available" under the name.
+            // Nothing known yet: a neutral full ring until the worker answers.
             slices.emplace_back(1, 1.0, 0, "Size not available", 1.0, Look().freeSlice);
             card.pie->SetCenterKPI(Tr("n/a"), "");
         }
         auto data = std::make_shared<ChartDataVector>();
         data->LoadFromArray(slices);
         card.pie->SetDataSource(data);
-        const bool sized = space.known && space.totalBytes > 0;
-        if (card.usageLabel) card.usageLabel->SetText(sized ? DescribeVolumeUsage(space) : std::string());
-        if (card.spaceLabel)
-            card.spaceLabel->SetText(sized ? DescribeVolumeSpace(space) : Tr("Size not available"));
+
+        std::string usage, spaceText;
+        if (card.noOwnSize) {
+            // A folder on the system drive: whatever its volume says is the
+            // system drive's, so the card says why there is no size.
+            usage = Tr("Folder on the system drive");
+            spaceText = Tr("No size of its own");
+        } else if (sized) {
+            usage = DescribeVolumeUsage(space);
+            spaceText = DescribeVolumeSpace(space);
+        } else if (!space.error.empty()) {
+            // A phone that was asked and gave none says why where the user
+            // can do something about it: one that shows no storage is locked,
+            // or was left on "charging only" when it was plugged in. Any
+            // other reason (the device's own words, English) goes to the
+            // debug output; the card keeps to what it can translate.
+            if (space.error.find("no storage") != std::string::npos) {
+                spaceText = Tr("Unlock the phone and allow file transfer");
+            } else {
+                spaceText = Tr("Size could not be read");
+                debugOutput << "UltraFiler: no size for " << space.path << ": " << space.error
+                            << std::endl;
+            }
+        } else {
+            spaceText = Tr("Size not available");
+        }
+        if (card.usageLabel) card.usageLabel->SetText(usage);
+        if (card.spaceLabel) card.spaceLabel->SetText(spaceText);
         card.pie->RequestRedraw();
+        if (card.symbol) card.symbol->RequestRedraw();
     }
+    if (computerPane) computerPane->InvalidateLayout();
 }
 
 void UltraFilerWindow::QueueVolumeSpaceQuery() {
@@ -8128,6 +8477,9 @@ void UltraFilerWindow::QueueVolumeSpaceQuery() {
         for (const RemoteDrive& d : remoteDrives->Drives())
             if (d.isDevice) deviceIds[d.rootPath] = d.deviceId;
     for (const ComputerDriveCard& card : computerDriveCards) {
+        // Nothing to read for a RAM disc without a size of its own: its
+        // volume is the system drive (ApplyVolumeSpaceToCard says so).
+        if (card.noOwnSize) continue;
         auto device = deviceIds.find(card.path);
         paths.emplace_back(card.path, device != deviceIds.end() ? device->second : std::string());
     }
@@ -8154,9 +8506,10 @@ void UltraFilerWindow::QueueVolumeSpaceQuery() {
             }
             VolumeSpace space;
             space.path = path;
-            std::string ignored;
+            std::string error;
             space.known = UltraCanvasPortableDevices::GetSpace(deviceId, space.totalBytes,
-                                                               space.freeBytes, ignored);
+                                                               space.freeBytes, error);
+            if (!space.known) space.error = error.empty() ? std::string("no answer") : error;
             spaces.push_back(space);
         }
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -8610,8 +8963,20 @@ void UltraFilerWindow::UpdateRemoteProgressBar() {
     if (!statusProgress) return;
     // Only a transfer gets a bar: a listing or a rename is one round trip
     // with nothing to count.
-    const bool show = remoteActivity.IsTransfer();
+    const bool remote = remoteActivity.IsTransfer();
+    // A transfer to a drive has the bar first; else an operation running in
+    // the background.
+    const bool background = !remote && backgroundOp.active;
+    const bool show = remote || background;
     if (statusProgress->IsVisible() != show) statusProgress->SetVisible(show);
+    if (statusShowButton && statusShowButton->IsVisible() != backgroundOp.active)
+        statusShowButton->SetVisible(backgroundOp.active);
+    if (background) {
+        statusProgress->SetIndeterminate(backgroundOp.fraction < 0.0);
+        if (backgroundOp.fraction >= 0.0)
+            statusProgress->SetValue(std::min(100.0, 100.0 * backgroundOp.fraction));
+        return;
+    }
     if (!show) {
         // Stops the gauge's slide timer as well, so a bar nobody can see is
         // not being animated.
@@ -8953,6 +9318,9 @@ void UltraFilerWindow::UpdateStatusBar() {
     // read ahead has none of its own to report.
     const std::string treeWait = TreeFetchStatus();
     bool pendingSaid = false;
+    // An operation the user sent to the background leads: it is the one thing
+    // running that has no window of its own.
+    addNote(DescribeBackgroundOperation());
     if (const std::string activity = DescribeRemoteActivity(); !activity.empty()) {
         addNote(activity);
         if (remoteActivity.kind != RemoteActivity::Kind::Listing) {
@@ -9224,6 +9592,49 @@ void UltraFilerWindow::WireTransferNotice(UltraCanvasFilerWidget* target) {
     target->onDeleteFinished = [this](const FilerDeleteResult& result) {
         ShowTransferNote(result.message);
     };
+    target->onBackgroundProgress = [this, target](const FilerBackgroundProgress& progress) {
+        ShowBackgroundProgress(target, progress);
+    };
+}
+
+void UltraFilerWindow::ShowBackgroundProgress(UltraCanvasFilerWidget* source,
+                                              const FilerBackgroundProgress& progress) {
+    if (!progress.active) {
+        // Only the operation on show lets go of the bar.
+        if (source != backgroundOpSource) return;
+        backgroundOp = FilerBackgroundProgress();
+        backgroundOpSource = nullptr;
+        UpdateStatusBar();
+        return;
+    }
+    const bool fresh = !backgroundOp.active || source != backgroundOpSource;
+    backgroundOp = progress;
+    backgroundOpSource = source;
+    // The bar follows every tick; the words - and the rest of the status
+    // line they are composed with - at most four times a second.
+    const auto now = std::chrono::steady_clock::now();
+    if (fresh || now - backgroundNoteAt >= std::chrono::milliseconds(250)) {
+        backgroundNoteAt = now;
+        UpdateStatusBar();
+    } else {
+        UpdateRemoteProgressBar();
+    }
+}
+
+std::string UltraFilerWindow::DescribeBackgroundOperation() const {
+    if (!backgroundOp.active) return {};
+    // "Copying ULTRA OS → Projekte · 42 %", "Deleting Fotos · 1,204 items"
+    std::string text = backgroundOp.title;
+    if (!backgroundOp.from.empty()) {
+        text += " " + backgroundOp.from;
+        if (!backgroundOp.to.empty()) text += " \u2192 " + backgroundOp.to;
+    }
+    if (backgroundOp.fraction >= 0.0)
+        text += "  \u00b7  " + std::to_string(static_cast<int>(backgroundOp.fraction * 100.0 + 0.5)) + " %";
+    else if (backgroundOp.figures.doneItems > 0)
+        text += "  \u00b7  " + TrF("{0} items", std::to_string(backgroundOp.figures.doneItems));
+    if (backgroundOp.paused) text += "  \u00b7  " + Tr("Paused");
+    return text;
 }
 
 void UltraFilerWindow::ShowTransferNote(const std::string& message) {
@@ -9263,6 +9674,8 @@ void UltraFilerWindow::AttachFolderPreview() {
     // renders over the preview and is hit before it.
     if (folderPreviewPromoteButton)
         previewPane->AddChild(folderPreviewPromoteButton);
+    CatchUpTheme(folderPreview);
+    CatchUpTheme(folderPreviewPromoteButton);
 }
 
 void UltraFilerWindow::DetachFolderPreview() {
@@ -9403,7 +9816,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             if (wantFolder) AttachFolderPreview();
-            else            previewPane->AddChild(preview);
+            else            { previewPane->AddChild(preview); CatchUpTheme(preview); }
             ApplySplitPaneMinSizes();
             BalanceSplitPanes();
             if (filer) filer->EnsureSelectionVisible();
@@ -9428,7 +9841,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             if (wantFolder) AttachFolderPreview();
-            else            previewPane->AddChild(preview);
+            else            { previewPane->AddChild(preview); CatchUpTheme(preview); }
 
             if (arranged && !sizes.empty()) {
                 // The new split line takes its thickness from the donors
@@ -9472,6 +9885,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             } else {
                 DetachFolderPreview();
                 previewPane->AddChild(preview);
+                CatchUpTheme(preview);
             }
             previewShowsFolder = wantFolder;
         }
@@ -9593,8 +10007,7 @@ void UltraFilerWindow::BuildSplitViewPanes() {
         header->AddChild(button);
         crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,
                                                         0, 0, 0, 28);
-        crumb->SetStyle(MakePathBreadcrumbStyle());
-        crumb->SetFollowTheme(true);
+        crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
         crumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
         header->AddChild(crumb);
@@ -9698,6 +10111,9 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         rightPane->layout.SetFlexColumn()
                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         rightPane->AddChild(rightPaneBox);
+        // Built at start-up and out of the window until now: its display,
+        // path bar and tree button take the theme as it is
+        CatchUpTheme(rightPaneBox);
         leftPaneHeader->SetVisible(true);
         // Each pane has a path bar of its own now; the navigation row's,
         // which only ever said where the active one is, gives way.

@@ -1,11 +1,14 @@
 // Tests/EmbeddedPreviewTest.cpp
 // The preview bitmap vector documents carry inside themselves - what the
-// filer thumbnails a Xara, CorelDRAW or PostScript file from, since none of
-// them has a renderer that works without a window.
+// filer thumbnails a Xara, CorelDRAW, OpenDocument drawing or PostScript
+// file from when no reader for the drawing is registered.
 //
 // Checks the format gate, the extractors against the repository's own sample
 // documents and against EPS files written here, and that what comes out
 // really is a decodable image.
+// Version: 1.3.1 - the Xara and CorelDRAW samples from media/vector/, where they are; a
+//                  missing sample folder fails instead of skipping
+// Version: 1.3.0 - OpenDocument drawings (.odg / .otg)
 // Version: 1.2.0 - UltraCanvas Documents (*.ucd): the thumbnail after the header
 // Version: 1.1.0
 // Last Modified: 2026-10-16
@@ -15,6 +18,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUCDContainer.h"
+#include "UltraCanvasZipPackage.h"
 
 #include <cstdint>
 #include <algorithm>
@@ -49,8 +53,12 @@ bool LooksLikeImage(const std::vector<uint8_t>& b) {
 // Every sample of one directory must yield a preview that decodes.
 void CheckSamples(const fs::path& dir, const std::string& extension) {
     std::error_code ec;
+    // The samples ship with the repository, so a missing folder is a wrong
+    // path, not an optional extra: it failed silently as a [SKIP] while the
+    // Xara and CorelDRAW samples moved under media/vector/, and those two
+    // formats were not checked at all.
     if (!fs::is_directory(dir, ec)) {
-        std::cout << "  [SKIP] " << dir.string() << " not present\n";
+        Check(false, dir.string() + ": the sample folder exists");
         return;
     }
     int seen = 0;
@@ -217,6 +225,32 @@ void CheckUCDPreviews(const fs::path& dir) {
     fs::remove_all(dir, ec);
 }
 
+// ===== OPENDOCUMENT DRAWINGS =====
+// LibreOffice's own files (media/vector/ODG) carry Thumbnails/thumbnail.png;
+// a package written without one, and a file that is no package, give none.
+void CheckOpenDocumentPreviews(const fs::path& samples, const fs::path& dir) {
+    CheckSamples(samples, "odg");
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+
+    const fs::path bare = dir / "no-thumbnail.odg";
+    {
+        UCZipPackageWriter zip;
+        zip.Open(UltraCanvas::PathToUtf8(bare));
+        zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.graphics"), false);
+        zip.AddEntry("content.xml", std::string("<office:document-content/>"));
+        zip.Finalize();
+    }
+    Check(ExtractEmbeddedPreviewBytes(UltraCanvas::PathToUtf8(bare)).empty(),
+          "odg: a package without a thumbnail yields none");
+
+    const fs::path notZip = dir / "plain-text.otg";
+    std::ofstream(notZip) << "not a package";
+    Check(ExtractEmbeddedPreviewBytes(UltraCanvas::PathToUtf8(notZip)).empty(),
+          "otg: a file that is no ZIP yields none");
+    fs::remove_all(dir, ec);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -236,6 +270,9 @@ int main(int argc, char** argv) {
     Check(FormatCarriesEmbeddedPreview("page.ps"), "ps carries one");
     Check(FormatCarriesEmbeddedPreview("artwork.ai"), "ai carries one");
     Check(FormatCarriesEmbeddedPreview("layers.UCD"), "ucd carries one");
+    Check(FormatCarriesEmbeddedPreview("plan.odg"), "odg carries one");
+    Check(FormatCarriesEmbeddedPreview("letterhead.OTG"), "otg carries one");
+    Check(!FormatCarriesEmbeddedPreview("plan.fodg"), "fodg does not (flat XML has no thumbnail)");
     Check(!FormatCarriesEmbeddedPreview("photo.png"), "png does not");
     Check(!FormatCarriesEmbeddedPreview("drawing.svg"), "svg does not");
     Check(!FormatCarriesEmbeddedPreview(""), "the empty path does not");
@@ -247,13 +284,17 @@ int main(int argc, char** argv) {
           "an empty path yields no preview");
 
     std::cout << "\n=== Xara documents ===\n";
-    CheckSamples(root / "xar", "xar");
+    CheckSamples(root / "vector" / "XAR", "xar");
 
     std::cout << "\n=== CorelDRAW documents ===\n";
-    CheckSamples(root / "cdr", "cdr");
+    CheckSamples(root / "vector" / "CDR", "cdr");
 
     std::cout << "\n=== PostScript documents (EPSI and DOS EPS) ===\n";
     CheckPostScriptPreviews(fs::temp_directory_path() / "uc-eps-preview-test");
+
+    std::cout << "\n=== OpenDocument drawings ===\n";
+    CheckOpenDocumentPreviews(root / "vector" / "ODG",
+                              fs::temp_directory_path() / "uc-odg-preview-test");
 
     std::cout << "\n=== UltraCanvas Documents ===\n";
     CheckUCDPreviews(fs::temp_directory_path() / "uc-ucd-preview-test");

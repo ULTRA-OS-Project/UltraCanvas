@@ -853,7 +853,7 @@ namespace UltraCanvas {
         imageCard->layoutItem.SetFlexGrow(0);
 
         auto imageFrame = std::make_shared<UltraCanvasContainer>("ImageFrame", 0, 0, 230, 170);
-        imageFrame->SetBackgroundColor(Color(241, 245, 249, 255));
+        imageFrame->SetBackgroundColor(DemoKit::Themed(Color(241, 245, 249, 255)));
         imageFrame->SetBorders(1, Color(200, 200, 200, 255));
         // The frame keeps its size; the image sits in it at (4, 4). A notice
         // that replaces the image is centred in it by the frame's column.
@@ -965,7 +965,7 @@ namespace UltraCanvas {
                     unreadableReason.empty() ? unreadableNotice
                                              : TrF("{0} The reader said: {1}", unreadableNotice, unreadableReason));
             noProps->SetFontSize(11);
-            noProps->SetTextColor(Color(71, 85, 105, 255));
+            noProps->SetTextColor(DemoKit::Themed(Color(71, 85, 105, 255)));
         }
 
         // Property placeholders (would be populated from actual image metadata)
@@ -986,7 +986,7 @@ namespace UltraCanvas {
         auto propGrid = DemoKit::AddRow(propertiesCard, "PropGrid", 8);
         for (size_t i = 0; i < defaultProps.size(); ++i) {
             auto propContainer = DemoKit::CreateColumn("Prop" + std::to_string(i), 4);
-            propContainer->SetBackgroundColor(Color(248, 250, 252, 255));
+            propContainer->SetBackgroundColor(DemoKit::Themed(Color(248, 250, 252, 255)));
             propContainer->SetBorders(1, Color(226, 232, 240, 255));
             propContainer->SetPadding(8, 16, 8, 16);
             DemoKit::Add(propGrid, propContainer, 1);
@@ -1001,7 +1001,7 @@ namespace UltraCanvas {
                                               defaultProps[i].second);
             propValue->SetFontSize(13);
             propValue->SetFontWeight(FontWeight::Bold);
-            propValue->SetTextColor(Color(30, 41, 59, 255));
+            propValue->SetTextColor(DemoKit::Themed(Color(30, 41, 59, 255)));
         }
 
         // ===== ABOUT SECTION =====
@@ -1027,12 +1027,12 @@ namespace UltraCanvas {
 
         auto aboutTitle = DemoKit::CreateHeading("AboutTitle", info.aboutTitle);
         aboutTitle->SetFontSize(14);
-        aboutTitle->SetTextColor(Color(30, 41, 59, 255));
+        aboutTitle->SetTextColor(DemoKit::Themed(Color(30, 41, 59, 255)));
         DemoKit::Add(aboutHeader, aboutTitle, 1);
 
         auto aboutDesc = DemoKit::AddText(aboutCard, "AboutDesc", info.aboutDescription);
         aboutDesc->SetFontSize(11);
-        aboutDesc->SetTextColor(Color(71, 85, 105, 255));
+        aboutDesc->SetTextColor(DemoKit::Themed(Color(71, 85, 105, 255)));
 
         // ===== FORMAT SPECIFICATION =====
         // 9 properties in a grid of tiles, three a line while they fit (label
@@ -1070,10 +1070,10 @@ namespace UltraCanvas {
             cell->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
             cell->SetPadding(7, 10, 7, 10);
             if (unsupported) {
-                cell->SetBackgroundColor(Color(255, 247, 237, 255));
+                cell->SetBackgroundColor(DemoKit::Themed(Color(255, 247, 237, 255)));
                 cell->SetBorders(1, Color(254, 215, 170, 255));
             } else {
-                cell->SetBackgroundColor(Color(248, 250, 252, 255));
+                cell->SetBackgroundColor(DemoKit::Themed(Color(248, 250, 252, 255)));
                 cell->SetBorders(1, Color(226, 232, 240, 255));
             }
             DemoKit::Add(specGrid, cell, 1);

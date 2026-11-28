@@ -12,8 +12,11 @@
 // into one text element with spans). WMF has no bezier record, so curves
 // arrive as the polylines the producer flattened them to. Unknown record
 // types are counted and reported through the warning callback.
+// Version: 1.2.0 - a WMF that carries its EMF (META_ESCAPE_ENHANCED_METAFILE, as GDI+ writes
+//                  one) is read from that EMF: its EMF+ drawing keeps the alpha WMF cannot say
+// Version: 1.1.0 - SETPOLYFILLMODE read into ShapeFillRule (ALTERNATE, GDI's default, is even-odd)
 // Version: 1.0.0
-// Last Modified: 2026-08-26
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMetafileConverters.h"
@@ -150,6 +153,9 @@ private:
     WmfBrush curBrush;
     WmfFont curFont;
     Color textColor = Color(0, 0, 0, 255);
+    // SETPOLYFILLMODE: GDI starts in ALTERNATE, the even-odd rule; WINDING
+    // (2) is non-zero.
+    VectorStorage::FillRule polyFill = VectorStorage::FillRule::EvenOdd;
     uint16_t textAlign = 0;
     Point2Dd curPos{0, 0};   // units
     std::shared_ptr<VectorText> chainedText;
@@ -181,6 +187,7 @@ private:
 
     void ApplyFillStroke(VectorStyle& style) const {
         if (!curBrush.null) style.Fill = curBrush.color;
+        style.ShapeFillRule = polyFill;
         if (!curPen.null) style.Stroke = PenStroke();
     }
 
@@ -197,7 +204,10 @@ private:
     void Record(uint16_t func, size_t b, size_t len) {
         switch (func) {
             case 0x0103: break;   // SETMAPMODE
-            case 0x0102: case 0x0106: break;   // SETBKMODE / SETPOLYFILLMODE
+            case 0x0102: break;   // SETBKMODE
+            case 0x0106:          // SETPOLYFILLMODE
+                polyFill = U16(b) == 2 ? VectorStorage::FillRule::NonZero : VectorStorage::FillRule::EvenOdd;
+                break;
             case 0x020B: orgY += I16(b); orgX += I16(b + 2); break;  // SETWINDOWORG (y,x)
             case 0x020C: winExtY = I16(b); winExtX = I16(b + 2); break;  // SETWINDOWEXT
             case 0x0209: textColor = FromColorRef(U32(b)); break;    // SETTEXTCOLOR
@@ -424,6 +434,44 @@ private:
     void FlushChainedText() { chainedText.reset(); }
 };
 
+// The EMF a WMF carries in META_ESCAPE_ENHANCED_METAFILE records (an
+// MFCOMMENT escape tagged "WMFC"), joined in order - or empty when there is
+// none, or its pieces do not add up to the size they declare.
+std::string EmbeddedEmf(const std::string& bytes) {
+    const auto* d = reinterpret_cast<const uint8_t*>(bytes.data());
+    const size_t n = bytes.size();
+    auto u16 = [&](size_t at) { uint16_t v; std::memcpy(&v, d + at, 2); return v; };
+    auto u32 = [&](size_t at) { uint32_t v; std::memcpy(&v, d + at, 4); return v; };
+    size_t pos = (n >= 22 && u32(0) == 0x9AC6CDD7) ? 22 : 0;
+    if (n < pos + 18) return {};
+    pos += 18;
+    std::string emf;
+    uint32_t declared = 0;
+    while (pos + 6 <= n) {
+        const uint32_t words = u32(pos);
+        const uint16_t func = u16(pos + 4);
+        if (words < 3 || pos + static_cast<size_t>(words) * 2 > n || func == 0) break;
+        const size_t p = pos + 6, end = pos + static_cast<size_t>(words) * 2;
+        // EscapeFunction 0x000F, ByteCount, "WMFC", type 1, version, checksum,
+        // flags, record count, this piece's size, bytes left, the EMF's size.
+        if (func == 0x0626 && p + 38 <= end && u16(p) == 0x000F && u32(p + 4) == 0x43464D57 && u32(p + 8) == 1) {
+            const uint32_t piece = u32(p + 26);
+            const uint32_t total = u32(p + 34);
+            if (p + 38 + piece > end || total == 0 || (declared != 0 && total != declared)) return {};
+            declared = total;
+            emf.append(reinterpret_cast<const char*>(d + p + 38), piece);
+            if (emf.size() > declared) return {};
+        }
+        pos = end;
+    }
+    if (declared == 0 || emf.size() != declared) return {};
+    if (emf.size() < 88) return {};
+    uint32_t type;
+    std::memcpy(&type, emf.data(), 4);
+    if (type != 1 || emf.compare(40, 4, " EMF") != 0) return {};
+    return emf;
+}
+
 }   // anonymous namespace
 
 std::shared_ptr<VectorStorage::VectorDocument> WMFConverter::ImportFromString(
@@ -433,6 +481,17 @@ std::shared_ptr<VectorStorage::VectorDocument> WMFConverter::ImportFromString(
             options.WarningCallback("Not a WMF file (no placeable or standard header)");
         }
         return nullptr;
+    }
+    // GDI+ writes a WMF with the EMF it was drawn as inside it, EMF+ and
+    // all; the WMF records are its copy for players that cannot read that,
+    // and lose the alpha. LibreOffice reads the EMF too.
+    if (const std::string emf = EmbeddedEmf(data); !emf.empty()) {
+        if (auto doc = EMFConverter().ImportFromString(emf, options)) {
+            if (options.WarningCallback)
+                options.WarningCallback("WMF import: drawn from the EMF the file carries");
+            if (options.ProgressCallback) options.ProgressCallback(1.0f);
+            return doc;
+        }
     }
     WmfParser parser(data, [&options](const std::string& msg) {
         if (options.WarningCallback) options.WarningCallback(msg);

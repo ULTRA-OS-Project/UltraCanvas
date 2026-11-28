@@ -14,8 +14,9 @@
 // Runs headless under Xvfb; skips when there is no display - or fails, with
 // ULTRACANVAS_TEST_DISPLAY_REQUIRED=1, which is how CI runs it: a suite that
 // skips there would read as a pass.
+// Version: 1.1.0 - iconAboveInput: the Unlock dialog's lock, centred above the field, drawn
 // Version: 1.0.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -23,7 +24,13 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
+#include "DisplayRequired.h"
 
+#ifndef UC_MEDIA_DIR
+#error "UC_MEDIA_DIR must name the repository's media folder"
+#endif
+
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -45,8 +52,7 @@ static int failCount = 0;
 // Without a display the suite skips; where one was promised it fails.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED"); \
-        if (required && *required && std::string(required) != "0") {         \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                   \
             std::cerr << "FAIL: a display was required (" << reason << ")" << std::endl; \
             return 1;                                                         \
         }                                                                     \
@@ -139,7 +145,7 @@ int main() {
              field && footer && field->GetHeight() >= 20.0f && Bottom(field) <= footer->GetBoundsInWindow().y + 0.5f);
         TEST("and below the prompt", field && area && field->GetBoundsInWindow().y + 0.5f >= Bottom(area));
         TEST("The buttons are inside the window", footer && Bottom(footer) <= dialog->GetHeight() + 0.5f);
-        TEST("The icon is not squeezed", icon && icon->GetWidth() >= 47.5f);
+        TEST("The icon is not squeezed", icon && icon->GetWidth() >= ModalDialogStyle().iconSize - 0.5f);
         dialog->CloseDialog(DialogResult::Cancel);
     }
 
@@ -169,6 +175,48 @@ int main() {
              label && area && field && label->GetBoundsInWindow().y + 0.5f >= Bottom(area) &&
              field->GetBoundsInWindow().y + 0.5f >= Bottom(label));
         dialog->CloseDialog(DialogResult::Cancel);
+    }
+
+    std::cerr << "\n--- A lock above the field (the Unlock dialog) ---" << std::endl;
+    {
+        InputDialogConfig config;
+        config.title = "Unlock deck.odp";
+        config.inputLabel = "Password for deck.odp:";
+        config.inputType = InputType::Password;
+        config.iconAboveInput = std::string(UC_MEDIA_DIR) + "/icons/unlock.svg";
+        auto dialog = std::make_shared<UltraCanvasInputDialog>();
+        dialog->CreateInputDialog(config);
+        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, nullptr);
+        dialog->UpdateAndRender();
+        auto icon  = Find(dialog, "InputIcon");
+        auto area  = Find(dialog, "MessageArea");
+        auto field = Find(dialog, "InputField");
+        auto footer = Find(dialog, "FooterSection");
+        TEST("The lock is there, at its size", icon && icon->GetWidth() == 48.0f && icon->GetHeight() == 48.0f);
+        if (icon && field && area && footer) {
+            const Rect2Df ib = icon->GetBoundsInWindow(), fb = field->GetBoundsInWindow();
+            TEST("centred over the field", std::fabs((ib.x + ib.width / 2) - (fb.x + fb.width / 2)) <= 8.0f);
+            TEST("below the prompt and above the field",
+                 ib.y + 0.5f >= Bottom(area) && Bottom(icon) <= fb.y + 0.5f);
+            TEST("The field is still above the buttons", Bottom(field) <= footer->GetBoundsInWindow().y + 0.5f);
+            int ink = 0;
+            for (int y = static_cast<int>(ib.y); y < static_cast<int>(ib.y + ib.height); ++y)
+                for (int x = static_cast<int>(ib.x); x < static_cast<int>(ib.x + ib.width); ++x) {
+                    Color px;
+                    if (dialog->GetPixelColor(x, y, px) && px.r + px.g + px.b < 3 * 128) ++ink;
+                }
+            TEST("and drawn, in the message's dark ink (" + std::to_string(ink) + " pixels)", ink > 150);
+        }
+        dialog->CloseDialog(DialogResult::Cancel);
+
+        config.iconAboveInput = std::string(UC_MEDIA_DIR) + "/icons/no-such-icon.svg";
+        auto plain = std::make_shared<UltraCanvasInputDialog>();
+        plain->CreateInputDialog(config);
+        UltraCanvasDialogManager::ShowDialog(plain, nullptr, nullptr);
+        plain->UpdateAndRender();
+        TEST("A picture that is missing leaves no gap", Find(plain, "InputIcon") == nullptr &&
+             static_cast<int>(plain->GetHeight()) == defaults.height);
+        plain->CloseDialog(DialogResult::Cancel);
     }
 
     std::cerr << "\n========================================" << std::endl;

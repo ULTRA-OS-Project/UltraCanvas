@@ -81,6 +81,13 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.42.0 - BuildOpenMenuItems: "Edit in ArtCreator" on a drawing's context menu too
+// Version: 1.41.0 - BuildOpenMenuItems: "Edit in UltraPaint" on a picture's context menu
+// Version: 1.40.0 - IsOpen: whether the window is still open (a host that
+//                  carries UltraFiler hands a later start's folders to it)
+// Version: 1.39.0 - ShowBackgroundProgress, statusShowButton: an operation run in the background
+// Version: 1.38.1 - ComputerDriveCard::noOwnSize: a RAM disc with no size of its own
+// Version: 1.38.0 - ApplyDisplayMode: Settings > Display > Display mode through the theme policy
 // Version: 1.37.0 - ApplyLook: the filer's own surfaces from the theme, again on every theme change
 // Version: 1.36.0 - OpenRemoteFile, OpenRemoteCopy
 // Version: 1.35.0 - VolumeDisplayName, RefreshPathBars, pathBarVolumeNamesApplied: the path
@@ -115,7 +122,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -141,6 +148,7 @@
 #include "UltraCanvasPortableDevices.h" // phones and cameras over MTP / PTP
 #include "UltraCanvasNetworkPlaces.h"   // the network's computers and shares, WSL
 #include "Plugins/Charts/UltraCanvasPieChart.h"  // the drive cards' used / free pie
+#include "UltraCanvasImageElement.h"              // ... and the symbol for a drive with no size
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderIcons.h"
 #include "UltraFilerFolderViews.h"
@@ -196,6 +204,10 @@ public:
     // start-up probe has answered it waits for it; a system that cannot
     // make RAM discs says so. The window comes forward either way.
     void OpenRamDisc();
+    // The window was made and has not been closed: a program that carries
+    // UltraFiler (MobilePC) hands a later start's folders to it, as the one
+    // copy per user does, and makes a new UltraFilerWindow otherwise.
+    bool IsOpen() const;
 
 private:
     // Per-tab browsing state: the folder widget of the tab plus its own
@@ -911,6 +923,11 @@ private:
     // or tile. Not on the Favorites view's own pages, where every entry is
     // one. RepaintFavoriteMarks() redraws the displays after a pin changes.
     void WireFavoriteMarkProvider(UltraCanvasFilerWidget* target);
+    // Settings > Display > Favorite folders on one display (the highlight,
+    // its colour for the theme shown, the heart), and on every display that
+    // marks favorites - after a settings change and a theme change.
+    void ApplyFavoriteHighlight(UltraCanvasFilerWidget* target);
+    void ApplyFavoriteHighlightEverywhere();
     void RepaintFavoriteMarks();
     // Extras > Set folder icon: opens the image file dialog and gives the
     // chosen picture — converted to QOI — to the selected folders (or, with
@@ -1084,6 +1101,12 @@ private:
     // kTransferNoteMs (onTransferFinished / onDeleteFinished of every
     // folder display).
     void WireTransferNotice(UltraCanvasFilerWidget* target);
+    // A copy / move / delete / pack / unpack sent to the background from its
+    // progress window: its progress on the status bar (gauge and words) and
+    // the Show button that brings the window back.
+    void ShowBackgroundProgress(UltraCanvasFilerWidget* source,
+                                const FilerBackgroundProgress& progress);
+    std::string DescribeBackgroundOperation() const;
     void ShowTransferNote(const std::string& message);
     void ClearTransferNote();
     // Whether a file on a remote drive is previewed: pictures, vector
@@ -1163,6 +1186,10 @@ private:
     // preview's transparent-image backdrop). Called at startup and by the
     // settings dialog after every change.
     void ApplySettings();
+    // Display > Display mode: the application's theme policy - FollowHost,
+    // Light or Dark - set when it is not that already; the theme change
+    // that follows re-styles the window (ApplyLook).
+    void ApplyDisplayMode();
     // Every file display of the window - the tabs, the folder preview and the
     // History / Favorites lists - so a setting that governs all of them is
     // applied in one pass.
@@ -1191,6 +1218,11 @@ private:
     // or UltraViewer cannot be found or started; the caller then opens the
     // file the way it would have.
     bool OpenInUltraViewer(const FilerEntry& entry);
+    // The folder displays' openMenuProvider: "Edit in UltraPaint" when every
+    // target is a picture on the disk, "Edit in ArtCreator" when every one is
+    // a drawing a vector reader takes - each only where that editor can be
+    // started.
+    std::vector<MenuItemData> BuildOpenMenuItems(const std::vector<FilerEntry>& targets);
     // The tail the file display hangs under Display > Thumbnails and
     // Display > Detail view: "File formats...", which opens the matching
     // settings page.
@@ -1281,6 +1313,16 @@ private:
         std::shared_ptr<UltraCanvasPieChartElement> pie;     // used / free
         std::shared_ptr<UltraCanvasLabel> usageLabel;        // "62% used"
         std::shared_ptr<UltraCanvasLabel> spaceLabel;        // "232.9 GB free of 476.2 GB"
+        // A RAM disc with no size of its own (the Windows fallback, a folder
+        // on the system drive): no volume is read for it - that would be the
+        // system drive's - and the card says so instead.
+        bool noOwnSize = false;
+        // An FTP server or a cloud account: UltraCloud says nothing of how
+        // full one is, so the card shows its symbol from the start.
+        bool neverSized = false;
+        // The picture in the ring's place when no size is known: a memory
+        // chip for a RAM disc, the server, the cloud, the phone.
+        std::shared_ptr<UltraCanvasImageElement> symbol;
     };
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders
@@ -1321,6 +1363,12 @@ private:
     // which is the framework's progress bar. Short enough that the gauge
     // drops its caption and value line and is simply the bar.
     std::shared_ptr<UltraCanvasGaugeDiagramElement> statusProgress;
+    // The operation running in the background (ShowBackgroundProgress), the
+    // widget it runs in, and the button beside the bar that opens its window.
+    FilerBackgroundProgress backgroundOp;
+    UltraCanvasFilerWidget* backgroundOpSource = nullptr;
+    std::shared_ptr<UltraCanvasButton> statusShowButton;
+    std::chrono::steady_clock::time_point backgroundNoteAt{};
     // The log window while it is open; it owns itself (deleteOnClose).
     std::weak_ptr<UltraFilerConnectionLogWindow> connectionLogWindow;
     TimerId connectionLogRefreshTimer = InvalidTimerId;

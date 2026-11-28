@@ -121,35 +121,36 @@ namespace UltraCanvas {
                 "- Drag to pan the range\n"
                 "- Click an entry to select"));
         helpBox->SetTextColor(DemoKit::BodyText());
-        helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
+        helpBox->SetBackgroundColor(DemoKit::Themed(Color(255, 243, 205, 255)));
         helpBox->SetPadding(10);
 
         // ===== TABS =====
         auto chartCard = DemoKit::AddCard(contentContainer, "tcChartCard", "", "", 690);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("tcTabs", 0, 0, 660, 580);
+        DemoKit::StyleTabs(tabbedContainer);
         tabbedContainer->SetTabPosition(TabPosition::Top);
         DemoKit::AddFixed(chartCard, tabbedContainer);
 
         auto statusBar = DemoKit::AddText(chartCard, "tcStatusBar",
                 Tr("Ready - wheel to zoom, drag to pan, click an entry to select it"));
         statusBar->SetFontSize(11);
-        statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
+        statusBar->SetBackgroundColor(DemoKit::Themed(Color(233, 236, 239, 255)));
         statusBar->SetPadding(15);
-        statusBar->SetTextColor(Color(73, 80, 87, 255));
+        statusBar->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
 
         // ===== RIGHT SIDEBAR =====
         auto rightSidebar = AddTimelineSideCard(contentContainer, "tcRightSidebar", "tcStatsTitle", Tr("VIEW"));
 
         auto statsPanel = DemoKit::AddText(rightSidebar, "tcStatsPanel", "");
         statsPanel->SetFontSize(10);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        statsPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         statsPanel->SetPadding(12);
 
         DemoKit::AddHeading(rightSidebar, "tcAboutTitle", Tr("ABOUT THIS TAB"));
 
         auto aboutPanel = DemoKit::AddText(rightSidebar, "tcAboutPanel", "");
         aboutPanel->SetFontSize(9);
-        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        aboutPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         aboutPanel->SetPadding(12);
 
         const int CHART_X = 20, CHART_Y = 15, CHART_W = 620, CHART_H = 510;
@@ -212,7 +213,7 @@ namespace UltraCanvas {
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     chart->GetIdentifier() + "Tab", 0, 0, 660, 542);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(chart);
             tabbedContainer->AddTab(spec.tabTitle, tabContent);
             allCharts.push_back(chart);

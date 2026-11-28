@@ -2,21 +2,40 @@
 // Implementation of the encrypted vault. See the header for the design and the
 // threat notes.
 //
-// Container layout (all integers little-endian):
+// Container layout, version 2 (all integers little-endian):
 //
 //   offset size field
 //   0      8    magic "UCAVAULT"
-//   8      1    container version (1)
+//   8      1    container version (2)
 //   9      1    KDF id      (1 = Argon2id)
 //   10     1    AEAD id     (1 = XChaCha20-Poly1305)
-//   11     1    reserved (0)
+//   11     1    flags       (bit 0: a recovery slot follows)
 //   12     4    Argon2id passes
 //   16     4    Argon2id memory cost, KiB
 //   20     16   Argon2id salt
-//   36     24   AEAD nonce
-//   60     ...  ciphertext || 16-byte tag
+//   36     24   password slot nonce
+//   60     48   password slot: the data key sealed with the password key,
+//               bytes 0-35 as associated data
+//   108         when flags bit 0 - the recovery slot:
+//          32     the local share
+//          24     recovery slot nonce
+//          48     the data key sealed with the recovery key, associated
+//                 data kRecoveryContext || local share || escrow id
+//          1+n    escrow id (n <= 64; 0 for a recovery code only)
+//          2+m    account service URL (m <= 512)
+//   ...    24   entries nonce
+//   ...    ...  entries ciphertext || 16-byte tag
 //
-// The whole 60-byte header is the AEAD associated data.
+// Everything before the entries' ciphertext is their associated data, so an
+// edit anywhere in the header - the cost, a slot, the escrow id - fails the
+// open. The recovery key is HKDF-SHA-256 over server share || local share,
+// with kRecoveryContext as the info: 32 + 32 random bytes, so no password
+// stretching is needed or wanted.
+//
+// Version 1, still read: the same first 20 bytes with version 1 and a
+// reserved byte at 11, the salt, then the 24-byte entries nonce at 36 and the
+// ciphertext at 60, sealed with the password key itself; the 60-byte header
+// is the associated data.
 //
 // Decrypted payload:
 //   4 bytes   entry count
@@ -27,6 +46,7 @@
 // seeds through it would scatter plaintext copies across the heap
 // (UltraAuthenticator-Investigation.md §3.2).
 //
+// Version: 0.2.0 - container version 2: the data key, the password slot, the recovery slot
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EncryptedFileStore.h"
@@ -45,8 +65,15 @@ namespace {
 constexpr size_t  kMagicSize   = 8;
 constexpr size_t  kSaltSize    = 16;
 constexpr size_t  kNonceSize   = 24;
-constexpr size_t  kHeaderSize  = 60;
-constexpr uint8_t kVersion     = 1;
+constexpr size_t  kHeaderSize  = 60;     // version 1
+constexpr uint8_t kVersion1    = 1;
+constexpr uint8_t kVersion     = 2;
+constexpr size_t  kKeyBytes    = 32;
+constexpr size_t  kTagBytes    = 16;
+constexpr size_t  kSlotBytes   = kKeyBytes + kTagBytes;
+constexpr size_t  kFixedHeaderV2 = 108;
+constexpr uint8_t kFlagRecovery  = 0x01;
+const char kRecoveryContext[] = "UltraAuthenticator vault recovery v1";
 constexpr uint8_t kKdfArgon2id = 1;
 constexpr uint8_t kAeadXChaCha = 1;
 const char kMagic[kMagicSize] = {'U', 'C', 'A', 'V', 'A', 'U', 'L', 'T'};
@@ -57,7 +84,9 @@ constexpr size_t kOffAeadId     = 10;
 constexpr size_t kOffIterations = 12;
 constexpr size_t kOffMemoryKiB  = 16;
 constexpr size_t kOffSalt       = 20;
-constexpr size_t kOffNonce      = 36;
+constexpr size_t kOffNonce      = 36;   // version 1: the entries nonce; version 2: the password slot's
+constexpr size_t kOffFlags      = 11;
+constexpr size_t kOffSlot       = 60;
 
 // Guard rails on parsed cost parameters: a hostile file must not be able to
 // make us try to allocate terabytes before the tag check rejects it.
@@ -138,6 +167,25 @@ bool WriteFileAtomically(const std::string& path, const std::vector<uint8_t>& da
     return true;
 }
 
+std::vector<uint8_t> RecoveryAssociatedData(const std::vector<uint8_t>& localShare,
+                                            const std::string& escrowId) {
+    std::vector<uint8_t> ad(kRecoveryContext, kRecoveryContext + sizeof(kRecoveryContext) - 1);
+    ad.insert(ad.end(), localShare.begin(), localShare.end());
+    ad.insert(ad.end(), escrowId.begin(), escrowId.end());
+    return ad;
+}
+
+UltraCryptResult DeriveRecoveryKey(const UltraCryptSecureBuffer& serverShare,
+                                   const std::vector<uint8_t>& localShare,
+                                   UltraCryptSecureBuffer& outKey) {
+    UltraCryptSecureBuffer material(serverShare.GetSize() + localShare.size());
+    std::memcpy(material.Data(), serverShare.Data(), serverShare.GetSize());
+    std::memcpy(material.Data() + serverShare.GetSize(), localShare.data(), localShare.size());
+    const std::vector<uint8_t> info(kRecoveryContext, kRecoveryContext + sizeof(kRecoveryContext) - 1);
+    return UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA256, material, {}, info,
+                                    kKeyBytes, outKey);
+}
+
 } // namespace
 
 StoreResult StoreResult::Ok() {
@@ -165,7 +213,13 @@ bool EncryptedFileStore::Exists(const std::string& path) {
 }
 
 void EncryptedFileStore::Close() {
-    key_.Clear();
+    passwordKey_.Clear();
+    dataKey_.Clear();
+    containerVersion_ = kVersion;
+    recovery_ = VaultRecoveryInfo{};
+    recoveryLocalShare_.clear();
+    recoveryNonce_.clear();
+    recoverySealedKey_.clear();
     for (auto& entry : entries_) entry.second.Clear();
     entries_.clear();
     UltraCrypt_SecureZero(salt_.data(), salt_.size());
@@ -197,12 +251,19 @@ StoreResult EncryptedFileStore::Create(const std::string& path,
     }
 
     UltraCryptKdfParams kdf = UltraCrypt_RecommendedKdfParams();
-    auto derived = UltraCrypt_DeriveKeyFromPassword(password, kdf, key_);
+    auto derived = UltraCrypt_DeriveKeyFromPassword(password, kdf, passwordKey_);
     if (!derived) {
         Close();
         return StoreResult::Error(StoreResultCode::InternalError,
                                   "could not derive the vault key: " + derived.message);
     }
+    auto drawn = UltraCrypt_RandomSecureBuffer(kKeyBytes, dataKey_);
+    if (!drawn) {
+        Close();
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "could not draw the data key: " + drawn.message);
+    }
+    containerVersion_ = kVersion;
 
     path_          = path;
     salt_          = kdf.salt;
@@ -214,6 +275,137 @@ StoreResult EncryptedFileStore::Create(const std::string& path,
     if (!saved) { Close(); return saved; }
     return StoreResult::Ok();
 }
+
+StoreResult EncryptedFileStore::ParseFile(const std::string& path,
+                                          std::vector<uint8_t>& raw,
+                                          size_t& outBodyOffset) {
+    // Reads and checks the container's structure and fills the header fields
+    // that need no key: the cost, the salt, the recovery slot. Nothing here
+    // is trusted until a tag check passes.
+    if (!ReadWholeFile(path, raw)) {
+        return StoreResult::Error(StoreResultCode::IoError,
+                                  "could not read the vault file: " + path);
+    }
+    if (raw.size() <= kHeaderSize) {
+        return StoreResult::Error(StoreResultCode::Corrupt,
+                                  "the vault file is truncated");
+    }
+    if (std::memcmp(raw.data(), kMagic, kMagicSize) != 0) {
+        return StoreResult::Error(StoreResultCode::Corrupt,
+                                  "this is not an authenticator vault file");
+    }
+    const uint8_t version = raw[kOffVersion];
+    if (version != kVersion && version != kVersion1) {
+        return StoreResult::Error(
+            StoreResultCode::Corrupt,
+            "this vault was written by a newer version of the application");
+    }
+    if (raw[kOffKdfId] != kKdfArgon2id || raw[kOffAeadId] != kAeadXChaCha) {
+        return StoreResult::Error(StoreResultCode::Corrupt,
+                                  "the vault uses an unsupported algorithm");
+    }
+    kdfIterations_ = ReadUint32LE(raw.data() + kOffIterations);
+    kdfMemoryKiB_  = ReadUint32LE(raw.data() + kOffMemoryKiB);
+    salt_.assign(raw.begin() + kOffSalt, raw.begin() + kOffSalt + kSaltSize);
+    if (kdfIterations_ == 0 || kdfIterations_ > kMaxIterations ||
+        kdfMemoryKiB_ == 0 || kdfMemoryKiB_ > kMaxMemoryKiB) {
+        return StoreResult::Error(
+            StoreResultCode::Corrupt,
+            "the vault declares unreasonable key-derivation parameters");
+    }
+    containerVersion_ = version;
+    recovery_ = VaultRecoveryInfo{};
+    recoveryLocalShare_.clear();
+    recoveryNonce_.clear();
+    recoverySealedKey_.clear();
+
+    if (version == kVersion1) {
+        outBodyOffset = kOffNonce;
+        return StoreResult::Ok();
+    }
+
+    const StoreResult truncated = StoreResult::Error(StoreResultCode::Corrupt,
+                                                     "the vault file is truncated");
+    size_t offset = kFixedHeaderV2;
+    if (raw.size() < offset) return truncated;
+    const uint8_t flags = raw[kOffFlags];
+    if ((flags & ~kFlagRecovery) != 0) {
+        return StoreResult::Error(
+            StoreResultCode::Corrupt,
+            "this vault was written by a newer version of the application");
+    }
+    if (flags & kFlagRecovery) {
+        if (raw.size() < offset + kRecoveryShareBytes + kNonceSize + kSlotBytes + 1) return truncated;
+        recoveryLocalShare_.assign(raw.begin() + static_cast<std::ptrdiff_t>(offset),
+                                   raw.begin() + static_cast<std::ptrdiff_t>(offset + kRecoveryShareBytes));
+        offset += kRecoveryShareBytes;
+        recoveryNonce_.assign(raw.begin() + static_cast<std::ptrdiff_t>(offset),
+                              raw.begin() + static_cast<std::ptrdiff_t>(offset + kNonceSize));
+        offset += kNonceSize;
+        recoverySealedKey_.assign(raw.begin() + static_cast<std::ptrdiff_t>(offset),
+                                  raw.begin() + static_cast<std::ptrdiff_t>(offset + kSlotBytes));
+        offset += kSlotBytes;
+        const size_t idLength = raw[offset++];
+        if (idLength > kMaxRecoveryEscrowIdBytes || raw.size() < offset + idLength + 2) return truncated;
+        recovery_.escrowId.assign(reinterpret_cast<const char*>(raw.data() + offset), idLength);
+        offset += idLength;
+        const size_t urlLength = ReadUint16LE(raw.data() + offset);
+        offset += 2;
+        if (urlLength > kMaxRecoveryServiceBytes || raw.size() < offset + urlLength) return truncated;
+        recovery_.serviceUrl.assign(reinterpret_cast<const char*>(raw.data() + offset), urlLength);
+        offset += urlLength;
+        recovery_.enabled = true;
+    }
+    if (raw.size() <= offset + kNonceSize + kTagBytes) return truncated;
+    outBodyOffset = offset;
+    return StoreResult::Ok();
+}
+
+StoreResult EncryptedFileStore::DerivePasswordKey(const UltraCryptSecureBuffer& password,
+                                                  UltraCryptKdfParams& kdf,
+                                                  UltraCryptSecureBuffer& outKey) const {
+    kdf.algorithm    = UltraCryptKdfAlgorithm::Argon2id;
+    kdf.iterations   = kdfIterations_;
+    kdf.memoryKiB    = kdfMemoryKiB_;
+    kdf.parallelism  = 1;
+    kdf.outputLength = UltraCrypt_GetKeySize(UltraCryptAeadAlgorithm::XChaCha20Poly1305);
+    kdf.salt         = salt_;
+    auto derived = UltraCrypt_DeriveKeyFromPassword(password, kdf, outKey);
+    if (!derived) {
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "could not derive the vault key: " + derived.message);
+    }
+    return StoreResult::Ok();
+}
+
+namespace {
+
+// Opens the entries with `key`: the nonce at bodyOffset, everything before
+// the ciphertext as associated data.
+bool OpenEntries(const std::vector<uint8_t>& raw, size_t bodyOffset,
+                 const UltraCryptSecureBuffer& key, UltraCryptSecureBuffer& outPlain) {
+    UltraCryptAeadParams aead;
+    aead.algorithm = UltraCryptAeadAlgorithm::XChaCha20Poly1305;
+    aead.nonce.assign(raw.begin() + static_cast<std::ptrdiff_t>(bodyOffset),
+                      raw.begin() + static_cast<std::ptrdiff_t>(bodyOffset + kNonceSize));
+    const size_t cipherOffset = bodyOffset + kNonceSize;
+    aead.associatedData.assign(raw.begin(), raw.begin() + static_cast<std::ptrdiff_t>(cipherOffset));
+    return static_cast<bool>(UltraCrypt_AeadOpen(key, aead, raw.data() + cipherOffset,
+                                                 raw.size() - cipherOffset, outPlain));
+}
+
+bool OpenSlot(const UltraCryptSecureBuffer& key, const std::vector<uint8_t>& nonce,
+              const std::vector<uint8_t>& associatedData, const uint8_t* sealed,
+              UltraCryptSecureBuffer& outDataKey) {
+    UltraCryptAeadParams aead;
+    aead.algorithm = UltraCryptAeadAlgorithm::XChaCha20Poly1305;
+    aead.nonce = nonce;
+    aead.associatedData = associatedData;
+    if (!UltraCrypt_AeadOpen(key, aead, sealed, kSlotBytes, outDataKey)) return false;
+    return outDataKey.GetSize() == kKeyBytes;
+}
+
+} // namespace
 
 StoreResult EncryptedFileStore::Open(const std::string& path,
                                      const UltraCryptSecureBuffer& password) {
@@ -231,71 +423,216 @@ StoreResult EncryptedFileStore::Open(const std::string& path,
     }
 
     std::vector<uint8_t> raw;
-    if (!ReadWholeFile(path, raw)) {
-        return StoreResult::Error(StoreResultCode::IoError,
-                                  "could not read the vault file: " + path);
-    }
-    if (raw.size() <= kHeaderSize) {
-        return StoreResult::Error(StoreResultCode::Corrupt,
-                                  "the vault file is truncated");
-    }
-    if (std::memcmp(raw.data(), kMagic, kMagicSize) != 0) {
-        return StoreResult::Error(StoreResultCode::Corrupt,
-                                  "this is not an authenticator vault file");
-    }
-    if (raw[kOffVersion] != kVersion) {
-        return StoreResult::Error(
-            StoreResultCode::Corrupt,
-            "this vault was written by a newer version of the application");
-    }
-    if (raw[kOffKdfId] != kKdfArgon2id || raw[kOffAeadId] != kAeadXChaCha) {
-        return StoreResult::Error(StoreResultCode::Corrupt,
-                                  "the vault uses an unsupported algorithm");
-    }
+    size_t bodyOffset = 0;
+    auto parsed = ParseFile(path, raw, bodyOffset);
+    if (!parsed) { Close(); return parsed; }
 
     UltraCryptKdfParams kdf;
-    kdf.algorithm    = UltraCryptKdfAlgorithm::Argon2id;
-    kdf.iterations   = ReadUint32LE(raw.data() + kOffIterations);
-    kdf.memoryKiB    = ReadUint32LE(raw.data() + kOffMemoryKiB);
-    kdf.parallelism  = 1;
-    kdf.outputLength = UltraCrypt_GetKeySize(UltraCryptAeadAlgorithm::XChaCha20Poly1305);
-    kdf.salt.assign(raw.begin() + kOffSalt, raw.begin() + kOffSalt + kSaltSize);
+    UltraCryptSecureBuffer passwordKey;
+    auto derived = DerivePasswordKey(password, kdf, passwordKey);
+    if (!derived) { Close(); return derived; }
 
-    if (kdf.iterations == 0 || kdf.iterations > kMaxIterations ||
-        kdf.memoryKiB == 0 || kdf.memoryKiB > kMaxMemoryKiB) {
-        return StoreResult::Error(
-            StoreResultCode::Corrupt,
-            "the vault declares unreasonable key-derivation parameters");
-    }
-
-    UltraCryptSecureBuffer key;
-    auto derived = UltraCrypt_DeriveKeyFromPassword(password, kdf, key);
-    if (!derived) {
-        return StoreResult::Error(StoreResultCode::InternalError,
-                                  "could not derive the vault key: " + derived.message);
-    }
-
-    UltraCryptAeadParams aead;
-    aead.algorithm = UltraCryptAeadAlgorithm::XChaCha20Poly1305;
-    aead.nonce.assign(raw.begin() + kOffNonce, raw.begin() + kOffNonce + kNonceSize);
-    aead.associatedData.assign(raw.begin(), raw.begin() + kHeaderSize);
-
+    UltraCryptSecureBuffer dataKey;
     UltraCryptSecureBuffer plain;
-    auto opened = UltraCrypt_AeadOpen(key, aead, raw.data() + kHeaderSize,
-                                      raw.size() - kHeaderSize, plain);
-    if (!opened) {
+    if (containerVersion_ == kVersion1) {
+        // The password key sealed the entries itself. A data key is drawn for
+        // the next write, which upgrades the file.
+        if (!OpenEntries(raw, bodyOffset, passwordKey, plain)) { Close(); return AuthFailure(); }
+        auto drawn = UltraCrypt_RandomSecureBuffer(kKeyBytes, dataKey);
+        if (!drawn) {
+            Close();
+            return StoreResult::Error(StoreResultCode::InternalError,
+                                      "could not draw the data key: " + drawn.message);
+        }
+    } else {
+        const std::vector<uint8_t> nonce(raw.begin() + kOffNonce, raw.begin() + kOffNonce + kNonceSize);
+        const std::vector<uint8_t> ad(raw.begin(), raw.begin() + kOffNonce);
+        if (!OpenSlot(passwordKey, nonce, ad, raw.data() + kOffSlot, dataKey) ||
+            !OpenEntries(raw, bodyOffset, dataKey, plain)) {
+            Close();
+            return AuthFailure();
+        }
+    }
+
+    path_        = path;
+    passwordKey_ = std::move(passwordKey);
+    dataKey_     = std::move(dataKey);
+    isOpen_      = true;
+
+    auto read = DeserializeEntries(plain);
+    if (!read) { Close(); return read; }
+    return StoreResult::Ok();
+}
+
+StoreResult EncryptedFileStore::ReadRecoveryInfo(const std::string& path,
+                                                 VaultRecoveryInfo& outInfo) {
+    outInfo = VaultRecoveryInfo{};
+    EncryptedFileStore probe;
+    std::vector<uint8_t> raw;
+    size_t bodyOffset = 0;
+    auto parsed = probe.ParseFile(path, raw, bodyOffset);
+    if (!parsed) return parsed;
+    outInfo = probe.recovery_;
+    return StoreResult::Ok();
+}
+
+StoreResult EncryptedFileStore::OpenWithRecovery(const std::string& path,
+                                                 const UltraCryptSecureBuffer& serverShare,
+                                                 const UltraCryptSecureBuffer& newPassword) {
+    Close();
+    if (!UltraCrypt_IsAvailable()) {
+        return StoreResult::Error(StoreResultCode::BackendUnavailable,
+                                  "this build has no cryptography backend, so the vault cannot be opened");
+    }
+    if (newPassword.IsEmpty()) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "a new master password is required");
+    }
+    if (serverShare.GetSize() != kRecoveryShareBytes) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "a recovery key is 32 bytes");
+    }
+
+    std::vector<uint8_t> raw;
+    size_t bodyOffset = 0;
+    auto parsed = ParseFile(path, raw, bodyOffset);
+    if (!parsed) { Close(); return parsed; }
+    if (!recovery_.enabled) {
+        Close();
+        return StoreResult::Error(StoreResultCode::NotFound,
+                                  "recovery is not turned on for this vault");
+    }
+
+    UltraCryptSecureBuffer recoveryKey;
+    auto derived = DeriveRecoveryKey(serverShare, recoveryLocalShare_, recoveryKey);
+    if (!derived) {
+        Close();
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "could not derive the recovery key: " + derived.message);
+    }
+    UltraCryptSecureBuffer dataKey;
+    UltraCryptSecureBuffer plain;
+    if (!OpenSlot(recoveryKey, recoveryNonce_,
+                  RecoveryAssociatedData(recoveryLocalShare_, recovery_.escrowId),
+                  recoverySealedKey_.data(), dataKey) ||
+        !OpenEntries(raw, bodyOffset, dataKey, plain)) {
+        Close();
         return AuthFailure();
     }
 
-    path_          = path;
-    key_           = std::move(key);
+    path_    = path;
+    dataKey_ = std::move(dataKey);
+    isOpen_  = true;
+    auto read = DeserializeEntries(plain);
+    if (!read) { Close(); return read; }
+
+    // The share has been out of its safe place: this slot is spent.
+    recovery_ = VaultRecoveryInfo{};
+    recoveryLocalShare_.clear();
+    recoveryNonce_.clear();
+    recoverySealedKey_.clear();
+
+    UltraCryptKdfParams kdf = UltraCrypt_RecommendedKdfParams();
+    UltraCryptSecureBuffer newKey;
+    auto stretched = UltraCrypt_DeriveKeyFromPassword(newPassword, kdf, newKey);
+    if (!stretched) {
+        Close();
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "could not derive the new key: " + stretched.message);
+    }
+    passwordKey_   = std::move(newKey);
     salt_          = kdf.salt;
     kdfIterations_ = kdf.iterations;
     kdfMemoryKiB_  = kdf.memoryKiB;
-    isOpen_        = true;
 
-    auto parsed = DeserializeEntries(plain);
-    if (!parsed) { Close(); return parsed; }
+    auto saved = SaveLocked();
+    if (!saved) { Close(); return saved; }
+    return StoreResult::Ok();
+}
+
+VaultRecoveryInfo EncryptedFileStore::GetRecoveryInfo() const {
+    return isOpen_ ? recovery_ : VaultRecoveryInfo{};
+}
+
+StoreResult EncryptedFileStore::EnableRecovery(const UltraCryptSecureBuffer& serverShare,
+                                               const std::string& escrowId,
+                                               const std::string& serviceUrl) {
+    if (!isOpen_) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+    if (serverShare.GetSize() != kRecoveryShareBytes) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "a recovery key is 32 bytes");
+    }
+    if (escrowId.size() > kMaxRecoveryEscrowIdBytes || serviceUrl.size() > kMaxRecoveryServiceBytes) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "the recovery key's id or the service address is too long");
+    }
+
+    std::vector<uint8_t> localShare(kRecoveryShareBytes, 0);
+    auto drawn = UltraCrypt_RandomBytes(localShare.data(), localShare.size());
+    if (!drawn) {
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "could not draw the local share: " + drawn.message);
+    }
+    UltraCryptSecureBuffer recoveryKey;
+    auto derived = DeriveRecoveryKey(serverShare, localShare, recoveryKey);
+    if (!derived) {
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "could not derive the recovery key: " + derived.message);
+    }
+    UltraCryptAeadParams aead;
+    aead.algorithm = UltraCryptAeadAlgorithm::XChaCha20Poly1305;
+    aead.associatedData = RecoveryAssociatedData(localShare, escrowId);
+    std::vector<uint8_t> sealed;
+    auto wrapped = UltraCrypt_AeadSeal(recoveryKey, aead, dataKey_.Data(), dataKey_.GetSize(), sealed);
+    if (!wrapped || sealed.size() != kSlotBytes || aead.nonce.size() != kNonceSize) {
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "could not seal the recovery slot");
+    }
+
+    VaultRecoveryInfo previous = recovery_;
+    std::vector<uint8_t> previousShare = recoveryLocalShare_;
+    std::vector<uint8_t> previousNonce = recoveryNonce_;
+    std::vector<uint8_t> previousSealed = recoverySealedKey_;
+
+    recovery_ = VaultRecoveryInfo{true, escrowId, serviceUrl};
+    recoveryLocalShare_ = std::move(localShare);
+    recoveryNonce_ = aead.nonce;
+    recoverySealedKey_ = std::move(sealed);
+
+    auto saved = SaveLocked();
+    if (!saved) {
+        recovery_ = previous;
+        recoveryLocalShare_ = previousShare;
+        recoveryNonce_ = previousNonce;
+        recoverySealedKey_ = previousSealed;
+        return saved;
+    }
+    return StoreResult::Ok();
+}
+
+StoreResult EncryptedFileStore::DisableRecovery() {
+    if (!isOpen_) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+    if (!recovery_.enabled) return StoreResult::Ok();
+    VaultRecoveryInfo previous = recovery_;
+    std::vector<uint8_t> previousShare = recoveryLocalShare_;
+    std::vector<uint8_t> previousNonce = recoveryNonce_;
+    std::vector<uint8_t> previousSealed = recoverySealedKey_;
+    recovery_ = VaultRecoveryInfo{};
+    recoveryLocalShare_.clear();
+    recoveryNonce_.clear();
+    recoverySealedKey_.clear();
+    auto saved = SaveLocked();
+    if (!saved) {
+        recovery_ = previous;
+        recoveryLocalShare_ = previousShare;
+        recoveryNonce_ = previousNonce;
+        recoverySealedKey_ = previousSealed;
+        return saved;
+    }
     return StoreResult::Ok();
 }
 
@@ -382,7 +719,46 @@ StoreResult EncryptedFileStore::SaveLocked() const {
     auto serialized = SerializeEntries(plain);
     if (!serialized) return serialized;
 
-    // A fresh nonce for every write. Safe to reuse the session key because the
+    // Always written as version 2, whatever was read.
+    std::vector<uint8_t> header;
+    header.reserve(kFixedHeaderV2 + 256);
+    header.insert(header.end(), kMagic, kMagic + kMagicSize);
+    header.push_back(kVersion);
+    header.push_back(kKdfArgon2id);
+    header.push_back(kAeadXChaCha);
+    header.push_back(recovery_.enabled ? kFlagRecovery : 0);
+    PutUint32LE(header, kdfIterations_);
+    PutUint32LE(header, kdfMemoryKiB_);
+    header.insert(header.end(), salt_.begin(), salt_.end());
+
+    // The password slot: the data key sealed with the password key, a fresh
+    // nonce, the KDF parameters as associated data.
+    UltraCryptAeadParams slot;
+    slot.algorithm = UltraCryptAeadAlgorithm::XChaCha20Poly1305;
+    slot.associatedData = header;
+    std::vector<uint8_t> sealedKey;
+    auto wrapped = UltraCrypt_AeadSeal(passwordKey_, slot, dataKey_.Data(), dataKey_.GetSize(), sealedKey);
+    if (!wrapped || slot.nonce.size() != kNonceSize || sealedKey.size() != kSlotBytes) {
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "could not seal the vault's data key");
+    }
+    header.insert(header.end(), slot.nonce.begin(), slot.nonce.end());
+    header.insert(header.end(), sealedKey.begin(), sealedKey.end());
+    if (header.size() != kFixedHeaderV2) {
+        return StoreResult::Error(StoreResultCode::InternalError,
+                                  "internal error building the vault header");
+    }
+    if (recovery_.enabled) {
+        header.insert(header.end(), recoveryLocalShare_.begin(), recoveryLocalShare_.end());
+        header.insert(header.end(), recoveryNonce_.begin(), recoveryNonce_.end());
+        header.insert(header.end(), recoverySealedKey_.begin(), recoverySealedKey_.end());
+        header.push_back(static_cast<uint8_t>(recovery_.escrowId.size()));
+        header.insert(header.end(), recovery_.escrowId.begin(), recovery_.escrowId.end());
+        PutUint16LE(header, static_cast<uint16_t>(recovery_.serviceUrl.size()));
+        header.insert(header.end(), recovery_.serviceUrl.begin(), recovery_.serviceUrl.end());
+    }
+
+    // A fresh nonce for every write. Safe to reuse the data key because the
     // 192-bit nonce space makes a random collision negligible.
     UltraCryptAeadParams aead;
     aead.algorithm = UltraCryptAeadAlgorithm::XChaCha20Poly1305;
@@ -392,26 +768,11 @@ StoreResult EncryptedFileStore::SaveLocked() const {
         return StoreResult::Error(StoreResultCode::InternalError,
                                   "could not generate a nonce: " + nonce.message);
     }
-
-    std::vector<uint8_t> header;
-    header.reserve(kHeaderSize);
-    header.insert(header.end(), kMagic, kMagic + kMagicSize);
-    header.push_back(kVersion);
-    header.push_back(kKdfArgon2id);
-    header.push_back(kAeadXChaCha);
-    header.push_back(0);
-    PutUint32LE(header, kdfIterations_);
-    PutUint32LE(header, kdfMemoryKiB_);
-    header.insert(header.end(), salt_.begin(), salt_.end());
     header.insert(header.end(), aead.nonce.begin(), aead.nonce.end());
-    if (header.size() != kHeaderSize) {
-        return StoreResult::Error(StoreResultCode::InternalError,
-                                  "internal error building the vault header");
-    }
     aead.associatedData = header;
 
     std::vector<uint8_t> ciphertext;
-    auto sealed = UltraCrypt_AeadSeal(key_, aead, plain.Data(), plain.GetSize(),
+    auto sealed = UltraCrypt_AeadSeal(dataKey_, aead, plain.Data(), plain.GetSize(),
                                       ciphertext);
     if (!sealed) {
         return StoreResult::Error(StoreResultCode::InternalError,
@@ -424,6 +785,7 @@ StoreResult EncryptedFileStore::SaveLocked() const {
         return StoreResult::Error(StoreResultCode::IoError,
                                   "could not write the vault file: " + path_);
     }
+    containerVersion_ = kVersion;
     return StoreResult::Ok();
 }
 
@@ -575,19 +937,21 @@ StoreResult EncryptedFileStore::ChangePassword(const UltraCryptSecureBuffer& new
                                   "could not derive the new key: " + derived.message);
     }
 
-    UltraCryptSecureBuffer previousKey = std::move(key_);
+    // Only the password slot changes: the data key, and with it the
+    // recovery slot, stay as they are.
+    UltraCryptSecureBuffer previousKey = std::move(passwordKey_);
     const std::vector<uint8_t> previousSalt = salt_;
     const uint32_t previousIterations = kdfIterations_;
     const uint32_t previousMemory     = kdfMemoryKiB_;
 
-    key_           = std::move(newKey);
+    passwordKey_   = std::move(newKey);
     salt_          = kdf.salt;
     kdfIterations_ = kdf.iterations;
     kdfMemoryKiB_  = kdf.memoryKiB;
 
     auto saved = SaveLocked();
     if (!saved) {
-        key_           = std::move(previousKey);   // the vault on disk is unchanged
+        passwordKey_   = std::move(previousKey);   // the vault on disk is unchanged
         salt_          = previousSalt;
         kdfIterations_ = previousIterations;
         kdfMemoryKiB_  = previousMemory;

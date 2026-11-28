@@ -10,6 +10,7 @@ replayed later. The store's report form and the terms are public."""
 
 from __future__ import annotations
 
+import hmac
 import time
 
 from cryptography.exceptions import InvalidSignature
@@ -61,3 +62,27 @@ def verify_bytes(key_hex: str, signature_hex: str, data: bytes) -> bool:
 
 def public_hex(seed: bytes) -> str:
     return Ed25519PrivateKey.from_private_bytes(seed).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+
+
+# ----- the operators' passwords: scrypt, as the account service keeps a person's -----
+import hashlib
+import secrets as _secrets
+
+SCRYPT_N, SCRYPT_R, SCRYPT_P = 1 << 15, 8, 1
+
+
+def hash_password(password: str) -> str:
+    salt = _secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P, dklen=32, maxmem=1 << 27)
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        kind, n, r, p, salt_hex, digest_hex = stored.split("$")
+        if kind != "scrypt":
+            return False
+        digest = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt_hex), n=int(n), r=int(r), p=int(p), dklen=32, maxmem=1 << 27)
+        return hmac.compare_digest(digest.hex(), digest_hex)
+    except ValueError:
+        return False

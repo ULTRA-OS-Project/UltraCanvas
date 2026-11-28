@@ -22,6 +22,16 @@ the one that includes it first.
           years each module hid that with `#undef None`; in 0.9.363 every such
           name was renamed and every guard removed.
 
+  win32-macro
+          <windows.h> also #defines ordinary-looking names as object-like
+          macros: near, far, NEAR and FAR to nothing (<minwindef.h>), IN,
+          OUT and OPTIONAL to nothing, interface to struct (<combaseapi.h>),
+          small to char (<rpcndr.h>), ERROR, DELETE, TRANSPARENT, ABSOLUTE
+          and a few more to numbers. A variable, lambda, member or enumerator
+          of that name compiles on Linux and macOS and breaks the Windows
+          build ("expected unqualified-id"): `auto near = [&](...)` in the
+          spreadsheet chart code broke both Windows builds that way.
+
   objc    In a .mm file (the macOS and iOS glue) <objc/objc.h> is in effect:
           YES, NO, nil and Nil are macros that rewrite any identifier of that
           name, and id, Class, SEL, IMP, BOOL and Protocol are global typedefs
@@ -59,6 +69,14 @@ What is reported, by kind (in code, never in comments or string literals):
       X11 headers. The Linux platform glue is skipped: it uses the macros
       as values and declares nothing by their names.
 
+  win32-macro-undef        `#undef near` / `#pragma push_macro("near")`
+  win32-macro-enumerator   an enumerator of a name on the list
+  win32-macro-declaration  a function, method, member, variable or lambda
+                           of that name (`auto near = ...`, `int far;`)
+      The names come from scripts/win32_object_macros.txt, kept by hand
+      from the MinGW-w64 headers. UltraCanvas/OS/MSWindows is skipped: it
+      includes windows.h everywhere and uses the macros as values.
+
   objc-macro               an enumerator, function, member or variable named
                            YES, NO, nil or Nil, in any scope
   objc-global              a file-scope declaration (variable, function,
@@ -72,16 +90,18 @@ A site that is correct as it stands says so where it is and is skipped:
     hr = item->GetDisplayName(&name);   // win32-name-ok: COM method, windows.h included
     uint8_t Status = 0;                 // x11-name-ok: <why>
     int NO = 0;                         // objc-name-ok: <why>
+    double near = 0;                    // win32-name-ok: <why>
 
 scripts/platform_names_baseline.txt lists the sites that predate the checks
 (Win32 names still being worked off; the X11 and Objective-C sets are empty
-and stay so), so CI blocks *new* ones (`platform-names.yml`, --strict). Each
+and stay so), so CI blocks *new* ones (`source-checks.yml`, --strict). Each
 platform's rules have a --self-test against built-in examples, run first in
 CI, so a rule that stopped matching cannot pass by finding nothing.
 
 Usage:
     python3 scripts/check_platform_names.py [--strict] [paths...]
     python3 scripts/check_platform_names.py --platform x11 [--platform ...]
+    python3 scripts/check_platform_names.py --platform win32-macro
     python3 scripts/check_platform_names.py --self-test
     python3 scripts/check_platform_names.py --update-baseline
     python3 scripts/check_platform_names.py --platform win32 --generate-names <mingw-w64 include dir>
@@ -138,6 +158,9 @@ MESSAGES = {
     "win32-name-qualified": "is a <windows.h> macro ({name}W in a file that includes it) - rename the function",
     "win32-name-member": "is a <windows.h> macro ({name}W in a file that includes it) - rename the function",
     "win32-name-declaration": "is a <windows.h> macro ({name}W in a file that includes it) - rename the function",
+    "win32-macro-undef": "guards a <windows.h> macro - rename the identifier it protects instead",
+    "win32-macro-enumerator": "is a <windows.h> macro (rewritten in a file that includes it) - rename the enumerator",
+    "win32-macro-declaration": "is a <windows.h> macro (rewritten in a file that includes it) - rename it (near -> closeTo, far -> farEnd, ...)",
     "x11-undef": "guards an X11 macro - rename the identifier it protects instead",
     "x11-enumerator": "is an X11 macro - rename the enumerator (NoBorder, Ok, AboveBaseline, ...)",
     "x11-declaration": "is an X11 macro - rename the function or member",
@@ -419,19 +442,23 @@ def x11_generate_names(include_dir: Path) -> list[str]:
     return sorted(names)
 
 
-def x11_check_text(text: str, names: set[str], path: Path) -> list[Finding]:
+def object_macro_check_text(text: str, names: set[str], path: Path, prefix: str,
+                            exempt_re: re.Pattern) -> list[Finding]:
+    """Object-like macros of a platform header: no #undef guard, enumerator or
+    declaration of ours may carry one of `names`. Kinds are <prefix>-undef,
+    <prefix>-enumerator and <prefix>-declaration."""
     findings: list[Finding] = []
-    exempt = {i + 1 for i, line in enumerate(text.splitlines()) if X11_EXEMPT_RE.search(line)}
+    exempt = {i + 1 for i, line in enumerate(text.splitlines()) if exempt_re.search(line)}
     for regex in (UNDEF_RE, PUSH_MACRO_RE):
         for m in regex.finditer(text):
             if m.group(1) in names:
-                findings.append(Finding(path, line_of(text, m.start()), "x11-undef", m.group(1)))
+                findings.append(Finding(path, line_of(text, m.start()), f"{prefix}-undef", m.group(1)))
     code = strip_comments_and_strings(text)
     spans = enum_bodies(code)
     for a, b in spans:
         for e in ENUMERATOR_RE.finditer(code, a, b):
             if e.group(1) in names and line_of(code, e.start(1)) not in exempt:
-                findings.append(Finding(path, line_of(code, e.start(1)), "x11-enumerator", e.group(1)))
+                findings.append(Finding(path, line_of(code, e.start(1)), f"{prefix}-enumerator", e.group(1)))
     for m in DECL_RE.finditer(code):
         name = m.group("name")
         if name not in names or any(a <= m.start("name") < b for a, b in spans):
@@ -440,9 +467,13 @@ def x11_check_text(text: str, names: set[str], path: Path) -> list[Finding]:
             continue
         line = line_of(code, m.start("name"))
         if line not in exempt:
-            findings.append(Finding(path, line, "x11-declaration", name))
+            findings.append(Finding(path, line, f"{prefix}-declaration", name))
     findings.sort(key=lambda f: (f.line, f.kind))
     return findings
+
+
+def x11_check_text(text: str, names: set[str], path: Path) -> list[Finding]:
+    return object_macro_check_text(text, names, path, "x11", X11_EXEMPT_RE)
 
 
 X11_SELF_TEST = """\
@@ -474,6 +505,46 @@ X11_SELF_TEST_EXPECT = {("x11-undef", "Success", 3), ("x11-undef", "None", 5),
                         ("x11-enumerator", "None", 6), ("x11-enumerator", "Status", 7),
                         ("x11-declaration", "Status", 9), ("x11-declaration", "Success", 10),
                         ("x11-declaration", "Bool", 11)}
+
+
+# ---------------------------------------------------------------------------
+# win32-macro: object-like macros <windows.h> defines (near, far, IN, ...)
+# ---------------------------------------------------------------------------
+
+WIN32_MACRO_NAMES_FILE = SCRIPTS / "win32_object_macros.txt"
+# The Windows platform glue includes windows.h in every file and uses the
+# macros as values; everything else must not name anything after them.
+WIN32_MACRO_SKIP_DIRS = [Path("UltraCanvas/OS/MSWindows")]
+
+
+def win32_macro_check_text(text: str, names: set[str], path: Path) -> list[Finding]:
+    return object_macro_check_text(text, names, path, "win32-macro", WIN32_EXEMPT_RE)
+
+
+WIN32_MACRO_SELF_TEST = """\
+#pragma once
+#undef near
+enum class Direction { IN, Across, OUT };
+struct Box {
+    double far = 0;
+    double nearest = 0;
+    bool interface() const;
+    int Delete = 0;
+    double NEAR = 0;   // win32-name-ok: never compiled on Windows
+};
+SlideHandle HandleAt(double x, double y) {
+    auto near = [&](double hx, double hy) { return true; };
+    const size_t far = addressEnd(k);
+    if (near(l, t)) return SlideHandle::TopLeft;
+    return farEnd + nearby;
+}
+"""
+WIN32_MACRO_SELF_TEST_EXPECT = {("win32-macro-undef", "near", 2),
+                                ("win32-macro-enumerator", "IN", 3), ("win32-macro-enumerator", "OUT", 3),
+                                ("win32-macro-declaration", "far", 5),
+                                ("win32-macro-declaration", "interface", 7),
+                                ("win32-macro-declaration", "near", 12),
+                                ("win32-macro-declaration", "far", 13)}
 
 
 # ---------------------------------------------------------------------------
@@ -670,6 +741,9 @@ PLATFORMS = {
     "x11": Platform("x11", X11_ROOTS, X11_SKIP_DIRS, X11_SUFFIXES, x11_check_text,
                     X11_SELF_TEST, X11_SELF_TEST_EXPECT, X11_NAMES_FILE, X11_NAMES_HEADER,
                     x11_generate_names, X11_SKIP_PARTS_EXTRA),
+    "win32-macro": Platform("win32-macro", X11_ROOTS, WIN32_MACRO_SKIP_DIRS, X11_SUFFIXES,
+                            win32_macro_check_text, WIN32_MACRO_SELF_TEST, WIN32_MACRO_SELF_TEST_EXPECT,
+                            WIN32_MACRO_NAMES_FILE, extra_skip_parts=X11_SKIP_PARTS_EXTRA),
     "objc": Platform("objc", X11_ROOTS, OBJC_SKIP_DIRS, X11_SUFFIXES, objc_check_text,
                      OBJC_SELF_TEST, OBJC_SELF_TEST_EXPECT, OBJC_NAMES_FILE, OBJC_NAMES_HEADER,
                      objc_generate_names, X11_SKIP_PARTS_EXTRA),
@@ -744,9 +818,10 @@ def main() -> int:
         print(finding)
     if fresh:
         print(f"\n{len(fresh)} identifier(s) a platform header takes, in {len(scanned)} files.\n"
-              "win32-*: in a file that includes <windows.h> the name gets an A/W suffix and\n"
+              "win32-name-*: in a file that includes <windows.h> the name gets an A/W suffix and\n"
               "the Windows link fails when the declaring and the calling file disagree.\n"
-              "x11-* / objc-*: in a file that includes the platform header first the name is\n"
+              "x11-* / objc-* / win32-macro-*: in a file that includes the platform header first\n"
+              "the name is\n"
               "rewritten and no longer compiles (AGENTS.md). Rename it - an #undef guard only\n"
               "moves the failure to the next file. If this site is correct as it stands, say\n"
               "why and it will be skipped:\n"

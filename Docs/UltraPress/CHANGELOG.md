@@ -1,3 +1,72 @@
+#### 2026-11-18 *0.8.7*
+- **The program is called `UltraPress`, as the app is.** The binary was
+  `ultrapress`; it is now `UltraPress` (`UltraPress.exe` and its console
+  companion `UltraPress.com` on Windows, `UltraPress.app` on macOS). The
+  commands are the same - `UltraPress new`, `UltraPress publish` and the
+  rest. On Linux the name is case-sensitive: a script that ran `ultrapress`
+  runs `UltraPress` now. The folders a site keeps (`.ultrapress/`) are
+  unchanged.
+
+#### 2026-11-17 *0.8.6*
+- **Documentation, the way Docusaurus publishes it.**
+  - **A site's `docs/` folder.** Its Markdown is published at `/docs/` in
+    the HTML + JavaScript output. Each page gets a sidebar after the
+    folders, a table of contents, breadcrumbs, and previous and next.
+    Code is highlighted, and `:::tip` admonitions and `:::tabs` work.
+  - **Search.** A site with docs gets a search box and a search page.
+  - **Translations.** `i18n/<language>/docs` publishes at
+    `/<language>/docs/`, with a language switcher.
+  - **The example site** has a small `docs/`, linked from its menu.
+- **`ultrapress docs <folder> <out>`** publishes a folder of Markdown alone
+  as a documentation site.
+  - `--source-root` and `--source-url` send a link out of the folder to a
+    repository's file view.
+  - `--edit-url` adds *Edit this page*, and `--exclude` leaves out files
+    such as the changelogs.
+  - `--broken-links warn` publishes despite links that lead nowhere.
+  - This repository's `Docs/` (418 pages) builds with it in 18 seconds.
+- **`ultrapress serve <site>`** shows the site on this computer. It builds
+  the site as HTML + JavaScript, serves it on 127.0.0.1, and builds it
+  again when a file of the site changed; a built folder is served as it
+  is.
+- **Pictures** of the site's media are responsive: AVIF and WebP variants
+  at the widths each role is shown at, with the original kept.
+- **`--precompress`** on `publish` and `docs` writes a `.gz` (and `.br`)
+  copy beside every page, stylesheet and script.
+- **Versioned docs.** `versioned_docs/<label>/`, ordered by
+  `versions.json`, is published at `/docs/<label>/` with a version
+  switcher; `ultrapress docs --versions <dir>` does the same for a
+  Markdown folder.
+- **A blog.** Posts take `"tags"`. A site with posts gets `/blog/`, the
+  posts newest first, and a page per tag.
+- **A site is published as HTML + JavaScript or as WebAssembly.** The new
+  `"output"` in `site.json` chooses which; it is also *Publish as* in *Site
+  settings…*, and `ultrapress publish --output html|wasm` for one run.
+  `html`, the default for new sites and for sites that do not say, writes
+  every page through UltraSite:
+  - styled pages, built from the blocks and the theme's colours, with a
+    4 KB script for prefetch and the theme toggle;
+  - a hashed stylesheet;
+  - `feed.xml`, `sitemap.xml`, `404.html`, `.htaccess`, `_headers` and the
+    media folder.
+
+  The example site's front page is 2.3 KB compressed, with 3.0 KB of
+  stylesheet and 0.8 KB of script that every page shares. A broken link,
+  a missing anchor or a page over its size budget fails the publish;
+  `--sizes` lists what everything weighs. `wasm` writes the HTML shadow for
+  the WebAssembly renderer, as before.
+  - **The dark look:** `"dark"` in `theme.json` gives a site's colours for
+    it. The site then follows the visitor's system and offers a toggle that
+    remembers the choice. The example site has one.
+  - **Outputs per block:** a block type states which outputs can show it
+    (`BlockType::htmlOutput`, `wasmOutput`), and `check` reports a block the
+    site's output cannot show. Every built-in block has both.
+  - **Engine:** `UltraPressSite.h` (`PublishHtml`, `Publish`, `ThemeTokens`,
+    `BlockStylesheet`); `HtmlEmitter::Parts`; `HtmlOptions::styled`, which
+    fetches the hero's picture first and every other picture lazily, and
+    makes the FAQ an accordion that keeps one answer open. The shadow is
+    unchanged.
+
 #### 2026-11-11 *0.8.5*
 - **The look follows the desktop until one is chosen.** The theme is set
   under the application's `Own` policy with `ThemeFor` as the provider: a

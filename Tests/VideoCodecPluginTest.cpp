@@ -9,8 +9,12 @@
 // Also: the platform backend starts and stops at once, many times over,
 // without hanging - its stop used to be lost when it came before the backend's
 // event loop had begun to run, and the process then hung at exit.
+// And: the player refuses what is no file to play - an empty one, one that
+// does not exist, a folder - before any codec or backend sees it; it used to
+// "load" them and fail later, after the caller had shown a player.
+// Version: 1.2.0 - LoadFromFile refuses an empty, missing or folder source (TestPlayerRefusesNoFile)
 // Version: 1.1.0 - the backend's start / stop race (TestBackendStopsRightAfterStart)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/libspecific/Video/VideoCodecPlugin.h"
@@ -24,6 +28,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <string>
@@ -216,6 +221,50 @@ void TestPlayerDecodesThroughThePlugin() {
     std::remove(path.c_str());
 }
 
+void TestPlayerRefusesNoFile() {
+    std::printf("UltraCanvasVideoPlayer refuses what is no file to play\n");
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / PathFromUtf8("uc-videoplugin-nofile");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir / "folder.ucvid", ec);   // a folder with the codec's extension
+    const std::string empty = PathToUtf8(dir / "empty.ucvid");
+    { std::ofstream f(PathFromUtf8(empty), std::ios::binary); }
+    const std::string missing = PathToUtf8(dir / "missing.ucvid");
+    const std::string folder = PathToUtf8(dir / "folder.ucvid");
+
+    struct Case { const char* what; std::string path; const char* reason; };
+    const Case cases[] = {
+        { "an empty file",          empty,   "empty" },
+        { "a file that is not there", missing, "does not exist" },
+        { "a folder",               folder,  "Not a file" },
+        { "no path at all",         std::string(), "No video file" },
+    };
+    for (const Case& c : cases) {
+        sessionsOpened = 0;
+        UltraCanvasVideoPlayer player;
+        std::string reported;
+        player.onError = [&reported](const std::string& message) { reported = message; };
+        const bool loaded = player.LoadFromFile(c.path);
+        Check(!loaded, std::string(c.what) + ": LoadFromFile is false");
+        Check(sessionsOpened == 0, std::string(c.what) + ": the codec's factory never saw it");
+        Check(!player.IsLoaded() && player.GetState() == VideoPlaybackState::Error,
+              std::string(c.what) + ": nothing loaded, the state is Error");
+        Check(player.GetLastError().find(c.reason) != std::string::npos && reported == player.GetLastError(),
+              std::string(c.what) + ": says why, in GetLastError and onError (" + player.GetLastError() + ")");
+    }
+
+    // A source that did open is let go when the next one is refused.
+    const std::string good = WriteSourceFile("uc-videoplugin-h.ucvid");
+    UltraCanvasVideoPlayer player;
+    Check(player.LoadFromFile(good) && player.IsLoaded(), "a file with something in it still opens");
+    Check(!player.LoadFromFile(empty) && !player.IsLoaded(),
+          "... and an empty one loaded after it leaves nothing loaded");
+    player.Unload();
+    std::remove(good.c_str());
+    fs::remove_all(dir, ec);
+}
+
 void TestUnclaimedSourceBypassesThePlugin() {
     std::printf("A source no plugin claims\n");
     // Precedence must not mean interception: an extension no plugin registered
@@ -348,6 +397,7 @@ int main() {
     TestUnregisteredExtensionIsInert();
     TestRegistrationReachesClassificationAndInventory();
     TestPlayerDecodesThroughThePlugin();
+    TestPlayerRefusesNoFile();
     TestUnclaimedSourceBypassesThePlugin();
     TestThumbnailFallsBackToTheDecoder();
     TestDedicatedThumbnailGrabberWins();

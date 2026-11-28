@@ -1,5 +1,6 @@
 // libspecific/Cairo/UCTextLayout.h
 // Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.2.0 - GetCursorRect
 // Version: 1.1.1
 // Last Modified: 2026-08-08
 // Author: UltraCanvas Framework
@@ -108,7 +109,10 @@ namespace UltraCanvas {
         // explicitHeight is still remembered for vertical alignment.
         void ApplyPangoHeight();
     public:
-        explicit UCTextLayout(PangoContext* ctx);
+        // `exactGlyphPositions`: the layout gets a context of its own, like
+        // `ctx` but with glyphs left where the font puts them instead of on
+        // whole pixels (a document's text: IRenderContext::CreateDocumentTextLayout).
+        explicit UCTextLayout(PangoContext* ctx, bool exactGlyphPositions = false);
         ~UCTextLayout() override;
 
         // Move-only
@@ -195,6 +199,7 @@ namespace UltraCanvas {
         double IndexToBaseline(int byteIndex) const override;
         UCLayoutLineXPos IndexToLineX(int byteIndex, bool trailing) const override;
         UCCursorPos GetCursorPos(int byteIndex) const override;
+        Rect2Df GetCursorRect(int byteIndex) const override;
         UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,
                                               int oldTrailing, int direction) const override;
 

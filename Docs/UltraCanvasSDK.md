@@ -1,7 +1,7 @@
 # The UltraCanvas SDK
 
-**Version:** 1.3.1
-**Last Modified:** 2026-10-10
+**Version:** 1.4.0
+**Last Modified:** 2026-11-26
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -13,7 +13,12 @@ running a forty-minute build.
 
 CI produces it on every pull request and every push to `main`, one per
 platform leg, as a workflow artifact, and every release build of `main`
-attaches the same six archives to a GitHub release:
+attaches the same archives to a GitHub release. Linux x86_64 and arm64,
+Windows x86_64 and macOS arm64 are in every release; Windows arm64 in a
+release dispatched by the changelog fold (nearly all of them - not one made
+by a plain push to `main`); macOS x86_64 (Intel) only when a release is
+dispatched with the Build workflow's `intel` input, so most releases do not
+carry it:
 
 | Artifact | Contents |
 |---|---|
@@ -28,13 +33,19 @@ version in the name is the framework's, from the first line of
 `Docs/UltraCanvas/CHANGELOG.md`.
 
 **Where to get one.** Every release is on the UltraOS server, with a
-`SHA256SUMS` beside the six archives:
+`SHA256SUMS` beside the release's archives:
 
 ```
 https://start.ultraos.eu/pub/<version>/<archive>
 https://start.ultraos.eu/pub/<version>/SHA256SUMS
+https://start.ultraos.eu/pub/LATEST
 https://start.ultraos.eu/pub/0.9.465/UltraCanvas-SDK-Windows-0.9.465-x86_64.zip
 ```
+
+`LATEST` is one line, the newest version on the server. The upload writes
+it once that version's files are all in place, and never moves it back to
+an older version; UltraCanvasStart reads it to offer a newer SDK
+(`Apps/UltraCanvasStart/README.md`, *Updating the SDK*).
 
 The `publish-sdk-website` job of `.github/workflows/build.yml` uploads them
 there over SFTP, into `<ULTRAOS_SFTP_DIR>/<version>/`, which the web server
@@ -44,7 +55,9 @@ is set, as a repository variable or a secret; the script's head lists the
 other settings. The *SDK website check* workflow
 (`.github/workflows/sdk-website-check.yml`, *Run workflow* in the Actions tab)
 tests those settings without a release: it logs in, writes, renames and
-removes a probe file in the directory. Each version of `main` also has a GitHub release tagged
+removes a probe file in the directory. Run with a version in its `latest`
+input, it sets `LATEST` to that version instead, after checking that the
+version's `SHA256SUMS` is there. Each version of `main` also has a GitHub release tagged
 `v<version>` (the `publish-sdk` job of `.github/workflows/build.yml` creates
 it from the release build that `changelog-fold.yml` dispatches, with the
 version's changelog section as its notes), and the archives are its assets at
@@ -215,8 +228,11 @@ An SDK is built on one platform leg and is for that platform and architecture
 only. The Linux SDK follows Ubuntu 22.04's library ABI; a newer distribution
 runs it, an older one may not. The Windows SDK's DLL expects the MSYS2 runtime
 DLLs it was built against (`libc++.dll`, cairo, pango, vips and the rest) on
-`PATH`, as any MSYS2-built program does. The macOS SDK is static and carries no
-runtime dependency beyond the libraries named above.
+`PATH`, as any MSYS2-built program does. The macOS SDK's core is a shared
+`libUltraCanvas.dylib` too: the libraries it was built against are in `deps/lib`
+with `@rpath` install names, so it needs no Homebrew at run time, only the run
+path to `lib/` and `deps/lib` that the package gives a build-tree executable
+(see *Using it*).
 
 The package version in `UltraCanvasConfigVersion.cmake` is the framework's,
 with `SameMajorVersion` compatibility, so `find_package(UltraCanvas 0.9)`

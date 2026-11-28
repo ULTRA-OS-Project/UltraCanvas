@@ -1,0 +1,8 @@
+[Unit]
+Description=UltraStore account service: deletions past their grace, suspensions past their end
+After=ultrastore-account.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/ultrastore-account.env
+ExecStart=/usr/bin/curl -sS -X POST -H "Authorization: Bearer ${ULTRASTORE_ACCOUNT_OPERATOR_TOKEN}" http://127.0.0.1:8793/v1/maintenance

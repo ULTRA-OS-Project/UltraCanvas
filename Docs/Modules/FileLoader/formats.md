@@ -24,10 +24,13 @@ framework was compiled and which plugins the application registers.
 Legend: ✅ supported · — not supported · † depends on the installed libvips
 build · ‡ requires the matching plugin to be compiled and registered ·
 § depends on the platform backend and installed codecs · ¶ also
-password-protected (*Encrypt with Password*, agile encryption, Office 2010 and
-later): read given the password, and written with one - see
+password-protected: an Office file (*Encrypt with Password*, agile encryption,
+Office 2010 and later) read given the password, and written with one; an
+OpenDocument file (*Save with password*, LibreOffice / OpenOffice.org 3.2 and
+later, AES-256 and PBKDF2) read given the password, not written with one - see
 `UltraCanvasFileLoader::RequestDocumentPassword` and
-`RequestNewDocumentPassword`.
+`RequestNewDocumentPassword`, [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md)
+and [UltraCanvasOdfEncryption](../../UltraCanvas/UltraCanvasOdfEncryption.md).
 
 ### Bitmaps — libvips †
 
@@ -67,11 +70,12 @@ load through the ImageMagick delegate when libvips was built with it.
 | PostScript / EPS | `.eps`, `.ps` | ✅ † | — | libvips delegate |
 | AutoCAD DXF | `.dxf` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer) |
 | AutoCAD DWG | `.dwg`, `.dwt`, `.dws`, `.sv$` | ✅ ‡ | ✅ ‡ § | Vector plugin (native R13–R2018 decoder) |
+| OpenDocument Drawing (LibreOffice Draw) | `.odg`, `.otg`, `.fodg` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer; miniz + tinyxml2) |
 
 There is no SVG *writer* in the image pipeline — SVG is load-only. EPS/PS load
 only when libvips was built with a PostScript loader (Ghostscript delegate).
 The Vector plugin writes the whole matrix it reads and more (SVG, XAR, EPS,
-CDR, PDF, EMF, WMF, AI, DXF, DWG) once `RegisterVectorFormatsPlugin()` has
+CDR, PDF, EMF, WMF, AI, DXF, ODG, DWG) once `RegisterVectorFormatsPlugin()` has
 been called — see
 [UltraCanvasVectorConverters](../../UltraCanvas/UltraCanvasVectorConverters.md).
 Those converters read into an editable `VectorDocument` rather than pixels and
@@ -120,8 +124,16 @@ the Vector plugin's drawing reader.
 |--------|--------------|:----:|:----:|----------|
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
 | Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
-| OpenDocument Text | `.odt` | ✅ | ✅ | built-in (miniz + tinyxml2) |
-| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.potx` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
+| Word template (OOXML) | `.dotx` | ✅ ¶ | ✅ ¶ | built-in: a `.docx` package whose main part is a template |
+| Word macro-enabled template | `.dotm` | ✅ | — | built-in: read as a template; macros neither run nor kept |
+| OpenDocument Text | `.odt` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2) |
+| OpenDocument Text template | `.ott` | ✅ | ✅ | built-in: an `.odt` package with the `text-template` mimetype |
+| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.ppsm` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model (`SavePresentation`) or from a document laid out as a deck (`SaveTextDocument`) |
+| PowerPoint template (OOXML) | `.potx`, `.potm` | ✅ ¶ | ✅ ¶ | built-in, as PowerPoint (a `.potm` is written without macros) |
+| OpenDocument Presentation | `.odp`, `.fodp` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model or a document laid out as a deck (no password) |
+| OpenDocument Presentation template | `.otp` | ✅ ¶ | ✅ | built-in, as OpenDocument Presentation |
+| PowerPoint 97-2003 | `.ppt`, `.pps` | ✅ | — | built-in OLE2/CFB parser ([UltraCanvasPresentationPpt](../../UltraCanvas/UltraCanvasPresentationPpt.md)): slides read and drawn (text, bullets, shapes, pictures, tables, notes, transitions), or opened as an outline (`LoadPresentation`, `LoadTextDocument`); saved as `.pptx` or `.odp`; a password-protected one is refused |
+| PowerPoint 97-2003 template | `.pot` | ✅ | — | built-in, as PowerPoint 97-2003: read as a template, opened as a new untitled deck |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |
@@ -137,8 +149,11 @@ engines linked into the binary are reported. RTF is **not** supported.
 
 | Format | Extension(s) | Load | Save |
 |--------|--------------|:----:|:----:|
-| OpenDocument Spreadsheet | `.ods` | ✅ | ✅ |
+| OpenDocument Spreadsheet | `.ods` | ✅ ¶ | ✅ |
+| OpenDocument Spreadsheet template | `.ots` | ✅ ¶ | ✅ |
 | Excel workbook (OOXML) | `.xlsx` | ✅ ¶ | ✅ ¶ |
+| Excel template (OOXML) | `.xltx` | ✅ ¶ | ✅ ¶ |
+| Excel macro-enabled template | `.xltm` | ✅ | — |
 | Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |

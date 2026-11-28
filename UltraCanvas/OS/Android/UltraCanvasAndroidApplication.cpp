@@ -1,10 +1,11 @@
 // OS/Android/UltraCanvasAndroidApplication.cpp
 // Android platform implementation for UltraCanvas Framework.
+// Version: 1.3.0 - desktop mode: input, the keyboard's window and the composite (UltraCanvasAndroidDesktop)
 // Version: 1.2.0 - the first tap is logged with the element it landed on
 // Version: 1.1.0 - RegisterPlatformBundledFonts: the bundled fonts' registration, shared with a tool
 // Version: 1.0.1 - InitializeNative marks the application initialized, so Run() runs
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -14,6 +15,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasAndroidWindow.h"
+#include "UltraCanvasAndroidDesktop.h"
 #include "UltraCanvasAndroidJni.h"
 #include "UltraCanvasAndroidPermissions.h"
 #include "UltraCanvasCaret.h"
@@ -170,8 +172,22 @@ namespace UltraCanvas {
     }
 
     UltraCanvasAndroidWindow* UltraCanvasAndroidApplication::GetPrimaryWindow() {
+        // In desktop mode the phone's surface belongs to the phone's own
+        // window, if the application made one; the rest are the desktop's.
+        UltraCanvasAndroidDesktop& desktop = UltraCanvasAndroidDesktop::Get();
+        if (desktop.IsEnabled()) return desktop.GetPhoneWindow();
         if (windows.empty()) return nullptr;
         return static_cast<UltraCanvasAndroidWindow*>(windows.front().get());
+    }
+
+    UltraCanvasAndroidWindow* UltraCanvasAndroidApplication::GetKeyboardWindow() {
+        // Keys and the IME's text go to the desktop's focused window; without
+        // one, to the phone's.
+        UltraCanvasAndroidDesktop& desktop = UltraCanvasAndroidDesktop::Get();
+        if (desktop.IsEnabled()) {
+            if (UltraCanvasAndroidWindow* win = desktop.GetKeyboardWindow()) return win;
+        }
+        return GetPrimaryWindow();
     }
 
     // ===== INITIALIZATION =====
@@ -280,6 +296,11 @@ namespace UltraCanvas {
             HideSoftKeyboard();
         }
 
+        // Desktop mode: what the windows drew last turn goes onto the output
+        // before the loop waits.
+        UltraCanvasAndroidDesktop& desktop = UltraCanvasAndroidDesktop::Get();
+        desktop.Pump();
+
         // Block until an activity command, input event, or the next timer.
         auto timeout = GetTimeUntilNextTimer();
         int timeoutMs = -1;
@@ -307,6 +328,8 @@ namespace UltraCanvas {
 
         // What the Java InputConnection queued meanwhile (it woke the looper).
         DrainImeQueue();
+        // And what the external display and a captured mouse sent.
+        desktop.Pump();
 
         if (androidApp->destroyRequested) {
             // The activity is being destroyed underneath us; leave Run().
@@ -363,13 +386,20 @@ namespace UltraCanvas {
     void UltraCanvasAndroidApplication::ReleaseMouseNative() {}
 
     bool UltraCanvasAndroidApplication::SelectMouseCursorNative(
-            UltraCanvasWindowBase*, UCMouseCursor) {
+            UltraCanvasWindowBase* win, UCMouseCursor cur) {
+        // The desktop draws its own pointer, in the shape the window chose.
+        auto* androidWin = dynamic_cast<UltraCanvasAndroidWindow*>(win);
+        if (androidWin && androidWin->IsDesktopClient()) {
+            UltraCanvasAndroidDesktop::Get().WindowCursorChanged(androidWin, cur);
+        }
         return true;
     }
 
     bool UltraCanvasAndroidApplication::SelectMouseCursorNative(
-            UltraCanvasWindowBase*, UCMouseCursor, const char*, int, int) {
-        return true;
+            UltraCanvasWindowBase* win, UCMouseCursor cur, const char*, int, int) {
+        // A cursor image of the application's own: the desktop draws the
+        // nearest shape it has.
+        return SelectMouseCursorNative(win, cur);
     }
 
     // ===== ACTIVITY COMMANDS =====
@@ -398,11 +428,13 @@ namespace UltraCanvas {
                 if (win && androidApp->window) {
                     win->HandleNativeSurfaceCreated(androidApp->window);
                 }
+                UltraCanvasAndroidDesktop::Get().PhoneSurfaceChanged(androidApp->window);
                 break;
             }
             case APP_CMD_TERM_WINDOW: {
                 auto* win = GetPrimaryWindow();
                 if (win) win->HandleNativeSurfaceDestroyed();
+                UltraCanvasAndroidDesktop::Get().PhoneSurfaceChanged(nullptr);
                 // Backgrounding can swallow the gesture's final UP/CANCEL,
                 // which would otherwise leave the latch set and mouse
                 // synthesis dead for the rest of the process.
@@ -417,13 +449,16 @@ namespace UltraCanvas {
                 AndroidPermissions::DisplayRotationDegrees();
                 auto* win = GetPrimaryWindow();
                 if (win) win->HandleNativeSurfaceResized();
+                UltraCanvasAndroidDesktop::Get().PhoneSurfaceChanged(androidApp->window);
                 break;
             }
             case APP_CMD_GAINED_FOCUS:
-                PushWindowEvent(UCEventType::WindowFocus);
+                if (UltraCanvasAndroidDesktop::Get().IsEnabled()) UltraCanvasAndroidDesktop::Get().ActivityFocusChanged(true);
+                else PushWindowEvent(UCEventType::WindowFocus);
                 break;
             case APP_CMD_LOST_FOCUS:
-                PushWindowEvent(UCEventType::WindowBlur);
+                if (UltraCanvasAndroidDesktop::Get().IsEnabled()) UltraCanvasAndroidDesktop::Get().ActivityFocusChanged(false);
+                else PushWindowEvent(UCEventType::WindowBlur);
                 break;
             // PAUSE/STOP/START/RESUME need no extra work: TERM_WINDOW /
             // INIT_WINDOW carry the surface lifecycle (the window auto-hides
@@ -482,6 +517,9 @@ namespace UltraCanvas {
     }
 
     int32_t UltraCanvasAndroidApplication::HandleMotionEvent(AInputEvent* motionEvent) {
+        // Desktop mode takes the phone's touches while the desktop is on the
+        // phone's screen, and a mouse always.
+        if (UltraCanvasAndroidDesktop::Get().HandleMotionEvent(motionEvent)) return 1;
         auto* win = GetPrimaryWindow();
         if (!win) return 0;
 
@@ -640,12 +678,21 @@ namespace UltraCanvas {
     }
 
     int32_t UltraCanvasAndroidApplication::HandleKeyEvent(AInputEvent* keyEvent) {
-        auto* win = GetPrimaryWindow();
+        auto* win = GetKeyboardWindow();
         if (!win) return 0;
 
         const int32_t action = AKeyEvent_getAction(keyEvent);
         const int32_t keyCode = AKeyEvent_getKeyCode(keyEvent);
         const int32_t metaState = AKeyEvent_getMetaState(keyEvent);
+
+        // On the desktop the back button is Escape (it closes a menu or a
+        // dialog), never the close of a window or of the whole program.
+        if (keyCode == AKEYCODE_BACK && UltraCanvasAndroidDesktop::Get().IsEnabled()) {
+            if (action == AKEY_EVENT_ACTION_DOWN || action == AKEY_EVENT_ACTION_UP) {
+                PushKeyEvent(action == AKEY_EVENT_ACTION_DOWN, AKEYCODE_ESCAPE, 0, 0);
+            }
+            return 1;
+        }
 
         // The system back button maps to a window close request (the
         // framework's onWindowClosing hook can veto it as usual).
@@ -672,7 +719,7 @@ namespace UltraCanvas {
     bool UltraCanvasAndroidApplication::PushKeyEvent(bool down, int32_t keyCode,
                                                      int32_t metaState,
                                                      int32_t codePoint) {
-        auto* win = GetPrimaryWindow();
+        auto* win = GetKeyboardWindow();
         if (!win) return false;
 
         UCKeys ucKey = ConvertAndroidKeyToUCKey(keyCode);
@@ -728,7 +775,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAndroidApplication::PushCommittedText(const std::string& utf8) {
-        auto* win = GetPrimaryWindow();
+        auto* win = GetKeyboardWindow();
         if (!win || utf8.empty()) return;
 
         // What the IME finally settled on - a word replaced by autocorrect, a
@@ -859,7 +906,7 @@ namespace UltraCanvas {
 
     void UltraCanvasAndroidApplication::PushComposition(const std::string& utf8,
                                                         int caretBytes) {
-        auto* win = GetPrimaryWindow();
+        auto* win = GetKeyboardWindow();
         if (!win) return;
         UCEvent event;
         event.type = UCEventType::TextComposition;

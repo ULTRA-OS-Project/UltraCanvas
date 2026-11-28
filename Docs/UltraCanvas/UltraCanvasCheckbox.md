@@ -13,6 +13,7 @@
   - [Shared visual fields](#shared-visual-fields)
   - [Following the theme](#following-the-theme)
   - [Sizing and placement](#sizing-and-placement)
+  - [A label that wraps](#a-label-that-wraps)
 - [UltraCanvasCheckbox](#ultracanvascheckbox)
   - [Constructors and factory](#constructors-and-factory)
   - [The three states](#the-three-states)
@@ -245,6 +246,27 @@ explicit size, as UltraFiler's and UltraMail's settings dialogs do:
 auto box = std::make_shared<UltraCanvasCheckbox>("ShowHidden", "Show hidden files");
 box->size.width  = CSSLayout::Dimension::Px(320);
 box->size.height = CSSLayout::Dimension::Px(26);
+```
+
+### A label that wraps
+
+A label is one line unless `SetLabelWrap(true)` is called: then a label longer
+than the toggle is wide - a long caption, or a translation that runs longer
+than the English - breaks into lines at the toggle's width, the toggle grows
+a line at a time, and the box, dot or track sits level with the first line.
+Give the toggle a width (or let its container stretch it) and leave its
+height to the content; a minimum height keeps a one-line toggle as tall as
+its neighbours. Its min-content width is its longest word, so a flex row can
+narrow it that far.
+
+```cpp
+auto choice = std::make_shared<UltraCanvasRadio>("AdaptiveToolbar",
+        Tr("Adaptive toolbar - the tool last picked from the bar"));
+choice->SetLabelWrap(true);
+choice->size.width  = CSSLayout::Dimension::Px(400);
+choice->size.height = CSSLayout::Dimension::Auto();
+choice->boxConstraints = CSSLayout::BoxConstraints{};
+choice->boxConstraints->minHeight = CSSLayout::Dimension::Px(22);
 ```
 
 ## UltraCanvasCheckbox

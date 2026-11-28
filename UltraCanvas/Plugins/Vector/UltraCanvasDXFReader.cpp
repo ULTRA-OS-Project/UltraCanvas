@@ -28,6 +28,7 @@
 // are off or frozen, invisible entities and paper-space entities (when the
 // model space has content) are not imported; unsupported entity types are
 // counted and reported, never dropped silently.
+// Version: 1.2.0 - a hatch is filled even-odd (odd parity), as CAD programs fill it
 // Version: 1.1.0
 // Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
@@ -868,14 +869,14 @@ private:
         if (ctrlCount < 4 || (ctrlCount - 1) % 3 != 0) return false;
         size_t spans = (ctrlCount - 1) / 3;
         if (knots.size() != 3 * spans + 5) return false;
-        auto near = [](double a, double b) { return std::fabs(a - b) < 1e-9; };
+        auto closeTo = [](double a, double b) { return std::fabs(a - b) < 1e-9; };
         for (int k = 0; k < 4; ++k) {
-            if (!near(knots[k], knots[0])) return false;
-            if (!near(knots[knots.size() - 1 - k], knots.back())) return false;
+            if (!closeTo(knots[k], knots[0])) return false;
+            if (!closeTo(knots[knots.size() - 1 - k], knots.back())) return false;
         }
         for (size_t s = 1; s < spans; ++s) {
             for (int k = 0; k < 3; ++k) {
-                if (!near(knots[4 + (s - 1) * 3 + k], knots[4 + (s - 1) * 3])) {
+                if (!closeTo(knots[4 + (s - 1) * 3 + k], knots[4 + (s - 1) * 3])) {
                     return false;
                 }
             }
@@ -1527,6 +1528,11 @@ private:
         }
         if (!emitted) return;
         path->Style.Fill = EntityColor(e, layer, ctx);
+        // Hatch style 75: 0 "normal" and 1 "outer" fill by odd parity - a
+        // loop inside a loop is a hole - which is the even-odd rule; 2
+        // "ignore" fills the outer boundary whole, as non-zero (the default)
+        // does for loops wound alike.
+        if (FI(e, 75) != 2) path->Style.ShapeFillRule = VectorStorage::FillRule::EvenOdd;
         AddTo(e, ctx, path);
     }
 

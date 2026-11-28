@@ -720,7 +720,7 @@ namespace {
         root->layout.SetFlexColumn().SetFlexGap(8)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         root->SetPadding(10, 12, 10, 12);
-        root->SetBackgroundColor(Colors::White);
+        root->SetBackgroundColor(DemoKit::Themed(Colors::White));
 
         DemoKit::Add(root, DemoKit::CreateHeading("AudioFXDemoTitle", Tr("AudioFX playground")));
 
@@ -759,7 +759,7 @@ namespace {
         waveFrame->layout.SetFlexColumn()
                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         waveFrame->SetBorders(1.0f, Color(200, 200, 205, 255), 4.0f);
-        waveFrame->SetBackgroundColor(Color(246, 246, 248, 255));
+        waveFrame->SetBackgroundColor(DemoKit::Themed(Color(246, 246, 248, 255)));
         waveFrame->SetPadding(6);
         waveFrame->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -778,7 +778,7 @@ namespace {
 
         auto status = DemoKit::CreateText("AudioFXStatus", "");
         status->SetFontSize(11);
-        status->SetTextColor(Color(90, 90, 90, 255));
+        status->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
         DemoKit::Add(leftCol, status);
 
         // ----- Middle column: the effect tree -----
@@ -933,7 +933,7 @@ namespace {
 
                 auto desc = DemoKit::AddText(optionsBox, "AudioFXOptDesc", fx.description);
                 desc->SetFontSize(11);
-                desc->SetTextColor(Color(110, 110, 110, 255));
+                desc->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
 
                 for (size_t i = 0; i < fx.params.size(); ++i) {
                     const EffectParam& param = fx.params[i];
@@ -1072,7 +1072,7 @@ namespace {
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("AudioFXTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
 

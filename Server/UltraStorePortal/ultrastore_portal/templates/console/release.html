@@ -1,0 +1,55 @@
+{% extends "console/base.html" %}
+{% block title %}{{ app.name }} {{ release.version }} - Developer console{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ app.name }} {{ release.version }}</h1><a class="small" href="{% url 'console:app' app.app_id %}">All releases</a></div>
+  {% include "_state.html" with state=release.state label=release.get_state_display %}
+  <span class="badge">{{ release.get_channel_display }}</span>
+  <div class="ms-auto d-flex flex-wrap gap-2" id="release-actions">{% include "console/_release_actions.html" %}</div>
+</div>
+<div class="panels">
+{% if release.review_message %}
+  <div class="alert {% if release.state == 'published' %}alert-success{% else %}alert-warning{% endif %}"><b>The reviewer wrote{% if release.reviewed_at %} on {{ release.reviewed_at|date:"j F Y" }}{% endif %}:</b><br>{{ release.review_message|linebreaksbr }}</div>
+{% endif %}
+{% if release.state == "submitted" %}<div class="alert alert-primary">In review since {{ release.submitted_at|date:"j F Y, H:i" }}. The release cannot be changed while the review runs; withdraw it to edit.</div>{% endif %}
+{% if release.state == "published" %}<div class="alert alert-success">Published {{ release.published_at|date:"j F Y" }}. A published release is never changed: a fix is a new version.</div>{% endif %}
+<div id="release-problems">{% include "console/_release_problems.html" %}</div>
+
+<div class="card"><div class="card-body">
+  <h2>Packages</h2>
+  <div id="packages">{% include "console/_packages.html" %}</div>
+  {% if package_form %}
+  {# Sent by the page's script: the upload shows its progress, the new package appears in the table above, and the release details typed below stay. #}
+  <form method="post" enctype="multipart/form-data" action="{% url 'console:package_add' app.app_id release.pk %}" class="form-wide mt-4" data-in-place data-choices="{{ package_form.choices_json }}">
+    {% csrf_token %}
+    <fieldset><legend class="h3">Add a package</legend>
+      <div class="alert alert-danger" data-form-error hidden></div>
+      {% include "console/_package_fields.html" with form=package_form %}
+    </fieldset>
+    <div class="progress mb-3" role="progressbar" aria-label="Upload" aria-valuemin="0" aria-valuemax="100" data-progress hidden><div class="progress-bar" style="width:0"></div></div>
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <button class="btn btn-soft-primary">Upload package</button>
+      <span class="small text-secondary">Up to {{ max_mb }} MB. The store checks the archive and records its SHA-256.</span>
+    </div>
+  </form>
+  {% endif %}
+</div></div>
+
+<div class="card form-wide"><div class="card-body">
+  <h2>Release details</h2>
+  {% if form %}
+  <form method="post">{% csrf_token %}{% include "_form.html" %}<button class="btn btn-primary">Save</button></form>
+  {% else %}
+  <dl class="facts">
+    <dt>Version</dt><dd>{{ release.version }}</dd>
+    <dt>Channel</dt><dd>{{ release.get_channel_display }}</dd>
+    <dt>Depends on</dt><dd>{{ release.depends_text|default:"Nothing: the app carries everything itself" }}</dd>
+    <dt>What's new</dt><dd>{{ release.notes|linebreaksbr|default:"-" }}</dd>
+  </dl>
+  {% endif %}
+</div></div>
+</div>
+
+{# The dialog a package is edited in: its form is fetched from the package's edit address (console/_package_edit.html). #}
+<div class="modal fade" id="dialog" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"></div></div></div>
+{% endblock %}

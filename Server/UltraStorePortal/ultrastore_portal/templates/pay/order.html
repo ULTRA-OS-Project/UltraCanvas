@@ -1,0 +1,72 @@
+{% extends "pay/base.html" %}
+{% block title %}Your purchase of {{ order.app_name }} - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow" style="max-width:760px">
+  <div class="d-flex flex-wrap align-items-center gap-3">
+    {% if app.icon %}<img class="app-icon" src="{{ app.icon.url }}" alt="" width="64" height="64">{% endif %}
+    <div><h1>{{ order.app_name }}</h1><span class="text-secondary">{{ amount }} {{ order.currency }}{% if order.cycle %} every {{ order.cycle }}{% endif %}</span></div>
+    {% include "_state.html" with state=order.status label=order.get_status_display %}
+  </div>
+
+  {% if order.is_paid %}
+    <div class="alert alert-success mt-4"><b>{{ order.app_name }} is yours.</b> Receipt no. {{ order.receipt_no }}, paid {{ order.paid_at|date:"j F Y" }}. Keep this page's address: it is the way back to your purchase.</div>
+    {% if expired %}<div class="alert alert-warning">The subscription ended on {{ order.paid_until|date:"j F Y" }}.</div>{% endif %}
+
+    <section class="section mt-4">
+      <h2 class="mb-2">Install it</h2>
+      <p>The UltraStore app installs {{ order.app_name }} and keeps it up to date: <a href="ultrastore://app/{{ app.app_id }}">open it in UltraStore</a>{% if store_download_url %}, or <a href="{{ store_download_url }}">get the UltraStore app</a>{% endif %}.</p>
+      {% if packages %}
+      <p class="text-secondary small">Or download a build yourself{% if restricted %} - each link is made for you at the click and lasts ten minutes{% endif %}:</p>
+      <div class="card"><div class="table-responsive px-2 py-1"><table class="table align-middle">
+        <thead><tr><th>System</th><th>Processor</th><th>Version</th><th class="text-end">Size</th><th></th></tr></thead>
+        <tbody>
+        {% for package in packages %}
+        <tr><td>{{ package.os_name }}</td><td>{{ package.arch }}</td><td>{{ release.version }}</td><td class="text-end">{{ package.size|filesizeformat }}</td>
+          <td class="text-end"><a class="btn btn-soft-primary btn-sm" rel="nofollow" href="{% url 'pay:download' order.public_id package.pk %}?secret={{ order.secret }}">Download .{{ package.format }}</a></td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div></div>
+      {% endif %}
+    </section>
+
+    <section class="section">
+      <h2 class="mb-2">Your licence</h2>
+      <p>The app unlocks with this licence. UltraStore puts it in place by itself; installed by hand, save it as <span class="font-monospace">licence.ulic</span> beside the app.</p>
+      <div class="mb-3"><label for="licence" hidden>Licence</label><textarea id="licence" rows="4" readonly class="form-control font-monospace">{{ order.licence }}</textarea></div>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <a class="btn btn-soft-primary" href="{% url 'pay:licence' order.public_id %}?secret={{ order.secret }}">Download licence.ulic</a>
+        <a class="btn btn-outline-secondary" href="{% url 'api:receipt' order.public_id %}?secret={{ order.secret }}">Receipt</a>
+      </div>
+      {% if order.cycle %}
+        <p class="mt-3">Paid until {{ order.paid_until|date:"j F Y" }}{% if order.subscription_status == "cancelled" %} - the subscription is cancelled and ends then{% else %}, renewed every {{ order.cycle }}{% endif %}.</p>
+        {% if order.subscription_status != "cancelled" %}
+        <form method="post" action="{% url 'pay:unsubscribe' order.public_id %}?secret={{ order.secret }}" onsubmit="return confirm('End the subscription? The app works until the paid period ends.')">{% csrf_token %}<button class="btn btn-soft-danger btn-sm">Cancel the subscription</button></form>
+        {% endif %}
+      {% endif %}
+    </section>
+  {% elif order.revoked %}
+    <div class="alert alert-danger mt-4">This purchase was taken back ({{ order.revoked_reason }}) on {{ order.revoked_at|date:"j F Y" }}; its licence no longer stands.</div>
+  {% elif order.status == "open" or order.status == "pending" %}
+    <div class="alert alert-primary mt-4">The payment is not confirmed yet. This page shows the purchase as soon as the payment provider reports it - reload it in a moment.</div>
+    <p><a class="btn btn-primary" href="{% url 'pay:handoff' order.public_id %}">Go to the payment</a></p>
+  {% else %}
+    <div class="alert alert-warning mt-4">Nothing was charged: the payment {{ order.get_status_display|lower }}.</div>
+    <p><a class="btn btn-primary" href="{{ app.get_absolute_url }}">Back to {{ order.app_name }}</a></p>
+  {% endif %}
+
+  {% if payments %}
+  <section class="section">
+    <h2 class="mb-2">Payments</h2>
+    <div class="card"><div class="table-responsive px-2 py-1"><table class="table align-middle">
+      <thead><tr><th>Date</th><th>What</th><th class="text-end">Amount</th><th class="text-end">Receipt</th></tr></thead>
+      <tbody>
+      {% for payment in payments %}
+      <tr><td>{{ payment.at|date:"j M Y" }}</td><td>{{ payment.get_kind_display }}</td><td class="text-end">{{ payment.signed_amount }} {{ payment.currency }}</td>
+        <td class="text-end">{% if payment.receipt_no %}<a href="{% url 'api:receipt' order.public_id %}?secret={{ order.secret }}&amp;no={{ payment.receipt_no }}">{{ payment.receipt_no }}</a>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div></div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

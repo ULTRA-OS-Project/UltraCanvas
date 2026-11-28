@@ -1769,8 +1769,8 @@ private:
         d.Start = e.GlobalToLocal(from);
         d.End = e.GlobalToLocal(to);
         if (std::hypot(d.End.x - d.Start.x, d.End.y - d.Start.y) < 0.5) d.End = Point2Dd(d.Start.x + 1, d.Start.y);
-        const float far = std::clamp(ctx.options->transparency / 100.0f, 0.0f, 1.0f);
-        d.Stops = {{0.0, 0.0f}, {1.0, far > 0.0f ? far : 1.0f}};
+        const float distant = std::clamp(ctx.options->transparency / 100.0f, 0.0f, 1.0f);
+        d.Stops = {{0.0, 0.0f}, {1.0, distant > 0.0f ? distant : 1.0f}};
         e.Style.Opacity = 1.0f;
         e.Style.Transparency = d;
     }

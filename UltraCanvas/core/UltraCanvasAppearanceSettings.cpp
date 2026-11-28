@@ -1,16 +1,23 @@
 // core/UltraCanvasAppearanceSettings.cpp
 // Appearance.conf: the text and back, the choices over the host, the file.
+// Version: 1.2.0 - Save(error): the system's reason when the file cannot be written
+// Version: 1.1.1 - Save: the replace is tried again while another program holds the file
+//                  (Windows), then written in place - a quick second choice no longer fails
 // Version: 1.1.0 - lighttext=firm|plain
 // Version: 1.0.0
 // Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #include "UltraCanvasAppearanceSettings.h"
 #include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasPathUtf8.h"
 
+#include <chrono>
+#include <cerrno>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <system_error>
+#include <thread>
 
 namespace UltraCanvas {
 
@@ -111,24 +118,62 @@ namespace UltraCanvas {
         return Parse(text.str());
     }
 
-    bool AppearanceSettings::Save() const {
+    bool AppearanceSettings::Save(std::string* error) const {
+        // The system's words for why a step failed, for the person to read
+        // ("Access is denied", "The process cannot access the file because
+        // it is being used by another process").
+        auto fail = [error](const std::string& what, const std::error_code& why) {
+            if (error) *error = why ? what + ": " + why.message() : what;
+            return false;
+        };
+        auto lastErrno = [] { return std::error_code(errno, std::generic_category()); };
+        if (error) error->clear();
         const std::filesystem::path path = FilePath();
-        if (path.empty()) return false;
+        if (path.empty()) return fail("no settings folder", {});
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);
+        if (ec) return fail("cannot create the settings folder", ec);
+        const std::string text = Serialize();
         std::filesystem::path temp = path;
         temp += ".tmp";
         {
+            errno = 0;
             std::ofstream out(temp, std::ios::trunc | std::ios::binary);
-            if (!out) return false;
-            out << Serialize();
-            if (!out) return false;
+            if (!out) return fail("cannot create " + PathToUtf8(temp.filename()), lastErrno());
+            out << text;
+            if (!out) return fail("cannot write " + PathToUtf8(temp.filename()), lastErrno());
         }
-        std::filesystem::rename(temp, path, ec);
-        if (ec) {
-            std::filesystem::remove(temp, ec);
+        // Into place in one step, so a reader never sees half a file. On
+        // Windows that replace fails while anyone has Appearance.conf open -
+        // and every running application opens it the moment it changes (the
+        // settings watcher), as do the virus scanner and the search indexer.
+        // A second choice made right after the first met those readers and
+        // the save failed ("could not be written"), so nothing followed it.
+        // They hold the file for milliseconds: the replace is tried again
+        // for up to half a second.
+        std::error_code renameError;
+        for (int attempt = 0; attempt < 20; ++attempt) {
+            std::filesystem::rename(temp, path, renameError);
+            if (!renameError) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        }
+        // Still held: the text written over the file in place, which a
+        // reader's share mode allows. A reader that catches it half written
+        // reads it again on the change notice the finished write sends.
+        std::filesystem::remove(temp, ec);
+        errno = 0;
+        std::ofstream out(path, std::ios::trunc | std::ios::binary);
+        if (!out) {
+            // Both ways refused: the rename's reason is the telling one (the
+            // file in use), the open's follows it.
+            const std::error_code openError = lastErrno();
+            std::string why = "cannot replace it: " + renameError.message();
+            if (openError) why += "; cannot open it: " + openError.message();
+            if (error) *error = why;
             return false;
         }
+        out << text;
+        if (!out) return fail("cannot write it", lastErrno());
         return true;
     }
 

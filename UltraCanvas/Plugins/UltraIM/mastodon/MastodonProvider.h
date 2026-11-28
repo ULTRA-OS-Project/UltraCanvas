@@ -33,8 +33,9 @@
 // (http://127.0.0.1:47819/callback). The access token is kept in UltraVault;
 // credentials.accessToken signs in with one directly.
 //
+// Version: 0.1.1 - the accounts' pictures fetched and shown (QueueAvatar, AvatarOf)
 // Version: 0.1.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -196,6 +197,12 @@ private:
     UltraIMResult ResolveAccount(const std::string& address, Account& out);
     std::string MentionsOf(const Chat& chat) const;
     void QueueMedia(const UltraIMMessage& message);
+    // An account's picture (avatar_static) fetched once into the media
+    // folder - not Mastodon's grey default, so the initials show instead -
+    // and its chats told (ConversationUpdate). With mutex_ held.
+    void QueueAvatar(const Account& account);
+    // The account's picture here, "" until fetched. With mutex_ held.
+    std::string AvatarOf(const std::string& accountId) const;
     std::string MediaPath(const std::string& url, const std::string& fileName) const;
     UltraIMResult SendStatus(const std::string& conversationId, const std::string& text, const std::string& localPath,
                              UltraIMMessageType type, const UltraIMSendOptions& options);
@@ -219,6 +226,8 @@ private:
     std::set<std::string> seen_;                        // status ids told about
     std::map<std::string, std::string> keyOfStatus_;    // status id -> chat key
     std::map<std::string, UltraIMMessage> byId_;        // status id -> message (for edit, delete, download)
+    std::map<std::string, std::string> avatars_;        // account id -> its picture's file
+    std::set<std::string> avatarAsked_;                 // "id url" fetched or on its way
 
     // The worker.
     std::mutex workMutex_;

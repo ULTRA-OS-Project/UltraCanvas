@@ -12,6 +12,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasSessionLock.h"
+#include "DisplayRequired.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -98,8 +99,17 @@ bool Emit(const std::string& path, const std::string& iface, bool active) {
     return std::system(command.c_str()) == 0;
 }
 
+// The D-Bus backend cannot run for want of a display or an application:
+// where a display was asked for (DisplayTest::DisplayRequired) that is a
+// failure. No session bus or no gdbus is not the display's to answer for and
+// stays a skip.
+void SkipForDisplay(const std::string& why) {
+    if (DisplayTest::DisplayRequired()) TEST("D-Bus backend: a display was required, and " + why, false);
+    else std::cerr << "SKIP: D-Bus backend (" << why << ")" << std::endl;
+}
+
 void DBusBackend() {
-    if (!std::getenv("DISPLAY")) { std::cerr << "SKIP: D-Bus backend (no DISPLAY)" << std::endl; return; }
+    if (!std::getenv("DISPLAY")) { SkipForDisplay("there is no DISPLAY"); return; }
     const char* bus = std::getenv("DBUS_SESSION_BUS_ADDRESS");
     if (!bus || !*bus) { std::cerr << "SKIP: D-Bus backend (no session bus)" << std::endl; return; }
     if (std::system("command -v gdbus >/dev/null 2>&1") != 0) {
@@ -107,7 +117,7 @@ void DBusBackend() {
         return;
     }
     UltraCanvasApplication app;
-    if (!app.Initialize("SessionLockTest")) { std::cerr << "SKIP: D-Bus backend (no application)" << std::endl; return; }
+    if (!app.Initialize("SessionLockTest")) { SkipForDisplay("the application would not initialise"); return; }
     // Without a timer the loop waits for an event however long it takes; this
     // one lets PumpUntil look at its deadline.
     const TimerId tick = app.StartTimer(20, true, [](TimerId) {});

@@ -2,10 +2,12 @@
 // See the header. The look came from UltraFiler's settings window
 // (Apps/UltraFiler/UltraFilerSettingsDialog.cpp), where it was written
 // first; UltraSnip copied it, and the copy became this kit.
+// Version: 1.3.0 - FollowKitLook: every element built here takes its roles again on a theme change
+// Version: 1.2.1 - a scrolling page keeps the theme's scroll bar (MakePage built a fresh ContainerStyle)
 // Version: 1.2.0 - the colours and sizes are the theme's (UltraCanvasSettingsPageKit.h)
 // Version: 1.1.0 - ShowSaveSettingsDialog
 // Version: 1.0.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSettingsPageKit.h"
@@ -22,8 +24,85 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
+#include <algorithm>
+#include <utility>
+#include <vector>
+
 namespace UltraCanvas {
 namespace SettingsPageKit {
+
+// ===== FOLLOWING THE THEME =====
+
+namespace {
+
+struct KitRestyle {
+    std::weak_ptr<UltraCanvasUIElement> element;
+    std::function<void(UltraCanvasUIElement&)> restyle;
+};
+
+std::vector<KitRestyle>& KitRestyles() {
+    static std::vector<KitRestyle> list;
+    return list;
+}
+
+void DropGoneElements() {
+    auto& list = KitRestyles();
+    list.erase(std::remove_if(list.begin(), list.end(),
+                              [](const KitRestyle& r) { return r.element.expired(); }),
+               list.end());
+}
+
+// The kit's handler goes in with the first element. The application's own
+// handler - which passes the change to every window, where an element
+// that follows the theme re-styles itself - is installed by Initialize,
+// before any settings window exists, so this one runs after it and the
+// kit's roles are what stays.
+void EnsureThemeHandler() {
+    static int handler = 0;
+    if (handler != 0) return;
+    handler = UltraCanvasTheme::AddChangeHandler([](const UltraCanvasTheme&) {
+        DropGoneElements();
+        // A copy: a restyle may build an element, which registers itself.
+        const std::vector<KitRestyle> list = KitRestyles();
+        for (const KitRestyle& r : list) {
+            auto element = r.element.lock();
+            if (!element || !r.restyle) continue;
+            r.restyle(*element);
+            element->RequestRedraw();
+        }
+    });
+}
+
+// Which of the kit's roles a colour or a size given to a label is, read
+// when it is built: a label keeps a colour or size of its own.
+enum class InkRole { Own, Text, Note };
+enum class SizeRole { Own, Title, Text, Note };
+
+InkRole InkRoleOf(const Color& color) {
+    if (color == TextColor()) return InkRole::Text;
+    if (color == NoteTextColor()) return InkRole::Note;
+    return InkRole::Own;
+}
+
+SizeRole SizeRoleOf(float size) {
+    if (size == TextFontSize()) return SizeRole::Text;
+    if (size == TitleFontSize()) return SizeRole::Title;
+    if (size == NoteFontSize()) return SizeRole::Note;
+    return SizeRole::Own;
+}
+
+} // namespace
+
+void FollowKitLook(const std::shared_ptr<UltraCanvasUIElement>& element,
+                   std::function<void(UltraCanvasUIElement&)> restyle) {
+    if (!element || !restyle) return;
+    EnsureThemeHandler();
+    auto& list = KitRestyles();
+    // Pages are built once per window, so the list grows by a window's
+    // elements; the ones of a closed window are swept now and then.
+    if (list.size() >= 512 && list.size() % 512 == 0) DropGoneElements();
+    list.push_back({element, std::move(restyle)});
+}
 
 // ===== TEXT =====
 
@@ -36,6 +115,18 @@ std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::st
     l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     l->size.width = CSSLayout::Dimension::Auto();
     l->size.height = CSSLayout::Dimension::Auto();
+    const InkRole ink = InkRoleOf(color);
+    const SizeRole size = SizeRoleOf(fontSize);
+    if (ink != InkRole::Own || size != SizeRole::Own) {
+        FollowKitLook(l, [ink, size](UltraCanvasUIElement& e) {
+            auto& label = static_cast<UltraCanvasLabel&>(e);
+            if (ink == InkRole::Text) label.SetTextColor(TextColor());
+            if (ink == InkRole::Note) label.SetTextColor(NoteTextColor());
+            if (size == SizeRole::Text) label.SetFontSize(TextFontSize());
+            if (size == SizeRole::Title) label.SetFontSize(TitleFontSize());
+            if (size == SizeRole::Note) label.SetFontSize(NoteFontSize());
+        });
+    }
     return l;
 }
 
@@ -56,6 +147,10 @@ std::shared_ptr<UltraCanvasContainer> MakeNotesBlock(const std::string& id) {
     notes->SetBackgroundColor(NoteBackground());
     notes->SetBorderLeft(3, NoteAccent());
     notes->SetPadding(10, 12, 10, 12);
+    FollowKitLook(notes, [](UltraCanvasUIElement& e) {
+        e.SetBackgroundColor(NoteBackground());
+        e.SetBorderLeft(3, NoteAccent());
+    });
     return notes;
 }
 
@@ -69,7 +164,10 @@ PageParts MakePage(const std::string& id, const std::string& title, const std::s
         // asked. Vertically only: the vertical bar narrows the viewport,
         // which would otherwise fabricate a horizontal overflow of its own
         // width.
-        ContainerStyle cs;
+        // The page's own style with scrolling on: a fresh ContainerStyle
+        // put the light look's scroll bar back over the theme's, a light
+        // grey bar down a dark settings page.
+        ContainerStyle cs = parts.page->GetContainerStyle();
         cs.autoShowScrollbars = true;
         cs.autoShowHorizontalScrollbar = false;
         parts.page->SetContainerStyle(cs);
@@ -131,6 +229,13 @@ std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::
     b->SetColors(ButtonFace(), ButtonHover());
     b->SetTextColors(TextColor());
     b->SetBorder(1.0f, Rule());
+    FollowKitLook(b, [](UltraCanvasUIElement& e) {
+        auto& button = static_cast<UltraCanvasButton&>(e);
+        button.SetFontSize(TextFontSize());
+        button.SetColors(ButtonFace(), ButtonHover());
+        button.SetTextColors(TextColor());
+        button.SetBorder(1.0f, Rule());
+    });
     if (!iconFile.empty()) {
         b->SetIcon(IconPath(iconFile));
         b->SetIconSize(15, 15);
@@ -184,6 +289,16 @@ std::shared_ptr<UltraCanvasRadio> MakeChoice(const std::string& id, const std::s
     style.base.textColor = TextColor();
     style.base.textHoverColor = TextColor();
     radio->SetVisualStyle(style);
+    // The style set here stops the radio's own following, so the circle
+    // takes the theme again here too, not only the text.
+    FollowKitLook(radio, [](UltraCanvasUIElement& e) {
+        auto& r = static_cast<UltraCanvasRadio&>(e);
+        RadioVisualStyle themed = RadioVisualStyle::FromTheme(UltraCanvasTheme::Current(), r.GetVisualStyle());
+        themed.base.fontSize = TextFontSize();
+        themed.base.textColor = TextColor();
+        themed.base.textHoverColor = TextColor();
+        r.SetVisualStyle(themed);
+    });
     // Explicit sizes: content measuring needs a render context, which the
     // window does not have while it is first laid out.
     radio->size.width = CSSLayout::Dimension::Px(width);
@@ -201,6 +316,14 @@ std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(const std::string& id, const s
     style.base.textColor = TextColor();
     style.base.textHoverColor = TextColor();
     box->SetVisualStyle(style);
+    FollowKitLook(box, [](UltraCanvasUIElement& e) {
+        auto& b = static_cast<UltraCanvasCheckbox&>(e);
+        CheckboxVisualStyle themed = CheckboxVisualStyle::FromTheme(UltraCanvasTheme::Current(), b.GetVisualStyle());
+        themed.base.textColor = TextColor();
+        themed.base.textHoverColor = TextColor();
+        b.SetVisualStyle(themed);
+        b.SetFontSize(TextFontSize());
+    });
     box->SetChecked(checked);
     box->size.width = CSSLayout::Dimension::Px(width);
     box->size.height = CSSLayout::Dimension::Px(kControlHeight);
@@ -265,6 +388,10 @@ std::shared_ptr<UltraCanvasButton> MakeColorBox(const std::string& id, const Col
     // pointer no longer shows the colour it stands for.
     b->SetColors(color, color, color, color);
     b->SetBorder(1.0f, NoteAccent());
+    // Only the frame: the fill is the colour the box stands for.
+    FollowKitLook(b, [](UltraCanvasUIElement& e) {
+        static_cast<UltraCanvasButton&>(e).SetBorder(1.0f, NoteAccent());
+    });
     b->SetTooltip(tooltip);
     if (onClick) b->SetOnClick(std::move(onClick));
     b->size.width = CSSLayout::Dimension::Px(56);
@@ -371,6 +498,17 @@ bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std:
         if (window) window->Close();
     }));
     window->AddChild(bottom);
+
+    // The window's own surfaces follow a theme change as its pages do.
+    FollowKitLook(window, [](UltraCanvasUIElement& e) { e.SetBackgroundColor(WindowBackground()); });
+    FollowKitLook(sidebar, [](UltraCanvasUIElement& e) { e.SetBackgroundColor(TreeBackground()); });
+    FollowKitLook(tree, [](UltraCanvasUIElement& e) {
+        auto& t = static_cast<UltraCanvasTreeView&>(e);
+        t.SetFontSize(TreeFontSize());
+        t.SetBackgroundColor(TreeBackground());
+    });
+    FollowKitLook(pageArea, [](UltraCanvasUIElement& e) { e.SetBackgroundColor(PageBackground()); });
+    FollowKitLook(bottom, [](UltraCanvasUIElement& e) { e.SetBorderTop(1, Rule()); });
 
     // Escape closes, matching the framework's dialog convention.
     window->SetEventCallback([](const UCEvent& event) {

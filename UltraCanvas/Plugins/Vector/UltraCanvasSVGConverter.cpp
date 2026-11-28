@@ -9,6 +9,7 @@
 // importer parses with tinyxml2 and leans on the storage utilities
 // (ParsePathString, ParseColorString, ParseTransformString), and applies
 // <style> sheets through the HTMLReader's CSS parser.
+// Version: 1.7.0 - fill-rule read (inherited) into VectorStyle::ShapeFillRule and written on shapes
 // Version: 1.6.0 - a <tspan>'s own fill colour: a span of a text in its own colour, both ways
 // Version: 1.5.1 - <style> sheets match through the HTMLReader's selector
 //                  matcher (HTML::MatchingRules over SelectorTraits); the copy
@@ -381,6 +382,9 @@ private:
         if (s.Stroke) {
             for (const auto& [name, value] : StrokeProps(s)) a << " " << name << "=\"" << value << "\"";
         }
+        // On shapes only: the model does not inherit the rule, so one written
+        // on a group would reach children that do not have it.
+        if (shape && s.ShapeFillRule == VectorStorage::FillRule::EvenOdd) a << " fill-rule=\"evenodd\"";
         if (!NearlyOne(s.Opacity)) a << " opacity=\"" << Num(s.Opacity) << "\"";
         if (!s.Visible || !s.Display) a << " display=\"none\"";
         return a.str();
@@ -1428,6 +1432,10 @@ private:
         }
         s.Opacity = ParseOpacity(Prop(e, "opacity"), 1.0f);
         s.FillOpacity = ParseOpacity(Prop(e, "fill-opacity"), 1.0f);
+        // fill-rule is inherited and the model's ShapeFillRule is not, so
+        // each element takes the value it ends up with: its own, or its
+        // nearest ancestor's (attribute, style="" or the stylesheet alike).
+        if (InheritedProp(e, "fill-rule") == "evenodd") s.ShapeFillRule = VectorStorage::FillRule::EvenOdd;
         std::string display = Prop(e, "display");
         if (display == "none") s.Display = false;
         std::string visibility = Prop(e, "visibility");

@@ -19,7 +19,14 @@
 // Opens a real window, so it runs under Xvfb (xvfb-run -a) and skips itself
 // without a DISPLAY. With ULTRACANVAS_SCREENSHOT_DIR set it writes the pane
 // there: a drag's selection, the sign-in code's button and the code bar
-// (message-preview-selection.ppm, -code.ppm, -code-bar.ppm).
+// (message-preview-selection.ppm, -code.ppm, -code-bar.ppm), the links of a
+// plain-text mail (-plain-links.ppm), a phishing mail (-phishing.ppm) and the
+// question a click on its link asks (-link-question.ppm).
+// Version: 1.6.0 - a link of a message the warning strip warns of asks before it opens; a
+//                  click (press and release without a frame between) on a link of a line
+//                  the caret was not on opens it
+// Version: 1.5.0 - a plain-text mail's links are drawn in the accent colour, a long one
+//                  wrapped over several lines too
 // Version: 1.4.0 - Copy link over a linked picture (a newsletter's button)
 // Version: 1.3.0 - Copy link: a right-click on a link of the HTML or plain-text body
 // Version: 1.2.0 - the sender's menu: a right-click on the sender's name or badge
@@ -34,13 +41,17 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextSelection.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasWindow.h"
 #include "UltraMailMessagePreview.h"
+#include "../DisplayRequired.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -72,8 +83,7 @@ static int failCount = 0;
 // run for long enough already.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED"); \
-        if (required && std::string(required) == "1") {                       \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
             std::cerr << "FAIL: a display was required, and " << reason       \
                       << std::endl;                                           \
             return 1;                                                         \
@@ -124,7 +134,28 @@ std::string PlainLinkMessage() {
            "MIME-Version: 1.0\r\n"
            "Content-Type: text/plain; charset=utf-8\r\n"
            "\r\n"
-           "Look at https://example.org/page-with-a-long-name now.\r\n";
+           "Look at https://example.org/page-with-a-long-name now.\r\n"
+           "\r\n"
+           "Plain words between the links.\r\n"
+           "\r\n"
+           "https://account.live.com/Aliases/Verify?aliasname=info%40example.eu&aliastype=Email"
+           "&otc=*DgyhHEpp0uNLWBcx!LbC2gi1YubjEoYTxZ4jC8dkpjvBcegvSzt!TgWGS2v5UiVacuLDZUwN0R1u7g9I4Mm8J3Q%24"
+           "&mn=info%40example.eu&cxt=ALS\r\n";
+}
+
+// Phishing: a "PayPal" sender on a look-alike domain whose link shows
+// www.paypal.com and goes to a bare IP address.
+std::string PhishingMessage() {
+    return "From: \"PayPal Service\" <service@paypa1-secure.example>\r\n"
+           "To: info@example.eu\r\n"
+           "Subject: Your account has been locked\r\n"
+           "Reply-To: collector@elsewhere.example\r\n"
+           "Date: Wed, 07 Oct 2026 16:10:00 +0000\r\n"
+           "MIME-Version: 1.0\r\n"
+           "Content-Type: text/html; charset=utf-8\r\n"
+           "\r\n"
+           "<html><body><p>Your account has been suspended.</p>"
+           "<a href=\"http://198.51.100.7/login\">www.paypal.com</a></body></html>\r\n";
 }
 
 // A newsletter as Reddit sends it: the body at least as wide as the window,
@@ -306,7 +337,7 @@ int main() {
     if (!WriteMessage(mailDir, 1, HtmlMessage()) || !WriteMessage(mailDir, 2, MessageWithAttachment()) ||
         !WriteMessage(mailDir, 3, WideBodyMessage()) || !WriteMessage(mailDir, 4, SignInCodeMessage()) ||
         !WriteMessage(mailDir, 5, PlainCodeMessage()) || !WriteMessage(mailDir, 6, HtmlLinkMessage()) ||
-        !WriteMessage(mailDir, 7, PlainLinkMessage()))
+        !WriteMessage(mailDir, 7, PlainLinkMessage()) || !WriteMessage(mailDir, 8, PhishingMessage()))
         SKIP_ALL("could not write the test messages");
 
     UltraCanvasApplication app;
@@ -668,7 +699,36 @@ int main() {
 
     preview.Show(Envelope(7, "Look"));
     render();
+    shoot("message-preview-plain-links.ppm");
     auto plainArea = Find(root, "prevBodyText");
+    // 10. The links of a plain-text mail look like links: drawn in the accent
+    //     colour (the words around them are not), the long one on every line
+    //     it wraps over.
+    if (plainArea) {
+        const Rect2Df area = plainArea->GetBoundsInWindow();
+        const Color accent = UltraCanvasTheme::Current().roles.accent;
+        auto accentPixelsIn = [&](float top, float bottom) {
+            int count = 0;
+            for (int y = static_cast<int>(area.y + top); y < static_cast<int>(area.y + bottom); ++y)
+                for (int x = static_cast<int>(area.x); x < static_cast<int>(area.x + area.width) - 20; ++x) {
+                    Color px;
+                    if (!window->GetPixelColor(x, y, px)) continue;
+                    if (std::abs(px.r - accent.r) + std::abs(px.g - accent.g) +
+                            std::abs(px.b - accent.b) < 60)
+                        ++count;
+                }
+            return count;
+        };
+        // Line boxes of the 13px body text: the link's line, the plain words
+        // two lines down, the long link from the fifth line on.
+        const float line = 17.0f;
+        TEST("plain links: the link is drawn in the accent colour", accentPixelsIn(4, 4 + line) > 20);
+        TEST("plain links: the words between the links are not",
+             accentPixelsIn(6 + 2 * line, 2 + 3 * line) == 0);
+        TEST("plain links: the long link's first line is in the accent colour",
+             accentPixelsIn(6 + 4 * line, 2 + 5 * line) > 20);
+        TEST("plain links: so is the line it wraps onto", accentPixelsIn(6 + 5 * line, 2 + 6 * line) > 20);
+    }
     TEST("copy link: the plain-text body is a text area", plainArea != nullptr);
     if (plainArea) {
         const Rect2Df area = plainArea->GetBoundsInWindow();
@@ -695,6 +755,68 @@ int main() {
             TEST("copy link: copies the address written in the text",
                  copyLinkCopies("https://example.org/page-with-a-long-name"));
     }
+
+    // 11. A link of a message the warning strip warns of asks before it
+    //     opens, and says why; a friend's link opens at once.
+    TEST("suspicious link: a friend's plain-text link opens without asking",
+         !preview.LinkNeedsConfirmation());
+    preview.Show(Envelope(8, "Your account has been locked"));
+    render();
+    shoot("message-preview-phishing.ppm");
+    TEST("suspicious link: the phishing mail's links ask first", preview.LinkNeedsConfirmation());
+    const std::string why = preview.LinkCautionText("http://198.51.100.7/login");
+    std::cerr << "   --- the question's text ---\n" << why << "\n   ---" << std::endl;
+    TEST("suspicious link: the question names the link", why.rfind("http://198.51.100.7/login", 0) == 0);
+    TEST("suspicious link: and says why", why.find("Suspicious because of:") != std::string::npos);
+    TEST("suspicious link: where it goes (the button's domain)",
+         why.find("Button domain: 198.51.100.7") != std::string::npos);
+    TEST("suspicious link: a link elsewhere is named as going there",
+         preview.LinkCautionText("https://login.other-site.example/x")
+                 .find("This link goes to login.other-site.example, not to the sender's domain "
+                       "paypa1-secure.example.") != std::string::npos);
+    TEST("suspicious link: the strip's verdict, without the footnote's mark",
+         why.find("phishing") != std::string::npos && why.find('*') == std::string::npos);
+    // A click on the link (the mail read as plain text) opens the question,
+    // not the browser.
+    preview.showHtml = false;
+    preview.ReRender();
+    render();
+    if (auto phishArea = Find(root, "prevBodyText")) {
+        const Rect2Df area = phishArea->GetBoundsInWindow();
+        for (int y = 4; y < 120 && UltraCanvasDialogManager::GetActiveDialogCount() == 0; y += 6)
+            for (int x = 4; x < static_cast<int>(area.width) - 20 &&
+                            UltraCanvasDialogManager::GetActiveDialogCount() == 0; x += 8) {
+                UCEvent ev;
+                ev.button = UCMouseButton::Left;
+                ev.pointer = Point2Di(x, y);
+                ev.pointerWindow = Point2Di(static_cast<int>(area.x) + x, static_cast<int>(area.y) + y);
+                ev.type = UCEventType::MouseDown;
+                // No frame between press and release: the press moves the
+                // caret to the link's line, and the release is still
+                // hit-tested against that line (not the old caret line).
+                phishArea->OnEvent(ev);
+                ev.type = UCEventType::MouseUp;
+                phishArea->OnEvent(ev);
+            }
+        const auto dialogs = UltraCanvasDialogManager::GetActiveDialogs();
+        auto dialog = dialogs.empty() ? nullptr : dialogs.back();
+        TEST("suspicious link: a click opens the question", dialog != nullptr);
+        if (dialog) {
+            for (int frame = 0; frame < 3; ++frame) dialog->UpdateAndRender();
+            if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                const std::string path = std::string(shotDir) + "/message-preview-link-question.ppm";
+                std::shared_ptr<UltraCanvasWindow> asWindow = dialog;
+                WritePpm(asWindow, static_cast<int>(dialog->GetWidth()),
+                         static_cast<int>(dialog->GetHeight()), path);
+                std::cerr << "   wrote " << path << std::endl;
+            }
+            UltraCanvasDialogManager::CloseAllDialogs();   // "Do not open"
+        }
+    }
+    preview.showHtml = true;
+    preview.Show(Envelope(7, "Look"));
+    render();
+    TEST("suspicious link: the next message's links open again", !preview.LinkNeedsConfirmation());
 
     std::error_code ec;
     fs::remove_all(mailDir, ec);

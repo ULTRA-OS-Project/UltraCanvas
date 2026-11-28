@@ -1,5 +1,15 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.26.3 - Escape closes one popup per press (UltraCanvasWindowBase::HandlePopupEscapeKey):
+//                  the release no longer closes the popup under it (a submenu's parent menu)
+// Version: 1.26.2 - GetInstalledFontFamilies moved to UltraCanvasInstalledFonts.cpp, on the catalogue's
+//                  enumeration (the names alone; the hidden families left out)
+// Version: 1.26.1 - the destructor waits for the ImageMagick warm-up (FinishImageMagickWarmUp):
+//                  a program done before it was left it running into exit
+// Version: 1.26.0 - the pointer leaving a window, or the window losing the focus, takes its
+//                  tooltip away (one waiting is not shown) and leaves the element it hovered
+// Version: 1.25.0 - the font aliases carry the families with stand-ins (GetFontFamilySubstitutes):
+//                  Helvetica is drawn in Arial on Windows, as Windows maps it itself
 // Version: 1.24.0 - the font aliases append "sans-serif" to a request without a generic family
 //                  (fontconfig's 49-sansserif.conf), so an unknown family falls to the sans font
 // Version: 1.23.0 - a key pressed with the focus on a popup's own window goes to the window the popup belongs
@@ -51,7 +61,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAppearanceSettings.h"
@@ -74,12 +84,13 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasEmojiSettings.h"
+#include "UltraCanvasFontCoverage.h"     // GetFontFamilySubstitutes
 #include "UltraCanvasSettingsFolder.h"
 #include "UltraCanvasSystemLanguage.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasProxySettings.h"     // UseSharedProxySettings
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
 #include <fontconfig/fontconfig.h>
 #endif
 #if defined(ULTRACANVAS_HAS_PANGOFT2)
@@ -87,7 +98,7 @@
 #endif
 #include <pango/pangocairo.h>
 #include "UltraCanvasPathUtf8.h"
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
 #include "../libspecific/Cairo/RenderContextCairo.h"   // the text caches, after the font set changed
 #endif
 #include <condition_variable>
@@ -153,6 +164,12 @@ namespace UltraCanvas {
     }
 
     UltraCanvasApplicationBase::~UltraCanvasApplicationBase() {
+        // The ImageMagick warm-up started at launch ends before the program
+        // does, also for one that never ran the main loop (whose end calls
+        // ShutdownImageSubsysterm): left running into exit, it loaded
+        // ImageMagick's coders after libgomp's finaliser and aborted the
+        // exit in goacc_register (UCImageRaster::FinishImageMagickWarmUp).
+        UCImage::FinishImageMagickWarmUp();
         if (themeHandler != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler);
         themeHandler = 0;
         UltraCanvasApplicationBase* expected = this;
@@ -286,7 +303,7 @@ namespace UltraCanvas {
         return p;
     }
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
     // ===== RUNTIME FONTCONFIG BOOTSTRAP =====
     // Packaged builds ship no fonts.conf (the MSYS2 Windows ZIP most
     // visibly), so the very first fontconfig call made from inside
@@ -479,6 +496,23 @@ namespace UltraCanvas {
                 conf << "    </prefer>\n"
                      << "  </alias>\n";
             }
+            // A family with stand-ins of other names (GetFontFamilySubstitutes:
+            // Helvetica in Arial, as Windows maps it for every program): a
+            // document made on this very computer names them, and without
+            // these they fell to the interface font. binding "same" keeps the
+            // stand-in as strong as the name asked for, as fontconfig's own
+            // 30-metric-aliases.conf does; a family that is installed still
+            // wins, being first in the pattern.
+            for (const FontFamilySubstitutes& known : GetFontFamilySubstitutes()) {
+                conf << "  <alias binding=\"same\">\n"
+                     << "    <family>" << known.family << "</family>\n"
+                     << "    <accept>\n";
+                for (const char* substitute : known.substitutes) {
+                    conf << "      <family>" << substitute << "</family>\n";
+                }
+                conf << "    </accept>\n"
+                     << "  </alias>\n";
+            }
         }
 
         // fontconfig's 10-scale-bitmap-fonts.conf: a bitmap font (outline
@@ -638,7 +672,7 @@ namespace UltraCanvas {
         conf << "</fontconfig>\n";
         return conf.str();
     }
-#endif // !__APPLE__
+#endif // !__APPLE__ || ULTRACANVAS_IOS
 
     namespace {
         // GetFontSetGeneration's count; 1 for the fonts of the start.
@@ -647,7 +681,7 @@ namespace UltraCanvas {
 
     unsigned long GetFontSetGeneration() { return fontSetGeneration.load(); }
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
     namespace {
         // The system fonts' scan (SetupBundledFontconfig, Windows): one per process,
         // on a thread of its own. Leaked on purpose - the thread may still be
@@ -871,7 +905,7 @@ namespace UltraCanvas {
 #endif
 
     bool AdoptSystemFontsWithin(int waitMs) {
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         SystemFontScan& scan = FontScan();
         FcConfig* config = nullptr;
         {
@@ -908,7 +942,7 @@ namespace UltraCanvas {
     }
 
     SystemFontScanStatus GetSystemFontScanStatus() {
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         SystemFontScan& scan = FontScan();
         std::lock_guard<std::mutex> lock(scan.mutex);
         return scan.status;
@@ -918,7 +952,7 @@ namespace UltraCanvas {
     }
 
     void SetSystemFontsSwitchedHandler(std::function<void(const SystemFontScanStatus&)> handler) {
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         SystemFontScan& scan = FontScan();
         std::lock_guard<std::mutex> lock(scan.mutex);
         scan.onSwitched = std::move(handler);
@@ -928,8 +962,9 @@ namespace UltraCanvas {
     }
 
     void SetupBundledFontconfig() {
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(ULTRACANVAS_IOS)
         // macOS renders text through CoreText - fontconfig is not in the stack.
+        // (iOS does not: its Pango is fontconfig and FreeType, as on Android.)
 #else
         if (SystemFontconfigConfigFound()) return;
 
@@ -1036,7 +1071,7 @@ namespace UltraCanvas {
 
     void RefreshFontConfiguration() {
         ++fontSetGeneration;
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         // FcConfigAppFontAddFile only records the file; the FontSet FcMatch
         // (and therefore Pango) searches is materialised by FcConfigBuildFonts.
         if (FcConfig* cfg = FcConfigGetCurrent()) FcConfigBuildFonts(cfg);
@@ -1062,46 +1097,8 @@ namespace UltraCanvas {
         pango_cairo_font_map_set_default(nullptr);
     }
 
-    std::vector<std::string> GetInstalledFontFamilies() {
-        std::vector<std::string> names;
-        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
-        if (!fontMap) return names;
-        PangoFontFamily** families = nullptr;
-        int familyCount = 0;
-        pango_font_map_list_families(fontMap, &families, &familyCount);
-        for (int i = 0; i < familyCount; ++i) {
-            const char* name = pango_font_family_get_name(families[i]);
-            if (!name || !*name) continue;
-            // A face made of bitmaps lists the sizes it has; a scalable one
-            // lists none.
-            PangoFontFace** faces = nullptr;
-            int faceCount = 0;
-            pango_font_family_list_faces(families[i], &faces, &faceCount);
-            bool scalable = faceCount == 0;
-            for (int f = 0; f < faceCount && !scalable; ++f) {
-                int* sizes = nullptr;
-                int sizeCount = 0;
-                pango_font_face_list_sizes(faces[f], &sizes, &sizeCount);
-                if (!sizes) scalable = true;
-                g_free(sizes);
-            }
-            g_free(faces);
-            if (scalable) names.emplace_back(name);
-        }
-        g_free(families);
-        auto lower = [](std::string s) {
-            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
-            return s;
-        };
-        std::sort(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
-            const std::string la = lower(a), lb = lower(b);
-            return la != lb ? la < lb : a < b;
-        });
-        names.erase(std::unique(names.begin(), names.end(), [&](const std::string& a, const std::string& b) {
-            return lower(a) == lower(b);
-        }), names.end());
-        return names;
-    }
+    // GetInstalledFontFamilies: the names of the installed fonts' catalogue's
+    // one enumeration, in UltraCanvasInstalledFonts.cpp.
 
     bool UltraCanvasApplicationBase::RegisterFontFile(const std::string& fontFilePath) {
         if (fontFilePath.empty()) return false;
@@ -2174,6 +2171,28 @@ namespace UltraCanvas {
             }
         }
 
+        // The pointer out of a window, or the window no longer the active
+        // one: its tooltip goes, and the element it hovered is left. The
+        // tooltip has a window of its own above every other; left standing,
+        // it stood over the window that came over this one (another
+        // program's, say) until the pointer came back. The element is left
+        // as for a move onto another element, so the pointer back on it asks
+        // for its tooltip again - but not while an element holds the
+        // pointer (a drag out of the window), which still owns the hover.
+        if (targetWindow && (event.type == UCEventType::MouseLeave || event.type == UCEventType::WindowBlur)) {
+            UltraCanvasTooltipManager::PointerLeftWindow(targetWindow);
+            if (event.type == UCEventType::MouseLeave && !capturedElement &&
+                hoveredElement && hoveredElement->GetWindow() == targetWindow) {
+                UltraCanvasUIElement* left = hoveredElement;
+                hoveredElement = nullptr;
+                if (left->IsVisible()) {
+                    UCEvent leaveEvent = event;
+                    leaveEvent.pointer = { -1, -1 };
+                    DispatchEventToElement(left, leaveEvent);
+                }
+            }
+        }
+
         // block some events if modal window active
         if (HandleModalWindowEvents(event, targetWindow)) {
             return;
@@ -2283,6 +2302,10 @@ namespace UltraCanvas {
                 }
             }
 
+            // Escape closes one popup per press; its release closes nothing
+            // (HandlePopupEscapeKey). Before any element sees the key.
+            if (targetWindow->HandlePopupEscapeKey(event)) goto finish;
+
             // close popup element handling first
             if (popupElement) {
                 // THERE element->Contains() WHICH IS NOT THE SAME AS element->GetBounds().Contains(),
@@ -2293,12 +2316,6 @@ namespace UltraCanvas {
                     && isPointerOutsidePopupElement
                     && !popupElement->element->ContainsInWindow(event.pointerWindow)) {
                     targetWindow->ClosePopup(*popupElement->element, ClosePopupReason::ClickOutside);
-                    goto finish;
-                }
-                if (popupElement->settings.closeByEscapeKey
-                    && event.IsKeyboardEvent()
-                    && event.virtualKey == UCKeys::Escape) {
-                    targetWindow->ClosePopup(*popupElement->element, ClosePopupReason::EscapeKey);
                     goto finish;
                 }
             }

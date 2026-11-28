@@ -1,7 +1,12 @@
 // core/UltraCanvasVideoPlayer.cpp
 // Non-visual video playback engine; wraps a backend decode session
-// Version: 0.1.3
-// Last Modified: 2026-09-07
+// Version: 0.1.4
+// Last Modified: 2026-11-16
+// V0.1.4: LoadFromFile refuses what is no video file to open - no path, a file
+//   that does not exist, a folder, an empty or unreadable file - with the
+//   reason in GetLastError and onError. The backends accept any path and
+//   report a file they cannot play only later, asynchronously, so an empty
+//   clip "loaded" and a caller showed a player that never played.
 // V0.1.3: Open() consults the codecs registered through
 //   RegisterVideoCodecPlugin, so an application can add a container without
 //   patching the platform backend. A registered codec takes precedence for the
@@ -19,10 +24,37 @@
 #include "UltraCanvasVideoPlayer.h"
 #include "../libspecific/Video/IVideoBackend.h"
 #include "../libspecific/Video/VideoCodecPlugin.h"
+#include "UltraCanvasPathUtf8.h"
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 
 namespace UltraCanvas {
+
+namespace {
+
+// Why `path` is nothing a player can open, or "" when it is a file with
+// something in it that can be read. Asked before any backend sees the path:
+// the backends accept whatever they are given and report a file they cannot
+// play only later, on their own threads.
+std::string WhyNoVideoFileToOpen(const std::string& path) {
+    namespace fs = std::filesystem;
+    if (path.empty()) return "No video file was given";
+    const fs::path file = PathFromUtf8(path);
+    std::error_code ec;
+    const fs::file_status status = fs::status(file, ec);
+    if (!fs::exists(status)) return "The file does not exist: " + path;
+    if (!fs::is_regular_file(status)) return "Not a file: " + path;
+    const uintmax_t size = fs::file_size(file, ec);
+    if (ec) return "Cannot read " + path;
+    if (size == 0) return "The file is empty: " + path;
+    std::ifstream probe(file, std::ios::binary);
+    if (!probe) return "Cannot read " + path;
+    return {};
+}
+
+} // namespace
 
 struct UltraCanvasVideoPlayer::Impl {
     VideoPlaybackConfig config;
@@ -141,6 +173,16 @@ UltraCanvasVideoPlayer::UltraCanvasVideoPlayer(const VideoPlaybackConfig& cfg)
 UltraCanvasVideoPlayer::~UltraCanvasVideoPlayer() = default;
 
 bool UltraCanvasVideoPlayer::LoadFromFile(const std::string& filePath) {
+    // Settled here, before a backend or a registered codec sees the path:
+    // both take whatever they are given, and an empty clip, a missing file or
+    // a folder then "loaded" and failed later, after the caller had shown a
+    // player for it. The previous source goes either way, as with any load.
+    const std::string why = WhyNoVideoFileToOpen(filePath);
+    if (!why.empty()) {
+        impl->Reset();
+        impl->Fail(why);
+        return false;
+    }
     return impl->Open(filePath);
 }
 bool UltraCanvasVideoPlayer::LoadFromUrl(const std::string& url) {

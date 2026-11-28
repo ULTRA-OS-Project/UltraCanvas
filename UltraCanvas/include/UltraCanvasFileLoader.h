@@ -4,6 +4,17 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.21.0 - LoadPresentation: a deck of any kind read into the deck model - .pptx and kin,
+//                  .odp and kin, and PowerPoint 97-2003 .ppt / .pps / .pot (UltraCanvasPresentationPpt.h);
+//                  LoadTextDocument and DetectOfficeDocumentKind take a .ppt; IsOfficeTemplate a .pot
+// Version: 1.20.0 - office templates: IsOfficeTemplate, IsOfficeTemplateExtension, AddOfficeTemplateSaveTypes
+//                  ("Save as template"), AddSpreadsheetSaveTypes; a template's kind is detected; the
+//                  Save types of documents and decks no longer list the templates
+// Version: 1.19.0 - DetectOfficeDocumentKind, AddOfficeDocumentLoadTypes, AddPresentationSaveTypes
+// Version: 1.18.0 - SaveTextDocument and SavePresentation write .odp / .otp / .fodp too
+// Version: 1.17.0 - SaveTextDocument writes a .pptx (the document laid out as a deck); SavePresentation
+// Version: 1.16.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
+//                  (.odp, .otp, .fodp) as an outline
 // Version: 1.15.0 - ConvertVideoFile, CanConvertVideoTo, GetVideoSaveExtensions,
 //                  AddVideoSaveTypes (a video saved in
 //                  another type, by the converter a module registers - VideoFX's)
@@ -26,7 +37,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -46,6 +57,7 @@ namespace UltraCanvas {
     using UCImage = UCImageRaster;
     class UCAudio;
     class UCRichDocument;
+    struct PptxPresentation;
     namespace VectorStorage { class VectorDocument; }
     namespace UCImageSave { struct ImageExportOptions; }
 
@@ -274,15 +286,19 @@ namespace UltraCanvas {
 
         // Opens the native file dialog and parses the chosen word-processing
         // document into a UCRichDocument (see Plugins/Documents/Word). Formats:
-        // .odt and .docx are fully parsed (detection is signature-based, so
-        // renamed files still load); .tex is imported by the LaTeX document
+        // .odt and .docx are fully parsed, and a legacy Word 97-2003 .doc is
+        // read by the DOC reader (read-only: it is saved as .docx or .odt);
+        // detection is signature-based, so renamed files still load. A .doc
+        // the reader cannot make sense of fails with a loadError that
+        // asks for it to be saved as .docx or .odt. .tex is imported by the LaTeX document
         // reader (article subset, formulas kept for the math engine);
-        // a PowerPoint deck (.pptx, .pptm, .ppsx, .potx) reads as an outline of
-        // its slides (UltraCanvasPresentationPptx.h);
+        // a PowerPoint deck (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm, and
+        // the 97-2003 .ppt, .pps, .pot) and an OpenDocument presentation
+        // (.odp, .otp, .fodp) read as an outline of their slides
+        // (UltraCanvasPresentationPptx.h, UltraCanvasPresentationPpt.h,
+        // UltraCanvasPresentationOdp.h);
         // .md/.markdown parse as Markdown; anything
-        // else readable as text becomes plain paragraphs. Legacy Word 97-2003
-        // .doc files are detected and rejected with a clear loadError telling
-        // the user to convert to .docx. A password-protected .docx asks for
+        // else readable as text becomes plain paragraphs. A password-protected .docx asks for
         // its password first (RequestDocumentPassword); cancelling that
         // reports Cancel, like the file dialog. If the caller supplies no filters,
         // AddTextDocumentLoadTypes' are offered. On cancel, onResult fires
@@ -325,15 +341,88 @@ namespace UltraCanvas {
         // LaTeX, Markdown, plain text), then each under its name.
         // OpenTextDocument offers these when it is given no filters.
         static void AddTextDocumentLoadTypes(FileDialogOptions& opts);
-        // Writes `document` as the type its path names: .odt or .docx.
-        // `password` saves a password-protected .docx (UCWordDocumentIO::Save);
-        // an .odt with a password is refused, not saved unprotected.
+        // Writes `document` as the type its path names: .odt, .docx, or a
+        // deck - PowerPoint (.pptx and kin) or OpenDocument (.odp, .otp,
+        // .fodp) - laid out from it, a slide per first-level heading
+        // (PptxPresentationFromRichDocument). `password` saves a
+        // password-protected .docx or .pptx; an .odt or .odp with a password
+        // is refused, not saved unprotected.
         static bool SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
                                      std::string& outError,
                                      const std::string& password = std::string());
+        // Reads a deck into UltraCanvasPresentationPptx.h's model, the reader
+        // chosen by the file's content: a PowerPoint 97-2003 compound file
+        // (.ppt, .pps, .pot: UltraCanvasPresentationPpt.h), an OpenDocument
+        // presentation (.odp, .otp, .fodp: UltraCanvasPresentationOdp.h), else
+        // a PowerPoint package (.pptx and kin). `password` opens a protected
+        // .pptx or .odp; `withPictures` keeps the pictures' bytes, for drawing
+        // and saving the slides. False with a reason in outError.
+        static bool LoadPresentation(const std::string& filePath, PptxPresentation& deck, std::string& outError,
+                                     const std::string& password = std::string(), bool withPictures = false);
+        // Writes a deck (UltraCanvasPresentationPptx.h's model: one read,
+        // changed, or built) as the kind its path names - PowerPoint .pptx,
+        // .potx, .ppsx (and .pptm / .potm / .ppsm, without macros), or
+        // OpenDocument .odp, .otp, .fodp. `password` saves a PowerPoint file
+        // encrypted; an OpenDocument one with a password is refused. Any other
+        // extension is refused.
+        static bool SavePresentation(const PptxPresentation& deck, const std::string& filePath,
+                                     std::string& outError,
+                                     const std::string& password = std::string());
         // The Save dialog's file types for SaveTextDocument, each under its
-        // name, ODT first.
+        // name, ODT first. The templates (.ott, .dotx, .potx, .otp) are left
+        // to AddOfficeTemplateSaveTypes.
         static void AddTextDocumentSaveTypes(FileDialogOptions& opts);
+
+        // ===== OFFICE DOCUMENTS =====
+        // Which kind of office file a path is - what an office suite opens it
+        // as: a word-processing document (.odt, .docx, .doc, .md, .tex ...), a
+        // spreadsheet (.ods, .xlsx, .xls, .csv, .tsv), or a presentation
+        // (.pptx and kin, .odp and kin, .ppt and kin) - each with its
+        // templates (.ott, .dotx, .dotm; .ots, .xltx, .xltm; .potx, .potm,
+        // .otp, .pot). The extension decides; a file without a known one is
+        // looked into: an OpenDocument package by its mimetype entry, an
+        // Office Open XML package by its main part (word/, xl/, ppt/), a
+        // compound file holding a "PowerPoint Document" stream as a
+        // presentation. Unknown for anything else. Reads nothing beyond a
+        // ZIP's directory and its mimetype entry, or a compound file's
+        // directory.
+        enum class OfficeDocumentKind { Unknown, Document, Spreadsheet, Presentation };
+        static OfficeDocumentKind DetectOfficeDocumentKind(const std::string& filePath);
+        // The Open dialog's types for an office suite: one filter with every
+        // type of the three kinds, then one filter per kind (Documents,
+        // Spreadsheets, Presentations) - decks are not offered among the
+        // documents here, as AddTextDocumentLoadTypes offers them (an
+        // outline), but as presentations.
+        static void AddOfficeDocumentLoadTypes(FileDialogOptions& opts);
+        // The Save dialog's types for a deck: every type SavePresentation
+        // writes, each under its name, PowerPoint first - but the templates,
+        // which AddOfficeTemplateSaveTypes offers.
+        static void AddPresentationSaveTypes(FileDialogOptions& opts);
+        // The Save dialog's types for a workbook: every type
+        // UltraCanvasSpreadsheet::SaveToFile writes (.ods, .xlsx, .csv, .tsv),
+        // each under its name - but the templates.
+        static void AddSpreadsheetSaveTypes(FileDialogOptions& opts);
+
+        // ===== OFFICE TEMPLATES =====
+        // A template is the same package as its kind's document under the
+        // template's media type: OpenDocument .ott / .ots / .otp, Office Open
+        // XML .dotx / .xltx / .potx (and the macro-enabled .dotm / .xltm /
+        // .potm, read), and PowerPoint 97-2003's .pot (read). The readers take them as documents, the writers
+        // write them as templates by the extension (SaveTextDocument,
+        // UltraCanvasSpreadsheet::SaveToFile, SavePresentation). An
+        // application opening one starts a new, untitled document from it;
+        // saving that asks for a name, so the template is never written over.
+        //
+        // True for a template: by its extension, or, for a file without a
+        // known office extension, by its package (an OpenDocument
+        // "...-template" mimetype, an Office Open XML template content type).
+        static bool IsOfficeTemplate(const std::string& filePath);
+        // True for a template's extension (or a path's), any case; reads nothing.
+        static bool IsOfficeTemplateExtension(const std::string& extensionOrPath);
+        // The Save dialog's types for "Save as template": the template types
+        // of `kind` this build writes, each under its name - .ott and .dotx,
+        // .ots and .xltx, or .potx and .otp.
+        static void AddOfficeTemplateSaveTypes(FileDialogOptions& opts, OfficeDocumentKind kind);
 
         // ===== VECTOR DOCUMENTS =====
         // Editable drawings: SVG, XAR, EMF, WMF, DXF, DWG, AI ... read into

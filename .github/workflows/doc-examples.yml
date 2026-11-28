@@ -28,7 +28,7 @@ name: Doc examples
 # write dropped (check_doc_examples.py 1.8.0), so the two clangs read it
 # alike.
 
-# Trigger policy matches path-strings.yml: `pull_request` covers feature
+# Trigger policy matches source-checks.yml: `pull_request` covers feature
 # branches, so listing them under `push` too would run this check twice per
 # commit. The paths are what the docs are checked against.
 on:
@@ -37,6 +37,11 @@ on:
     paths: &paths
       - 'Docs/UltraCanvas/*.md'
       - 'Docs/Modules/FileLoader/*.md'   # scripts/check_doc_examples.py CHECKED_MODULE_DOCS
+      - 'Docs/Modules/UltraCrypt/*.md'
+      - 'Docs/Modules/UltraLocalisation/*.md'
+      - 'Docs/Modules/UltraNet/*.md'     # (its README mirrors UltraNet/README.md)
+      - 'Docs/Modules/UltraSite/*.md'
+      - 'UltraSite/include/**'
       - 'UltraCanvas/include/**'
       - 'UltraCanvas/Plugins/**/*.h'
       - 'UltraCanvas/third_party/**/*.h'

@@ -445,7 +445,7 @@ namespace UltraCanvas {
         card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         auto statusLabel = DemoKit::CreateCaption("ArcStatus", Tr("Click a node or arc to inspect."));
-        statusLabel->SetBackgroundColor(Color(245, 245, 245));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245)));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(6.0f);
         statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
@@ -454,7 +454,7 @@ namespace UltraCanvas {
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
                 "ArcTabs");
         tabs->SetTabPosition(TabPosition::Top);
-        tabs->SetTabStyle(TabStyle::Modern);
+        DemoKit::StyleTabs(tabs);
         tabs->SetTabMaxWidth(300);
 
         tabs->AddTab(Tr("Character co-occurrence"),   MakeFriendsTab(statusLabel));

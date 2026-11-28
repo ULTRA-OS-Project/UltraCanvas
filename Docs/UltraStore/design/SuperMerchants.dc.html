@@ -27,7 +27,8 @@ a{color:#1d4ed8}a:hover{color:#1e40af}
 <a href="SuperReview.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500"><span style="flex: 1 1 auto">App review</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #2563eb; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">7</span></a>
 <a href="SuperReports.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500"><span style="flex: 1 1 auto">Reports</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">12</span></a>
 <a href="SuperTerms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Terms and notices</a>
-<a href="#users" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Users</a>
+<a href="SuperUsers.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Users</a>
+<a href="SuperOperators.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Operators</a>
 <a href="#payouts" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Payouts</a>
 <a href="#audit" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Audit log</a>
 <a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Settings</a>
@@ -35,7 +36,7 @@ a{color:#1d4ed8}a:hover{color:#1e40af}
 <div style="margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; background: #1e293b; font-size: 12px; color: #94a3b8">
 <span style="font-weight: 700; color: #e2e8f0">store.ultraos.eu</span>
 <span>Catalog sequence 42 · 38 merchants · 112 apps live</span>
-<span>Signed in as Alex, operator</span>
+<span>Signed in as Alex, admin</span>
 </div>
 </nav>
 
@@ -51,6 +52,37 @@ a{color:#1d4ed8}a:hover{color:#1e40af}
 <button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>Invite a merchant</button>
 </div>
 </div>
+
+<section aria-labelledby="app-title" style="display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+<h2 id="app-title" style="margin: 0; font-size: 16px; font-weight: 700">Applications for a shop · 2</h2>
+<span style="font-size: 13px; color: #64748b">A merchant applied from its admin backend; the key on the application is proven by its signature and is the one that signs the shop's submissions. Approve registers the merchant with it; reject tells the applicant why. Built: the marketplace service's applications (Server/UltraStoreMarket).</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap">
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700">Pixelwerk Studio</span><span style="font-size: 13px; color: #64748b">ap-000017 · applied 19 Nov 2026 · mail@pixelwerk.example · jo@pixelwerk.example · https://pixelwerk.example</span><span style="font-size: 13px; color: #475569">Games and tools for ULTRA OS, made in Leipzig since 2021.</span><span style="font-size: 12px; color: #64748b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace">Key 7f3a9c0e…c21e</span></div>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<input type="text" value="pixelwerk" aria-label="Merchant id" style="height: 36px; width: 160px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 13px">
+<input type="text" placeholder="a message to the applicant" aria-label="Message" style="height: 36px; flex: 1 1 240px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 13px">
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Approve</button>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #fecaca; background: #ffffff; color: #b91c1c; font: inherit; font-weight: 700; cursor: pointer">Reject</button>
+</div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap">
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700">Nordlicht Audio GmbH</span><span style="font-size: 13px; color: #64748b">ap-000018 · applied 19 Nov 2026 · https://nordlicht.example/contact · shop@nordlicht.example</span><span style="font-size: 13px; color: #475569">Headphones and audio tools; the UltraCanvas player plug-in.</span><span style="font-size: 12px; color: #64748b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace">Key 1b77e40d…9a05</span></div>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<input type="text" placeholder="merchant id (made when empty)" aria-label="Merchant id" style="height: 36px; width: 160px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 13px">
+<input type="text" value="The name is a registered mark of another publisher; apply under your legal name." aria-label="Message" style="height: 36px; flex: 1 1 240px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 13px">
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Approve</button>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #fecaca; background: #ffffff; color: #b91c1c; font: inherit; font-weight: 700; cursor: pointer">Reject</button>
+</div>
+</article>
+</div>
+</section>
 
 <section aria-labelledby="ver-title" style="display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
 <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
@@ -231,7 +263,7 @@ a{color:#1d4ed8}a:hover{color:#1e40af}
 </main>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1420}}'>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1860}}'>
 class Component extends DCLogic {
   renderVals() {
     return { accent: this.props.accent ?? '#2563eb' };

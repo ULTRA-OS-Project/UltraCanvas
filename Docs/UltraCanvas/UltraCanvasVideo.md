@@ -11,13 +11,13 @@ and composite UI elements, all behind a pluggable platform backend.
 - [Status](#status)
 - [Architecture](#architecture)
 - [Public API surface](#public-api-surface)
-  - [Frame resource — `UltraCanvasVideo.h`](#frame-resource-—-ultracanvasvideoh)
-  - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual-—-ultracanvasvideoplayerh)
-  - [File facts — `UltraCanvasVideoFileInfo.h`](#file-facts-—-ultracanvasvideofileinfoh)
-  - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames-—-ultracanvasvideothumbnailh)
-  - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
+  - [Frame resource — `UltraCanvasVideo.h`](#frame-resource--ultracanvasvideoh)
+  - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual--ultracanvasvideoplayerh)
+  - [File facts — `UltraCanvasVideoFileInfo.h`](#file-facts--ultracanvasvideofileinfoh)
+  - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames--ultracanvasvideothumbnailh)
+  - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual--ultracanvasvideorecorderh)
   - [UI elements](#ui-elements)
-  - [Devices — `UltraCanvasVideoDevices.h`](#devices-—-ultracanvasvideodevicesh)
+  - [Devices — `UltraCanvasVideoDevices.h`](#devices--ultracanvasvideodevicesh)
 - [Following the theme](#following-the-theme)
 - [Adding a container or codec](#adding-a-container-or-codec)
 - [Build](#build)
@@ -80,6 +80,15 @@ p->Play();
 // UI thread, each tick:
 if (auto f = p->GetCurrentFrame()) { /* upload f to a pixmap */ }
 ```
+
+`LoadFromFile` returns false - with the reason in `GetLastError()` and
+`onError`, the state `Error` and nothing loaded - for no path, a file that does
+not exist, a folder, or an empty or unreadable file, before any backend or
+registered codec sees it. True means the file was handed to the backend; a
+damaged file is still accepted then and reported later through `onError`,
+when the backend finds out (it opens a source asynchronously). Before
+2026-11 an empty file "loaded" too, and the caller showed a player that never
+played.
 
 Transport: `Play / Pause / Stop / Seek(seconds)`.
 Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`.

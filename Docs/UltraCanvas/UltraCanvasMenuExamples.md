@@ -232,7 +232,8 @@ struct MenuStyle {
     Color textColor;          // Default text color
     Color shortcutColor;      // Shortcut text color
     Color disabledTextColor;  // Disabled item text
-    Color headerTextColor;    // Header item text
+    Color headerTextColor;    // Header item text (dark grey by default)
+    Color headerBackgroundColor;   // Header item band, darker than the panel; Transparent for none
 
     // Typography
     FontStyle font;           // Font family, size and weight
@@ -325,7 +326,7 @@ items run edge to edge and only their highlight is rounded.
 ### Its Own Window
 
 A popup menu or submenu is shown in a window of its own (`WindowType::Popup`),
-above every other window, like every popup - see
+like every popup - see
 `UltraCanvasWindowBase::SetPopupsInOwnWindows`. Composited onto the window it
 was opened in, a menu was covered by any window above that one: the menus of
 UltraDesktop's bars, whose window is kept below all others, opened under the
@@ -342,8 +343,24 @@ macOS and Wayland), so the rounded corners show whatever is beneath. It has no
 drop shadow of its own - macOS and a compositing window manager give a popup
 window one - and it does not fade in: `enableAnimations` shows it in full at
 once. It closes on a click outside it, as before, and also when the focus
-leaves the application, since it would otherwise float above other programs'
-windows. In the browser and on Android, and with
+goes to another window - another program's, or another window of the same
+application brought to the front - since it would otherwise float above that
+window (a dialog of the menu's own window taking the focus leaves it open). It
+closes when its window is hidden or minimised, and when its window is moved:
+on Windows a press on the frame - the title bar or a border - counts as a click
+outside (`UltraCanvasWindowBase::ClosePopupsOnFramePress`); on X11 and macOS,
+where the window manager keeps that press to itself, the move does
+(`ClosePopupsIfWindowMoved`). A popup that does not close on a click outside
+follows its window instead.
+
+That window is kept above the window the menu was opened in, not above every
+window: a window that comes over that one - another program's, put in front
+without taking the focus - covers the menu too (an owned window on Windows, a
+child window on macOS). Only the menus of a window that is not in the ordinary
+stack are above every window: a desktop's (`WindowType::Desktop`, kept below
+every other, as UltraDesktop's bars are), a notification's, an overlay's, a lock
+screen's, or one kept `alwaysOnTop` - see
+`UltraCanvasWindowBase::PopupsAboveEveryWindow`. In the browser and on Android, and with
 `SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
 described above.
 
@@ -575,7 +592,10 @@ The menu system handles the following events:
 - **Enter/Space**: Execute selected item
 - **Escape**: Close menu (when `PopupElementSettings::closeByEscapeKey` is set, the default).
   The application closes the topmost popup before the key reaches any element,
-  so an open submenu closes first and its parent stays open.
+  so an open submenu closes first and its parent stays open. It does so on the
+  key's press, one popup per press; the release closes nothing - not the
+  parent menu, and not the window under the last popup, where a window closes
+  on an Escape's release (the settings pages).
 
 ## Usage Examples
 

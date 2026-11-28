@@ -5,7 +5,10 @@
 
 #include "UltraCanvasDataFolder.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetHttp.h"
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <ctime>
@@ -123,6 +126,9 @@ Result<OperatorSettings> OperatorSettings::Load(const std::string& pathUtf8) {
     s.url = TrimSlash(v.Get("url").GetString());
     s.token = v.Get("token").GetString();
     s.name = v.Get("name").GetString();
+    s.role = v.Get("role").GetString();
+    s.accountUrl = TrimSlash(v.Get("account_url").GetString());
+    s.accountToken = v.Get("account_token").GetString();
     return R::Succeed(s);
 }
 
@@ -135,6 +141,9 @@ Result<void> OperatorSettings::Save(const std::string& pathUtf8) const {
     v.Set("url", JSONValue(TrimSlash(url)));
     v.Set("token", JSONValue(token));
     v.Set("name", JSONValue(name));
+    v.Set("role", JSONValue(role));
+    v.Set("account_url", JSONValue(TrimSlash(accountUrl)));
+    v.Set("account_token", JSONValue(accountToken));
     {
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         if (!out) return Result<void>::Failure(ErrorCode::IoError, "Cannot write " + pathUtf8);
@@ -157,6 +166,10 @@ OperatorSettings OperatorSettings::WithEnvironment() const {
     if (!url.empty()) s.url = TrimSlash(url);
     if (!token.empty()) s.token = token;
     if (!name.empty()) s.name = name;
+    const std::string accountUrl = UltraCanvas::GetEnvUtf8("ULTRASTORE_OPERATOR_ACCOUNT_URL");       // path-string-ok: GetEnvUtf8 is the UTF-8 read
+    const std::string accountToken = UltraCanvas::GetEnvUtf8("ULTRASTORE_OPERATOR_ACCOUNT_TOKEN");   // path-string-ok: GetEnvUtf8 is the UTF-8 read
+    if (!accountUrl.empty()) s.accountUrl = TrimSlash(accountUrl);
+    if (!accountToken.empty()) s.accountToken = accountToken;
     return s;
 }
 
@@ -168,6 +181,8 @@ Merchant MerchantOf(const JSONValue& v) {
     m.id = v.Get("id").GetString();
     m.name = v.Get("name").GetString();
     m.contact = v.Get("contact").GetString();
+    m.website = v.Get("website").GetString();
+    m.description = v.Get("description").GetString();
     m.key = v.Get("key").GetString();
     m.createdAt = v.Get("created_at").GetString();
     m.standing = v.Get("standing").GetString();
@@ -175,6 +190,24 @@ Merchant MerchantOf(const JSONValue& v) {
     m.termsInForce = static_cast<int>(v.Get("terms").Get("in_force").GetInteger(0));
     m.termsAccepted = static_cast<int>(v.Get("terms").Get("accepted").GetInteger(0));
     return m;
+}
+
+MerchantApplication ApplicationOf(const JSONValue& v) {
+    MerchantApplication a;
+    a.id = v.Get("id").GetString();
+    a.name = v.Get("name").GetString();
+    a.contact = v.Get("contact").GetString();
+    a.email = v.Get("email").GetString();
+    a.website = v.Get("website").GetString();
+    a.description = v.Get("description").GetString();
+    a.key = v.Get("key").GetString();
+    a.state = v.Get("state").GetString();
+    a.message = v.Get("message").GetString();
+    a.createdAt = v.Get("created_at").GetString();
+    a.decidedAt = v.Get("decided_at").GetString();
+    a.decidedBy = v.Get("decided_by").GetString();
+    a.merchant = v.Get("merchant").GetString();
+    return a;
 }
 
 Suspension SuspensionOf(const JSONValue& v) {
@@ -203,6 +236,12 @@ Submission SubmissionOf(const JSONValue& v) {
     s.decidedAt = v.Get("decided_at").GetString();
     s.releasedSequence = static_cast<int>(v.Get("released_sequence").GetInteger(0));
     for (const JSONValue::Member& m : v.Get("checks").GetMembers()) s.checks.emplace_back(m.first, m.second.GetString());
+    for (const JSONValue::Member& m : v.Get("findings").GetMembers()) {
+        std::vector<std::string> lines;
+        for (const JSONValue& line : m.second.GetElements()) lines.push_back(line.GetString());
+        s.findings.emplace_back(m.first, std::move(lines));
+    }
+    s.checkedAt = v.Get("checked_at").GetString();
     for (const JSONValue& d : v.Get("decisions").GetElements()) s.decisions.push_back(DecisionOf(d));
     s.component = v.Get("component");
     s.packages = v.Get("packages");
@@ -212,6 +251,11 @@ Submission SubmissionOf(const JSONValue& v) {
 bool Submission::ChecksFailed() const {
     for (const auto& [name, outcome] : checks) if (outcome == "failed") return true;
     return false;
+}
+
+const std::vector<std::string>* Submission::FindingsOf(const std::string& check) const {
+    for (const auto& [name, lines] : findings) if (name == check) return &lines;
+    return nullptr;
 }
 
 std::string Submission::Name() const {
@@ -275,6 +319,77 @@ AuditRow AuditRowOf(const JSONValue& v) {
     return r;
 }
 
+User UserOf(const JSONValue& v) {
+    User u;
+    u.id = v.Get("id").GetString();
+    u.email = v.Get("email").GetString();
+    u.displayName = v.Get("display_name").GetString();
+    u.handle = v.Get("handle").GetString();
+    u.language = v.Get("language").GetString();
+    u.country = v.Get("country").GetString();
+    u.state = v.Get("state").GetString();
+    u.createdAt = v.Get("created_at").GetString();
+    u.deletionRequestedAt = v.Get("deletion_requested_at").GetString();
+    u.deleteAfter = v.Get("delete_after").GetString();
+    u.suspendedReason = v.Get("suspended_reason").GetString();
+    u.suspendedUntil = v.Get("suspended_until").GetString();
+    u.request = v.Get("request").GetString();
+    u.emailVerified = v.Get("email_verified").GetBoolean(false);
+    u.twoFactor = v.Get("two_factor").GetBoolean(false);
+    u.devices = static_cast<int>(v.Get("devices").IsNumber() ? v.Get("devices").GetInteger(0) : v.Get("devices").GetSize());
+    u.licences = static_cast<int>(v.Get("licences").IsNumber() ? v.Get("licences").GetInteger(0) : v.Get("licences").GetSize());
+    return u;
+}
+
+UserStats UserStatsOf(const JSONValue& v) {
+    UserStats s;
+    s.accounts = static_cast<int>(v.Get("accounts").GetInteger(0));
+    s.newIn30Days = static_cast<int>(v.Get("new_in_30_days").GetInteger(0));
+    s.twoFactorPercent = static_cast<int>(v.Get("two_factor_percent").GetInteger(0));
+    s.archiveRequests = static_cast<int>(v.Get("archive_requests").GetInteger(0));
+    s.archiveRequestsDue = static_cast<int>(v.Get("archive_requests_due").GetInteger(0));
+    s.deletionRequests = static_cast<int>(v.Get("deletion_requests").GetInteger(0));
+    s.suspended = static_cast<int>(v.Get("suspended").GetInteger(0));
+    return s;
+}
+
+UserFile UserFileOf(const JSONValue& v) {
+    UserFile f;
+    f.user = UserOf(v);
+    for (const JSONValue& d : v.Get("devices").GetElements()) {
+        UserDevice x;
+        x.id = d.Get("id").GetString(); x.name = d.Get("device_name").GetString(); x.os = d.Get("os").GetString(); x.client = d.Get("client").GetString();
+        x.lastSeen = d.Get("last_seen").GetString(); x.lastIp = d.Get("last_ip").GetString();
+        f.devices.push_back(x);
+    }
+    for (const JSONValue& l : v.Get("licences").GetElements()) {
+        UserLicence x;
+        x.id = l.Get("id").GetString(); x.app = l.Get("app").GetString(); x.order = l.Get("order").GetString(); x.issued = l.Get("issued").GetString();
+        x.validUntil = l.Get("valid_until").GetString(); x.seats = static_cast<int>(l.Get("seats").GetInteger(0)); x.seatsUsed = static_cast<int>(l.Get("seats_used").GetInteger(0));
+        f.licences.push_back(x);
+    }
+    for (const JSONValue& n : v.Get("notices").GetElements()) {
+        UserNotice x;
+        x.id = n.Get("id").GetString(); x.kind = n.Get("kind").GetString(); x.subject = n.Get("subject").GetString(); x.text = n.Get("text").GetString();
+        x.createdAt = n.Get("created_at").GetString(); x.createdBy = n.Get("created_by").GetString(); x.readAt = n.Get("read_at").GetString();
+        f.notices.push_back(x);
+    }
+    for (const JSONValue& a : v.Get("archives").GetElements()) {
+        UserArchive x;
+        x.id = a.Get("id").GetString(); x.state = a.Get("state").GetString(); x.due = a.Get("due").GetString();
+        x.requestedAt = a.Get("requested_at").GetString(); x.releasedAt = a.Get("released_at").GetString();
+        f.archives.push_back(x);
+    }
+    for (const JSONValue& h : v.Get("history").GetElements()) f.history.push_back(AuditRowOf(h));
+    for (const JSONValue& si : v.Get("sign_ins").GetElements()) {
+        UserSignIn x;
+        x.at = si.Get("at").GetString(); x.ip = si.Get("ip").GetString(); x.device = si.Get("device").GetString(); x.reason = si.Get("reason").GetString();
+        x.ok = si.Get("ok").GetBoolean(false);
+        f.signIns.push_back(x);
+    }
+    return f;
+}
+
 std::string AuditRow::Line() const {
     std::string line = at + "  " + actor + " " + action + " " + targetKind + " " + target;
     if (!clause.empty()) line += " (clause " + clause + ")";
@@ -319,8 +434,47 @@ std::string Age(const std::string& at, int64_t now) {
 // ===========================================================================
 // The client
 // ===========================================================================
-OperatorClient::OperatorClient(OperatorSettings settings, MarketCall call) : settings_(std::move(settings)), call_(std::move(call)) {
+DownloadCall UltraNetDownloadCall() {
+    return [](const std::string& url, const std::string& authorization, const std::string& destinationUtf8) {
+        MarketReply out;
+        if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+        UltraNetHttpRequest request;
+        request.url = url;
+        request.method = UltraNetHttpMethod::Get;
+        request.options.httpsOnlyRedirects = true;
+        request.options.outputFilePath = destinationUtf8;
+        request.options.timeoutMs = 0;
+        if (!authorization.empty()) request.headers.Set("Authorization", authorization);
+        UltraNetResponse response;
+        const UltraNetResult r = UltraNet_HttpRequest(request, response);
+        out.status = response.statusCode;
+        out.body = response.GetBodyAsString();   // the error JSON, when the service refused
+        if (!r && r.code != UltraNetResultCode::HttpError) out.error = r.message.empty() ? "no answer" : r.message;
+        if (!response.IsComplete()) out.error = response.transferError;
+        return out;
+    };
+}
+
+std::string PackageFileName(const JSONValue& package) {
+    std::string sha = package.Get("sha256").GetString();
+    for (char& c : sha) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::string format = package.Get("format").GetString();
+    if (format.empty()) {
+        std::string name = package.Get("file").GetString(package.Get("url").GetString());
+        name = name.substr(name.rfind('/') == std::string::npos ? 0 : name.rfind('/') + 1);
+        for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        for (const char* known : {"tar.zst", "tar.gz", "tar.xz", "tgz", "zip", "7z", "appimage"}) {
+            const std::string suffix = std::string(".") + known;
+            if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) { format = known; break; }
+        }
+    }
+    return sha + "." + (format.empty() ? std::string("bin") : format);
+}
+
+OperatorClient::OperatorClient(OperatorSettings settings, MarketCall call, DownloadCall download)
+    : settings_(std::move(settings)), call_(std::move(call)), download_(std::move(download)) {
     settings_.url = TrimSlash(settings_.url);
+    settings_.accountUrl = TrimSlash(settings_.accountUrl);
 }
 
 Result<JSONValue> OperatorClient::Ask(const std::string& method, const std::string& path, const std::string& jsonBody) const {
@@ -348,6 +502,192 @@ Result<std::string> OperatorClient::Health() const {
     if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);
     if (reply.status < 200 || reply.status >= 300) return R::Failure(ErrorCode::NetworkError, "The marketplace service answered HTTP " + std::to_string(reply.status), reply.body);
     return R::Succeed(reply.body);
+}
+
+// ----- the operator accounts -----
+namespace {
+
+OperatorAccount OperatorAccountOf(const JSONValue& v) {
+    OperatorAccount a;
+    a.id = v.Get("id").GetString();
+    a.email = v.Get("email").GetString();
+    a.name = v.Get("name").GetString();
+    a.role = v.Get("role").GetString();
+    a.createdAt = v.Get("created_at").GetString();
+    a.createdBy = v.Get("created_by").GetString();
+    a.disabledAt = v.Get("disabled_at").GetString();
+    a.lastSignin = v.Get("last_signin").GetString();
+    a.active = v.Get("active").GetBoolean(a.disabledAt.empty());
+    a.twoFactor = v.Get("two_factor").GetBoolean(false);
+    a.recoveryCodesLeft = static_cast<int>(v.Get("recovery_codes_left").GetInteger(0));
+    return a;
+}
+
+} // namespace
+
+bool WhoAmI::May(const std::string& permission) const {
+    for (const std::string& p : permissions) if (p == permission) return true;
+    return false;
+}
+
+// A six-digit code is the authenticator's; anything else a recovery code.
+static void SetSecondFactor(JSONValue& body, const std::string& code) {
+    if (code.empty()) return;
+    std::string plain;
+    for (char c : code) if (c != ' ') plain.push_back(c);
+    const bool digits = plain.size() == 6 && std::all_of(plain.begin(), plain.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; });
+    body.Set(digits ? "totp" : "recovery_code", JSONValue(plain));
+}
+
+// A call without a bearer (the sign-in, a forgotten password): the answer
+// parsed, a refusal's error code as the failure's detail.
+Result<JSONValue> OperatorClient::Open(const std::string& path, const std::string& jsonBody) const {
+    using R = Result<JSONValue>;
+    if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL: `settings set url <https://...>`");
+    const MarketReply reply = call_("POST", settings_.url + path, {}, jsonBody);
+    if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);
+    UltraCanvas::JSONParseResult parse;
+    const JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
+    if (reply.status < 200 || reply.status >= 300) {
+        const std::string description = parse.success && v.IsObject() ? v.Get("error_description").GetString() : std::string();
+        const std::string code = parse.success && v.IsObject() ? v.Get("error").GetString() : std::string();
+        return R::Failure(reply.status == 401 ? ErrorCode::SignatureInvalid : ErrorCode::NetworkError,
+                          description.empty() ? "The marketplace service answered HTTP " + std::to_string(reply.status) : description,
+                          code.empty() ? "HTTP " + std::to_string(reply.status) : code);
+    }
+    if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The marketplace service's answer is not JSON", parse.errorMessage);
+    return R::Succeed(v);
+}
+
+Result<OperatorSignIn> OperatorClient::SignIn(const std::string& email, const std::string& password, const std::string& code) const {
+    using R = Result<OperatorSignIn>;
+    if (email.empty() || password.empty()) return R::Failure(ErrorCode::InvalidArgument, "The sign-in needs the email and the password");
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    body.Set("password", JSONValue(password));
+    SetSecondFactor(body, code);
+    const auto answer = Open("/v1/operators/signin", UltraCanvas::JSON::Serialize(body));
+    if (!answer) return R::Failure(answer.error.code, answer.error.message, answer.error.detail);
+    const JSONValue& v = answer.Value();
+    OperatorSignIn in;
+    in.token = v.Get("token").GetString();
+    in.account = OperatorAccountOf(v.Get("operator"));
+    in.hours = static_cast<int>(v.Get("hours").GetInteger(0));
+    if (in.token.empty()) return R::Failure(ErrorCode::ParseError, "The sign-in answered no session");
+    return R::Succeed(in);
+}
+
+Result<TwoFactorSetup> OperatorClient::TwoFactorSetup() const {
+    using R = Result<struct TwoFactorSetup>;
+    const auto v = Ask("POST", "/v1/operators/me/two-factor/setup", "{}");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    struct TwoFactorSetup setup;
+    setup.secret = v.Value().Get("secret").GetString();
+    setup.otpauthUrl = v.Value().Get("otpauth_url").GetString();
+    return R::Succeed(setup);
+}
+
+static Result<std::vector<std::string>> RecoveryCodesOf(const Result<JSONValue>& v) {
+    using R = Result<std::vector<std::string>>;
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    std::vector<std::string> codes;
+    for (const JSONValue& c : v.Value().Get("recovery_codes").GetElements()) codes.push_back(c.GetString());
+    return R::Succeed(codes);
+}
+
+static std::string CodeBody(const std::string& code) {
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("code", JSONValue(code));
+    return UltraCanvas::JSON::Serialize(body);
+}
+
+Result<std::vector<std::string>> OperatorClient::TwoFactorEnable(const std::string& code) const {
+    return RecoveryCodesOf(Ask("POST", "/v1/operators/me/two-factor/enable", CodeBody(code)));
+}
+
+Result<void> OperatorClient::TwoFactorDisable(const std::string& code) const {
+    const auto v = Ask("POST", "/v1/operators/me/two-factor/disable", CodeBody(code));
+    if (!v) return Result<void>::Failure(v.error.code, v.error.message, v.error.detail);
+    return Result<void>::Succeed();
+}
+
+Result<std::vector<std::string>> OperatorClient::NewRecoveryCodes(const std::string& code) const {
+    return RecoveryCodesOf(Ask("POST", "/v1/operators/me/two-factor/recovery-codes", CodeBody(code)));
+}
+
+Result<int> OperatorClient::ForgotPassword(const std::string& email) const {
+    using R = Result<int>;
+    if (email.empty()) return R::Failure(ErrorCode::InvalidArgument, "The email of the account");
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    const auto v = Open("/v1/operators/password/forgot", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(static_cast<int>(v.Value().Get("minutes").GetInteger(10)));
+}
+
+Result<void> OperatorClient::ResetPassword(const std::string& email, const std::string& code, const std::string& newPassword, const std::string& code2) const {
+    if (email.empty() || code.empty() || newPassword.size() < 12) return Result<void>::Failure(ErrorCode::InvalidArgument, "The email, the mailed code and a new password of 12 characters or more");
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    body.Set("code", JSONValue(code));
+    body.Set("new_password", JSONValue(newPassword));
+    SetSecondFactor(body, code2);
+    const auto v = Open("/v1/operators/password/reset", UltraCanvas::JSON::Serialize(body));
+    if (!v) return Result<void>::Failure(v.error.code, v.error.message, v.error.detail);
+    return Result<void>::Succeed();
+}
+
+Result<OperatorAccount> OperatorClient::ResetOperatorTwoFactor(const std::string& id) const {
+    using R = Result<OperatorAccount>;
+    const auto v = Ask("PUT", "/v1/operators/" + Encode(id), R"({"two_factor":false})");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(OperatorAccountOf(v.Value()));
+}
+
+Result<WhoAmI> OperatorClient::Me() const {
+    using R = Result<WhoAmI>;
+    const auto v = Ask("GET", "/v1/operators/me");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    WhoAmI me;
+    me.id = v.Value().Get("id").GetString();
+    me.name = v.Value().Get("name").GetString();
+    me.role = v.Value().Get("role").GetString();
+    me.bootstrap = v.Value().Get("bootstrap").GetBoolean(false);
+    for (const JSONValue& p : v.Value().Get("permissions").GetElements()) me.permissions.push_back(p.GetString());
+    return R::Succeed(me);
+}
+
+Result<std::vector<OperatorAccount>> OperatorClient::Operators() const {
+    using R = Result<std::vector<OperatorAccount>>;
+    const auto v = Ask("GET", "/v1/operators");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    std::vector<OperatorAccount> out;
+    for (const JSONValue& o : v.Value().Get("operators").GetElements()) out.push_back(OperatorAccountOf(o));
+    return R::Succeed(out);
+}
+
+Result<OperatorAccount> OperatorClient::AddOperator(const std::string& email, const std::string& name, const std::string& role, const std::string& password) const {
+    using R = Result<OperatorAccount>;
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    body.Set("name", JSONValue(name));
+    body.Set("role", JSONValue(role));
+    body.Set("password", JSONValue(password));
+    const auto v = Ask("POST", "/v1/operators", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(OperatorAccountOf(v.Value()));
+}
+
+Result<OperatorAccount> OperatorClient::UpdateOperator(const std::string& id, const std::string& name, const std::string& role, const std::string& password, int disabled) const {
+    using R = Result<OperatorAccount>;
+    JSONValue body = JSONValue::MakeObject();
+    if (!name.empty()) body.Set("name", JSONValue(name));
+    if (!role.empty()) body.Set("role", JSONValue(role));
+    if (!password.empty()) body.Set("password", JSONValue(password));
+    if (disabled >= 0) body.Set("disabled", JSONValue(disabled > 0));
+    const auto v = Ask("PUT", "/v1/operators/" + Encode(id), UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(OperatorAccountOf(v.Value()));
 }
 
 // ----- merchants -----
@@ -394,6 +734,41 @@ Result<Merchant> OperatorClient::UpdateMerchant(const std::string& id, const std
     const auto v = Ask("PUT", "/v1/merchants/" + Encode(id), UltraCanvas::JSON::Serialize(body));
     if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
     return R::Succeed(MerchantOf(v.Value()));
+}
+
+Result<std::vector<MerchantApplication>> OperatorClient::Applications(const std::string& state) const {
+    using R = Result<std::vector<MerchantApplication>>;
+    const auto v = Ask("GET", "/v1/applications" + (state.empty() ? std::string() : "?state=" + Encode(state)));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    std::vector<MerchantApplication> out;
+    for (const JSONValue& a : v.Value().Get("applications").GetElements()) out.push_back(ApplicationOf(a));
+    return R::Succeed(out);
+}
+
+Result<MerchantApplication> OperatorClient::GetApplication(const std::string& id) const {
+    using R = Result<MerchantApplication>;
+    const auto v = Ask("GET", "/v1/applications/" + Encode(id));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(ApplicationOf(v.Value()));
+}
+
+Result<Merchant> OperatorClient::ApproveApplication(const std::string& id, const std::string& merchantId, const std::string& message) const {
+    using R = Result<Merchant>;
+    JSONValue body = JSONValue::MakeObject();
+    if (!merchantId.empty()) body.Set("id", JSONValue(merchantId));
+    body.Set("message", JSONValue(message));
+    const auto v = Ask("POST", "/v1/applications/" + Encode(id) + "/approve", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(MerchantOf(v.Value().Get("merchant")));
+}
+
+Result<MerchantApplication> OperatorClient::RejectApplication(const std::string& id, const std::string& message) const {
+    using R = Result<MerchantApplication>;
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("message", JSONValue(message));
+    const auto v = Ask("POST", "/v1/applications/" + Encode(id) + "/reject", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(ApplicationOf(v.Value().Get("application")));
 }
 
 Result<Merchant> OperatorClient::SuspendMerchant(const std::string& id, const std::string& clause, const std::string& reason, int days) const {
@@ -465,6 +840,42 @@ Result<Submission> OperatorClient::Decide(const std::string& id, const std::stri
     body.Set("message", JSONValue(message));
     body.Set("sequence", JSONValue(sequence));
     const auto v = Ask("POST", "/v1/submissions/" + Encode(id) + "/decide", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(SubmissionOf(v.Value()));
+}
+
+Result<DownloadedPackage> OperatorClient::DownloadPackage(const std::string& submissionId, const JSONValue& package, const std::string& folderUtf8) const {
+    using R = Result<DownloadedPackage>;
+    if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL: `settings set url <https://...>`");
+    if (settings_.token.empty()) return R::Failure(ErrorCode::InvalidArgument, "No operator token: sign in first");
+    const std::string sha = package.Get("sha256").GetString();
+    if (sha.empty()) return R::Failure(ErrorCode::InvalidArgument, "The package names no SHA-256");
+    std::error_code ec;
+    const fs::path folder = UltraCanvas::PathFromUtf8(folderUtf8);
+    fs::create_directories(folder, ec);
+    if (ec) return R::Failure(ErrorCode::IoError, "Cannot create " + folderUtf8, ec.message());
+    const fs::path file = folder / UltraCanvas::PathFromUtf8(PackageFileName(package));
+    const MarketReply reply = download_(settings_.url + "/v1/submissions/" + Encode(submissionId) + "/packages/" + Encode(sha), "Bearer " + settings_.token,
+                                        UltraCanvas::PathToUtf8(file));
+    if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);
+    if (reply.status < 200 || reply.status >= 300) {
+        fs::remove(file, ec);
+        UltraCanvas::JSONParseResult parse;
+        const JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
+        const std::string description = parse.success && v.IsObject() ? v.Get("error_description").GetString() : std::string();
+        return R::Failure(reply.status == 404 ? ErrorCode::NotFound : reply.status == 401 ? ErrorCode::SignatureInvalid : ErrorCode::NetworkError,
+                          description.empty() ? "The marketplace service answered HTTP " + std::to_string(reply.status) : description, "HTTP " + std::to_string(reply.status));
+    }
+    DownloadedPackage out;
+    out.sha256 = sha;
+    out.fileUtf8 = UltraCanvas::PathToUtf8(file);
+    out.size = fs::is_regular_file(file, ec) ? static_cast<uint64_t>(fs::file_size(file, ec)) : 0;
+    return R::Succeed(out);
+}
+
+Result<Submission> OperatorClient::RunChecks(const std::string& id) const {
+    using R = Result<Submission>;
+    const auto v = Ask("POST", "/v1/submissions/" + Encode(id) + "/checks", "{}");
     if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
     return R::Succeed(SubmissionOf(v.Value()));
 }
@@ -643,6 +1054,163 @@ Result<AuditPage> OperatorClient::Audit(int64_t since, int limit) const {
 Result<AuditCheck> OperatorClient::VerifyAudit() const {
     using R = Result<AuditCheck>;
     const auto v = Ask("GET", "/v1/audit/verify");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    AuditCheck c;
+    c.ok = v.Value().Get("ok").GetBoolean(false);
+    c.rows = v.Value().Get("rows").GetInteger(0);
+    c.brokenAt = v.Value().Get("broken_at").GetInteger(0);
+    c.lastHash = v.Value().Get("last_hash").GetString();
+    return R::Succeed(c);
+}
+
+// ===========================================================================
+// The users: the account service, with its own token
+// ===========================================================================
+Result<JSONValue> OperatorClient::AskAccount(const std::string& method, const std::string& path, const std::string& jsonBody) const {
+    using R = Result<JSONValue>;
+    if (settings_.accountUrl.empty()) return R::Failure(ErrorCode::InvalidArgument, "No account service URL: `settings set account_url <https://...>`");
+    const std::string bearer = settings_.AccountBearer();
+    if (bearer.empty()) return R::Failure(ErrorCode::InvalidArgument, "No account operator token: sign in (`signin <email>`), or `settings set account_token <token>` (the service's ULTRASTORE_ACCOUNT_OPERATOR_TOKEN)");
+    const MarketReply reply = call_(method, settings_.accountUrl + path, "Bearer " + bearer, jsonBody);
+    if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The account service could not be reached", reply.error);
+    UltraCanvas::JSONParseResult parse;
+    const JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
+    if (reply.status < 200 || reply.status >= 300) {
+        const std::string description = parse.success && v.IsObject() ? v.Get("error_description").GetString() : std::string();
+        return R::Failure(reply.status == 404 ? ErrorCode::NotFound : reply.status == 401 ? ErrorCode::SignatureInvalid : ErrorCode::NetworkError,
+                          description.empty() ? "The account service answered HTTP " + std::to_string(reply.status) : description,
+                          "HTTP " + std::to_string(reply.status));
+    }
+    if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The account service's answer is not JSON", parse.errorMessage);
+    return R::Succeed(v);
+}
+
+Result<std::string> OperatorClient::AccountHealth() const {
+    using R = Result<std::string>;
+    if (settings_.accountUrl.empty()) return R::Failure(ErrorCode::InvalidArgument, "No account service URL: `settings set account_url <https://...>`");
+    const MarketReply reply = call_("GET", settings_.accountUrl + "/healthz", {}, {});
+    if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The account service could not be reached", reply.error);
+    if (reply.status < 200 || reply.status >= 300) return R::Failure(ErrorCode::NetworkError, "The account service answered HTTP " + std::to_string(reply.status), reply.body);
+    return R::Succeed(reply.body);
+}
+
+Result<UsersPage> OperatorClient::Users(const std::string& state, const std::string& query) const {
+    using R = Result<UsersPage>;
+    std::string path = "/v1/users";
+    std::string sep = "?";
+    if (!state.empty()) { path += sep + "state=" + Encode(state); sep = "&"; }
+    if (!query.empty()) { path += sep + "q=" + Encode(query); }
+    const auto v = AskAccount("GET", path);
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    UsersPage page;
+    for (const JSONValue& u : v.Value().Get("users").GetElements()) page.users.push_back(UserOf(u));
+    page.stats = UserStatsOf(v.Value().Get("stats"));
+    return R::Succeed(page);
+}
+
+Result<UserFile> OperatorClient::GetUser(const std::string& id) const {
+    using R = Result<UserFile>;
+    const auto v = AskAccount("GET", "/v1/users/" + Encode(id));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(UserFileOf(v.Value()));
+}
+
+Result<UserStats> OperatorClient::GetUserStats() const {
+    using R = Result<UserStats>;
+    const auto v = AskAccount("GET", "/v1/stats");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(UserStatsOf(v.Value()));
+}
+
+Result<UserNotice> OperatorClient::NotifyUser(const std::string& id, const std::string& kind, const std::string& subject, const std::string& text) const {
+    using R = Result<UserNotice>;
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("kind", JSONValue(kind.empty() ? std::string("notice") : kind));
+    body.Set("subject", JSONValue(subject));
+    body.Set("text", JSONValue(text));
+    const auto v = AskAccount("POST", "/v1/users/" + Encode(id) + "/notice", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    const JSONValue n = v.Value().Get("notice");
+    UserNotice out;
+    out.id = n.Get("id").GetString(); out.kind = n.Get("kind").GetString(); out.subject = n.Get("subject").GetString(); out.text = n.Get("text").GetString();
+    out.createdAt = n.Get("created_at").GetString(); out.createdBy = n.Get("created_by").GetString();
+    return R::Succeed(out);
+}
+
+namespace {
+JSONValue ReasonBody(const std::string& reason) {
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("reason", JSONValue(reason));
+    return body;
+}
+} // namespace
+
+Result<int> OperatorClient::SignOutUser(const std::string& id, const std::string& reason) const {
+    using R = Result<int>;
+    const auto v = AskAccount("POST", "/v1/users/" + Encode(id) + "/signout-all", UltraCanvas::JSON::Serialize(ReasonBody(reason)));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(static_cast<int>(v.Value().Get("signed_out").GetInteger(0)));
+}
+
+Result<void> OperatorClient::ResetUserTwoFactor(const std::string& id, const std::string& reason) const {
+    const auto v = AskAccount("POST", "/v1/users/" + Encode(id) + "/two-factor/reset", UltraCanvas::JSON::Serialize(ReasonBody(reason)));
+    if (!v) return Result<void>::Failure(v.error.code, v.error.message, v.error.detail);
+    return Result<void>::Succeed();
+}
+
+Result<User> OperatorClient::SuspendUser(const std::string& id, const std::string& reason, int days) const {
+    using R = Result<User>;
+    JSONValue body = ReasonBody(reason);
+    body.Set("days", JSONValue(static_cast<int64_t>(days)));
+    const auto v = AskAccount("POST", "/v1/users/" + Encode(id) + "/suspend", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(UserOf(v.Value().Get("user")));
+}
+
+Result<User> OperatorClient::ReinstateUser(const std::string& id, const std::string& reason) const {
+    using R = Result<User>;
+    const auto v = AskAccount("POST", "/v1/users/" + Encode(id) + "/reinstate", UltraCanvas::JSON::Serialize(ReasonBody(reason)));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(UserOf(v.Value().Get("user")));
+}
+
+Result<void> OperatorClient::DeleteUser(const std::string& id, const std::string& reason) const {
+    const auto v = AskAccount("POST", "/v1/users/" + Encode(id) + "/delete", UltraCanvas::JSON::Serialize(ReasonBody(reason)));
+    if (!v) return Result<void>::Failure(v.error.code, v.error.message, v.error.detail);
+    return Result<void>::Succeed();
+}
+
+Result<UserArchive> OperatorClient::ReleaseArchive(const std::string& archiveId) const {
+    using R = Result<UserArchive>;
+    const auto v = AskAccount("POST", "/v1/archives/" + Encode(archiveId) + "/release", "{}");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    const JSONValue a = v.Value().Get("archive");
+    UserArchive out;
+    out.id = a.Get("id").GetString(); out.state = a.Get("state").GetString(); out.due = a.Get("due").GetString();
+    out.requestedAt = a.Get("requested_at").GetString(); out.releasedAt = a.Get("released_at").GetString();
+    return R::Succeed(out);
+}
+
+Result<std::pair<int, int>> OperatorClient::AccountMaintenance() const {
+    using R = Result<std::pair<int, int>>;
+    const auto v = AskAccount("POST", "/v1/maintenance", "{}");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(std::make_pair(static_cast<int>(v.Value().Get("deleted").GetInteger(0)), static_cast<int>(v.Value().Get("reinstated").GetInteger(0))));
+}
+
+Result<AuditPage> OperatorClient::AccountAudit(int64_t since, int limit) const {
+    using R = Result<AuditPage>;
+    const auto v = AskAccount("GET", "/v1/audit?since=" + std::to_string(since) + "&limit=" + std::to_string(limit));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    AuditPage page;
+    for (const JSONValue& r : v.Value().Get("audit").GetElements()) page.rows.push_back(AuditRowOf(r));
+    page.next = page.rows.empty() ? since : page.rows.back().id;
+    return R::Succeed(page);
+}
+
+Result<AuditCheck> OperatorClient::VerifyAccountAudit() const {
+    using R = Result<AuditCheck>;
+    const auto v = AskAccount("GET", "/v1/audit/verify");
     if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
     AuditCheck c;
     c.ok = v.Value().Get("ok").GetBoolean(false);

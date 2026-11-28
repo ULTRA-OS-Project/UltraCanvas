@@ -29,6 +29,12 @@
 // hardware-gated; AES-CBC and AES-CTR (and the PBKDF2 those formats key them
 // with) exist only for foreign formats and are portable.
 //
+// Version: 0.6.1 - UltraCrypt_HashFile and UltraCryptHasher take UltraCryptHashOptions and refuse
+//                  SHA1 without allowLegacy, as UltraCrypt_Hash always did
+// Version: 0.6.0 - UltraCrypt_AesGcmDecrypt (portable AES-GCM, interop); Argon2id with more than
+//                  one lane (UltraCryptKdfParams::parallelism), for files written elsewhere
+// Version: 0.5.0 - UltraCrypt_DeriveKeyPbkdf2 takes UltraCryptHashOptions: PBKDF2-HMAC-SHA-1 with
+//                  allowLegacy, for OpenDocument's password encryption
 // Version: 0.4.1 - X.509 and CMS in UltraCryptX509.h
 // Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -145,11 +151,15 @@ bool UltraCrypt_ConstantTimeEquals(const void* a, size_t aSize,
 enum class UltraCryptHashAlgorithm : uint8_t {
     // LEGACY. Provided for HMAC-SHA-1 only, which TOTP requires for issuer
     // compatibility and where SHA-1's collision weakness does not apply. As a
-    // plain digest it is collision-broken: UltraCrypt_Hash refuses it unless
-    // UltraCryptHashOptions::allowLegacy is set. One reader sets it, for
-    // interop: UltraCanvasOfficeEncryption, to read the Office 2010 files
-    // whose password key is SHA-1 - a key derivation, which collisions do not
-    // reach. Nothing UltraCanvas writes uses it.
+    // plain digest it is collision-broken: UltraCrypt_Hash, UltraCrypt_HashFile
+    // and UltraCryptHasher all refuse it unless
+    // UltraCryptHashOptions::allowLegacy is set. Two readers set it, for
+    // interop, each for a key derivation, which collisions do not reach:
+    // UltraCanvasOfficeEncryption, to read the Office 2010 files whose
+    // password key is SHA-1, and UltraCanvasOdfEncryption, to read the
+    // OpenDocument files whose key is PBKDF2-HMAC-SHA-1 (every one: ODF 1.2
+    // names no other) from a SHA-1 or SHA-256 start key. Nothing UltraCanvas
+    // writes uses it.
     SHA1,
     SHA256,
     SHA512
@@ -168,18 +178,28 @@ UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
                                  const UltraCryptHashOptions& options =
                                      UltraCryptHashOptions());
 
+// The digest of a file's bytes, read in pieces. SHA1 is refused without
+// options.allowLegacy, as UltraCrypt_Hash refuses it (NotSupported).
 UltraCryptResult UltraCrypt_HashFile(UltraCryptHashAlgorithm algorithm,
                                      const std::string& filePath,
-                                     std::vector<uint8_t>& outDigest);
+                                     std::vector<uint8_t>& outDigest,
+                                     const UltraCryptHashOptions& options =
+                                         UltraCryptHashOptions());
 
 std::string UltraCrypt_ToHex(const std::vector<uint8_t>& bytes);
 bool        UltraCrypt_FromHex(const std::string& hex,
                                std::vector<uint8_t>& outBytes);
 
-// Streaming hash, for files and large payloads.
+// Streaming hash, for files and large payloads. A constructor reports
+// nothing, so a hasher that cannot be used says so through IsValid(): one for
+// SHA1 made without options.allowLegacy (the refusal UltraCrypt_Hash makes),
+// or one made where there is no backend. It then takes no data and Final()
+// returns an empty digest - never the digest of something else.
 class UltraCryptHasher {
 public:
-    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm);
+    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
+                              const UltraCryptHashOptions& options =
+                                  UltraCryptHashOptions());
     ~UltraCryptHasher();
     UltraCryptHasher(const UltraCryptHasher&) = delete;
     UltraCryptHasher& operator=(const UltraCryptHasher&) = delete;
@@ -315,6 +335,29 @@ UltraCryptResult UltraCrypt_AesCbcDecrypt(const UltraCryptSecureBuffer& key,
                                           UltraCryptSecureBuffer& outPlaintext);
 
 // ============================================================================
+// AES-GCM decryption (interop only, portable)
+// ============================================================================
+// AES-GCM (NIST SP 800-38D) for reading data produced elsewhere - LibreOffice's
+// ODF 1.4 encryption, W3C XML Encryption 1.1's aes*-gcm. Unlike the AEAD API's
+// Aes256Gcm above (libsodium, AES-NI only, 256-bit keys) it is the module's
+// own constant-time AES and a constant-time GHASH, so it works on every CPU,
+// with a 128-, 192- or 256-bit key. Decryption only: nothing UltraCanvas
+// writes uses GCM.
+//
+// `ciphertext` ends with the 16-byte tag. The tag is checked before anything
+// is released: AuthenticationFailed, and outPlaintext empty, when the key, the
+// IV, the associated data or a byte of the ciphertext is not what was sealed.
+struct UltraCryptGcmParams {
+    std::vector<uint8_t> iv;             // 12 bytes usually; any non-empty length is taken
+    std::vector<uint8_t> associatedData;
+};
+
+UltraCryptResult UltraCrypt_AesGcmDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptGcmParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
+
+// ============================================================================
 // AES-CTR (interop only)
 // ============================================================================
 // AES in counter mode (NIST SP 800-38A), for formats defined elsewhere that
@@ -378,10 +421,14 @@ struct UltraCryptKdfParams {
 
     uint32_t iterations   = 0;   // Argon2id passes ("opslimit")
     uint32_t memoryKiB    = 0;   // Argon2id memory cost
-    uint32_t parallelism  = 1;   // Argon2id lanes. The backing implementation
-                                 // fixes this at 1; any other value is
-                                 // rejected rather than silently ignored, so
-                                 // stored parameters always mean what they say.
+    uint32_t parallelism  = 1;   // Argon2id lanes. 1 is what UltraCanvas writes
+                                 // (libsodium). More - what a file written
+                                 // elsewhere records, LibreOffice's 4 - goes
+                                 // through the module's own RFC 9106
+                                 // implementation, checked against libargon2;
+                                 // never silently computed with 1. Then the
+                                 // salt may be 8 bytes or more, and the memory
+                                 // must be 8 KiB per lane or more.
     size_t   outputLength = 32;
 };
 
@@ -416,15 +463,19 @@ UltraCryptResult UltraCrypt_DeriveKeyHkdf(
 // storage passphrases (PBKDF2-HMAC-SHA-512), and the like. It is not
 // memory-hard, so a GPU tries passwords against it far faster than against
 // Argon2id: never use it for anything UltraCanvas defines - that is
-// UltraCrypt_DeriveKeyFromPassword. SHA1 is rejected; SHA256 and SHA512 are
-// offered. `iterations` is the format's (at least 1); `salt` may be empty.
+// UltraCrypt_DeriveKeyFromPassword. SHA256 and SHA512 are offered; SHA1
+// (PBKDF2-HMAC-SHA-1) only with options.allowLegacy, for the one format that
+// requires it: OpenDocument's password encryption (ODF 1.2, what LibreOffice
+// writes), read by UltraCanvasOdfEncryption. `iterations` is the format's (at
+// least 1); `salt` may be empty.
 UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(
         UltraCryptHashAlgorithm algorithm,
         const UltraCryptSecureBuffer& password,
         const std::vector<uint8_t>& salt,
         uint32_t iterations,
         size_t outputLength,
-        UltraCryptSecureBuffer& outKey);
+        UltraCryptSecureBuffer& outKey,
+        const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
 // ============================================================================
 // Random generation

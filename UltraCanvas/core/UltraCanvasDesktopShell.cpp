@@ -6,6 +6,9 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.14.0 - GetPointerPosition
+// Version: 1.13.0 - CanCaptureScreen; macOS takes its screen capture from
+//                  OS/MacOS/UltraCanvasMacOSScreenCapture.mm (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.12.0 - OpenDisplaySettings, CanOpenDisplaySettings
 // Version: 1.11.0 - CaptureWindowImage (scaled down here); MatchApplication
 //                  matches Windows' AppUserModelID first
@@ -21,7 +24,7 @@
 // Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
 // Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
 // Version: 1.2.0 - the platform's own application list; shortcut entries launch
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -29,12 +32,16 @@
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasHardwareInfo.h"
+#include "UltraCanvasHostedApps.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -336,9 +343,21 @@ std::vector<DesktopScreenInfo> UltraCanvasDesktopShell::ListScreens() {
     return screens;
 }
 
+bool UltraCanvasDesktopShell::GetPointerPosition(int& x, int& y) {
+    return DesktopShellBackend::GetPointerPosition(x, y);
+}
+
 bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom) {
     if (windowId == 0 || left < 0 || right < 0 || top < 0 || bottom < 0) return false;
     return DesktopShellBackend::ReserveScreenEdges(windowId, left, right, top, bottom);
+}
+
+bool UltraCanvasDesktopShell::CanCaptureScreen() {
+#if defined(ULTRACANVAS_DESKTOPSHELL_NATIVE) || defined(ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
+    return true;
+#else
+    return false;
+#endif
 }
 
 bool UltraCanvasDesktopShell::CaptureScreen(const std::string& pngPath, std::string* error) {
@@ -420,6 +439,20 @@ DesktopScreenImage ShrinkImage(const DesktopScreenImage& source, int width, int 
 }
 
 } // namespace
+
+uint64_t UltraCanvasDesktopShell::ShowWindowThumbnail(uint64_t destinationId, uint64_t sourceId, int x, int y,
+                                                      int width, int height) {
+    if (destinationId == 0 || sourceId == 0 || width <= 0 || height <= 0) return 0;
+    return DesktopShellBackend::ShowWindowThumbnail(destinationId, sourceId, x, y, width, height);
+}
+
+void UltraCanvasDesktopShell::HideWindowThumbnail(uint64_t thumbnail) {
+    if (thumbnail != 0) DesktopShellBackend::HideWindowThumbnail(thumbnail);
+}
+
+bool UltraCanvasDesktopShell::KeepMinimizedWindowsHidden() {
+    return DesktopShellBackend::KeepMinimizedWindowsHidden();
+}
 
 bool UltraCanvasDesktopShell::CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
                                                  std::string* error) {
@@ -723,6 +756,10 @@ std::string UltraCanvasDesktopShell::FindProgram(const std::string& program) {
 bool UltraCanvasDesktopShell::LaunchProgram(const std::string& program,
                                             const std::vector<std::string>& arguments,
                                             std::string* error) {
+    // An application this program carries (MobilePC's UltraFiler) is started
+    // here, with the program's arguments: there is no executable to find.
+    const std::string hosted = UltraCanvasHostedApps::IdForProgram(program);
+    if (!hosted.empty()) return UltraCanvasHostedApps::Launch(hosted, arguments, error);
     const std::string path = FindProgram(program);
     if (path.empty()) {
         if (error) *error = "\"" + program + "\" is not installed next to this application or on the PATH.";
@@ -1084,19 +1121,74 @@ bool UltraCanvasTrayHost::ActivateMenuItem(const std::string& id, int32_t itemId
 
 // ===== FALLBACK BACKEND =====
 
+// ===== EMBEDDED HOST =====
+// An in-program window manager answering for the fallback (see the header).
+
+namespace DesktopShellBackend {
+
+    namespace {
+        std::atomic<EmbeddedHost*> g_embeddedHost{nullptr};
+
+        // What a shell monitor waits on: a count of changes.
+        std::mutex g_embeddedChangeMutex;
+        std::condition_variable g_embeddedChanged;
+        uint64_t g_embeddedChanges = 0;
+    }
+
+    void SetEmbeddedHost(EmbeddedHost* host) {
+        g_embeddedHost.store(host);
+        NotifyEmbeddedChange();
+    }
+
+    EmbeddedHost* GetEmbeddedHost() { return g_embeddedHost.load(); }
+
+    void NotifyEmbeddedChange() {
+        {
+            std::lock_guard<std::mutex> lock(g_embeddedChangeMutex);
+            ++g_embeddedChanges;
+        }
+        g_embeddedChanged.notify_all();
+    }
+
+} // namespace DesktopShellBackend
+
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE
 namespace DesktopShellBackend {
 
-    std::string BackendName() { return "null"; }
-    bool IsAvailable() { return false; }
+    std::string BackendName() {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->Name();
+        return "null";
+    }
+    bool IsAvailable() { return GetEmbeddedHost() != nullptr; }
 
-    std::vector<DesktopWindowInfo> ListWindows() { return {}; }
-    uint64_t GetActiveWindow() { return 0; }
-    bool ActivateWindow(uint64_t) { return false; }
-    bool MinimizeWindow(uint64_t) { return false; }
-    bool CloseWindow(uint64_t) { return false; }
-    bool GetWindowBounds(uint64_t, int&, int&, int&, int&) { return false; }
-    bool MoveWindowTo(uint64_t, int, int) { return false; }
+    std::vector<DesktopWindowInfo> ListWindows() {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ListWindows();
+        return {};
+    }
+    uint64_t GetActiveWindow() {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->GetActiveWindow();
+        return 0;
+    }
+    bool ActivateWindow(uint64_t id) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ActivateWindow(id);
+        return false;
+    }
+    bool MinimizeWindow(uint64_t id) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->MinimizeWindow(id);
+        return false;
+    }
+    bool CloseWindow(uint64_t id) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->CloseWindow(id);
+        return false;
+    }
+    bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->GetWindowBounds(id, x, y, width, height);
+        return false;
+    }
+    bool MoveWindowTo(uint64_t id, int x, int y) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->MoveWindowTo(id, x, y);
+        return false;
+    }
     bool KillProcess(int, std::string& error) {
         error = "Programs are not ended from here on this platform yet.";
         return false;
@@ -1107,9 +1199,23 @@ namespace DesktopShellBackend {
     bool SetVirtualDesktopCount(int) { return false; }
     bool MoveWindowToVirtualDesktop(uint64_t, int) { return false; }
 
-    bool GetScreenSize(int&, int&) { return false; }
-    std::vector<DesktopScreenInfo> ListScreens() { return {}; }
-    bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
+    bool GetScreenSize(int& width, int& height) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->GetScreenSize(width, height);
+        return false;
+    }
+    std::vector<DesktopScreenInfo> ListScreens() {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ListScreens();
+        return {};
+    }
+    bool GetPointerPosition(int& x, int& y) {
+        x = y = 0;
+        return false;
+    }
+    bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ReserveScreenEdges(id, left, right, top, bottom);
+        return false;
+    }
+#ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE
     bool CaptureScreen(const std::string&, std::string& error) {
         error = "Screenshots are not available on this platform yet.";
         return false;
@@ -1124,15 +1230,26 @@ namespace DesktopShellBackend {
         error = "Screenshots are not available on this platform yet.";
         return false;
     }
+#endif // !ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE
     bool CaptureWindowImage(uint64_t, DesktopScreenImage& out, std::string& error) {
         out = DesktopScreenImage();
         error = "Window pictures are not available on this platform yet.";
         return false;
     }
+    uint64_t ShowWindowThumbnail(uint64_t, uint64_t, int, int, int, int) { return 0; }
+    void HideWindowThumbnail(uint64_t) {}
+    bool KeepMinimizedWindowsHidden() { return false; }
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
-    bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+    bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ListApplications(iconSize, out);
+        return false;
+    }
     bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) {
+            if (host->LaunchShortcut(shortcutPath, error)) return true;
+            if (!error.empty()) return false;
+        }
         return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
     }
 #endif
@@ -1202,11 +1319,36 @@ namespace DesktopShellBackend {
             "Camera, microphone, speaker, battery and keyboard state are not read on this platform yet.");
     }
 
-    struct MonitorState {};
-    MonitorState* MonitorOpen() { return nullptr; }
-    bool MonitorWait(MonitorState*) { return false; }
-    void MonitorWake(MonitorState*) {}
-    void MonitorClose(MonitorState*) {}
+    // With an embedded host a monitor wakes on each change it reports;
+    // without one there is nothing to watch.
+    struct MonitorState {
+        uint64_t seen = 0;
+        bool stop = false;
+    };
+    MonitorState* MonitorOpen() {
+        if (!GetEmbeddedHost()) return nullptr;
+        auto* state = new MonitorState();
+        std::lock_guard<std::mutex> lock(g_embeddedChangeMutex);
+        state->seen = g_embeddedChanges;
+        return state;
+    }
+    bool MonitorWait(MonitorState* state) {
+        if (!state) return false;
+        std::unique_lock<std::mutex> lock(g_embeddedChangeMutex);
+        g_embeddedChanged.wait(lock, [state]() { return state->stop || g_embeddedChanges != state->seen; });
+        if (state->stop) return false;
+        state->seen = g_embeddedChanges;
+        return true;
+    }
+    void MonitorWake(MonitorState* state) {
+        if (!state) return;
+        {
+            std::lock_guard<std::mutex> lock(g_embeddedChangeMutex);
+            state->stop = true;
+        }
+        g_embeddedChanged.notify_all();
+    }
+    void MonitorClose(MonitorState* state) { delete state; }
 
     struct ShortcutState {};
     ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, bool /*exclusive*/) {

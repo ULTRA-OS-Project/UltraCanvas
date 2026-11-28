@@ -18,17 +18,26 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.9.1 - the OfficeArt records (properties, BStore, BLIPs, freeforms) read through
+//                 UltraCanvasOfficeArt.h, shared with the .ppt reader
+// Version: 2.9.0 - footnotes and endnotes: their references (PlcffndRef / PlcfendRef) and words
+// Version: 2.8.0 - UCRichDocument::breakAfterSlash is false for Word's documents
+// Version: 2.7.0 - the sections after the first: their header, footer and margins; shapes' shadows
+// Version: 2.6.0 - paragraph spacing in cells; text unkerned
+// Version: 2.5.0 - documents of several sections (page size), row heights, merged cells, a cell's empty
+//                 paragraphs, character styles (sprmCIstd), letter spacing, negative float offsets
 // Version: 2.4.0 - EMF and WMF pictures (their compressed BLIPs inflated), pictures and fills
 // Version: 2.3.0 - Pattern fills (their 1-bit bitmaps), texture and picture fills
 // Version: 2.2.0 - Gradient (shade) fills
 // Version: 2.1.0 - Drawn shapes and groups: lines, rectangles, ellipses, Word 97's other
 //                 shape types, freeforms, groups with pictures and words
 // Version: 2.0.1
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasWordFormatInternal.h"
+#include "UltraCanvasOfficeArt.h"
 #include "UltraCanvasCompoundFile.h"
 #include "miniz.h"
 
@@ -111,6 +120,8 @@ constexpr uint16_t kSprmCIss = 0x2A48;
 constexpr uint16_t kSprmCHps = 0x4A43;
 constexpr uint16_t kSprmCRgFtc0 = 0x4A4F;
 constexpr uint16_t kSprmCCv = 0x6870;
+constexpr uint16_t kSprmCIstd = 0x4A30;          // the character style a run has
+constexpr uint16_t kSprmCDxaSpace = 0x8840;      // letter spacing, twips
 constexpr uint16_t kSprmCPicLocation = 0x6A03;
 constexpr uint16_t kSprmCSymbol = 0x6A09;
 constexpr uint16_t kSprmCHighlight = 0x2A0C;
@@ -141,6 +152,7 @@ constexpr uint16_t kSprmPOutLvl = 0x2640;
 constexpr uint16_t kSprmPFPageBreakBefore = 0x2407;
 constexpr uint16_t kSprmTDefTable = 0xD608;
 constexpr uint16_t kSprmTTableHeader = 0x3404;
+constexpr uint16_t kSprmTDyaRowHeight = 0x9407;
 constexpr uint16_t kSprmTTableBorders80 = 0xD605;
 constexpr uint16_t kSprmTTableBorders = 0xD613;
 constexpr uint16_t kSprmTDefTableShd80 = 0xD609;
@@ -231,6 +243,7 @@ struct DocCharProps {
     int symbolFont = -1;
     uint16_t symbolChar = 0;
     std::string highlight;        // highlighter or character shading, "#RRGGBB"
+    int spacingTwips = 0;         // letters set wider (> 0) or tighter (< 0)
 };
 
 struct DocParaProps {
@@ -244,6 +257,7 @@ struct DocParaProps {
     int outlineLevel = 9;         // 9 = body text
     bool pageBreakBefore = false;
     bool headerRow = false;
+    int rowHeight = 0;            // twips: > 0 at least, < 0 exactly (sprmTDyaRowHeight)
     std::vector<int> cellEdges;   // twips, one more than the row's cells
     // Geometry, in twips (1/20 pt). Word's defaults are all zero.
     int leftIndent = 0;
@@ -266,6 +280,9 @@ struct DocParaProps {
         std::string background;
         RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
         float padding[4] = {-1.0f, -1.0f, -1.0f, -1.0f};   // top, left, bottom, right (points)
+        // Merged with the cell to its left, or with the one above it; a
+        // cell that starts a run of cells merged downwards.
+        bool mergedAcross = false, mergedDown = false, startsMergeDown = false;
     };
     int tableJc = 0;              // 0 left, 1 centre, 2 right
     int gapHalf = -1;             // twips; half the room between two cells' text
@@ -425,6 +442,7 @@ void ApplyCharSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
             case kSprmCKul: props.underline = b != 0; break;
             case kSprmCIss: props.position = b; break;
             case kSprmCHps: props.halfPoints = std::max<int>(2, ReadU16(data, sprm.operand)); break;
+            case kSprmCDxaSpace: props.spacingTwips = ReadI16(data, sprm.operand); break;
             case kSprmCRgFtc0: props.fontIndex = ReadU16(data, sprm.operand); break;
             case kSprmCIco: props.color = IcoColor(b); break;
             case kSprmCCv: {
@@ -502,6 +520,7 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                 ApplyTabChanges(data, sprm.operand, sprm.operandSize, true, props);
                 break;
             case kSprmTTableHeader: props.headerRow = b != 0; break;
+            case kSprmTDyaRowHeight: props.rowHeight = ReadI16(data, sprm.operand); break;
             case kSprmTDefTable: {
                 // cb (2) | itcMac (1) | rgdxaCenter[itcMac + 1] (2 each) |
                 // rgTc80[itcMac] (20 each: flags, width, then four Brc80
@@ -523,6 +542,10 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                     if (tc + 20 > end) break;
                     auto& format = props.cellFormats[static_cast<size_t>(i)];
                     const uint16_t tcgrf = ReadU16(data, tc);
+                    // fFirstMerged (bit 0), fMerged (1), fVertMerge (5), fVertRestart (6).
+                    format.mergedAcross = (tcgrf & 0x02) != 0 && (tcgrf & 0x01) == 0;
+                    format.startsMergeDown = (tcgrf & 0x60) == 0x60;
+                    format.mergedDown = (tcgrf & 0x20) != 0 && !format.startsMergeDown;
                     const int vertical = (tcgrf >> 7) & 3;
                     format.verticalAlign = vertical == 1 ? RichVerticalAlign::Middle
                                          : vertical == 2 ? RichVerticalAlign::Bottom : RichVerticalAlign::Top;
@@ -710,6 +733,16 @@ public:
         if (!style.defined) return nullptr;
         Resolve(style);
         return &style;
+    }
+
+    // Lays character style `istd` (and the ones it is based on, first) over
+    // `props`: only what the style itself states changes.
+    void ApplyCharacterStyle(int istd, const DocCharProps& paragraphStyle, DocCharProps& props, int depth = 0) {
+        if (depth > 16 || istd < 0 || istd >= static_cast<int>(styles_.size())) return;
+        const DocStyle& style = styles_[static_cast<size_t>(istd)];
+        if (!style.defined || style.kind != 2) return;
+        if (style.base != 0x0FFF && style.base != istd) ApplyCharacterStyle(style.base, paragraphStyle, props, depth + 1);
+        if (style.chpxEnd > style.chpx) ApplyCharSprms(*table_, style.chpx, style.chpxEnd, paragraphStyle, props);
     }
 
     // Character properties of paragraph style `istd`, fully resolved.
@@ -1033,107 +1066,10 @@ bool IsMonospaceFont(const std::string& family) {
 // the Data stream at a PICF header followed by OfficeArt records; the image
 // itself is a BLIP record among them.
 
-// A PNG, JPEG, EMF or WMF BLIP record at data[at] (its 8-byte header first),
-// ending by `end`: the picture's bytes (a metafile inflated). Anything else,
-// or a damaged record, is not.
-bool ReadBlipRecord(const std::vector<uint8_t>& data, size_t at, size_t end,
-                    std::vector<uint8_t>& image, std::string& mimeType) {
-    if (at + 8 > end || end > data.size()) return false;
-    const uint16_t verInstance = ReadU16(data, at);
-    const uint16_t type = ReadU16(data, at + 2);
-    const uint32_t length = ReadU32(data, at + 4);
-    if ((verInstance & 0x0F) != 0 || at + 8 + length > end) return false;
-    const uint16_t instance = verInstance >> 4;
-    size_t header = 0;
-    if (type == 0xF01E) {                                  // PNG
-        header = (instance == 0x6E1) ? 33 : 17;
-        mimeType = "image/png";
-    } else if (type == 0xF01D || type == 0xF02A) {         // JPEG
-        header = (instance == 0x46B || instance == 0x6E3) ? 33 : 17;
-        mimeType = "image/jpeg";
-    } else if (type == 0xF01A || type == 0xF01B) {         // EMF, WMF
-        // One or two UIDs, then a metafile header (its uncompressed size,
-        // bounds, size, saved size, compression), then the metafile -
-        // DEFLATE-compressed (0x00) or as it is (0xFE).
-        const bool emf = type == 0xF01A;
-        const size_t uids = (instance == (emf ? 0x3D5 : 0x217)) ? 32 : 16;
-        const size_t meta = at + 8 + uids;
-        if (meta + 34 > at + 8 + length) return false;
-        const size_t rawSize = ReadU32(data, meta);
-        const size_t savedSize = ReadU32(data, meta + 28);
-        const uint8_t compression = data[meta + 32];
-        const size_t start = meta + 34;
-        if (savedSize == 0 || start + savedSize > at + 8 + length || rawSize == 0 || rawSize > 64u * 1024u * 1024u) {
-            return false;
-        }
-        if (compression == 0x00) {
-            image.resize(rawSize);
-            mz_ulong out = static_cast<mz_ulong>(rawSize);
-            if (mz_uncompress(image.data(), &out, data.data() + start, static_cast<mz_ulong>(savedSize)) != MZ_OK) {
-                image.clear();
-                return false;
-            }
-            image.resize(out);
-        } else if (compression == 0xFE) {
-            image.assign(data.begin() + static_cast<std::ptrdiff_t>(start),
-                         data.begin() + static_cast<std::ptrdiff_t>(start + savedSize));
-        } else {
-            return false;
-        }
-        mimeType = emf ? "image/x-emf" : "image/x-wmf";
-        // An EMF says " EMF" at byte 40; a WMF starts with its header (type
-        // 1 or 2, nine words long).
-        const bool looksRight = emf ? (image.size() > 44 && image[40] == ' ' && image[41] == 'E')
-                                    : (image.size() > 18 && image[2] == 9 && image[3] == 0);
-        if (looksRight) return true;
-        image.clear();
-        return false;
-    } else {
-        return false;
-    }
-    if (header >= length) return false;
-    image.assign(data.begin() + static_cast<std::ptrdiff_t>(at + 8 + header),
-                 data.begin() + static_cast<std::ptrdiff_t>(at + 8 + length));
-    const bool png = image.size() > 4 && image[0] == 0x89 && image[1] == 'P';
-    const bool jpeg = image.size() > 3 && image[0] == 0xFF && image[1] == 0xD8;
-    if ((mimeType == "image/png" && png) || (mimeType == "image/jpeg" && jpeg)) return true;
-    image.clear();
-    return false;
-}
-
-// A pattern fill's bitmap (a DIB BLIP holding an 8 x 8, 1-bit picture) as
-// RichShape's "bits:" tile: the darker of its two colours is the pattern.
-bool ReadPatternBlip(const std::vector<uint8_t>& data, size_t at, size_t end, std::string& tile) {
-    if (at + 8 > end || end > data.size()) return false;
-    const uint16_t verInstance = ReadU16(data, at);
-    const uint16_t type = ReadU16(data, at + 2);
-    const uint32_t length = ReadU32(data, at + 4);
-    if (type != 0xF01F || at + 8 + length > end) return false;
-    const size_t header = (verInstance >> 4) == 0x7A9 ? 33 : 17;
-    const size_t dib = at + 8 + header;
-    if (dib + 40 + 8 > at + 8 + length) return false;
-    const size_t infoSize = ReadU32(data, dib);
-    const int32_t width = static_cast<int32_t>(ReadU32(data, dib + 4));
-    const int32_t height = static_cast<int32_t>(ReadU32(data, dib + 8));
-    const uint16_t bits = ReadU16(data, dib + 14);
-    if (bits != 1 || width < 8 || height == 0 || std::abs(height) < 8 || infoSize < 40) return false;
-    const size_t palette = dib + infoSize;
-    auto brightness = [&](size_t entry) { return data[entry] + data[entry + 1] + data[entry + 2]; };   // B, G, R
-    const bool oneIsDark = brightness(palette + 4) < brightness(palette);
-    const size_t stride = ((static_cast<size_t>(width) + 31) / 32) * 4;
-    const size_t pixels = palette + 8;
-    if (pixels + stride * static_cast<size_t>(std::abs(height)) > at + 8 + length) return false;
-    tile = "bits:";
-    for (int y = 0; y < 8; ++y) {
-        // Rows are stored bottom-up unless the height is negative.
-        const int row = height > 0 ? height - 1 - y : y;
-        const uint8_t value = data[pixels + static_cast<size_t>(row) * stride];
-        char hex[3];
-        std::snprintf(hex, sizeof hex, "%02X", static_cast<unsigned>(oneIsDark ? value : static_cast<uint8_t>(~value)));
-        tile += hex;
-    }
-    return true;
-}
+// The BLIP readers are OfficeArt's (UltraCanvasOfficeArt.h), shared with the
+// .ppt reader.
+using OfficeArt::ReadBlipRecord;
+using OfficeArt::ReadPatternBlip;
 
 bool ExtractPicture(const std::vector<uint8_t>& data, int32_t location, std::vector<uint8_t>& image,
                     std::string& mimeType, float& widthPt, float& heightPt) {
@@ -1217,12 +1153,27 @@ public:
         LoadOfficeArt();
         LoadShapeAnchors(40, anchors_);            // PlcSpaMom: the main text's shapes
         LoadShapeAnchors(41, headerAnchors_);      // PlcSpaHdr: the headers' and footers'
+        // Footnotes and endnotes: where the body refers to each...
+        const size_t footnoteStory = ccpText, endnoteStory = static_cast<size_t>(ccpText) + ccpFtn + ccpHdd + ccpAtn;
+        const size_t footnotes = LoadNoteReferences(2, RichNote::Kind::Footnote);     // PlcffndRef
+        const size_t endnotes = LoadNoteReferences(46, RichNote::Kind::Endnote);      // PlcfendRef
         activeAnchors_ = &anchors_;
         anchorCpBase_ = 0;
+        recordParagraphStarts_ = true;             // which block each of the body's paragraphs begins
+        notesActive_ = true;
         BuildBlocks(chars);
+        notesActive_ = false;
+        recordParagraphStarts_ = false;
         activeAnchors_ = nullptr;
+        // ...and their words, from the stories after the body's.
+        LoadNoteTexts(allChars, 3, footnoteStory, ccpFtn, 0, footnotes);              // PlcffndTxt
+        LoadNoteTexts(allChars, 47, endnoteStory, ccpEdn, footnotes, endnotes);       // PlcfendTxt
+        if (!doc_.notes.empty()) doc_.UpdateNoteMarks();
         LoadSection();
+        doc_.letterKerning = false;                // Word 97-2003 sets text unkerned unless a run asks
+        doc_.breakAfterSlash = false;              // ...and keeps "a/b" whole
         LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
+        ApplyLaterSections(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
         LoadTextBoxStories(allChars);
         return true;
     }
@@ -1235,8 +1186,11 @@ public:
         int xaPage = 12240, yaPage = 15840, left = 1800, right = 1800, top = 1440, bottom = 1440;
         int headerTop = 720, footerBottom = 720;
         const uint32_t fc = FcAt(6), lcb = LcbAt(6);   // PlcfSed
-        if (lcb >= 4 + 12 && static_cast<size_t>(fc) + lcb <= table_.size()) {
-            const uint32_t fcSepx = ReadU32(table_, fc + 8 + 2);   // first Sed, after two CPs
+        if (lcb >= 4 + 16 && static_cast<size_t>(fc) + lcb <= table_.size()) {
+            // n + 1 CPs, then n Seds of 12 bytes: the first Sed follows all
+            // the CPs (a letter of three sections has four of them).
+            const uint32_t sections = (lcb - 4) / 16;
+            const uint32_t fcSepx = ReadU32(table_, fc + 4 * (sections + 1) + 2);
             if (fcSepx != 0xFFFFFFFFu && fcSepx + 2 <= word_.size()) {
                 const size_t size = ReadU16(word_, fcSepx);
                 ForEachSprm(word_, fcSepx + 2, fcSepx + 2 + size, [&](const Sprm& sprm) {
@@ -1269,6 +1223,61 @@ public:
     // Header and footer stories of the first section (PlcfHdd): six note
     // separators, then per section even/odd header, even/odd footer, first
     // header, first footer. Odd pages' are every page's here.
+    // PlcffndRef / PlcfendRef: the character of the main text each note is
+    // referred to at (n + 1 CPs, then n two-byte flags). Makes the notes, to
+    // be filled in by LoadNoteTexts, and returns how many.
+    size_t LoadNoteReferences(size_t index, RichNote::Kind kind) {
+        const uint32_t fc = FcAt(index), lcb = LcbAt(index);
+        if (lcb < 10 || static_cast<size_t>(fc) + lcb > table_.size()) return 0;
+        const size_t count = (lcb - 4) / 6;
+        for (size_t i = 0; i < count && i < 65536; i++) {
+            RichNote note;
+            note.kind = kind;
+            noteRefs_[ReadU32(table_, fc + i * 4)] = static_cast<int>(doc_.notes.size());
+            doc_.notes.push_back(std::move(note));
+        }
+        return std::min<size_t>(count, 65536);
+    }
+
+    // PlcffndTxt / PlcfendTxt: where each note's words begin in its story
+    // (the CPs of n notes, and the story's end). Each is read with the
+    // body's machinery into its note; the mark it begins with is the view's.
+    void LoadNoteTexts(const std::vector<DocChar>& allChars, size_t index, size_t storyStart, uint32_t ccp,
+                       size_t firstNote, size_t count) {
+        const uint32_t fc = FcAt(index), lcb = LcbAt(index);
+        if (count == 0 || ccp == 0 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        const size_t entries = lcb / 4;
+        for (size_t i = 0; i < count && i + 1 < entries && firstNote + i < doc_.notes.size(); i++) {
+            const size_t begin = ReadU32(table_, fc + i * 4);
+            const size_t end = std::min<size_t>(ReadU32(table_, fc + (i + 1) * 4), ccp);
+            if (end <= begin || storyStart + end > allChars.size()) continue;
+            std::vector<DocChar> text(allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + begin),
+                                      allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + end));
+            std::vector<RichDocBlock> body = std::move(doc_.blocks);
+            doc_.blocks.clear();
+            BuildBlocks(text);
+            std::vector<RichDocBlock> words = std::move(doc_.blocks);
+            doc_.blocks = std::move(body);
+            while (!words.empty() && words.back().type == RichBlockType::Paragraph && words.back().runs.empty()) words.pop_back();
+            // The blank or tab after the note's own mark: the view sets its
+            // mark and the gap itself.
+            if (!words.empty()) {
+                std::vector<RichTextRun>& runs = words.front().runs;
+                while (!runs.empty() && !runs.front().IsInlineImage()) {
+                    std::string& first = runs.front().text;
+                    const size_t kept = first.find_first_not_of(" \t");
+                    if (kept == 0) break;
+                    if (kept != std::string::npos) { first.erase(0, kept); break; }
+                    if (runs.size() == 1) { first.clear(); break; }
+                    runs.erase(runs.begin());
+                }
+            }
+            doc_.notes[firstNote + i].blocks = std::move(words);
+        }
+    }
+    std::map<size_t, int> noteRefs_;              // the main text's CP -> the note referred to there
+    bool notesActive_ = false;                    // the main text is being built
+
     void LoadHeaderStories(const std::vector<DocChar>& allChars, size_t storyStart, uint32_t ccpHdd) {
         const uint32_t fc = FcAt(11), lcb = LcbAt(11);
         if (ccpHdd == 0 || lcb < 4 * 13 || static_cast<size_t>(fc) + lcb > table_.size()) return;
@@ -1295,6 +1304,112 @@ public:
         if (doc_.firstPageDiffers) {
             story(10, doc_.firstPageFurniture.header);
             story(11, doc_.firstPageFurniture.footer);
+        }
+    }
+
+    // What a section's SEPX says of its pages: where the text and the header
+    // and footer stand (twips; unset = Word's defaults), whether its first
+    // page has its own header, and whether it starts a page.
+    struct SectionPages {
+        int top = 1440, bottom = 1440, headerTop = 720, footerBottom = 720;
+        bool titlePage = false;
+        bool newPage = true;
+    };
+    SectionPages ReadSectionPages(uint32_t fcSepx) const {
+        SectionPages pages;
+        if (fcSepx == 0xFFFFFFFFu || fcSepx + 2 > word_.size()) return pages;
+        const size_t size = ReadU16(word_, fcSepx);
+        ForEachSprm(word_, fcSepx + 2, fcSepx + 2 + size, [&](const Sprm& sprm) {
+            const int value = ReadI16(word_, sprm.operand);
+            switch (sprm.code) {
+                case 0x9023: pages.top = std::abs(value); break;                  // sprmSDyaTop
+                case 0x9024: pages.bottom = std::abs(value); break;               // sprmSDyaBottom
+                case 0xB017: pages.headerTop = value; break;                      // sprmSDyaHdrTop
+                case 0xB018: pages.footerBottom = value; break;                   // sprmSDyaHdrBottom
+                case 0x300A: pages.titlePage = word_[sprm.operand] != 0; break;   // sprmSFTitlePage
+                case 0x3009: pages.newPage = word_[sprm.operand] != 0; break;     // sprmSBkc: 0 = continuous
+                default: break;
+            }
+        });
+        return pages;
+    }
+
+    // The sections after the first: each starts at the paragraph its CP
+    // names, with a header and footer of its own where its stories are not
+    // empty (an empty story keeps the section before's), and its own room
+    // for them. PlcfHdd holds six stories per section after the six note
+    // separators: even header, odd header, even footer, odd footer, first
+    // page's header, first page's footer.
+    void ApplyLaterSections(const std::vector<DocChar>& allChars, size_t storyStart, uint32_t ccpHdd) {
+        const uint32_t fc = FcAt(6), lcb = LcbAt(6);       // PlcfSed
+        if (lcb < 4 + 16 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        const uint32_t sections = (lcb - 4) / 16;
+        if (sections < 2) return;
+        const uint32_t fcHdd = FcAt(11), lcbHdd = LcbAt(11);
+        const size_t storyCount = (ccpHdd > 0 && lcbHdd >= 8 && static_cast<size_t>(fcHdd) + lcbHdd <= table_.size())
+                                ? lcbHdd / 4 - 1 : 0;
+        // A story of the PlcfHdd, read like the body. False when it is empty.
+        auto story = [&](size_t index, std::vector<RichDocBlock>& out) {
+            if (index >= storyCount) return false;
+            const size_t begin = ReadU32(table_, fcHdd + index * 4);
+            const size_t end = ReadU32(table_, fcHdd + (index + 1) * 4);
+            if (end <= begin || storyStart + end > allChars.size()) return false;
+            std::vector<DocChar> text(allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + begin),
+                                      allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + end));
+            std::vector<RichDocBlock> body = std::move(doc_.blocks);
+            doc_.blocks.clear();
+            activeAnchors_ = &headerAnchors_;
+            anchorCpBase_ = begin;
+            BuildBlocks(text);
+            activeAnchors_ = nullptr;
+            out = std::move(doc_.blocks);
+            doc_.blocks = std::move(body);
+            while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
+            return true;
+        };
+        // What a section inherits: the first section's, as its stories say.
+        RichPageFurniture pagesNow, firstNow;
+        story(7, pagesNow.header);
+        story(9, pagesNow.footer);
+        story(10, firstNow.header);
+        story(11, firstNow.footer);
+        bool ownFurniture = false;
+        const size_t seds = fc + 4 * (sections + 1);
+        for (uint32_t k = 1; k < sections; ++k) {
+            const size_t startCp = ReadU32(table_, fc + 4 * k);
+            const SectionPages pages = ReadSectionPages(ReadU32(table_, seds + 12 * k + 2));
+            const size_t base = 6 + 6 * static_cast<size_t>(k);
+            ownFurniture = story(base + 1, pagesNow.header) || ownFurniture;
+            ownFurniture = story(base + 3, pagesNow.footer) || ownFurniture;
+            ownFurniture = story(base + 4, firstNow.header) || ownFurniture;
+            ownFurniture = story(base + 5, firstNow.footer) || ownFurniture;
+            // The block its first paragraph became.
+            size_t blockIndex = doc_.blocks.size();
+            for (const auto& [cp, block] : paragraphStarts_) {
+                if (cp >= startCp) { blockIndex = block; break; }
+            }
+            if (blockIndex == 0 || blockIndex >= doc_.blocks.size()) continue;
+            RichDocBlock& block = doc_.blocks[blockIndex];
+            if (!block.sectionStart) block.section = doc_.SectionFor(static_cast<int>(blockIndex) - 1);
+            block.sectionStart = true;
+            block.section.newPage = pages.newPage;
+            block.section.furniture = -1;
+            if (ownFurniture || pages.titlePage) {
+                RichSectionFurniture own;
+                own.pages = pagesNow;
+                own.firstPageDiffers = pages.titlePage;
+                if (pages.titlePage) own.firstPage = firstNow;
+                block.section.furniture = static_cast<int>(doc_.sectionFurniture.size());
+                doc_.sectionFurniture.push_back(std::move(own));
+            }
+            auto own = [](int twips, float documents) {
+                const float value = static_cast<float>(twips) / 20.0f;
+                return std::abs(value - documents) > 0.05f ? value : -1.0f;
+            };
+            block.section.marginTopPt = own(pages.top, doc_.page.marginTopPt);
+            block.section.marginBottomPt = own(pages.bottom, doc_.page.marginBottomPt);
+            block.section.headerTopPt = own(pages.headerTop, doc_.page.headerTopPt);
+            block.section.footerBottomPt = own(pages.footerBottom, doc_.page.footerBottomPt);
         }
     }
 
@@ -1349,38 +1464,33 @@ private:
     bool cellHasParagraph_ = false;
     struct RowBorders { bool present = false; RichBorder sides[6]; };
     std::vector<RowBorders> rowTableBorders_;   // per row of the table being built
+    // The left and right edge (twips) of every cell kept, per row: the
+    // table's grid is the union of them, and a cell spans the columns
+    // between its two. Dropped when a row does not state its edges.
+    std::vector<std::vector<std::pair<int, int>>> rowCellEdges_;
+    bool cellEdgesKnown_ = true;
+    // The body's paragraphs: the CP each begins at and the block it became
+    // (or begins), for the sections after the first to find their start.
+    bool recordParagraphStarts_ = false;
+    std::vector<std::pair<size_t, size_t>> paragraphStarts_;
+    // The cell being read: its first paragraph's space before and its last
+    // one's after (points), and those of the row's finished cells.
+    float cellSpaceAboveFirst_ = 0.0f, cellSpaceAfterLast_ = 0.0f;
+    std::vector<float> cellSpaceAbove_, cellSpaceBelow_;
+    bool gridFromEdges_ = false;                  // ApplyCellGrid set the columns and the spans
+    struct MergeOrigin { size_t row = 0, cell = 0; };
+    std::map<int, MergeOrigin> mergedDownFrom_;   // by left edge: the cell cells below merge into
 
     // ===== FLOATING SHAPES =====
     // Word 97 keeps a floating picture or text box as an OfficeArt shape: its
     // anchor (a 0x08 character), rectangle and wrap in PlcSpaMom's FSPA, its
     // picture, text-box id, placement and look in the shape's OfficeArt
     // properties (DggInfo), its text in the text-box story (PlcftxbxTxt).
-    struct OfficeArtShape {
+    // Its property tables are read by OfficeArt::ReadProperties
+    // (UltraCanvasOfficeArt.h), shared with the .ppt reader.
+    struct OfficeArtShape : OfficeArt::ShapeProperties {
         int type = 0;                           // MSOSPT: 1 rectangle, 3 ellipse, 20 line, 75 picture, 202 text box
         uint32_t flags = 0;                     // FSP: 0x1 group, 0x40 flipped across, 0x80 flipped down
-        int32_t textId = 0;                     // lTxid: text box (index << 16) | sequence
-        uint32_t pib = 0;                       // BStore index, 1-based
-        int posH = -1, posRelH = -1, posV = -1, posRelV = -1;
-        uint32_t fillColor = 0xFFFFFF;
-        bool filled = true;
-        int fillType = 0;
-        uint32_t fillBlip = 0;                  // a pattern's or texture's picture (BStore, 1-based)                       // 0 solid; 4, 7 linear shades; 5, 6 round ones
-        uint32_t fillBackColor = 0xFFFFFF;      // a shade's other colour
-        double fillAngle = 0.0;                 // anticlockwise from top-to-bottom
-        double fillTo[4] = {0.0, 0.0, 0.0, 0.0};   // a round shade's centre: left, top, right, bottom (the corner by default)
-        int fillFocus = 0;                      // percent: where the back colour sits along the shade
-        uint32_t lineColor = 0;
-        bool lined = true;
-        int32_t lineWidth = 9525;               // EMU
-        int32_t textLeft = 91440;               // EMU
-        int anchorText = 0;                     // 0 top, 1 middle, 2 bottom (and their centred kinds)
-        double rotation = 0.0;                  // degrees, clockwise
-        int lineDashing = 0;                    // 0 solid, 2 dotted, other dashes
-        bool arrowStart = false, arrowEnd = false;
-        int32_t adjust = -1;                    // adjustValue: a rounded rectangle's corner, of 21600
-        int32_t geoLeft = 0, geoTop = 0, geoRight = 21600, geoBottom = 21600;
-        std::vector<std::pair<int32_t, int32_t>> vertices;   // a freeform's points (pVertices)
-        std::vector<uint16_t> segments;         // and how they join (pSegmentInfo)
         bool hasChildAnchor = false;            // a group member: its rectangle in the group's space
         int32_t child[4] = {0, 0, 0, 0};
         bool hasGroupSpace = false;             // a group: its members' coordinate space (FSPGR)
@@ -1388,7 +1498,7 @@ private:
         std::vector<uint32_t> members;          // a group's members, by spid
     };
     std::map<uint32_t, OfficeArtShape> shapes_;  // by spid
-    struct BlipRef { const std::vector<uint8_t>* stream = nullptr; size_t at = 0; size_t end = 0; };
+    using BlipRef = OfficeArt::BlipRef;
     std::vector<BlipRef> blips_;                 // the BStore, in order
     struct Anchor {
         uint32_t spid = 0;
@@ -1474,30 +1584,7 @@ private:
 
     // FBSE records: the picture is embedded after the record's header, or
     // lies in the WordDocument stream at foDelay.
-    void ReadBStore(size_t from, size_t to) {
-        for (size_t pos = from; pos + 8 <= to;) {
-            const uint16_t type = ReadU16(table_, pos + 2);
-            const size_t length = ReadU32(table_, pos + 4);
-            const size_t body = pos + 8;
-            if (body + length > to) break;
-            BlipRef blip;
-            if (type == 0xF007 && length >= 36) {
-                const size_t cbName = table_[body + 33];
-                const size_t embedded = body + 36 + cbName;
-                if (embedded + 8 <= body + length) {
-                    blip = BlipRef{&table_, embedded, body + length};
-                } else {
-                    const size_t foDelay = ReadU32(table_, body + 28);
-                    const size_t size = ReadU32(table_, body + 20);
-                    if (foDelay + 8 <= word_.size()) {
-                        blip = BlipRef{&word_, foDelay, std::min(word_.size(), foDelay + std::max<size_t>(size, 8))};
-                    }
-                }
-            }
-            blips_.push_back(blip);
-            pos = body + length;
-        }
-    }
+    void ReadBStore(size_t from, size_t to) { OfficeArt::ReadBStore(table_, from, to, &word_, blips_); }
 
     // A shape container's FSP (its spid, type and flips), its rectangle in
     // its group (FChildAnchor) or its members' space (FSPGR), and its
@@ -1522,100 +1609,13 @@ private:
                 for (size_t i = 0; i < 4; ++i) rect[i] = static_cast<int32_t>(ReadU32(table_, body + i * 4));
                 (type == 0xF00F ? shape.hasChildAnchor : shape.hasGroupSpace) = true;
             } else if (type == 0xF00B || type == 0xF122) {
-                const size_t count = verInstance >> 4;
-                size_t complexAt = body + count * 6;   // complex values follow the table, in order
-                for (size_t i = 0; i < count && body + i * 6 + 6 <= body + length; ++i) {
-                    const uint16_t rawId = ReadU16(table_, body + i * 6);
-                    const uint16_t id = rawId & 0x3FFF;
-                    const uint32_t value = ReadU32(table_, body + i * 6 + 2);
-                    if (rawId & 0x8000) {
-                        const size_t at = complexAt;
-                        size_t size = value;
-                        // A geometry array (IMsoArray) whose stated size leaves
-                        // out its 6-byte header - as some writers store it.
-                        if (id >= 0x0140 && id < 0x0180 && at + 6 <= body + length) {
-                            const size_t count = ReadU16(table_, at);
-                            const uint16_t cb = ReadU16(table_, at + 4);
-                            const size_t element = cb == 0xFFF0 ? 4 : cb;
-                            if (count * element == value) size = value + 6;
-                        }
-                        complexAt += size;
-                        if (complexAt > body + length) break;
-                        if (id == 0x0145) ReadVertices(at, at + size, shape);
-                        else if (id == 0x0146) ReadSegments(at, at + size, shape);
-                        continue;
-                    }
-                    switch (id) {
-                        case 0x0004: shape.rotation = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
-                        case 0x0087: shape.anchorText = static_cast<int>(value); break;               // anchorText
-                        case 0x0140: shape.geoLeft = static_cast<int32_t>(value); break;
-                        case 0x0141: shape.geoTop = static_cast<int32_t>(value); break;
-                        case 0x0142: shape.geoRight = static_cast<int32_t>(value); break;
-                        case 0x0143: shape.geoBottom = static_cast<int32_t>(value); break;
-                        case 0x0147: shape.adjust = static_cast<int32_t>(value); break;               // adjustValue
-                        case 0x01CE: shape.lineDashing = static_cast<int>(value); break;              // lineDashing
-                        case 0x01D0: shape.arrowStart = value != 0; break;                            // lineStartArrowhead
-                        case 0x01D1: shape.arrowEnd = value != 0; break;                              // lineEndArrowhead
-                        case 0x0080: shape.textId = static_cast<int32_t>(value); break;     // lTxid
-                        case 0x0081: shape.textLeft = static_cast<int32_t>(value); break;   // dxTextLeft
-                        case 0x0104: shape.pib = value; break;                               // pib
-                        case 0x0181: shape.fillColor = value; break;                         // fillColor
-                        case 0x0180: shape.fillType = static_cast<int>(value); break;        // fillType
-                        case 0x0186: shape.fillBlip = value; break;                          // fillBlip
-                        case 0x0183: shape.fillBackColor = value; break;                     // fillBackColor
-                        case 0x018B: shape.fillAngle = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
-                        case 0x018C: shape.fillFocus = static_cast<int32_t>(value); break;   // fillFocus
-                        case 0x018D: case 0x018E: case 0x018F: case 0x0190:                  // fillToLeft .. fillToBottom
-                            shape.fillTo[id - 0x018D] = static_cast<double>(static_cast<int32_t>(value)) / 65536.0;
-                            break;
-                        case 0x01BF:                                                         // fFilled (with fUsefFilled)
-                            if (value & 0x100000u) shape.filled = (value & 0x10u) != 0;
-                            break;
-                        case 0x01C0: shape.lineColor = value; break;                         // lineColor
-                        case 0x01CB: shape.lineWidth = static_cast<int32_t>(value); break;  // lineWidth
-                        case 0x01FF:                                                         // fLine (with fUsefLine)
-                            if (value & 0x80000u) shape.lined = (value & 0x08u) != 0;
-                            break;
-                        case 0x038F: shape.posH = static_cast<int>(value); break;           // posh
-                        case 0x0390: shape.posRelH = static_cast<int>(value); break;        // posrelh
-                        case 0x0391: shape.posV = static_cast<int>(value); break;           // posv
-                        case 0x0392: shape.posRelV = static_cast<int>(value); break;        // posrelv
-                        default: break;
-                    }
-                }
+                OfficeArt::ReadProperties(table_, body, body + length, verInstance >> 4, shape);
             }
             pos = body + length;
         }
         if (!haveSpid || (shape.flags & 0x8)) return 0;   // fDeleted
         shapes_[spid] = std::move(shape);
         return spid;
-    }
-
-    // An IMsoArray: element count, allocated count, element size, elements.
-    // Vertices are two 16-bit numbers (size 0xFFF0 or 4) or two 32-bit ones.
-    void ReadVertices(size_t from, size_t to, OfficeArtShape& shape) const {
-        if (from + 6 > to) return;
-        const size_t count = ReadU16(table_, from);
-        const uint16_t size = ReadU16(table_, from + 4);
-        const size_t step = (size == 0xFFF0 || size == 4) ? 4 : 8;
-        for (size_t i = 0; i < count && from + 6 + (i + 1) * step <= to; ++i) {
-            const size_t at = from + 6 + i * step;
-            if (step == 4) {
-                shape.vertices.emplace_back(static_cast<int16_t>(ReadU16(table_, at)),
-                                            static_cast<int16_t>(ReadU16(table_, at + 2)));
-            } else {
-                shape.vertices.emplace_back(static_cast<int32_t>(ReadU32(table_, at)),
-                                            static_cast<int32_t>(ReadU32(table_, at + 4)));
-            }
-        }
-    }
-
-    void ReadSegments(size_t from, size_t to, OfficeArtShape& shape) const {
-        if (from + 6 > to) return;
-        const size_t count = ReadU16(table_, from);
-        for (size_t i = 0; i < count && from + 6 + (i + 1) * 2 <= to; ++i) {
-            shape.segments.push_back(ReadU16(table_, from + 6 + i * 2));
-        }
     }
 
     // PlcSpaMom / PlcSpaHdr: shapes by the CP of their anchor.
@@ -1733,7 +1733,7 @@ private:
             case 3: case 5: run.imageFloatAlign = RichTextAlign::Right; break;
             default:
                 run.imageFloatAlign = RichTextAlign::Default;
-                run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+                run.imageOffsetXPt = x;             // left of its area too: a banner starts in the margin
                 break;
         }
         switch (shape.posV) {
@@ -1742,7 +1742,7 @@ private:
             case 3: run.floatVerticalAlign = VAlign::Bottom; break;
             default:
                 run.floatVerticalAlign = VAlign::Top;
-                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+                run.imageOffsetYPt = y;             // above its paragraph too
                 break;
         }
         // wr: 0 around, 1 top and bottom, 2 square, 3 none (in front or
@@ -1873,6 +1873,12 @@ private:
         else if (source.lineDashing != 0) shape.dash = RichShape::Dash::Dashed;
         shape.arrowStart = source.arrowStart;
         shape.arrowEnd = source.arrowEnd;
+        if (source.shadow) {
+            shape.shadowColor = (source.shadowColor >> 24) == 0 ? ColorRefHex(source.shadowColor) : std::string("#808080");
+            shape.shadowOpacity = std::clamp(static_cast<float>(source.shadowOpacity) / 65536.0f, 0.0f, 1.0f);
+            shape.shadowOffsetXPt = static_cast<float>(source.shadowOffsetX) / 12700.0f;
+            shape.shadowOffsetYPt = static_cast<float>(source.shadowOffsetY) / 12700.0f;
+        }
         if (!shape.IsClosed()) shape.fillColor.clear();
         if (source.textId > 0 && depth > 0) {
             // A member's words: a frame of their own, read with the stories.
@@ -1890,62 +1896,12 @@ private:
     // A freeform's outline: its vertices in its geometry's space (geoLeft
     // .. geoRight), joined as pSegmentInfo says (or by straight lines).
     static void ReadFreeform(const OfficeArtShape& source, RichShape& shape) {
-        using Op = RichShape::PathPoint::Op;
         shape.kind = RichShape::Kind::Path;
-        const double spanX = std::max<int32_t>(1, source.geoRight - source.geoLeft);
-        const double spanY = std::max<int32_t>(1, source.geoBottom - source.geoTop);
-        auto at = [&](size_t i, float& x, float& y) {
-            x = static_cast<float>((source.vertices[i].first - source.geoLeft) / spanX);
-            y = static_cast<float>((source.vertices[i].second - source.geoTop) / spanY);
-        };
-        auto add = [&](Op op, size_t i) {
-            RichShape::PathPoint point;
-            point.op = op;
-            at(i, point.x, point.y);
-            shape.path.push_back(point);
-        };
-        const size_t count = source.vertices.size();
-        if (source.segments.empty()) {
-            for (size_t i = 0; i < count; ++i) add(i == 0 ? Op::Move : Op::Line, i);
-            return;
-        }
-        size_t v = 0;
-        for (uint16_t segment : source.segments) {
-            const int type = segment >> 13;
-            const size_t n = std::max<size_t>(1, segment & 0x1FFF);
-            if (type == 0) {                                   // lines
-                for (size_t i = 0; i < n && v < count; ++i) add(Op::Line, v++);
-            } else if (type == 1) {                            // curves, three vertices each
-                for (size_t i = 0; i < n && v + 2 < count; ++i) {
-                    RichShape::PathPoint point;
-                    point.op = Op::Curve;
-                    at(v, point.c1x, point.c1y);
-                    at(v + 1, point.c2x, point.c2y);
-                    at(v + 2, point.x, point.y);
-                    shape.path.push_back(point);
-                    v += 3;
-                }
-            } else if (type == 2) {                            // move
-                if (v < count) add(Op::Move, v++);
-            } else if (type == 3) {                            // close
-                RichShape::PathPoint point;
-                point.op = Op::Close;
-                shape.path.push_back(point);
-            } else if (type == 4) {                            // end
-                break;
-            } else {                                           // an escape: skips its vertices
-                v += segment & 0xFF;
-            }
-        }
-        if (!shape.path.empty() && shape.path.front().op != Op::Move) shape.path.front().op = Op::Move;
+        shape.path = OfficeArt::FreeformPath(source);
     }
 
     // An OfficeArt COLORREF (0x00BBGGRR) as "#RRGGBB".
-    static std::string ColorRefHex(uint32_t color) {
-        char hex[8];
-        std::snprintf(hex, sizeof hex, "#%02X%02X%02X", color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
-        return hex;
-    }
+    static std::string ColorRefHex(uint32_t color) { return OfficeArt::ColorRefHex(color); }
 
     // The text boxes' text (PlcftxbxTxt: CPs into the text-box story), read
     // with the body's machinery into each text frame.
@@ -2053,6 +2009,13 @@ private:
         DocCharProps props = paragraphStyle;
         const FkpRange* range = FindFkpRange(chpx_, fc);
         if (range && range->grpprlEnd > range->grpprl) {
+            // The run's character style first (a "P" in the brand's colour),
+            // then what the run states itself.
+            int characterStyle = -1;
+            ForEachSprm(word_, range->grpprl, range->grpprlEnd, [&](const Sprm& sprm) {
+                if (sprm.code == kSprmCIstd) characterStyle = ReadU16(word_, sprm.operand);
+            });
+            if (characterStyle >= 0) stylesheet_.ApplyCharacterStyle(characterStyle, paragraphStyle, props);
             ApplyCharSprms(word_, range->grpprl, range->grpprlEnd, paragraphStyle, props);
         }
         return props;
@@ -2085,6 +2048,7 @@ private:
         }
         run.code = IsMonospaceFont(run.fontFamily);
         if (!props.highlight.empty() && props.highlight != base.highlight) run.highlightColor = props.highlight;
+        if (props.spacingTwips != base.spacingTwips) run.letterSpacingPt = static_cast<float>(props.spacingTwips) / 20.0f;
         return run;
     }
 
@@ -2162,6 +2126,7 @@ private:
     // chars[begin, end) is the paragraph's text; chars[end] (when in range)
     // is the mark that ended it.
     void EmitParagraph(const std::vector<DocChar>& chars, size_t begin, size_t end) {
+        if (recordParagraphStarts_) paragraphStarts_.emplace_back(begin, doc_.blocks.size());
         const bool hasMark = end < chars.size();
         const uint32_t mark = hasMark ? chars[end].ch : 0x0D;
         const uint32_t markFc = hasMark ? chars[end].fc
@@ -2212,6 +2177,22 @@ private:
                 lineBreak = false;
                 continue;
             }
+            if (notesActive_) {
+                // A footnote's or endnote's reference: the note's mark, set
+                // high. (Its number is the view's; a mark of the author's
+                // own follows as the text it is.)
+                auto note = noteRefs_.find(anchorCpBase_ + i);
+                if (note != noteRefs_.end()) {
+                    RichTextRun reference = MakeRun(props, heading ? &styleChars : nullptr);
+                    reference.noteIndex = note->second;
+                    reference.superscript = true;
+                    reference.text = "*";             // numbered once all are read
+                    reference.lineBreakBefore = lineBreak;
+                    runs.push_back(std::move(reference));
+                    lineBreak = false;
+                    if (ch == 0x02) continue;
+                }
+            }
             std::string text;
             if (props.special && props.symbolChar != 0) {
                 // The symbol-font mapping after import turns it into Unicode.
@@ -2240,7 +2221,32 @@ private:
             // Paragraphs of one cell share it, a line apart; the cell mark
             // closes it. Nested tables flatten into their outer cell.
             if (!tableOpen_) OpenTable();
+            // Each paragraph is a line of the cell, an empty one too (a
+            // letter spaces its address, date and text with them): an empty
+            // line in the font of its paragraph mark.
+            if (cellHasParagraph_ && runs.empty()) {
+                const DocCharProps markChars = hasMark ? CharProps(markFc, styleChars) : styleChars;
+                RichTextRun empty;
+                if (markChars.halfPoints > 0) empty.fontSizePt = static_cast<float>(markChars.halfPoints) / 2.0f;
+                empty.fontFamily = FontName(markChars.fontIndex);
+                runs.push_back(std::move(empty));
+            }
             if (cellHasParagraph_ && !runs.empty()) runs.front().lineBreakBefore = true;
+            // The room between two paragraphs - the one's space after and
+            // the other's before - is a line of that height between them;
+            // above the first and below the last it is the cell's.
+            const float before = static_cast<float>(std::max(0, pap.spaceBefore)) / 20.0f;
+            if (cellHasParagraph_) {
+                if (cellSpaceAfterLast_ + before > 0.5f) {
+                    RichTextRun spacer;
+                    spacer.lineBreakBefore = true;
+                    spacer.emptyLineHeightPt = cellSpaceAfterLast_ + before;
+                    cell_.runs.push_back(std::move(spacer));
+                }
+            } else {
+                cellSpaceAboveFirst_ = before;
+            }
+            cellSpaceAfterLast_ = static_cast<float>(std::max(0, pap.spaceAfter)) / 20.0f;
             if (!cellHasParagraph_) {
                 cell_.align = AlignFor(pap.jc);
                 // A cell holds text, not paragraphs: its first paragraph's
@@ -2254,6 +2260,9 @@ private:
             for (auto& run : runs) cell_.runs.push_back(std::move(run));
             cellHasParagraph_ = true;
             if (mark == 0x07 && pap.tableDepth <= 1) {
+                cellSpaceAbove_.push_back(cellSpaceAboveFirst_);
+                cellSpaceBelow_.push_back(cellSpaceAfterLast_);
+                cellSpaceAboveFirst_ = cellSpaceAfterLast_ = 0.0f;
                 row_.cells.push_back(std::move(cell_));
                 cell_ = RichTableCell{};
                 cellHasParagraph_ = false;
@@ -2350,6 +2359,9 @@ private:
     static bool ParagraphIsOnePicture(const std::vector<RichTextRun>& runs, RichDocBlock& image) {
         const RichTextRun* picture = nullptr;
         for (const auto& run : runs) {
+            // A floating picture is placed by its own offsets (a banner at
+            // the page's top edge): it stays a run of its paragraph.
+            if (run.IsFloatingObject()) return false;
             if (run.IsInlineImage()) {
                 if (picture) return false;
                 picture = &run;
@@ -2486,6 +2498,62 @@ private:
                 }
                 *targets[side] = value;
             }
+            // The first paragraph's space before and the last one's after.
+            if (c < cellSpaceAbove_.size() && cellSpaceAbove_[c] > 0.0f) {
+                cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + cellSpaceAbove_[c];
+            }
+            if (c < cellSpaceBelow_.size() && cellSpaceBelow_[c] > 0.0f) {
+                cell.paddingBottomPt = std::max(0.0f, cell.paddingBottomPt) + cellSpaceBelow_[c];
+            }
+        }
+        cellSpaceAbove_.clear();
+        cellSpaceBelow_.clear();
+        if (pap.rowHeight != 0) {
+            row_.heightPt = static_cast<float>(std::abs(pap.rowHeight)) / 20.0f;
+            row_.heightExact = pap.rowHeight < 0;
+        }
+        // Merged cells: one merged with its left neighbour widens it, one
+        // merged with the cell above lengthens that one; neither is a cell
+        // of its own. Rows state their own cell edges, so a cell's columns
+        // are counted once the whole table's edges are known (CloseTable).
+        if (!row_.cells.empty()) {
+            const bool edgesKnown = pap.cellEdges.size() == row_.cells.size() + 1;
+            if (!edgesKnown) cellEdgesKnown_ = false;
+            std::vector<RichTableCell> kept;
+            std::vector<std::pair<int, int>> keptEdges;
+            const size_t rowIndex = tableBlock_.tableRows.size();
+            for (size_t c = 0; c < row_.cells.size(); ++c) {
+                const DocParaProps::CellFormat format =
+                    c < pap.cellFormats.size() ? pap.cellFormats[c] : DocParaProps::CellFormat{};
+                const int left = edgesKnown ? pap.cellEdges[c] : static_cast<int>(c);
+                const int right = edgesKnown ? pap.cellEdges[c + 1] : static_cast<int>(c) + 1;
+                if (format.mergedAcross && !kept.empty()) {
+                    keptEdges.back().second = right;
+                    if (!edgesKnown) kept.back().columnSpan++;
+                    continue;
+                }
+                auto above = mergedDownFrom_.find(left);
+                if (format.mergedDown && above != mergedDownFrom_.end()
+                    && above->second.row < tableBlock_.tableRows.size()
+                    && above->second.cell < tableBlock_.tableRows[above->second.row].cells.size()) {
+                    RichTableCell& origin = tableBlock_.tableRows[above->second.row].cells[above->second.cell];
+                    origin.rowSpan = static_cast<int>(rowIndex - above->second.row) + 1;
+                    continue;
+                }
+                if (format.startsMergeDown) mergedDownFrom_[left] = MergeOrigin{rowIndex, kept.size()};
+                else mergedDownFrom_.erase(left);
+                kept.push_back(std::move(row_.cells[c]));
+                keptEdges.emplace_back(left, right);
+            }
+            if (kept.empty()) {
+                // Every cell continues one from above: the row is only height
+                // for them. A cell to hold it keeps the rows counted right.
+                kept.emplace_back();
+                keptEdges.emplace_back(0, 0);
+                cellEdgesKnown_ = false;
+            }
+            row_.cells = std::move(kept);
+            rowCellEdges_.push_back(std::move(keptEdges));
         }
         if (!row_.cells.empty()) {
             tableBlock_.tableRows.push_back(std::move(row_));
@@ -2528,16 +2596,71 @@ private:
             DocParaProps none;
             FinishRow(none);
         }
+        ApplyCellGrid();
         ResolveTableBorders();
-        // Widths only hold when every row has the same number of cells.
+        // Widths only hold when every row fills the grid's columns.
         size_t columns = tableBlock_.tableColumnWidths.size();
         for (const auto& row : tableBlock_.tableRows) {
+            if (gridFromEdges_) break;
             if (row.cells.size() != columns) { tableBlock_.tableColumnWidths.clear(); break; }
         }
         if (!tableBlock_.tableRows.empty()) doc_.blocks.push_back(std::move(tableBlock_));
         tableOpen_ = false;
         tableBlock_ = RichDocBlock{};
         rowTableBorders_.clear();
+        rowCellEdges_.clear();
+        mergedDownFrom_.clear();
+        cellEdgesKnown_ = true;
+    }
+
+    // The table's grid from its rows' cell edges: every edge any row has is
+    // a column boundary, and a cell spans the columns between its own two (a
+    // row with fewer, wider cells has merged ones - Writer writes a merged
+    // cell as one wide cell, Word as cells flagged merged).
+    void ApplyCellGrid() {
+        gridFromEdges_ = false;
+        if (!cellEdgesKnown_ || rowCellEdges_.size() != tableBlock_.tableRows.size()) return;
+        // Only a table whose rows differ in their number of cells has merged
+        // ones; rows of equal count are columns as the first row states them,
+        // even where a later row sets its edges a little differently.
+        bool sameCount = true;
+        for (const RichTableRow& row : tableBlock_.tableRows) {
+            sameCount = sameCount && row.cells.size() == tableBlock_.tableRows.front().cells.size();
+        }
+        if (sameCount) return;
+        std::vector<int> edges;
+        for (const auto& row : rowCellEdges_) {
+            for (const auto& cell : row) {
+                edges.push_back(cell.first);
+                edges.push_back(cell.second);
+            }
+        }
+        std::sort(edges.begin(), edges.end());
+        // Edges a point apart are one edge.
+        std::vector<int> grid;
+        for (int edge : edges) {
+            if (grid.empty() || edge - grid.back() > 20) grid.push_back(edge);
+        }
+        if (grid.size() < 2) return;
+        auto column = [&grid](int edge) {
+            size_t best = 0;
+            for (size_t i = 1; i < grid.size(); ++i) {
+                if (std::abs(grid[i] - edge) < std::abs(grid[best] - edge)) best = i;
+            }
+            return static_cast<int>(best);
+        };
+        for (size_t r = 0; r < tableBlock_.tableRows.size(); ++r) {
+            RichTableRow& row = tableBlock_.tableRows[r];
+            if (rowCellEdges_[r].size() != row.cells.size()) return;
+            for (size_t c = 0; c < row.cells.size(); ++c) {
+                row.cells[c].columnSpan = std::max(1, column(rowCellEdges_[r][c].second) - column(rowCellEdges_[r][c].first));
+            }
+        }
+        gridFromEdges_ = true;
+        tableBlock_.tableColumnWidths.clear();
+        for (size_t i = 0; i + 1 < grid.size(); ++i) {
+            tableBlock_.tableColumnWidths.push_back(static_cast<float>(grid[i + 1] - grid[i]));
+        }
     }
 };
 

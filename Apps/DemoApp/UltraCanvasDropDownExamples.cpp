@@ -126,7 +126,7 @@ namespace UltraCanvas {
 
         // Country selection status label
         auto countryStatusLabel = DemoKit::CreateText("CountryStatus", TrF("Selected: {0} ({1})", Tr("United States"), "US"));
-        countryStatusLabel->SetTextColor(Color(0, 100, 0, 255));
+        countryStatusLabel->SetTextColor(DemoKit::Themed(Color(0, 100, 0, 255)));
 
         // Callback for country selection
         countriesDropdown->onSelectionChanged = [countryStatusLabel](int index, const DropdownItem& item) {
@@ -156,7 +156,7 @@ namespace UltraCanvas {
         languagesDropdown->SetItemSelected(1, true); // Python
 
         auto languagesStatus = DemoKit::CreateText("LanguagesStatus", Tr("Selected: C++, Python"));
-        languagesStatus->SetTextColor(Color(0, 100, 0, 255));
+        languagesStatus->SetTextColor(DemoKit::Themed(Color(0, 100, 0, 255)));
 
         // Callback for multi-selection
         languagesDropdown->onSelectedItemsChanged = [languagesStatus](const std::vector<DropdownItem>& items) {
@@ -245,7 +245,7 @@ namespace UltraCanvas {
         travelDropdown->AddItem(Tr("Switzerland"), "CH", NormalizePath(GetResourcesDir() + "media/flags/CH.png"));
 
         auto travelStatus = DemoKit::CreateText("TravelStatus", Tr("Select your travel destinations"));
-        travelStatus->SetBackgroundColor(Color(250, 250, 250, 255));
+        travelStatus->SetBackgroundColor(DemoKit::Themed(Color(250, 250, 250, 255)));
         travelStatus->SetBorders(1, Color(200, 200, 200, 255));
         travelStatus->SetPadding(5);
 
@@ -287,7 +287,7 @@ namespace UltraCanvas {
 
         auto eventLog = DemoKit::CreateText("EventLog", Tr("Event log: No events yet"));
         eventLog->SetFontSize(11);
-        eventLog->SetBackgroundColor(Color(245, 245, 245, 255));
+        eventLog->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
         eventLog->SetBorders(1.0f);
         eventLog->SetBordersColor(Color(180, 180, 180, 255));
         eventLog->SetPadding(5.0f);

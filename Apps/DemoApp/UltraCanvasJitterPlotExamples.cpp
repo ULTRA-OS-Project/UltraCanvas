@@ -82,7 +82,7 @@ std::shared_ptr<UltraCanvasContainer> AddControlRow(const std::shared_ptr<UltraC
 void AddControlLabel(const std::shared_ptr<UltraCanvasContainer>& row,
                      const std::string& id, const std::string& text) {
     auto label = DemoKit::CreateText(id, text);
-    label->SetTextColor(Color(60, 60, 60, 255));
+    label->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
     DemoKit::Add(row, label);
 }
 
@@ -469,7 +469,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBrazilSc
     // Tabbed container — Classic on left, Beeswarm on right
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("BrazilTabs", 0, 0, 0, 0);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->SetTabHeight(32);
     
     tabs->AddTab(Tr("Classic Jitter"),   BuildBrazilClassicJitterTab(ds));

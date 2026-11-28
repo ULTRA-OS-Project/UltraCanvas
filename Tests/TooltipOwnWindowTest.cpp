@@ -8,17 +8,24 @@
 // These tests open a window, cover it with a second one, show a tooltip of
 // the first and read the screen back: the tooltip must be on top, outside the
 // window it belongs to where there is room, let the pointer through, and go
-// when that window closes, so it never keeps the application running.
+// when that window closes, so it never keeps the application running. And,
+// floating above every window, it must go when the pointer leaves the window
+// it belongs to or that window loses the focus: left standing, it stood over
+// another program's window that had come over its own.
 //
 // X11 only (it reads the X server's stacking order and the screen's pixels);
 // runs headless under Xvfb. Skips - rather than fails - without a display.
+// Version: 1.2.0 - a tooltip asked of a window after it closed: none, and no crash
+// Version: 1.1.0 - the pointer leaving the window, or the window losing the focus, takes
+//                  its tooltip away (and a tooltip waiting for its delay is not shown)
 // Version: 1.0.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasWindow.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -46,6 +53,11 @@ static int failCount = 0;
 
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
@@ -226,6 +238,39 @@ int main() {
     UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(target.get(), "Shown again", pointer, style);
     TEST("shown again: in the same window", UltraCanvasTooltipManager::GetTooltipWindow() == tooltipWindow);
 
+    // The pointer leaves the window the tooltip belongs to (another
+    // program's window came over it, or the pointer went there): it goes.
+    auto leaveOf = [](UltraCanvasWindowBase* window, UCEventType type) {
+        UCEvent event;
+        event.type = type;
+        event.targetWindow = window->GetWindowWeakPtr();
+        event.nativeWindowHandle = window->GetNativeHandle();
+        return event;
+    };
+    app.DispatchEvent(leaveOf(cover.get(), UCEventType::MouseLeave));
+    TEST("the pointer leaving another window leaves the tooltip shown",
+         UltraCanvasTooltipManager::GetTooltipWindow() == tooltipWindow);
+    app.DispatchEvent(leaveOf(target.get(), UCEventType::MouseLeave));
+    XSync(display, False);
+    TEST("the pointer leaving its window hides the tooltip", !UltraCanvasTooltipManager::IsVisible() &&
+                                                             UltraCanvasTooltipManager::GetTooltipWindow() == nullptr);
+    TEST("the pointer leaving its window unmaps the tooltip's window",
+         XGetWindowAttributes(display, tooltipX, &attributes) && attributes.map_state == IsUnmapped);
+
+    // One still waiting for its delay is not shown when the delay is up
+    UltraCanvasTooltipManager::UpdateAndShowTooltip(target.get(), "Waiting", pointer, style);
+    TEST("a tooltip waits for its delay", UltraCanvasTooltipManager::IsPending());
+    app.DispatchEvent(leaveOf(target.get(), UCEventType::MouseLeave));
+    TEST("the pointer leaving its window cancels a tooltip still waiting",
+         !UltraCanvasTooltipManager::IsPending() && !UltraCanvasTooltipManager::IsVisible());
+
+    // The window losing the focus (another program activated) takes it too
+    UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(target.get(), "Focus", pointer, style);
+    TEST("shown again before the focus goes", UltraCanvasTooltipManager::GetTooltipWindow() == tooltipWindow);
+    app.DispatchEvent(leaveOf(target.get(), UCEventType::WindowBlur));
+    TEST("its window losing the focus hides the tooltip", !UltraCanvasTooltipManager::IsVisible() &&
+                                                          UltraCanvasTooltipManager::GetTooltipWindow() == nullptr);
+
     // Turned off, it is drawn inside the window it belongs to, as before
     UltraCanvasTooltipManager::SetUseOwnWindow(false);
     UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(target.get(), "Inside", pointer, style);
@@ -260,6 +305,14 @@ int main() {
     TEST("no window is left open to keep Run() going", !liveLeft);
 
     std::cerr << "========================================" << std::endl;
+    // A pointer event of a window that is closing - queued before it closed,
+    // as the taskbar's preview strip closes when the pointer leaves it - asks
+    // for a tooltip after the window's render context went. That crashed in
+    // the layout (UltraDesktop, Windows); now it shows nothing.
+    UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(target.get(), "After the close", pointer, style);
+    TEST("a closed window is given no tooltip, and nothing crashes",
+         !UltraCanvasTooltipManager::IsVisible() && UltraCanvasTooltipManager::GetTooltipWindow() == nullptr);
+
     std::cerr << "Results: " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;
 #endif

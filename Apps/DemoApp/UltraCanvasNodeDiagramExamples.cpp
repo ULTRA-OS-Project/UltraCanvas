@@ -255,7 +255,7 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateFriendsNetworkDiagram(
     auto diagram = CreateNodeDiagram("nd_friends", x, y, w, h);
 
     diagram->SetTheme(NodeDiagramTheme::Minimal);
-    diagram->SetBackgroundColor(Color(247, 248, 251, 255));
+    diagram->SetBackgroundColor(DemoKit::Themed(Color(247, 248, 251, 255)));
     diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
     diagram->SetFontFamily("Arial");
     // 2.4.0: every card as wide as its name and interest need - no ellipsis,
@@ -487,7 +487,7 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
     auto diagram = CreateNodeDiagram("nd_org", x, y, w, h);
 
     diagram->SetTheme(NodeDiagramTheme::Minimal);
-    diagram->SetBackgroundColor(Color(252, 252, 253, 255));
+    diagram->SetBackgroundColor(DemoKit::Themed(Color(252, 252, 253, 255)));
     diagram->SetDefaultLinkStyle(LinkStyle::Straight);
 
     auto departments = BuildOrgDepartments();
@@ -627,7 +627,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
 
     // The control column beside the diagram, which takes the rest.
     auto tab = std::make_shared<UltraCanvasContainer>("ndTabOrg", 0, 0, w, h);
-    tab->SetBackgroundColor(Color(255, 255, 255, 255));
+    tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     tab->layout.SetFlexRow().SetFlexGap(PAD).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     tab->SetPadding(PAD);
 
@@ -649,7 +649,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
         auto label = DemoKit::CreateCaption(id, text);
         label->SetFontSize(9);
         label->SetFontWeight(FontWeight::Bold);
-        label->SetTextColor(Color(90, 90, 105, 255));
+        label->SetTextColor(DemoKit::Themed(Color(90, 90, 105, 255)));
         DemoKit::Add(sidebar, label);
     };
 
@@ -1052,7 +1052,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     
     auto root = std::make_shared<UltraCanvasContainer>(
         "ndCustomRoot", x, y, w, h);
-    root->SetBackgroundColor(Color(255, 255, 255, 255));
+    root->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     root->layout.SetFlexColumn();
     
     // ---- Diagram fills the whole tab ----
@@ -1167,7 +1167,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     // a column of rows, each text as wide as it needs.
     auto popup = std::make_shared<UltraCanvasContainer>(
         "ndCustomPopup", popupX, popupY, POPUP_W, POPUP_H);
-    popup->SetBackgroundColor(Color(252, 252, 254, 255));
+    popup->SetBackgroundColor(DemoKit::Themed(Color(252, 252, 254, 255)));
     popup->layout.SetFlexColumn().SetFlexGap(10)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     popup->SetPadding(10, 12, 12, 12);
@@ -1177,7 +1177,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     // Popup title
     auto popupTitle = DemoKit::CreateHeading("popupTitle", Tr("Edit Node"));
     popupTitle->SetFontSize(14);
-    popupTitle->SetTextColor(Color(40, 50, 110, 255));
+    popupTitle->SetTextColor(DemoKit::Themed(Color(40, 50, 110, 255)));
     DemoKit::Add(popup, popupTitle);
     
     // "Label:" caption and the label TextInput
@@ -1826,7 +1826,7 @@ void RegisterNodeDiagramExamples(/* DemoRegistry& registry */) {
 static std::shared_ptr<UltraCanvasNodeDiagram> CreateConceptMapDiagram(int x, int y, int w, int h) {
     auto diagram = CreateNodeDiagram("nd_concept", x, y, w, h);
     diagram->SetTheme(NodeDiagramTheme::Minimal);
-    diagram->SetBackgroundColor(Color(244, 244, 242, 255));
+    diagram->SetBackgroundColor(DemoKit::Themed(Color(244, 244, 242, 255)));
     diagram->SetFontFamily("Arial");
     diagram->SetLabelFit(NodeLabelFit::GrowNode);
     diagram->SetLayout(NodeDiagramLayout::Manual);
@@ -1954,7 +1954,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     
     // ---- Tabbed container with the diagrams ----
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ndTabs", 0, 0, 0, 0);
-    tabs->SetTabStyle(TabStyle::Rounded);
+    DemoKit::StyleTabs(tabs);
     tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     
     // The size each tab page and its diagram are built with; the tabs then
@@ -1966,7 +1966,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     auto statusLabel = DemoKit::CreateCaption(
         "ndStatus", Tr("Ready - Click 'Add Node' or right-click on the canvas "
                     "(Custom tab) to start building. Wheel to zoom, drag to pan."));
-    statusLabel->SetTextColor(Color(90, 90, 100, 255));
+    statusLabel->SetTextColor(DemoKit::Themed(Color(90, 90, 100, 255)));
     
     // ---- Friends tab (read-only example graph) ----
     auto friendsDiag = CreateFriendsNetworkDiagram(4, 4, INNER_W, INNER_H);
@@ -1976,7 +1976,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     };
     auto friendsTab = std::make_shared<UltraCanvasContainer>(
         "ndTabFriends", 0, 0, INNER_W, INNER_H);
-    friendsTab->SetBackgroundColor(Color(255, 255, 255, 255));
+    friendsTab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     friendsTab->layout.SetFlexColumn();
     friendsTab->SetPadding(4);
     AddFillingDiagram(friendsTab, friendsDiag);
@@ -2003,7 +2003,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     };
     auto conceptTab = std::make_shared<UltraCanvasContainer>(
         "ndTabConcept", 0, 0, INNER_W, INNER_H);
-    conceptTab->SetBackgroundColor(Color(255, 255, 255, 255));
+    conceptTab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
     conceptTab->layout.SetFlexColumn();
     conceptTab->SetPadding(4);
     AddFillingDiagram(conceptTab, conceptDiag);

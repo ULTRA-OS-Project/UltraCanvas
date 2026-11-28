@@ -1,15 +1,21 @@
 // include/Plugins/Documents/Word/UltraCanvasWordDocumentIO.h
 // Readers/writers between word-processing file formats and UCRichDocument:
 //   .odt  — OpenDocument Text (ODF package)            read + write
+//   .ott  — OpenDocument Text template                 read + write
 //   .docx — Word 2007+ (OOXML/OPC package)             read + write
+//   .dotx — Word template                              read + write
+//   .dotm — Word macro-enabled template                read only (macros neither run nor kept)
 //   .doc  — legacy Word 97-2003 (OLE2/CFB binary)      read (with formatting)
 //   .tex  — LaTeX document subset (article class)      read only
 // Format detection is signature-based (ZIP magic + mimetype /
 // [Content_Types].xml probe, CFB magic, \documentclass head) so renamed
 // files are classified correctly. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md
 // and Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md.
+// Version: 1.6.0 - templates: .ott reads and writes as an .odt, .dotx as a .docx, each with its
+//                  template media type; .dotm reads; IsWordTemplateExtension
+// Version: 1.5.0 - Load / LoadOdt open a password-protected .odt with its password
 // Version: 1.4.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,7 +37,13 @@ enum class WordDocumentFormat {
 // the extension when the file cannot be read.
 WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath);
 // Classifies by extension only ("odt", "docx", "doc", "tex"; leading dot allowed).
+// A template is its package's format: "ott" is Odt, "dotx" and "dotm" Docx.
 WordDocumentFormat WordDocumentFormatFromExtension(const std::string& extension);
+// True for the extensions of a word-processing template - "ott", "dotx",
+// "dotm" - given as an extension (with or without its dot) or a whole path,
+// any case. Save writes .ott and .dotx with the template's media type (the
+// package is the same); a .dotm is read, not written.
+bool IsWordTemplateExtension(const std::string& extensionOrPath);
 
 class UCWordDocumentIO {
 public:
@@ -40,21 +52,26 @@ public:
     // suggests converting it to .docx.
     //
     // `password` opens a password-protected .docx: the ECMA-376 agile
-    // encryption Word 2010 and later write (UltraCanvasOfficeEncryption.h).
+    // encryption Word 2010 and later write (UltraCanvasOfficeEncryption.h) -
+    // and a password-protected .odt, whose package LibreOffice encrypts entry
+    // by entry (UltraCanvasOdfEncryption.h).
     // Such a file is a compound file, so DetectWordDocumentFormat calls it
     // LegacyDoc; Load and LoadDocx recognise it and decrypt it. Without the
     // password it fails with a message saying one is needed;
     // UltraCanvasFileLoader::RequestDocumentPassword asks the user for it.
     static bool Load(const std::string& filePath, UCRichDocument& outDocument,
                      std::string& outError, const std::string& password = std::string());
+    // `password` opens a password-protected .odt (LibreOffice's "Save with
+    // password": AES-256 keyed with PBKDF2, UltraCanvasOdfEncryption.h).
     static bool LoadOdt(const std::string& filePath, UCRichDocument& outDocument,
-                        std::string& outError);
+                        std::string& outError, const std::string& password = std::string());
     static bool LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
                          std::string& outError, const std::string& password = std::string());
     // Word 97-2003 binary (CFB container, piece table, FKPs, stylesheet,
     // list tables): headings, character formatting, alignment, bullet and
-    // numbered lists, tables, hyperlinks and PNG/JPEG pictures. Headers,
-    // footers, footnotes and floating drawings are not read. There is
+    // numbered lists, tables (merged cells, row heights), hyperlinks,
+    // pictures, floating pictures and drawings with their shadows, and each
+    // section's header, footer and page margins. Footnotes are not read. There is
     // deliberately no .doc writer; save as .docx or .odt instead.
     static bool LoadDoc(const std::string& filePath, UCRichDocument& outDocument,
                         std::string& outError);
@@ -70,7 +87,8 @@ public:
     static bool LoadLaTeX(const std::string& filePath, UCRichDocument& outDocument,
                           std::string& outError);
 
-    // Picks the writer from the target extension (.odt/.docx).
+    // Picks the writer from the target extension (.odt/.docx, and the
+    // templates .ott/.dotx, written as templates).
     // `password` saves a password-protected .docx (agile encryption,
     // AES-256 / SHA-512, what Word 2013 and later write); any other format
     // with a password is refused rather than saved unprotected.

@@ -16,8 +16,9 @@
 //   UltraCanvasAlert::Confirm("Delete this item?", "Confirm",
 //                             [](bool yes){ if (yes) deleteItem(); });
 //
+// Version: 1.1.0 - AlertOptions::heading: a bold line above the message
 // Version: 1.0.0
-// Last Modified: 2026-07-07
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,6 +41,9 @@ namespace UltraCanvas {
     struct AlertOptions {
         std::string message;
         std::string title;        // empty => derived from the severity
+        // A bold line above the message ("Delete 12 items permanently?");
+        // the message then says the rest. Empty: the message stands alone.
+        std::string heading;
         std::string details;      // optional secondary line
         AlertSeverity severity = AlertSeverity::Info;
         // The coloured severity badge on the left of the message. Set to false
@@ -63,6 +67,7 @@ namespace UltraCanvas {
         // ----- rich form -----
         static void Show(const AlertOptions& opts) {
             DialogConfig config = UltraCanvasDialogManager::GetDefaultConfig();
+            config.heading     = opts.heading;
             config.message     = opts.message;
             config.details     = opts.details;
             config.dialogType  = ToDialogType(opts.severity);

@@ -2,6 +2,8 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.12 - TestProfilePicture: the owner's picture set, delivered sealed to a contact, refused when
+//                   too large or no picture, sent to a contact added later, removed
 // Version: 0.1.11 - a group renamed, a member taken out by the owner (and not by anyone else), added back, and
 //                   leaving it; a 1:1 conversation deleted on one side (TestGroupManagement)
 // Version: 0.1.10 - deleting: the store's RemoveMessage; end to end by the rules (a read text, an unread one,
@@ -768,6 +770,17 @@ void TestGroupManagement(DirectProvider& alice, Events& aliceEvents, DirectProvi
     CHECK(renamed.title == "Crew" && renamed.ownerId == aliceId);
     // The members by name: Bob's own and Alice (a contact of his) - not just ids.
     CHECK(renamed.memberNames.count(bobId) && renamed.memberNames.count(aliceId));
+    // Bob's own record of the group says "Crew" as well, and goes on saying
+    // it: the group as it was made, pushed on the socket, can arrive after
+    // the rename's reply - its revision is older, and it is dropped (relay
+    // 1.6). Before revisions it overwrote the new title for a moment.
+    bool crewKept = false;
+    bob.FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) {
+        for (const auto& c : l) {
+            if (c.conversationId == groupId) crewKept = c.title == "Crew";
+        }
+    });
+    CHECK(crewKept);
     UltraIMEvent seen;
     CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return isUpdate(e) && e.conversation.title == "Crew"; },
                               &seen, 30));
@@ -1541,6 +1554,128 @@ void TestRecovery(const std::string& relayUrl, const fs::path& base) {
         again.Shutdown();
     }
 }
+
+// The owner's profile picture: Alice sets one, Bob (her contact) gets it
+// sealed, through the link or the relay's queue, and sees it on her chat, in
+// his contacts and beside her messages; one too large or no picture at all
+// is refused and changes nothing; an update without pictureChanged leaves it;
+// removing it takes it away at Bob's too; Carol, added after it was set, gets
+// it once she is a contact. (POSIX only, as the end-to-end test that calls it.)
+bool HasPicture(const UltraIMEvent& e, const std::string& conversationId, bool present) {
+    return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == conversationId &&
+           e.conversation.avatarPath.empty() != present;
+}
+
+void TestProfilePicture(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, Events& bobEvents,
+                        const std::string& aliceId, const std::string& bobId, const std::string& relayUrl,
+                        const fs::path& base, const ProviderTimings& timings) {
+    UltraIMAccountProfile profile = FetchProfile(alice);
+    CHECK(profile.pictureSupported && profile.picturePath.empty());
+
+    // A JPEG's first bytes, and the rest a pattern: Direct checks the kind,
+    // never decodes it.
+    std::vector<uint8_t> jpeg = WritePattern(base / "me.jpg", 6000, 7);
+    jpeg[0] = 0xFF;
+    jpeg[1] = 0xD8;
+    jpeg[2] = 0xFF;
+    {
+        std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(base / "me.jpg"), "wb");
+        if (f) {
+            std::fwrite(jpeg.data(), 1, jpeg.size(), f);
+            std::fclose(f);
+        }
+    }
+    UltraIMResult r;
+    bobEvents.Clear();
+    profile.pictureChanged = true;
+    profile.picturePath = UltraCanvas::PathToUtf8(base / "me.jpg");
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.UpdateAccountProfile(profile, cb); }, r) && r);
+    // Alice keeps a copy of her own; the file handed over may go.
+    const std::string kept = FetchProfile(alice).picturePath;
+    CHECK(!kept.empty() && kept != profile.picturePath && ReadBytes(kept) == jpeg);
+
+    UltraIMEvent got;
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return HasPicture(e, aliceId, true); }, &got, 60));
+    const std::string atBob = got.conversation.avatarPath;
+    CHECK(ReadBytes(atBob) == jpeg);
+    // In Bob's list of chats and of contacts, and beside her messages.
+    std::vector<UltraIMConversation> chats;
+    bob.FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& list) { chats = list; });
+    bool listed = false;
+    for (const auto& c : chats) listed = listed || (c.conversationId == aliceId && c.avatarPath == atBob);
+    CHECK(listed);
+    bool contact = false;
+    bob.FetchContacts([&](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
+        for (const auto& c : list) contact = contact || (c.contactId == aliceId && c.avatarPath == atBob);
+    });
+    CHECK(contact);
+    UltraIMSendOptions say;
+    say.clientMessageId = "msg-with-face";
+    CHECK(alice.SendText(bobId, "with my face", say));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return IsReceived(e, "with my face") && e.message.senderAvatarPath == atBob;
+    }));
+    // Taken away again (unread, so for both), leaving the history the rest
+    // of the test counts as it was.
+    CHECK(alice.DeleteMessage(bobId, "msg-with-face", UltraIMDeleteScope::ForEveryone));
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageDelete && e.message.messageId == "msg-with-face";
+    }));
+
+    // Refused, and nothing changes: too large, not a picture.
+    WritePattern(base / "big.jpg", 40000, 9);
+    profile.picturePath = UltraCanvas::PathToUtf8(base / "big.jpg");
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.UpdateAccountProfile(profile, cb); }, r));
+    CHECK(!r && r.code == UltraIMResultCode::InvalidArgument);
+    WritePattern(base / "words.jpg", 3000, 2);
+    profile.picturePath = UltraCanvas::PathToUtf8(base / "words.jpg");
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.UpdateAccountProfile(profile, cb); }, r));
+    CHECK(!r && r.code == UltraIMResultCode::InvalidArgument);
+    CHECK(FetchProfile(alice).picturePath == kept);
+    // An update without pictureChanged (a new name, say) leaves the picture.
+    UltraIMAccountProfile renamed = FetchProfile(alice);
+    renamed.picturePath.clear();
+    renamed.pictureChanged = false;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.UpdateAccountProfile(renamed, cb); }, r) && r);
+    CHECK(FetchProfile(alice).picturePath == kept);
+
+    // Carol, a contact made after the picture was set, gets it then.
+    Events carolEvents;
+    DirectProvider carol("carol");
+    carol.SetTimings(timings);
+    UltraIMConfig carolConfig;
+    carolConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "carol");
+    CHECK(carol.Initialize(carolConfig, carolEvents.Sink()));
+    UltraIMCredentials carolLogin;
+    carolLogin.loginType = UltraIMLoginType::KeyPair;
+    carolLogin.server = relayUrl;
+    carolLogin.displayName = "Carol";
+    carolLogin.createAccount = true;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { carol.SignIn(carolLogin, cb); }, r) && r);
+    const std::string carolId = carol.GetLocalUserId();
+    // Carol adds Alice and writes: Alice knows her only as someone who wrote
+    // (the relay's contact.added makes her a contact of Alice's, though -
+    // so Alice adding her below is what any later contact would see).
+    UltraIMConversation toAlice;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { carol.AddContact(aliceId, cb); }, toAlice));
+    UltraIMConversation withCarol;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice.AddContact(carolId, cb); }, withCarol));
+    CHECK(carolEvents.WaitFor([&](const UltraIMEvent& e) { return HasPicture(e, aliceId, true); }, &got, 60));
+    CHECK(ReadBytes(got.conversation.avatarPath) == jpeg);
+    carol.SignOut();
+    carol.Shutdown();
+
+    // Removed: gone at Bob's too, file and all.
+    bobEvents.Clear();
+    aliceEvents.Clear();
+    profile.picturePath.clear();
+    profile.pictureChanged = true;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.UpdateAccountProfile(profile, cb); }, r) && r);
+    CHECK(FetchProfile(alice).picturePath.empty() && !fs::exists(UltraCanvas::PathFromUtf8(kept)));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return HasPicture(e, aliceId, false); }, nullptr, 60));
+    CHECK(!fs::exists(UltraCanvas::PathFromUtf8(atBob)));
+    std::printf("  profile picture: set, shared, refused when too large or no picture, sent to a later contact, removed\n");
+}
 #endif
 
 void TestEndToEnd() {
@@ -1779,6 +1914,7 @@ void TestEndToEnd() {
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->CreateGroup("Managed", {bobId}, cb); }, managed));
     TestGroupManagement(*alice, aliceEvents, *bob, bobEvents, managed.conversationId, aliceId, bobId);
     TestPublicGroups(*alice, aliceEvents, *bob, bobEvents, aliceId, bobId);
+    TestProfilePicture(*alice, aliceEvents, *bob, bobEvents, aliceId, bobId, relay.url, base, fast);
 
     if (UltraRtc_GetCapabilities().audio && UltraRtc_GetCapabilities().video) {
         TestVideoCall(*alice, aliceEvents, *bob, bobEvents, bobId);

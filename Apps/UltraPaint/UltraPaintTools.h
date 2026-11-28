@@ -7,6 +7,8 @@
 // Tools are stateless between activations except for what their options
 // hold; PaintToolOptions is the shared, user-editable state (brush sizes,
 // tolerances, shape style, …) that survives tool switches.
+// Version: 1.4.1 - a tool's name and hint are in the person's language (Tr): what reads them
+//                  shows them, nothing looks them up
 // Version: 1.4.0 - the Text tool's options are the window's text bar (UltraCanvasTextFormatBar):
 //                  textOptionChanged and textControlDone are gone; strikethrough, line and
 //                  letter spacing options
@@ -17,7 +19,7 @@
 // Version: 1.2.1 - shortcutShift / ShortcutLabel: a tool's key can need Shift (the Eraser's Shift+X)
 // Version: 1.2.0 - Polyline, Arrow and Curve, the Lines group's tools beside Line
 // Version: 1.1.0 - WantsMagnifier: a tool that places things to the pixel asks for the magnifying glass
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -111,7 +113,7 @@ struct PaintToolContext {
     std::function<void(double x, double y, double boxWidth)> requestText;
     // A tool is about to paint on a text layer: the window offers to
     // rasterize it (the tool does nothing this time). `action` names what
-    // was about to happen ("Paintbrush", "Fill").
+    // was about to happen ("Paintbrush", "Fill"), already translated.
     std::function<void(const std::string& action)> askRasterize;
     // A tool changed something the option panel shows (e.g. brush size by
     // bracket keys): rebuild it.
@@ -157,11 +159,11 @@ public:
     virtual bool WantsMagnifier() const { return false; }
 
     const PaintToolId id;
-    const std::string name;
+    const std::string name;         // translated: shown, never compared
     const std::string iconFile;     // relative to media/icons/ultrapaint/
     const char shortcutKey;         // single letter, 0 for none
     const bool shortcutShift;       // with Shift
-    const std::string hint;         // status-bar text while active
+    const std::string hint;         // status-bar text while active, translated
 
     // How the shortcut reads in a tooltip: "B", "Shift+X"; "" for none.
     std::string ShortcutLabel() const {

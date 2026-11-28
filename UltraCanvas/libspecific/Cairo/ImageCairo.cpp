@@ -1,5 +1,8 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.13.1 - FinishImageMagickWarmUp: the warm-up thread is waited for before the process
+//                   exits (an exit handler on POSIX, the application's destructor), not detached -
+//                   a dlopen after libgomp's finaliser restarted libgomp and aborted the exit
 // Version: 2.13.0 - WarmUpImageMagickInBackground: ImageMagick's start-up off the UI
 //                   thread, so the first TGA / PCX / PSD does not wait for it
 // Version: 2.12.0 - BMP read by the framework's own libvips loader (VipsBmpPlugin, stb_image):
@@ -428,10 +431,16 @@ namespace UltraCanvas {
     namespace {
         // The warm-up thread, joined before libvips shuts down: ImageMagick
         // torn down under a load still running would take the process with it.
-        // A program that never calls ShutdownImageSubsysterm leaves it to the
-        // static destructors, where a joinable std::thread would call
-        // std::terminate and a join could deadlock under the Windows loader
-        // lock (this is a DLL there): detached, it ends with the process.
+        // And joined before the process exits (FinishImageMagickWarmUp): the
+        // application's destructor and, on POSIX, an exit handler do it for a
+        // program that never calls ShutdownImageSubsysterm. Left running into
+        // exit, its dlopen of ImageMagick's coders came after libgomp's
+        // finaliser had run - glibc then marks a library uninitialised - and
+        // started libgomp again, which aborts in goacc_register. Only what
+        // none of those reached is left to the static destructors, where a
+        // joinable std::thread would call std::terminate and a join could
+        // deadlock under the Windows loader lock (this is a DLL there):
+        // detached, it ends with the process.
         struct WarmUpThread {
             std::thread thread;
             ~WarmUpThread() {
@@ -459,6 +468,14 @@ namespace UltraCanvas {
         std::lock_guard<std::mutex> lock(g_magickWarmUpMutex);
         if (g_magickWarmUpStarted) return;   // once
         g_magickWarmUpStarted = true;
+#if !defined(_WIN32)
+        // Before exit runs the libraries' finalisers: exit handlers run
+        // first, in the reverse order of their registration, and ld.so's
+        // _dl_fini was registered before this one. (On Windows an exit
+        // handler of a DLL runs under the loader lock, where a join could
+        // deadlock: the application's destructor waits there instead.)
+        std::atexit([]() { UCImageRaster::FinishImageMagickWarmUp(); });
+#endif
         g_magickWarmUp.thread = std::thread([]() {
             const auto start = std::chrono::steady_clock::now();
             try {
@@ -479,16 +496,19 @@ namespace UltraCanvas {
         });
     }
 
+    void UCImageRaster::FinishImageMagickWarmUp() {
+        std::lock_guard<std::mutex> lock(g_magickWarmUpMutex);
+        if (g_magickWarmUp.thread.joinable()) g_magickWarmUp.thread.join();
+    }
+
     void UCImageRaster::ShutdownImageSubsysterm() {
-        {
-            std::lock_guard<std::mutex> lock(g_magickWarmUpMutex);
-            if (g_magickWarmUp.thread.joinable()) g_magickWarmUp.thread.join();
-        }
+        FinishImageMagickWarmUp();
         vips_shutdown();
     }
 #else
     bool UCImageRaster::InitializeImageSubsysterm(const char *) { return true; }
     void UCImageRaster::WarmUpImageMagickInBackground() {}
+    void UCImageRaster::FinishImageMagickWarmUp() {}
     void UCImageRaster::ShutdownImageSubsysterm() {}
 #endif
 

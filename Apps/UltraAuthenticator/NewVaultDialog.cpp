@@ -59,9 +59,9 @@ void NewVaultDialog::CreateNewVaultDialog() {
     // caption). Sized for four; the first attempt at three lost a line each way.
     auto intro = std::make_shared<UltraCanvasLabel>(
         "nv-intro", margin, y, fieldWidth, 60,
-        "It protects every account in this app and cannot be recovered: "
-        "forget it and the accounts are gone. It is typed twice, since a "
-        "typo here would become the password.");
+        "It protects every account in this app. Forget it and the accounts "
+        "are gone - unless you turn on Recovery once the vault is made. It "
+        "is typed twice, since a typo here would become the password.");
     intro->SetFont(Theme::kUiFont, Theme::kSizeSmall);
     intro->SetTextColor(Theme::kTextSecondary);
     intro->SetWrap(TextWrap::WrapWord);

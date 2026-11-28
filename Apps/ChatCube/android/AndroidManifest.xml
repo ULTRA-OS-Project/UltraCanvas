@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ChatCube for Android. The framework's template
+    (UltraCanvas/OS/Android/packaging/AndroidManifest.xml) with ChatCube's
+    package, label and library, and the permissions a messenger with calls,
+    voice and video messages needs. What the template's notes say about each
+    attribute holds here unchanged; only what differs is explained.
+    scripts/android-package-apk.sh packages it (its manifest option).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="org.ultraos.chatcube">
+
+    <!-- The relay, the other networks, calls: every socket. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Whether there is a network at all, for the connection's state. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- Voice messages and calls. Asked for at the first recording or call
+         (ChatCubeWindow::HaveMediaPermission), not at start. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Video messages and video calls, asked for the same way. A phone
+         without a camera still installs ChatCube. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
+
+    <uses-feature android:glEsVersion="0x00030000" android:required="false"/>
+
+    <!-- The launcher icon is made from media/appicon/ChatCube.png
+         (the icon option of scripts/android-package-apk.sh). -->
+    <application
+        android:label="ChatCube"
+        android:icon="@mipmap/ic_launcher"
+        android:hasCode="true">
+
+        <!-- singleTask: a second launch from the home screen brings the one
+             ChatCube forward - the desktop's single-instance lock, the
+             Android way. -->
+        <activity
+            android:name="org.ultraos.ultracanvas.UltraCanvasActivity"
+            android:label="ChatCube"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density"
+            android:exported="true">
+
+            <!-- libChatCube.so, the ChatCube target on Android
+                 (Apps/ChatCube/CMakeLists.txt). -->
+            <meta-data android:name="android.app.lib_name"
+                       android:value="ChatCube"/>
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

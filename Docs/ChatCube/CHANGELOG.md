@@ -1,3 +1,207 @@
+#### 2026-11-26 *0.1.38*
+- **Start ChatCube with the computer.** *Settings > General > Startup* has
+  two choices: *Manually* (when you open it) and *When the computer starts*,
+  which adds ChatCube to the computer's own list of programs that start as
+  you sign in - minimized (`--minimized`), so messages and calls arrive from
+  then on and the window waits. The choice is read from that list each time
+  the page is shown, so switching ChatCube off in the Task Manager's Startup
+  tab, macOS Login Items or the desktop's autostart settings shows as
+  *Manually* here. Where ChatCube cannot add itself (a Flatpak, a Snap, an
+  MSIX package) the page says so.
+
+#### 2026-11-26 *0.1.37*
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
+
+#### 2026-11-25 *0.1.36*
+- **Your profile picture, end to end to your contacts.** Edit profile has a
+  picture at its head: *Choose a picture* opens one, a crop window places it
+  in the circle (drag it, zoom with the slider or the wheel, see it at the
+  sizes your contacts will), and *Save profile* sends it to every contact
+  as ChatCube Direct sends a message - sealed, over the direct link or
+  through the relay's queue, which never holds it in the clear. A contact
+  you add later gets it when you become contacts; *Remove* takes it away at
+  theirs too. The picture is made small enough on the way (256 pixels, at
+  most 32 KB). Your contacts' pictures show in the chat list, at the head of
+  the chat and beside their messages in a group, instead of their initials.
+  Built on the framework's new profile picture element; an older ChatCube
+  simply does not show the picture.
+- `chatcube-peer --picture <file>` sets the command-line identity's picture
+  (`""` removes it), for trying the above without a second computer.
+- **Faces from Matrix and Mastodon too.** Your Matrix and Mastodon
+  contacts' profile pictures - and a Matrix room's own picture - now show in
+  the chat list, at the head of the chat and beside their messages, as
+  Telegram's already did. Someone on Mastodon without a picture keeps their
+  initials rather than the grey silhouette.
+
+#### 2026-11-24 *0.1.35*
+- **A settings switch's label wraps instead of being cut off.** The switches
+  were one line in a fixed 460 px, which the Greek "On this network" switch
+  filled to within a few pixels; a longer translation, or a wider font on
+  another system, now goes onto a second line.
+
+#### 2026-11-23 *0.1.34*
+- **The message field starts one row high and grows with the text.** It
+  was two rows high whatever it held. Now it is one row while the message
+  is one line, and grows by a row for each line the words wrap or break
+  into, up to four rows; a longer message scrolls inside the field with
+  its scrollbar. It shrinks again as text is deleted, and back to one row
+  when the message is sent.
+- **A + beside the message field, and you choose which icons are where.**
+  The features of the message field - a picture, video or file, smileys &
+  stickers, a screenshot, a location, a voice and a video message - are
+  either in the field's row or behind a new **+** at its left, which opens
+  a menu of them. *Settings > Display > Feature icons* sets each one to
+  *In the message field*, *Behind the + button* or *Not shown*; the change
+  shows at once. Out of the box the paperclip, the smileys and the voice
+  message are in the field; the screenshot (which moved behind the +), the
+  location and the video message are behind the +.
+- **Smileys and stickers.** The smiley button opens a grid of emoji; a
+  click puts one into the message at the caret, and the grid stays open
+  for more. The small arrow beside it lists the sets, each shown by one
+  example - Smileys, Hands, Hearts, Animals, Food & drink, Celebrations &
+  things - and *Cubes*, an example sticker set drawn for ChatCube. A
+  sticker goes with the message as a picture. The button opens the set
+  chosen last.
+- **A location from OpenStreetMap, shown as a map.** Location opens a
+  window with a map: search a place by its name or address, click the map
+  to put the pin there, or press *My position* to put it where this
+  computer is (it asks the system's location service - macOS and Windows
+  ask you once whether ChatCube may). The wheel or + and - zoom, a drag
+  moves the map. Insert writes the place and its openstreetmap.org link
+  into the message. In the chat a location shows as a card - the map with
+  its pin and the place's name - and a click on it opens the place on
+  openstreetmap.org; other programs show the name and the link.
+- **A screenshot straight into the message.** A new button beside the
+  paperclip hides ChatCube, shows the screen frozen and dimmed, and takes
+  the window you click or the area you drag (Enter takes the whole screen,
+  Escape gives up). The picture then waits above the message field like a
+  pasted one, with its x to drop it, and goes with the next message.
+  ChatCube comes back either way. The button is there on Linux, Windows and
+  macOS (where macOS asks once for the Screen Recording permission), not on
+  Android.
+- **The search and its kinds in one row.** The row of buttons under the
+  search field (All, Pictures, Videos, Audio, Files, Links) moved into the
+  search row as one segmented control: *All* in words, the rest as icons
+  that name themselves when the pointer rests on them. The chat gets that
+  row's height back; the field is a little narrower.
+
+#### 2026-11-21 *0.1.33*
+- **ChatCube for Android.** ChatCube now builds as an Android app,
+  `ChatCube-<abi>.apk` (arm64-v8a for phones, x86_64 for the emulator),
+  from the same code as the desktop's: ChatCube Direct, Matrix (without
+  end-to-end encryption for now), Mastodon, Mattermost, Zulip, XMPP and IRC
+  are built into it. Telegram and Signal are not - Telegram's TDLib and
+  signal-cli do not run on Android - and their buttons are not shown. The
+  microphone and the camera are asked for the first time a voice or video
+  message is recorded or a call made or answered. Video calls are sound
+  only on Android for now. How to build and install it:
+  `Apps/ChatCube/android/README.md`. The APK has not been run on a phone yet.
+- **A narrow window shows one column at a time.** Below 640 pixels wide -
+  a phone, or a desktop window made narrow - the chat list fills the
+  window; opening a chat shows it in the list's place, with a back arrow
+  before its name (on Android the back key does the same). A chat that is
+  not on screen is not marked read when a message arrives in it.
+- **The sidebar shows only the networks ChatCube can reach.** A network
+  whose module is missing from this installation no longer has a button
+  that fails when pressed.
+- **A message longer than one line is shown whole.** A message that wrapped
+  in its bubble showed only its first line, ending in "…", although the
+  bubble had room for the rest. On a phone that was nearly every message.
+
+#### 2026-11-20 *0.1.32*
+- **ChatCube Direct, Mattermost and XMPP over WebSocket connect on macOS 14
+  and 15.** Their connections are WebSockets, and on those systems there
+  was none to be had: the WebSocket client was libcurl's, and Apple's own
+  libcurl lists no WebSockets through macOS 15. Mattermost signed in and
+  then received nothing, XMPP's WebSocket binding failed its sign-in, and
+  ChatCube Direct - whose relay connection is a WebSocket - could not reach
+  its relay. UltraNet now brings a WebSocket client of its own for such a
+  system, on the Mac's own TLS and certificates; nothing changes where
+  libcurl has WebSockets.
+
+#### 2026-11-19 *0.1.31*
+- **With "Use system proxy settings", every network takes the same way
+  out.** When the system names a web proxy and no SOCKS proxy, Telegram and
+  Signal went through it but IRC and XMPP connected directly past it. IRC
+  and XMPP now go through it too. If that proxy does not let a chat server
+  through (some allow only web addresses), signing in says so and names
+  the proxy: add the server under *No proxy for* to reach it directly.
+  Framework changelog: UltraNet_ResolveTunnelProxy.
+- **Signal says why it stopped.** If signal-cli ended and could not be
+  started again - Java removed, for instance - the Signal status stayed at
+  "reconnecting" without a reason. It now shows what signal-cli said, and
+  comes back by itself once it can be started. Framework changelog: UltraIM
+  Signal, a daemon that cannot be started again says why.
+- **Signal goes through the proxy.** Signal, like Telegram, connected
+  directly whatever Settings > Networks > Proxy said. ChatCube now starts
+  signal-cli for the proxy chosen there (HTTP or SOCKS) and starts it again
+  when you change the setting - you stay linked, no new QR code. signal-cli
+  cannot use a proxy that asks for a user name and password, and ChatCube
+  can hand a proxy only to signal-cli's Java version, 0.13.13 or later -
+  not to its native build or an older one: in those cases it says so on
+  the Signal status line instead of connecting directly. If you run the
+  signal-cli daemon yourself, its proxy is yours to set. Framework
+  changelog: UltraIM Signal, the proxy setting reaches signal-cli.
+- **Telegram goes through the proxy.** With a proxy chosen under Settings >
+  Networks > Proxy - or set in the system - ChatCube reached its relay and
+  Matrix through it, but Telegram still connected directly, so where
+  Telegram needs a proxy its messages were not delivered. Telegram now
+  uses the same proxy (SOCKS or HTTP, with its user name and password), from
+  its first connection on, and follows a change of the setting within a few
+  seconds without signing in again. Framework changelog: UltraIM Telegram,
+  the proxy setting reaches TDLib.
+
+#### 2026-11-18 *0.1.30*
+- **Only the networks you use are loaded.** ChatCube used to load every
+  network's module at start - Telegram, Matrix, Signal and the rest - even
+  for an account on ChatCube alone, each starting its own worker. Now it
+  loads ChatCube Direct and the networks you are signed in to; another
+  network's module is loaded when you press its button, and one you sign
+  out of is not loaded at the next start. The first start after the update
+  still finds every network you were signed in to.
+- **Who is typing, and where.** Someone typing now shows in the chat list
+  too - in the accent colour, in place of the last message - so it is seen
+  in a chat that is not open. In a group it says who: "Anna is typing…",
+  "Anna and Ben are typing…", "Anna and others are typing…". And Mattermost
+  and Zulip now show typing both ways, as the other networks did.
+
+#### 2026-11-17 *0.1.29*
+- **A group's new name no longer flips back for a moment.** Renaming a group
+  right after it was made could show its first name again until the next
+  change arrived: the relay's notice of the group being made could reach
+  ChatCube after the answer to the rename. With ChatCube relay 1.6.0 every
+  change to a group is numbered, and ChatCube ignores a notice older than
+  what it already shows - which also keeps a group you left from coming
+  back. With an older relay ChatCube works as before. Framework changelog:
+  ChatCube relay 1.6.0, group revisions.
+- **Mattermost and Zulip.** Two team chats join ChatCube, with buttons in a
+  third row: your server, your user name or e-mail and your password (and,
+  for a Mattermost account with two-factor sign-in, the code from your
+  authenticator app). Mattermost brings your direct and group messages and
+  your teams' channels, with thread replies; Zulip your direct and group
+  messages and each topic of your streams as a chat. Texts, files of any
+  kind with the progress bar, edits, deletes, read marks, search; the next
+  start signs in by itself. The status line shows the account's name.
+- **Which network?** An address more than one signed-in network takes
+  (`@user`: Telegram and Mattermost; an e-mail: Zulip and Mattermost) asks
+  which one when added; when none of them is signed in, the status line
+  names them.
+- **Signal.** A Signal button shows a QR code to scan with the Signal app on
+  the phone: ChatCube becomes a linked device (through signal-cli, which is
+  installed separately). Chats and groups, replies, edits, deletes, ticks,
+  typing, pictures and files; numbers and Signal usernames in *Add*.
+- **XMPP.** Any XMPP (Jabber) server, over TLS (port 5222 or 5223, found from
+  your address) or WebSocket: your address and
+  password, your contacts and rooms, the server's history, ticks, typing,
+  edits, deletes, replies and file uploads. The password is not kept, only
+  keys derived from it.
+- **IRC.** Server, nickname and (for a registered one) password; `#channel`
+  joins, a nickname opens a private chat, the network's own chat shows its
+  notices and takes commands. Over TLS unless the server starts with
+  `irc://`. A nickname in use is changed and the status line says to what.
+
 #### 2026-11-16 *0.1.28*
 - **Mastodon.** A Mastodon button beside Telegram signs in to any Mastodon
   server (or one that speaks its language: GoToSocial, Akkoma, Pleroma) on

@@ -62,12 +62,14 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
-UltraDatabase and nothing of the widget layer, so tools and tests stay
+UltraDatabase and UltraLocalisation - both UI-free - and nothing of the widget
+layer, so tools and tests stay
 headless; `Tests/UltraMessage/CMakeLists.txt` also configures on its own
 where the UI library cannot be built.
 
 ## 2. Ten-line tour
 
+<!-- doc-check: void OpenPaths(const UltraCanvas::JSONValue& request); -->
 ```cpp
 #include <UltraMessage/UltraMessageEndpoint.h>
 #include <UltraMessage/UltraMessageUltraCanvas.h>   // only in an UltraCanvas app
@@ -89,9 +91,11 @@ bus->RequestBlocking("org.ultraos.ultraviewer", "app.command.invoke",
 ```
 
 The first application to connect and find no broker hosts one in-process;
-every later one connects to it. When the hosting process exits, the next
-`Connect` elects a new host (a lock file beside the socket decides; no two
-processes ever both win). On ULTRA OS the shell will host it permanently.
+every later one connects to it. When the hosting process exits, the
+endpoints still connected reconnect by themselves and one of them hosts the
+next broker (a lock file beside the socket decides; no two processes ever
+both win) - see *When the broker goes* in §3.1. On ULTRA OS the shell will
+host it permanently.
 
 At exit the module stops what the process still has open - its endpoints, and
 the broker with its adapters when it hosts one - unless Windows is already
@@ -116,6 +120,18 @@ endpoints and subscriptions are opaque `UltraMsgHandle`s.
 |---|---|
 | `UltraMsg_Connect(options, &error)` | Join the bus as `options.appId` (reverse DNS). Hosts a broker when none answers and `startBrokerIfAbsent` is set. `busPath` / `journalPath` override the platform defaults. |
 | `UltraMsg_Disconnect(endpoint)` | Leave; every subscription of the endpoint ends, including deliveries already queued for the UI thread. |
+
+**When the broker goes.** The broker lives in whichever program connected
+first, and goes when that program ends. An endpoint whose connection drops
+without `UltraMsg_Disconnect` reconnects by itself (`autoReconnect`, on by
+default): first after 200 ms, then at growing intervals up to five seconds.
+It hosts the next broker when `startBrokerIfAbsent` allows and nobody else
+has, gets a new instance id, and registers its subscriptions again under the
+same handles, so their callbacks keep coming; a subscription made with
+`replaySinceMs` gets what was journaled since the drop. Requests and control
+calls in flight fail with `NotConnected`, and so does what is sent until the
+endpoint is back - `UltraMsg_IsConnected` says when. Without this, a program
+that outlived the broker's host heard nothing for the rest of its life.
 | `UltraMsg_IsConnected`, `UltraMsg_GetEndpointInfo`, `UltraMsg_GetBrokerInfo` | State: instance id, verified process id, whether the broker is in this process, its bus and journal paths. |
 | `UltraMsg_ListEndpoints`, `UltraMsg_ResolveApp` | Who is on the bus; the instance ids of one application, first-connected first. |
 
@@ -191,6 +207,47 @@ that is set, on every platform: the framework's machine-local data root
 (`UltraCanvasDataFolder.h`). A `ultramessage` folder an earlier version left
 on Linux is moved into `UltraMessage` on the first broker start. Socket, lock
 file and directories are owner-only.
+
+**The bus folder must be this user's alone.** Whoever holds the folder the
+socket lies in decides which broker an application meets there. Without
+`$XDG_RUNTIME_DIR` the bus lies at `/tmp/ultramessage-<uid>/ultramessage/`, a
+name any account can work out and make first. So on Linux, macOS and the BSDs
+a broker hosts, and an endpoint joins, only where
+
+- the bus folder is a real folder (not a link), owned by this user, and
+  nobody else may write to it - the broker makes every folder it creates on
+  the way owner-only, and tightens one of this user's that is looser; and
+- the folder above it is this user's or the system's (root's), and not one
+  everyone may write to - unless it has the sticky bit, as `/tmp` does, where
+  an entry is its owner's alone to rename.
+
+Otherwise the connect fails with `the bus folder ... is not this user's
+alone: ...`, naming which of these it was, and nothing is written there. A program
+running as root is let through: it joins a user's bus on purpose (a tool
+started with `sudo`). A custom `busPath` follows the same rule.
+
+A Unix socket's address holds a path of 107 bytes on Linux and 103 on macOS
+and the BSDs. A bus path longer than that - a long `$XDG_RUNTIME_DIR`, a
+sandbox's, a test's private folder - is reached through its folder on Linux
+(the folder is opened and the socket named as `/proc/self/fd/<n>/bus.sock` -
+`UltraCanvasUnixSocketAddress.h`),
+so the bus stays where the path says and broker and endpoints need nothing
+set. On macOS and the BSDs such a path is refused, and the error says so
+(`bus path too long for a Unix socket: ...`): give a shorter `busPath` or
+`TMPDIR` there.
+
+**Why a bus could not be hosted or joined is said in the person's language.**
+`UltraMsg_Connect`'s `error.message` is what an application shows - the
+single-instance "already running" alert puts it on screen - so the reasons a
+person can meet go through `Tr` (UltraLocalisation, the standard set): no
+broker listening or reachable, a broker that cannot be started, the bus
+folder that is not this user's alone, a bus path too long, a folder that
+cannot be made or opened, a broker that does not confirm the connection.
+They are worded when they happen, in the language loaded at that moment: a
+program that has not loaded one (`ultramsg`, a test) gets the English, which
+is also the catalogue key. What only a programmer meets stays English -
+an invalid topic or pattern, a missing callback, a call on an endpoint that
+is not connected, the journal's and the system calls' own errors.
 
 ### 3.5 Schemas and topics
 
@@ -454,6 +511,7 @@ draws nothing.
 What an application gives a `system.notification` it wants on screen, and the
 one call that makes its clicks reach it however the notification was shown:
 
+<!-- doc-check: void Open(const std::string& launch); UltraMsgHandle endpoint; std::string iconPngPath; std::string exportedPath; -->
 ```cpp
 // Once, at the start (UltraCanvasNotificationActivation.h): on Windows, a click
 // on the toast after the broker host quit - or with the application closed,
@@ -534,6 +592,9 @@ Windows `GetNamedPipeClientProcessId`).
 - A request gets exactly one reply or error — including when its target
   disconnects first.
 - Persistent topics are journaled before fan-out.
+- Nothing is queued across a reconnection: a notice posted while the
+  receiver was off the bus is not delivered to it (a persistent one is in the
+  journal, and a subscription with `replaySinceMs` gets it on its return).
 
 ## 8. Building and testing
 

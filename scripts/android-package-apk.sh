@@ -22,8 +22,12 @@
 # is the route for an app with its own Gradle project; this script is what CI
 # runs, and it needs nothing a GitHub Ubuntu runner does not have already.
 #
+# Another app passes its own manifest and asset list (ChatCube:
+# Apps/ChatCube/android/AndroidManifest.xml and assets.txt).
+#
 # Usage: scripts/android-package-apk.sh --abi ABI --lib PATH --out APK
 #            [--ndk DIR] [--sdk DIR] [--version-name X.Y.Z] [--icon PNG]
+#            [--manifest XML] [--assets LIST]
 #   ABI      arm64-v8a or x86_64 (the directory under lib/ in the APK)
 #   --lib    the app library, e.g. build-android/lib/libUltraCanvasDemo.so;
 #            its name must match the manifest's android.app.lib_name
@@ -33,6 +37,11 @@
 #            Docs/UltraCanvas/CHANGELOG.md
 #   --icon   the launcher icon, any size or shape; defaults to the demo's,
 #            media/appicon/Demo.png. Needs ImageMagick (magick or convert).
+#   --manifest  the app's AndroidManifest.xml; defaults to the demo's, the
+#            template in UltraCanvas/OS/Android/packaging/
+#   --assets a file listing what goes into assets/, one path a line relative
+#            to the repository ('#' starts a comment); defaults to the demo's
+#            set below, with its sources
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,6 +51,7 @@ min_sdk=28      # what the dependency sysroot is built for (packaging/README.md)
 target_sdk=34
 
 abi="" lib="" out="" ndk="" sdk="" version_name="" icon="$repo/media/appicon/Demo.png"
+manifest="$packaging/AndroidManifest.xml" assets_list=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --abi) abi="$2"; shift 2 ;;
@@ -51,12 +61,16 @@ while [ $# -gt 0 ]; do
         --sdk) sdk="$2"; shift 2 ;;
         --version-name) version_name="$2"; shift 2 ;;
         --icon) icon="$2"; shift 2 ;;
+        --manifest) manifest="$2"; shift 2 ;;
+        --assets) assets_list="$2"; shift 2 ;;
         *) echo "android-package-apk: unknown argument $1" >&2; exit 2 ;;
     esac
 done
 die() { echo "android-package-apk: $*" >&2; exit 2; }
 [ -n "$abi" ] && [ -n "$lib" ] && [ -n "$out" ] || die "--abi, --lib and --out are required"
 [ -f "$lib" ] || die "no app library at $lib"
+[ -f "$manifest" ] || die "no manifest at $manifest"
+[ -z "$assets_list" ] || [ -f "$assets_list" ] || die "no asset list at $assets_list"
 case "$abi" in arm64-v8a|x86_64|armeabi-v7a|x86) ;; *) die "unknown ABI $abi" ;; esac
 
 ndk="${ndk:-${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}}"
@@ -108,11 +122,38 @@ mkdir -p "$work/classes" "$work/dex"
 javac -nowarn -Xlint:-options -bootclasspath "$android_jar" -source 8 -target 8 \
       -d "$work/classes" "${sources[@]}"
 mapfile -t class_files < <(find "$work/classes" -name '*.class')
-"$build_tools/d8" --release --min-api "$min_sdk" --lib "$android_jar" \
-      --output "$work/dex" "${class_files[@]}"
+dex() {
+    rm -rf "$work/dex" && mkdir -p "$work/dex"
+    "$build_tools/d8" --release --min-api "$min_sdk" --lib "$android_jar" \
+          --output "$work/dex" "${class_files[@]}"
+}
+# JDK 21's javac writes a MethodParameters attribute with unnamed entries for
+# the parameters of an anonymous class's constructor, and the d8 of
+# build-tools 34 (R8 8.2) dies on them with a NullPointerException
+# (build-tools 35's d8 reads them). The attribute only names parameters for
+# reflection, which nothing here uses: when d8 refuses the classes, it is
+# taken out of them and d8 runs once more.
+if ! dex 2> "$work/d8.log"; then
+    grep -v '^Picked up' "$work/d8.log" | grep -v '^[[:space:]]*at ' | head -3 >&2
+    echo "android-package-apk: d8 ($(basename "$build_tools")) refused the classes; again without their MethodParameters" >&2
+    python3 "$repo/scripts/strip_method_parameters.py" "${class_files[@]}"
+    dex
+fi
 
-# ---- 2. Assets, laid out as $HOME/share expects them.
+# ---- 2. Assets, laid out as $HOME/share expects them: the list given, or
+# the demo's.
 assets="$work/assets"
+mkdir -p "$assets"
+if [ -n "$assets_list" ]; then
+    while IFS= read -r path || [ -n "$path" ]; do
+        path="${path%%#*}"
+        path="$(echo "$path" | xargs)"           # trimmed
+        [ -n "$path" ] || continue
+        [ -e "$repo/$path" ] || die "$assets_list lists $path, which is not in the repository"
+        mkdir -p "$assets/$(dirname "$path")"
+        cp -R "$repo/$path" "$assets/$path"
+    done < "$assets_list"
+else
 mkdir -p "$assets/DemoApp"
 for path in media/fonts media/icons media/appicon media/images media/vector \
             media/flags media/textsamples media/ebooks media/diagrams media/docs \
@@ -125,6 +166,7 @@ for path in media/fonts media/icons media/appicon media/images media/vector \
     cp -R "$repo/$path" "$assets/$path"
 done
 cp "$repo"/Apps/DemoApp/*.cpp "$repo"/Apps/DemoApp/*.h "$assets/DemoApp/"
+fi
 echo "  assets $(du -sh "$assets" | cut -f1)"
 
 # ---- 3. The launcher icon the manifest names (@mipmap/ic_launcher): one
@@ -141,7 +183,7 @@ done
 
 # ---- 4. Manifest, icon and assets, then the dex and the stripped library.
 "$build_tools/aapt2" link -o "$work/base.apk" \
-      --manifest "$packaging/AndroidManifest.xml" -I "$android_jar" \
+      --manifest "$manifest" -I "$android_jar" \
       --min-sdk-version "$min_sdk" --target-sdk-version "$target_sdk" \
       --version-code "$version_code" --version-name "$version_name" \
       -A "$assets" "$work/res.zip"

@@ -87,6 +87,16 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.33.0 - a PowerPoint 97-2003 deck (.ppt, .pps, .pot) is a presentation (IsPresentationFile)
+// Version: 1.32.0 - a word-processing document (.odt, .docx, .doc) opens in the document view as its
+//                   pages, laid out as print lays them out (IsWordProcessingFile); a password-protected
+//                   one waits for Unlock
+// Version: 1.31.0 - a presentation opens as its slides in the document view (UltraCanvasPresentationPages),
+//                   the info bar naming the slide and its speaker notes; SetPresentationOutline (O);
+//                   StartPresenting / StopPresenting (F5 / Shift+F5, Escape): the slide show
+// Version: 1.30.0 - a presentation (.pptx and kin, .odp / .otp / .fodp) opens in the text view as the
+//                   outline of its slides (IsPresentationFile); a password-protected one shows
+//                   the Unlock note and opens with its password, as a protected PDF does
 // Version: 1.29.0 - Save as for a video the player opened: another type FileLoader's
 //                   ConvertVideoFile writes (VideoFX's converter, where the application
 //                   registered it), on a thread of its own with a progress ring and Cancel
@@ -133,7 +143,7 @@
 // Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
 //                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -536,6 +546,23 @@ public:
     void SetSlideshowIntervalSeconds(double sec);
     double GetSlideshowIntervalSeconds() const { return slideshowIntervalSec; }
 
+    // ===== PRESENTATIONS =====
+    // A deck (.pptx, .odp ...) is shown as its slides, drawn as pages in the
+    // document view - zoom, the thumbnail strip, the page keys, search - its
+    // speaker notes on the info bar. With the outline chosen it is shown as
+    // the outline of its slides in the text view instead (the O key toggles).
+    // Builds without the PDF view always show the outline.
+    void SetPresentationOutline(bool outline);
+    bool GetPresentationOutline() const { return presentationOutline; }
+    // The slide show: the deck's slides one at a time, the whole screen,
+    // no bars (F5 from the first slide, Shift+F5 from the one shown). The
+    // arrows, Space, Page Up / Down, Home and End move through the slides;
+    // Escape (or StopPresenting) ends it and restores the window. False
+    // when the shown file is no deck shown as its slides.
+    bool StartPresenting(bool fromCurrentSlide = false);
+    void StopPresenting();
+    bool IsPresenting() const { return presenting; }
+
     void SetTransition(MediaTransition t) { transition = t; }
     MediaTransition GetTransition() const { return transition; }
 
@@ -763,6 +790,20 @@ public:
     // sheets and pictures read from the archive's own parts. False without
     // UltraNet's MIME reader, as IsMailMessageFile.
     static bool IsWebArchiveFile(const std::string& path);
+    // PowerPoint (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm; the 97-2003 .ppt,
+    // .pps, .pot) and OpenDocument (.odp, .otp, .fodp) decks, by name. Shown
+    // in the document view as their slides, or in the text view as the
+    // outline of their slides - each slide's number and title, its bullets,
+    // tables and notes - as UltraCanvasFileLoader::LoadTextDocument reads
+    // them; a password-protected one is locked until Unlock, as a PDF is.
+    static bool IsPresentationFile(const std::string& path);
+    // Word-processing documents (.odt, .docx, .doc), by name. Shown in the
+    // document view as their pages - laid out as print and PDF export lay
+    // them out, on white paper, with headers, footers, pictures and tables -
+    // with the PDF view's zoom, page strip and search. A password-protected
+    // .docx or .odt is locked until Unlock, as a PDF is. False in a build
+    // without the PDF view.
+    static bool IsWordProcessingFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
     // The panel the "Details" button opens over the display area: a group box
@@ -828,6 +869,8 @@ private:
     void AskForPassword(const std::string& note);
     // What a locked PDF shows: a note in the text view.
     void ShowLockedPDFNote(const std::string& path);
+    // A deck's outline (Markdown) in the read-only text view.
+    void ShowOutlineInTextView(const std::string& markdown);
     // Shows `plain` - "Key: value" lines, as the Details panel takes them -
     // in noteView, in place of the text view.
     void ShowNote(const std::string& plain);
@@ -954,6 +997,13 @@ private:
     std::vector<std::string> playlist;
     size_t currentIndex = 0;
     std::string currentFolder;     // folder the breadcrumb reflects
+    bool presentationOutline = false;   // decks as their outline, not their slides
+    // The slide show, and what it put aside to fill the screen.
+    bool presenting = false;
+    bool presentingRestoreTopBars = true, presentingRestoreInfoBar = true, presentingRestoreThumbs = true;
+    bool presentingRestoreFullscreen = false;
+    // A deck shown as its slides (not locked, not as its outline).
+    bool ShowingSlides() const;
     bool topBarsVisible = true;    // breadcrumb + toolbars above the surface
     bool infoBarVisible = true;    // the info bar under it
 
@@ -1029,7 +1079,7 @@ private:
 
     // The shown file is password-protected and not unlocked: which kind,
     // so Unlock knows how to open it (see IsLocked()).
-    enum class MediaLock { NotLocked, UCDImage, PDF };
+    enum class MediaLock { NotLocked, UCDImage, PDF, Presentation, WordDocument };
     MediaLock locked = MediaLock::NotLocked;
     bool unlocked = false;            // ... or it is, and was opened with its password (IsUnlocked)
     bool askingForPassword = false;   // Unlock's question is up

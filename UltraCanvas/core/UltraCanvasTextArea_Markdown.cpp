@@ -1,6 +1,16 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.9.0 - StyleMarkdownCaretLine: the caret's line is formatted like the rendered
+//                  lines over its source, its markup dimmed, a table row's cells under their
+//                  columns
+// Version: 2.8.5 - each table cell maps its text back to the source line (cpMap), so a
+//                  selection or a search match can be painted inside it
+// Version: 2.8.4 - a table is sized to the visible width once it is known: without word wrap the
+//                  first layout ran before the visible area was measured, so tables kept their
+//                  100 px floor and broke header words ("Quar-ter") with room to spare
+// Version: 2.8.3 - a backslash escape inside bold, italic or strike-through is resolved, as outside
+//                  ("*\\[Picture]*" shows "[Picture]"), and an escaped marker does not close the run
 // Version: 2.8.2 - a table's separator row is only a small gap when there is no
 //                 line-number gutter (the rule under the header is drawn at its top)
 // Version: 2.8.1 - footnote, abbreviation and anchor tooltips are placed at the pointer
@@ -8,7 +18,7 @@
 // Version: 2.8.0 - GitHub-style heading anchors: [Section](#section) jumps without {#id}
 // Version: 2.7.1 - MarkdownHybridStyle::linkUnderline is honoured (links were always underlined)
 // Version: 2.7.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -611,8 +621,9 @@ namespace UltraCanvas {
 
     // Inline markdown scanner. Single-pass, not recursive — doesn't handle nested inline markers
     // (e.g. **bold _italic_**). Marker bytes (`*`, `_`, `` ` ``, `~`, `^`, `[`, `]`, `(`, `)`,
-    // `!`) are stripped from the visible output. A trailing `\` escapes the next literal
-    // character. Known `:shortcode:` names and word-boundary ASCII emoticons (`:-)`, `;)`,
+    // `!`) are stripped from the visible output. A `\` escapes the next literal
+    // character - inside bold, italic and strike-through too (not in inline code).
+    // Known `:shortcode:` names and word-boundary ASCII emoticons (`:-)`, `;)`,
     // `8-)`, `<3`, …) are expanded to their UTF-8 emoji inline, and typography markers
     // `(c)` / `(r)` / `(tm)` / `(p)` (case-insensitive) expand to © ® ™ ℗. Inline math
     // `$…$` runs LaTeX commands through SubstituteGreekLetters (`\alpha` → α, etc.).
@@ -684,6 +695,40 @@ namespace UltraCanvas {
             for (int j = from; j < n; j++) if (rawLine[j] == c) return j;
             return -1;
         };
+        // The same, stepping over a backslash-escaped character: "*\**" is an
+        // italic star, not an empty italic run and a stray marker.
+        auto scanPairUnescaped = [&](int from, char a, char b) -> int {
+            for (int j = from; j + 1 < n; j++) {
+                if (rawLine[j] == '\\') { j++; continue; }
+                if (rawLine[j] == a && rawLine[j + 1] == b) return j;
+            }
+            return -1;
+        };
+        auto scanCharUnescaped = [&](int from, char c) -> int {
+            for (int j = from; j < n; j++) {
+                if (rawLine[j] == '\\') { j++; continue; }
+                if (rawLine[j] == c) return j;
+            }
+            return -1;
+        };
+        // Appends rawLine[from, to) to the visible text with its backslash
+        // escapes resolved - "*\[Picture]*" shows "[Picture]" in italics, as
+        // outside emphasis. Each dropped backslash moves the source cursor
+        // and records a boundary, so a click inside the run still lands on
+        // its source column.
+        auto appendUnescaped = [&](int from, int to) {
+            for (int j = from; j < to;) {
+                if (rawLine[j] == '\\' && j + 1 < to) {
+                    i = j + 1;     // past the backslash
+                    noteVisStart();
+                    visibleText.push_back(rawLine[j + 1]);
+                    j += 2;
+                    continue;
+                }
+                visibleText.push_back(rawLine[j]);
+                ++j;
+            }
+        };
 
         while (i < n) {
             // Sync running cp counters and emit a boundary if the delta changed
@@ -704,12 +749,12 @@ namespace UltraCanvas {
 
             // Bold: **...** or __...__
             if (i + 1 < n && (c == '*' || c == '_') && rawLine[i + 1] == c) {
-                int close = scanPair(i + 2, c, c);
+                int close = scanPairUnescaped(i + 2, c, c);
                 if (close > i + 2) {
                     int s = (int)visibleText.size();
                     i += 2;        // skip opening **
                     noteVisStart();
-                    visibleText.append(rawLine, i, close - i);
+                    appendUnescaped(i, close);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Bold, {}, {}});
                     i = close + 2;
                     continue;
@@ -717,12 +762,12 @@ namespace UltraCanvas {
             }
             // Italic: *...* or _..._
             if (c == '*' || c == '_') {
-                int close = scanChar(i + 1, c);
+                int close = scanCharUnescaped(i + 1, c);
                 if (close > i + 1) {
                     int s = (int)visibleText.size();
                     i += 1;        // skip opening *
                     noteVisStart();
-                    visibleText.append(rawLine, i, close - i);
+                    appendUnescaped(i, close);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Italic, {}, {}});
                     i = close + 1;
                     continue;
@@ -743,12 +788,12 @@ namespace UltraCanvas {
             }
             // Strike: ~~...~~
             if (i + 1 < n && c == '~' && rawLine[i + 1] == '~') {
-                int close = scanPair(i + 2, '~', '~');
+                int close = scanPairUnescaped(i + 2, '~', '~');
                 if (close > i + 2) {
                     int s = (int)visibleText.size();
                     i += 2;        // skip opening ~~
                     noteVisStart();
-                    visibleText.append(rawLine, i, close - i);
+                    appendUnescaped(i, close);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Strike, {}, {}});
                     i = close + 2;
                     continue;
@@ -1137,6 +1182,294 @@ namespace UltraCanvas {
         }
     }
 
+    // The caret's line keeps its source text - every character stays where the
+    // caret and the editing code expect it - and is formatted over it: what the
+    // rendered line shows formatted is formatted the same way here, and the
+    // markup it comes from is dimmed. Attributes only, so the cpMap stays the
+    // identity. Runs after NormalizeTableGroupWidths, which places the columns a
+    // table row's cells are moved under.
+    void UltraCanvasTextArea::StyleMarkdownCaretLine(LineLayoutBase* ll, int lineIndex) {
+        if (!ll || !ll->layout || lineIndex < 0 || lineIndex >= (int)lineLayouts.size()) return;
+        const LineLayoutBase* rendered = lineLayouts[lineIndex].get();
+        if (!rendered) return;
+        switch (rendered->layoutType) {
+            // Code keeps its syntax colours; a display formula's lines are LaTeX.
+            case LineLayoutType::CodeblockStart:
+            case LineLayoutType::CodeblockEnd:
+            case LineLayoutType::CodeblockContent:
+            case LineLayoutType::MathBlock:
+            case LineLayoutType::MathBlockCollapsed:
+                return;
+            default:
+                break;
+        }
+        const std::string txt = GetLineContent(lineIndex);
+        const int n = static_cast<int>(txt.size());
+        if (n == 0) return;
+        ITextLayout* layout = ll->layout.get();
+
+        // An input method's composition is spliced into the layout at the caret:
+        // a source byte past it sits that much further on in the layout.
+        int compositionByte = -1, compositionBytes = 0;
+        if (!preeditText.empty() && lineIndex == cursorPosition.lineIndex) {
+            const int cp = std::clamp(cursorPosition.columnIndex, 0, utf8_length(txt));
+            compositionByte = static_cast<int>(utf8_cp_to_byte(txt, cp));
+            compositionBytes = static_cast<int>(preeditText.size());
+        }
+        auto toLayout = [&](int b) {
+            return (compositionByte >= 0 && b > compositionByte) ? b + compositionBytes : b;
+        };
+        // ChangeAttribute, not InsertAttribute: where two attributes of a kind
+        // overlap, Pango draws the one that starts later, so a syntax colour
+        // starting mid-line would beat a colour laid over the whole line. A
+        // changed attribute replaces whatever of its kind the range had.
+        auto add = [&](std::unique_ptr<ITextAttribute> a, int from, int to) {
+            if (from >= to) return;
+            a->SetRange(toLayout(from), toLayout(to));
+            layout->ChangeAttribute(std::move(a));
+        };
+        auto dim = [&](int from, int to) {
+            add(TextAttributeFactory::CreateForeground(markdownStyle.markupColor), from, to);
+        };
+        const int lh = computedLineHeight > 0 ? computedLineHeight
+                                              : static_cast<int>(style.fontStyle.fontSize * 1.3f);
+        auto smallRaised = [&](int from, int to, double rise) {
+            add(TextAttributeFactory::CreateScale(0.7), from, to);
+            add(TextAttributeFactory::CreateRise(static_cast<int>(lh * rise)), from, to);
+        };
+
+        // The text in the text colour and the regular face, as the rendered lines
+        // draw it: the syntax colours and emphasis give way to the formatting.
+        add(TextAttributeFactory::CreateForeground(style.fontColor), 0, n);
+        add(TextAttributeFactory::CreateFontWeight(FontWeight::Normal), 0, n);
+        add(TextAttributeFactory::CreateFontStyle(FontSlant::Normal), 0, n);
+        add(TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineNone), 0, n);
+
+        // Inline formatting of txt[from, to): the renderer's own parse, its runs
+        // mapped back onto the source through its cpMap. A stretch of source no
+        // visible character comes from is markup and is dimmed when it opens or
+        // closes a run ("**", "`", "](url)") or is marker punctuation only (an
+        // escape's backslash); the rest of such stretches is substituted text
+        // (":smile:", "--") and keeps the text colour.
+        auto styleInline = [&](int from, int to) {
+            if (from >= to) return;
+            const std::string payload = txt.substr(from, to - from);
+            std::string visible;
+            std::vector<InlineRun> runs;
+            std::vector<CpRun> map;
+            ParseInlineMarkdownRuns(payload, visible, runs, &map);
+            const int payloadCps = utf8_length(payload);
+            const int visibleCps = utf8_length(visible);
+            auto srcByte = [&](int cp) {
+                return from + static_cast<int>(utf8_cp_to_byte(payload, std::clamp(cp, 0, payloadCps)));
+            };
+            auto charAt = [&](int cp) {
+                const size_t b = utf8_cp_to_byte(payload, cp);
+                return b < payload.size() ? payload[b] : '\0';
+            };
+            std::vector<char> covered(payloadCps + 1, 0), runStart(payloadCps + 1, 0), runEnd(payloadCps + 1, 0);
+            for (int v = 0; v < visibleCps; v++) {
+                const int sc = VisibleCpToSourceCp(map, v);
+                if (sc >= 0 && sc < payloadCps) covered[sc] = 1;
+            }
+            for (const auto& run : runs) {
+                if (run.startByte >= run.endByte) continue;
+                const int vs = utf8_byte_to_cp(visible, run.startByte);
+                const int ve = utf8_byte_to_cp(visible, run.endByte);
+                int ss = std::clamp(VisibleCpToSourceCp(map, vs), 0, payloadCps);
+                int se = std::clamp(VisibleCpToSourceCp(map, ve - 1) + 1, ss, payloadCps);
+                if (run.kind == InlineRun::Math) {
+                    // A typeset formula is one placeholder character: its LaTeX
+                    // is all the source up to its closing dollars.
+                    int next = std::clamp(VisibleCpToSourceCp(map, ve), se, payloadCps);
+                    while (next > se && charAt(next - 1) == '$') next--;
+                    for (int k = se; k < next; k++) covered[k] = 1;
+                    se = next;
+                }
+                runStart[ss] = 1;
+                runEnd[se] = 1;
+                const int a = srcByte(ss), b = srcByte(se);
+                switch (run.kind) {
+                    case InlineRun::Bold:
+                        add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold), a, b);
+                        break;
+                    case InlineRun::Italic:
+                        add(TextAttributeFactory::CreateFontStyle(FontSlant::Italic), a, b);
+                        break;
+                    case InlineRun::Code:
+                        add(TextAttributeFactory::CreateFontStyle(style.fixedFontStyle), a, b);
+                        add(TextAttributeFactory::CreateForeground(markdownStyle.codeTextColor), a, b);
+                        add(TextAttributeFactory::CreateBackground(markdownStyle.codeBackgroundColor), a, b);
+                        break;
+                    case InlineRun::Strike:
+                        add(TextAttributeFactory::CreateStrikethrough(true), a, b);
+                        break;
+                    case InlineRun::Subscript:
+                        smallRaised(a, b, -0.15);
+                        break;
+                    case InlineRun::Superscript:
+                        smallRaised(a, b, 0.25);
+                        break;
+                    case InlineRun::Math:
+                        add(TextAttributeFactory::CreateFontStyle(FontSlant::Italic), a, b);
+                        add(TextAttributeFactory::CreateForeground(markdownStyle.mathTextColor), a, b);
+                        break;
+                    case InlineRun::Link:
+                    case InlineRun::Image:
+                        add(TextAttributeFactory::CreateForeground(markdownStyle.linkColor), a, b);
+                        if (markdownStyle.linkUnderline)
+                            add(TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle), a, b);
+                        break;
+                    case InlineRun::Footnote:
+                        add(TextAttributeFactory::CreateForeground(markdownStyle.footnoteRefColor), a, b);
+                        smallRaised(a, b, 0.25);
+                        break;
+                }
+            }
+            auto isMarker = [](char c) {
+                return std::strchr("*_~`^[]()!\\$<>=", c) != nullptr && c != '\0';
+            };
+            for (int k = 0; k < payloadCps;) {
+                if (covered[k]) { k++; continue; }
+                const int g = k;
+                bool markersOnly = true;
+                while (k < payloadCps && !covered[k]) {
+                    if (!isMarker(charAt(k))) markersOnly = false;
+                    k++;
+                }
+                if (markersOnly || runEnd[g] || runStart[k]) dim(srcByte(g), srcByte(k));
+            }
+        };
+
+        int pos = 0;
+        while (pos < n && (txt[pos] == ' ' || txt[pos] == '\t')) pos++;
+
+        switch (rendered->layoutType) {
+            case LineLayoutType::HorizontalLine:
+                dim(0, n);
+                break;
+
+            case LineLayoutType::TableHederRow:
+            case LineLayoutType::TableSeparatorRow:
+            case LineLayoutType::TableRow: {
+                // Cell borders: every `|` but an escaped one.
+                std::vector<int> pipes;
+                for (int i = pos; i < n; i++) {
+                    if (txt[i] == '\\') { i++; continue; }
+                    if (txt[i] == '|') pipes.push_back(i);
+                }
+                const bool separator = rendered->layoutType == LineLayoutType::TableSeparatorRow;
+                if (separator) {
+                    dim(0, n);
+                } else {
+                    for (size_t k = 0; k < pipes.size(); k++) {
+                        dim(pipes[k], pipes[k] + 1);
+                        const int cellEnd = k + 1 < pipes.size() ? pipes[k + 1] : n;
+                        int a = pipes[k] + 1, b = cellEnd;
+                        while (a < b && (txt[a] == ' ' || txt[a] == '\t')) a++;
+                        while (b > a && (txt[b - 1] == ' ' || txt[b - 1] == '\t')) b--;
+                        styleInline(a, b);
+                    }
+                }
+
+                // Each cell under its column: the space before a `|` widens to put
+                // the bar on the column's divider, the space after it to start the
+                // cell's text where the rendered cell's starts. Measured left to
+                // right, each spacer after the ones before it. A cell too wide for
+                // its column keeps its natural spacing; in a row that wraps, the
+                // bars on its first line are placed and the rest follow as they fall.
+                const auto* tbl = dynamic_cast<const TableLineLayout*>(rendered);
+                if (!tbl) break;
+                const int cols = static_cast<int>(tbl->cellsLayouts.size());
+                const double pad = markdownStyle.tableCellPadding;
+                auto xAt = [&](int b) { return static_cast<double>(layout->IndexToPos(toLayout(b)).x); };
+                auto isBlank = [&](int b) { return b >= 0 && b < n && (txt[b] == ' ' || txt[b] == '\t'); };
+                const int firstLineY = layout->IndexToPos(0).y;
+                auto spacer = [&](int b, double target) {
+                    if (layout->IndexToPos(toLayout(b)).y != firstLineY) return;
+                    const double w = target - xAt(b);
+                    if (w >= 1.0) add(TextAttributeFactory::CreateShapeSpacer(w), b, b + 1);
+                };
+                for (int k = 0; k < (int)pipes.size() && k <= cols; k++) {
+                    const int p = pipes[k];
+                    if (k > 0 && k < cols && tbl->cellsLayouts[k] && isBlank(p - 1) && p - 1 > pipes[k - 1]) {
+                        const double bar = xAt(p + 1) - xAt(p);
+                        spacer(p - 1, tbl->cellsLayouts[k]->bounds.x - pad - bar / 2.0);
+                    }
+                    if (k < cols && tbl->cellsLayouts[k] && isBlank(p + 1)) {
+                        const int cellEnd = k + 1 < (int)pipes.size() ? pipes[k + 1] : n;
+                        int text = p + 1;
+                        while (text < cellEnd && isBlank(text)) text++;
+                        if (text < cellEnd) spacer(p + 1, tbl->cellsLayouts[k]->bounds.x);
+                    }
+                }
+                break;
+            }
+
+            default: {
+                // Heading: the whole line at the heading's size, its text bold.
+                if (pos < n && txt[pos] == '#') {
+                    int level = 0;
+                    while (level < 6 && pos + level < n && txt[pos + level] == '#') level++;
+                    if (pos + level < n && txt[pos + level] == ' ') {
+                        const auto& mult = markdownStyle.headerSizeMultipliers;
+                        add(TextAttributeFactory::CreateFontSize(style.fontStyle.fontSize * mult[level - 1]), 0, n);
+                        dim(pos, pos + level);
+                        int bodyEnd = n;
+                        // An explicit {#id} anchor after the text is markup too.
+                        if (txt[n - 1] == '}') {
+                            const size_t open = txt.rfind("{#");
+                            if (open != std::string::npos && static_cast<int>(open) > pos + level) {
+                                dim(static_cast<int>(open), n);
+                                bodyEnd = static_cast<int>(open);
+                            }
+                        }
+                        add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold), pos + level + 1, bodyEnd);
+                        styleInline(pos + level + 1, bodyEnd);
+                        break;
+                    }
+                }
+                // Quote markers, then a list marker (and a task's box), then the text.
+                while (pos < n && txt[pos] == '>') {
+                    dim(pos, pos + 1);
+                    pos++;
+                    while (pos < n && (txt[pos] == ' ' || txt[pos] == '\t')) pos++;
+                }
+                auto marker = [&](int from, int to) {
+                    add(TextAttributeFactory::CreateForeground(markdownStyle.bulletColor), from, to);
+                    add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold), from, to);
+                };
+                int digits = pos;
+                while (digits < n && std::isdigit(static_cast<unsigned char>(txt[digits]))) digits++;
+                if (pos + 1 < n && (txt[pos] == '-' || txt[pos] == '*' || txt[pos] == '+') && txt[pos + 1] == ' ') {
+                    marker(pos, pos + 1);
+                    pos += 2;
+                } else if (digits > pos && digits + 1 < n && (txt[digits] == '.' || txt[digits] == ')') &&
+                           txt[digits + 1] == ' ') {
+                    marker(pos, digits + 1);
+                    pos = digits + 2;
+                } else if (rendered->layoutType == LineLayoutType::DefinitionContinuation &&
+                           pos + 1 < n && txt[pos] == ':' && txt[pos + 1] == ' ') {
+                    dim(pos, pos + 1);
+                    pos += 2;
+                }
+                if (pos + 3 < n && txt[pos] == '[' && txt[pos + 2] == ']' && txt[pos + 3] == ' ' &&
+                    (txt[pos + 1] == ' ' || txt[pos + 1] == 'x' || txt[pos + 1] == 'X')) {
+                    marker(pos, pos + 3);
+                    pos += 4;
+                }
+                styleInline(pos, n);
+                break;
+            }
+        }
+
+        // The current search matches and the selection over the formatting.
+        ApplyLineSearchHighlights(ll, lineIndex);
+        ApplyLineSelectionBackground(ll, lineIndex);
+        ll->bounds.width  = layout->GetLayoutWidth();
+        ll->bounds.height = layout->GetLayoutHeight();
+    }
+
     // Normalize column widths across every row of a single table. Measures each non-separator
     // cell's natural (unwrapped) width, picks per-column max, then either distributes extra
     // space evenly if the natural total fits, or proportionally shrinks if it doesn't — both
@@ -1146,6 +1479,7 @@ namespace UltraCanvas {
         constexpr int cellPadding = 4;
         constexpr int rowVerticalPad = 4;
         const float availWidth = std::max(100.0f, visibleTextArea.width);
+        tablesLaidOutWidth = visibleTextArea.width;
 
         int colCount = 0;
         for (int i = startLine; i <= endLine; i++) {
@@ -1702,9 +2036,31 @@ namespace UltraCanvas {
 
                 if (thisIsSep || nextIsSep || prevIsTable) {
                     // Split by `|`, honoring `\|` escapes and dropping leading/trailing empty cells.
+                    // Each cell also keeps, per byte of its text, the byte of `trimmed` it came
+                    // from (plus one past its last byte), so its layout can be mapped back to
+                    // the source line: a selection or a search hit then paints inside the cell.
+                    struct TableCellText {
+                        std::string text;
+                        std::vector<int> sourceByte;
+                    };
                     auto splitCells = [](const std::string& line) {
-                        std::vector<std::string> cells;
-                        std::string cur;
+                        std::vector<TableCellText> cells;
+                        TableCellText cur;
+                        auto finishCell = [&](bool keepEmpty) {
+                            auto from = cur.text.find_first_not_of(" \t");
+                            auto to   = cur.text.find_last_not_of(" \t");
+                            if (from == std::string::npos) {
+                                if (keepEmpty) cells.push_back({});
+                            } else {
+                                TableCellText cell;
+                                cell.text = cur.text.substr(from, to - from + 1);
+                                cell.sourceByte.assign(cur.sourceByte.begin() + from,
+                                                       cur.sourceByte.begin() + to + 1);
+                                cell.sourceByte.push_back(cur.sourceByte[to] + 1);
+                                cells.push_back(std::move(cell));
+                            }
+                            cur = {};
+                        };
                         size_t i = 0;
                         if (!line.empty() && line[0] == '|') i = 1;
                         for (; i < line.size(); i++) {
@@ -1712,28 +2068,54 @@ namespace UltraCanvas {
                             // other backslash stays for the inline parser, which owns the
                             // escapes and the LaTeX inside $...$.
                             if (line[i] == '\\' && i + 1 < line.size()) {
-                                if (line[i + 1] != '|') cur.push_back(line[i]);
-                                cur.push_back(line[i + 1]);
+                                if (line[i + 1] != '|') {
+                                    cur.text.push_back(line[i]);
+                                    cur.sourceByte.push_back(static_cast<int>(i));
+                                }
+                                cur.text.push_back(line[i + 1]);
+                                cur.sourceByte.push_back(static_cast<int>(i + 1));
                                 i++;
                                 continue;
                             }
                             if (line[i] == '|') {
-                                auto from = cur.find_first_not_of(" \t");
-                                auto to   = cur.find_last_not_of(" \t");
-                                cells.push_back(from == std::string::npos ? ""
-                                                                          : cur.substr(from, to - from + 1));
-                                cur.clear();
+                                finishCell(/*keepEmpty=*/true);
                             } else {
-                                cur.push_back(line[i]);
+                                cur.text.push_back(line[i]);
+                                cur.sourceByte.push_back(static_cast<int>(i));
                             }
                         }
-                        if (!cur.empty()) {
-                            auto from = cur.find_first_not_of(" \t");
-                            auto to   = cur.find_last_not_of(" \t");
-                            if (from != std::string::npos)
-                                cells.push_back(cur.substr(from, to - from + 1));
-                        }
+                        if (!cur.text.empty()) finishCell(/*keepEmpty=*/false);
                         return cells;
+                    };
+
+                    // A cell's visible-cp -> source-line-cp map: the inline parser's map
+                    // (visible -> cell text) composed with where each byte of the cell text
+                    // sits in the raw line. Built cp by cp, so a `\|` the splitter consumed
+                    // starts a new run instead of shifting the rest of the cell by one.
+                    const size_t tableLead = rawLine.find_first_not_of(" \t\r\n");
+                    auto cellCpMap = [&](const TableCellText& cell, const std::string& visibleText,
+                                         const std::vector<CpRun>& inlineMap) {
+                        std::vector<int> textCpToSourceCp;
+                        for (size_t b = 0; b < cell.text.size(); b++) {
+                            if ((static_cast<unsigned char>(cell.text[b]) & 0xC0) == 0x80) continue;
+                            textCpToSourceCp.push_back(
+                                utf8_byte_to_cp(rawLine, tableLead + cell.sourceByte[b]));
+                        }
+                        textCpToSourceCp.push_back(cell.sourceByte.empty() ? 0
+                            : utf8_byte_to_cp(rawLine, tableLead + cell.sourceByte.back()));
+                        const int textCps = static_cast<int>(textCpToSourceCp.size()) - 1;
+                        const int visibleCps = utf8_length(visibleText);
+                        std::vector<CpRun> map;
+                        for (int v = 0; v <= visibleCps; v++) {
+                            const int t = std::clamp(VisibleCpToSourceCp(inlineMap, v), 0, textCps);
+                            const int src = textCpToSourceCp[t];
+                            if (map.empty() || v == visibleCps ||
+                                src != map.back().sourceCp + (v - map.back().visibleCp)) {
+                                if (!map.empty() && map.back().visibleCp == v) map.back().sourceCp = src;
+                                else map.push_back({v, src});
+                            }
+                        }
+                        return map;
                     };
 
                     auto tl = std::make_unique<TableLineLayout>();
@@ -1745,7 +2127,9 @@ namespace UltraCanvas {
                     tl->lastTableRow = !nextIsTable;
                     tl->layout = nullptr;  // rendered via cellsLayouts
                     // Sentinel-only cpMap: rows are not cursor-addressable today (clicks
-                    // resolve to {row, 0} via PosToLineColumn's null-layout branch).
+                    // resolve to {row, 0} via PosToLineColumn's null-layout branch). Each
+                    // cell carries its own map into the source line, which is what paints
+                    // a selection or a search hit inside it (ApplyLineBackgroundRange).
                     tl->cpMap = {{0, 0}, {0, 0}};
 
                     // On a separator row, parse per-cell alignment markers.
@@ -1754,7 +2138,7 @@ namespace UltraCanvas {
                         tl->columnAlignments.reserve(cells.size());
                         for (const auto& raw : cells) {
                             std::string t;
-                            for (char c : raw) if (c != ' ' && c != '\t') t.push_back(c);
+                            for (char c : raw.text) if (c != ' ' && c != '\t') t.push_back(c);
                             bool lColon = !t.empty() && t.front() == ':';
                             bool rColon = !t.empty() && t.back() == ':';
                             if (lColon && rColon)      tl->columnAlignments.push_back(TextAlignment::Center);
@@ -1772,7 +2156,12 @@ namespace UltraCanvas {
                             cell->layout = ctx->CreateTextLayout("", false);
                             cell->layout->SetFontStyle(style.fontStyle);
                         } else {
-                            cell->layout = buildInlineStyledLayout(cells[ci], 0, cell->hitRects, &cell->inlineMath);
+                            std::string visibleText;
+                            std::vector<CpRun> inlineMap;
+                            cell->layout = buildInlineStyledLayout(cells[ci].text, 0, cell->hitRects,
+                                                                   &cell->inlineMath, &visibleText, &inlineMap);
+                            if (tableLead != std::string::npos)
+                                cell->cpMap = cellCpMap(cells[ci], visibleText, inlineMap);
                         }
                         tl->cellsLayouts.push_back(std::move(cell));
                     }

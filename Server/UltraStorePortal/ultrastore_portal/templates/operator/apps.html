@@ -1,0 +1,35 @@
+{% extends "operator/base.html" %}
+{% block title %}Apps - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Apps</h1></div>
+<div class="card"><div class="card-body">
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>App</th><th>Publisher</th><th>In the store</th><th>Editor's pick</th><th>Suspension</th></tr></thead>
+    <tbody>
+    {% for app in apps %}
+    <tr>
+      <td><b>{{ app.name }}</b><div class="font-monospace text-secondary">{{ app.app_id }}</div></td>
+      <td><a href="{% url 'operator:publisher' app.publisher.slug %}">{{ app.publisher.name }}</a></td>
+      <td>{% if app.suspended %}<span class="badge bg-danger-subtle text-danger-emphasis">Suspended</span>{% elif app.is_public %}<a class="badge bg-success-subtle text-success-emphasis" href="{{ app.get_absolute_url }}">Published</a>{% else %}<span class="badge">Not public</span>{% endif %}</td>
+      <td>
+        <form method="post" action="{% url 'operator:app_action' app.app_id app.featured|yesno:'unfeature,feature' %}">{% csrf_token %}
+          <button class="btn {% if app.featured %}btn-soft-primary{% else %}btn-outline-secondary{% endif %} btn-sm">{% if app.featured %}Picked - remove{% else %}Pick{% endif %}</button></form>
+      </td>
+      <td>
+        {% if app.suspended %}
+          <form method="post" action="{% url 'operator:app_action' app.app_id 'reinstate' %}">{% csrf_token %}<span class="small text-secondary">{{ app.suspend_reason|truncatechars:60 }}</span> <button class="btn btn-primary btn-sm">Reinstate</button></form>
+        {% else %}
+          <form method="post" action="{% url 'operator:app_action' app.app_id 'suspend' %}" class="d-flex flex-nowrap align-items-center gap-2">{% csrf_token %}
+            <input class="form-control" type="text" name="reason" placeholder="Reason" aria-label="Reason for the suspension" required style="min-width:160px">
+            <button class="btn btn-soft-danger btn-sm">Suspend</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="5" class="text-secondary">No app yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div></div>
+{% endblock %}

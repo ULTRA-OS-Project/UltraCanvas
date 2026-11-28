@@ -1,0 +1,23 @@
+{% extends "operator/base.html" %}
+{% block title %}Audit log - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Audit log</h1><span class="text-secondary">{{ page.paginator.count }} rows</span></div>
+<div class="card"><div class="card-body">
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>When (UTC)</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for entry in page %}
+    <tr><td class="text-secondary">{{ entry.created|date:"j M Y, H:i:s" }}</td><td>{{ entry.actor_name }}</td><td class="font-monospace">{{ entry.action }}</td>
+      <td class="font-monospace">{{ entry.target_kind }} {{ entry.target }}</td><td class="font-monospace text-secondary">{{ entry.detail|truncatechars:140 }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+    {% if page.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?page={{ page.previous_page_number }}">Newer</a>{% endif %}
+    <span class="text-secondary">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a class="btn btn-outline-secondary btn-sm" href="?page={{ page.next_page_number }}">Older</a>{% endif %}
+  </div>
+</div></div>
+{% endblock %}

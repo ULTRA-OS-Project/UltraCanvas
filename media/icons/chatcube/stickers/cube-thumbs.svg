@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ChatCube's example sticker set "Cubes" (original artwork, part of ChatCube) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <path d="M112 56 L200 100 L112 144 L24 100 Z" fill="#68a2ff" stroke="#2b2b2b" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M24 100 L112 144 L112 236 L24 192 Z" fill="#5b8def" stroke="#2b2b2b" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M112 144 L200 100 L200 192 L112 236 Z" fill="#466dba" stroke="#2b2b2b" stroke-width="5" stroke-linejoin="round"/>
+  <g transform="translate(-28 64) scale(1.0)"><path d="M98 114 q14 10 28 0" stroke="#2b2b2b" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="96" cy="96" r="6" fill="#2b2b2b"/><circle cx="128" cy="96" r="6" fill="#2b2b2b"/><path d="M188 150 h22 a8 8 0 0 0 8 -8 v-6 a8 8 0 0 0 -8 -8 h-8 l4 -16 a8 8 0 0 0 -14 -6 l-12 22 v22 z" fill="#f0c090" stroke="#2b2b2b" stroke-width="4" stroke-linejoin="round"/></g>
+</svg>

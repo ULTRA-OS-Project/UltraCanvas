@@ -1,5 +1,6 @@
 // include/UltraCanvasGraphicsPluginSystem.h
 // Complete graphics plugin system with all required components
+// Version: 1.4.2 - .odg / .otg / .fodg are vector files
 // Version: 1.4.1 - .igs / .iges are 3D files
 // Version: 1.4.0
 // Last Modified: 2026-11-12
@@ -118,6 +119,10 @@ namespace UltraCanvas {
                     // the Vector plugin rather than claimed here.)
                     {"dwt", GraphicsFormatType::Vector}, {"dws", GraphicsFormatType::Vector},
                     {"sv$", GraphicsFormatType::Vector},
+                    // OpenDocument Drawing: the package, its template and
+                    // the flat XML form.
+                    {"odg", GraphicsFormatType::Vector}, {"otg", GraphicsFormatType::Vector},
+                    {"fodg", GraphicsFormatType::Vector},
 
                     // 3D model formats. This table answers "what kind of file
                     // is this", not "does this build have a reader": a .step

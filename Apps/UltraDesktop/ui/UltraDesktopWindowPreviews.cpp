@@ -1,6 +1,8 @@
 // Apps/UltraDesktop/ui/UltraDesktopWindowPreviews.cpp
 // The pictures of an application's windows beside its taskbar button. See
 // the header.
+// Version: 0.2.0 - live thumbnails where the compositor draws them; the last captured picture
+//                  of a minimized window
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -18,6 +20,8 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <map>
+#include <type_traits>
 #include <utility>
 
 using namespace UltraCanvas;
@@ -52,6 +56,26 @@ std::string Shorten(const std::string& text, size_t limit) {
 }
 
 using Captures = std::vector<std::pair<uint64_t, DesktopScreenImage>>;
+
+// The last picture captured of each window, for when it is minimized and
+// cannot be captured: what Windows' taskbar shows for one. Only where there
+// are no live thumbnails; dropped wholesale past a few dozen windows.
+constexpr size_t kPicturesKept = 48;
+std::map<uint64_t, std::shared_ptr<UCImage>>& LastPictures() {
+    static std::map<uint64_t, std::shared_ptr<UCImage>> pictures;
+    return pictures;
+}
+
+// The window's native handle as the desktop shell's id: an X11 Window is an
+// integer, a HWND a pointer.
+template <typename Handle>
+uint64_t NativeHandleId(Handle handle) {
+    if constexpr (std::is_pointer_v<Handle>) {
+        return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));
+    } else {
+        return static_cast<uint64_t>(handle);
+    }
+}
 
 } // namespace
 
@@ -223,6 +247,16 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
                 frame->AddChild(letter);
             }
             frame->AddChild(tile.picture);
+            // A minimized window cannot be captured: the last picture taken
+            // of it, until a live thumbnail (PlacePictures) covers it.
+            if (item.minimized) {
+                const auto last = LastPictures().find(item.id);
+                if (last != LastPictures().end() && last->second) {
+                    tile.picture->SetFitMode(ImageFitMode::Contain);
+                    tile.picture->LoadFromImage(last->second);
+                }
+            }
+            tile.frame = frame;
             tile.box->AddChild(frame);
             strip->AddChild(tile.box);
             tiles_.push_back(std::move(tile));
@@ -230,6 +264,7 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
     }
 
     window_->onWindowClosed = [this]() {
+        HideThumbnails();
         window_.reset();
         tiles_.clear();
         key_.clear();
@@ -242,14 +277,46 @@ void UltraDesktopWindowPreviews::Show(const std::string& key, const std::vector<
     window_->InstallEventFilter("window-previews", [this](const UCEvent& event) { return OnEvent(event); },
                                 {UCEventType::MouseMove, UCEventType::MouseEnter, UCEventType::MouseLeave,
                                  UCEventType::MouseDown});
+    // The frames' places are known once the strip is laid out: its first
+    // frame puts the pictures in.
+    picturesPlaced_ = false;
+    window_->onFrameRendered = [this](const WindowFrameTiming&) {
+        if (picturesPlaced_) return;
+        picturesPlaced_ = true;
+        PlacePictures();
+    };
     window_->Show();
+}
+
+void UltraDesktopWindowPreviews::PlacePictures() {
+    if (!window_) return;
+    const uint64_t destination = NativeHandleId(window_->GetNativeHandle());
+    for (Tile& tile : tiles_) {
+        if (!tile.frame || destination == 0) continue;
+        const Rect2Df bounds = tile.frame->GetBoundsInWindow();
+        if (bounds.width <= 0 || bounds.height <= 0) continue;
+        tile.thumbnail = UltraCanvasDesktopShell::ShowWindowThumbnail(
+                destination, tile.item.id,
+                window_->LogicalToPhysical(static_cast<int>(bounds.x)),
+                window_->LogicalToPhysical(static_cast<int>(bounds.y)),
+                window_->LogicalToPhysical(static_cast<int>(bounds.width)),
+                window_->LogicalToPhysical(static_cast<int>(bounds.height)));
+    }
     CapturePictures(window_->LogicalToPhysical(kPictureW), window_->LogicalToPhysical(kPictureH));
+}
+
+void UltraDesktopWindowPreviews::HideThumbnails() {
+    for (Tile& tile : tiles_) {
+        UltraCanvasDesktopShell::HideWindowThumbnail(tile.thumbnail);
+        tile.thumbnail = 0;
+    }
 }
 
 void UltraDesktopWindowPreviews::CapturePictures(int pictureW, int pictureH) {
     std::vector<uint64_t> ids;
     for (const Tile& tile : tiles_) {
-        if (!tile.item.minimized) ids.push_back(tile.item.id);
+        // A live thumbnail needs no capture; a minimized window has none.
+        if (!tile.item.minimized && tile.thumbnail == 0) ids.push_back(tile.item.id);
     }
     if (ids.empty()) return;
     const uint64_t generation = generation_;
@@ -274,6 +341,9 @@ void UltraDesktopWindowPreviews::CapturePictures(int pictureW, int pictureH) {
                     if (!picture) break;
                     tile.picture->SetFitMode(ImageFitMode::Contain);
                     tile.picture->LoadFromImage(picture);
+                    auto& kept = LastPictures();
+                    if (kept.size() >= kPicturesKept && kept.count(id) == 0) kept.clear();
+                    kept[id] = picture;
                     break;
                 }
             }
@@ -283,7 +353,9 @@ void UltraDesktopWindowPreviews::CapturePictures(int pictureW, int pictureH) {
 
 void UltraDesktopWindowPreviews::Close() {
     ++generation_;
+    HideThumbnails();
     if (window_) {
+        window_->onFrameRendered = nullptr;
         window_->onWindowClosed = nullptr;
         window_->Close();
         window_.reset();

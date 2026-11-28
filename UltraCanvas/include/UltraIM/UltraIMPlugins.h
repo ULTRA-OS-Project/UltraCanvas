@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.17 - ABI 13: the owner's profile picture on UltraIMAccountProfile
 // Version: 0.1.16 - ABI 12: a group's description; blocking members
 // Version: 0.1.15 - ABI 11: public groups (FetchPublicGroups, JoinGroup, SetGroupPublic)
 // Version: 0.1.14 - ABI 10: UltraIMAuthStep::Browser
@@ -281,9 +282,10 @@ public:
     // ---- The account's own profile -----------------------------------------------
     // (Last in the class, so the slots before keep their places in the vtable.)
     // The signed-in account's name, e-mail address and phone number
-    // (UltraIMAccountProfile; AccountProfile capability). Updating sends
-    // the name to the contacts and the e-mail and phone to the provider's
-    // service, for the owner alone.
+    // (UltraIMAccountProfile; AccountProfile capability), and its picture
+    // where the service takes one (pictureSupported). Updating sends the
+    // name and the picture to the contacts and the e-mail and phone to the
+    // provider's service, for the owner alone.
     virtual void FetchAccountProfile(UltraIMAccountProfileCallback onResult) {
         if (onResult) onResult(Unsupported("an account profile"), UltraIMAccountProfile());
     }
@@ -483,9 +485,11 @@ protected:
 // Version 12 (2026-11): a group's description (SetGroupDescription,
 // UltraIMConversation::description, UltraIMPublicGroup::description);
 // blocking members (BlockGroupMember, UnblockGroupMember, FetchBlockedMembers).
+// Version 13 (2026-11): the owner's profile picture (UltraIMAccountProfile::
+// picturePath, pictureSupported, pictureChanged).
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 12;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 13;
 
 struct UltraIMPluginHost {
     int abiVersion;

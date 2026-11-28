@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Music phone - Now playing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#0f172a}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: linear-gradient(180deg, #1e3a8a 0%, #0f172a 60%, #0b1220 100%); color: #ffffff; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.45; display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased; padding: 56px 24px 36px">
+
+<div style="display: flex; align-items: center; justify-content: space-between">
+<button type="button" aria-label="Close" style="width: 40px; height: 40px; border: 0; border-radius: 999px; background: transparent; color: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+<span style="display: flex; flex-direction: column; align-items: center; line-height: 1.2"><span style="font-size: 11px; color: #93c5fd; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Playing from album</span><span style="font-size: 13px; font-weight: 700">Low Tide</span></span>
+<button type="button" aria-label="More" style="width: 40px; height: 40px; border: 0; border-radius: 999px; background: transparent; color: #ffffff; cursor: pointer; font-size: 20px; font-weight: 800">⋯</button>
+</div>
+
+<div aria-hidden="true" style="margin: 28px 0 24px; aspect-ratio: 1; border-radius: 14px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); box-shadow: 0 24px 60px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; position: relative; color: rgba(255,255,255,0.3); font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 120px; letter-spacing: -0.05em">LT<span style="position: absolute; left: 12px; bottom: 12px; font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 600; letter-spacing: 0">[COVER]</span></div>
+
+<div style="display: flex; align-items: center; gap: 12px">
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.2"><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Undertow</span><span style="font-size: 15px; color: #cbd5e1">Lena Marlow</span></div>
+<button type="button" aria-label="Liked" style="width: 44px; height: 44px; border: 0; background: transparent; color: #4ade80; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></button>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 18px">
+<span role="slider" aria-label="Position" aria-valuemin="0" aria-valuemax="228" aria-valuenow="84" style="position: relative; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.3); display: block"><span style="display: block; width: 37%; height: 100%; border-radius: 2px; background: #ffffff"></span><span aria-hidden="true" style="position: absolute; left: 37%; top: -5px; width: 14px; height: 14px; border-radius: 999px; background: #ffffff; transform: translateX(-50%)"></span></span>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #cbd5e1; font-variant-numeric: tabular-nums"><span>1:24</span><span>-2:24</span></div>
+</div>
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px">
+<button type="button" aria-label="Shuffle, on" style="width: 44px; height: 44px; border: 0; background: transparent; color: #4ade80; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"></path></svg></button>
+<button type="button" aria-label="Previous" style="width: 52px; height: 52px; border: 0; background: transparent; color: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M18 5l-10 7 10 7z"></path><rect x="4.5" y="5" width="2.5" height="14" rx="1"></rect></svg></button>
+<button type="button" aria-label="Pause" style="width: 72px; height: 72px; border-radius: 999px; border: 0; background: #ffffff; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></button>
+<button type="button" aria-label="Next" style="width: 52px; height: 52px; border: 0; background: transparent; color: #ffffff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5l10 7-10 7z"></path><rect x="17" y="5" width="2.5" height="14" rx="1"></rect></svg></button>
+<button type="button" aria-label="Repeat, off" style="width: 44px; height: 44px; border: 0; background: transparent; color: #cbd5e1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>
+</div>
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 14px; font-size: 12px">
+<button type="button" style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 4px; border: 0; background: transparent; color: #4ade80; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M11 18h2"></path></svg>This phone · Opus 160</button>
+<div style="display: flex; gap: 4px">
+<button type="button" aria-label="Share" style="width: 36px; height: 36px; border: 0; background: transparent; color: #cbd5e1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"></path></svg></button>
+<button type="button" aria-label="Queue" style="width: 36px; height: 36px; border: 0; background: transparent; color: #cbd5e1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"></path><path d="M17 15l4 2.5-4 2.5z" fill="currentColor"></path></svg></button>
+</div>
+</div>
+
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 14px; background: rgba(255,255,255,0.08)">
+<div style="display: flex; align-items: center; justify-content: space-between"><span style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #93c5fd">Lyrics</span><span style="font-size: 11px; color: #cbd5e1">by the artist</span></div>
+<p style="margin: 0; font-size: 15px; font-weight: 700; line-height: 1.35">Pull me under, the tide knows the way</p>
+<p style="margin: 0; font-size: 14px; color: #94a3b8; line-height: 1.35">Lights on the harbour, the ferry at six</p>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#16a34a","options":["#16a34a","#2563eb","#0f172a","#7c3aed"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#16a34a' };
+  }
+}
+</script>
+</body>
+</html>

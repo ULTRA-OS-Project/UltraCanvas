@@ -1,9 +1,13 @@
 // Apps/UltraDesktop/ui/UltraDesktopWindowPreviews.h
 // The pictures of an application's windows beside its taskbar button: one
-// tile per window - its icon and title, a picture of the window
-// (UltraCanvasDesktopShell::CaptureWindowImage, taken on a worker thread so
-// the bar does not stall), a close mark - and a click on a tile brings that
-// window forward. A minimized window, which has no picture, shows its icon.
+// tile per window - its icon and title, a picture of the window, a close
+// mark - and a click on a tile brings that window forward. The picture is
+// live where the compositor draws one (UltraCanvasDesktopShell::
+// ShowWindowThumbnail: Windows' DWM, which shows a minimized window as it
+// last looked, even one minimized before the desktop started); elsewhere it
+// is captured on a worker thread (CaptureWindowImage) so the bar does not
+// stall, and a minimized window shows the last picture taken of it, else its
+// icon.
 //
 // The strip is a window of its own that never takes the keyboard focus
 // (WindowType::Notification): it opens while the pointer rests on the
@@ -11,6 +15,8 @@
 // decides when it opens and closes (UltraDesktopWindow: a short rest on the
 // button, a grace time after the pointer leaves both); onPointerInside and
 // onPointerOutside tell it where the pointer is.
+// Version: 0.2.0 - live compositor thumbnails (ShowWindowThumbnail), minimized windows
+//                  included; elsewhere a minimized window shows its last captured picture
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -82,13 +88,19 @@ private:
         WindowPreviewItem item;
         std::shared_ptr<UltraCanvas::UltraCanvasContainer> box;
         std::shared_ptr<UltraCanvas::UltraCanvasImageElement> picture;
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> frame;   // where the picture goes
         std::shared_ptr<UltraCanvas::UltraCanvasLabel> close;
+        uint64_t thumbnail = 0;   // a live compositor thumbnail in the frame, 0 for none
     };
     bool OnEvent(const UltraCanvas::UCEvent& event);
     void Highlight(int index);
     int TileAt(float x, float y) const;
     bool OnCloseMark(int index, float x, float y) const;
     void CapturePictures(int pictureW, int pictureH);
+    // Once the strip is laid out: a live thumbnail in each frame where the
+    // platform draws one, a capture for the others.
+    void PlacePictures();
+    void HideThumbnails();
     void Finish(uint64_t windowId, bool closeIt);
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
@@ -99,6 +111,7 @@ private:
     // Captures that finish after the strip closed (or was replaced) are
     // dropped: each Show starts a new generation.
     uint64_t generation_ = 0;
+    bool picturesPlaced_ = false;
     std::unique_ptr<UltraDesktopPanelWork> work_;
 };
 

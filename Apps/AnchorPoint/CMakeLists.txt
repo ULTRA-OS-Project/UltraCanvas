@@ -84,6 +84,7 @@ else()
     target_sources(anchorpoint_core PRIVATE
             ${ANCHORPOINT_ULTRACANVAS}/core/UltraCrypt/UltraCryptCore.cpp
             ${ANCHORPOINT_ULTRACANVAS}/core/UltraCrypt/UltraCryptAes.cpp
+            ${ANCHORPOINT_ULTRACANVAS}/core/UltraCrypt/UltraCryptArgon2.cpp
             ${ANCHORPOINT_ULTRACANVAS}/core/UltraCanvasBase32.cpp)
     target_include_directories(anchorpoint_core PUBLIC
             ${ANCHORPOINT_ULTRACANVAS}/include)

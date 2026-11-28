@@ -110,14 +110,6 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::signature differs: `void Add
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'Size2Di': expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'UCPixmap': expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'ValueFormatter': expected expression
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistribution'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistributionKind'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistributionSide'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartAxisSpec'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartEngine'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartFrame'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartHit'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartInteractionState'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Both'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Bottom'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'ChartBackgroundScope'
@@ -129,8 +121,6 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Custom'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Discrete'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'DrawEmptyState'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'EnsureLabelPlan'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'EnsureLayout'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Inside'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'InvalidateLabels'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'LabelPriorityRule'
@@ -139,8 +129,7 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'SelectionMode'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'SizeLegend'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Top'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'UltraCanvasChartEngine'
-# signature Docs/UltraCanvas/UltraCanvasChartEngineProposal.md: 46b3dda45f24777fd000170132cafc7d33b8919ad720dc99e3abc81c98de8183
+# signature Docs/UltraCanvas/UltraCanvasChartEngineProposal.md: 6fe6f4ee4df617d43712c4919659124e0ed3a0b849ab28fc1a3b91a47af5a010
 Docs/UltraCanvas/UltraCanvasCircularChartProposal.md::too few arguments to function call, expected at least 7, have 5
 # signature Docs/UltraCanvas/UltraCanvasCircularChartProposal.md: 46c0dc48c73fd57eed9df5c6d3ebf67d6ad0e72a494b0429cf6f50522dd56702
 Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::'UMLMember::isOperation' does not exist (no member named 'isOperation' in 'UMLMember')
@@ -194,27 +183,28 @@ Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `RenderD
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `RenderDiagramText(`, which no header declares
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `UltraCanvas_RegisterBundledElements(`, which no header declares
 # signature Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md: b80df4457f3508d923d51dfe297f8a98152abc62ffdfcadb5f70931db834caa4
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'BuildErrorBars' is not a member of UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, UltraCanvasEngineScatterChart, nor a free function
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'ComputeErrorRange' is not a member of UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, UltraCanvasEngineScatterChart, nor a free function
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'DrawChartErrorBars' is not a member of UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, UltraCanvasEngineScatterChart, nor a free function
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'StudentTQuantile' is not a member of UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, UltraCanvasEngineScatterChart, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'BuildErrorBars' is not a member of UltraCanvasEngineBarChart, UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'ComputeErrorRange' is not a member of UltraCanvasEngineBarChart, UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'DrawChartErrorBars' is not a member of UltraCanvasEngineBarChart, UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'StudentTQuantile' is not a member of UltraCanvasEngineBarChart, UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineBarSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineLineSeries'
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errors' in 'EngineBarSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errors' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'samples' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'xError' in 'EngineScatterPoint'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'yError' in 'EngineScatterPoint'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::prose names `FromEnds(`, which no header declares
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::prose names `SetShowErrorBars(`, which no header declares
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::unknown type name 'EngineBarSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
-# signature Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md: ddb46d6444ddfbfd91506526e2c4f67d55158e1fd5e56ceae9e65e0c43cc9168
+# signature Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md: 0136a490084430cf95218b8de6edfeb5fe357ac53f18553deb87063031c78305
 Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::'OpenWithChooser' is not a member of UltraCanvasFilerWidget, nor a free function
 Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::prose names `OpenWithChooser(`, which no header declares
 Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::prose names `SHAssocEnumHandlers(`, which no header declares

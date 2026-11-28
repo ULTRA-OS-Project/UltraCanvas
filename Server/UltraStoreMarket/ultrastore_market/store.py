@@ -7,6 +7,10 @@ the strikes they count, the suspensions, the terms versions and the
 acceptances, the enforcement policy, and the audit log - append-only,
 hash-chained, never edited (the store's README, *The operator tier*).
 
+Version: 0.5.0 - the review pipeline's findings on a submission (schema 4)
+Version: 0.4.0 - the packages uploaded into the package store; the operators' second factor and reset codes
+Version: 0.3.0 - the operators with their roles
+Version: 0.2.0 - the applications, the merchant's website and description (schema 2, the columns added to a 0.1 database)
 Version: 0.1.0
 """
 
@@ -20,8 +24,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ultrastore_db import Database
+from ultrastore_db.totp import hash_code
 
-SCHEMA = 1
+SCHEMA = 4
 
 DEFAULT_POLICY: dict[str, Any] = {
     "strike_expiry_days": 365,          # a warning counts as a strike this long
@@ -42,6 +47,29 @@ def now_iso() -> str:
 
 def today() -> str:
     return now_iso()[:10]
+
+
+def iso_after(seconds: int) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + seconds))
+
+
+def package_file_name(p: dict) -> str:
+    """`<sha256>.<format>` for a package a submission names: the format from
+    the entry, else from the file or URL it names."""
+    sha = str(p.get("sha256", "")).lower()
+    fmt = str(p.get("format", "")).lower()
+    if not fmt:
+        name = str(p.get("file") or p.get("url") or "").rsplit("/", 1)[-1].lower()
+        for known in ("tar.zst", "tar.gz", "tar.xz", "tgz", "zip", "7z", "appimage"):
+            if name.endswith("." + known):
+                fmt = known
+                break
+    return sha + "." + (fmt or "bin")
+
+
+def package_restricted(p: dict) -> bool:
+    """A paid app's package without a trial: served to nobody directly."""
+    return str(p.get("access", "")) == "restricted" or "restricted/" in str(p.get("file") or p.get("url") or "")
 
 
 def add_days(day: str, days: int) -> str:
@@ -69,14 +97,78 @@ class Merchant:
     key_hex: str
     created_at: str
     notes: str = ""
+    website: str = ""               # the publisher's page the catalog names
+    description: str = ""           # a line about the publisher, the merchant's own
     standing: str = "active"        # computed: active, paused (terms), suspended
     strikes: int = 0                # computed
     terms_in_force: int = 0         # computed
     terms_accepted: int = 0         # computed: the newest version accepted
 
     def public(self) -> dict:
-        return {"id": self.id, "name": self.name, "contact": self.contact, "key": self.key_hex, "created_at": self.created_at,
-                "standing": self.standing, "strikes": self.strikes, "terms": {"in_force": self.terms_in_force, "accepted": self.terms_accepted}}
+        return {"id": self.id, "name": self.name, "contact": self.contact, "website": self.website, "description": self.description, "key": self.key_hex,
+                "created_at": self.created_at, "standing": self.standing, "strikes": self.strikes,
+                "terms": {"in_force": self.terms_in_force, "accepted": self.terms_accepted}}
+
+
+APPLICATION_STATES = ("applied", "approved", "rejected")
+
+
+@dataclass
+class Operator:
+    """A person at the operator's window, with a role (ultrastore_db.operator_session)."""
+    id: str
+    email: str
+    name: str
+    role: str
+    password_hash: str
+    created_at: str
+    created_by: str
+    disabled_at: str
+    last_signin: str
+    totp_secret: str = ""        # set at setup, in force once totp_enabled_at is set
+    totp_enabled_at: str = ""
+    recovery_codes: list = field(default_factory=list)   # hashed, each good once
+
+    @property
+    def active(self) -> bool:
+        return not self.disabled_at
+
+    @property
+    def two_factor(self) -> bool:
+        return bool(self.totp_enabled_at)
+
+    def public(self) -> dict:
+        return {"id": self.id, "email": self.email, "name": self.name, "role": self.role, "created_at": self.created_at, "created_by": self.created_by,
+                "disabled_at": self.disabled_at, "last_signin": self.last_signin, "active": self.active, "two_factor": self.two_factor,
+                "recovery_codes_left": len(self.recovery_codes)}
+
+
+@dataclass
+class Application:
+    """A merchant's request to open a shop: what they said of themselves, the
+    key that will sign their submissions (proven by the signature over the
+    application), and the operator's decision."""
+    id: str
+    name: str
+    contact: str
+    email: str
+    website: str
+    description: str
+    key_hex: str
+    state: str
+    message: str
+    secret: str
+    created_at: str
+    decided_at: str
+    decided_by: str
+    merchant_id: str
+
+    def public(self, *, for_operator: bool = False) -> dict:
+        out = {"id": self.id, "name": self.name, "contact": self.contact, "website": self.website, "description": self.description, "key": self.key_hex,
+               "state": self.state, "message": self.message, "created_at": self.created_at, "decided_at": self.decided_at, "merchant": self.merchant_id}
+        if for_operator:
+            out.update({"email": self.email, "decided_by": self.decided_by})
+        return out
 
 
 @dataclass
@@ -95,12 +187,14 @@ class Submission:
     decided_at: str = ""
     released_sequence: int = 0
     decisions: list[dict] = field(default_factory=list)
+    findings: dict = field(default_factory=dict)   # check name -> the pipeline's lines (checks.py)
+    checked_at: str = ""                           # when the pipeline last ran
 
     def public(self, *, for_merchant: bool = False) -> dict:
         out = {"id": self.id, "merchant": self.merchant_id, "app": self.app_id, "version": self.version, "component": self.component,
                "signature": self.signature, "packages": self.packages, "checks": self.checks, "state": self.state, "answers": self.answers,
                "created_at": self.created_at, "decided_at": self.decided_at, "released_sequence": self.released_sequence,
-               "decisions": self.decisions}
+               "decisions": self.decisions, "findings": self.findings, "checked_at": self.checked_at}
         return out
 
 
@@ -184,7 +278,20 @@ class MarketStore:
         db.script([
             f"CREATE TABLE IF NOT EXISTS meta ({self._key} {tk} PRIMARY KEY, value TEXT NOT NULL)",
             f"CREATE TABLE IF NOT EXISTS merchants (id {tk} PRIMARY KEY, name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '',"
-            f" key_hex {tk} NOT NULL, created_at TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '')",
+            f" key_hex {tk} NOT NULL, created_at TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '',"
+            " description TEXT NOT NULL DEFAULT '')",
+            f"CREATE TABLE IF NOT EXISTS operators (id {tk} PRIMARY KEY, email {tk} NOT NULL, name TEXT NOT NULL DEFAULT '', role TEXT NOT NULL,"
+            " password_hash TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '', disabled_at TEXT NOT NULL DEFAULT '',"
+            " last_signin TEXT NOT NULL DEFAULT '', totp_secret TEXT NOT NULL DEFAULT '', totp_enabled_at TEXT NOT NULL DEFAULT '',"
+            " recovery_codes TEXT NOT NULL DEFAULT '[]')",
+            f"CREATE TABLE IF NOT EXISTS operator_codes (id {db.serial} PRIMARY KEY, operator_id {tk} NOT NULL, purpose {tk} NOT NULL,"
+            " code_hash TEXT NOT NULL, salt TEXT NOT NULL, expires_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TEXT NOT NULL DEFAULT '',"
+            " created_at TEXT NOT NULL)",
+            f"CREATE TABLE IF NOT EXISTS applications (id {tk} PRIMARY KEY, name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '',"
+            " email TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',"
+            f" key_hex {tk} NOT NULL, state TEXT NOT NULL, message TEXT NOT NULL DEFAULT '', secret TEXT NOT NULL DEFAULT '',"
+            " created_at TEXT NOT NULL, decided_at TEXT NOT NULL DEFAULT '', decided_by TEXT NOT NULL DEFAULT '',"
+            f" merchant_id {tk} NOT NULL DEFAULT '')",
             "CREATE TABLE IF NOT EXISTS terms_versions (version INTEGER PRIMARY KEY, text TEXT NOT NULL, changes TEXT NOT NULL DEFAULT '',"
             " in_force_from TEXT NOT NULL, created_at TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '')",
             f"CREATE TABLE IF NOT EXISTS terms_acceptances (id {db.serial} PRIMARY KEY, merchant_id {tk} NOT NULL, version INTEGER NOT NULL,"
@@ -217,6 +324,24 @@ class MarketStore:
                                   ("notice_acks_notice", "notice_acks", "notice_id, merchant_id"), ("suspensions_target", "suspensions", "target"),
                                   ("acceptances_merchant", "terms_acceptances", "merchant_id")):
             db.create_index(name, table, cols)
+        # A database from 0.2: the profile columns the merchant edits itself.
+        have = db.columns("merchants")
+        for column in ("website", "description"):
+            if column not in have:
+                db.execute(f"ALTER TABLE merchants ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        db.create_index("applications_key", "applications", "key_hex")
+        db.create_index("operators_email", "operators", "email")
+        db.create_index("operator_codes_operator", "operator_codes", "operator_id, purpose")
+        # A database from 0.4: the pipeline's findings on a submission.
+        have = db.columns("submissions")
+        for column, default in (("findings", "'{}'"), ("checked_at", "''")):
+            if column not in have:
+                db.execute(f"ALTER TABLE submissions ADD COLUMN {column} TEXT NOT NULL DEFAULT {default}")
+        # A database from 0.4: the operators' second factor.
+        have = db.columns("operators")
+        for column, default in (("totp_secret", "''"), ("totp_enabled_at", "''"), ("recovery_codes", "'[]'")):
+            if column not in have:
+                db.execute(f"ALTER TABLE operators ADD COLUMN {column} TEXT NOT NULL DEFAULT {default}")
         if not self.meta("schema"):
             self.set_meta("schema", str(SCHEMA))
 
@@ -303,7 +428,8 @@ class MarketStore:
 
     # ----- merchants, terms, standing -----
     def _merchant(self, r: dict) -> Merchant:
-        m = Merchant(id=r["id"], name=r["name"], contact=r["contact"], key_hex=r["key_hex"], created_at=r["created_at"], notes=r["notes"])
+        m = Merchant(id=r["id"], name=r["name"], contact=r["contact"], key_hex=r["key_hex"], created_at=r["created_at"], notes=r["notes"],
+                     website=r.get("website", ""), description=r.get("description", ""))
         day = today()
         m.strikes = self.strikes(m.id, day)
         m.terms_in_force = self.terms_in_force(day)
@@ -316,20 +442,166 @@ class MarketStore:
             m.standing = "active"
         return m
 
-    def add_merchant(self, *, id: str, name: str, contact: str, key_hex: str, actor: str) -> Merchant:
-        self._db.execute("INSERT INTO merchants (id, name, contact, key_hex, created_at) VALUES (?, ?, ?, ?, ?)", (id, name, contact, key_hex, now_iso()))
-        self.audit(actor, "register", "merchant", id, after={"name": name, "contact": contact, "key": key_hex})
+    def add_merchant(self, *, id: str, name: str, contact: str, key_hex: str, actor: str, website: str = "", description: str = "") -> Merchant:
+        self._db.execute("INSERT INTO merchants (id, name, contact, key_hex, created_at, website, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (id, name, contact, key_hex, now_iso(), website, description))
+        self.audit(actor, "register", "merchant", id, after={"name": name, "contact": contact, "key": key_hex, "website": website})
         return self.get_merchant(id)   # type: ignore[return-value]
 
-    def update_merchant(self, id: str, *, name: str | None, contact: str | None, key_hex: str | None, actor: str) -> Merchant | None:
+    def update_merchant(self, id: str, *, name: str | None, contact: str | None, key_hex: str | None, actor: str, website: str | None = None,
+                        description: str | None = None) -> Merchant | None:
         before = self.get_merchant(id)
         if not before:
             return None
         new = {"name": name if name is not None else before.name, "contact": contact if contact is not None else before.contact,
-               "key": key_hex if key_hex is not None else before.key_hex}
-        self._db.execute("UPDATE merchants SET name = ?, contact = ?, key_hex = ? WHERE id = ?", (new["name"], new["contact"], new["key"], id))
-        self.audit(actor, "update", "merchant", id, before={"name": before.name, "contact": before.contact, "key": before.key_hex}, after=new)
+               "key": key_hex if key_hex is not None else before.key_hex, "website": website if website is not None else before.website,
+               "description": description if description is not None else before.description}
+        self._db.execute("UPDATE merchants SET name = ?, contact = ?, key_hex = ?, website = ?, description = ? WHERE id = ?",
+                         (new["name"], new["contact"], new["key"], new["website"], new["description"], id))
+        self.audit(actor, "update", "merchant", id, before={"name": before.name, "contact": before.contact, "key": before.key_hex, "website": before.website,
+                                                            "description": before.description}, after=new)
         return self.get_merchant(id)
+
+    def merchant_by_key(self, key_hex: str) -> Merchant | None:
+        r = self._db.fetchone("SELECT * FROM merchants WHERE key_hex = ?", (key_hex,))
+        return self._merchant(r) if r else None
+
+    # ----- the operators -----
+    @staticmethod
+    def _operator(r: dict) -> Operator:
+        return Operator(id=r["id"], email=r["email"], name=r["name"], role=r["role"], password_hash=r["password_hash"], created_at=r["created_at"],
+                        created_by=r["created_by"], disabled_at=r["disabled_at"], last_signin=r["last_signin"], totp_secret=r.get("totp_secret", ""),
+                        totp_enabled_at=r.get("totp_enabled_at", ""), recovery_codes=_json(r.get("recovery_codes", "[]"), []))
+
+    def operators(self) -> list[Operator]:
+        return [self._operator(r) for r in self._db.fetchall("SELECT * FROM operators ORDER BY created_at, id")]
+
+    def get_operator(self, op_id: str) -> Operator | None:
+        r = self._db.fetchone("SELECT * FROM operators WHERE id = ?", (op_id,))
+        return self._operator(r) if r else None
+
+    def operator_by_email(self, email: str) -> Operator | None:
+        r = self._db.fetchone("SELECT * FROM operators WHERE email = ?", (email.strip().lower(),))
+        return self._operator(r) if r else None
+
+    def add_operator(self, *, email: str, name: str, role: str, password_hash: str, actor: str) -> Operator:
+        op_id = f"op-{self.next_number('operator_no'):04d}"
+        self._db.execute("INSERT INTO operators (id, email, name, role, password_hash, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (op_id, email.strip().lower(), name, role, password_hash, now_iso(), actor))
+        self.audit(actor, "add_operator", "operator", op_id, after={"email": email.strip().lower(), "name": name, "role": role})
+        return self.get_operator(op_id)   # type: ignore[return-value]
+
+    def update_operator(self, op_id: str, *, actor: str, name: str | None = None, role: str | None = None, password_hash: str | None = None,
+                        disabled: bool | None = None) -> Operator | None:
+        before = self.get_operator(op_id)
+        if not before:
+            return None
+        new = {"name": name if name is not None else before.name, "role": role if role is not None else before.role,
+               "password_hash": password_hash if password_hash is not None else before.password_hash,
+               "disabled_at": (now_iso() if disabled else "") if disabled is not None else before.disabled_at}
+        self._db.execute("UPDATE operators SET name = ?, role = ?, password_hash = ?, disabled_at = ? WHERE id = ?",
+                         (new["name"], new["role"], new["password_hash"], new["disabled_at"], op_id))
+        self.audit(actor, "update_operator", "operator", op_id, before={"name": before.name, "role": before.role, "disabled": not before.active},
+                   after={"name": new["name"], "role": new["role"], "disabled": bool(new["disabled_at"]), "password_changed": password_hash is not None})
+        return self.get_operator(op_id)
+
+    def record_operator_signin(self, op_id: str) -> None:
+        self._db.execute("UPDATE operators SET last_signin = ? WHERE id = ?", (now_iso(), op_id))
+
+    def set_operator_two_factor(self, op_id: str, *, actor: str, secret: str | None = None, enabled: bool | None = None,
+                                recovery_hashes: list[str] | None = None, audit_action: str = "") -> Operator | None:
+        """The second factor's pieces: the secret at setup, enabled with the
+        recovery codes, a new set of codes, or cleared (secret None and
+        enabled False)."""
+        op = self.get_operator(op_id)
+        if not op:
+            return None
+        new_secret = op.totp_secret if secret is None else secret
+        new_enabled = op.totp_enabled_at if enabled is None else (now_iso() if enabled else "")
+        new_codes = op.recovery_codes if recovery_hashes is None else recovery_hashes
+        if enabled is False and secret is None:
+            new_secret, new_codes = "", []
+        self._db.execute("UPDATE operators SET totp_secret = ?, totp_enabled_at = ?, recovery_codes = ? WHERE id = ?",
+                         (new_secret, new_enabled, json.dumps(new_codes), op_id))
+        if audit_action:
+            self.audit(actor, audit_action, "operator", op_id, before={"two_factor": op.two_factor}, after={"two_factor": bool(new_enabled)})
+        return self.get_operator(op_id)
+
+    def use_operator_recovery_code(self, op_id: str, digest: str) -> bool:
+        op = self.get_operator(op_id)
+        if not op or digest not in op.recovery_codes:
+            return False
+        self._db.execute("UPDATE operators SET recovery_codes = ? WHERE id = ?", (json.dumps([c for c in op.recovery_codes if c != digest]), op_id))
+        return True
+
+    def set_operator_password(self, op_id: str, password_hash: str, *, actor: str, action: str = "reset_password") -> None:
+        self._db.execute("UPDATE operators SET password_hash = ? WHERE id = ?", (password_hash, op_id))
+        self.audit(actor, action, "operator", op_id)
+
+    # ----- the operators' codes sent by mail -----
+    def add_operator_code(self, op_id: str, purpose: str, code: str, *, minutes: int) -> None:
+        self._db.execute("UPDATE operator_codes SET used_at = ? WHERE operator_id = ? AND purpose = ? AND used_at = ''", (now_iso() + " superseded", op_id, purpose))
+        salt = secrets.token_hex(8)
+        self._db.execute("INSERT INTO operator_codes (operator_id, purpose, code_hash, salt, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                         (op_id, purpose, hash_code(code, salt), salt, iso_after(minutes * 60), now_iso()))
+
+    def take_operator_code(self, op_id: str, purpose: str, code: str) -> bool:
+        """True when the code is the live one for this purpose, which is then
+        used up; False when wrong, expired or tried too often."""
+        r = self._db.fetchone("SELECT * FROM operator_codes WHERE operator_id = ? AND purpose = ? AND used_at = '' ORDER BY id DESC LIMIT 1", (op_id, purpose))
+        if not r or r["expires_at"] < now_iso() or int(r["attempts"]) >= 5:
+            return False
+        if hash_code(code.strip(), r["salt"]) != r["code_hash"]:
+            self._db.execute("UPDATE operator_codes SET attempts = attempts + 1 WHERE id = ?", (r["id"],))
+            return False
+        self._db.execute("UPDATE operator_codes SET used_at = ? WHERE id = ?", (now_iso(), r["id"]))
+        return True
+
+    # ----- applications -----
+    @staticmethod
+    def _application(r: dict) -> Application:
+        return Application(id=r["id"], name=r["name"], contact=r["contact"], email=r["email"], website=r["website"], description=r["description"],
+                           key_hex=r["key_hex"], state=r["state"], message=r["message"], secret=r["secret"], created_at=r["created_at"],
+                           decided_at=r["decided_at"], decided_by=r["decided_by"], merchant_id=r["merchant_id"])
+
+    def add_application(self, *, name: str, contact: str, email: str, website: str, description: str, key_hex: str) -> Application:
+        aid = f"ap-{self.next_number('application_no'):06d}"
+        secret = secrets.token_hex(16)
+        self._db.execute("INSERT INTO applications (id, name, contact, email, website, description, key_hex, state, secret, created_at)"
+                         " VALUES (?, ?, ?, ?, ?, ?, ?, 'applied', ?, ?)", (aid, name, contact, email, website, description, key_hex, secret, now_iso()))
+        self.audit(aid, "apply", "application", aid, after={"name": name, "contact": contact, "website": website, "key": key_hex})
+        return self.get_application(aid)   # type: ignore[return-value]
+
+    def get_application(self, aid: str) -> Application | None:
+        r = self._db.fetchone("SELECT * FROM applications WHERE id = ?", (aid,))
+        return self._application(r) if r else None
+
+    def applications(self, state: str = "") -> list[Application]:
+        rows = self._db.fetchall("SELECT * FROM applications ORDER BY id")
+        return [self._application(r) for r in rows if not state or r["state"] == state]
+
+    def open_application_for_key(self, key_hex: str) -> Application | None:
+        r = self._db.fetchone("SELECT * FROM applications WHERE key_hex = ? AND state = 'applied' ORDER BY id DESC LIMIT 1", (key_hex,))
+        return self._application(r) if r else None
+
+    def decide_application(self, aid: str, *, approve: bool, message: str, actor: str, merchant_id: str = "") -> Application:
+        """Approved: the merchant registered with the application's key and
+        profile. Rejected: the message is what the applicant learns."""
+        a = self.get_application(aid)
+        if not a:
+            raise ValueError("no_such_application")
+        if a.state != "applied":
+            raise ValueError("decided")
+        new_merchant = ""
+        if approve:
+            new_merchant = merchant_id or ("m-" + secrets.token_hex(4))
+            if self.get_merchant(new_merchant):
+                raise ValueError("merchant_exists")
+            self.add_merchant(id=new_merchant, name=a.name, contact=a.contact, key_hex=a.key_hex, actor=actor, website=a.website, description=a.description)
+        self._db.execute("UPDATE applications SET state = ?, message = ?, decided_at = ?, decided_by = ?, merchant_id = ? WHERE id = ?",
+                         ("approved" if approve else "rejected", message, now_iso(), actor, new_merchant, aid))
+        self.audit(actor, "approve" if approve else "reject", "application", aid, after={"message": message, "merchant": new_merchant})
+        return self.get_application(aid)   # type: ignore[return-value]
 
     def get_merchant(self, id: str) -> Merchant | None:
         r = self._db.fetchone("SELECT * FROM merchants WHERE id = ?", (id,))
@@ -472,11 +744,12 @@ class MarketStore:
     def _submission(r: dict) -> Submission:
         return Submission(id=r["id"], merchant_id=r["merchant_id"], app_id=r["app_id"], version=r["version"], component=_json(r["component"], {}),
                           signature=r["signature"], packages=_json(r["packages"], []), checks=_json(r["checks"], {}), state=r["state"], answers=r["answers"],
-                          created_at=r["created_at"], decided_at=r["decided_at"], released_sequence=r["released_sequence"])
+                          created_at=r["created_at"], decided_at=r["decided_at"], released_sequence=r["released_sequence"],
+                          findings=_json(r.get("findings", "{}"), {}), checked_at=r.get("checked_at", ""))
 
     def add_submission(self, *, merchant_id: str, component: dict, signature: str, packages: list, checks: dict, answers: str) -> Submission:
         sid = f"s-{self.next_number('submission_no'):08d}"
-        passed = all(v == "ok" for k, v in checks.items() if k in ("signature", "merchant_standing", "packages"))
+        passed = all(v == "ok" or (k == "packages" and v == "waiting") for k, v in checks.items() if k in ("signature", "merchant_standing", "packages"))
         state = "checked" if passed else "failed_checks"
         version = str(component.get("releases", [{}])[-1].get("version", "")) if component.get("releases") else str(component.get("version", ""))
         self._db.execute("INSERT INTO submissions (id, merchant_id, app_id, version, component, signature, packages, checks, state, answers, created_at)"
@@ -485,6 +758,46 @@ class MarketStore:
                           state, answers, now_iso()))
         self.audit(merchant_id, "submit", "submission", sid, after={"app": component.get("id", ""), "version": version, "state": state, "answers": answers})
         return self.get_submission(sid)   # type: ignore[return-value]
+
+    def update_submission_packages(self, sid: str, packages: list, checks: dict, *, actor: str, sha256: str) -> Submission | None:
+        """After an upload: the packages with their uploaded marks, the checks
+        recomputed; a submission that failed the checks on the packages alone
+        becomes checked once they are all there."""
+        s = self.get_submission(sid)
+        if not s:
+            return None
+        state = s.state
+        if state == "failed_checks" and all(checks.get(k) == "ok" for k in ("signature", "merchant_standing", "packages")):
+            state = "checked"
+        self._db.execute("UPDATE submissions SET packages = ?, checks = ?, state = ? WHERE id = ?", (canonical(packages), canonical(checks), state, sid))
+        self.audit(actor, "upload_package", "submission", sid, before={"state": s.state}, after={"state": state, "sha256": sha256, "packages": checks.get("packages")})
+        return self.get_submission(sid)
+
+    @staticmethod
+    def blocked(checks: dict) -> bool:
+        """What keeps a submission from the review's release: the signature
+        or the standing anything but ok, the packages anything but ok or
+        waiting, the scans or the entry failed."""
+        if checks.get("signature") != "ok" or checks.get("merchant_standing") != "ok":
+            return True
+        if checks.get("packages") not in ("ok", "waiting"):
+            return True
+        return any(checks.get(k) == "failed" for k in ("scans", "entry"))
+
+    def set_checks(self, sid: str, checks: dict, findings: dict, *, actor: str) -> Submission | None:
+        """The pipeline's results kept: a failed blocking check makes a
+        waiting submission failed_checks, all of them passing makes it checked
+        again; one in review or decided keeps its state."""
+        s = self.get_submission(sid)
+        if not s:
+            return None
+        state = s.state
+        if state in ("checked", "failed_checks"):
+            state = "failed_checks" if self.blocked(checks) else "checked"
+        self._db.execute("UPDATE submissions SET checks = ?, findings = ?, checked_at = ?, state = ? WHERE id = ?",
+                         (canonical(checks), canonical(findings), now_iso(), state, sid))
+        self.audit(actor, "run_checks", "submission", sid, before={"state": s.state}, after={"state": state, "checks": {k: checks.get(k) for k in ("scans", "entry", "smoke", "listing")}})
+        return self.get_submission(sid)
 
     def get_submission(self, sid: str) -> Submission | None:
         r = self._db.fetchone("SELECT * FROM submissions WHERE id = ?", (sid,))

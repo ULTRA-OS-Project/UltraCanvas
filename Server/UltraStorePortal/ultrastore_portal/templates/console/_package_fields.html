@@ -1,0 +1,10 @@
+{# A package's fields, the pairs that belong together side by side: with the archive when one is added, without it when a package is edited. #}
+{% if form.non_field_errors %}<div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
+<div class="row gx-3">
+  {% if form.file %}<div class="col-12">{% include "_field.html" with field=form.file %}</div>{% endif %}
+  <div class="col-sm-6">{% include "_field.html" with field=form.os %}</div>
+  <div class="col-sm-6">{% include "_field.html" with field=form.arch %}</div>
+  <div class="col-12">{% include "_field.html" with field=form.entry %}</div>
+  <div class="col-sm-6">{% include "_field.html" with field=form.min_os %}</div>
+  <div class="col-sm-6">{% include "_field.html" with field=form.variant %}</div>
+</div>

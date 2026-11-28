@@ -1,5 +1,6 @@
 // Tests/UltraCanvasStart/test_project.cpp
 // The project scaffold and the assistant texts, over a temporary folder.
+// Version: 0.2.0 - RepointPresets / RepointProjectSdk, SdkPrefixVersion
 // Version: 0.1.2 - the skeleton is compiled against the SDK ULTRACANVAS_SDK_PREFIX names
 // Version: 0.1.1 - main.cpp uses the framework's CreateWindow
 // Version: 0.1.0
@@ -179,4 +180,123 @@ TEST(BuildProject_compiles_the_skeleton_against_the_sdk) {
     REQUIRE(result.built);
     REQUIRE(fs::is_directory(folder / "build"));
     fs::remove_all(folder, ec);
+}
+
+TEST(RepointPresets_replaces_the_prefix_and_keeps_the_rest) {
+    ProjectOptions options;
+    options.sdkPrefix = "/opt/UltraCanvas-SDK-Linux-0.9.147-x86_64";
+    const std::string before = ProjectPresets(options);
+    std::string after, old, error;
+    REQUIRE(RepointPresets(before, "C:\\SDKs\\UltraCanvas-SDK-Windows-0.9.604-x86_64", after, old, error));
+    REQUIRE_EQ(old, std::string("/opt/UltraCanvas-SDK-Linux-0.9.147-x86_64"));
+    // Forward slashes, as CMake wants them on Windows too.
+    REQUIRE(after.find("\"CMAKE_PREFIX_PATH\": \"C:/SDKs/UltraCanvas-SDK-Windows-0.9.604-x86_64\"") != std::string::npos);
+    REQUIRE(after.find("0.9.147") == std::string::npos);
+    REQUIRE(after.find("\"CMAKE_BUILD_TYPE\": \"Debug\"") != std::string::npos);
+    REQUIRE(after.find("\"buildPresets\"") != std::string::npos);
+    // Pointed at the prefix it names already: the same text.
+    std::string again;
+    REQUIRE(RepointPresets(after, "C:/SDKs/UltraCanvas-SDK-Windows-0.9.604-x86_64", again, old, error));
+    REQUIRE_EQ(again, after);
+}
+
+TEST(RepointPresets_adds_the_prefix_where_none_was) {
+    ProjectOptions options;   // no prefix: the user was to set it later
+    const std::string before = ProjectPresets(options);
+    REQUIRE(before.find("CMAKE_PREFIX_PATH") == std::string::npos);
+    std::string after, old, error;
+    REQUIRE(RepointPresets(before, "/sdk/a \"quoted\" name", after, old, error));
+    REQUIRE(old.empty());
+    REQUIRE(after.find("\"CMAKE_PREFIX_PATH\": \"/sdk/a \\\"quoted\\\" name\",") != std::string::npos);
+    REQUIRE(after.find("\"CMAKE_BUILD_TYPE\": \"Debug\"") != std::string::npos);
+
+    // An empty cacheVariables object gets no trailing comma.
+    const std::string empty = "{ \"configurePresets\": [ { \"name\": \"default\", \"cacheVariables\": {} } ] }";
+    REQUIRE(RepointPresets(empty, "/sdk", after, old, error));
+    REQUIRE(after.find("\"CMAKE_PREFIX_PATH\": \"/sdk\"\n") != std::string::npos);
+    REQUIRE(after.find("\"/sdk\",") == std::string::npos);
+}
+
+TEST(RepointPresets_refuses_what_it_cannot_edit) {
+    std::string after, old, error;
+    REQUIRE(!RepointPresets("{ \"cacheVariables\": {} }", "", after, old, error));
+    REQUIRE(!error.empty());
+    error.clear();
+    REQUIRE(!RepointPresets("{ \"cacheVariables\": { \"CMAKE_PREFIX_PATH\": { \"type\": \"PATH\", \"value\": \"/x\" } } }",
+                            "/sdk", after, old, error));
+    REQUIRE(error.find("not a plain string") != std::string::npos);
+    error.clear();
+    REQUIRE(!RepointPresets("{ \"version\": 3 }", "/sdk", after, old, error));
+    REQUIRE(error.find("no cacheVariables") != std::string::npos);
+}
+
+TEST(RepointProjectSdk_rewrites_the_presets_and_drops_the_cache) {
+    const fs::path folder = fs::temp_directory_path() / UltraCanvas::PathFromUtf8("UltraCanvasStart-repoint-Ünï");
+    std::error_code ec;
+    fs::remove_all(folder, ec);
+
+    REQUIRE(!RepointProjectSdk(UltraCanvas::PathToUtf8(folder), "/sdk").ok);   // no project there
+
+    ProjectOptions options;
+    options.folder = UltraCanvas::PathToUtf8(folder);
+    options.sdkPrefix = "/opt/UltraCanvas-SDK-Linux-0.9.147-x86_64";
+    REQUIRE(ScaffoldProject(options).ok);
+    fs::create_directories(folder / "build", ec);
+    std::ofstream(folder / "build" / "CMakeCache.txt") << "UltraCanvas_DIR:PATH=/opt/old\n";
+    std::ofstream(folder / "build" / "main.o") << "object\n";
+
+    const RepointResult moved = RepointProjectSdk(options.folder, "/opt/UltraCanvas-SDK-Linux-0.9.604-x86_64");
+    REQUIRE(moved.ok);
+    REQUIRE(moved.changed);
+    REQUIRE(moved.cacheRemoved);
+    REQUIRE_EQ(moved.oldPrefix, std::string("/opt/UltraCanvas-SDK-Linux-0.9.147-x86_64"));
+    REQUIRE(ReadAll(folder / "CMakePresets.json").find("UltraCanvas-SDK-Linux-0.9.604-x86_64") != std::string::npos);
+    REQUIRE(!fs::exists(folder / "build" / "CMakeCache.txt"));
+    REQUIRE(fs::exists(folder / "build" / "main.o"));          // only the cache goes
+    REQUIRE(!fs::exists(folder / "CMakePresets.json.part"));
+
+    const RepointResult same = RepointProjectSdk(options.folder, "/opt/UltraCanvas-SDK-Linux-0.9.604-x86_64");
+    REQUIRE(same.ok);
+    REQUIRE(!same.changed);
+    REQUIRE(!same.cacheRemoved);
+
+    // A relative prefix goes in absolute, without a trailing slash.
+    const RepointResult relative = RepointProjectSdk(options.folder, "relative/UltraCanvas-SDK-Linux-0.9.605-x86_64/");
+    REQUIRE(relative.ok);
+    std::string expected = UltraCanvas::PathToUtf8(
+        (fs::current_path() / "relative" / "UltraCanvas-SDK-Linux-0.9.605-x86_64").lexically_normal());
+    for (char& c : expected) if (c == '\\') c = '/';   // the presets' forward slashes
+    REQUIRE(ReadAll(folder / "CMakePresets.json").find("\"" + expected + "\"") != std::string::npos);
+
+    fs::remove_all(folder, ec);
+}
+
+TEST(SdkPrefixVersion_reads_the_package_version) {
+    const fs::path root = fs::temp_directory_path() / "UltraCanvasStart-sdk-version-test";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+
+    // The ConfigVersion file write_basic_package_version_file writes wins
+    // over the folder's name.
+    const fs::path prefix = root / "UltraCanvas-SDK-Linux-0.9.147-x86_64";
+    fs::create_directories(prefix / "lib" / "cmake" / "UltraCanvas", ec);
+    std::ofstream(prefix / "lib" / "cmake" / "UltraCanvas" / "UltraCanvasConfigVersion.cmake")
+        << "# This is a basic version file for the Config-mode of find_package().\n"
+           "set(PACKAGE_VERSION \"0.9.604\")\n"
+           "if(PACKAGE_FIND_VERSION_RANGE)\n";
+    REQUIRE_EQ(SdkPrefixVersion(UltraCanvas::PathToUtf8(prefix)), std::string("0.9.604"));
+
+    // Without it, the folder's name; with a trailing slash too.
+    const fs::path bare = root / "UltraCanvas-SDK-MacOS-0.9.601-arm64";
+    fs::create_directories(bare, ec);
+    REQUIRE_EQ(SdkPrefixVersion(UltraCanvas::PathToUtf8(bare)), std::string("0.9.601"));
+    REQUIRE_EQ(SdkPrefixVersion(UltraCanvas::PathToUtf8(bare) + "/"), std::string("0.9.601"));
+
+    // Neither: empty.
+    REQUIRE(SdkPrefixVersion(UltraCanvas::PathToUtf8(root)).empty());
+    REQUIRE(SdkPrefixVersion("").empty());
+    REQUIRE_EQ(ParsePackageVersion("set( PACKAGE_VERSION   \"1.2.3\" )"), std::string("1.2.3"));
+    REQUIRE(ParsePackageVersion("set(PACKAGE_VERSION_EXACT TRUE)").empty());
+
+    fs::remove_all(root, ec);
 }

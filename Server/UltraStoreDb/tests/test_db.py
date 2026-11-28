@@ -66,3 +66,33 @@ def test_round_trip(db):
 def test_bad_scheme():
     with pytest.raises(RuntimeError, match="unknown database scheme"):
         Database("redis://x")
+
+
+def test_operator_session_round_trips_and_is_refused_when_forged_or_over():
+    from ultrastore_db.operator_session import ROLES, allowed, issue, verify
+    token = issue("s3cret", operator_id="op-1", name="Alex", role="reviewer", hours=1, now=1_700_000_000)
+    assert token.startswith("op1.")
+    data = verify("s3cret", token, now=1_700_000_100)
+    assert data == {"id": "op-1", "name": "Alex", "role": "reviewer", "exp": 1_700_003_600}
+    assert verify("other", token, now=1_700_000_100) is None
+    assert verify("s3cret", token, now=1_700_004_000) is None
+    assert verify("s3cret", token[:-2] + "00", now=1_700_000_100) is None
+    assert verify("", token, now=1_700_000_100) is None
+    assert verify("s3cret", "Bearer nope") is None
+    assert allowed("admin", "operators.manage") and not allowed("reviewer", "operators.manage")
+    assert allowed("support", "users.support") and not allowed("support", "users.manage")
+    assert allowed("auditor", "audit.read") and not allowed("auditor", "notices.send")
+    assert set(ROLES) == {"admin", "reviewer", "support", "auditor"}
+
+
+def test_totp_and_the_codes():
+    from ultrastore_db.totp import hash_code, hash_recovery, new_code, new_recovery_codes, new_totp_secret, otpauth_url, totp_code, verify_totp
+    secret = new_totp_secret()
+    assert len(secret) == 32 and "secret=" + secret in otpauth_url(secret, "alex@example.org")
+    assert verify_totp(secret, totp_code(secret, 1_700_000_000), at=1_700_000_000)
+    assert verify_totp(secret, totp_code(secret, 1_700_000_000), at=1_700_000_030)     # one step of drift
+    assert not verify_totp(secret, totp_code(secret, 1_700_000_000), at=1_700_000_090)
+    assert verify_totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", "287082", at=59)              # RFC 6238's SHA-1 vector, 20-byte key
+    codes = new_recovery_codes()
+    assert len(codes) == 8 and all(len(c) == 8 for c in codes) and hash_recovery(" " + codes[0].upper()) == hash_recovery(codes[0])
+    assert len(new_code()) == 6 and hash_code("123456", "s") != hash_code("123456", "t")

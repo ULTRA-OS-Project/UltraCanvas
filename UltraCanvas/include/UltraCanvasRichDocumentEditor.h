@@ -15,6 +15,14 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
+// Version: 1.7.0 - heading sections, what a navigator moves: HeadingSectionEnd, MoveHeadingSection,
+//                  MoveHeadingSectionUp / Down, ChangeHeadingSectionLevel (promote, demote), each
+//                  one undo step; SiblingHeading
+// Version: 1.6.0 - what the document dialogs set, each one undo step: SetParagraphFormat
+//                  (RichParagraphFormat), SetPageSetup (the page is part of the step),
+//                  SetTableProperties (RichTableProperties), SetImageWrap (a picture of its own
+//                  paragraph floats as a picture in the line); PreviousChange, NextComment
+// Version: 1.5.0 - InsertChart: a chart in the line at the caret (a frame holding its data and its drawing)
 // Version: 1.4.1 - DocumentStart is the first cell of a table that opens the
 //                  document, where a new document's caret starts too: on the
 //                  table outside its cells it stood the whole table high
@@ -182,6 +190,47 @@ struct RichAutoFormatOptions {
     bool AnyEnabled() const {
         return smartQuotes || dashes || ellipsis || symbols || lists || headings || rules;
     }
+};
+
+// ===== WHAT THE DOCUMENT DIALOGS SET =====
+// A paragraph's layout, as a paragraph dialog shows it: its alignment,
+// indents, spacing and tab stops (RichDocBlock's fields of the same names,
+// points). In a table cell only the alignment and the line spacing apply
+// (RichTableCell::align, lineSpacing, lineHeightPt).
+struct RichParagraphFormat {
+    RichTextAlign align = RichTextAlign::Default;
+    float leftIndentPt = 0.0f;
+    float rightIndentPt = 0.0f;
+    float firstLineIndentPt = 0.0f;     // negative: a hanging indent
+    float spaceBeforePt = -1.0f;        // < 0 = not stated (the view's own spacing)
+    float spaceAfterPt = -1.0f;
+    float lineSpacing = 0.0f;           // multiple of single; 0 = single
+    float lineHeightPt = 0.0f;          // > 0: exactly this, or at least this
+    bool lineHeightAtLeast = false;
+    std::vector<RichTabStop> tabStops;  // kept sorted by position
+    bool operator==(const RichParagraphFormat& other) const = default;
+};
+
+// A table's properties, as a table dialog shows them (RichDocBlock's table
+// fields, and what every cell has in common).
+struct RichTableProperties {
+    // Its width: widthPercent > 0 = that share of the text column, else
+    // widthPt > 0 = that many points, else the whole column.
+    float widthPercent = 0.0f;
+    float widthPt = 0.0f;
+    // Where a table narrower than the column sits; Default / Left =
+    // indentPt from the left edge.
+    RichTextAlign align = RichTextAlign::Default;
+    float indentPt = 0.0f;
+    bool autoFit = false;               // columns widen to hold their content
+    bool headerRow = false;             // the first row is a header row
+    // Lines round every cell: < 0 = the view's own grid (no lines of the
+    // document's), 0 = none, > 0 = lines this wide, in borderColor.
+    float borderWidthPt = -1.0f;
+    std::string borderColor;            // "#RRGGBB"; empty = automatic (black)
+    float cellPaddingPt = -1.0f;        // < 0 = the view's default
+    RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
+    bool operator==(const RichTableProperties& other) const = default;
 };
 
 // ===== THE EDITOR =====
@@ -388,6 +437,54 @@ public:
     std::string CurrentParagraphStyle() const;
     std::string CurrentCharacterStyle() const;
 
+    // ===== PARAGRAPH LAYOUT, PAGE, TABLE (what the dialogs set) =====
+    // The caret paragraph's layout (its cell's alignment and line spacing in
+    // a table).
+    RichParagraphFormat GetParagraphFormat() const;
+    // Gives every paragraph the selection touches (every selected cell, in a
+    // table) that layout: one undo step. False when nothing changed.
+    bool SetParagraphFormat(const RichParagraphFormat& format);
+    // The document's page: size, margins and where the header and footer
+    // start. One undo step (the page is part of it); false when the same.
+    bool SetPageSetup(const RichPageSetup& page);
+    // The properties of the table at `blockIndex`; false when it is none.
+    bool GetTableProperties(int blockIndex, RichTableProperties& out) const;
+    // Sets them, one undo step. The border, padding and vertical alignment
+    // go to every cell; a border of the document's own (borderWidthPt >= 0)
+    // makes the table draw the cells' lines rather than the view's grid.
+    bool SetTableProperties(int blockIndex, const RichTableProperties& properties);
+
+    // ===== HEADING SECTIONS =====
+    // What a navigator or an outline view moves. A heading's section is the
+    // heading and every block after it up to the next heading of its level
+    // or a higher one (a smaller number), or the end of the document: its
+    // text and the subheadings under it. A heading is a Heading block of
+    // level 1..6.
+    //
+    // One past the last block of the section of the heading at
+    // `headingBlock`; -1 when that block is no heading.
+    static int HeadingSectionEnd(const std::vector<RichDocBlock>& blocks, int headingBlock);
+    int HeadingSectionEnd(int headingBlock) const { return HeadingSectionEnd(doc->blocks, headingBlock); }
+    // The heading of the same level before (forward false) or after the one
+    // at `headingBlock` under the same parent heading - the section a move up
+    // or down swaps with - or -1 when there is none.
+    static int SiblingHeading(const std::vector<RichDocBlock>& blocks, int headingBlock, bool forward);
+    // Moves the section to stand before block `beforeBlock` (GetBlockCount()
+    // = after the last block), as one undo step, and puts the caret at the
+    // start of the moved heading. Levels are kept. False when the target is
+    // inside the section, the move would change nothing, or the block is no
+    // heading.
+    bool MoveHeadingSection(int headingBlock, int beforeBlock);
+    // Swaps the section with its sibling's before / after it (SiblingHeading).
+    bool MoveHeadingSectionUp(int headingBlock);
+    bool MoveHeadingSectionDown(int headingBlock);
+    // Gives the heading and every heading in its section a level `delta`
+    // away: -1 promotes (Heading 2 becomes Heading 1, its Heading 3s become
+    // Heading 2s), +1 demotes. One undo step; a heading in its level's
+    // heading style (or in none) takes the new level's style. False when one
+    // of them would leave levels 1..6, or nothing changes.
+    bool ChangeHeadingSectionLevel(int headingBlock, int delta);
+
     // ===== STRUCTURE =====
     void InsertHorizontalRule();
     void InsertPageBreak();
@@ -401,6 +498,12 @@ public:
     int InsertInlineImage(const std::string& name, const std::string& mimeType,
                           const std::vector<uint8_t>& data,
                           const std::string& altText = "");
+    // A chart INTO the line at the caret, `widthPt` x `heightPt`: a frame
+    // holding its data (RichTextFrame::chart, drawn by the chart engine) and
+    // the same chart as drawn shapes, for whoever has no engine. Returns the
+    // frame's index, or -1 when the chart has nothing to show or the box is
+    // under 40 points.
+    int InsertChart(const RichChart& chart, float widthPt, float heightPt);
     void DeleteBlock(int blockIndex);
 
     // ===== PICTURES =====
@@ -420,6 +523,15 @@ public:
     bool SetFloatOffset(const RichDocPosition& object, float offsetXPt, float offsetYPt);
     // Sets the description a screen reader or a text export gives for it.
     bool SetImageAltText(const RichDocPosition& image, const std::string& altText);
+    // How the text goes round it, and where a floating one sits across the
+    // column (Left / Center / Right; Default keeps its offset). A picture of
+    // its own paragraph (an Image block) that is made to float becomes a
+    // picture in the line of a paragraph holding only it, so its position
+    // ({block, 0}) stays the same. One undo step; false when nothing is there
+    // or nothing changes.
+    bool SetImageWrap(const RichDocPosition& image, RichTextRun::ImageWrap wrap,
+                      RichTextAlign align = RichTextAlign::Left);
+    bool GetImageWrap(const RichDocPosition& image, RichTextRun::ImageWrap& wrap, RichTextAlign& align) const;
     // Inserts a footnote or endnote reference at the caret, with a new note
     // holding one empty paragraph. Returns the note's index, or -1.
     int InsertNote(RichNote::Kind kind);
@@ -453,6 +565,8 @@ public:
     bool RejectChangeAt(const RichDocPosition& pos);
     // The start of the next tracked change after `pos` (wrapping), or false.
     bool NextChange(const RichDocPosition& pos, RichDocRange& out) const;
+    // The last tracked change that starts before `pos` (wrapping), or false.
+    bool PreviousChange(const RichDocPosition& pos, RichDocRange& out) const;
 
     // ===== COMMENTS =====
     // A comment on the selection (the word at the caret when nothing is
@@ -467,6 +581,10 @@ public:
     std::vector<int> CommentsAt(const RichDocPosition& pos) const;
     // The span a comment covers (first to last covered character).
     bool CommentRange(int index, RichDocRange& out) const;
+    // The comment whose text starts next after `pos` (forward) or last before
+    // it, in document order and wrapping round; resolved ones count too.
+    // False when the document has none.
+    bool NextComment(const RichDocPosition& pos, bool forward, int& outIndex) const;
 
     // ===== BOOKMARKS, CROSS-REFERENCES, CAPTIONS, CONTENTS =====
     // A bookmark on the caret's paragraph (the table's, in a cell). False
@@ -640,6 +758,9 @@ private:
         // Set when the step also changed the document's named styles.
         bool stylesChanged = false;
         std::vector<RichStyle> stylesBefore, stylesAfter;
+        // Set when the step also changed the document's page (SetPageSetup).
+        bool pageChanged = false;
+        RichPageSetup pageBefore, pageAfter;
     };
 
     // Records the blocks about to change, and on close records what they
@@ -657,10 +778,14 @@ private:
         bool typing = false;
         bool captureStyles = false;
         std::vector<RichStyle> stylesBefore;
+        bool capturePage = false;
+        RichPageSetup pageBefore;
         EditScope(UCRichDocumentEditor& e, int first, int count, bool isTyping = false);
         ~EditScope();
         // The step also records the named styles (a style edit).
         void CaptureStyles() { captureStyles = true; stylesBefore = ed.doc->styles; }
+        // The step also records the page (a page setup edit).
+        void CapturePage() { capturePage = true; pageBefore = ed.doc->page; }
     };
     friend struct EditScope;
 

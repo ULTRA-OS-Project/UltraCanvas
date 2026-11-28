@@ -1,8 +1,10 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasVectorFormatsPlugin.cpp
 // Implementation of the vector formats graphics plugin - see the header.
+// Version: 1.5.0 - GetFileInfo reports the page (width / height, in points): read, not left at 0
+// Version: 1.4.0 - OpenDocument Drawing (.odg / .otg / .fodg) read and written
 // Version: 1.3.0 - the preview provider reads from memory too (ImportFromString)
 // Version: 1.2.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorFormatsPlugin.h"
@@ -11,10 +13,12 @@
 #include "UltraCanvasCDRConverter.h"
 #include "UltraCanvasEPSConverter.h"
 #include "UltraCanvasMetafileConverters.h"
+#include "UltraCanvasODGConverter.h"
 #include "UltraCanvasXARConverter.h"
 #include "UltraCanvasVectorPreview.h"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include "UltraCanvasPathUtf8.h"
 
@@ -57,6 +61,7 @@ std::vector<std::unique_ptr<IVectorFormatConverter>> AllConverters() {
     all.push_back(std::make_unique<AIConverter>());
     all.push_back(std::make_unique<DXFConverter>());
     all.push_back(std::make_unique<DWGConverter>());
+    all.push_back(std::make_unique<ODGConverter>());
     return all;
 }
 
@@ -179,6 +184,15 @@ GraphicsFileInfo UltraCanvasVectorFormatsPlugin::GetFileInfo(const std::string& 
     if (in) {
         std::streamsize fileSize = in.tellg();
         if (fileSize > 0) info.fileSize = static_cast<size_t>(fileSize);
+    }
+    // The page, in points: these formats say their size only once read.
+    if (auto doc = LoadVectorDocument(filePath)) {
+        const double w = doc->ViewBox.width > 0 && doc->ViewBox.height > 0 ? doc->ViewBox.width : doc->Size.width;
+        const double h = doc->ViewBox.width > 0 && doc->ViewBox.height > 0 ? doc->ViewBox.height : doc->Size.height;
+        if (w > 0 && h > 0 && std::isfinite(w) && std::isfinite(h) && w < 1e7 && h < 1e7) {
+            info.width = std::max(1, static_cast<int>(std::lround(w)));
+            info.height = std::max(1, static_cast<int>(std::lround(h)));
+        }
     }
     return info;
 }

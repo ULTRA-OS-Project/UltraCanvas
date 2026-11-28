@@ -69,6 +69,14 @@ seconds after its main loop (see
 [UltraCanvasWindowsDiagnostics](UltraCanvasWindowsDiagnostics.md)), inside
 those fifteen.
 
+The bus is hosted by whichever program connected first - the desktop, a
+copy preloaded with it, any UltraMessage client - and goes when that program
+ends. A listening copy therefore **watches its connection**: once a second
+it checks it, and when the bus has gone it joins again, hosting the new one
+when nobody else does. Without that, a copy that outlived the bus's host
+answered nothing for the rest of its life, and every later start ended in
+"already running".
+
 The running copy **answers from the bus thread at once** and only then queues
 the request for its UI thread. A window that is busy - a native dialog that
 holds the event loop, a long load - therefore never makes the other start wait
@@ -98,8 +106,9 @@ being built when `Listen` is called.
 | `MakeOpenRequest(paths)` | The `Claim()` request carrying this start's files, `{"paths": [...]}`. Each path is made absolute against this process's working folder — the running copy was started somewhere else — and an argument containing `://` (a URL) passes through unchanged. |
 | `RequestPaths(request)` | The paths of such a request, for an application that uses `Listen` with a handler of its own. |
 | `Close()` | Stops listening. The lock stays until the object goes, so no second copy slips in while this one shuts down. |
-| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. |
-| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. |
+| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. A window on another virtual desktop (workspace) is brought to the one in view, where the start that asked for it was made - with its window, when a dialog is what comes forward (`UltraCanvasWindowBase::MoveToCurrentDesktop`, which `RaiseAndFocus` calls; X11 - elsewhere the system decides whether the window comes over or the desktop changes). |
+| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. When this process's `Claim()` answered `AlreadyRunning`, the alert also says why the running copy's window did not come by itself: the bus's own reason when the bus could not be joined ("It could not be asked to come forward: ..." - a bus folder that is not this user's alone, a path too long for a socket), or "It did not answer when asked to come forward." when the copy is on the bus and silent. All of it in the application's language (`Tr`, the standard set): `Claim()` loads the language before it asks the bus, since the bus words its reason when it refuses. |
+| `HandOffMessage(displayName, note)` | The one line a start says on the terminal about the copy already running, without the line end, in the person's language: `HandOffNote::Running` ("... is already running."), `BroughtForward` ("...: brought it forward.", the default), `RequestTaken` ("...: handed the request to it.") or `OpeningHere` ("... but did not answer: opening a window here."). For the applications that are started from a terminal or by the desktop with `--background`; it loads the language itself when the start has no application yet. |
 
 ## Why it is compiled into the application
 

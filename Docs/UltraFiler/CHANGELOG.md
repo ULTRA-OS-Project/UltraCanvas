@@ -1,3 +1,252 @@
+#### 2026-11-26 *1.107.31*
+- **The newer texts in every language.** Entries added since the
+  catalogue was last translated showed in English; all 29 languages now
+  have them (machine drafts, reviewed by -).
+
+#### 2026-11-25 *1.107.30*
+- **Edit in UltraPaint and Edit in ArtCreator.** Right-clicking a picture -
+  or a selection of pictures - offers *Edit in UltraPaint*, right after
+  *Open with*; a drawing (SVG, EPS, DXF and whatever else this build's vector
+  readers take) offers *Edit in ArtCreator*. Each opens the files in that
+  editor, in the window open already if there is one. An entry is there only
+  where its editor is installed beside UltraFiler, and in MobilePC, which
+  carries the editors itself; a file inside an archive or on a remote drive
+  does not get one. Both entries and the message when an editor cannot be
+  started are translated into every language UltraFiler has.
+- **UltraFiler runs inside MobilePC.** The Android desktop carries it as one of
+  its applications. For that its window says whether it is still open, so the
+  program that carries it can hand a later start's folders to it - in new
+  tabs, as a second start does on a computer - instead of opening another
+  window. Nothing changes on a computer.
+
+#### 2026-11-25 *1.107.29*
+- **Favorite folders can be highlighted.** Settings > Display > *Favorite
+  folders* chooses how a favorite stands out in the folder display - no
+  highlight, a solid background, a border around the box, or a shade from the
+  top - in one colour of your choice, with or without the heart, and shows it
+  on a live preview. With the default colour the border is drawn in the
+  heart's red, and under a dark theme a background or shade is a dark tint of
+  it. Kept in `config.ini` as `display.favorites.highlight`,
+  `display.favorites.color` and `display.favorites.heart`.
+
+#### 2026-11-25 *1.107.28*
+- **No more crash while thumbnails are made.** UltraFiler could crash ("exception
+  0xC0000005 ... libcairo-2.dll") in a folder with documents or slides, as
+  their thumbnails were drawn while the window drew its own text. The text of
+  each thread is now kept apart (framework: text layouts per thread).
+
+#### 2026-11-24 *1.107.27*
+- **Deleting a file no longer flashes the folder.** After a delete the whole
+  folder was drawn again with plain type icons, and the thumbnails came back
+  a moment later. Now the deleted file simply leaves, and every other tile
+  keeps its thumbnail. The same holds for a rename, a copy into the folder,
+  and a change noticed by the folder watch. A file whose content changed is
+  made again in the background, and its tile shows the old thumbnail until
+  the new one is ready.
+- **The preview stays put while you drag a selection rectangle.** Drawing a
+  rectangle over the files changed the selection with every file it crossed,
+  and the preview pane followed each change - opening on one file, folding
+  away on the second, opening again - so the files jumped under the pointer
+  mid-drag. The pane now stays as it was until the rectangle is let go, and
+  then shows what it ended on.
+- **Settings > Cache cut the thumbnail switches in seven languages.** Their
+  labels were one line in a fixed 440 px; German "Miniaturansichten zwischen
+  Programmläufen auf dem Datenträger behalten" needs about 620 px, and French,
+  Italian, Spanish, Polish, Hungarian and Greek ran over as well. A longer
+  label now wraps onto a second line.
+- **Find text cut its prompt in nineteen languages.** "Find files in this
+  folder and its sub folders that contain:" was one 428 px line (German needs
+  606 px); it now wraps onto a second line.
+
+#### 2026-11-23 *1.107.26*
+- **The path bar's old colours are back, and they are settings.** The folders
+  on the way to the one shown are light grey again (#E4E6E9) and the folder
+  shown is the strong blue (#0078D7) with white text, as before the bar took
+  the theme's grey and pale accent. Settings > Display > Path bar has a colour
+  box for each - *Parent folders colour* and *Current folder colour* - that
+  opens the colour picker, with the bar following while you pick, and
+  *Restore defaults*. The text on each segment is white or dark, whichever
+  reads on its colour. Under a dark theme the default light grey becomes the
+  theme's dark grey; a colour you choose is kept in either look.
+- **Word and LibreOffice documents in the preview pane.** Selecting a `.docx`,
+  `.doc` or `.odt` with Preview on left the pane closed, though spreadsheets
+  and presentations showed there. The pane now shows the document's pages as
+  they print - fitted to the pane's width, with the page strip, zoom and
+  search - and a password-protected one offers Unlock.
+
+#### 2026-11-21 *1.107.25*
+- **The drive rings follow a dark / light switch.** The Computer page's drive
+  cards kept the colours of the look they were built in: switched from dark to
+  light while UltraFiler was open, the percentage in each ring was white on the
+  white hole - invisible - and the free part stayed near-black. The cards are
+  built again in the new look on every theme change, from the sizes already
+  read.
+- **Drive rows in a dark theme.** The tree's drive and phone rows kept a light
+  pastel band - with dark text - across a dark tree whenever the saved drive
+  colour was not exactly the default (a colour picked a shade off it, as most
+  settings files hold). Under a dark theme any light drive colour now keeps
+  its hue and comes down to the depth of the dark ground, with light text; a
+  dark colour you chose stays as it is.
+- **A symbol instead of an empty ring.** On the Computer page a drive with no
+  size to show no longer draws a grey ring reading "n/a": a RAM disc that is a
+  folder on the system drive shows a memory chip marked RAM, an FTP / SFTP
+  server the server symbol, a cloud account the cloud, and a phone or drive
+  that was asked and gave no size its own symbol - drawn in the theme's ink,
+  so they read on a dark page.
+- **Why a phone shows no size.** A phone's card said only "Size not
+  available". One that shows no storage - locked, or left on "charging only"
+  when it was plugged in - now says "Unlock the phone and allow file
+  transfer"; any other failure says "Size could not be read" and writes the
+  device's reason to the debug output.
+- **Black icons in a dark theme.** The cloud of OneDrive and Dropbox on the
+  Computer page and in the tree, and the tree's network, server, FTP,
+  computer and phone icons, were drawn black on the dark ground. They are
+  line art with no colours of their own, and are now drawn in the theme's
+  ink: light in a dark theme, dark in a light one, white on the selected row.
+
+#### 2026-11-20 *1.107.24*
+- **Run in background.** A long copy, move, delete, compress or extract can be
+  sent away from its progress window: the window closes and the status bar
+  shows the operation instead - "Copying ULTRA OS → Projekte · 42 %", the
+  progress bar, and a Show button that brings the window back (paused work
+  comes back paused). The status bar's progress bar has a dark track in dark
+  mode.
+
+#### 2026-11-20 *1.107.23*
+- **A presentation's thumbnail is its first slide**, drawn - for `.pptx`
+  and its kin and for `.odp`, `.otp` and `.fodp` - instead of a page of its
+  outline. A password-protected deck keeps its type glyph.
+
+#### 2026-11-20 *1.107.22*
+- **Extract into a folder that exists already, with the same options as
+  copying.** When the folder named in the Extract dialog is there, UltraFiler
+  now asks instead of quietly making "name (2)": *Keep both* (the numbered
+  folder, as before), *Extract into existing*, or *Skip*. A foldable
+  *Options* panel says what happens to a file of the archive that is in the
+  folder already - replace always, only when the archive's file is newer,
+  older, bigger or different, or skip identical files and keep both for the
+  rest. The files left as they were are listed at the end.
+- **The copy, move, delete, pack and unpack window shows more, and can
+  pause.** Beside the ring: what is happening, where from and to, and the file
+  being handled; under it the speed, the time left, the items and the size
+  done (with the totals when one folder or file is copied or deleted); and a
+  Pause / Resume button. The window costs the copy nothing measurable.
+
+#### 2026-11-19 *1.107.21*
+- **Dark mode across the dialogs.** Adding an FTP / SFTP or cloud drive opens
+  a dark form under a dark look (it was a white window, its checkbox label
+  invisible); long context menus, dropdown lists and scrolling settings pages
+  show a dark scroll bar; the connection log's Close and the "Show hidden
+  files" / "Scan sub folder" buttons take the theme's accent (framework fixes).
+- **Light or dark, whatever the desktop says.** *Settings > Display > Display
+  mode* chooses UltraFiler's look: **As the system says** (the default, and
+  what every earlier release did) follows the desktop and UOS-Settings' Look
+  page, live; **Light mode** and **Dark mode** keep UltraFiler in that look.
+  The desktop's accent colour, fonts and high contrast still apply. The main
+  window switches at once, and the choice is kept in `config.ini` as
+  `display.mode`. The settings are now read before the window is built, so a
+  filer set to Dark starts dark rather than switching after it appears.
+- **The settings window follows a theme change while it is open.** It kept
+  the look it opened with; now it switches at once with the main window -
+  from its own Display mode page as well as from the desktop - its switches
+  included.
+- **A RAM disc on Windows without ImDisk is no longer asked for a size.**
+  Without the ImDisk driver the "RAM disc" is a folder on the system drive,
+  wiped when it is ejected. The size chosen in the *New RAM disc* dialog was
+  never kept to - the folder holds whatever the drive has room for - and the
+  disc's card on the Computer page showed the system drive's pie (the same
+  69 % and free space as C:), which read as a disc as large as the drive. The
+  dialog now asks for the name alone there and says the disc has no size of
+  its own; the card shows a neutral ring with *Folder on the system drive* and
+  *No size of its own*. With ImDisk installed, on macOS and on Linux the size
+  is asked as before.
+- **Copying over existing files: replace when newer, bigger or different.**
+  The question for a file that exists already has a foldable *Replace
+  options* panel, and the *Copy finished* summary an *Options for copying
+  again* panel - ask, keep both, replace always, or replace only when the
+  copied file is newer, bigger or different. "Copy skipped items again" now
+  follows that choice even with *Settings > Handling > File operations* set
+  to Skip, where it used to skip every file again. A file skipped this way is
+  listed as "File exists already".
+- **Replace when older, and Keep both without duplicates.** The same panels
+  offer *Replace only when the copied file is older* - for bringing an
+  earlier version back from a backup - and *Keep both: skip files that are
+  identical*, which gives every other file a numbered name ("photo (2).jpg")
+  but does not copy a file that is already there unchanged.
+- **Settings > Display > Thumbnails and Detail view listed the file kinds in
+  English** ("Bitmaps", "Vector graphics", "Spreadsheets", ...) on every
+  desktop. They are named through `UltraCanvasFilerWidget::PreviewTypeText`
+  now, in the reader's language, as the folder view's Display menu names them.
+- The command bar's **New ▾** menu showed "Folder" in English; it is
+  translated like the folder view's New > Folder, and the documents it
+  creates are named in the reader's language ("Neue Tabelle.ods").
+
+#### 2026-11-18 *1.107.20*
+- **The Delete dialog is dark under a dark theme.** The list of what is about
+  to be deleted (and the list in the copy / move questions) was white with a
+  light grey header inside the dark dialog, and "Delete permanently" was a
+  light pink button. The list now takes the theme's dark colours, and "Delete
+  permanently" is a dark button with a light red outline and label.
+- **A dialog left open follows a theme change.** The delete, copy, move and
+  problem dialogs (and the Save dialog's Settings) kept the look they opened
+  with when the theme changed while they were open; they now switch with it,
+  at the filer's own type size.
+- **Word and LibreOffice documents show a real thumbnail.** A `.docx`, `.doc`
+  or `.odt` file's tile was a white square with the document's first lines of
+  text in small grey type, though Settings > Display > Thumbnails had Docs
+  switched on. It is now the document's first page as it looks - its layout,
+  fonts, pictures, colours, header and footer - the way a PDF's tile shows its
+  first page.
+
+#### 2026-11-17 *1.107.19*
+- **The status line's grey half reads under a dark theme.** The text after
+  the bold part ("3 drives, 424.5 GB free of 1.3 TB in total · 3 items",
+  a folder's counts, a History page's) was a fixed `#6b6b73`, which almost
+  vanished on the dark status strip. It now comes from the theme
+  (`FilerLook::statusQuiet`): the same `#6b6b73` under the standard light
+  theme, the theme's faint text colour under Dark and the high-contrast
+  themes. The line is written again when the theme changes while the filer
+  runs. The scroll bars, the hidden-items notice's gear and the copy / move
+  dialogs' list caption and note follow the theme too, through the
+  framework's file display.
+- **The right-hand display of the split view is dark under a dark theme.**
+  It was built at start-up, still under the light look, and stays out of
+  the window until the split view is turned on - and a theme change only
+  reaches what is in a window, so it kept the light colours. The right-hand
+  pane now takes the current theme each time it joins the window, and the
+  preview's viewers do the same when the preview pane is put up again. The
+  folder preview (a folder selected with the preview on) follows the theme
+  too: its own sizes set by hand had switched the following off.
+- **The path bars are dark under a dark theme.** Their segments were the
+  arrow style's light grey (228, 230, 233), which glared on the dark rows.
+  Under Dark they are the theme's raised dark grey now, with the theme's
+  hover and pressed shades, and the seam between two segments is the row's
+  ground. The segment of the folder you are in keeps its strong blue with
+  white text. The window's path bar and the split view's two are styled
+  again on every theme change; the light and high-contrast looks are as
+  before.
+
+#### 2026-11-17 *1.107.18*
+- **A hidden folder in the tree is drawn lighter.** When Extras > Open
+  location, a typed location or a recent one leads into a folder the tree
+  leaves out - `~/.config`, `AppData`, one outside the curated Home list -
+  the tree adds its row so it can select it, in name order among its
+  siblings, and now draws its name in the theme's muted text colour, so it
+  reads as a folder that is normally hidden. Uses the framework's new
+  `TreeNodeData::dimmed`.
+
+#### 2026-11-16 *1.107.17*
+- **The question before a move or a copy is easier to read, and comes in
+  two styles.** It showed both paths in red, broke the destination in the
+  middle of a folder name and made you compare two long paths to find the
+  one folder that differed. It now shows the file's icon, type and size, and
+  the two paths as breadcrumbs with the folder that matters in bold.
+  **Settings > Display > Copy dialog style** chooses between that *Summary*
+  (the default) and *Cards*, which shows the file and its destination folder
+  side by side with an arrow between them and sets the other choice (*Copy
+  instead*) apart from the answer. The framework half is in the UltraCanvas
+  changelog (`SetTransferDialogStyle`).
+
 #### 2026-11-14 *1.107.16*
 - **The path bar is dark on a dark desktop.** The breadcrumb above the file
   display (and the one over each half of the split view) was a light grey

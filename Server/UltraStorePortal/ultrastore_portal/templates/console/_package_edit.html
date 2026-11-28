@@ -1,0 +1,16 @@
+<form method="post" action="{% url 'console:package_edit' app.app_id release.pk package.pk %}" data-in-place data-choices="{{ form.choices_json }}">
+  {% csrf_token %}
+  <div class="modal-header">
+    <h2 class="modal-title fs-5">Edit the {{ package.os_name }} {{ package.arch }} package</h2>
+    {% if dialog %}<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>{% endif %}
+  </div>
+  <div class="modal-body">
+    <p class="text-secondary">The archive stays as uploaded: <span class="text-ink">{{ package.original_name|default:package.file_name }}</span>, {{ package.size|filesizeformat }}. To change the file itself, remove the package and upload the new archive.</p>
+    <div class="alert alert-danger" data-form-error hidden></div>
+    {% include "console/_package_fields.html" %}
+  </div>
+  <div class="modal-footer">
+    <a class="btn btn-outline-secondary" href="{% url 'console:release' app.app_id release.pk %}"{% if dialog %} data-bs-dismiss="modal"{% endif %}>Cancel</a>
+    <button class="btn btn-primary">Save the package</button>
+  </div>
+</form>

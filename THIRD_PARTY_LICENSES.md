@@ -20,6 +20,21 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## Brotli (the .br copies of a site's files)
+
+- **Used by:** UltraSite (`UltraSite/core/UltraSiteAssets.cpp`), for the
+  `.br` copies `BuildOptions::precompress` writes beside a site's pages,
+  stylesheet and scripts. Optional: without it those copies are left out.
+- **Upstream:** https://github.com/google/brotli
+- **Linked, not vendored:** the system package is used (`libbrotli-dev` /
+  `brew install brotli` / `mingw-w64-x86_64-brotli`), found through
+  pkg-config (`libbrotlienc`). No Brotli source is carried in this
+  repository, and no Brotli type appears in any UltraCanvas public header.
+- **License:** MIT License — Copyright (c) 2009, 2010, 2013-2016 by the
+  Brotli Authors.
+
+---
+
 ## OpenSSL 3 libcrypto (UltraCrypt's X.509, CMS, RSA and ECDSA)
 
 - **Used by:** UltraCrypt's X.509 and CMS (`UltraCanvas/core/UltraCrypt/UltraCryptX509.cpp`,

@@ -13,16 +13,21 @@
 // merge back into one text element with spans. Unknown record types are
 // counted and reported through the warning callback, never dropped
 // silently.
+// Version: 1.2.0 - EMF+ records played (UltraCanvasEMFPlus.h): GDI+'s own drawing, alpha
+//                  included, in place of the GDI copy a dual file carries for older players
+// Version: 1.1.0 - SETPOLYFILLMODE read into ShapeFillRule (ALTERNATE, GDI's default, is even-odd)
 // Version: 1.0.0
-// Last Modified: 2026-08-26
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMetafileConverters.h"
+#include "UltraCanvasEMFPlus.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 
 #include <cmath>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -87,6 +92,8 @@ public:
         doc = std::make_shared<VectorDocument>();
         doc->Size = Size2Dd{pageW, pageH};
         layer = doc->AddLayer("EMF");
+        plus = std::make_unique<EmfPlusPlayer>(72.0 / 96.0, Rect2Dd(0, 0, pageW, pageH),
+                                               [this](std::shared_ptr<VectorElement> e) { layer->AddChild(e); });
 
         size_t pos = U32(4);   // header nSize -> first record
         if (pos < 88 || pos >= size) pos = 88;
@@ -99,6 +106,8 @@ public:
             pos += nSize;
         }
         FlushChainedText();
+        plus->Finish();
+        if (const std::string report = plus->Report(); !report.empty()) warn(report);
 
         if (!skipped.empty()) {
             std::ostringstream msg;
@@ -129,6 +138,9 @@ private:
     EmfFont curFont;
     Color textColor = Color(0, 0, 0, 255);
     uint32_t textAlign = 0;
+    // SETPOLYFILLMODE: GDI starts every device context in ALTERNATE, the
+    // even-odd rule; WINDING (2) is non-zero.
+    VectorStorage::FillRule polyFill = VectorStorage::FillRule::EvenOdd;
 
     bool inPath = false;
     std::shared_ptr<VectorPath> path;
@@ -139,6 +151,31 @@ private:
     std::shared_ptr<VectorText> chainedText;
 
     std::map<uint32_t, int> skipped;
+
+    // EMF+ playback, and whether the GDI record being read draws: in a dual
+    // file the GDI copy of what EMF+ drew is not drawn again.
+    std::unique_ptr<EmfPlusPlayer> plus;
+    bool gdiDraws = true;
+
+    void Emit(std::shared_ptr<VectorElement> e) {
+        if (gdiDraws) layer->AddChild(std::move(e));
+    }
+
+    // The GDI records that put something on the page (or start a path that
+    // will): each settles the EMF+ drawing before it.
+    static bool Paints(uint32_t type) {
+        switch (type) {
+            case 2: case 3: case 4: case 5: case 6: case 7: case 8:
+            case 42: case 43: case 44: case 45: case 46: case 47:
+            case 54: case 55: case 56: case 59: case 62: case 63: case 64:
+            case 71: case 72: case 73: case 74: case 76: case 77: case 78: case 79: case 80: case 81:
+            case 83: case 84: case 85: case 86: case 87: case 88: case 89: case 90: case 91: case 92:
+            case 96: case 97: case 114: case 115: case 116: case 118:
+                return true;
+            default:
+                return false;
+        }
+    }
 
     uint32_t U32(size_t off) const {
         uint32_t v;
@@ -163,13 +200,23 @@ private:
 
     void Record(uint32_t type, size_t at, uint32_t nSize) {
         size_t b = at + 8;   // body
+        if (Paints(type)) gdiDraws = plus->GdiDraws();
         switch (type) {
+            case 70: {   // EMR_COMMENT: DataSize, then the data - EMF+ records after "EMF+"
+                const uint32_t dataSize = U32(b);
+                if (dataSize >= 4 && b + 4 + dataSize <= at + nSize && std::memcmp(data + b + 4, "EMF+", 4) == 0)
+                    plus->Play(data + b + 8, dataSize - 4);
+                return;
+            }
             case 9:  winExtX = I32(b); winExtY = I32(b + 4); break;   // SETWINDOWEXTEX
             case 10: winOrgX = I32(b); winOrgY = I32(b + 4); break;   // SETWINDOWORGEX
             case 11: vpExtX = I32(b); vpExtY = I32(b + 4); break;     // SETVIEWPORTEXTEX
             case 12: vpOrgX = I32(b); vpOrgY = I32(b + 4); break;     // SETVIEWPORTORGEX
             case 14: break;   // EOF
-            case 17: case 18: case 19: break;   // mapmode/bkmode/polyfill
+            case 17: case 18: break;   // SETMAPMODE / SETBKMODE
+            case 19:   // SETPOLYFILLMODE
+                polyFill = U32(b) == 2 ? VectorStorage::FillRule::NonZero : VectorStorage::FillRule::EvenOdd;
+                break;
             case 22: textAlign = U32(b); break;                       // SETTEXTALIGN
             case 24: textColor = FromColorRef(U32(b)); break;         // SETTEXTCOLOR
             case 25: break;   // SETBKCOLOR
@@ -196,7 +243,7 @@ private:
                     line->Start = P(curPos.x, curPos.y);
                     line->End = P(to.x, to.y);
                     line->Style.Stroke = PenStroke();
-                    layer->AddChild(line);
+                    Emit(line);
                 }
                 curPos = to;
                 break;
@@ -315,7 +362,7 @@ private:
                 Point2Dd br = P(I32(b + 8), I32(b + 12));
                 rect->Bounds = Rect2Dd{tl.x, tl.y, br.x - tl.x, br.y - tl.y};
                 ApplyFillStroke(rect->Style);
-                layer->AddChild(rect);
+                Emit(rect);
                 break;
             }
             case 42: {   // ELLIPSE
@@ -326,7 +373,7 @@ private:
                 el->RadiusX = static_cast<float>(std::fabs(br.x - tl.x) / 2);
                 el->RadiusY = static_cast<float>(std::fabs(br.y - tl.y) / 2);
                 ApplyFillStroke(el->Style);
-                layer->AddChild(el);
+                Emit(el);
                 break;
             }
             default:
@@ -367,6 +414,7 @@ private:
 
     void ApplyFillStroke(VectorStyle& style) {
         if (!curBrush.null) style.Fill = curBrush.color;
+        style.ShapeFillRule = polyFill;
         if (!curPen.null) style.Stroke = PenStroke();
     }
 
@@ -396,9 +444,10 @@ private:
     void PaintPath(bool fill, bool stroke) {
         if (!path) return;
         if (fill && !curBrush.null) path->Style.Fill = curBrush.color;
+        path->Style.ShapeFillRule = polyFill;
         if (stroke && !curPen.null) path->Style.Stroke = PenStroke();
         bool any = path->Style.Fill.has_value() || path->Style.Stroke.has_value();
-        if (any && !path->Path.commands.empty()) layer->AddChild(path);
+        if (any && !path->Path.commands.empty()) Emit(path);
         path.reset();
         subpathOpen = false;
     }
@@ -483,7 +532,7 @@ private:
         else if (textAlign & 2) text->BaseStyle.Anchor = TextAnchor::End;
         text->Style.Fill = textColor;
         text->SetText(utf8);
-        layer->AddChild(text);
+        Emit(text);
         if (updateCp) chainedText = text;
     }
 
@@ -501,7 +550,7 @@ private:
                 poly->Points.push_back(P(v.x, v.y));
             }
             ApplyFillStroke(poly->Style);
-            layer->AddChild(poly);
+            Emit(poly);
         } else {
             auto poly = std::make_shared<VectorPolyline>();
             for (uint32_t i = 0; i < count; ++i) {
@@ -509,7 +558,7 @@ private:
                 poly->Points.push_back(P(v.x, v.y));
             }
             if (!curPen.null) poly->Style.Stroke = PenStroke();
-            layer->AddChild(poly);
+            Emit(poly);
         }
     }
 };

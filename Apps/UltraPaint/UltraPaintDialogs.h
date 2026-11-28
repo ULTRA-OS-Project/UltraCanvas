@@ -4,11 +4,14 @@
 // import question a dropped file asks and the password a *.ucd is saved with. Each is an UltraCanvasWindow built
 // out of framework elements (spinners, dropdowns, text input, colour picker,
 // buttons) and reports through callbacks.
+// Version: 1.8.0 - UltraPaintImagePickerDialog: a grid of thumbnails to pick an image from
+// Version: 1.7.0 - every text in the person's language; BlendModeDisplayName for the blend-mode lists
+// Version: 1.6.0 - Scale Image: the resampling method and Sharpen after scaling
 // Version: 1.5.0 - the import question offers "Open in new tab" (Action::NewTab) in place of a new window
 // Version: 1.4.0 - Password Protection: the password a *.ucd is saved with
 // Version: 1.3.0 - the Text tool's entry is gone: text is typed on the canvas
 // Version: 1.2.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,10 +24,12 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasColorPicker.h"
+#include "UltraCanvasRasterDocument.h"   // UCScaleImageOptions
 
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -49,12 +54,15 @@ struct UltraPaintResizeResult {
     int width = 0;
     int height = 0;
     int anchor = 4;   // canvas size only: 0..8, row-major, 4 = centre
+    UCScaleImageOptions scale;   // scale image only: how the pixels are resampled
 };
 
 class UltraPaintResizeDialog : public UltraCanvasWindow {
 public:
     // `canvasMode` true: Canvas Size (no resampling, with anchor); false: Scale Image.
-    UltraPaintResizeDialog(int currentWidth, int currentHeight, bool canvasMode);
+    // `initialScale` (Scale Image): the method and sharpening chosen last time.
+    UltraPaintResizeDialog(int currentWidth, int currentHeight, bool canvasMode,
+                           const UCScaleImageOptions& initialScale = UCScaleImageOptions());
     std::function<void(const UltraPaintResizeResult&)> onAccept;
 private:
     void SyncFromWidth();
@@ -65,6 +73,8 @@ private:
     std::shared_ptr<UltraCanvasSpinner> widthSpin, heightSpin, percentSpin;
     std::shared_ptr<UltraCanvasCheckbox> keepAspect;
     std::shared_ptr<UltraCanvasDropdown> anchorDrop;
+    std::shared_ptr<UltraCanvasDropdown> methodDrop;     // scale image only
+    std::shared_ptr<UltraCanvasCheckbox> sharpenBox;     // scale image only
 };
 
 // ===== LAYER PROPERTIES =====
@@ -191,6 +201,24 @@ private:
     std::shared_ptr<UltraCanvasCheckbox> previewBox;
 };
 
+// ===== IMAGE PICKER =====
+// A grid of image thumbnails to choose one from: the start page's
+// "Clipboard history" lists the images copied last. A click picks the
+// image and closes the window.
+struct UltraPaintPickerItem {
+    std::string thumbnailPath;   // a PNG; "" shows a generic picture icon
+    std::string caption;         // under the thumbnail: "1920 x 1080"
+    std::string tooltip;         // "Copied 5 minutes ago"
+};
+
+class UltraPaintImagePickerDialog : public UltraCanvasWindow {
+public:
+    // `fallbackIcon`: what an item without a thumbnail shows.
+    UltraPaintImagePickerDialog(const std::string& title, const std::vector<UltraPaintPickerItem>& items,
+                                const std::string& fallbackIcon);
+    std::function<void(int index)> onPick;
+};
+
 // ===== SHARED BUILDING BLOCKS =====
 namespace UltraPaintDialogParts {
     // The two-column grid every dialog puts its rows in (UltraCanvasFormLayout):
@@ -207,9 +235,13 @@ namespace UltraPaintDialogParts {
                      std::shared_ptr<UltraCanvasUIElement> element);
     // Auto width with a minimum, so a translated button label fits.
     void SizeButtonToText(const std::shared_ptr<UltraCanvasButton>& button);
-    // OK / Cancel row; `onOk` runs before the window closes.
+    // OK / Cancel row; `onOk` runs before the window closes. An empty
+    // `okLabel` is "OK" in the person's language.
     std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id, UltraCanvasWindow* win,
-                                                    const std::function<void()>& onOk, const std::string& okLabel = "OK");
+                                                    const std::function<void()>& onOk, const std::string& okLabel = {});
+    // A blend mode's name as a list shows it, in the person's language
+    // (RasterBlendModeName is the English one).
+    std::string BlendModeDisplayName(RasterBlendMode mode);
 }
 
 } // namespace UltraCanvas

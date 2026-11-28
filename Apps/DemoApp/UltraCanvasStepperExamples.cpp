@@ -23,7 +23,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> AddReadout(const std::shared_ptr<UltraCanvasContainer>& parent,
                                                      const std::string& id, const std::string& text) {
             auto label = DemoKit::CreateText(id, text);
-            label->SetBackgroundColor(Color(240, 240, 240));
+            label->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
             label->SetPadding(3);
             label->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
             DemoKit::Add(parent, label);

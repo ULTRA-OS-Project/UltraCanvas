@@ -1,5 +1,7 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.cpp
 // Scatter and bubble charts on the chart engine.
+// Version: 1.3.0 - a joined group's line smoothed (a centripetal Catmull-Rom spline)
+// Version: 1.2.0 - joined groups: a line through a group's points in the order given
 // Version: 1.1.0 - RebuildHighlights() asks AddChartHighlights() first
 // Version: 1.0.0
 // Last Modified: 2026-10-24
@@ -363,6 +365,78 @@ void UltraCanvasEngineScatterChart::ApplyFormat(ChartAxis& axis, const AxisForma
     if (format.explicitRange) axis.SetRange(format.lo, format.hi);
 }
 
+void UltraCanvasEngineScatterChart::SetJoinLineWidth(float width) {
+    joinLineWidth = std::max(0.5f, width);
+    MarkEngineDirty(ChartDirty::Style);
+}
+
+// A joined group's points in the order given, through the frame's axes and
+// projection; straight segments, broken at a point that is not finite.
+std::vector<ChartLineRun> UltraCanvasEngineScatterChart::GroupLineRuns(size_t group) const {
+    const ChartEngineFrame& frame = Frame();
+    if (group >= groups.size() || !groups[group].joined || !Visible(group)
+        || !frame.axes || frame.axes->Count() < 2 || !frame.projection) {
+        return {};
+    }
+    const ChartAxis& y = frame.axes->At(0);
+    const ChartAxis& x = frame.axes->At(1);
+    std::vector<ChartNormalizedPoint> points;
+    points.reserve(groups[group].points.size());
+    for (const EngineScatterPoint& p : groups[group].points) {
+        points.emplace_back(Finite(p.x) ? x.Normalize(p.x) : std::nan(""), Finite(p.y) ? y.Normalize(p.y) : std::nan(""));
+    }
+    ChartLineOptions options;
+    options.samplesPerSegment = GetProjectionKind() == ChartProjectionKind::Polar ? 16 : 1;
+    std::vector<ChartLineRun> runs = BuildLineRuns(*frame.projection, points, options);
+    if (groups[group].smooth) {
+        // The curve is drawn through the points as they stand on the screen.
+        for (ChartLineRun& run : runs) {
+            if (run.knots.size() >= 3) run.points = SmoothThrough(run.knots);
+        }
+    }
+    return runs;
+}
+
+// A centripetal Catmull-Rom spline through `knots`, as a polyline: each
+// span between two knots is sampled, its tangents taken from the knots
+// either side (the end spans from a knot mirrored about the end). The
+// centripetal spacing keeps it from looping or overshooting where the knots
+// lie unevenly, and nothing assumes the knots run left to right.
+std::vector<Point2Dd> UltraCanvasEngineScatterChart::SmoothThrough(const std::vector<Point2Dd>& knots) {
+    if (knots.size() < 3) return knots;
+    std::vector<Point2Dd> curve;
+    curve.reserve(knots.size() * 16);
+    auto knot = [&](long long i) {
+        const long long last = static_cast<long long>(knots.size()) - 1;
+        if (i < 0) return Point2Dd(2.0 * knots[0].x - knots[1].x, 2.0 * knots[0].y - knots[1].y);
+        if (i > last) {
+            return Point2Dd(2.0 * knots[static_cast<size_t>(last)].x - knots[static_cast<size_t>(last - 1)].x,
+                            2.0 * knots[static_cast<size_t>(last)].y - knots[static_cast<size_t>(last - 1)].y);
+        }
+        return knots[static_cast<size_t>(i)];
+    };
+    auto step = [](const Point2Dd& a, const Point2Dd& b) {
+        return std::max(1e-6, std::sqrt(std::hypot(b.x - a.x, b.y - a.y)));     // centripetal: the root of the distance
+    };
+    curve.push_back(knots.front());
+    for (size_t i = 0; i + 1 < knots.size(); ++i) {
+        const Point2Dd p0 = knot(static_cast<long long>(i) - 1), p1 = knots[i], p2 = knots[i + 1], p3 = knot(static_cast<long long>(i) + 2);
+        const double t0 = 0.0, t1 = t0 + step(p0, p1), t2 = t1 + step(p1, p2), t3 = t2 + step(p2, p3);
+        const int samples = 16;
+        for (int k = 1; k <= samples; ++k) {
+            const double t = t1 + (t2 - t1) * k / samples;
+            auto blend = [](const Point2Dd& a, const Point2Dd& b, double ta, double tb, double at) {
+                const double w = (at - ta) / (tb - ta);
+                return Point2Dd(a.x + (b.x - a.x) * w, a.y + (b.y - a.y) * w);
+            };
+            const Point2Dd a1 = blend(p0, p1, t0, t1, t), a2 = blend(p1, p2, t1, t2, t), a3 = blend(p2, p3, t2, t3, t);
+            const Point2Dd b1 = blend(a1, a2, t0, t2, t), b2 = blend(a2, a3, t1, t3, t);
+            curve.push_back(blend(b1, b2, t1, t2, t));
+        }
+    }
+    return curve;
+}
+
 void UltraCanvasEngineScatterChart::RefreshLegend() {
     // The size key, then the colour bar, then the group list - one legend,
     // the most informative key for what the chart shows.
@@ -402,7 +476,8 @@ void UltraCanvasEngineScatterChart::RefreshLegend() {
     }
     std::vector<ChartLegendEntry> entries;
     for (size_t g = 0; g < groups.size(); ++g) {
-        ChartLegendEntry entry(groups[g].name, GroupColor(g), SwatchFor(groups[g].marker));
+        ChartLegendEntry entry(groups[g].name, GroupColor(g),
+                               groups[g].joined && !groups[g].showMarkers ? LegendSwatch::Line : SwatchFor(groups[g].marker));
         entry.enabled = Visible(g);
         entries.push_back(entry);
     }
@@ -524,6 +599,20 @@ void UltraCanvasEngineScatterChart::RenderChartContent(IRenderContext* ctx,
         }
     }
 
+    // ---- joined groups: each line under the marks it joins ------------------
+    for (size_t g = 0; g < groups.size(); ++g) {
+        const std::vector<ChartLineRun> runs = GroupLineRuns(g);
+        if (runs.empty()) continue;
+        ctx->PushState();
+        ctx->SetStrokePaint(GroupColor(g));
+        ctx->SetStrokeWidth(groups[g].lineWidth > 0.0f ? groups[g].lineWidth : joinLineWidth);
+        ctx->SetLineJoin(LineJoin::Round);
+        for (const ChartLineRun& run : runs) {
+            if (run.points.size() >= 2) ctx->DrawLinePath(run.points, false);
+        }
+        ctx->PopState();
+    }
+
     // ---- marks: the largest first, so small bubbles stay on top -------------
     struct Mark { size_t group; size_t index; double radius; };
     std::vector<Mark> marks;
@@ -550,8 +639,11 @@ void UltraCanvasEngineScatterChart::RenderChartContent(IRenderContext* ctx,
         const Color fill = isHovered ? base : base.WithAlpha(static_cast<uint8_t>(255 * markerOpacity));
         const Color outline = outlineColor.a > 0 ? outlineColor
                                                  : (isHovered ? base.Darken(0.4f) : Color(0, 0, 0, 0));
-        DrawChartMarker(ctx, groups[mark.group].marker, p, radius, fill, outline,
-                        isHovered ? 2.0f : outlineWidth);
+        // (A group drawn as its line alone shows a mark only under the pointer.)
+        if (groups[mark.group].showMarkers || isHovered) {
+            DrawChartMarker(ctx, groups[mark.group].marker, p, radius, fill, outline,
+                            isHovered ? 2.0f : outlineWidth);
+        }
 
         if (insideLabels && !point.label.empty() && progress >= 1.0) {
             const Size2Di size = ctx->GetTextLineDimensions(point.label);

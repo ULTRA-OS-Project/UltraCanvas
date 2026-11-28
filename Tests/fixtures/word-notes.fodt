@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2" office:mimetype="application/vnd.oasis.opendocument.text">
+<office:body><office:text>
+<text:p>The first claim<text:note text:id="ftn1" text:note-class="footnote"><text:note-citation>1</text:note-citation><text:note-body><text:p>Source of the first claim.</text:p></text:note-body></text:note> stands here, and a second<text:note text:id="ftn2" text:note-class="footnote"><text:note-citation>2</text:note-citation><text:note-body><text:p>Second source, first paragraph.</text:p><text:p>Second source, second paragraph.</text:p></text:note-body></text:note> follows it.</text:p>
+<text:p>A closing remark<text:note text:id="edn1" text:note-class="endnote"><text:note-citation>i</text:note-citation><text:note-body><text:p>Kept for the end of the document.</text:p></text:note-body></text:note> ends the text.</text:p>
+</office:text></office:body></office:document>

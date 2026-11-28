@@ -131,6 +131,11 @@ highlighted.
   window's button to minimise it.
 - **Right-click** for **Activate**, **Minimize**, **Move to** (a desktop, or
   **Every desktop**), **Pin to taskbar** (section 4.1) and **Close window**.
+- **Rest the pointer** on a button and pictures of that program's windows
+  open beside it; click one to bring that window forward, or its **×** to
+  close it. On Windows the pictures are live and a minimized window shows
+  as it last looked. On Linux a minimized window shows the last picture
+  taken of it, or its program's icon until it has been shown once.
 - **Drag** a button to put it somewhere else in the row. A new window joins
   its program's other windows.
 - When the row is full, scroll it with the mouse wheel.
@@ -139,15 +144,24 @@ highlighted.
 
 The numbered buttons under the clock on the right bar are your virtual desktops.
 Click one to switch to it. The taskbar then shows that desktop's windows.
+Desktop **1** is the wallpaper's: click it while you are on it and its
+windows are minimised, so the wallpaper shows.
 
 - To change how many there are, use UOS-Settings → Desktop → **Virtual
-  desktops** (section 5). The window manager has the last word and may offer
-  a different number.
+  desktops** (section 5). The bar always shows at least that many; where
+  the window manager has more, it shows those too.
 - To put a window on another desktop, right-click its taskbar button →
   **Move to**.
+- A window that is already open on another desktop comes to the one you are
+  on when you ask for it again: **Desktop settings...**, the clipboard,
+  screenshot and UltraToDo buttons, the Sticker board, the Applications and
+  Task Manager windows, and every ULTRA OS application you start a second
+  time (Linux, X11). Other programs decide for themselves: some bring their
+  window over, some switch to its desktop, some open a second window.
 - On Windows, the buttons are Windows' own virtual desktops, which Explorer
-  provides: they switch while Explorer runs (beside Explorer). You add and
-  remove desktops in Task View (Win+Tab), and **Move to** moves only
+  provides: they switch while Explorer runs (beside Explorer). A button for
+  a desktop Windows does not have yet adds it in Task View when you click
+  it; you remove desktops in Task View (Win+Tab), and **Move to** moves only
   UltraDesktop's own windows.
 
 ### 4.4 Clipboard history
@@ -393,7 +407,8 @@ settings**.
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
-| **Virtual desktops** | 1 to 9. The window manager may offer a different number. |
+| **Virtual desktops** | 1 to 9. The bar shows at least this many; on Windows a missing one is added when its button is clicked. |
+| **Tool applications** | *Only on the tool group* (the default): UltraClipboard, UltraSnip and UltraToDo keep their windows off the taskbar and show only on their buttons under the desktop numbers. *On the taskbar too*: their windows are listed on the taskbar as well. Also on the wallpaper's right-click menu. |
 | **At sign-in** (Windows only) | **The Windows desktop**, **UltraDesktop beside Explorer** or **UltraDesktop instead of Explorer**. See section 6. |
 
 Changes are saved at once: a choice when you make it, a text field when you
@@ -465,6 +480,8 @@ From then on, UltraDesktop is the whole desktop:
 - **Win+V** opens UltraDesktop's clipboard history;
 - the **wallpaper** covers every monitor, and a monitor you plug in is covered
   within a few seconds;
+- **minimized windows** go to their taskbar buttons only, as with Explorer,
+  never to small title bars along the bottom of the screen;
 - the **⚙ right-click menu** offers **Sign out...**, **Restart...** and **Shut
   down...**. Each asks first, and open programs are asked to close.
 
@@ -541,6 +558,7 @@ at sign-in.
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
+| UltraToDo button | click | opens UltraToDo, the task list |
 | Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |

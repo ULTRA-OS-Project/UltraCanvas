@@ -1,0 +1,8 @@
+{
+  "@language": "zh-Hant",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "已清除 {0} 個 Cookie；應用程式的裝置權限已被清除",
+  "No cookies to clear; the apps' device permissions are forgotten": "沒有可清除的 Cookie；應用程式的裝置權限已被清除",
+  "{0} wants to use your camera": "{0} 想要使用您的相機",
+  "{0} wants to use your microphone": "{0} 想要使用您的麥克風"
+}

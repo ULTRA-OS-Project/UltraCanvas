@@ -1,5 +1,19 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.17.0 - HandlePopupEscapeKey: Escape closes one popup per press, and its release
+//                   closes nothing (it closed the next popup, a submenu's parent menu, too)
+// Version: 2.16.0 - WindowType::Popup with a parentWindow is kept above that window only;
+//                   PopupsAboveEveryWindow says which windows' popups have none
+// Version: 2.15.0 - a popup in its own window closes when another window of the application comes to the
+//                   front, and when its window is hidden or minimised (HandleWindowHidden); a menu closes
+//                   when its window is moved on X11 and macOS too (ClosePopupsIfWindowMoved)
+// Version: 2.14.0 - ClosePopupsOnFramePress: a press on the window's frame closes the popups that
+//                   close on a click outside; MovePopupHostsWithWindow for a platform's move loop
+// Version: 2.13.0 - IsOnCurrentDesktop / MoveToCurrentDesktop: a window on another virtual desktop
+//                   comes to the one in view; RaiseAndFocus does that first (X11)
+// Version: 2.12.4 - iOS: the UIKit backend in OS/iOS; tvOS, visionOS and watchOS stop with an #error
+// Version: 2.12.3 - WindowType::Overlay documented: the screen-area picker's window, keyable above the
+//                   menu bar on macOS
 // Version: 2.12.2 - alwaysOnTop and SetTransientParent say what each is for: a dialog is
 //                  kept above its parent, not above every application (on macOS too, as
 //                  the parent's child window)
@@ -22,7 +36,7 @@
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -65,7 +79,11 @@ namespace UltraCanvas {
         // A popup's own window: the window a popup element (a menu, a
         // dropdown's list - anything opened with OpenPopup) is shown in, so
         // no other window covers it (see SetPopupsInOwnWindows). Undecorated,
-        // above every other window and never given the focus, but it takes
+        // never given the focus, and above config.parentWindow only - a
+        // window put over that one covers it too (an owned window on
+        // Windows, a child window on macOS) - or, with no parent, above
+        // every other window (a desktop's menus, see
+        // PopupsAboveEveryWindow); it takes
         // the pointer, which the window the popup belongs to receives as its
         // own. Placed where config.x / config.y say, in screen coordinates
         // (override-redirect with _NET_WM_WINDOW_TYPE_POPUP_MENU on X11;
@@ -77,7 +95,13 @@ namespace UltraCanvas {
         // window.
         Popup,
         Tool,
-        Fullscreen, Borderless, Overlay,
+        Fullscreen, Borderless,
+        // Over everything, the screen-area picker's window: on macOS
+        // borderless above the menu bar and the Dock, on every Space, and
+        // given the keyboard, which a borderless NSWindow otherwise never is;
+        // on Wayland undecorated. UltraCanvasScreenAreaPicker uses it on
+        // macOS only (Borderless elsewhere).
+        Overlay,
         // The desktop itself: undecorated, the size of the screen, kept below
         // every other window, on every virtual desktop and out of taskbars
         // (_NET_WM_WINDOW_TYPE_DESKTOP on X11). The window a desktop shell
@@ -245,6 +269,8 @@ namespace UltraCanvas {
 
 
         std::list<PopupElement> popupElements = {};
+        // An Escape press closed a popup: its release is taken too (HandlePopupEscapeKey).
+        bool escapePressClosedPopup = false;
 
         // Drag overlay (see SetDragOverlay): drawn after the element tree of
         // every dirty rectangle it touches. The owner pointer is only ever
@@ -409,7 +435,23 @@ namespace UltraCanvas {
         virtual void Show() = 0;
         virtual void Hide() = 0;
         // Window state
+        // In front of every other window, with the keyboard. A window that
+        // is on another virtual desktop (workspace) than the one in view is
+        // brought to this one first, with the window it belongs to: the
+        // person asked for it here, and a window manager asked only to
+        // activate it marks it "wants attention" where it lies, or changes
+        // the desktop under them. On X11; elsewhere the system decides.
         virtual void RaiseAndFocus() = 0;
+        // False while the window lies on another virtual desktop than the
+        // one in view - shown, yet not where the person can see it. True
+        // for a window on every desktop, one not shown, and wherever the
+        // platform does not say (anything but X11 so far).
+        virtual bool IsOnCurrentDesktop() const { return true; }
+        // Brings the window to the virtual desktop in view, and the window
+        // it belongs to (its parent) with it; nothing else changes - it is
+        // neither raised nor focused. True when a move was asked for, false
+        // when the window was there already or the platform cannot move it.
+        virtual bool MoveToCurrentDesktop() { return false; }
         virtual void SetWindowTitle(const std::string& title) = 0;
         virtual void SetWindowIcon(const std::string& iconPath) = 0;
         virtual void SetWindowPosition(int x, int y) = 0;
@@ -522,6 +564,16 @@ namespace UltraCanvas {
         bool ClosePopup(UltraCanvasUIElement& element, ClosePopupReason reason=ClosePopupReason::Manual);
         PopupElement* GetActivePopupElement();
         void CloseAllPopups();
+        // The Escape key for the popups; UltraCanvasApplication hands it
+        // every key of this window before any element sees it. A press
+        // closes the topmost popup, if that one closes on Escape
+        // (PopupElementSettings::closeByEscapeKey): one popup per press, so
+        // an open submenu goes and its menu stays. Its release closes
+        // nothing - not the popup under it, and not the window under the
+        // last one (a window that closes on an Escape's release, as the
+        // settings pages do): it is taken here too. True when the key was
+        // taken.
+        bool HandlePopupEscapeKey(const UCEvent& event);
 
         // How opaque an open popup is on screen, 0 (not seen) to 1 (the
         // default). Below 1 the popup - background, border, shadow, content,
@@ -553,6 +605,13 @@ namespace UltraCanvas {
         // leaves the application.
         static void SetPopupsInOwnWindows(bool inOwnWindows);
         static bool GetPopupsInOwnWindows();
+        // The pointer was pressed on the window's frame - its title bar or a
+        // border, which the system keeps for itself - to move or size the
+        // window: a click outside every popup, so the popups that close on
+        // one (a menu, a dropdown's list) close now, before the window
+        // moves away from under them. For the platform layer, which alone
+        // sees such a press (Windows: WM_NCLBUTTONDOWN, WM_ENTERSIZEMOVE).
+        void ClosePopupsOnFramePress();
         // The window `popup` is shown in: its own, or null while it is
         // composited onto this window (or is not an open popup here)
         UltraCanvasWindowBase* GetPopupWindow(const UltraCanvasUIElement& popup) const;
@@ -728,8 +787,33 @@ namespace UltraCanvas {
         // to being composited onto this window
         void ForgetPopupHost(UltraCanvasWindowBase* host);
         // Focus left the window: popups in their own windows that close on a
-        // click outside them close once focus has left the application
+        // click outside them close once the focus has settled anywhere but
+        // on this window or a dialog of it - another program, or another
+        // window of this application
         void ClosePopupsInOwnWindowsOnBlur();
+        // `other` is this window, or a dialog of it (its transient parent,
+        // or its parent's, is this window)
+        bool IsSelfOrDialogOfSelf(UltraCanvasWindowBase* other);
+        // Whether this window's popups, in windows of their own, are kept
+        // above every window (made without a parent) rather than above this
+        // one only: a desktop window, kept below every other, a
+        // notification, an overlay, a lock screen, or one alwaysOnTop
+        bool PopupsAboveEveryWindow() const;
+        // Closes the popups that close on a click outside them, the newest
+        // first (only those in windows of their own with `ownWindowsOnly`)
+        void ClosePopupsClosedByClickOutside(bool ownWindowsOnly);
+        // The window has moved since its first open popup opened - dragged
+        // by a title bar the window manager keeps to itself (X11, macOS):
+        // the popups that close on a click outside close, as a press on the
+        // frame closes them where the program sees it (Windows)
+        void ClosePopupsIfWindowMoved();
+        Point2Di _popupsOrigin;
+        bool _popupsOriginKnown = false;
+        // The window moved: its popups' windows are put back beside it now,
+        // not at the next frame - for a platform that moves a window in a
+        // loop of its own, where no frame is drawn until the move ends
+        // (Windows' move and size loop)
+        void MovePopupHostsWithWindow();
 
         virtual void RenderWindowBackground(IRenderContext* ctx) {
             (void)ctx;
@@ -795,7 +879,12 @@ namespace UltraCanvas {
             using UltraCanvasWindow = UltraCanvasMacOSWindow;
         }
     #elif TARGET_OS_IPHONE
-        // iOS
+        // iOS: the UIKit backend (Docs/UltraCanvas/iOSPortInvestigation.md).
+        // TARGET_OS_IPHONE is set for tvOS, visionOS and watchOS as well,
+        // which the backend does not cover: they stop here.
+        #if !TARGET_OS_IOS
+            #error "No backend for this Apple platform: OS/iOS covers iOS only"
+        #endif
         #include "../OS/iOS/UltraCanvasiOSWindow.h"
         namespace UltraCanvas {
             using UltraCanvasWindow = UltraCanvasiOSWindow;

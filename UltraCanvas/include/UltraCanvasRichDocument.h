@@ -6,9 +6,30 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.22.0 - RichPageSetup::furnitureSpacingPt: the room between a header or footer and the text
+// Version: 1.21.0 - RichPageSetup and RichTabStop compare (operator==), for the page setup and
+//                   paragraph dialogs' undo steps
+// Version: 1.20.0 - RichChart: every chart of the framework a table can feed (Waterfall, Histogram, Funnel,
+//                   Sankey, Gantt, Heatmap, Ternary ... - RichChart::Kind); RichChartSeries::labels, RichChart::bins
+// Version: 1.19.0 - UCRichDocument::keptParts: package parts written back unchanged (a .docx theme and font table)
+// Version: 1.18.0 - RichShape::ApplyPreset: connectors, double and notched arrows, more stars and polygons,
+//                   snipped and rounded rectangles, callouts, more flowchart shapes
+// Version: 1.17.0 - RichChart: Radar, Bubble and Stock; RichChartSeries::sizes, smooth; RichChart::filled
+// Version: 1.16.0 - UCRichDocument::ChartAsShapes; RichChart's stated axis ranges
+// Version: 1.15.0 - RichChart: a chart's data in its frame (RichTextFrame::chart)
+// Version: 1.14.0 - RichTextRun::lineSpacing: a cell paragraph's own line multiple
+// Version: 1.13.0 - RichDocBlock::tableAutoFit; UCRichDocument::breakAfterSlash
+// Version: 1.12.0 - RichDocBlock::columnBreakBefore; RichTextFrame::nestedTable; RichTableCell::lineHeightPt,
+//                   lineHeightAtLeast, lineSpacing; imageRotationDeg for a picture in the line too
+// Version: 1.11.0 - RichDocumentHTMLOptions::headingId and codeBlock: anchors and highlighted code for a web page
+// Version: 1.10.0 - RichTextRun::imageRotationDeg: a floating picture turned about its centre
+// Version: 1.9.0 - RichTextRun::emptyLineHeightPt; UCRichDocument::letterKerning, fontLineGap, paragraphSpacingInCells
 // Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)
 // Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
 //                  (RichTextFrame::drawingWidthPt / drawingHeightPt)
+// Version: 1.8.0 - a section's own header and footer (RichSectionSetup::furniture,
+//                  UCRichDocument::sectionFurniture, FurnitureFor, AllFurniture) and its pages' margins
+// Version: 1.7.0 - RichTableRow::heightPt / heightExact: a table row's height as the document sets it
 // Version: 1.6.0 - Drawn shapes (RichShape, RichTextFrame::shapes)
 // Version: 1.5.0 - Text frames (RichTextRun::frameIndex, UCRichDocument::frames)
 //                  and floats placed from the page or its margins
@@ -16,13 +37,14 @@
 // Version: 1.4.0 - RichTextRun::letterSpacingPt: a run's own room between its letters;
 //                  RichStyleCharacter::letterSpacingPt: a character style's
 // Version: 1.3.3
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 #pragma once
 
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -58,6 +80,16 @@ struct RichTextRun {
     // editor's RichTextEditStyle::letterSpacing, normally the font's).
     std::optional<float> letterSpacingPt;
     bool lineBreakBefore = false;   // hard line break precedes this run (within the same paragraph)
+    // An empty line exactly this tall (points; 0 = a line of the run's font):
+    // set on a run without text that follows a line break. A table cell keeps
+    // its paragraphs as lines, and the room between two of them - a
+    // paragraph's space before and after - as such a line.
+    float emptyLineHeightPt = 0.0f;
+    // In a table cell: this run's lines are that multiple of its font's own
+    // line (0 = as the cell says, RichTableCell::lineSpacing). A cell keeps
+    // its paragraphs as lines; one set tighter or wider than the others - a
+    // heading at 70% - says so on its runs.
+    float lineSpacing = 0.0f;
 
     // ===== INLINE IMAGE =====
     // A run with mediaIndex >= 0 IS a picture sitting in the run of text - a
@@ -93,6 +125,9 @@ struct RichTextRun {
     RichTextAlign imageFloatAlign = RichTextAlign::Left;
     float imageOffsetXPt = 0.0f;
     float imageOffsetYPt = 0.0f;        // from the top of its paragraph
+    // A picture turned about its centre, clockwise: its size and offsets are
+    // those of the box before it is turned (Word's a:xfrm rot).
+    float imageRotationDeg = 0.0f;
     // What the offsets and the alignment count from. By default a float is
     // placed across the text column and down from its paragraph; a
     // letterhead's frames are placed from the page's edges (Page) or from
@@ -170,6 +205,7 @@ struct RichTextRun {
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
             && letterSpacingPt == other.letterSpacingPt
+            && lineSpacing == other.lineSpacing
             && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
             && commentIds == other.commentIds && change == other.change && revision == other.revision
             && field == Field::Plain && other.field == Field::Plain   // a field stays its own run
@@ -183,6 +219,21 @@ struct RichDocMedia {
     std::string name;               // package-local name, e.g. "image1.png"
     std::string mimeType;           // e.g. "image/png"
     std::vector<uint8_t> data;
+};
+
+// A part of the package a document was read from that the model has no place
+// for, written back unchanged when the document is saved in the same format.
+// The DOCX reader keeps the theme (its colour scheme and heading and body
+// fonts, which Word's colour picker and font list offer) and the font table
+// (each font's family, pitch and alternatives); a part that refers to other
+// parts (an embedded font, a picture) is not kept, since those would be
+// missing. Only the writer of `format` writes one.
+struct RichDocKeptPart {
+    std::string format;             // the writer that writes it: "docx"
+    std::string name;               // its name in the package: "word/theme/theme1.xml"
+    std::string contentType;
+    std::string relationshipType;   // how the main part's relationships name it
+    std::string data;
 };
 
 // How an ordered list level spells its number.
@@ -227,6 +278,7 @@ enum class RichTabKind {
 struct RichTabStop {
     float positionPt = 0.0f;   // from the text column's left edge (not the indent)
     RichTabKind kind = RichTabKind::Left;
+    bool operator==(const RichTabStop& other) const = default;
 };
 
 // A section of a document: its text in `columns` columns, `columnGapPt`
@@ -235,8 +287,21 @@ struct RichSectionSetup {
     int columns = 1;
     float columnGapPt = 36.0f;
     bool newPage = false;
+    // The section's own header and footer: an index into
+    // UCRichDocument::sectionFurniture, or -1 for the document's
+    // (pageFurniture / firstPageFurniture). A letter of several page styles -
+    // a cover without a header, pages with one - has a section each.
+    int furniture = -1;
+    // Where the section's pages put their body and furniture, when that
+    // differs from the document's page (RichPageSetup's fields of the same
+    // names, points); < 0 = the document's.
+    float marginTopPt = -1.0f, marginBottomPt = -1.0f;
+    float headerTopPt = -1.0f, footerBottomPt = -1.0f;
     bool operator==(const RichSectionSetup& other) const {
-        return columns == other.columns && columnGapPt == other.columnGapPt && newPage == other.newPage;
+        return columns == other.columns && columnGapPt == other.columnGapPt && newPage == other.newPage
+            && furniture == other.furniture && marginTopPt == other.marginTopPt
+            && marginBottomPt == other.marginBottomPt && headerTopPt == other.headerTopPt
+            && footerBottomPt == other.footerBottomPt;
     }
 };
 
@@ -279,6 +344,14 @@ struct RichTableCell {
     // text and the cell's edges (points; < 0 = the view's default).
     RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
     float paddingTopPt = -1.0f, paddingBottomPt = -1.0f, paddingLeftPt = -1.0f, paddingRightPt = -1.0f;
+    // The height of the cell's lines of text where its paragraphs set one
+    // (points; 0 = each font's own): exactly that, or at least that
+    // (lineHeightAtLeast) - Word's w:spacing w:line with "exact" / "atLeast".
+    float lineHeightPt = 0.0f;
+    bool lineHeightAtLeast = false;
+    // ...or a multiple of each font's own line (0 = single): Word's
+    // w:line with "auto" (276 = 1.15).
+    float lineSpacing = 0.0f;
 
     // Copies borders and background (a new cell next to this one looks
     // like it).
@@ -299,6 +372,12 @@ struct RichTableCell {
 struct RichTableRow {
     std::vector<RichTableCell> cells;
     bool header = false;
+    // The row's height as the document sets it (points; 0 = as tall as its
+    // text): at least this tall, or - heightExact - this tall whatever its
+    // text needs. A letter laid out in a table holds its address block down
+    // the page with a tall row.
+    float heightPt = 0.0f;
+    bool heightExact = false;
 };
 
 struct RichDocBlock {
@@ -341,6 +420,10 @@ struct RichDocBlock {
     // setup is UCRichDocument::firstSection.
     bool sectionStart = false;
     RichSectionSetup section;
+    // This block starts the next column of its section (Word's column
+    // break, ODF's fo:break-before="column"); the next page where the
+    // section has one column, or it was in the last.
+    bool columnBreakBefore = false;
 
     // An entry of the table of contents, for a heading of this level (1..9);
     // 0 = an ordinary block. UCRichDocument::UpdateTableOfContents rebuilds
@@ -455,6 +538,12 @@ struct RichDocBlock {
     float tableWidthPercent = 0.0f;
     RichTextAlign tableAlign = RichTextAlign::Default;
     float tableIndentPt = 0.0f;
+    // Table: its columns give way to their content (Word's table layout
+    // "autofit", its default): a column narrower than the longest word or
+    // the widest picture in it is widened to hold it - at the cost of
+    // columns with room to spare, then of the table's width. false: the
+    // widths are kept as stated (Word's "fixed" layout, Writer's tables).
+    bool tableAutoFit = false;
     int mediaIndex = -1;                // Image
     std::string imageAltText;           // Image
     float imageWidthPt = 0.0f;          // Image: 0 = unknown
@@ -590,6 +679,15 @@ struct RichShape {
     // A radial gradient's centre, from 0 to 1 across and down the box.
     float gradientCenterX = 0.5f, gradientCenterY = 0.5f;
     bool HasGradient() const { return gradientStops.size() >= 2; }
+    // A drop shadow: the shape's outline again, moved by the offsets and
+    // filled with this colour (empty = no shadow), `shadowOpacity` of it
+    // showing (0..1), its edge softened over `shadowBlurPt`. A filled shape
+    // throws one; a line does not.
+    std::string shadowColor;
+    float shadowOffsetXPt = 0.0f, shadowOffsetYPt = 0.0f;
+    float shadowOpacity = 1.0f;
+    float shadowBlurPt = 0.0f;
+    bool HasShadow() const { return !shadowColor.empty(); }
     std::string lineColor;                // "#RRGGBB"; empty = no outline
     float lineWidthPt = 0.75f;
     enum class Dash { Solid, Dashed, Dotted };
@@ -622,12 +720,81 @@ struct RichShape {
     bool IsOpen() const;
     // Takes the outline of a DrawingML preset geometry (Word 97's shape types
     // map onto the same names): "rect", "roundRect", "ellipse", "line",
-    // "triangle", "diamond", "hexagon", "star5", "rightArrow", ... Returns
-    // false for a name it does not know, leaving a rectangle.
+    // "triangle", "diamond", "hexagon", "star5", "rightArrow", connectors
+    // ("bentConnector3", "curvedConnector3": open paths), "leftRightArrow",
+    // "star8", "decagon", "wedgeRectCallout", "flowChartDocument", ...
+    // Returns false for a name it does not know, leaving a rectangle.
     bool ApplyPreset(const std::string& preset);
 };
 
 // ===== TEXT FRAMES =====
+// ===== CHARTS =====
+// A chart's data, as its file states it: what kind it is, its categories and
+// its series of values. The view draws it with the chart engine
+// (UltraCanvasRichDocumentChart.h); the model itself stays free of the UI
+// stack. A chart lives in a frame (RichTextFrame::chart), which also holds
+// it as drawn shapes - what a consumer without the engine shows, and what a
+// format that cannot carry a chart is given.
+struct RichChartSeries {
+    std::string name;
+    std::string color;                    // "#RRGGBB"; empty = from the palette
+    std::vector<double> values;           // one per category (a scatter point's y)
+    std::vector<double> xValues;          // Scatter / Bubble: each point's x
+    std::vector<double> sizes;            // Bubble: each point's size
+    // Words in place of numbers, one per point, for a kind that reads a
+    // column of words as a series: a Sankey diagram's targets, a sunburst's
+    // or treemap's deeper levels. Empty for every other kind.
+    std::vector<std::string> labels;
+    bool smooth = false;                  // Line / Scatter: a curve through its points, not straight lines
+    bool joined = true;                   // Line / Scatter: its points are joined by a line
+    bool marked = false;                  // Line / Scatter: ...and marked
+};
+
+struct RichChart {
+    // (NoChart, not None: X11's Xlib.h #defines None.)
+    // Radar: the series round the categories' spokes. Bubble: a Scatter
+    // whose points have sizes. Stock: per category a high, a low and a
+    // close - series in that order, an open before them where there are four.
+    //
+    // The kinds after Stock are the framework's other charts, each drawn by
+    // its own element (CreateRichChartElement, UltraCanvasRichDocumentChart.h);
+    // what each reads from the categories and series is listed there. Office
+    // formats keep them as an extension beside a column chart of the same
+    // data.
+    enum class Kind { NoChart, Column, Bar, Line, Area, Pie, Doughnut, Scatter, Radar, Bubble, Stock,
+                      // Column and bar
+                      Waterfall, DivergingBar, PopulationPyramid, Dumbbell, Mekko,
+                      // Line and area
+                      CumulativeFlow, NestedArea,
+                      // Pie and circular
+                      Polar, RadialBar, CircularProgress, Gauge,
+                      // Scatter and bubble
+                      Quadrant, ImportancePerformance, Ternary, Hexbin, Scatter3D,
+                      // Statistical
+                      Histogram, BoxWhisker, Jitter, Ridgeline,
+                      // Flow and hierarchy
+                      Funnel, Pyramid, Sankey, Chord, Treemap, Sunburst, Gantt, Timeline,
+                      // Matrix and maps
+                      Heatmap, CalendarHeatmap, Contour, Surface,
+                      // Other
+                      WordCloud, Parliament };
+    Kind kind = Kind::NoChart;
+    bool stacked = false;                 // Column / Bar / Area: one on the other
+    bool percent = false;                 // ...as shares of 100%
+    bool legend = false;
+    bool filled = false;                  // Radar: the series' shapes are filled
+    int bins = 0;                         // Histogram: how many bins (0 = from the data)
+    std::string title;
+    std::vector<std::string> categories;
+    std::vector<std::string> pointColors; // Pie / Doughnut: a slice's own colour ("" = from the palette)
+    std::vector<RichChartSeries> series;
+    // What the file states for the value axis, and for a scatter chart's x
+    // axis (NaN = fitted to the data).
+    double valueMin = std::numeric_limits<double>::quiet_NaN(), valueMax = std::numeric_limits<double>::quiet_NaN();
+    double xMin = std::numeric_limits<double>::quiet_NaN(), xMax = std::numeric_limits<double>::quiet_NaN();
+    bool IsChart() const { return kind != Kind::NoChart; }
+};
+
 // A text box's content and look, referenced by a run with frameIndex (which
 // also carries where it floats).
 struct RichTextFrame {
@@ -641,6 +808,9 @@ struct RichTextFrame {
     // with shapes is a drawing, not a box: it shows no frame of its own.
     std::vector<RichShape> shapes;
     bool IsDrawing() const { return !shapes.empty(); }
+    // A chart: its data (the view draws it with the chart engine in place
+    // of the shapes above, which are the same chart as a drawing).
+    RichChart chart;
     // The box its shapes were drawn for, in points (0 = its run's size). A
     // drawing resized on the page keeps this, and its shapes are scaled from
     // it to the run's new size.
@@ -651,6 +821,10 @@ struct RichTextFrame {
     // A text frame used only for a group member's text (RichShape::textFrame):
     // no run refers to it.
     bool shapeText = false;
+    // A table nested in a table cell (its blocks are that table): it stands
+    // in the cell's line with no box, padding or guide line of its own, as
+    // wide as the cell's text where its run names no width.
+    bool nestedTable = false;
 };
 
 // ===== COMMENTS =====
@@ -742,8 +916,13 @@ struct RichPageSetup {
     // the bottom edge (inside the top / bottom margin).
     float headerTopPt = 0.0f;
     float footerBottomPt = 0.0f;
+    // Room between a header and the text below it, and between the text and
+    // a footer (points); < 0 = Writer's 0.25 cm. Word keeps none: its text
+    // starts right below a header taller than the top margin.
+    float furnitureSpacingPt = -1.0f;
 
     bool HasPage() const { return widthPt > 0.0f && heightPt > 0.0f; }
+    bool operator==(const RichPageSetup& other) const = default;
 };
 
 // What a page carries besides the body: its header and footer. A letterhead
@@ -754,6 +933,14 @@ struct RichPageFurniture {
     bool IsEmpty() const { return header.empty() && footer.empty(); }
 };
 
+// A section's own header and footer (RichSectionSetup::furniture): those of
+// its pages, and of its first page when that differs.
+struct RichSectionFurniture {
+    RichPageFurniture pages;
+    RichPageFurniture firstPage;
+    bool firstPageDiffers = false;
+};
+
 // Options for UCRichDocument::ToHTML.
 struct RichDocumentHTMLOptions {
     // The src a picture gets, given its index into UCRichDocument::media.
@@ -761,6 +948,14 @@ struct RichDocumentHTMLOptions {
     // client returns "cid:<id>" instead and sends the bytes as a part of the
     // message, which is how mail programs expect to find them.
     std::function<std::string(int mediaIndex)> imageSource;
+    // The id a heading carries (<h2 id="...">), given its level and its
+    // text: what a page's table of contents and a link's #anchor need.
+    // Unset, or an empty answer: no id.
+    std::function<std::string(int level, const std::string& text)> headingId;
+    // The whole HTML of a code block, given its fence language (empty when
+    // none) and its text: a web page highlights it here. Unset: the
+    // <pre><code> it always was.
+    std::function<std::string(const std::string& language, const std::string& code)> codeBlock;
 };
 
 // Options for UCRichDocument::ToMarkdown. When imageDirectory is set, the
@@ -777,10 +972,28 @@ public:
     RichDocumentMetadata metadata;
     std::vector<RichDocBlock> blocks;
     std::vector<RichDocMedia> media;
+    std::vector<RichDocKeptPart> keptParts;   // from the file it was read from
     // Distance between default tab stops (after a paragraph's own stops).
     // 0 = the view's default. ODF: style:tab-stop-distance; Word: defaultTabStop.
     float defaultTabStopPt = 0.0f;
     RichPageSetup page;
+    // Whether letters are pair-kerned ("AV" set closer). A view kerns unless
+    // the document says not to: Word sets text unkerned unless kerning is
+    // turned on (w:kern), and its files say so (ODF style:letter-kerning) -
+    // kerned, their lines come out a little shorter and break elsewhere.
+    bool letterKerning = true;
+    // Whether a line may be broken after a slash inside a word
+    // ("she/her/hers", a path): Unicode's line breaking allows it, Word does
+    // not - its documents keep such a word whole.
+    bool breakAfterSlash = true;
+    // Whether lines are a font's full height apart - its ascent and descent
+    // and the line gap ("external leading") its designer gave it - as Word
+    // and Writer set them. false: ascent and descent only, as documents from
+    // older Writer versions keep (ODF setting AddExternalLeading).
+    bool fontLineGap = true;
+    // Whether a paragraph's space before and after counts inside a table
+    // cell (ODF setting AddParaSpacingToTableCells; Word always counts it).
+    bool paragraphSpacingInCells = true;
     // The first section's setup (until a block with sectionStart).
     RichSectionSetup firstSection;
     // The setup of the section block `index` is in.
@@ -794,6 +1007,38 @@ public:
     bool firstPageDiffers = false;
     const RichPageFurniture& FurnitureForPage(int pageIndex) const {
         return (firstPageDiffers && pageIndex == 0) ? firstPageFurniture : pageFurniture;
+    }
+    // The headers and footers of sections that have their own
+    // (RichSectionSetup::furniture indexes this).
+    std::vector<RichSectionFurniture> sectionFurniture;
+    // The header and footer of a page of `section`: the section's own where
+    // it has some - its first page's on `firstPageOfSection` - else the
+    // document's, as FurnitureForPage(pageIndex) gives them.
+    const RichPageFurniture& FurnitureFor(const RichSectionSetup& section, bool firstPageOfSection,
+                                          int pageIndex) const {
+        if (section.furniture < 0 || section.furniture >= static_cast<int>(sectionFurniture.size())) {
+            return FurnitureForPage(pageIndex);
+        }
+        const RichSectionFurniture& own = sectionFurniture[static_cast<size_t>(section.furniture)];
+        return (own.firstPageDiffers && firstPageOfSection) ? own.firstPage : own.pages;
+    }
+    // Every header and footer the document has: its own two and each
+    // section's (for whatever walks all of a document's text).
+    std::vector<RichPageFurniture*> AllFurniture() {
+        std::vector<RichPageFurniture*> all{&pageFurniture, &firstPageFurniture};
+        for (RichSectionFurniture& own : sectionFurniture) {
+            all.push_back(&own.pages);
+            all.push_back(&own.firstPage);
+        }
+        return all;
+    }
+    std::vector<const RichPageFurniture*> AllFurniture() const {
+        std::vector<const RichPageFurniture*> all{&pageFurniture, &firstPageFurniture};
+        for (const RichSectionFurniture& own : sectionFurniture) {
+            all.push_back(&own.pages);
+            all.push_back(&own.firstPage);
+        }
+        return all;
     }
 
     bool IsEmpty() const { return blocks.empty(); }
@@ -934,6 +1179,14 @@ public:
     static std::string FileExtensionForMimeType(const std::string& mimeType);
     // Reads PNG/GIF/JPEG pixel dimensions from raw bytes (0 on failure).
     static bool SniffImagePixelSize(const std::vector<uint8_t>& data, int& width, int& height);
+    // A chart as drawn shapes, `width` x `height` points: one group of its
+    // bars, lines or slices, its axes' rules and values, and its legend -
+    // what a frame holds beside the chart's data (RichTextFrame::shapes), for
+    // a consumer without the chart engine. The words are text frames added to
+    // `frames` (pass the document's). False, and no shapes, for a chart with
+    // nothing to show or a box under 40 points.
+    static bool ChartAsShapes(const RichChart& chart, float width, float height,
+                              std::vector<RichTextFrame>& frames, RichShape& group);
     // The runs' text as one string: each run's text, preceded by a '\n' for
     // every run carrying lineBreakBefore - the first run's too, so a block
     // that starts with an empty line keeps it. The concatenation the

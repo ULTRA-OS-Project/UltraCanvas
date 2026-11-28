@@ -1,5 +1,17 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.20.0 - MarkdownHybridStyle::styleCaretLine / markupColor: the caret's line is
+//                 formatted like the rendered lines, its markup dimmed, a table row's
+//                 cells under their columns (StyleMarkdownCaretLine)
+// Version: 3.19.2 - a selection shows over rendered Markdown: in table cells (GetLineSelectionRange)
+//                 and as a tint over a rule, a picture or a formula (DrawBlockSelection);
+//                 the empty ApplySelectionAttributes / ClearSelectionAttributes are removed
+// Version: 3.19.1 - a click is hit-tested against the line it lands on when the caret
+//                 moved there before the next frame (currentLineIndex)
+// Version: 3.19.0 - GetLineSpans: a subclass styles ranges of a plain line (colour,
+//                 bold, italic, underline) - a mail reader's links, say;
+//                 InvalidateLineSpans lays the lines out again when they change
+// Version: 3.18.2 - tablesLaidOutWidth: tables are sized again once the visible width is known
 // Version: 3.18.1 - a font change keeps the top line in view and the scroll offset inside the content
 // Version: 3.18.0 - the SetStyle rule and the constructor tail of an area that follows by default
 // Version: 3.17.0 - a read-only or display-only area opens a Copy / Select All menu on a
@@ -22,7 +34,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-25
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -98,6 +110,14 @@ namespace UltraCanvas {
                 : color(c), bold(b), italic(i), underline(u) {}
     };
 
+    // A range of a plain line drawn in a style of its own (GetLineSpans):
+    // [startByte, endByte) of the line's text, without its line end.
+    struct TextAreaLineSpan {
+        int startByte = 0;
+        int endByte = 0;
+        TokenStyle style;
+    };
+
 
 // ===== MARKDOWN HYBRID STYLE CONFIGURATION =====
 // Configurable styling for markdown rendering within TextArea.
@@ -111,6 +131,15 @@ namespace UltraCanvas {
 
         // Header font size multipliers (relative to base font size)
         std::array<float, 6> headerSizeMultipliers = {1.8f, 1.5f, 1.3f, 1.2f, 1.1f, 1.0f};
+
+        // The line holding the caret is shown as its source, so every character
+        // can be edited where it stands. With styleCaretLine it is formatted as
+        // the rendered lines are - a heading at its size, bold, italic, code and
+        // links in their style, a table's cells in their columns - and the
+        // markup that formatting comes from (#, **, `, [](url), |) is drawn in
+        // markupColor. Off, the line is plain source in the syntax colours.
+        bool styleCaretLine = true;
+        Color markupColor = Color(165, 165, 165);
 
         // Code styling
         Color codeTextColor = Color(200, 50, 50);
@@ -236,6 +265,7 @@ namespace UltraCanvas {
             s.abbreviationBackground = Color(70, 70, 80, 120);
             s.abbreviationUnderlineColor = Color(140, 140, 160);
             s.footnoteRefColor = Color(100, 180, 255);
+            s.markupColor = Color(115, 115, 115);
             s.nestedBulletCharacters = {
                 "\xe2\x80\xa2",     // level 0: •
                 "\xe2\x97\xa6",     // level 1: ◦
@@ -1021,6 +1051,19 @@ namespace UltraCanvas {
         // Called when a click lands in the gutter. logicalLine is 1-based. Return
         // true to consume the event. Default: ignore.
         virtual bool OnGutterClicked(int /*logicalLine*/) { return false; }
+        // Ranges of a plain line (PlainText mode, and the raw line being
+        // edited in Markdown mode) drawn in a style of their own, over the
+        // syntax colours: a subclass marks what the text means to it - the
+        // links written in a plain-text mail, say. `lineText` is the line
+        // without its line end. Asked again whenever the line is laid out
+        // again; call InvalidateLineSpans when what it answers changes for
+        // text that did not. Default: none.
+        virtual std::vector<TextAreaLineSpan> GetLineSpans(int /*lineIndex*/,
+                                                           const std::string& /*lineText*/) {
+            return {};
+        }
+        // Lays every line out again, so GetLineSpans is asked again.
+        void InvalidateLineSpans();
         // On-screen content-row rect (x past the gutter, full content width) for a
         // visible 1-based logical line. Returns false if the line is not visible.
         bool GetLogicalLineContentRect(int logicalLine, Rect2Dd& out);
@@ -1120,6 +1163,10 @@ namespace UltraCanvas {
         // collected; if the total fits the available width the leftover is distributed evenly,
         // otherwise columns shrink proportionally. Row heights are re-measured after rewrap.
         void NormalizeTableGroupWidths(int startLine, int endLine);
+        // The visible width the tables were last sized to; -1 when there are
+        // none. Render lays the lines out again when the visible area turns
+        // out wider or narrower than that (see Render).
+        float tablesLaidOutWidth = -1.0f;
 
         // Inline markdown run (produced by ParseInlineMarkdownRuns) — byte offsets are within the
         // *visible* (markup-stripped) text, not the raw line.
@@ -1157,6 +1204,12 @@ namespace UltraCanvas {
 
         // `outInlineMath` receives the $...$ formulas placed in the layout (typeset through
         // `ctx` when the LaTeX module is available); both may be null.
+        // MarkdownHybrid: formats the caret's line (currentLine), which keeps
+        // its source text, like the rendered lines around it, and puts a table
+        // row's cells under their columns. Runs once the tables are sized.
+        // See MarkdownHybridStyle::styleCaretLine.
+        void StyleMarkdownCaretLine(LineLayoutBase* ll, int lineIndex);
+
         void ApplyInlineRunsAndAbbreviations(ITextLayout* layout,
                                              const std::string& visibleText,
                                              const std::vector<InlineRun>& runs,
@@ -1237,6 +1290,11 @@ namespace UltraCanvas {
         // MarkdownHybrid current line. When the cursor enters a line, this line gets text
         // and used in rendering and measuring
         std::unique_ptr<LineLayoutBase> currentLine;
+        // The line currentLine was laid out for. The caret can move to another
+        // line before the next render lays that one out (a mouse press moves it,
+        // and its release is hit-tested before a frame is drawn): until then
+        // currentLine is the old caret line's layout and is not used for the new.
+        int currentLineIndex = -1;
         // MarkdownHybrid display-math block holding the caret: every other line of it
         // (fences and LaTeX source) is shown raw too, since in rendered form those lines
         // collapse to zero height. rawBlockLines[k] stands in for line rawBlockStart + k;
@@ -1371,15 +1429,19 @@ namespace UltraCanvas {
         // inside the current selection. When selection changes, ReconcileLayoutState
         // invalidates the union of old+new selected line ranges so MakeLineLayout runs again.
         void ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex);
+        // The part of line `lineIndex` (codepoints) the selection covers; false
+        // when none of it is selected. A line the selection runs through is
+        // selected even when empty (startCp == endCp).
+        bool GetLineSelectionRange(int lineIndex, int& startCp, int& endCp) const;
+        // Tints the whole row of a line that shows none of its own text (a rule,
+        // a table's separator, a picture, a display formula) while it is selected.
+        void DrawBlockSelection(IRenderContext* ctx, LineLayoutBase* ll, int lineIndex);
         // Search-match backgrounds of one line, applied before the selection so
         // the current match (the selection) shows over them.
         void ApplyLineSearchHighlights(LineLayoutBase* ll, int lineIndex);
         // Paints [startCp, endCp) of a real line (codepoints) in color.
         void ApplyLineBackgroundRange(LineLayoutBase* ll, int lineIndex,
                                       int startCp, int endCp, const Color& color);
-        // Kept as no-op stubs — attribute application happens during rebuild, not in-place patching.
-        void ApplySelectionAttributes();
-        void ClearSelectionAttributes(int logicalLine);
 
         // Called at the top of UpdateLineLayouts each frame. Detects cursor-line
         // changes (to swap in/out MarkdownHybrid raw-editing mode) and selection-range changes

@@ -17,7 +17,7 @@ The brief's open questions, answered on 2026-10-24:
 
 | Question | Decision |
 |---|---|
-| What is the unit the store installs? | **Layers.** A *runtime* (the general shared libraries every app runs on: libUltraCanvas and what it loads), *libraries* (specialised shared sets some apps need: VideoFX, the PDF plug-in, OCR) and the *app* itself. The installer checks which layers are already there and installs only the missing ones, then the app. Least storage on the server, least transfer to the machine. |
+| What is the unit the store installs? | **Layers.** A *runtime* (the general shared libraries every app runs on: libUltraCanvas and what it loads), *libraries* (specialised shared sets some apps need: VideoFX, the PDF plug-in, OCR) and the *app* itself. The installer checks which layers are already there and installs only the missing ones, then the app, and starts the app with its layers on the library path (*Packaging an application for the store*). Least storage on the server, least transfer to the machine. |
 | Where do packages come from? | **Our own server.** The admin backend keeps the apps and their settings in a database; the packages are zip / 7z files on a server only the store reaches; the catalog is generated from the database and signed. |
 | Where does the code live? | `Apps/UltraStore`, with `ultrastore_core` as a static library in v1. |
 | Signature and hash primitives | Ed25519 added to UltraCrypt 0.2.0 (framework 0.9.272); the store target **requires** libsodium and SQLite and stops the configure without them. |
@@ -104,6 +104,7 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
   "payment_url": "https://store.example",
   "licence_key": "e52d4fca…40c1ab",
   "market_url": "https://store.example/market",
+  "account_url": "https://store.example/account",
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -217,11 +218,22 @@ does the purchase:
 
 | Step | Who | What |
 |---|---|---|
-| 1 | the store | `POST /v1/checkout {app, code}`: an order priced from the same signed catalog the stores read, with the code in force applied the way the store showed it (*Affiliates and codes*) |
+| 1 | the store | `POST /v1/checkout {app, code, country}`: an order priced from the same signed catalog the stores read, with the code in force applied the way the store showed it (*Affiliates and codes*), and the buyer's country, which decides the VAT in the price (below) |
 | 2 | the store | opens the order's `checkout_url` in the browser: the Quick Checkout form, submitted to `pay.skrill.com` with the order as `transaction_id` |
 | 3 | Skrill | posts the status report to the service, signed with the secret word (`md5sig`); the service checks the signature, the amount and the currency; status 2 pays the order, issues the licence and numbers the receipt - a repeat changes nothing, a forgery is refused |
 | 4 | the store | polls the order with its secret until it is paid, keeps the licence, and fetches the paid app's package through a signed URL that lives ten minutes (`restricted/`, *Where the server is reached*) |
 | 5 | the admin backend | fetches the sales (`GET /v1/sales?since=`) and records each in its ledger with the partners' credits, one level up and no further; fetches the refunds and chargebacks (`GET /v1/reversals?since=`) and takes the credits back in proportion, so its Finance page's net and what a partner is owed are right |
+
+**The buyer's country** goes with the checkout, because the price includes
+the VAT of the country the buyer is in and the invoice names it (the
+portal's README, *Buying*). The store sends the first of these that is a
+country (`BuyerCountry`, `Purchase.h`): the **Country** set on the Settings
+page (`purchase.country`), the country of the account the store is signed in
+to, the region of the system's language (`de-AT` is Austria). The last is a
+guess, which is why the first two go before it and why the Settings field
+shows what an empty one gives. With none of the three the store sends
+nothing and the service reckons with the seller's country.
+`ultrastore buy ... --country <CC>` says it on the command line.
 
 **The licence** is `ULIC1.<payload>.<signature>`: the licence id, the app,
 the order, the day and what the purchase includes, signed Ed25519 with the
@@ -346,6 +358,22 @@ runs before any language is loaded.
 
 ### Affiliates and codes
 
+> **Where this stands (2026-11-26).** This section describes the scheme the
+> native store and the admin backend were built with, and it is what their
+> code does today. It is **not the programme going forward**. The owner has
+> decided **UltraAffiliates**
+> ([`Docs/Research/UltraAffiliatesDesignProposal.md`](../Research/UltraAffiliatesDesignProposal.md)):
+> one programme for every shop, in the portal, free for the merchant; 5 % of
+> every affiliate sale paid from the store's fee of 15 %, plus a boost a
+> merchant may add; a referred customer bound to their affiliate; and a
+> superaffiliate in place of the recruit share below. None of that is built.
+> The portal, which replaces the admin backend, publishes no codes and
+> applies none at a checkout yet; what it has is the store's fee and the
+> split of a sale (its README, *Buying*).
+> **What carries over** from this section: the code kept by the store, the
+> `ultrastore://` links and the QR codes. **What does not:** the two tiers
+> with their shares, and a merchant's own partner list and ledger.
+
 A partner brings buyers with a **code** - typed into the store's Discover
 page, or carried by the partner's **QR code** and link - and earns a share
 of each sale made with it; a **discount code** without a partner takes
@@ -369,9 +397,10 @@ something off the price. The scheme is decided as follows.
   today and what it is for; `DiscountedPrice` and `PriceLabel` show the
   price with it ("23.92 EUR (was 29.90)"), to the cent, never below 0.00,
   only in the app's currency. The code entered is kept in the settings
-  (`code.value`, `code.enteredAt`) and stays **in force for 30 days**
-  (`StoreSettings::kCodeDays`): a buyer who arrived through a partner's
-  link and buys within that time credits the partner. `ultrastore code
+  (`code.value`, `code.enteredAt`) and stays **in force for 90 days**
+  (`StoreSettings::kCodeDays`; 30 until 2026-11, raised to the one window a
+  link and a code share in UltraAffiliates): a buyer who arrived through a
+  partner's link and buys within that time credits the partner. `ultrastore code
   <CODE>` does the same from the command line; `code clear` forgets it.
 - **Links.** `ultrastore://code/<CODE>` opens the store with the code and
   `ultrastore://app/<id>?code=<CODE>` an app's details with it; the store
@@ -610,11 +639,20 @@ How the window and the web shop look is drawn in
 [`design/README.md`](design/README.md): the Discover page, an app's page,
 the category browser and the phone views, with every colour, size and font.
 
+**The web store as HTML + JavaScript** is the other output: the same shop
+as complete, styled pages written by the admin backend's publish through
+UltraSite (`web.output` `html`, the default for a store without
+`web.site_dir`; `Apps/UltraStoreAdmin/core/WebStoreHtml.h`). The pages
+come from the catalog the same publish has just signed, so the browser
+fetches no catalog and verifies nothing; *Install*, *Try* and *Buy* open
+the native store, which verifies everything before it installs. Discover
+is about 11 KB compressed on a first visit, its pictures aside.
+
 **The web store** (`Apps/UltraStore/web/`, its [README](../../Apps/UltraStore/web/README.md))
 is the same shop in a browser: Discover, the categories and an app's page
 as an UltraCanvas application compiled to WebAssembly, a side module on
 the UltraCanvas runtime, served from the catalog base by the admin
-backend's publish (the setting `web.site_dir`), with an HTML shadow of
+backend's publish (the settings `web.output` `wasm` and `web.site_dir`), with an HTML shadow of
 every page for search engines and the moment before the module paints.
 It fetches `catalog.json` and `catalog.json.sig` from its own origin and
 verifies the signature in the browser - through the runtime's UltraCrypt
@@ -637,8 +675,9 @@ ink text, the UltraStore blue of the app icon as the one accent, Manrope
 for display text over Inter for body text (both in `media/fonts`), 20 px
 card corners, pill buttons and chips (`StoreTheme.h`). A header carries
 the wordmark (the way home), the sections as pills - Discover, Categories,
-Installed, Updates with its count - the search pill, Refresh and Settings
-(where the design has *Sign in*: the store has no accounts). The download
+Installed, Updates with its count - the search pill, Refresh, *Sign in*
+(the person's initials and name once signed in; the pill is there when the
+catalog names an account service, *The account tier*) and Settings. The download
 queue sits in a collapsible panel along the bottom
 (`UltraCanvasCollapsiblePanel`), a status line under it. Every operation
 goes through the core - the same `StoreEngine`, `CatalogClient`,
@@ -652,9 +691,14 @@ line never disagree; the pages are `StoreQuery::ListApps` with its filters.
 | Installed | the installed apps as cards, then the runtimes and libraries under them | Open, Remove, Reload, Clean up (the garbage collector) |
 | Updates | the installed apps a newer release has a package for; the count in the header pill | Update one, Update all |
 | App page | the shop's app page: the breadcrumb (the section it came from, the category, the name), the icon, the name, the summary, the publisher (a link when the catalog has their page), the facts as pills (the trial, open source and the licence, the systems, the age rating, the account, the update period, a purchase, a code in force), the actions, what this machine downloads (the plan: the layers already there, the ones added, the bytes); the screenshots side by side; *About this app*; *What's new* with the release notes and the version history; *What it installs* step by step with the sizes; the information column (publisher, licence, price, trial, updates, languages, age rating, the links); *More from* the publisher | the same actions; the breadcrumb is the way back |
-| Settings | channel, the texts' language, the servers, the keys trusted beside the compiled-in ones, fetch at start; this machine, the store folder, the settings file, the catalog's state, what is installed | Save, Revert, Refresh catalog now, Clean up, Reload installed |
+| Settings | channel, the texts' language, the servers, the keys trusted beside the compiled-in ones, fetch at start; the account service of one's own; this machine, the store folder, the settings file, the catalog's state, what is installed | Save, Revert, Refresh catalog now, Clean up, Reload installed |
+| Sign in | the design's `AccountSignUp`: sign in (email, password; the second factor asked for when the account has one), create an account (email, password, country, year of birth, consent), the mailed code, a forgotten password, the welcome | Sign in, Create an account, Verify, Send it again, Set the password; a sign-in attaches this machine's licences to the account and fetches the account's (`StoreAccountPage.cpp`, Account.h) |
+| Account | the design's `AccountProfile` with its rail: profile (display name, handle, language, country, year of birth, about; the email moved after a code), security and sign-in (the password, two-factor with the app's key and the recovery codes shown once), devices (the machines signed in with the seats they hold), purchases and licences (seats taken or freed for this machine), notifications (the settings, the notices with the operator's), privacy and data (the history switch, the public profile, the data archive, the deletion with its grace) | Save, Change, Turn on / off, Rename, Sign out, Take a seat here, Request the archive, Download, Delete my account, Keep my account |
 
-Not in the window, of the design: *Sign in* (no accounts), the share and
+Not in the window, of the design: the account's payment methods,
+subscriptions and orders pages (the payment service's; the licences page
+shows what of them the account holds), passkeys and the avatar (*The
+account tier*, what comes next), the share and
 wish-list buttons of the app page, and the footer's links (for publishers,
 support, privacy, terms: the catalog carries no store-wide pages). The
 phone artboards are a web shop's; the admin and operator artboards belong
@@ -719,6 +763,10 @@ ultrastore report <catalog.json> <app-id> <kind> <text>   a problem with an app 
 ultrastore reports <catalog.json>                         what became of the reports sent from this machine
 ultrastore licence <app-id> [--root <dir>] [--key <hex>]    one purchase's terms; with the key, the licence file verified
 ultrastore code [<CODE> | clear] [--cache <dir>]          the code in force
+ultrastore account signup <email> [--country DE] [--year 1990] [--marketing]   an account at the catalog's account service; the password from ULTRASTORE_PASSWORD or stdin
+ultrastore account verify <email> <code>                  the mailed code; this machine signed in, its licences attached
+ultrastore account signin <email> [--totp <code> | --recovery <code>]
+ultrastore account signout [--everywhere] | me | devices | licences | notices | sync
 ultrastore --version | --help
 ```
 
@@ -759,6 +807,32 @@ run built*). Both trust the keys of `keys/*.pub`
 fixture - natively added to the program, under emcmake built into a second
 module, `ultrastore-web-test.wasm`, so that `site/`'s never carries one.
 
+## The portal
+
+The store's server side is being gathered into **one application, the
+UltraStore portal** (`Server/UltraStorePortal`,
+[its README](../../Server/UltraStorePortal/README.md); started 2026-11-20):
+a Django project under the one root `https://store.ultraos.eu` with the
+developer console (register a publisher, publish an app), the operator's
+review, the store's web pages, buying and the catalog as a JSON service. It is to
+replace the services and tools the two sections below describe - the
+marketplace, account and payment services, `ultrastoreadmin` and
+`ultrastoreop` - and it changes three of their decisions: there is **one
+store and one catalog**, with no private or per-merchant catalog and no
+merchant key (a publisher is an account, the operator's key signs); **every
+URL of the store sits under the one root**; and nothing of the earlier
+services' APIs is kept, since none was in use. Since its 0.4.0 (2026-11-24)
+the portal is also **the account every ULTRA OS service signs in with**: an
+OpenID Connect provider, at an address of its own when one is set
+(`https://account.ultraos.eu`), through which the store itself, and next
+cloud storage, the chat and advertising, sign a person in (its README, *One
+sign-in for every service*). What stays is this page's *Catalog*: the
+portal publishes the same signed `catalog.json`, so the store's core reads
+it unchanged - and *Payment*: the portal sells with the protocol and the
+licence that section describes (its 0.2.0), on MySQL. Until the portal has
+taken over buyer accounts, the sections below remain the record of how
+those were designed.
+
 ## The operator tier (later)
 
 Everything above is one publisher running one store: the admin backend
@@ -777,12 +851,38 @@ settles where its data lives, so the pages are not drawn against nothing.
 |---|---|
 | Where do the operator's records live? | **In a marketplace service, `Server/UltraStoreMarket`, beside the payment service** (built 2026-11-11, its own README): one HTTPS service the operator runs, its own database on **MySQL in production, SQLite for tests and development only** (decided 2026-11-11; the payment service shares the database layer, `Server/UltraStoreDb`, which hides the engine). It holds the merchants, the submissions, the reports, the notices and the audit log, and nothing a merchant's `admin.sqlite` already holds. The operator's window (the `Super*` pages) is a client of this service, as the merchant's window is a client of `UltraStoreAdminCore`: the window and a command line never disagree. |
 | Who generates and signs the catalog? | **The operator, from the approved submissions.** The public catalog stays one signed `catalog.json` with the store's `trusted_keys`, generated by the service's publish from what the review released, signed with the operator's key (*Keys*). A merchant's `UltraStoreAdmin` keeps `admin.sqlite` as its working copy and its own `publish` for a private or test catalog, and gains `submit`: it sends a release - the component object `PutComponent` reads back, the packages into the operator's package store under their hash, the media - signed with the merchant's key, so the submission proves who sent it. The merchant's key is the one *Keys* already describes; it signs submissions now, not the public catalog. |
+| Where do a merchant's packages go? | **Into the operator's package store, with the submission** (built 2026-11-20). The submission names each package by its hash, size, format and access; when the service keeps a package store (`ULTRASTORE_MARKET_PACKAGE_DIR`) the `packages` check waits until the merchant has sent the bytes - `POST /v1/submissions/{id}/packages/{sha256}`, the request signed over them like every other, the service hashing them before it keeps them under `<sha256>.<format>` - and a release is refused while one is missing. `market submit` uploads them from the admin backend's own package store right after the submission (`market upload` again); the review's *Download build* fetches one; the publish lays the uploaded packages out beside the catalog (`packages/`, or `restricted/` for a paid app's without a trial) and the catalog names them under `ULTRASTORE_MARKET_CATALOG_URL`, so a merchant needs no public server of its own. A package the merchant did not upload keeps the URL it named - the service without a package store behaves as before. The same bytes submitted again need no second upload. |
+| What do the automatic checks do? | **The service checks what it can at once, the pipeline the rest once the packages are in** (built 2026-11-20, `checks.py` in the marketplace service). At once: the signature over the component, the merchant's standing, the packages named by hash and size. After the last upload (in the background; `POST /v1/submissions/{id}/checks` runs it again on the operator's word): **scans** - every archive walked without unpacking for a path that escapes the install folder, a link that points outside, an unpacked size out of proportion to the download, an installer inside, and each file handed to a virus scanner when `ULTRASTORE_MARKET_SCAN_COMMAND` names one (clamscan's convention), the archive scan alone otherwise, said so; **entry** - the file the store launches is in the archive, the one the package names or one found by the admin backend's own rules; **smoke** - the build started by a sandbox runner the operator provides (`ULTRASTORE_MARKET_SMOKE_COMMAND`), *not run* without one, since the service never runs a merchant's binary itself; **listing** - what the store's page needs (a name, a summary in English or the source language, categories, an icon, a price and currency when not free, an age rating the store knows, URLs that are http(s), the packages' access against a trial). Each check keeps its findings, which the review shows under it. A failed scan or entry makes the submission `failed_checks`, which cannot be released; the listing's failures and the smoke run are the reviewer's to weigh. |
 | What is a submission? | **A row the review works on**: the signed component object as sent, the package hashes, the automatic checks' results (signature, SHA-256, the scans, the entry found, the smoke run, the listing's pictures and texts, the merchant's standing), the reviewer's checklist, the decision with its message, and the catalog sequence that released it. A resubmission is a new row that names the one it answers, so the review picks up where it left off. Nothing is edited in place: a decision is appended. |
 | Where do reports come from, and who sees the reporter? | **Three doors into one table**: the store's app page (`POST /v1/reports`, the licence or the install id as the reporter when there is one, else anonymous), the merchant backend (a merchant reporting another's app or a problem with their own), and the operator entering one from mail. A report names its target (an app, a release, a merchant), its kind, the text and attachments, and gets a state, an assignee and the operator's findings. **The reporter is visible to the operator only**: the merchant sees the report, never who filed it, and the reporter learns the outcome in one line. |
 | How do notices reach a merchant, and how is a warning counted? | **Written once, delivered twice**: a notice (announcement, reminder, information request, warning, suspension) is a row with its recipients; it goes out by mail, and the merchant backend fetches it (`GET /v1/notices` with the merchant's key) and shows it as a banner until acknowledged. A warning is a notice that names a clause and counts as a strike; strikes expire and add up to a suspension by the **enforcement policy**, which is a settings record of the service (expiry, strikes before a suspension, its length, the answer deadlines, the clauses that suspend at once), not a constant. A suspension is a state on the merchant or the app with its scope, clause, start, end and the row that lifted it; the publish reads it and leaves the listing out. |
 | What is the audit log? | **Append-only, hash-chained, never edited**: every operator action - verify, release, request changes, reject, warn, suspend, reinstate, withdraw, dismiss, resolve, a policy or terms change - is one row with the actor, the target, the clause, what was before and after, the row it acted on, and the hash of the row before it, so a gap or an edit shows. The dashboard's *Operator actions* and a merchant's *History* are views of it. |
 | Which terms did a merchant accept? | **A versions table and an acceptances table.** A terms version has its text, what changed, and the date it comes into force; an acceptance names the merchant, the version, the person who accepted and when. A merchant not on the version in force by its date is paused by the publish, the way a suspension is, until an acceptance arrives. The merchant backend's *Terms* page reads both through the service. |
 | Does the store binary change? | **Little.** It reads the same signed catalog; it gains the report form on the app page and, with an account, the reporter's identity; a withdrawn or suspended app is simply absent from the next catalog, and an installed copy keeps updating or not as the catalog says (`visibility: hidden` already covers "served for updates only"). |
+| How does a merchant join? | **It applies from its admin backend, and the operator decides** (decided 2026-11-19). `ultrastoreadmin market apply`, or the window's *Marketplace* page, sends the shop's name, how to reach it, an email for the operator, the website and a line about the publisher, with the public half of the key that will sign its submissions - the application signed by that key, so the key is proven, not typed in by the operator. The applicant keeps the application's id and secret in its settings and asks what became of it (`market application`); the operator sees the queue on *Merchants* (`ultrastoreop merchant applications`) and approves - the merchant registered with that key and profile, under an id the operator gives or one made - or rejects with a reason the applicant reads. Approved, the admin backend sets `market.merchant_id` itself. The merchant then edits its own profile (`PUT /v1/merchants/me`: name, contact, website, description - the catalog's publisher page comes from the website) and rotates its key signed with the old one (`market profile --rotate-key`); the operator's register and set stay for the hand-made cases. A key is the merchant's identity: a second machine is a second key, not a staff account. |
+| Who sits at the operator's window? | **Operator accounts with roles, kept by the marketplace service** (decided 2026-11-19). An account is an email, a password (scrypt, as the account service keeps a person's) and a role: `admin` (everything, the accounts included), `reviewer` (the review and the publish), `support` (the reports, the notices, acting for a user), `auditor` (reads everything, changes nothing). `POST /v1/operators/signin` answers a signed session (`ultrastore_db.operator_session`: `op1.<payload>.<hmac>`, the operator's id, name and role, an end after the service's hours) that the window keeps as its token; the account service verifies the same session with the secret the two share (`ULTRASTORE_MARKET_OPERATOR_SESSION_SECRET` = `ULTRASTORE_ACCOUNT_OPERATOR_SESSION_SECRET`), so one sign-in reaches both with the same name and role and the *Users* page needs no token of its own. Every operator call names the permission it needs and the service refuses the rest (403 `forbidden`, naming the role); the audit log names the person. The static operator token of each service stays the **bootstrap admin**: it makes the first admin account, then goes into a drawer. An admin changes another's role and disables an account (not their own); anyone changes their own name and password. An operator's **two-factor sign-in** (2026-11-20): an authenticator app set up from the *Operators* page or `ultrastoreop twofactor setup`, turned on with its first code, eight recovery codes shown once; the sign-in then wants the six digits or a recovery code (401 `two_factor_required`). A **forgotten password** (`password forgot`, *Forgot the password* on Settings) mails a code the marketplace service sends (`ULTRASTORE_MARKET_SMTP_URL`); the reset takes it with the second factor. An admin clears another's second factor after the identity was checked another way (`operator reset-2fa`, *Reset 2FA*), never their own. Not built: staff accounts per merchant. |
+| How do the ULTRA OS Project's own apps reach the store? | **Through the marketplace, like every merchant's** (decided 2026-11-18). The project is a merchant (`ultra-os-project`, the publisher id its components already carry), registered by the operator with the public half of its admin backend's key (or applied for like any other merchant, *How does a merchant join?*); its `UltraStoreAdmin` keeps the apps and submits each release (`market submit`); the review releases it and `POST /v1/publish` writes it into the one public catalog. So the public catalog has **one writer**, the marketplace's publish, and two publishes never overwrite each other at one address. The merchant backend's `publish` and `upload` stay for a private or test catalog only. The packages come from `scripts/package-store-app.sh` (*Packaging an application for the store*). |
+
+What follows from the last decision, for the handover from today's public
+catalog (signed by the admin backend with `Apps/UltraStore/keys/publish.pub`)
+to the marketplace's:
+
+- **The operator's key must be trusted before its first catalog.** Its
+  public half (`ultrastoreop key`, `GET /v1/publish/key`) is committed as
+  `Apps/UltraStore/keys/market.pub`, so every store built afterwards trusts
+  it. A store already installed trusts only the compiled-in keys and what an
+  accepted catalog announced, so the last catalog signed with
+  `publish.pub` must list the operator's key in `trusted_keys` (*Keys*). The
+  admin backend lists only its own active keys there today: announcing a
+  public key it holds no seed for is still to be built. Until then the
+  marketplace does not publish to the public address.
+- **The sequence goes on from the public catalog's.** A store refuses a
+  catalog below the sequence it accepted, and the marketplace counts from
+  its own last publish: the first release is given a sequence above the
+  public catalog's (`ultrastoreop review release <submission> --sequence <n>`).
+- **The project's codes leave the public catalog.** The marketplace's
+  catalog carries no `codes` (they are a merchant's own store's); the
+  project's partners keep their links only through a store of its own.
 
 What the operator never holds: a merchant's sales ledger and partners (those
 stay in the merchant's `admin.sqlite`, fed by the payment service as today),
@@ -795,8 +895,9 @@ them, every report about them with the reporter removed, and their standing.
 all of the above - the merchants registered by the operator with their
 keys and signing every request (`Authorization: Merchant <id>:<timestamp>:
 <signature>`), the submissions with the checks the service can make at
-once (the signature, the standing, the packages' hashes; the scans and the
-smoke run marked *not run* until the review pipeline exists) and the
+once (the signature, the standing, the packages' hashes) and the review
+pipeline's (the scans, the entry, the smoke run, the listing, with their
+findings; *What do the automatic checks do?*) and the
 decisions appended, the three doors for reports with the reporter kept
 from the merchant and an outcome line for the reporter, the notices and
 the strikes, the enforcement policy as a settings record, the suspensions
@@ -819,6 +920,124 @@ the operator alone sees, the notices, the terms and the policy, the audit
 log verified. Still to come: the packages uploaded with a submission, the
 review pipeline behind the checks marked *not run*.
 
+## The account tier
+
+Everything above a person does without an account: a free app installs,
+a purchase is a licence in `registry.sqlite` on the machine it was bought
+on, the payment service sells without one. The design's `Account*` pages
+(`design/README.md`) draw what follows a person from machine to machine;
+this section settles where it lives, and what of it is built.
+
+| Question | Decision |
+|---|---|
+| Where does a person's identity live? | **In an account service, `Server/UltraStoreAccount`, beside the payment service and the marketplace service** (built 2026-11-19, its own README): one HTTPS service the ULTRA OS Project runs, its own database on MySQL (the shared layer `Server/UltraStoreDb`; SQLite for tests and development). It holds the email, the password as an scrypt hash, the display name and handle, the language, the country (VAT, currency) and the year of birth (age ratings, never shown), the second factor, the sessions, the licences attached, the notices, the archives, the audit log. The store's window and command line are its clients (`Account.h`); the catalog names it (`account_url`), the way it names the payment and marketplace services. |
+| What is a device? | **A session**: one per machine signed in, with the machine's name, system and store version, ended by the person from any machine, by the operator, or by 90 days unused. The store keeps the session token in `<root>/account.json`, readable by the owner alone, and sends it as a bearer token; a token the service no longer knows signs the store out. |
+| How does a licence follow a person? | **Attached to the account, verified, counted in seats.** A licence the payment service issued (`ULIC1.…`, its signature checked with the licence key) is attached to the account the store is signed in to, and each machine it is installed on takes a seat (the licence's number, else the service's default of 3). At a sign-in the store sends every licence of its registry up and takes a seat, and fetches every licence the account holds that the registry lacks, verified against the catalog's `licence_key`, into the registry and its licence file; signing a machine out frees its seats. The order secret stays on the machine that bought: the receipt and the cancel go through it, the app does not need it. |
+| Who signs up, and how is an address proven? | **Anyone, with a mailed six-digit code**, good for ten minutes; the address is the sign-in name. An address with an account gets the same answer as a new one and a mail to its owner, so the service tells a stranger nothing. A password is twelve characters or more. |
+| What is the second factor? | **TOTP** - UltraAuthenticator or any authenticator app - **with recovery codes** (eight, hashed, each good once, shown once; a new set from Security). The service asks for it at sign-in and at a password reset; the operator can reset it after checking the person's identity another way, and the person is told. Passkeys are drawn and come later: WebAuthn needs the platform's authenticator on each machine. |
+| What does the operator see, and do? | **Accounts as far as the store needs them**: the email masked, the name and handle, the country, the state, two-factor on or off, the devices and licences counted, the requests; one user's file with the devices, the licences without their tokens, the notices, the archives, the sign-ins and the history. Never the password hash, the year of birth, a payment method, the listening and watch history. The actions - a notice, sign out everywhere, reset two-factor, release the archive, suspend with a reason and days, reinstate, delete - are rows in the account service's own hash-chained audit log, and a notice to the person where one is due. A deletion the person did not ask for is refused. |
+| How does the operator reach a buyer, and a merchant? | **Customer messaging is a notice on the account** (decided 2026-11-19): written once by the operator (`POST /v1/users/{id}/notice`: notice, security, warning, suspension, information request), kept on the account under Notifications until read, and sent by mail. The service itself writes the security notices (a new sign-in, a password change, a recovery code used). **A merchant never reaches a buyer directly**: the merchant has no buyer identity (the marketplace service hides the reporter, the payment service names no account). A merchant's message to a buyer goes through the marketplace service with the order as the key, relayed by the operator's services into a notice on the account the order belongs to, the buyer's identity never given to the merchant - decided, built later, once the payment service records the account at checkout. Until then the report's outcome line is the merchant-to-buyer channel, as today. |
+| What does the person take with them, and how does it end? | **A data archive and a grace.** The archive is everything the account holds of the person as one JSON file, built at once when asked for, released by the operator within a day, downloaded once. The deletion is asked for with the password, carried out after 90 days unless cancelled (the service's `ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS`; 30 until 2026-11) - by the daily maintenance, or by the operator on the person's request - and leaves the row under its id with the email replaced, so the audit rows still name a target and the address is free again; the invoices are the payment service's and stay as the law asks. |
+| Does the store need an account to install? | **No.** A free app installs without one, as before; an account is for what follows the person. The store's window shows *Sign in* only when the catalog names the service. |
+
+**Built so far** (`Server/UltraStoreAccount`, its README): the service with
+all of the above - sign up with the mailed code, sign in with the password
+and the second factor, the sessions as devices, the profile and the
+settings, the email moved after a code, the password changed with the other
+machines signed out, two-factor with the recovery codes, the licences
+attached and their seats, the notices, the archive released by the operator
+and downloaded once, the deletion with its grace, the operator's users list
+with the counts and the states, the file, the actions and the audit log
+verified; `POST /v1/maintenance` for the daily timer. The store's side
+(`Apps/UltraStore/core/Account.h`): the session file, the client, the
+licences kept in step both ways (`SyncLicencesWithAccount`); the window's
+*Sign in* pill, the sign-in page with its steps and the account page with
+its rail (`ui/StoreAccountPage.cpp`); `ultrastore account`. The operator's
+side (`Apps/UltraStoreOperator`, [its README](../UltraStoreOperator/README.md)):
+the *Users* page after the design's `SuperUsers` on the account service
+with its own token, and `ultrastoreop users`. The admin backend's publish
+writes `account_url` from the setting `account.url`. What comes next: the
+payment service told the account at checkout (an order on the account
+without the store attaching the licence), passkeys, the avatar, the
+merchant's message relayed to a buyer.
+
+## Packaging an application for the store
+
+A store package is one archive per operating system and processor. The
+store unpacks an app into `<root>/apps/<id>/<version>/` and a runtime or
+library into `<root>/components/<id>/<version>/`, and starts an app's
+`entry` **on its runtime layer** (`PlanLaunch`, `StoreQuery.h`): the
+components the app was installed with - the exact versions of its release's
+`depends`, and theirs in turn - go first on the library path (a component's
+`lib/` on Linux, its folder on Windows, as the suite package lays them out;
+`LD_LIBRARY_PATH`, `PATH`), and the runtime's folder is named in
+`ULTRACANVAS_RUNTIME_DIR`. The framework looks there for `media/` and for
+UltraNet's plug-ins after the app's own folders (`kRuntimeDirVariable`,
+`UltraCanvasConfig.h`), so an app whose package carries none takes the
+runtime's. That is the *layers* of *Decisions*, *What is the unit the store
+installs?*, at the moment the app starts. On macOS nothing is added: an app
+there is a bundle with its own `Frameworks/`, and `open` passes no
+environment.
+
+`scripts/package-store-app.sh` makes the archives out of the suite package
+`package-linux.sh` or `package-win.sh` made, the way
+`package-ultracanvasstart.sh` cuts UltraCanvasStart out of it, in three
+shapes:
+
+| Shape | What it carries | Release |
+|---|---|---|
+| `<App>` | the app on its own: the executable and its launcher, the plug-in families it loads (every one but UltraIM, which goes with ChatCube alone), the closure of libraries the loader resolves inside the suite with libvips', libheif's and ImageMagick's run-time modules, the media the framework loads (fonts, icons, app icons, `media/lib`, the translations, the emoji fonts), the app's own data folder | no `depends`; runs in every store |
+| `--runtime` | `org.ultraos.runtime` at the framework's version: the core library and its closure, the plug-in families every app may load with theirs, the run-time modules, the media - at the top of the archive (`lib/`, `bin/Plugins/`, `share/media/` on Linux; the DLLs, `Plugins/`, `Resources/media` on Windows), as the component's folder | a component of kind `runtime` |
+| `<App> --on-runtime` | the app without what that runtime carries: the executable, its launcher, the libraries and plug-in families the runtime does not have, the app's own data | `--depends org.ultraos.runtime@<framework version>`; needs a store that starts an app on its runtime layer |
+
+An app on the runtime is a few megabytes where the app on its own is a
+hundred, and every app built on one framework version shares one runtime.
+A store from before the runtime layer starts the entry with nothing added,
+and an app on the runtime does not find `libUltraCanvas`: the self-contained
+shape stays the one to publish until the stores in use start apps on their
+runtime.
+
+Each run checks the package from inside - every library of the executable
+and the plug-ins resolves within it (and the runtime, for `--on-runtime`),
+and an app that answers `--version` runs from it (on the staged runtime,
+with the environment the store would give it) - and ends with the
+`ultrastoreadmin` lines: the release (with its `depends`) and the package,
+with the entry and the glibc variant (the newest the files ask for) or the
+macOS minimum. The admin backend's own suggestion takes the launcher too
+(`SuggestEntry`: on Linux `<dir>/<name>` when `<dir>/bin/<name>` is in the
+archive, before `bin/<name>`, the executable that alone does not find
+`lib/`).
+
+```
+./package-linux.sh
+scripts/package-store-app.sh --runtime          # once per framework version
+scripts/package-store-app.sh UltraMail --on-runtime
+# dist-store/org.ultraos.runtime-<fw>-linux-x86_64.tar.xz and
+# dist-store/org.ultraos.ultramail-<version>-linux-x86_64.tar.xz, then:
+ultrastoreadmin release add org.ultraos.runtime <fw>
+ultrastoreadmin package add org.ultraos.runtime <fw> dist-store/org.ultraos.runtime-<fw>-linux-x86_64.tar.xz \
+    --os linux --arch x86_64 --variant glibc-<x.y>
+ultrastoreadmin release add org.ultraos.ultramail <version> --depends org.ultraos.runtime@<fw>
+ultrastoreadmin package add org.ultraos.ultramail <version> dist-store/org.ultraos.ultramail-<version>-linux-x86_64.tar.xz \
+    --os linux --arch x86_64 --entry UltraMail/UltraMail --variant glibc-<x.y>
+ultrastoreadmin market submit org.ultraos.runtime
+ultrastoreadmin market submit org.ultraos.ultramail
+```
+
+On macOS, `./package-macos.sh --store-app UltraMail` cuts the bundle out of
+the signed suite with a `Contents/Frameworks/` of its own (the rewrite
+`--start-app` makes for UltraCanvasStart), into `dist-store-macos/`, and
+`scripts/package-store-app.sh UltraMail` zips it, checks its signature and
+prints its `--min-os`. UltraMail is in the macOS suite since 2026-11-18, with
+UltraNet's plug-ins in its `Contents/PlugIns/UltraNet/`.
+
+The version is line 1 of the application's changelog (the framework's for
+the runtime) and the id `org.ultraos.<app in lower case>`; `--version`,
+`--id`, `--plugins` and `--media` say otherwise. CI makes UltraMail's
+package on every Linux, Windows and macOS build and uploads it
+(`UltraMail-store-<os>-<arch>`), and on Linux and Windows the runtime and
+UltraMail on it (`UltraCanvas-runtime-store-<os>-<arch>`).
+
 ## Milestones
 
 1. **0.1.0** core and command line (this page).
@@ -835,7 +1054,8 @@ review pipeline behind the checks marked *not run*.
    catalog (schema 2, `trusted_keys`, see *Keys*).
 6. **Affiliates and codes** (*Affiliates and codes*): discount and
    affiliate codes in the catalog, QR codes and links, two-tier partners in
-   the admin backend with the sales ledger and the report.
+   the admin backend with the sales ledger and the report. Built; superseded
+   as the design by UltraAffiliates (the note at the head of that section).
 7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout. The
    payment service (`Server/UltraStorePay`): the checkout, the status
    report, the licence, the receipt, the signed URLs for `restricted/`, the
@@ -862,3 +1082,51 @@ review pipeline behind the checks marked *not run*.
    operator's window and command line (`Apps/UltraStoreOperator`). Next:
    the packages uploaded with a submission into the operator's package
    store; the review pipeline behind the checks marked *not run*.
+   Decided 2026-11-18: the ULTRA OS Project's own apps go through the
+   marketplace too (*The operator tier*), packaged by
+   `scripts/package-store-app.sh` (*Packaging an application for the
+   store*). Next for that: the handover of the public catalog - the
+   operator's key announced by a last catalog signed with `publish.pub`,
+   which the admin backend cannot do yet. The store starts an app on its
+   runtime layer after 0.1.21 (*Packaging an application for the store*),
+   so an app's package can leave the runtime out.
+
+9. **The account tier** (*The account tier*): the account service
+   (`Server/UltraStoreAccount`) - sign up with the mailed code, sign in
+   with the password and the second factor, the devices, the licences
+   attached with their seats, the notices, the archive and the deletion,
+   the operator's users API with its audit log; the store's *Sign in* and
+   account page with the licences kept in step both ways, `ultrastore
+   account`; the operator's *Users* page and `ultrastoreop users`; the
+   catalog's `account_url`. Next: the payment service told the account at
+   checkout, passkeys, the avatar, the merchant's message relayed to a
+   buyer through the marketplace service.
+10. **Merchant self-service** (*The operator tier*, *How does a merchant
+    join?*): the application for a shop from the admin backend, the
+    operator's approval or rejection, the merchant's own profile and key
+    rotation, the publisher's page in the catalog from the website;
+    `market apply | application | profile`, `ultrastoreop merchant
+    applications | approve | reject`, the admin's *Marketplace* page with
+    its three states and the operator's *Applications* section.
+11. **Operator accounts with roles** (*The operator tier*, *Who sits at
+    the operator's window?*): the marketplace service's operators and
+    sign-in, the signed session both services verify, a permission on
+    every operator call, the audit log naming the person; the operator's
+    sign-in on *Settings*, the role in the sidebar, the *Operators* page,
+    `ultrastoreop signin | whoami | operator | signout`; the design's
+    `SuperOperators`.
+12. **The package store, and the operators' second factor** (*The operator
+    tier*, *Where do a merchant's packages go?*, 2026-11-20): a package
+    uploaded with the submission, the release gated on it, the review's
+    *Download build*, the publish laying the packages out beside the
+    catalog; an operator's two-factor sign-in (an authenticator app, the
+    recovery codes) and the password reset by mail, `ultrastoreop
+    twofactor | password`, an admin's *Reset 2FA*.
+13. **The review pipeline** (*The operator tier*, *What do the automatic
+    checks do?*, 2026-11-20): the scans, the entry, the smoke run and the
+    listing on the packages in the store, their findings kept with the
+    submission and shown under each check in the operator's review, the
+    pipeline run again on the operator's word; `ultrastoreop review
+    checks`. Next: the merchant's media and the web store's pages through
+    the marketplace path, which today publishes the catalog and the
+    packages alone (the system map of 2026-11-20).

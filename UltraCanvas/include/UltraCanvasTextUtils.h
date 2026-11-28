@@ -17,6 +17,7 @@
 // Base32; the one crypto-relevant variant — decoding straight into a zeroizing
 // buffer — remains there as UltraCrypt_Base32Decode and calls the decoder below.
 //
+// Version: 1.5.0 - FormatFloatRoundTrip: a number a file stores, read back exactly
 // Version: 1.4.0 - FormatFixedClassic, for the drawing formats' fixed-point numbers
 // Version: 1.3.0 - ScopedPrecision, the digit half, shared by the five writers that had a copy
 // Version: 1.2.0 - ClassicNumbers, for a stream a format is written THROUGH
@@ -144,6 +145,12 @@ bool TryParseFloat(const std::string& text, double& out);
 // Numbers shown to a person are the opposite case - a German reader expects
 // "12,5" - so leave display formatting to the locale.
 std::string FormatFloatClassic(double value, int precision = 6);
+
+// The shortest of 15, 16 or 17 significant digits that reads back as exactly
+// `value`, dot-decimal: "0.1", "3.14159265", "0.30000000000000004". For a
+// number a file stores rather than draws - a spreadsheet cell's value -
+// where six digits would lose data on every save.
+std::string FormatFloatRoundTrip(double value);
 
 // The fixed-point sibling, which is what the drawing formats want: PDF, EPS
 // and DXF all state coordinates to a set number of decimal places rather than

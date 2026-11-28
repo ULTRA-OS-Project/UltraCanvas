@@ -13,10 +13,24 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasRichDocumentChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineBarChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineRadarChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineFinancialChart.h"
+#include "UltraCanvasFontCoverage.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasAccessibilityBridge.h"
+#include "UltraCanvasZipPackage.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "DisplayRequired.h"
+#include "../libspecific/Cairo/RenderContextCairo.h"
+
+#include <cairo/cairo.h>
 
 #include <algorithm>
 #include <cmath>
@@ -43,6 +57,11 @@ static int failCount = 0;
 
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
@@ -461,6 +480,23 @@ int main() {
             }
         }
         TEST("Clicking inside the table puts the caret in a cell", clickReachedCell);
+
+        // A click in the margin left of the table, level with it, goes into
+        // the nearest cell - never onto the table outside its cells, where
+        // the caret would be drawn the whole table high.
+        bool leftClickReachedTable = false;
+        bool leftClickOutsideCells = false;
+        for (int y = 20; y <= 200; y += 4) {
+            editor.SetCaret(editor.DocumentStart());
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 1, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 1, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().blockIndex != tableBlock) continue;
+            leftClickReachedTable = true;
+            if (!editor.GetCaret().InCell()) leftClickOutsideCells = true;
+        }
+        TEST("A click left of the table reaches it", leftClickReachedTable);
+        TEST("... and puts the caret in a cell, not on the table", !leftClickOutsideCells);
 
         // Clicking the right-hand column reaches a different cell than the left.
         int leftColumn = -1, rightColumn = -1;
@@ -1323,6 +1359,32 @@ int main() {
         const float pageWidth = edit->GetZoom();
         TEST("Page width fills the width: " + std::to_string(pageWidth), pageWidth > wholePage && pageWidth < 1.0f);
         TEST("...with no sideways scrolling", edit->GetHorizontalScrollOffset() == 0.0f);
+
+        // A share of the width: the page itself (not the desk) is that share
+        // of the view's width, and stays so when the element is resized.
+        const auto pageOnScreen = [&]() { return edit->GetEffectivePageSetup().widthPt * (96.0f / 72.0f) * edit->GetZoom(); };
+        const auto viewWidth = [&]() {
+            return edit->GetWidth() - 2.0f * edit->GetStyle().padding - edit->GetStyle().scrollbarWidth;
+        };
+        edit->ZoomToWidthShare(0.6f);
+        window->UpdateAndRender();
+        TEST("Width share is a fitting zoom of its own",
+             edit->GetZoomFit() == UltraCanvasRichTextEdit::ZoomFit::WidthShare && std::abs(edit->GetZoomWidthShare() - 0.6f) < 1e-4f);
+        TEST("...the page is 60% of the view's width: " + std::to_string(pageOnScreen()) + " of " + std::to_string(viewWidth()),
+             std::abs(pageOnScreen() - 0.6f * viewWidth()) < 1.5f);
+        TEST("...narrower than page width", edit->GetZoom() < pageWidth);
+        const float atWide = edit->GetZoom();
+        edit->SetSize(600.0f, 560.0f);
+        window->UpdateAndRender();
+        TEST("...and still 60% once the element is narrower: " + std::to_string(pageOnScreen()) + " of " + std::to_string(viewWidth()),
+             std::abs(pageOnScreen() - 0.6f * viewWidth()) < 1.5f && edit->GetZoom() < atWide);
+        edit->ZoomToWidthShare(0.4f);
+        window->UpdateAndRender();
+        TEST("Another share refits at once", std::abs(pageOnScreen() - 0.4f * viewWidth()) < 1.5f);
+        edit->ZoomToWidthShare(7.0f);
+        TEST("A share is at most the whole width", std::abs(edit->GetZoomWidthShare() - 1.0f) < 1e-4f);
+        edit->SetSize(780.0f, 560.0f);
+        window->UpdateAndRender();
         edit->SetZoom(1.0f);
         TEST("A chosen zoom ends the fitting one", edit->GetZoomFit() == UltraCanvasRichTextEdit::ZoomFit::Off);
         edit->SetPageView(false);
@@ -1445,6 +1507,399 @@ int main() {
             window->UpdateAndRender();
             window->UpdateAndRender();
             TEST("Pattern and picture fills draw", edit->GetFloatRectForTest(1).height > 0.0f);
+        }
+
+        // In a table cell: a drawing stands in the cell's line and takes its
+        // room (the row grows by it); a picture behind the text floats from
+        // the cell - turned or not - and takes none.
+        {
+            auto card = std::make_shared<UCRichDocument>(*document);
+            const std::vector<uint8_t> png(kDotPng.begin(), kDotPng.end());
+            const int media = card->AddMedia("back.png", "image/png", png);
+            RichTextRun label;
+            label.text = "3";
+            RichTextRun photo = drawing(1, 120.0f, 90.0f);
+            photo.lineBreakBefore = true;
+            RichTextRun back;
+            back.text = RichTextRun::kObjectReplacement;
+            back.mediaIndex = media;
+            back.imageWidthPt = 60.0f;
+            back.imageHeightPt = 300.0f;
+            back.imageWrap = RichTextRun::ImageWrap::BehindText;
+            back.imageFloatAlign = RichTextAlign::Default;
+            back.imageOffsetXPt = 100.0f;
+            back.imageOffsetYPt = -100.0f;
+            back.imageRotationDeg = 270.0f;
+            auto tableOf = [&](std::vector<RichTextRun> runs) {
+                RichDocBlock table;
+                table.type = RichBlockType::Table;
+                RichTableCell left, right;
+                left.runs = std::move(runs);
+                RichTextRun name;
+                name.text = "Name";
+                right.runs = {name};
+                RichTableRow row;
+                row.cells = {left, right};
+                table.tableRows = {row};
+                return table;
+            };
+            RichDocBlock after;
+            after.runs = {words};
+            auto afterTop = [&](std::vector<RichTextRun> runs) {
+                card->blocks = {tableOf(std::move(runs)), after};
+                edit->SetDocument(card);
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                return edit->GetCaretRectForTest().y;
+            };
+            const float plain = afterTop({label});
+            const float withPhoto = afterTop({label, photo});
+            TEST("A drawing in a table cell takes its room in the cell: the text after the table moves down by "
+                 + std::to_string(withPhoto - plain), withPhoto - plain > 85.0f && withPhoto - plain < 140.0f);
+            TEST("...standing in the line, not floating", edit->GetFloatRectForTest(0).width == 0.0f);
+            const float withBack = afterTop({back, label});
+            const Rect2Df backRect = edit->GetFloatRectForTest(0);
+            TEST("A picture behind the text floats from its cell and takes no room: " + std::to_string(withBack - plain),
+                 std::abs(withBack - plain) < 1.0f && backRect.width > 0.0f);
+            // 60 x 300 pt, its box as before the turn: 100 pt right of the
+            // cell's text, 100 pt above its line.
+            TEST("...its box where the offsets put it: " + std::to_string(backRect.x) + ", " + std::to_string(backRect.y)
+                 + " " + std::to_string(backRect.width) + " x " + std::to_string(backRect.height),
+                 backRect.height > backRect.width * 4.5f && backRect.x > backRect.width
+                 && backRect.y < plain - backRect.width);
+
+            // A picture in a line makes its line as tall as it is, where
+            // the document's lines keep their fonts' gap too.
+            RichTextRun tall;
+            tall.text = RichTextRun::kObjectReplacement;
+            tall.mediaIndex = media;
+            tall.imageWidthPt = 40.0f;
+            tall.imageHeightPt = 120.0f;
+            RichDocBlock pictured;
+            pictured.runs = {words, tall};
+            RichDocBlock wordsOnly;
+            wordsOnly.runs = {words};
+            auto secondTop = [&](const RichDocBlock& first) {
+                card->blocks = {first, after};
+                card->fontLineGap = true;
+                edit->SetDocument(card);
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                return edit->GetCaretRectForTest().y;
+            };
+            const float lineOnly = secondTop(wordsOnly);
+            const float lineWithPicture = secondTop(pictured);
+            TEST("A picture in a line makes the line as tall as it is: the next paragraph " + std::to_string(lineWithPicture - lineOnly)
+                 + " lower", lineWithPicture - lineOnly > 100.0f);
+
+            // Turned a quarter in the line, the line is as tall as the
+            // picture is wide.
+            RichTextRun wide = tall;
+            wide.imageWidthPt = 120.0f;
+            wide.imageHeightPt = 20.0f;
+            RichDocBlock lying, standing;
+            lying.runs = {words, wide};
+            wide.imageRotationDeg = 90.0f;
+            standing.runs = {words, wide};
+            const float lyingTop = secondTop(lying), standingTop = secondTop(standing);
+            TEST("A picture turned a quarter in its line stands tall: the next paragraph "
+                 + std::to_string(standingTop - lyingTop) + " lower", standingTop - lyingTop > 100.0f);
+
+            // A drawing set in the line of a body paragraph (wrap Inline)
+            // takes its room there and is no float.
+            RichTextRun inLine = drawing(1, 120.0f, 90.0f);
+            inLine.imageWrap = RichTextRun::ImageWrap::Inline;
+            RichDocBlock withDrawing;
+            withDrawing.runs = {words, inLine};
+            const float drawingTop = secondTop(withDrawing);
+            TEST("A drawing in the line of a paragraph takes its room: the next paragraph "
+                 + std::to_string(drawingTop - lineOnly) + " lower", drawingTop - lineOnly > 85.0f
+                 && edit->GetFloatRectForTest(0).width == 0.0f);
+
+            // A table nested in a table cell (a frame of its own standing
+            // in the cell's line) takes its rows' room.
+            RichTextFrame inner;
+            inner.nestedTable = true;
+            {
+                RichDocBlock innerTable;
+                innerTable.type = RichBlockType::Table;
+                RichTextRun innerWords;
+                innerWords.text = "inner";
+                for (int r = 0; r < 3; r++) {
+                    RichTableCell innerCell;
+                    innerCell.runs = {innerWords};
+                    RichTableRow innerRow;
+                    innerRow.cells = {innerCell, innerCell};
+                    innerTable.tableRows.push_back(innerRow);
+                }
+                inner.blocks = {innerTable};
+            }
+            card->frames.push_back(inner);
+            RichTextRun nestedRun;
+            nestedRun.text = RichTextRun::kObjectReplacement;
+            nestedRun.frameIndex = static_cast<int>(card->frames.size()) - 1;
+            nestedRun.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            nestedRun.lineBreakBefore = true;
+            const float plainTable = afterTop({label});
+            const float nestedTable = afterTop({label, nestedRun});
+            TEST("A table nested in a cell takes its rows' room: the text after " + std::to_string(nestedTable - plainTable)
+                 + " lower", nestedTable - plainTable > 40.0f);
+            TEST("...and its words are part of the plain text", card->ToPlainText().find("inner") != std::string::npos);
+
+            // It is edited in place: opened like a text frame, typed into,
+            // and the cell around it grows with it.
+            {
+                const int nestedIndex = nestedRun.frameIndex;
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                const float afterBefore = edit->GetCaretRectForTest().y;
+                TEST("A table nested in a cell opens for editing", edit->EditFrame(nestedIndex) && edit->IsEditingFrame());
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(0, 0, 0, 0));
+                window->UpdateAndRender();
+                const Rect2Df inCell = edit->GetCaretRectForTest();
+                TEST("...its caret stands in the nested table, under the outer cell's first line: y "
+                     + std::to_string(inCell.y) + " of " + std::to_string(plainTable) + " .. " + std::to_string(afterBefore),
+                     inCell.y > plainTable - 60.0f && inCell.y < afterBefore);
+                edit->InsertText("typed ");
+                // Three more lines in its first cell.
+                edit->InsertText("one\ntwo\nthree\n");
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->FinishHeaderFooterEditing();
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                const auto& frames = edit->GetEditor().GetDocument()->frames;
+                const std::string cellText = nestedIndex < static_cast<int>(frames.size()) && !frames[static_cast<size_t>(nestedIndex)].blocks.empty()
+                    && !frames[static_cast<size_t>(nestedIndex)].blocks[0].tableRows.empty()
+                    ? UCRichDocument::ConcatenateRunText(frames[static_cast<size_t>(nestedIndex)].blocks[0].tableRows[0].cells[0].runs)
+                    : std::string();
+                TEST("...what is typed is in the nested table's cell: \"" + cellText + "\"", cellText.rfind("typed one", 0) == 0);
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                const float afterAfter = edit->GetCaretRectForTest().y;
+                TEST("...and the outer table grew with it: the text after " + std::to_string(afterAfter - afterBefore)
+                     + " lower", afterAfter - afterBefore > 20.0f);
+            }
+
+            // Columns that give way to their content: a long word in a
+            // narrow column is not broken, the column takes the room from
+            // its neighbour.
+            {
+                RichTextRun longWord;
+                longWord.text = "christian@bellowscollege.example";
+                RichDocBlock table = tableOf({longWord});
+                table.tableColumnWidths = {60.0f, 400.0f};
+                table.tableWidthPt = 460.0f;
+                auto top = [&](bool autoFit, bool slashBreaks, const std::string& text) {
+                    table.tableAutoFit = autoFit;
+                    table.tableRows[0].cells[0].runs[0].text = text;
+                    card->breakAfterSlash = slashBreaks;
+                    card->blocks = {table, after};
+                    edit->SetDocument(card);
+                    window->UpdateAndRender();
+                    window->UpdateAndRender();
+                    edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                    window->UpdateAndRender();
+                    return edit->GetCaretRectForTest().y;
+                };
+                const float fixedTop = top(false, true, longWord.text), fittedTop = top(true, true, longWord.text);
+                TEST("A column gives way to a word longer than it: the row is " + std::to_string(fixedTop - fittedTop)
+                     + " lower with the widths fixed", fixedTop - fittedTop > 10.0f);
+                // "aaaa bbbb/cccc" in a column that holds ten letters: broken
+                // after the slash, "bbbb/" stays on the first line; kept
+                // whole (Word's way), "bbbb/cccc" starts the second.
+                // (At some width between five letters and fourteen.)
+                auto wordTop = [&](bool slashBreaks) {
+                    top(false, slashBreaks, "aaaa bbbb/cccc");
+                    edit->GetEditor().SetCaret(RichDocPosition(0, 0, 0, 6));
+                    window->UpdateAndRender();
+                    return edit->GetCaretRectForTest().y;
+                };
+                float lower = 0.0f, atWidth = 0.0f;
+                for (float width = 40.0f; width <= 130.0f && lower <= 8.0f; width += 3.0f) {
+                    table.tableColumnWidths = {width, 460.0f - width};
+                    lower = wordTop(false) - wordTop(true);
+                    atWidth = width;
+                }
+                TEST("A word with a slash is kept whole where the document's program does not break there: \"bbbb/cccc\" "
+                     + std::to_string(lower) + " lower in a " + std::to_string(atWidth) + " pt column", lower > 8.0f);
+                card->breakAfterSlash = true;
+            }
+
+            // A cell's lines of a set height: at least 30 pt each.
+            {
+                RichDocBlock table = tableOf({label});
+                RichTextRun second = label;
+                second.lineBreakBefore = true;
+                table.tableRows[0].cells[0].runs = {label, second, second};
+                auto top = [&](float lineHeight) {
+                    table.tableRows[0].cells[0].lineHeightPt = lineHeight;
+                    table.tableRows[0].cells[0].lineHeightAtLeast = true;
+                    card->blocks = {table, after};
+                    edit->SetDocument(card);
+                    window->UpdateAndRender();
+                    window->UpdateAndRender();
+                    edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                    window->UpdateAndRender();
+                    return edit->GetCaretRectForTest().y;
+                };
+                const float natural = top(0.0f), spaced = top(30.0f);
+                TEST("A cell's lines are at least as tall as it says: three lines " + std::to_string(spaced - natural)
+                     + " taller", spaced - natural > 30.0f && spaced - natural < 90.0f);
+                // "Exactly 30 pt" holds for lines without words too, in a
+                // font of any size: a 1 pt paragraph between two others, a
+                // cell of nothing else, a paragraph of the body.
+                {
+                    RichTextRun hair;
+                    hair.fontSizePt = 1.0f;
+                    hair.lineBreakBefore = true;
+                    RichDocBlock exact = table;
+                    exact.tableRows[0].cells[0].runs = {label, hair, second};
+                    exact.tableRows[0].cells[0].lineHeightAtLeast = false;
+                    auto exactTop = [&](float lineHeight, std::vector<RichTextRun> runs) {
+                        exact.tableRows[0].cells[0].runs = std::move(runs);
+                        exact.tableRows[0].cells[0].lineHeightPt = lineHeight;
+                        card->blocks = {exact, after};
+                        edit->SetDocument(card);
+                        window->UpdateAndRender();
+                        window->UpdateAndRender();
+                        edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                        window->UpdateAndRender();
+                        return edit->GetCaretRectForTest().y;
+                    };
+                    const float three = exactTop(30.0f, {label, hair, second}), two = exactTop(30.0f, {label, second});
+                    TEST("An empty line of a 1 pt font is a line of the cell's exact height: " + std::to_string(three - two)
+                         + " for it", std::abs(three - two - 40.0f) < 3.0f);
+                    RichTextRun only;
+                    only.fontSizePt = 1.0f;
+                    const float emptyCell = exactTop(30.0f, {only}), emptyNatural = exactTop(0.0f, {only});
+                    TEST("...and so is a cell of nothing else: " + std::to_string(emptyCell - emptyNatural) + " taller",
+                         emptyCell - emptyNatural > 15.0f);
+                    RichDocBlock gap;
+                    gap.paragraphFontSizePt = 1.0f;
+                    auto bodyTop = [&](float lineHeight) {
+                        gap.lineHeightPt = lineHeight;
+                        card->blocks = {gap, after};
+                        edit->SetDocument(card);
+                        window->UpdateAndRender();
+                        window->UpdateAndRender();
+                        edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                        window->UpdateAndRender();
+                        return edit->GetCaretRectForTest().y;
+                    };
+                    TEST("...and a paragraph of the body without words: " + std::to_string(bodyTop(30.0f) - bodyTop(0.0f))
+                         + " taller", bodyTop(30.0f) - bodyTop(0.0f) > 25.0f);
+                }
+                // ...and lines of their own multiple (a heading at 70%).
+                for (RichTextRun& run : table.tableRows[0].cells[0].runs) run.lineSpacing = 0.7f;
+                const float tight = top(0.0f);
+                TEST("A cell's lines at 70% of their font's stand closer: three lines " + std::to_string(natural - tight)
+                     + " lower", natural - tight > 6.0f);
+            }
+
+            // A column break: the paragraph starts the section's next
+            // column, at the height the first began at.
+            {
+                auto columns = std::make_shared<UCRichDocument>();
+                columns->firstSection.columns = 2;
+                RichDocBlock one, two;
+                one.runs = {words};
+                two.runs = {words};
+                two.columnBreakBefore = true;
+                columns->blocks = {one, two};
+                edit->SetDocument(columns);
+                edit->SetPageView(true);
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(0, 0));
+                window->UpdateAndRender();
+                const Rect2Df first = edit->GetCaretRectForTest();
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                const Rect2Df second = edit->GetCaretRectForTest();
+                TEST("A column break starts the next column: " + std::to_string(second.x - first.x) + " right, "
+                     + std::to_string(second.y - first.y) + " down", second.x - first.x > 100.0f
+                     && std::abs(second.y - first.y) < 2.0f);
+                edit->SetPageView(false);
+            }
+
+            // On pages: a heading in its style's own size, the first
+            // paragraph's space above, a hanging first line left of the
+            // column, and a picture that does not fit the rest of its page.
+            {
+                auto paged = std::make_shared<UCRichDocument>();
+                const std::vector<uint8_t> bytes(kDotPng.begin(), kDotPng.end());
+                const int dot = paged->AddMedia("tall.png", "image/png", bytes);
+                RichDocBlock heading, body;
+                heading.type = RichBlockType::Heading;
+                heading.headingLevel = 1;
+                heading.runs = {words};
+                body.runs = {words};
+                auto bodyTop = [&]() {
+                    edit->SetDocument(paged);
+                    edit->SetPageView(true);
+                    window->UpdateAndRender();
+                    window->UpdateAndRender();
+                    edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                    window->UpdateAndRender();
+                    return edit->GetCaretRectForTest();
+                };
+                heading.paragraphFontSizePt = 10.0f;
+                paged->blocks = {heading, body};
+                const Rect2Df smallTop = bodyTop();
+                heading.paragraphFontSizePt = 40.0f;
+                paged->blocks = {heading, body};
+                const Rect2Df large = bodyTop();
+                TEST("A heading is set in the size its document gives it: the text after a 40 pt one "
+                     + std::to_string(large.y - smallTop.y) + " lower than after a 10 pt one", large.y - smallTop.y > 30.0f);
+                heading.spaceBeforePt = 30.0f;
+                paged->blocks = {heading, body};
+                const Rect2Df spaced = bodyTop();
+                TEST("The document's first paragraph keeps its space above: " + std::to_string(spaced.y - large.y),
+                     std::abs(spaced.y - large.y - 40.0f) < 2.0f);
+                // The body's first line 18 pt left of its others, with no indent: left of the column.
+                RichDocBlock hanging = body;
+                hanging.firstLineIndentPt = -18.0f;
+                paged->blocks = {heading, hanging};
+                const Rect2Df hung = bodyTop();
+                TEST("A hanging first line starts left of the column where the paragraph has no indent: "
+                     + std::to_string(spaced.x - hung.x) + " left", std::abs(spaced.x - hung.x - 24.0f) < 2.0f);
+                // Forty lines of text, then a paragraph anchoring a 300 pt
+                // picture text flows round: it goes to the next page whole.
+                RichTextRun tallPicture;
+                tallPicture.text = RichTextRun::kObjectReplacement;
+                tallPicture.mediaIndex = dot;
+                tallPicture.imageWidthPt = 200.0f;
+                tallPicture.imageHeightPt = 300.0f;
+                tallPicture.imageWrap = RichTextRun::ImageWrap::Square;
+                tallPicture.imageFloatAlign = RichTextAlign::Center;
+                RichDocBlock anchor;
+                anchor.runs = {tallPicture, words};
+                auto pictureTop = [&](int linesBefore) {
+                    std::vector<RichDocBlock> blocks;
+                    for (int i = 0; i < linesBefore; i++) blocks.push_back(body);
+                    blocks.push_back(anchor);
+                    paged->blocks = blocks;
+                    edit->SetDocument(paged);
+                    edit->SetPageView(true);
+                    window->UpdateAndRender();
+                    window->UpdateAndRender();
+                    return edit->GetFloatRectForTest(0).y;
+                };
+                // Each line before it moves it one line down - until it no
+                // longer fits, when it is a page's margins and more further on.
+                const float five = pictureTop(5), six = pictureTop(6), forty = pictureTop(40);
+                const float line = six - five;
+                TEST("A picture too tall for the rest of its page goes to the next page with its paragraph: "
+                     + std::to_string(forty - five) + " down for 35 lines of " + std::to_string(line),
+                     line > 5.0f && forty - five > 35.0f * line + 80.0f);
+                edit->SetPageView(false);
+            }
             edit->SetDocument(document);
             window->UpdateAndRender();
         }
@@ -1586,6 +2041,204 @@ int main() {
         TEST("A click outside it goes back to the body", !edit->IsEditingFrame());
         TEST("...and the frame holds the new words",
              UCRichDocument::ConcatenateRunText(edit->GetDocument()->frames[0].blocks[0].runs) == "Sender Company");
+    }
+
+    // ===== A SECTION'S OWN HEADER =====
+    // Pages of a section with a header of its own show that one, start their
+    // text below it, and a double-click edits it - not the document's.
+    std::cerr << "\n--- A section's own header ---" << std::endl;
+    {
+        auto paragraphOf = [](const std::string& text) {
+            RichDocBlock block;
+            RichTextRun run;
+            run.text = text;
+            block.runs = {run};
+            return block;
+        };
+        auto document = std::make_shared<UCRichDocument>();
+        document->page.widthPt = 595.0f;
+        document->page.heightPt = 842.0f;
+        document->page.marginTopPt = document->page.marginBottomPt = 72.0f;
+        document->page.marginLeftPt = document->page.marginRightPt = 72.0f;
+        document->page.headerTopPt = document->page.footerBottomPt = 36.0f;
+        document->pageFurniture.header = {paragraphOf("Document header")};
+        RichSectionFurniture own;
+        own.pages.header = {paragraphOf("Chapter header")};
+        document->sectionFurniture = {own};
+        RichDocBlock chapter = paragraphOf("Chapter words");
+        chapter.sectionStart = true;
+        chapter.section.newPage = true;
+        chapter.section.furniture = 0;
+        chapter.section.marginTopPt = 144.0f;
+        document->blocks = {paragraphOf("Cover words"), chapter};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("The section starts a page of its own: " + std::to_string(edit->GetPageCount()) + " pages",
+             edit->GetPageCount() == 2);
+        editor.SetCaret({0, 0});
+        window->UpdateAndRender();
+        const float coverY = edit->GetCaretRectForTest().y + edit->GetScrollOffset();
+        editor.SetCaret({1, 0});
+        window->UpdateAndRender();
+        const float chapterY = edit->GetCaretRectForTest().y + edit->GetScrollOffset();
+        // A page lower, and a further inch for the section's own top margin
+        // (144 pt against the document's 72 pt: 96 px).
+        const float pageStep = 842.0f * 96.0f / 72.0f;
+        TEST("Its text starts below its own top margin: " + std::to_string(chapterY - coverY - pageStep)
+             + " px lower on its page than the cover's on its",
+             chapterY - coverY - pageStep > 80.0f && chapterY - coverY - pageStep < 140.0f);
+        TEST("Its header opens for editing", edit->EditHeader(1) && edit->IsEditingHeaderOrFooter());
+        window->UpdateAndRender();
+        edit->InsertText(" edited");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        const UCRichDocument& saved = *edit->GetDocument();
+        TEST("The section's header took the edit",
+             !saved.sectionFurniture.empty() && !saved.sectionFurniture[0].pages.header.empty()
+             && UCRichDocument::ConcatenateRunText(saved.sectionFurniture[0].pages.header[0].runs) == "Chapter header edited");
+        TEST("...and the document's is as it was",
+             !saved.pageFurniture.header.empty()
+             && UCRichDocument::ConcatenateRunText(saved.pageFurniture.header[0].runs) == "Document header");
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+    }
+
+    // ===== A PICTURE IN A FRAME, WHILE ITS WORDS ARE EDITED =====
+    // A letterhead's logo is a picture anchored in the sender frame. Nothing
+    // floats inside a frame: the picture is in the line when the frame is
+    // drawn, and has to stay there while the frame's words are edited (it
+    // vanished, and the words moved up into its place).
+    std::cerr << "\n--- A picture in an edited frame ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        document->media.push_back({"dot.png", "image/png", kDotPng});
+        RichTextFrame frame;
+        RichTextRun logo;
+        logo.text = RichTextRun::kObjectReplacement;
+        logo.mediaIndex = 0;
+        logo.imageWidthPt = 90.0f;
+        logo.imageHeightPt = 90.0f;
+        logo.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+        RichDocBlock picture;
+        picture.runs = {logo};
+        RichTextRun line;
+        line.text = "Sender";
+        RichDocBlock words;
+        words.runs = {line};
+        frame.blocks = {picture, words};
+        document->frames = {frame};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 150.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun body;
+        body.text = "Body text beside the frame.";
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor, body};
+        document->blocks = {paragraph};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df on = edit->GetFloatElementRectForTest(0);
+        TEST("A frame is as tall as the picture in it and its words: " + std::to_string(on.height),
+             on.height > 110.0f);
+        TEST("The frame opens for editing", edit->EditFrame(0) && edit->IsEditingFrame());
+        window->UpdateAndRender();
+        editor.SetCaret(editor.DocumentEnd());
+        window->UpdateAndRender();
+        const Rect2Df caret = edit->GetCaretRectForTest();
+        TEST("The words stay below the picture while they are edited: caret at " + std::to_string(caret.y)
+             + ", frame from " + std::to_string(on.y),
+             caret.y > on.y + 100.0f && caret.y < on.y + on.height);
+        const float px = on.x + 40.0f, py = on.y + 50.0f;
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, px, py));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, px, py));
+        window->UpdateAndRender();
+        TEST("...and the picture is there to click on", edit->IsEditingFrame() && edit->HasSelectedImage());
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("The frame keeps its picture and its words", edit->GetDocument()->frames[0].blocks.size() == 2
+             && edit->GetDocument()->frames[0].blocks[0].runs.front().mediaIndex == 0);
+    }
+
+    // ===== A FRAME IN A FRAME, WHILE THE OUTER ONE IS EDITED =====
+    // A frame anchored in another has its words drawn before the paragraph
+    // that anchors it. They have to be there while the outer frame's words
+    // are edited too (its placeholder took no room, and they were hidden).
+    std::cerr << "\n--- A frame in an edited frame ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        auto paragraphOf = [](const std::string& text) {
+            RichTextRun run;
+            run.text = text;
+            RichDocBlock block;
+            block.runs = {run};
+            return block;
+        };
+        RichTextFrame inner;
+        inner.blocks = {paragraphOf("Inner one"), paragraphOf("Inner two")};
+        // ...and it is a drawing, one of whose shapes holds words of its own.
+        RichTextFrame memberWords;
+        memberWords.shapeText = true;
+        memberWords.blocks = {paragraphOf("Member words")};
+        RichShape member;
+        member.widthPt = 80.0f;
+        member.heightPt = 20.0f;
+        member.textFrame = 2;
+        inner.shapes = {member};
+        RichTextRun innerAnchor;
+        innerAnchor.text = RichTextRun::kObjectReplacement;
+        innerAnchor.frameIndex = 1;
+        innerAnchor.imageWidthPt = 80.0f;
+        innerAnchor.imageWrap = RichTextRun::ImageWrap::Square;
+        RichDocBlock sender = paragraphOf("Sender");
+        sender.runs.insert(sender.runs.begin(), innerAnchor);
+        RichTextFrame outer;
+        outer.blocks = {paragraphOf("Above"), sender};
+        document->frames = {outer, inner, memberWords};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 150.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Right;
+        RichDocBlock paragraph = paragraphOf("Body text beside the frame.");
+        paragraph.runs.insert(paragraph.runs.begin(), anchor);
+        document->blocks = {paragraph};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df on = edit->GetFloatElementRectForTest(0);
+        TEST("The outer frame opens for editing", edit->EditFrame(0) && edit->IsEditingFrame());
+        window->UpdateAndRender();
+        editor.SetCaret({0, 0});
+        window->UpdateAndRender();
+        const Rect2Df first = edit->GetCaretRectForTest();
+        editor.SetCaret(editor.DocumentEnd());
+        window->UpdateAndRender();
+        const Rect2Df last = edit->GetCaretRectForTest();
+        // "Above", the inner frame's two lines, its shape's line, then "Sender".
+        TEST("The inner frame's words and its shape's keep their room before the paragraph anchoring it: "
+             + std::to_string(last.y - first.y) + " down, a line is " + std::to_string(first.height),
+             first.height > 0.0f && last.y - first.y > 3.5f * first.height && last.y < on.y + on.height);
+        editor.InsertText(" Company");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        const UCRichDocument& saved = *edit->GetDocument();
+        TEST("The outer frame keeps its anchor and the new words", saved.frames[0].blocks.size() == 2
+             && saved.frames[0].blocks[1].runs.front().frameIndex == 1
+             && UCRichDocument::ConcatenateRunText(saved.frames[0].blocks[1].runs).find("Sender Company")
+                != std::string::npos);
+        TEST("...and the inner frame its own", saved.frames[1].blocks.size() == 2);
     }
 
     // ===== FLOATS IN A HEADER, WHILE IT IS EDITED =====
@@ -2178,6 +2831,22 @@ int main() {
         TEST("A family that is not installed is reported",
              report.missingFamilies.size() == 1 && report.missingFamilies[0] == "No Such Family 12345");
         TEST("...and no script, the text has fonts", report.missingScripts.empty());
+
+        // A family an installed font stands in for by name is not missing: a
+        // letter written on Windows names Helvetica, which is Arial there.
+        if (!FontFamilySubstitute("Helvetica").empty()) {
+            auto aliased = std::make_shared<UCRichDocument>(*document);
+            aliased->blocks[0].runs[0].fontFamily = "helvetica";
+            fontEdit->SetDocument(aliased);
+            window->UpdateAndRender();
+            const UltraCanvasRichTextEdit::FontReport& both = fontEdit->GetFontReport();
+            TEST("A family with an installed stand-in is not reported",
+                 both.missingFamilies.size() == 1 && both.missingFamilies[0] == "No Such Family 12345");
+            fontEdit->SetDocument(document);
+            window->UpdateAndRender();
+        } else {
+            std::cerr << "SKIP: Helvetica is installed, or nothing stands in for it here" << std::endl;
+        }
         TEST("The notice is shown", fontEdit->IsFontNoticeVisible());
 
         int reported = 0;
@@ -2191,6 +2860,46 @@ int main() {
              !typed.missingScripts.empty() &&
              typed.missingScripts[0].downloadUrl.rfind("https://", 0) == 0);
         TEST("The change was announced", reported == 1);
+
+        // A family named only in a text frame (a letterhead's sender block)
+        // is reported too, and still is while the frame's words are edited.
+        {
+            auto framed = std::make_shared<UCRichDocument>();
+            RichTextRun inFrame;
+            inFrame.text = "Sender";
+            inFrame.fontFamily = "No Such Frame Family 12345";
+            RichDocBlock frameWords;
+            frameWords.runs = {inFrame};
+            RichTextFrame frame;
+            frame.blocks = {frameWords};
+            framed->frames = {frame};
+            RichTextRun anchor;
+            anchor.text = RichTextRun::kObjectReplacement;
+            anchor.frameIndex = 0;
+            anchor.imageWidthPt = 150.0f;
+            anchor.imageWrap = RichTextRun::ImageWrap::Square;
+            RichDocBlock body = block;
+            body.runs.insert(body.runs.begin(), anchor);
+            framed->blocks = {body};
+            fontEdit->SetDocument(framed);
+            window->UpdateAndRender();
+            auto bothMissing = [&]() {
+                const std::vector<std::string>& missing = fontEdit->GetFontReport().missingFamilies;
+                return missing.size() == 2
+                    && std::find(missing.begin(), missing.end(), "No Such Frame Family 12345") != missing.end()
+                    && std::find(missing.begin(), missing.end(), "No Such Family 12345") != missing.end();
+            };
+            TEST("A family named only in a text frame is reported with the body's", bothMissing());
+            window->UpdateAndRender();
+            TEST("The frame opens for editing", fontEdit->EditFrame(0));
+            fontEdit->InsertText("x");
+            window->UpdateAndRender();
+            TEST("...and the report is still the whole document's", bothMissing());
+            fontEdit->FinishHeaderFooterEditing();
+            fontEdit->SetDocument(document);
+            window->UpdateAndRender();
+            reported = 0;
+        }
 
         // A press on the notice is not a press in the text.
         window->UpdateAndRender();
@@ -2209,6 +2918,493 @@ int main() {
         fontEdit->SetDocument(std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("Only Latin.", "")));
         TEST("A document with nothing missing reports nothing", fontEdit->GetFontReport().IsEmpty());
         window->RemoveChild(fontEdit);
+    }
+
+    // ===== A DOCUMENT'S COLOURS ON A DARK PAGE =====
+    // A document states its colours for white paper; on a dark theme's page
+    // they are fitted to it.
+    std::cerr << "\n--- A document's colours on a dark page ---" << std::endl;
+    {
+        const Color page(37, 37, 38), ink(232, 232, 232), paper(255, 255, 255), black(20, 20, 20);
+        auto light = [](const Color& c) { return (std::max({c.r, c.g, c.b}) + std::min({c.r, c.g, c.b})) / 2; };
+        TEST("On a light page a document's colour is its own",
+             AdaptDocumentColorToPage(Color(0, 0, 0), paper, black) == Color(0, 0, 0)
+             && AdaptDocumentColorToPage(Color(230, 230, 230), paper, black) == Color(230, 230, 230));
+        const Color text = AdaptDocumentColorToPage(Color(0, 0, 0), page, ink);
+        TEST("On a dark page black text reads in the view's ink: " + std::to_string(light(text)), std::abs(light(text) - light(ink)) <= 1);
+        const Color white = AdaptDocumentColorToPage(Color(255, 255, 255), page, ink);
+        TEST("...a white fill is the page's: " + std::to_string(light(white)), std::abs(light(white) - light(page)) <= 1);
+        const Color cell = AdaptDocumentColorToPage(Color(230, 230, 230), page, ink);
+        TEST("...a pale grey cell is a dark grey one, a little off the page: " + std::to_string(light(cell)),
+             light(cell) > light(page) + 5 && light(cell) < 90);
+        const Color red = AdaptDocumentColorToPage(Color(192, 0, 0), page, ink);
+        TEST("...a dark red stays red, and lighter", red.r > red.g + 60 && red.r > red.b + 60 && light(red) > light(Color(192, 0, 0)));
+        TEST("...and a colour keeps its alpha", AdaptDocumentColorToPage(Color(0, 0, 0, 0), page, ink).a == 0
+             && AdaptDocumentColorToPage(Color(10, 20, 30, 128), page, ink).a == 128);
+
+        // In the view: a cell's fill and its text keep their contrast.
+        auto darkEdit = std::make_shared<UltraCanvasRichTextEdit>("DarkEdit", 0, 0, 600, 300);
+        window->AddChild(darkEdit);
+        RichTextEditStyle dark = darkEdit->GetStyle();
+        dark.textColor = ink;
+        dark.backgroundColor = dark.pageColor = page;
+        darkEdit->SetStyle(dark);
+        const Color fill = darkEdit->DocumentColorForTest("#E6E6E6"), letters = darkEdit->DocumentColorForTest("#000000");
+        TEST("The view fits a document's fill and text to its dark page: " + std::to_string(light(fill)) + " under "
+             + std::to_string(light(letters)), light(letters) - light(fill) > 120);
+        dark.adaptDocumentColors = false;
+        darkEdit->SetStyle(dark);
+        TEST("...unless told to keep the document's own", darkEdit->DocumentColorForTest("#E6E6E6") == Color(230, 230, 230));
+        TEST("...and a colour it cannot read is the fallback", darkEdit->DocumentColorForTest("nonsense") == Color(1, 1, 1));
+        window->RemoveChild(darkEdit);
+    }
+
+    // ===== A DOCUMENT'S CHART IS DRAWN BY THE CHART ENGINE =====
+    std::cerr << "\n--- A document's chart ---" << std::endl;
+    {
+        RichChart chart;
+        chart.kind = RichChart::Kind::Column;
+        chart.legend = true;
+        chart.categories = {"Row 1", "Row 2"};
+        RichChartSeries first, second;
+        first.name = "Column 1";
+        first.color = "#004586";
+        first.values = {9.1, 2.4};
+        second.name = "Column 2";
+        second.values = {3.2, 8.8};
+        chart.series = {first, second};
+
+        // Each kind is the engine's chart of that kind.
+        auto columns = std::dynamic_pointer_cast<UltraCanvasEngineBarChart>(CreateRichDocumentChart(chart, 400, 200));
+        TEST("Columns are the engine's bar chart, of the file's series", columns && columns->GetSeries().size() == 2
+             && !columns->IsHorizontal() && columns->GetArrangement() == ChartBarArrangement::Grouped
+             && columns->SeriesColor(0) == Color(0x00, 0x45, 0x86, 255));
+        TEST("...a series without a colour takes the office palette's", columns && columns->SeriesColor(1) == Color(0xED, 0x7D, 0x31, 255));
+        RichChart lying = chart;
+        lying.kind = RichChart::Kind::Bar;
+        lying.stacked = true;
+        auto bars = std::dynamic_pointer_cast<UltraCanvasEngineBarChart>(CreateRichDocumentChart(lying, 400, 200));
+        TEST("Stacked bars lie down, one on the other", bars && bars->IsHorizontal()
+             && bars->GetArrangement() == ChartBarArrangement::Stacked);
+        RichChart round = chart;
+        round.kind = RichChart::Kind::Doughnut;
+        auto ring = std::dynamic_pointer_cast<UltraCanvasEnginePieChart>(CreateRichDocumentChart(round, 300, 200));
+        TEST("A doughnut is the engine's pie chart with its hole", ring && ring->GetDonutMode());
+        RichChart lines = chart;
+        lines.kind = RichChart::Kind::Line;
+        TEST("A line chart is the engine's line chart",
+             std::dynamic_pointer_cast<UltraCanvasEngineLineChart>(CreateRichDocumentChart(lines, 300, 200)) != nullptr);
+        RichChart points = chart;
+        points.kind = RichChart::Kind::Scatter;
+        for (RichChartSeries& one : points.series) { one.xValues = {1.0, 10.0}; one.joined = false; one.marked = true; }
+        TEST("A scatter chart of unjoined points is the engine's scatter chart",
+             std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(points, 300, 200)) != nullptr);
+        TEST("A frame without a chart has none to make", CreateRichDocumentChart(RichChart(), 300, 200) == nullptr);
+        // Joined points whose series have different x values: still the
+        // scatter chart, each series a joined group in the order of its points.
+        RichChart paths = chart;
+        paths.kind = RichChart::Kind::Scatter;
+        paths.series[0].xValues = {1.0, 10.0};
+        paths.series[1].xValues = {4.0, 2.0};           // turns back
+        paths.series[0].joined = paths.series[1].joined = true;
+        paths.series[0].marked = true;
+        paths.series[1].marked = false;
+        auto joinedChart = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(paths, 300, 200));
+        TEST("Joined points over different x values are the scatter chart, its groups joined",
+             joinedChart && joinedChart->GetGroups().size() == 2 && joinedChart->GetGroups()[0].joined
+             && joinedChart->GetGroups()[0].showMarkers && joinedChart->GetGroups()[1].joined
+             && !joinedChart->GetGroups()[1].showMarkers);
+        TEST("...and no line is laid out before a paint", joinedChart && joinedChart->GroupLineRuns(0).empty());
+
+        // The other kinds: a radar chart, bubbles, a stock chart.
+        RichChart web = chart;
+        web.kind = RichChart::Kind::Radar;
+        web.categories = {"A", "B", "C"};
+        for (RichChartSeries& one : web.series) one.values = {3.0, 9.1, 5.0};
+        TEST("A radar chart is the engine's radar chart",
+             std::dynamic_pointer_cast<UltraCanvasEngineRadarChart>(CreateRichDocumentChart(web, 300, 200)) != nullptr);
+        web.categories = {"A", "B"};
+        for (RichChartSeries& one : web.series) one.values = {3.0, 9.1};
+        TEST("...which needs three spokes", CreateRichDocumentChart(web, 300, 200) == nullptr);
+        RichChart sized = points;
+        sized.kind = RichChart::Kind::Bubble;
+        for (RichChartSeries& one : sized.series) one.sizes = {4.0, 16.0};
+        auto bubbles = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(sized, 300, 200));
+        TEST("A bubble chart is the engine's scatter chart, its points with sizes", bubbles && bubbles->GetGroups().size() == 2
+             && bubbles->GetGroups()[0].points.size() == 2 && bubbles->GetGroups()[0].points[1].size == 16.0
+             && !bubbles->GetGroups()[0].joined);
+        RichChart prices = chart;
+        prices.kind = RichChart::Kind::Stock;
+        prices.series.resize(3);
+        prices.series[0].values = {15.0, 14.0};      // high
+        prices.series[1].values = {8.0, 11.0};       // low
+        prices.series[2].values = {12.0, 13.0};      // close
+        TEST("A stock chart is the engine's financial chart",
+             std::dynamic_pointer_cast<UltraCanvasEngineFinancialChart>(CreateRichDocumentChart(prices, 300, 200)) != nullptr);
+        prices.series.resize(2);
+        TEST("...which needs a high, a low and a close", CreateRichDocumentChart(prices, 300, 200) == nullptr);
+
+        // A smoothed line goes through its points and stays between them.
+        {
+            const std::vector<Point2Dd> knots = {{10.0, 100.0}, {50.0, 40.0}, {40.0, 10.0}, {120.0, 60.0}};
+            const std::vector<Point2Dd> curve = UltraCanvasEngineScatterChart::SmoothThrough(knots);
+            size_t found = 0;
+            double left = 1e9, right = -1e9, top = 1e9, bottom = -1e9;
+            for (const Point2Dd& p : curve) {
+                for (const Point2Dd& knot : knots) found += std::hypot(p.x - knot.x, p.y - knot.y) < 1e-6 ? 1 : 0;
+                left = std::min(left, p.x); right = std::max(right, p.x);
+                top = std::min(top, p.y); bottom = std::max(bottom, p.y);
+            }
+            TEST("A smooth curve goes through every point: " + std::to_string(curve.size()) + " samples", curve.size() > 30 && found == knots.size());
+            TEST("...without swinging far past them", left > 0.0 && right < 130.0 && top > 0.0 && bottom < 110.0);
+            TEST("...and two points stay a straight line", UltraCanvasEngineScatterChart::SmoothThrough({knots[0], knots[1]}).size() == 2);
+        }
+
+        // In the view: the frame's chart is drawn by an engine chart of the
+        // frame's size, and takes its room in the line.
+        auto chartEdit = std::make_shared<UltraCanvasRichTextEdit>("ChartEdit", 0, 0, 600, 400);
+        window->AddChild(chartEdit);
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame frame;
+        frame.chart = chart;
+        frame.drawingWidthPt = 300.0f;
+        frame.drawingHeightPt = 150.0f;
+        RichShape fallback;                 // the same chart as a drawing: one shape stands for it here
+        fallback.widthPt = 300.0f;
+        fallback.heightPt = 150.0f;
+        frame.shapes.push_back(fallback);
+        document->frames.push_back(frame);
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.frameIndex = 0;
+        run.imageWidthPt = 300.0f;
+        run.imageHeightPt = 150.0f;
+        run.imageWrap = RichTextRun::ImageWrap::Inline;
+        RichDocBlock block, after;
+        block.type = after.type = RichBlockType::Paragraph;
+        block.runs.push_back(run);
+        RichTextRun words;
+        words.text = "After the chart.";
+        after.runs.push_back(words);
+        document->blocks = {block, after};
+        chartEdit->SetDocument(document);
+        TEST("Before a paint no chart is made", chartEdit->GetChartElementForTest(0) == nullptr);
+        window->UpdateAndRender();
+        auto drawn = std::dynamic_pointer_cast<UltraCanvasEngineBarChart>(chartEdit->GetChartElementForTest(0));
+        TEST("The view draws the frame's chart with the chart engine", drawn != nullptr);
+        if (drawn) {
+            TEST("...laid out for the frame's size: " + std::to_string(drawn->GetWidth()) + " x " + std::to_string(drawn->GetHeight()),
+                 drawn->GetWidth() == 400 && drawn->GetHeight() == 200);
+            // Four bars, as tall as their values; the engine's legend names the series.
+            const std::vector<ChartBarSpan> spans = drawn->BarSpans();
+            double tallest = 0.0, shortest = 1e9;
+            for (const ChartBarSpan& span : spans) {
+                tallest = std::max(tallest, span.v1 - span.v0);
+                shortest = std::min(shortest, span.v1 - span.v0);
+            }
+            TEST("...four bars as tall as their values", spans.size() == 4 && tallest > 0.0
+                 && std::abs(shortest / tallest - 2.4 / 9.1) < 0.001);
+            TEST("...and the engine's legend", drawn->GetLegend().GetEntries().size() == 2);
+            TEST("...not animated, on the page's own ground", !drawn->IsEngineAnimating() && drawn->GetTheme().backgroundColor.a == 0);
+        }
+        window->UpdateAndRender();
+        TEST("A second paint draws with the same chart", chartEdit->GetChartElementForTest(0) == drawn && drawn != nullptr);
+        chartEdit->SetDocument(document);
+        TEST("A document set anew makes its charts anew", chartEdit->GetChartElementForTest(0) == nullptr);
+
+        // Painted, a joined scatter group's line runs through its points in
+        // the order given - also where x turns back.
+        document->frames[0].chart = paths;
+        chartEdit->SetDocument(document);
+        window->UpdateAndRender();
+        auto painted = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(chartEdit->GetChartElementForTest(0));
+        TEST("The view draws a joined scatter chart with the engine's scatter chart", painted != nullptr);
+        if (painted) {
+            const std::vector<ChartLineRun> forward = painted->GroupLineRuns(0), back = painted->GroupLineRuns(1);
+            TEST("...one unbroken line through each group's two points", forward.size() == 1 && back.size() == 1
+                 && forward[0].knots.size() == 2 && back[0].knots.size() == 2);
+            if (forward.size() == 1 && back.size() == 1 && forward[0].knots.size() == 2 && back[0].knots.size() == 2) {
+                TEST("...left to right where x rises, right to left where it turns back",
+                     forward[0].knots[1].x > forward[0].knots[0].x + 20.0 && back[0].knots[1].x < back[0].knots[0].x - 5.0);
+                // (9.1 at x 1 then 2.4 at x 10: the first group's line falls.)
+                TEST("...and through the values' heights", forward[0].knots[1].y > forward[0].knots[0].y + 20.0);
+            }
+        }
+        // Smoothed, a series of three points is drawn as a curve.
+        RichChart curved = paths;
+        curved.series.resize(1);
+        curved.series[0].values = {2.0, 8.0, 3.0};
+        curved.series[0].xValues = {1.0, 5.0, 9.0};
+        curved.series[0].smooth = true;
+        document->frames[0].chart = curved;
+        chartEdit->SetDocument(document);
+        window->UpdateAndRender();
+        auto smoothed = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(chartEdit->GetChartElementForTest(0));
+        TEST("A smoothed scatter series is drawn as a curve through its points", smoothed && smoothed->GroupLineRuns(0).size() == 1
+             && smoothed->GroupLineRuns(0)[0].knots.size() == 3 && smoothed->GroupLineRuns(0)[0].points.size() > 20);
+        window->RemoveChild(chartEdit);
+    }
+
+    // ===== A WORD DOCUMENT'S LINES AND PICTURES =====
+    // Documents written here as .docx and read as UltraOffice reads them.
+    // Lines are as tall as their font's own height - ascent, descent and the
+    // line gap its designer gave it - times the paragraph's line spacing, and
+    // the last line of a paragraph as tall as the others: a one-line paragraph
+    // in a font with a tall line (Palatino: 1.2 em) was laid out 1.0 em tall,
+    // and a page of them ran a sixth short. A picture fills the frame the
+    // document gives it, whatever its own proportions.
+    {
+        std::cerr << "\n--- A Word document's lines and pictures ---" << std::endl;
+        // An 8 x 8 red PNG: square, set in frames four times as wide as high.
+        static const std::vector<uint8_t> kRedPng = {
+            0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+            0x00,0x00,0x00,0x08,0x00,0x00,0x00,0x08,0x08,0x02,0x00,0x00,0x00,0x4B,0x6D,0x29,
+            0xDC,0x00,0x00,0x00,0x11,0x49,0x44,0x41,0x54,0x78,0xDA,0x63,0xF8,0xCF,0xC0,0x80,
+            0x15,0x31,0x0C,0x2D,0x09,0x00,0x28,0xFF,0x3F,0xC1,0xCE,0x77,0xC8,0x4F,0x00,0x00,
+            0x00,0x00,0x49,0x45,0x4E,0x44,0xAE,0x42,0x60,0x82};
+        const std::string ns =
+            "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
+            "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+            "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+            "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"";
+        // A package of `body` (and `header`, the default header's paragraphs),
+        // read back as a document.
+        auto readDocx = [&](const std::string& name, const std::string& body, const std::string& header) {
+            auto document = std::make_shared<UCRichDocument>();
+            const std::string path = PathToUtf8(std::filesystem::temp_directory_path() / name);
+            const std::string rels = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships "
+                "xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "image\" Target=\"media/image1.png\"/>";
+            UCZipPackageWriter zip;
+            bool written = zip.Open(path);
+            written = written && zip.AddEntry("[Content_Types].xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types "
+                "xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/"
+                "vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
+                "<Override PartName=\"/word/header1.xml\" ContentType=\"application/"
+                "vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/></Types>");
+            written = written && zip.AddEntry("_rels/.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships "
+                "xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "officeDocument\" Target=\"word/document.xml\"/></Relationships>");
+            written = written && zip.AddEntry("word/_rels/document.xml.rels", rels
+                + "<Relationship Id=\"rId9\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                  "header\" Target=\"header1.xml\"/></Relationships>");
+            written = written && zip.AddEntry("word/_rels/header1.xml.rels", rels + "</Relationships>");
+            written = written && zip.AddEntry("word/document.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:document " + ns + "><w:body>" + body
+                + "<w:sectPr>" + (header.empty() ? "" : "<w:headerReference w:type=\"default\" r:id=\"rId9\"/>")
+                + "<w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1417\" w:bottom=\"1134\" "
+                  "w:left=\"1417\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/></w:sectPr></w:body></w:document>");
+            written = written && zip.AddEntry("word/header1.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:hdr " + ns + ">" + header + "</w:hdr>");
+            written = written && zip.AddEntry("word/media/image1.png", kRedPng.data(), kRedPng.size());
+            written = written && zip.Finalize();
+            std::string error;
+            const bool read = written && UCWordDocumentIO::LoadDocx(path, *document, error);
+            std::error_code ignored;
+            std::filesystem::remove(PathFromUtf8(path), ignored);
+            return read ? document : nullptr;
+        };
+
+        // --- Lines ---
+        // Measured in a font with a tall line where the machine has one (P052,
+        // the Palatino of the URW fonts: 1.2 em, a fifth of it line gap), and
+        // again in DejaVu Serif where it is installed: its line, 1.164 em, is
+        // 18.625 px at 12 pt, so a measure cut to whole pixels anywhere comes
+        // out short of the layout's own (18 against 18.625: a two-line
+        // paragraph 1.25 px off "two lines") where P052's 19.2 hid it. Each
+        // font with hinted metrics off (the default: fractional ascents and
+        // descents) and on (whole pixels). The multiples hold for any font.
+        std::vector<std::string> lineFonts;
+        for (const char* candidate : {"P052", "Liberation Serif", "DejaVu Serif"}) {
+            if (IsFontFamilyAvailable(candidate)) { lineFonts.push_back(candidate); break; }
+        }
+        if (IsFontFamilyAvailable("DejaVu Serif")
+            && std::find(lineFonts.begin(), lineFonts.end(), "DejaVu Serif") == lineFonts.end()) {
+            lineFonts.push_back("DejaVu Serif");
+        }
+        if (lineFonts.empty()) lineFonts.push_back(edit->GetStyle().baseFont.fontFamily);
+        const cairo_hint_metrics_t hintMetricsBefore = RenderContextCairo::GetTextHintMetrics();
+        for (const std::string& font : lineFonts) {
+            for (const cairo_hint_metrics_t hintMetrics : {CAIRO_HINT_METRICS_OFF, CAIRO_HINT_METRICS_ON}) {
+                RenderContextCairo::SetTextHintMetrics(hintMetrics);
+                const bool hinted = hintMetrics == CAIRO_HINT_METRICS_ON;
+                const std::string in = std::string(" [") + font + ", hint metrics " + (hinted ? "on" : "off") + "]";
+                std::cerr << "  (measured in " << font << ", hint metrics " << (hinted ? "on" : "off") << ")"
+                          << std::endl;
+                // A paragraph at Word's line spacing `line` (240ths of single,
+                // "auto"), its text and its mark in `font` at `halfPoints`;
+                // "|" breaks the line.
+                auto paragraph = [&](const std::string& text, int line, int halfPoints) {
+                    const std::string rPr = "<w:rPr><w:rFonts w:ascii=\"" + font + "\" w:hAnsi=\"" + font
+                                          + "\"/><w:sz w:val=\"" + std::to_string(halfPoints) + "\"/></w:rPr>";
+                    std::string xml = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\""
+                                    + std::to_string(line) + "\" w:lineRule=\"auto\"/>" + rPr + "</w:pPr>";
+                    size_t from = 0;
+                    while (from <= text.size() && !text.empty()) {
+                        const size_t bar = text.find('|', from);
+                        const std::string piece =
+                            text.substr(from, bar == std::string::npos ? std::string::npos : bar - from);
+                        xml += "<w:r>" + rPr + (from > 0 ? "<w:br/>" : "") + "<w:t>" + piece + "</w:t></w:r>";
+                        if (bar == std::string::npos) break;
+                        from = bar + 1;
+                    }
+                    return xml + "</w:p>";
+                };
+                auto lines = readDocx("rte-line-heights.docx",
+                                      paragraph("One", 276, 24) + paragraph("Two", 276, 24)
+                                      + paragraph("Three", 240, 24) + paragraph("Four|Five|Seven", 240, 24)
+                                      + paragraph("", 240, 48) + paragraph("Big", 240, 48)
+                                      + paragraph("Six", 240, 24) + paragraph("End", 240, 24), "");
+                TEST("A synthetic .docx is read" + in, lines && lines->blocks.size() == 8);
+                if (!lines || lines->blocks.size() != 8) continue;
+                TEST("...its empty paragraph keeps its mark's size and font" + in,
+                     lines->blocks[4].runs.empty() && lines->blocks[4].paragraphFontSizePt == 24.0f
+                     && lines->blocks[4].paragraphFontFamily == font);
+                auto lineEdit = std::make_shared<UltraCanvasRichTextEdit>("Lines", 0, 0, 780, 560);
+                window->AddChild(lineEdit);
+                lineEdit->SetDocument(lines);
+                window->UpdateAndRender();
+                UCRichDocumentEditor& lineEditor = lineEdit->GetEditor();
+                auto top = [&](int block, int offset) {
+                    lineEditor.SetCaret(RichDocPosition(block, offset));
+                    window->UpdateAndRender();
+                    return lineEdit->GetCaretRectForTest().y;
+                };
+                auto at = [&](int block, const char* word) {
+                    return top(block, static_cast<int>(lineEditor.BlockText(block).find(word)));
+                };
+                auto values = [](float measured, float expected) {
+                    return ": " + std::to_string(measured) + " for " + std::to_string(expected);
+                };
+                // The font's line: between the first two lines of one
+                // paragraph at single spacing (and between its next two).
+                const float line = at(3, "Five") - top(3, 0);
+                const float nextLine = at(3, "Seven") - at(3, "Five");
+                const float bigLine = top(6, 0) - top(5, 0);
+                std::cerr << "  line " << line << " px (the next " << nextLine << "), a line of twice the size "
+                          << bigLine << " px" << std::endl;
+                const float em = 12.0f * 96.0f / 72.0f;
+                TEST("A line is as tall as its font says (" + std::to_string(line / em) + " em)" + in,
+                     line > em * 0.95f && line < em * 1.6f);
+                if (font == "P052") {
+                    // Its ascent and descent are 1.0 em; its line gap makes 1.2.
+                    TEST("...a tall font's line gap included" + values(line, em * 1.2f) + in,
+                         std::abs(line - em * 1.2f) <= 1.0f);
+                }
+                // Where the layout puts the lines, to a tenth of a pixel.
+                auto within = [](float a, float b) { return std::abs(a - b) <= 0.1f; };
+                TEST("A paragraph's lines are evenly spaced" + values(nextLine, line) + in, within(nextLine, line));
+                TEST("A one-line paragraph at 1.15 is 1.15 of its font's line"
+                     + values(top(1, 0) - top(0, 0), line * 1.15f) + in,
+                     within(top(1, 0) - top(0, 0), line * 1.15f));
+                TEST("...the next one too" + values(top(2, 0) - top(1, 0), line * 1.15f) + in,
+                     within(top(2, 0) - top(1, 0), line * 1.15f));
+                TEST("A one-line paragraph at single spacing is one line" + values(top(3, 0) - top(2, 0), line) + in,
+                     within(top(3, 0) - top(2, 0), line));
+                TEST("A three-line paragraph is three lines" + values(top(4, 0) - top(3, 0), 3.0f * line) + in,
+                     within(top(4, 0) - top(3, 0), 3.0f * line));
+                TEST("An empty paragraph is a line of its mark's font" + values(top(5, 0) - top(4, 0), bigLine) + in,
+                     within(top(5, 0) - top(4, 0), bigLine) && bigLine > line * 1.5f);
+                TEST("A one-line paragraph after a big one is one line" + values(top(7, 0) - top(6, 0), line) + in,
+                     within(top(7, 0) - top(6, 0), line));
+                window->RemoveChild(lineEdit);
+            }
+        }
+        RenderContextCairo::SetTextHintMetrics(hintMetricsBefore);
+
+        // --- Pictures ---
+        // The red square in a frame 2 x 0.5 inch: inline in the body, anchored
+        // in the body (on a line of its own), and inline in the header.
+        const std::string graphic =
+            "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic>"
+            "<pic:nvPicPr><pic:cNvPr id=\"0\" name=\"red\"/><pic:cNvPicPr><a:picLocks noChangeAspect=\"1\"/>"
+            "</pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rId1\"/><a:stretch><a:fillRect/></a:stretch>"
+            "</pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"457200\"/></a:xfrm>"
+            "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>";
+        const std::string inlineRun =
+            "<w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
+            "<wp:extent cx=\"1828800\" cy=\"457200\"/><wp:docPr id=\"1\" name=\"red\"/>" + graphic
+            + "</wp:inline></w:drawing></w:r>";
+        // Alone in its paragraph (a picture paragraph of its own, as an ODT
+        // frame's is too), among words, and - in the header - set out 284
+        // twips (14.2 pt) into the left margin.
+        const std::string inlinePicture = "<w:p>" + inlineRun + "</w:p>";
+        const std::string pictureAmongWords = "<w:p><w:r><w:t>A </w:t></w:r>" + inlineRun + "<w:r><w:t> b</w:t></w:r></w:p>";
+        const std::string outdentedPicture = "<w:p><w:pPr><w:ind w:left=\"-284\"/></w:pPr>" + inlineRun + "</w:p>";
+        const std::string anchoredPicture =
+            "<w:p><w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" "
+            "relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
+            "<wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\"><wp:posOffset>0</wp:posOffset>"
+            "</wp:positionH><wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV>"
+            "<wp:extent cx=\"1828800\" cy=\"457200\"/><wp:wrapTopAndBottom/><wp:docPr id=\"2\" name=\"red\"/>" + graphic
+            + "</wp:anchor></w:drawing></w:r><w:r><w:t>x</w:t></w:r></w:p>";
+        const std::string closing = "<w:p><w:r><w:t>End</w:t></w:r></w:p>";
+        // The red drawn when the view paints `document`: its bounding box.
+        auto redBox = [&](const std::shared_ptr<UCRichDocument>& document, bool pages) {
+            const int width = 1000, height = 1250;
+            auto view = std::make_shared<UltraCanvasRichTextEdit>("Pictures", 0, 0, width, height);
+            window->AddChild(view);
+            view->SetDocument(document);
+            view->SetPageView(pages);
+            window->UpdateAndRender();
+            Rect2Di box(0, 0, 0, 0);
+            auto paint = CreateRenderContext(Size2Di(width, height), nullptr);
+            cairo_t* cr = paint ? static_cast<cairo_t*>(paint->GetNativeContext()) : nullptr;
+            if (cr) {
+                view->Render(paint.get(), Rect2Df(0, 0, width, height));
+                cairo_surface_t* surface = cairo_get_target(cr);
+                cairo_surface_flush(surface);
+                const unsigned char* data = cairo_image_surface_get_data(surface);
+                const int stride = cairo_image_surface_get_stride(surface);
+                int left = width, right = -1, topRow = height, bottom = -1;
+                for (int y = 0; y < height; ++y) {
+                    const uint32_t* row = reinterpret_cast<const uint32_t*>(data + y * stride);
+                    for (int x = 0; x < width; ++x) {
+                        const uint32_t p = row[x];
+                        if (((p >> 16) & 0xFF) > 200 && ((p >> 8) & 0xFF) < 60 && (p & 0xFF) < 60) {
+                            left = std::min(left, x);
+                            right = std::max(right, x);
+                            topRow = std::min(topRow, y);
+                            bottom = std::max(bottom, y);
+                        }
+                    }
+                }
+                if (right >= left) box = Rect2Di(left, topRow, right - left + 1, bottom - topRow + 1);
+            }
+            window->RemoveChild(view);
+            return box;
+        };
+        // 2 x 0.5 inch at 96 pixels an inch - however the view is zoomed, four
+        // times as wide as high.
+        auto fills = [](const Rect2Di& box) {
+            return box.height > 8 && std::abs(static_cast<float>(box.width) / static_cast<float>(box.height) - 4.0f) < 0.15f;
+        };
+        auto describe = [](const Rect2Di& box) {
+            return std::to_string(box.width) + " x " + std::to_string(box.height) + " px";
+        };
+        const Rect2Di alone = redBox(readDocx("rte-picture-alone.docx", inlinePicture + closing, ""), false);
+        TEST("A picture alone in its paragraph fills its frame, not its own proportions: " + describe(alone),
+             fills(alone) && std::abs(alone.width - 192) <= 2);
+        const Rect2Di amongWords = redBox(readDocx("rte-picture-words.docx", pictureAmongWords + closing, ""), false);
+        TEST("...so does one among words: " + describe(amongWords), fills(amongWords) && std::abs(amongWords.width - 192) <= 2);
+        const Rect2Di anchored = redBox(readDocx("rte-picture-anchored.docx", anchoredPicture + closing, ""), false);
+        TEST("...and an anchored one: " + describe(anchored), fills(anchored) && std::abs(anchored.width - 192) <= 2);
+        const Rect2Di inHeader = redBox(readDocx("rte-picture-header.docx", closing, inlinePicture), true);
+        TEST("...and one in the header: " + describe(inHeader), fills(inHeader));
+        const Rect2Di outdented = redBox(readDocx("rte-picture-outdented.docx", closing, outdentedPicture), true);
+        // 14.2 pt at the page's zoom (the frame is 144 pt wide).
+        const float outdent = 14.2f * static_cast<float>(inHeader.width) / 144.0f;
+        TEST("...set out into the margin by its paragraph's negative indent: " + std::to_string(inHeader.x - outdented.x)
+             + " px for " + std::to_string(outdent), fills(outdented) && std::abs((inHeader.x - outdented.x) - outdent) <= 1.5f);
     }
 
     std::cerr << "\n========================================" << std::endl;

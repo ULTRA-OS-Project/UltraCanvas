@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
 // Version: 0.6.0 - the mark for the pages under go/
 // Version: 0.5.0 - a restricted package on an app with a trial
+// Version: 0.4.2 - account_url from the settings
 // Version: 0.4.1 - market_url from the settings
 // Version: 0.4.0 - payment_url and licence_key from the settings
 // Version: 0.3.0 - the codes, their landing pages
@@ -11,6 +12,7 @@
 
 #include "PackageStore.h"
 #include "WebSite.h"
+#include "WebStoreHtml.h"
 
 #include "Affiliates.h"
 #include "PageFrame.h"
@@ -89,6 +91,7 @@ Result<Catalog> BuildCatalog(const AdminDatabase& db, const PublishOptions& opti
     catalog.paymentUrl = TrimSlash(db.Setting("payment.url"));
     catalog.licenceKey = db.Setting("payment.licence_key");
     catalog.marketUrl = TrimSlash(db.Setting("market.url"));   // where the store's app page reports a problem
+    catalog.accountUrl = TrimSlash(db.Setting("account.url")); // where the store signs in (Server/UltraStoreAccount)
     if (!catalog.paymentUrl.empty() && catalog.licenceKey.empty()) warn.push_back("payment.url is set but payment.licence_key is not: the store cannot verify the licences");
     // Every active key may sign the next catalog (schema 2's trusted_keys):
     // a new key is announced by the first publish after it is made and
@@ -342,10 +345,23 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
     for (const PublishedPage& page : written) {
         if (const auto r = db.RememberPage(page.path, page.kind); !r) return R::Failure(r.error.code, r.error.message, r.error.detail);
     }
-    // The web store beside the catalog (WebSite.h): wanted when web.site_dir
-    // names the web store build's site folder.
-    if (const std::string siteDir = db.Setting("web.site_dir"); !siteDir.empty()) {
+    // The web store beside the catalog, in one of its two outputs (the
+    // setting web.output): "html", the store as HTML + JavaScript
+    // (WebStoreHtml.h), or "wasm", the WebAssembly store from the web store
+    // build's folder web.site_dir (WebSite.h). Unset, a store that names
+    // that folder keeps the WebAssembly store it had, and any other gets
+    // the HTML one; "off" writes none.
+    std::string webOutput = db.Setting("web.output");
+    const std::string siteDir = db.Setting("web.site_dir");
+    if (webOutput.empty()) webOutput = siteDir.empty() ? "html" : "wasm";
+    if (webOutput == "html" && !HasHtmlWebStore()) {
+        report.warnings.push_back("web store: this build has no HTML + JavaScript output (UltraSite); set web.output to wasm or off");
+        webOutput = "off";
+    }
+    report.webOutput = webOutput;
+    if (webOutput == "html" || webOutput == "wasm") {
         WebSiteOptions web;
+        web.output = webOutput;
         web.siteDirUtf8 = siteDir;
         web.catalogBaseUrl = pagesBase;
         web.storeDownloadUrl = db.Setting("web.store_download_url");
@@ -353,6 +369,7 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
         const auto site = WriteWebSite(catalog, options.outDirUtf8, web);
         if (!site) return R::Failure(site.error.code, site.error.message, site.error.detail);
         report.webPages = site.Value().pages;
+        report.webLanguages = site.Value().languages;
         report.webRuntime = site.Value().runtimeFolder;
         for (const std::string& w : site.Value().warnings) report.warnings.push_back("web store: " + w);
     }

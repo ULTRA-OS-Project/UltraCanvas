@@ -18,7 +18,8 @@
 // itself can answer and records why the rest is missing.
 #if defined(_WIN32)
     #define ULTRACANVAS_HARDWAREINFO_NATIVE 1
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && !defined(ULTRACANVAS_IOS)
+    // macOS only: the probe is IOKit, which iOS does not offer.
     #define ULTRACANVAS_HARDWAREINFO_NATIVE 1
 #elif defined(__linux__) && !defined(__ANDROID__)
     #define ULTRACANVAS_HARDWAREINFO_NATIVE 1

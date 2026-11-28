@@ -1,4 +1,6 @@
 // UltraCanvas Framework Demonstration Program Entry Point
+// Version: 1.0.9 - no "Build Date" line: __DATE__ / __TIME__ made main.cpp.o miss ccache on every build
+// Version: 1.0.8 - Builds for iOS: the body is ultracanvas_app_main(), as on Android
 // Version: 1.0.7 - Initialize is given the name "UltraCanvasDemo", not argv[0]
 // Version: 1.0.6 - --audit-layout runs in the bundled Ubuntu 12, whatever the desktop's font
 // Version: 1.0.5 - --audit-layout [--pseudo-loc] [--audit-page <id>]
@@ -101,7 +103,6 @@ void SignalHandler(int) {
 bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
     debugOutput << "=== UltraCanvas Framework Demonstration Program ===" << std::endl;
     debugOutput << "Version: 1.0.0" << std::endl;
-    debugOutput << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
     debugOutput << "Platform: ";
 
 #ifdef _WIN32
@@ -127,6 +128,8 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
         debugOutput << "Warning: X11 threading initialization failed" << std::endl;
     }
 
+#elif defined(ULTRACANVAS_IOS)
+    debugOutput << "iOS";
 #elif __APPLE__
     debugOutput << "macOS";
 #elif __EMSCRIPTEN__
@@ -191,11 +194,13 @@ void ShutdownSystem() {
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(ULTRACANVAS_IOS)
 // The demo is a shared library loaded by the activity, not a program: the
 // framework's android_main() (OS/Android/UltraCanvasAndroidMain.cpp) prepares
 // the sandbox, unpacks the APK's assets and waits for the first surface, then
-// calls this.
+// calls this. On iOS main() is the framework's too
+// (OS/iOS/UltraCanvasiOSMain.mm): UIKit owns the main thread, and this runs
+// once the app has launched and its root view is on screen.
 extern "C" int ultracanvas_app_main(int argc, char* argv[]) {
 #else
 int main(int argc, char* argv[]) {

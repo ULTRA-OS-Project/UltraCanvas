@@ -38,7 +38,7 @@ the backing implementation can be replaced without affecting callers.
 - **UltraCanvasVectorStorage** (`DataFormats/UltraCanvasVectorStorage.h`) — the
   framework's universal 2D vector document structure,
   `VectorStorage::VectorDocument`: the in-memory drawing every vector file
-  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG read;
+  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG, ODG read;
   those plus PDF, AI, EPS, CDR written — the converters are the Vector
   plugin, `Plugins/Vector/`, documented in
   `Docs/UltraCanvas/UltraCanvasVectorConverters.md`). Core rather than
@@ -58,7 +58,8 @@ the backing implementation can be replaced without affecting callers.
     `Id`, `Style` (`FillData` variant of colour / gradient / pattern,
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
-    `Transparency` ramp with its mix, clip, mask), `Effects` (optional
+    `Transparency` ramp with its mix, clip, mask, `ShapeFillRule` - non-zero
+    or even-odd), `Effects` (optional
     `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
     an optional double-precision `Matrix3x3` `Transform`,
     `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class
@@ -545,6 +546,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+- **UltraCanvasLaunchAtLogin** (`UltraCanvasLaunchAtLogin.h`) — starting a
+  program when the user signs in: `SetLaunchAtLogin(entry, enabled, error)`,
+  `IsLaunchAtLoginEnabled(id)`, `LaunchAtLoginAvailable()`,
+  `LaunchAtLoginCommand(entry)`; `LaunchAtLoginEntry` (id, name, comment, icon,
+  executable - empty for this program, the AppImage or the .app bundle -
+  and arguments). The computer's own list is the record, so an entry switched
+  off there reads as off. Backends: `OS/Linux/UltraCanvasLinuxLaunchAtLogin.cpp`
+  (an XDG autostart entry in `$XDG_CONFIG_HOME/autostart`, `Hidden=true` over a
+  system one), `OS/MSWindows/UltraCanvasWindowsLaunchAtLogin.cpp` (the HKCU
+  `Run` key, the Task Manager's `StartupApproved` on / off respected) and
+  `OS/MacOS/UltraCanvasMacOSLaunchAtLogin.cpp` (a LaunchAgent with
+  `RunAtLoad`). Not available in a Flatpak, a Snap or an MSIX package; Android,
+  iOS and WebAssembly get the fallback in `core/UltraCanvasLaunchAtLogin.cpp`
+  (`ULTRACANVAS_HAS_NATIVE_LAUNCH_AT_LOGIN` unset). ChatCube's *Settings >
+  General > Startup* uses it. See `Docs/UltraCanvas/UltraCanvasLaunchAtLogin.md`.
 - **UltraCanvasFileTimes** (`UltraCanvasFileTimes.h`) — a file's dates read,
   set, and carried to a copy. `FileTimes` (created / modified / accessed,
   nanoseconds since 1970, 0 = unknown), `GetFileTimes(path, out)`,
@@ -576,6 +592,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasUnixSocketAddress** (`UltraCanvasUnixSocketAddress.h`,
+  header-only, not Windows) — the address of a Unix socket at a path of any
+  length. `UnixSocketAddress::Resolve(path, error)` fills a `sockaddr_un`;
+  a path longer than the 107 bytes it holds is reached through its folder
+  on Linux (`/proc/self/fd/<n>/<file>`), and refused with the reason on
+  macOS and the BSDs. `Fits(path)` says whether a path needs that. Used by
+  UltraMessage's transport and UltraWin's QMP client. See
+  `Docs/UltraCanvas/UltraCanvasUnixSocketAddress.md`.
+
 - **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
   `SettingsPageKit`) — the look of an application's settings window, once:
   `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
@@ -603,8 +628,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, UltraNotifications, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
-  UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
+  UltraClipboard, UltraNotifications, UltraSnip, UltraToDo, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraAuthenticator, UltraAccount, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
   ArtCreator, UltraVideo, AnchorPoint). See
@@ -719,7 +744,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   storage, ASCII case-insensitive), `StreamNames`, `GetLastError`; below the
   root by '/'-separated path: `ReadStreamAt` / `HasStreamAt`,
   `StreamNamesAt` / `StorageNamesAt`. Used by the `.doc` importer, the `.xls`
-  reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
+  reader, the `.ppt` reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
   `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
   storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
   the password-protected Office files.
@@ -755,8 +780,25 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it; and
   by the writers `SaveToFile` / `SaveXLSX`, `UCWordDocumentIO::Save` /
   `SaveDocx`, `UltraCanvasFileLoader::SaveTextDocument`, with
-  `RequestNewDocumentPassword` to ask for a new one.
+  `RequestNewDocumentPassword` to ask for a new one. `CheckOfficePassword`
+  answers for an OpenDocument file through UltraCanvasOdfEncryption.
   See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+- **UltraCanvasOdfEncryption** (`UltraCanvasOdfEncryption.h`) — password-protected
+  OpenDocument files (`.odt`, `.ods`, `.odp`) as LibreOffice and
+  OpenOffice.org 3.2+ save them: each package entry deflated, then
+  AES-256-CBC keyed by PBKDF2-HMAC-SHA-1 from a SHA-256 (or SHA-1) start key,
+  checked by its 1K checksum. `IsEncryptedOdfPackage`, `DecryptOdfPackage` /
+  `DecryptOdfPackageFile` (an ordinary package rebuilt in memory, statuses
+  `OfficeDecryptStatus`), `CheckOdfPassword` (one key derivation, for the
+  prompt). ODF 1.4's encryption too - the whole package in one
+  `encrypted-package`, AES-256-GCM, Argon2id with its lanes (what LibreOffice
+  writes for ODF 1.4 in experimental mode). Blowfish is refused by name. No writer. Used by the `.odt` reader
+  (`UCWordDocumentIO::Load` / `LoadOdt` with a password), the `.ods` loader
+  (`UltraCanvasSpreadsheet::LoadFromFile` / `LoadODS`), `ReadOdpPresentation`,
+  and `CheckOfficePassword` - so `RequestDocumentPassword` prompts for them.
+  In `core/UltraCanvasOdfEncryption.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasOdfEncryption.md`.
 
 - **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
   decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
@@ -767,8 +809,145 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
   `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
   outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
-  No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
+  For drawing it resolves places, text sizes / colours / fonts / alignment /
+  spacing / indents / bullets, insets, turn and mirroring, preset and custom
+  outlines, gradients, dashes and arrowheads, fills and backgrounds through the
+  layout, master and theme (`themeColors`, `majorFont` / `minorFont`, and the
+  pictures' bytes `withPictures`); connectors, styled tables with merged cells
+  (`PptxCellStyle`), picture crops, hyperlinks, charts (UltraCanvasDrawingML)
+  and SmartArt (its drawing part); `PptxNumberLabel`. Writer:
+  `WritePptxPresentation` / `WritePptxPresentationToPackage` (every shape
+  kind, tables, pictures, charts, notes, the theme; .pptx / .potx / .ppsx and
+  the macro-enabled kinds; a password encrypts it), and
+  `PptxPresentationFromRichDocument` (a document laid out as a deck, a slide
+  per first-level heading; a deck's outline back as its slides). In
+  `core/UltraCanvasPresentationPptxWriter.cpp` and
+  `core/UltraCanvasPresentationPptx.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
+- **UltraCanvasPptxSlideRender** (`UltraCanvasPptxSlideRender.h`) —
+  `RenderPptxSlide(deck, index, widthPx)`: a slide of a `PptxPresentation` as
+  a `UCPixmap` (background; shapes turned and mirrored in their outlines,
+  fills, gradients, dashes and arrowheads; cropped pictures; styled and merged
+  tables; charts through the chart engine; text in its fonts, spacing, indents
+  and bullets, shrunk to fit). UltraClipboard's slide previews, UltraViewer's
+  slides, the Filer's deck thumbnails. In `core/UltraCanvasPptxSlideRender.cpp`.
+- **UltraCanvasPresentationPages** (`UltraCanvasPresentationPages.h`) — a deck's
+  slides (`.pptx` and kin, `.odp` / `.otp` / `.fodp`) as an `IPDFDocument`'s
+  pages: `UltraCanvasPDFView` shows them as a PDF's - zoom, thumbnails, page
+  keys, search framed on the shapes; `GetNotes`, `GetPresentation`; protected
+  decks report `NeedsPassword` / `WrongPassword`. Read-only. MediaViewer's
+  slides and slide show. In `core/UltraCanvasPresentationPages.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPages.md`.
+- **UltraCanvasOdfChart** (`UltraCanvasOdfChart.h`) — OpenDocument chart
+  objects for every ODF format: `WriteOdfChartObject` (a `RichChart` as an
+  `office:chart` document with its series, styles and table) and
+  `ReadOdfChartObject` (back, and LibreOffice's); a spreadsheet's chart with
+  its series' ranges into the sheets (`OdfChartSeriesSource`,
+  `ReadOdfChartSources`). The `.odt` reader and writer, the `.odp` reader and
+  writer, the `.ods` charts. In `core/UltraCanvasOdfChart.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasOdfChart.md`.
+- **UltraCanvasDrawingML** (`UltraCanvasDrawingML.h`) — DrawingML read once
+  for every Office format: `ReadDrawingMLChart` (a `c:chartSpace` chart part
+  into `RichChart` - kind, series, colours, categories, title, legend, axis
+  ranges), `DrawingMLColor` (srgb / sys / scrgb / preset / scheme colours with
+  tint, shade and luminance), `DrawingMLDefaultThemeColors`,
+  `WriteDrawingMLChart` (literals, or with `DrawingMLSeriesSource` the
+  series' `c:f` cell references and caches - `ReadDrawingMLChartSources`
+  reads them back). Local names, any prefix. The `.docx` reader's and the
+  PowerPoint reader's charts, and a workbook's. In
+  `core/UltraCanvasDrawingML.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasDrawingML.md`.
+- **UltraCanvasSpreadsheetChart** (`UltraCanvasSpreadsheetChart.h`) — charts
+  on a spreadsheet: `SpreadsheetChart` (a `RichChart` anchored to two cells
+  with offsets, its series `SpreadsheetChartSeries` ranges of cells),
+  `MakeSpreadsheetChart` (from a block, names and categories found),
+  `RefreshSpreadsheetChart` (the data read from the cells again),
+  `SpreadsheetChartBox` / `SpreadsheetChartAnchorForBox`,
+  `DrawSpreadsheetChart`, and the .xlsx / .ods parts
+  (`ReadXlsxSheetCharts`, `WriteXlsxCharts`, `ReadOdsCharts`,
+  `WriteOdsSheetCharts`). A sheet keeps them (`SpreadsheetSheet::GetCharts`);
+  the grid inserts (`InsertChartFromSelection`), draws, selects, moves,
+  resizes, deletes and undoes them and prints them. Every chart of the
+  framework a block of cells can feed is a type (`SpreadsheetChartTypes`,
+  `MakeSpreadsheetChartOfType`, `SetSpreadsheetChartType`,
+  `SpreadsheetChartFitMessage`), picked in the chart gallery
+  (`ShowSpreadsheetChartGallery`, on `UltraCanvasGalleryPicker`; the grid's
+  `ShowInsertChartDialog` / `ShowChartTypeDialog`) and drawn by
+  `CreateRichChartElement` / `DrawRichChart` (`UltraCanvasRichDocumentChart.h`);
+  a kind a file format has no form for is kept as an UltraCanvas extension
+  beside a column chart. In
+  `core/UltraCanvasSpreadsheetChart.cpp`, `core/UltraCanvasSpreadsheetChartIO.cpp`,
+  `core/UltraCanvasSpreadsheetChartGallery.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#charts`.
+- **UltraCanvasSpreadsheetPivot** (`UltraCanvasSpreadsheetPivot.h`) — pivot
+  tables: `SpreadsheetPivotTable` (a source block, row / column / filter
+  fields `PivotField` with order, subtotals, hidden items and `PivotGrouping`,
+  value fields `PivotValueField` with `PivotSummary` and `PivotShowAs`,
+  grand totals), `MakeSpreadsheetPivot`, `MakePivotValueField`,
+  `ComputeSpreadsheetPivot` (laid out as `PivotOutput` cells),
+  `RefreshSpreadsheetPivot` / `ClearSpreadsheetPivotCells` (written onto a
+  sheet), `SpreadsheetPivotFieldItems`, `SpreadsheetPivotDrillDownRows`, and
+  the .xlsx / .ods parts (`WriteXlsxPivots`, `ReadXlsxSheetPivots`,
+  `WriteOdsPivots`, `ReadOdsPivots`). A sheet keeps them
+  (`SpreadsheetSheet::GetPivotTables`); the grid inserts, changes, refreshes
+  and removes them (`InsertPivotTable`, `SetPivotTable`, `RefreshPivotTables`,
+  `RemovePivotTable`), keeps their cells read-only, refreshes them when the
+  source changes and drills into a value. The field list:
+  `UltraCanvasSpreadsheetPivotPanel` (`UltraCanvasSpreadsheetPivotPanel.h`),
+  `ShowSpreadsheetPivotDialog`. In `core/UltraCanvasSpreadsheetPivot.cpp`,
+  `core/UltraCanvasSpreadsheetPivotIO.cpp`,
+  `core/UltraCanvasSpreadsheetPivotDialog.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md#pivot-tables`.
+
+- **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
+  presentations (`.odp`, `.otp` templates, flat `.fodp`) read into
+  UltraCanvasPresentationPptx's model (`PptxPresentation` and the rest), so
+  `PptxPresentationToRichDocument` outlines either kind of deck and
+  `RenderPptxSlide` draws it: `ReadOdpPresentation`,
+  `ReadOdpPresentationFromMemory` (a package or a flat file's XML; with
+  `withPictures` the pictures' bytes), `IsOdpPresentationFile` (by content),
+  `IsOdpExtension`. Titles, subtitles, outline and text-box paragraphs with
+  list levels, bullets and numbering from the list styles, groups, tables
+  (covered cells kept as empty cells), pictures, speaker notes, hidden slides,
+  the slide size from the master's page layout; the look as drawn, each style
+  through its parents and defaults: fills and gradients, outlines (dashes,
+  arrowheads), outlines' shapes (Office presets, ODF types, enhanced and SVG
+  paths, lines and connectors), turns and mirroring, text areas, runs' size,
+  colour, typeface and decoration, paragraphs' spacing and margins, list
+  labels, table cells' fills, borders and padding (table templates too),
+  backgrounds, the theme's colours;
+  slide furniture, prompting placeholders, embedded objects and page comments
+  left out. A password-protected deck opens with its password
+  (UltraCanvasOdfEncryption). Charts are read as chart objects
+  (UltraCanvasOdfChart). Writer: `WriteOdpPresentation` /
+  `WriteOdpPresentationToMemory` - the deck model as an Impress deck (.odp,
+  .otp, flat .fodp): presentation frames, custom shapes turned and mirrored,
+  fills, gradients, markers, connectors, pictures, tables, chart objects,
+  list-styled bullets and numbering, notes; no password. In
+  `core/UltraCanvasPresentationOdp.cpp` and `core/UltraCanvasPresentationOdpWriter.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationOdp.md`.
+
+- **UltraCanvasPresentationPpt** (`UltraCanvasPresentationPpt.h`) — PowerPoint
+  97-2003 decks (`.ppt`, `.pps`, `.pot`; [MS-PPT]) read into
+  UltraCanvasPresentationPptx's model, so everything that draws, shows,
+  prints, edits or outlines a deck takes them: `ReadPptPresentation`,
+  `ReadPptPresentationFromMemory` (`withPictures`: the pictures' bytes),
+  `IsPptPresentationFile` (a compound file with a "PowerPoint Document"
+  stream), `IsPptExtension`. The Current User stream and the UserEditAtom /
+  persist directory chain (the last edit of an incrementally saved deck);
+  the slide size, fonts, hyperlinks, the picture store; masters (text styles
+  by type and level, colour schemes, placeholders, backgrounds; a title
+  master as a layout) and layouts from the slides' SlideAtom geom; shapes
+  through the .doc reader's OfficeArt layer
+  (`Plugins/Documents/Word/UltraCanvasOfficeArt.h`: properties, BStore,
+  BLIPs, freeforms, MSOSPT as DrawingML presets) - places in EMU, turns,
+  mirroring, fills, gradients, outlines, pictures with crops, placeholders,
+  tables (a group with tableProperties); text with paragraph and character
+  runs, master inheritance, scheme colours, bullets, numbering
+  (StyleTextProp9Atom), hyperlinks, outline text (OutlineTextRefAtom);
+  notes, hidden slides, backgrounds, transitions. Encrypted decks refused.
+  No writer (saved as .pptx / .odp). In `core/UltraCanvasPresentationPpt.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPpt.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -880,7 +1059,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `CountCharactersWithoutFont` / `FindScriptsWithoutFont` - the characters of
   a text no font covers (drawn as hex boxes), by script, each with a free Noto
   font and its download page - plus `FontDownloadUrl` and
-  `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
+  `IsFontFamilyAvailable`, and `FontFamilySubstitute` /
+  `GetFontFamilySubstitutes` - the installed font that stands in for a family
+  by name (Helvetica in Arial on Windows; aliases in the generated
+  fontconfig set). `UltraCanvasRichTextEdit::GetFontReport` and its
   notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
@@ -1023,6 +1205,33 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   zoom and pan over a dark lightbox; this is the general one.
   See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
 
+- **UltraCanvasScreenAreaPicker** (`UltraCanvasScreenAreaPicker.h`) — an
+  area of the screen chosen over a frozen capture: dimmed, a rectangle
+  dragged or a window clicked, Enter for the window under the pointer or the
+  whole screen, Escape to give up; the answer in screen pixels, cropped out
+  of the capture with `ScreenArea::CropToRgba`. Moved from UltraSnip, which
+  takes its snips with it; ChatCube's screenshot button puts the area into
+  the message being written. On macOS placed in points above the menu bar
+  (`WindowType::Overlay`). Core in `core/UltraCanvasScreenAreaPicker.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md`.
+
+- **UltraCanvasMapView** (`UltraCanvasMapView.h`) — a map of the world from
+  OpenStreetMap's tiles (or another slippy-map server): the element (drag,
+  wheel zoom, a pin by a click), `DrawMap` into any rectangle (a map card in
+  a list's row) and `RenderMapToRgba` (a map picture); one tile cache for
+  the program, fetched through UltraNet within OpenStreetMap's usage policy.
+  Moved from ChatCube's location window. Core in `core/UltraCanvasMapView.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasMapView.md`.
+
+- **UltraCanvasGeolocation** (`UltraCanvasGeolocation.h`) — where this device
+  is: one position from the system's location service, answered on the UI
+  thread with its accuracy. GeoClue 2 over D-Bus on Linux
+  (`OS/Linux/UltraCanvasLinuxGeolocation.cpp`), CoreLocation on macOS
+  (`OS/MacOS/UltraCanvasMacOSGeolocation.mm`), Windows.Devices.Geolocation
+  through C++/WinRT on Windows (`OS/MSWindows/UltraCanvasWindowsGeolocation.cpp`,
+  where the projection headers are); none elsewhere. Core in
+  `core/UltraCanvasGeolocation.cpp`. See `Docs/UltraCanvas/UltraCanvasGeolocation.md`.
+
 - **UltraCanvasDesktopShell** (`UltraCanvasDesktopShell.h`) — the running
   desktop as a shell sees it: the windows other applications have open and
   which is active, the virtual desktops, the installed applications a launcher
@@ -1053,7 +1262,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   lock (logind), loudspeaker (libpulse) and tray (StatusNotifierItem) in
   `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`,
   `UltraCanvasLinuxDesktopShellAudio.cpp` and `UltraCanvasLinuxTrayHost.cpp`;
-  a null backend elsewhere. On
+  a null backend elsewhere - except the screen capture on macOS
+  (ScreenCaptureKit, the main display) in
+  `OS/MacOS/UltraCanvasMacOSScreenCapture.mm`; `CanCaptureScreen` says
+  whether a build captures at all. On
   Windows also the standalone **UltraCanvasShellGuard** program
   (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
   instead of Explorer. Public surface:
@@ -1130,6 +1342,30 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     Linux the StatusNotifierWatcher and host on the session bus with the
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasEmbeddedWindowManager** (`UltraCanvasEmbeddedWindowManager.h`)
+  — a window manager inside the program, for a backend that draws many
+  windows onto one surface: stacking bands, focus, placement, title bars kept
+  with their windows (`AttachFrame`; the bar itself is
+  `UltraCanvasEmbeddedWindowFrame`, a borderless window of an
+  `UltraCanvasLabel` and three `UltraCanvasButton`s), moving and resizing,
+  maximize into the work area reserved edges leave, pointer routing with the
+  button grab, damage, and compositing with a drawn pointer. Platform-neutral;
+  the Android backend's desktop mode (`OS/Android/UltraCanvasAndroidDesktop`,
+  MobilePC) runs on it, and through it answers `UltraCanvasDesktopShell` as
+  its embedded host. Core in `core/UltraCanvasEmbeddedWindowManager.cpp` and
+  `core/UltraCanvasEmbeddedWindowFrame.cpp`; tested by
+  `Tests/EmbeddedWindowManagerTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md`.
+
+- **UltraCanvasHostedApps** (`UltraCanvasHostedApps.h`) — applications that
+  run inside their host program (MobilePC's): registered with an entry
+  point, listed by `UltraCanvasDesktopShell::ListApplications` where the
+  platform has none of its own, started in the process by
+  `LaunchApplication` - and by `LaunchProgram` with the name of a program an
+  application stands in for (`programs`: MobilePC's UltraFiler answers
+  "UltraFiler"). Core in `core/UltraCanvasHostedApps.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
 
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
   operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
@@ -1751,7 +1987,9 @@ own list: `AddLoadTypes(opts, label, {categories})` (one Open filter of every
 type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 (one Save filter per type it writes, the proposed name's type first),
 `AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes` with
-`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
+`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written);
+`LoadPresentation(path, deck, error, password, withPictures)` reads any deck
+(.pptx, .odp, .ppt, by content) and `SavePresentation` writes .pptx / .odp. A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
 
@@ -1876,7 +2114,9 @@ future.
   challenge and collects the code, and the exchange and the refresh go
   through the service, which adds the secret. UltraMail signs in through
   `https://oauth-callback.ultraos.eu` this way
-- `UltraNet_ResolveProxy`, `UltraNet_DetectSystemProxy`,
+- `UltraNet_ResolveProxy`, `UltraNet_ResolveTunnelProxy` (a connection that
+  is not the web's: the system's SOCKS proxy, else its web proxy as a
+  tunnel - IRC, XMPP, Telegram), `UltraNet_DetectSystemProxy`,
   `UltraNet_DetectSystemProxyFor`, `UltraNet_CanEvaluateProxyScript`,
   `UltraNet_SetGlobalProxy`, `UltraNet_GetGlobalProxy`, `UltraNet_DisableProxy`,
   `UltraNet_SetGlobalProxySource`, `UltraNet_ForgetSystemProxy`,
@@ -2136,9 +2376,12 @@ backing library is never visible in a public header.
   constant-time portable software, independent of libsodium)
 - `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
   only - Matrix key exports and attachments, WebCrypto)
-- `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
+- `UltraCrypt_AesGcmDecrypt` (AES-GCM, interop only: portable, every CPU)
+- `UltraCrypt_DeriveKeyFromPassword` (Argon2id; `parallelism` above 1 through
+  the module's own RFC 9106 lanes), `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
-  (PBKDF2-HMAC-SHA-256/512, interop only)
+  (PBKDF2-HMAC-SHA-256/512, and -SHA-1 with `allowLegacy` for OpenDocument;
+  interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
@@ -2167,7 +2410,11 @@ backing library is never visible in a public header.
   codes, ChatCube Direct's sign-in checks them (until 2026-11 in
   `Apps/UltraAuthenticator/otp/`)
 
-Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
+Streaming class: `UltraCryptHasher` (SHA-1 as a plain digest only with
+`UltraCryptHashOptions::allowLegacy`, as in `UltraCrypt_Hash` and
+`UltraCrypt_HashFile`; HMAC is the one call
+`UltraCrypt_Hmac`; a streaming `UltraCryptHmacHasher` was proposed and not
+built).
 
 UltraCrypt is the required cryptographic module for the UCD v2 file format,
 UltraVault, UltraDatabase at-rest encryption, UltraAuthenticator and any
@@ -3011,13 +3258,36 @@ Telegram (`UltraCanvas/Plugins/UltraIM/telegram/`, module `ultraim_telegram`)
 on TDLib's JSON interface, loaded at run time (not linked): sign-in in steps
 (`UltraIMAuthStep`, result `NeedsInput`), the main chat list, private chats
 and groups, replies, edits, deletion, read marks, typing, presence, history,
-people by username or phone number. Provider: Mastodon
+people by username or phone number; TDLib connects by itself, so the
+provider tells it the proxy the applications share (`addProxy` /
+`disableProxy` before its parameters, and again when the setting changes).
+Provider: Mastodon
 (`UltraCanvas/Plugins/UltraIM/mastodon/`, module `ultraim_mastodon`): the
 direct messages of a Mastodon server over its REST API - browser sign-in
 (OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people
 over all their threads, polled; replies, edits, deletes, read marks,
-pictures, videos and sound. Tests in `Tests/UltraIM`. See
-`Docs/Modules/UltraIM/README.md`.
+pictures, videos and sound. Provider: Mattermost
+(`UltraCanvas/Plugins/UltraIM/mattermost/`, module `ultraim_mattermost`):
+channels, direct and group messages of a Mattermost server over its REST
+API - password with an MFA code, or a personal access token; polled;
+thread replies, files, edits, deletes. Provider: Zulip
+(`UltraCanvas/Plugins/UltraIM/zulip/`, module `ultraim_zulip`): direct and
+group messages and stream topics of a Zulip organization - password or API
+key; the event queue; uploads, edits, deletes. Provider: Signal
+(`UltraCanvas/Plugins/UltraIM/signal/`, module `ultraim_signal`): through a
+signal-cli daemon (the user's, or one it starts - for the proxy the
+applications share, as Java's proxy options, and again when the setting
+changes) - linked to the phone by
+QR code; 1:1 chats and groups, quotes, edits, deletes, receipts, typing,
+attachments. Provider: XMPP (`UltraCanvas/Plugins/UltraIM/xmpp/`, module
+`ultraim_xmpp`): any XMPP server over TCP (STARTTLS or direct TLS, found by
+SRV) or WebSocket (RFC 7395) - SCRAM sign-in
+with the keys kept, not the password; roster, rooms, the archive, receipts,
+markers, edits, retractions, replies, carbons, HTTP upload. Provider: IRC
+(`UltraCanvas/Plugins/UltraIM/irc/`, module `ultraim_irc`): IRC with IRCv3
+over TCP and TLS - SASL, channels and private chats, CHATHISTORY, a server
+conversation for raw commands. Tests in `Tests/UltraIM`.
+See `Docs/Modules/UltraIM/README.md`.
 
 ---
 
@@ -3118,7 +3388,7 @@ framework's `Tr` keys and the curated application vocabulary) and
 `media/locale/en/base/<Base>.json` (the sixteen base sets);
 `scripts/extract_ui_strings.py` rewrites them from the sources,
 `scripts/check_locale_catalogues.py` is the CI gate over every
-translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+translation (`source-checks.yml`, `scripts/locale_catalogues_baseline.txt`),
 and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
 `Tr` for review. `ultralocalisation-draft` (`Apps/UltraLocalisationDraft`,
 on UltraAI's translator) drafts a language's catalogue, driven per set by
@@ -3126,12 +3396,56 @@ on UltraAI's translator) drafts a language's catalogue, driven per set by
 languages under `media/locale/<lang>/`. The localisation editor
 `UltraCanvasLocalisationEditor` (`include/UltraCanvasLocalisationEditor.h`,
 in the core, with `LocalisationWorkspace` as its model) shows every set an
-application's texts come from in one grid and merges them; UOS-Settings
-hosts it under Language > Translations, `ShowLocalisationEditorDialog`
-opens it on the running application. The DemoApp page *ULTRA OS modules >
+application's texts come from in one grid and merges them, in a Compact
+arrangement for a page or a dialog and a Window one with a row panel;
+UOS-Localisation (`Apps/UOSLocalisation`) is it in a window of its own,
+`ShowLocalisationEditorDialog` opens it on the running application. The DemoApp page *ULTRA OS modules >
 Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) shows
 the four calls live in a picked language, with the layer that answered
 each, and the catalogue files of the three layers. See
 `Docs/Modules/UltraLocalisation/README.md` and
 `Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
 
+
+---
+
+### **21. UltraSite**
+
+The HTML + JavaScript output of a website: a list of routes in, a folder
+any static host serves out, written the way Docusaurus writes a site. Every
+route becomes a complete, styled HTML page (head, skip link, navbar, the
+route's layout - `page`, `post` or one an app adds - and footer); one
+stylesheet (the base, the site's design tokens as `--us-*` custom
+properties in a light and an optional dark look, the app's own rules) and
+the script modules are written under their content hash and cached for a
+year. `core.js` (prefetch on intent, the theme toggle) is on every page; a
+behaviour module an app registers (`Builder::AddScript`) is loaded only by
+the pages whose body asks for it with `data-us="<behaviour>"`. Beside the
+pages: sitemap.xml, robots.txt, 404.html, `.htaccess` and `_headers` with
+the cache rules and a Content-Security-Policy that admits no script from
+another origin, plus speculation rules that let Chromium prerender the next
+page. The build reads every page back through the HTMLReader and fails on
+a broken internal link or anchor, an unknown behaviour, or a page, the
+stylesheet or a script over its compressed-size budget; it removes what an
+earlier build wrote and this one did not. The site works with JavaScript
+off. Documentation sites too: `AddDocs` reads a Markdown folder as
+Docusaurus reads its `docs/` (front matter, `_category_.json`, links
+between the files, translations), into the `doc` layout (sidebar, table
+of contents, breadcrumbs, previous / next), with code highlighted at build
+time, admonitions and tabs (`UltraSiteMarkdown.h`), a search index per
+language, a search page and the `search`, `toc`, `tabs` and `copy`
+modules. UltraPress publishes its HTML + JavaScript output, a site's
+`docs/` and `ultrapress docs` through it
+(`Apps/UltraPress/engine/UltraPressSite.h`); the UltraStore admin backend
+writes the web store through it (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`),
+under the catalog's path (a site's `url` with a path is served from it:
+`Builder::Url`) and in every catalog language (`SiteConfig::frames`).
+Responsive pictures (`Builder::Picture`: AVIF / WebP variants by content
+hash), `.gz` / `.br` copies (`BuildOptions::precompress`; Brotli
+optional), versioned docs (`DocsOptions::versions`), and a loopback preview
+server over UltraNet (`UltraSiteServer.h`: `Respond`, `Serve`) behind
+`ultrapress serve`. Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
+zlib. Sources under `UltraSite/{include,core,resources}`, target
+`UltraSite`, header `<UltraSite/UltraSite.h>`, `namespace UltraSite`;
+see `Docs/Modules/UltraSite/README.md` and
+`Docs/Research/UltraSiteStaticSitesProposal.md`.

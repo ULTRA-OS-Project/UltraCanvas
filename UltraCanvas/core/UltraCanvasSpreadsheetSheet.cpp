@@ -1,15 +1,33 @@
 // core/UltraCanvasSpreadsheetSheet.cpp
 // Spreadsheet worksheet implementation (non-inline members)
+// Version: 1.7.0 - pivot tables: cloned with the sheet
+// Version: 1.6.0 - conditional formats evaluated for drawing (GetConditionalFormatting: formula rules,
+//                  colour scales, data bars, top / average / duplicates); Custom validation rules and
+//                  lists taken from cells
+// Version: 1.5.0 - charts: cloned with the sheet, moved with inserted / deleted rows and columns
+// Version: 1.4.0 - PasteCells pastes formulas with their references moved from where they were copied; a values paste of a formula cell is its result
+// Version: 1.3.0 - inserting / deleting rows and columns rewrites the formulas' references
+// Version: 1.2.0 - GetEffectiveValidation, DataValidationListItems
+// Version: 1.1.0 - data validation: one checker (CheckDataValidation) for range and cell rules; text is
+//                  not a number, unreadable bounds fail, Date/Time bounds as YYYY-MM-DD / HH:MM
 // Version: 1.0.0
 // Last Modified: 2026-05-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheetSheet.h"
+#include "UltraCanvasSpreadsheetFormula.h"      // conditions and Custom rules are formulas
+#include "UltraCanvasSpreadsheetMetrics.h"      // SpreadsheetUtf8Length
+#include "UltraCanvasTextUtils.h"               // ParseFloatClassic
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <climits>
+#include <cstdio>
+#include <optional>
 #include <set>
+#include <variant>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -137,6 +155,7 @@ void SpreadsheetSheet::InsertColumns(int col, int count) {
     columns_ = std::move(newDefs);
 
     ShiftCellReferences(0, col, 0, count);
+    MoveFormulaReferences(name_, true, col, count);
     InvalidateUsedRange();
     NotifyStructureChange();
 }
@@ -168,6 +187,7 @@ void SpreadsheetSheet::DeleteColumns(int col, int count) {
     columns_ = std::move(newDefs);
 
     ShiftCellReferences(0, col + count, 0, -count);
+    MoveFormulaReferences(name_, true, col, -count);
     InvalidateUsedRange();
     NotifyStructureChange();
 }
@@ -195,6 +215,7 @@ void SpreadsheetSheet::InsertRows(int row, int count) {
     rows_ = std::move(newDefs);
 
     ShiftCellReferences(row, 0, count, 0);
+    MoveFormulaReferences(name_, false, row, count);
     InvalidateUsedRange();
     NotifyStructureChange();
 }
@@ -226,6 +247,7 @@ void SpreadsheetSheet::DeleteRows(int row, int count) {
     rows_ = std::move(newDefs);
 
     ShiftCellReferences(row + count, 0, -count, 0);
+    MoveFormulaReferences(name_, false, row, -count);
     InvalidateUsedRange();
     NotifyStructureChange();
 }
@@ -487,75 +509,383 @@ void SpreadsheetSheet::ClearConditionalFormats() {
     NotifyStructureChange();
 }
 
+void SpreadsheetSheet::SetConditionalFormats(const std::vector<ConditionalFormat>& formats) {
+    conditionalFormats_ = formats;
+    NotifyStructureChange();
+}
+
 std::optional<CellStyle> SpreadsheetSheet::GetConditionalStyle(int row, int col) const {
+    return GetConditionalFormatting(row, col).style;
+}
+
+namespace {
+
+std::string AsciiLower(std::string text) {
+    for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
+
+std::string TrimSpaces(const std::string& text) {
+    const size_t a = text.find_first_not_of(" \t");
+    if (a == std::string::npos) return std::string();
+    const size_t b = text.find_last_not_of(" \t");
+    return text.substr(a, b - a + 1);
+}
+
+// A whole dot-decimal number, and nothing after it.
+std::optional<double> ReadWholeNumber(const std::string& text) {
+    const std::string t = TrimSpaces(text);
+    if (t.empty()) return std::nullopt;
+    double number = 0.0;
+    const char* first = t.c_str();
+    const char* last = first + t.size();
+    if (*first == '+') ++first;
+    if (first != last && ParseFloatClassic(first, last, number) == last) return number;
+    return std::nullopt;
+}
+
+// The function library the conditions' formulas are evaluated with: one per
+// thread, built on first use.
+FormulaFunctionLibrary& ConditionFunctionLibrary() {
+    thread_local FormulaFunctionLibrary library;
+    return library;
+}
+
+// `formula` (with or without its '='), written for `anchor` and moved to
+// (row, col) as a copied formula is, evaluated on `sheet`.
+FormulaValue EvaluateSheetFormula(const SpreadsheetSheet& sheet, const std::string& formula,
+                                  int row, int col, const CellAddress& anchor) {
+    std::string text = TrimSpaces(formula);
+    if (text.empty()) return FormulaValue::Empty();
+    if (text[0] != '=') text = "=" + text;
+    if (row != anchor.row || col != anchor.col) {
+        text = ShiftFormulaReferences(text, row - anchor.row, col - anchor.col);
+    }
+    SpreadsheetFormula parsed(text, CellAddress(row, col));
+    if (!parsed.Parse()) return FormulaValue::Error(CellErrorType::NameError);
+    FormulaEvaluator evaluator(ConditionFunctionLibrary());
+    // The evaluator reads cells through a non-const sheet; it changes none.
+    auto& readable = const_cast<SpreadsheetSheet&>(sheet);
+    evaluator.SetSpreadsheet(readable.GetParent());
+    evaluator.SetCurrentSheet(&readable);
+    return evaluator.Evaluate(parsed);
+}
+
+// A rule's operand: a number, "quoted text", or a formula (a reference, a
+// calculation); text that is none of these stands for itself.
+FormulaValue ConditionOperand(const SpreadsheetSheet& sheet, const std::string& operand,
+                              int row, int col, const CellAddress& anchor) {
+    const std::string t = TrimSpaces(operand);
+    if (t.empty()) return FormulaValue::Empty();
+    if (auto number = ReadWholeNumber(t)) return FormulaValue::Number(*number);
+    if (t.size() >= 2 && t.front() == '"' && t.back() == '"') {
+        const std::string inner = t.substr(1, t.size() - 2);
+        std::string unquoted;
+        for (size_t i = 0; i < inner.size(); ++i) {
+            unquoted += inner[i];
+            if (inner[i] == '"' && i + 1 < inner.size() && inner[i + 1] == '"') ++i;
+        }
+        return FormulaValue::Text(unquoted);
+    }
+    FormulaValue value = EvaluateSheetFormula(sheet, t, row, col, anchor);
+    if (value.IsError() && t[0] != '=') return FormulaValue::Text(t);
+    return value;
+}
+
+bool FormulaValueIsTrue(const FormulaValue& value) {
+    if (value.IsBoolean() || value.IsNumber()) return value.GetBoolean();
+    if (value.IsText()) return AsciiLower(value.GetText()) == "true";
+    return false;
+}
+
+// The cell's value as a rule compares it: a number (a date or a currency
+// amount too), else its text; nothing for an empty cell.
+FormulaValue CellConditionValue(const SpreadsheetCell* cell) {
+    if (!cell || cell->IsEmpty()) return FormulaValue::Empty();
+    if (cell->HasError()) return FormulaValue::Error(cell->GetError());
+    if (auto number = cell->TryGetNumber()) return FormulaValue::Number(*number);
+    return FormulaValue::Text(cell->GetDisplayValue());
+}
+
+bool CompareCondition(const FormulaValue& subject, ValidationOperator op,
+                      const FormulaValue& v1, const FormulaValue& v2) {
+    auto order = [](const FormulaValue& a, const FormulaValue& b) -> std::optional<int> {
+        const bool aNumber = a.IsNumber() || a.IsBoolean() || a.IsEmpty();
+        const bool bNumber = b.IsNumber() || b.IsBoolean() || b.IsEmpty();
+        if (aNumber && bNumber) {
+            const double x = a.GetNumber(), y = b.GetNumber();
+            return x < y ? -1 : (x > y ? 1 : 0);
+        }
+        if (a.IsText() && b.IsText()) {
+            const int c = AsciiLower(a.GetText()).compare(AsciiLower(b.GetText()));
+            return c < 0 ? -1 : (c > 0 ? 1 : 0);
+        }
+        return std::nullopt;   // a number against text: never equal, no order
+    };
+    if (subject.IsError()) return false;
+    const auto c1 = order(subject, v1);
+    switch (op) {
+        case ValidationOperator::Equal:          return c1 && *c1 == 0;
+        case ValidationOperator::NotEqual:       return !c1 || *c1 != 0;
+        case ValidationOperator::GreaterThan:    return c1 && *c1 > 0;
+        case ValidationOperator::LessThan:       return c1 && *c1 < 0;
+        case ValidationOperator::GreaterOrEqual: return c1 && *c1 >= 0;
+        case ValidationOperator::LessOrEqual:    return c1 && *c1 <= 0;
+        case ValidationOperator::Between:
+        case ValidationOperator::NotBetween: {
+            const auto c2 = order(subject, v2);
+            const bool inside = c1 && c2 && *c1 >= 0 && *c2 <= 0;
+            return op == ValidationOperator::Between ? inside : !inside;
+        }
+    }
+    return false;
+}
+
+// PERCENTILE.INC of sorted values; p from 0 to 1.
+double SortedPercentile(const std::vector<double>& sorted, double p) {
+    if (sorted.empty()) return 0.0;
+    p = std::clamp(p, 0.0, 1.0);
+    const double position = p * static_cast<double>(sorted.size() - 1);
+    const size_t below = static_cast<size_t>(std::floor(position));
+    const size_t above = std::min(sorted.size() - 1, below + 1);
+    return sorted[below] + (sorted[above] - sorted[below]) * (position - static_cast<double>(below));
+}
+
+Color MixColours(const Color& a, const Color& b, double t) {
+    t = std::clamp(t, 0.0, 1.0);
+    auto mix = [t](uint8_t x, uint8_t y) {
+        return static_cast<uint8_t>(std::lround(static_cast<double>(x) + (static_cast<double>(y) - x) * t));
+    };
+    return Color(mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b), mix(a.a, b.a));
+}
+
+} // namespace
+
+const SpreadsheetSheet::ConditionalRangeStats&
+SpreadsheetSheet::GetConditionalRangeStats(size_t formatIndex, size_t ruleIndex) const {
+    if (conditionalStatsRevision_ != contentRevision_) {
+        conditionalStats_.clear();
+        conditionalStatsRevision_ = contentRevision_;
+    }
+    const auto key = std::make_pair(formatIndex, ruleIndex);
+    auto found = conditionalStats_.find(key);
+    if (found != conditionalStats_.end()) return found->second;
+
+    ConditionalRangeStats stats;
+    const CellRange& range = conditionalFormats_[formatIndex].range;
+    // Only the cells in use: a rule over whole columns reads what is there.
+    const CellRange used = GetUsedRange();
+    const int r0 = std::max(range.start.row, used.start.row), r1 = std::min(range.end.row, used.end.row);
+    const int c0 = std::max(range.start.col, used.start.col), c1 = std::min(range.end.col, used.end.col);
+    for (int r = r0; r <= r1; ++r) {
+        for (int c = c0; c <= c1; ++c) {
+            const SpreadsheetCell* cell = GetCellIfExists(r, c);
+            if (!cell || cell->IsEmpty() || cell->HasError()) continue;
+            if (auto number = cell->TryGetNumber()) {
+                stats.sortedNumbers.push_back(*number);
+                stats.sum += *number;
+            }
+            const std::string text = cell->GetDisplayValue();
+            if (!text.empty()) ++stats.textCounts[AsciiLower(text)];
+        }
+    }
+    std::sort(stats.sortedNumbers.begin(), stats.sortedNumbers.end());
+    return conditionalStats_.emplace(key, std::move(stats)).first->second;
+}
+
+ConditionalCellFormat SpreadsheetSheet::GetConditionalFormatting(int row, int col) const {
+    ConditionalCellFormat result;
+    if (conditionalFormats_.empty()) return result;
+
+    // The rules over the cell, by priority (a rule without one keeps its
+    // place after those with one).
+    struct Candidate { size_t format; size_t rule; int priority; };
+    std::vector<Candidate> candidates;
+    for (size_t f = 0; f < conditionalFormats_.size(); ++f) {
+        if (!conditionalFormats_[f].range.Contains(row, col)) continue;
+        const auto& rules = conditionalFormats_[f].rules;
+        for (size_t r = 0; r < rules.size(); ++r) {
+            const int priority = rules[r].priority > 0 ? rules[r].priority : INT_MAX;
+            candidates.push_back({f, r, priority});
+        }
+    }
+    if (candidates.empty()) return result;
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [](const Candidate& a, const Candidate& b) { return a.priority < b.priority; });
+
+    // Formulas read cells through the non-const accessors; nothing changes.
+    const bool wasFrozen = contentRevisionFrozen_;
+    contentRevisionFrozen_ = true;
+
     const SpreadsheetCell* cell = GetCellIfExists(row, col);
+    const FormulaValue value = CellConditionValue(cell);
+    const std::string text = cell ? cell->GetDisplayValue() : std::string();
+    const std::string lowerText = AsciiLower(text);
 
-    for (const auto& format : conditionalFormats_) {
-        if (!format.range.Contains(row, col)) continue;
+    for (const Candidate& candidate : candidates) {
+        const ConditionalFormat& format = conditionalFormats_[candidate.format];
+        const ConditionalFormatRule& rule = format.rules[candidate.rule];
+        const CellAddress anchor = format.range.start;
 
-        for (const auto& rule : format.rules) {
-            bool matched = false;
-
-            std::string text = cell ? cell->GetDisplayValue() : "";
-            double value = cell ? cell->GetNumber() : 0.0;
-
-            auto parseNum = [](const std::string& s) -> double {
-                try { return std::stod(s); } catch (...) { return 0.0; }   // locale-ok: compares against what the user typed into the filter
-            };
-
-            switch (rule.type) {
-                case ConditionalFormatType::CellValue: {
-                    double v1 = parseNum(rule.formula1);
-                    double v2 = parseNum(rule.formula2);
-                    switch (rule.op) {
-                        case ValidationOperator::Equal:          matched = (value == v1); break;
-                        case ValidationOperator::NotEqual:       matched = (value != v1); break;
-                        case ValidationOperator::GreaterThan:    matched = (value > v1); break;
-                        case ValidationOperator::LessThan:       matched = (value < v1); break;
-                        case ValidationOperator::GreaterOrEqual: matched = (value >= v1); break;
-                        case ValidationOperator::LessOrEqual:    matched = (value <= v1); break;
-                        case ValidationOperator::Between:        matched = (value >= v1 && value <= v2); break;
-                        case ValidationOperator::NotBetween:     matched = (value < v1 || value > v2); break;
-                    }
-                    break;
+        // A threshold of a colour scale or a data bar, as a number.
+        auto threshold = [&](const ConditionalThreshold& t, const ConditionalRangeStats& stats) -> double {
+            const auto& sorted = stats.sortedNumbers;
+            const double low = sorted.empty() ? 0.0 : sorted.front();
+            const double high = sorted.empty() ? 0.0 : sorted.back();
+            const std::optional<double> number = ReadWholeNumber(t.value);
+            switch (t.kind) {
+                case ConditionalThresholdKind::Lowest: return low;
+                case ConditionalThresholdKind::Highest: return high;
+                case ConditionalThresholdKind::Percent: return low + (high - low) * number.value_or(0.0) / 100.0;
+                case ConditionalThresholdKind::Percentile: return SortedPercentile(sorted, number.value_or(50.0) / 100.0);
+                case ConditionalThresholdKind::Number:
+                    if (number) return *number;
+                    [[fallthrough]];
+                case ConditionalThresholdKind::Formula:
+                    return ConditionOperand(*this, t.value, anchor.row, anchor.col, anchor).ToNumber();
+            }
+            return low;
+        };
+        auto thresholds = [&](size_t count) {
+            if (rule.thresholds.size() == count) return rule.thresholds;
+            std::vector<ConditionalThreshold> points;
+            if (rule.colorScaleValues.size() == count) {
+                for (double v : rule.colorScaleValues) {
+                    points.emplace_back(ConditionalThresholdKind::Number, FormatFloatClassic(v, 15));
                 }
-                case ConditionalFormatType::ContainsText:
-                    matched = !rule.formula1.empty() && text.find(rule.formula1) != std::string::npos;
-                    break;
-                case ConditionalFormatType::NotContainsText:
-                    matched = rule.formula1.empty() || text.find(rule.formula1) == std::string::npos;
-                    break;
-                case ConditionalFormatType::BeginsWithText:
-                    matched = !rule.formula1.empty() && text.rfind(rule.formula1, 0) == 0;
-                    break;
-                case ConditionalFormatType::EndsWithText:
-                    matched = !rule.formula1.empty() && text.size() >= rule.formula1.size() &&
-                              text.compare(text.size() - rule.formula1.size(), rule.formula1.size(), rule.formula1) == 0;
-                    break;
-                case ConditionalFormatType::ContainsBlanks:
-                    matched = text.empty();
-                    break;
-                case ConditionalFormatType::NotContainsBlanks:
-                    matched = !text.empty();
-                    break;
-                case ConditionalFormatType::ContainsErrors:
-                    matched = cell && cell->HasError();
-                    break;
-                case ConditionalFormatType::NotContainsErrors:
-                    matched = !cell || !cell->HasError();
-                    break;
-                default:
-                    matched = false;
-                    break;
+                return points;
             }
+            points.emplace_back(ConditionalThresholdKind::Lowest);
+            if (count == 3) points.emplace_back(ConditionalThresholdKind::Percentile, "50");
+            points.emplace_back(ConditionalThresholdKind::Highest);
+            return points;
+        };
 
-            if (matched) {
-                return rule.style;
+        if (rule.type == ConditionalFormatType::ColorScale) {
+            if (result.fill || !value.IsNumber() || rule.colorScale.size() < 2) continue;
+            const size_t count = std::min<size_t>(rule.colorScale.size(), 3);
+            const ConditionalRangeStats& stats = GetConditionalRangeStats(candidate.format, candidate.rule);
+            std::vector<double> at;
+            for (const auto& point : thresholds(count)) at.push_back(threshold(point, stats));
+            const double v = value.GetNumber();
+            Color colour = rule.colorScale[0];
+            if (v >= at.back()) {
+                colour = rule.colorScale[count - 1];
+            } else if (v > at.front()) {
+                for (size_t i = 0; i + 1 < count; ++i) {
+                    if (v <= at[i + 1]) {
+                        const double span = at[i + 1] - at[i];
+                        colour = MixColours(rule.colorScale[i], rule.colorScale[i + 1],
+                                            span > 0 ? (v - at[i]) / span : 1.0);
+                        break;
+                    }
+                }
             }
+            result.fill = colour;
+            if (rule.stopIfTrue) break;
+            continue;
+        }
+        if (rule.type == ConditionalFormatType::DataBar) {
+            if (result.hasDataBar || !value.IsNumber()) continue;
+            const ConditionalRangeStats& stats = GetConditionalRangeStats(candidate.format, candidate.rule);
+            const auto points = thresholds(2);
+            const double low = threshold(points[0], stats);
+            const double high = threshold(points[1], stats);
+            const double v = value.GetNumber();
+            result.hasDataBar = true;
+            result.dataBarLength = high > low ? std::clamp((v - low) / (high - low), 0.0, 1.0)
+                                              : (v >= high ? 1.0 : 0.0);
+            result.dataBarColor = rule.dataBarColor;
+            result.showValue = rule.showValue;
+            if (rule.stopIfTrue) break;
+            continue;
+        }
+        if (result.style) continue;   // the first style that holds wins
+
+        bool matched = false;
+        switch (rule.type) {
+            case ConditionalFormatType::CellValue: {
+                const FormulaValue v1 = ConditionOperand(*this, rule.formula1, row, col, anchor);
+                const FormulaValue v2 = ConditionOperand(*this, rule.formula2, row, col, anchor);
+                // An empty cell is 0 against a number and "" against text.
+                FormulaValue subject = value;
+                if (subject.IsEmpty() && v1.IsText()) subject = FormulaValue::Text("");
+                matched = CompareCondition(subject, rule.op, v1, v2);
+                break;
+            }
+            case ConditionalFormatType::Expression:
+                matched = FormulaValueIsTrue(EvaluateSheetFormula(*this, rule.formula1, row, col, anchor));
+                break;
+            case ConditionalFormatType::ContainsText:
+                matched = !rule.formula1.empty() && lowerText.find(AsciiLower(rule.formula1)) != std::string::npos;
+                break;
+            case ConditionalFormatType::NotContainsText:
+                matched = rule.formula1.empty() || lowerText.find(AsciiLower(rule.formula1)) == std::string::npos;
+                break;
+            case ConditionalFormatType::BeginsWithText:
+                matched = !rule.formula1.empty() && lowerText.rfind(AsciiLower(rule.formula1), 0) == 0;
+                break;
+            case ConditionalFormatType::EndsWithText: {
+                const std::string ending = AsciiLower(rule.formula1);
+                matched = !ending.empty() && lowerText.size() >= ending.size() &&
+                          lowerText.compare(lowerText.size() - ending.size(), ending.size(), ending) == 0;
+                break;
+            }
+            case ConditionalFormatType::ContainsBlanks:
+                matched = TrimSpaces(text).empty();
+                break;
+            case ConditionalFormatType::NotContainsBlanks:
+                matched = !TrimSpaces(text).empty();
+                break;
+            case ConditionalFormatType::ContainsErrors:
+                matched = cell && cell->HasError();
+                break;
+            case ConditionalFormatType::NotContainsErrors:
+                matched = !cell || !cell->HasError();
+                break;
+            case ConditionalFormatType::Top10: {
+                if (!value.IsNumber()) break;
+                const auto& sorted = GetConditionalRangeStats(candidate.format, candidate.rule).sortedNumbers;
+                if (sorted.empty()) break;
+                const double wanted = ReadWholeNumber(rule.formula1).value_or(10.0);
+                size_t n = rule.percent
+                    ? static_cast<size_t>(std::floor(static_cast<double>(sorted.size()) * wanted / 100.0))
+                    : static_cast<size_t>(std::max(0.0, wanted));
+                n = std::clamp<size_t>(n, 1, sorted.size());
+                matched = rule.bottom ? value.GetNumber() <= sorted[n - 1]
+                                      : value.GetNumber() >= sorted[sorted.size() - n];
+                break;
+            }
+            case ConditionalFormatType::AboveAverage: {
+                if (!value.IsNumber()) break;
+                const ConditionalRangeStats& stats = GetConditionalRangeStats(candidate.format, candidate.rule);
+                if (stats.sortedNumbers.empty()) break;
+                const double average = stats.sum / static_cast<double>(stats.sortedNumbers.size());
+                const double v = value.GetNumber();
+                matched = rule.aboveAverage ? (v > average || (rule.equalAverage && v == average))
+                                            : (v < average || (rule.equalAverage && v == average));
+                break;
+            }
+            case ConditionalFormatType::DuplicateValues:
+            case ConditionalFormatType::UniqueValues: {
+                if (text.empty()) break;
+                const auto& counts = GetConditionalRangeStats(candidate.format, candidate.rule).textCounts;
+                auto it = counts.find(lowerText);
+                const int count = it == counts.end() ? 0 : it->second;
+                matched = rule.type == ConditionalFormatType::DuplicateValues ? count > 1 : count == 1;
+                break;
+            }
+            default:
+                break;
+        }
+        if (matched) {
+            result.style = rule.style;
+            if (rule.stopIfTrue) break;
         }
     }
 
-    return std::nullopt;
+    contentRevisionFrozen_ = wasFrozen;
+    return result;
 }
 
 // ============================================================================
@@ -594,91 +924,275 @@ const DataValidation* SpreadsheetSheet::GetValidation(int row, int col) const {
     return nullptr;
 }
 
-bool SpreadsheetSheet::ValidateCell(int row, int col, std::string* errorMessage) const {
-    const DataValidation* validation = GetValidation(row, col);
-    if (!validation || validation->type == ValidationType::Any) {
-        return true;
+namespace {
+
+// A validation bound: a dot-decimal number (what ODS and XLSX store, a date
+// or time as its serial number), and for a Date or Time rule also
+// "YYYY-MM-DD" or "HH:MM[:SS]", which a person setting a rule types.
+std::optional<double> ReadValidationBound(const std::string& text, ValidationType type) {
+    std::string t = text;
+    const size_t a = t.find_first_not_of(" \t");
+    const size_t b = t.find_last_not_of(" \t");
+    t = (a == std::string::npos) ? std::string() : t.substr(a, b - a + 1);
+    if (t.empty()) return std::nullopt;
+
+    // The whole bound must be the number: TryParseFloat would read
+    // "2026-01-01" as 2026 and ignore the rest.
+    double number = 0.0;
+    const char* first = t.c_str();
+    const char* last = first + t.size();
+    if (*first == '+') ++first;
+    if (ParseFloatClassic(first, last, number) == last && first != last) return number;
+
+    int p1 = 0, p2 = 0, p3 = 0;
+    char c1 = 0, c2 = 0, rest = 0;
+    if (type == ValidationType::Date &&
+        std::sscanf(t.c_str(), "%d%c%d%c%d%c", &p1, &c1, &p2, &c2, &p3, &rest) == 5 &&
+        c1 == '-' && c2 == '-' && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31) {
+        return DateTimeValue::FromDate(p1, p2, p3).serialNumber;
+    }
+    if (type == ValidationType::Time) {
+        p3 = 0;
+        const int n = std::sscanf(t.c_str(), "%d%c%d%c%d%c", &p1, &c1, &p2, &c2, &p3, &rest);
+        if ((n == 3 && c1 == ':') || (n == 5 && c1 == ':' && c2 == ':')) {
+            if (p1 >= 0 && p1 <= 24 && p2 >= 0 && p2 < 60 && p3 >= 0 && p3 < 60) {
+                return DateTimeValue::FromTime(p1, p2, p3).serialNumber;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// The items of a list rule: "a,b,c" as typed, or ODF's "\"a\";\"b\"".
+std::vector<std::string> ReadValidationList(const std::string& source) {
+    const char separator = source.find(';') != std::string::npos ? ';' : ',';
+    std::vector<std::string> items;
+    size_t start = 0;
+    while (start <= source.size()) {
+        const size_t sep = source.find(separator, start);
+        std::string item = source.substr(start, sep == std::string::npos ? std::string::npos : sep - start);
+        const size_t a = item.find_first_not_of(" \t");
+        const size_t b = item.find_last_not_of(" \t");
+        item = (a == std::string::npos) ? std::string() : item.substr(a, b - a + 1);
+        if (item.size() >= 2 && item.front() == '"' && item.back() == '"') {
+            item = item.substr(1, item.size() - 2);
+        }
+        items.push_back(item);
+        if (sep == std::string::npos) break;
+        start = sep + 1;
+    }
+    return items;
+}
+
+bool CompareByOperator(double subject, ValidationOperator op, double v1, double v2) {
+    switch (op) {
+        case ValidationOperator::Between:        return subject >= v1 && subject <= v2;
+        case ValidationOperator::NotBetween:     return subject < v1 || subject > v2;
+        case ValidationOperator::Equal:          return subject == v1;
+        case ValidationOperator::NotEqual:       return subject != v1;
+        case ValidationOperator::GreaterThan:    return subject > v1;
+        case ValidationOperator::LessThan:       return subject < v1;
+        case ValidationOperator::GreaterOrEqual: return subject >= v1;
+        case ValidationOperator::LessOrEqual:    return subject <= v1;
+    }
+    return true;
+}
+
+bool OperatorNeedsSecondBound(ValidationOperator op) {
+    return op == ValidationOperator::Between || op == ValidationOperator::NotBetween;
+}
+
+} // namespace
+
+bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell* cell,
+                         std::string* errorMessage) {
+    if (validation.type == ValidationType::Any || validation.type == ValidationType::Custom) {
+        return true;   // Custom: a formula, evaluated on the sheet (SpreadsheetSheet::ValidateCell)
     }
 
-    const SpreadsheetCell* cell = GetCellIfExists(row, col);
-    bool isBlank = !cell || cell->IsEmpty();
-
-    if (isBlank) {
-        if (validation->allowBlank) return true;
+    auto fail = [&](const std::string& fallback) {
         if (errorMessage) {
-            *errorMessage = validation->errorMessage.empty() ? "Value required" : validation->errorMessage;
+            *errorMessage = validation.errorMessage.empty() ? fallback : validation.errorMessage;
         }
         return false;
-    }
-
-    std::string text = cell->GetDisplayValue();
-    double value = cell->GetNumber();
-
-    auto parseNum = [](const std::string& s) -> double {
-        try { return std::stod(s); } catch (...) { return 0.0; }   // locale-ok: compares against what the user typed into the filter
     };
 
-    bool valid = true;
+    // Empty, or a formula or text that shows nothing.
+    const bool isBlank = !cell || cell->IsEmpty() || cell->GetDisplayValue().empty();
+    if (isBlank) {
+        return validation.allowBlank ? true : fail(Tr("A value is required in this cell."));
+    }
+    const std::string invalid = Tr("The value does not match the rule for this cell.");
 
-    switch (validation->type) {
-        case ValidationType::List: {
-            // formula1 holds a comma-separated list of allowed values.
-            valid = false;
-            std::string source = validation->formula1;
-            size_t start = 0;
-            while (start <= source.size()) {
-                size_t comma = source.find(',', start);
-                std::string item = source.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
-                // Trim surrounding whitespace.
-                size_t a = item.find_first_not_of(" \t");
-                size_t b = item.find_last_not_of(" \t");
-                if (a != std::string::npos) item = item.substr(a, b - a + 1);
-                else item.clear();
-                if (item == text) { valid = true; break; }
-                if (comma == std::string::npos) break;
-                start = comma + 1;
-            }
-            break;
+    if (validation.type == ValidationType::List) {
+        const std::string text = cell->GetDisplayValue();
+        for (const auto& item : ReadValidationList(validation.formula1)) {
+            if (item == text) return true;
         }
-        case ValidationType::WholeNumber:
-        case ValidationType::Decimal:
-        case ValidationType::Date:
-        case ValidationType::Time:
-        case ValidationType::TextLength: {
-            double subject = value;
-            if (validation->type == ValidationType::TextLength) {
-                subject = static_cast<double>(text.length());
-            }
-            double v1 = parseNum(validation->formula1);
-            double v2 = parseNum(validation->formula2);
-            switch (validation->op) {
-                case ValidationOperator::Between:        valid = (subject >= v1 && subject <= v2); break;
-                case ValidationOperator::NotBetween:     valid = (subject < v1 || subject > v2); break;
-                case ValidationOperator::Equal:          valid = (subject == v1); break;
-                case ValidationOperator::NotEqual:       valid = (subject != v1); break;
-                case ValidationOperator::GreaterThan:    valid = (subject > v1); break;
-                case ValidationOperator::LessThan:       valid = (subject < v1); break;
-                case ValidationOperator::GreaterOrEqual: valid = (subject >= v1); break;
-                case ValidationOperator::LessOrEqual:    valid = (subject <= v1); break;
-            }
-            if (validation->type == ValidationType::WholeNumber && value != std::floor(value)) {
-                valid = false;
-            }
-            break;
-        }
-        case ValidationType::Custom:
-            // Custom formula evaluation requires the formula engine; accept.
-            valid = true;
-            break;
-        default:
-            valid = true;
-            break;
+        return fail(invalid);
     }
 
-    if (!valid && errorMessage) {
-        *errorMessage = validation->errorMessage.empty() ? "Invalid value" : validation->errorMessage;
+    // The value the rule compares.
+    double subject = 0.0;
+    if (validation.type == ValidationType::TextLength) {
+        subject = static_cast<double>(SpreadsheetUtf8Length(cell->GetDisplayValue()));
+    } else {
+        const CellValueVariant& raw = cell->GetRawValue();
+        if (const auto* number = std::get_if<double>(&raw)) {
+            subject = *number;
+        } else if (const auto* currency = std::get_if<CurrencyValue>(&raw)) {
+            subject = currency->amount;
+        } else {
+            return fail(invalid);   // text, a truth value or an error is not a number
+        }
+        if (validation.type == ValidationType::WholeNumber && subject != std::floor(subject)) {
+            return fail(invalid);
+        }
     }
-    return valid;
+
+    const auto v1 = ReadValidationBound(validation.formula1, validation.type);
+    const auto v2 = OperatorNeedsSecondBound(validation.op)
+                        ? ReadValidationBound(validation.formula2, validation.type)
+                        : std::optional<double>(0.0);
+    if (!v1 || !v2) return fail(invalid);   // a bound that cannot be read
+
+    return CompareByOperator(subject, validation.op, *v1, *v2) ? true : fail(invalid);
+}
+
+std::optional<double> ReadDataValidationBound(const std::string& text, ValidationType type) {
+    return ReadValidationBound(text, type);
+}
+
+std::vector<std::string> DataValidationListItems(const DataValidation& validation) {
+    std::vector<std::string> items;
+    if (validation.type != ValidationType::List) return items;
+    for (auto& item : ReadValidationList(validation.formula1)) {
+        if (!item.empty()) items.push_back(std::move(item));
+    }
+    return items;
+}
+
+bool SpreadsheetCell::ValidateValue(std::string* errorMessage) const {
+    if (!validation_) return true;
+    return CheckDataValidation(*validation_, this, errorMessage);
+}
+
+const DataValidation* SpreadsheetSheet::GetEffectiveValidation(int row, int col) const {
+    // A rule set on the range (SetValidation) comes first; a rule a cell
+    // carries itself (SpreadsheetCell::SetValidation) applies otherwise.
+    if (const DataValidation* validation = GetValidation(row, col)) return validation;
+    const SpreadsheetCell* cell = GetCellIfExists(row, col);
+    return cell ? cell->GetValidation() : nullptr;
+}
+
+namespace {
+
+// The values of the cells a list rule names ("=$D$1:$D$5", "='Lists'.A1:A9",
+// a named range), in order, empty ones left out.
+std::vector<std::string> RangeListItems(const SpreadsheetSheet& sheet, const std::string& source) {
+    constexpr size_t kMaxItems = 10000;
+    std::vector<std::string> items;
+    SpreadsheetFormula parsed(source, CellAddress(0, 0));
+    if (!parsed.Parse() || !parsed.GetAST()) return items;
+    FormulaEvaluator evaluator(ConditionFunctionLibrary());
+    auto& readable = const_cast<SpreadsheetSheet&>(sheet);
+    evaluator.SetSpreadsheet(readable.GetParent());
+    evaluator.SetCurrentSheet(&readable);
+    const FormulaNode* root = parsed.GetAST();
+    CellRange range;
+    switch (root->nodeType) {
+        case FormulaNodeType::RangeRef: range = root->rangeRef; break;
+        case FormulaNodeType::CellRef: range = CellRange(root->cellRef, root->cellRef); break;
+        case FormulaNodeType::NamedRef: range = evaluator.GetNamedRange(root->namedRef); break;
+        default: return items;
+    }
+    if (!range.IsValid()) return items;
+    if (static_cast<long long>(range.RowCount()) * range.ColCount() > static_cast<long long>(kMaxItems)) {
+        range.end.row = range.start.row + static_cast<int>(kMaxItems / std::max(1, range.ColCount())) - 1;
+    }
+    for (const FormulaValue& value : evaluator.FlattenRange(range)) {
+        if (value.IsEmpty() || value.IsError()) continue;
+        std::string text = value.GetText();
+        if (!text.empty()) items.push_back(std::move(text));
+    }
+    return items;
+}
+
+} // namespace
+
+std::vector<std::string> SpreadsheetSheet::GetValidationListItems(int row, int col) const {
+    const DataValidation* rule = GetEffectiveValidation(row, col);
+    if (!rule || rule->type != ValidationType::List) return {};
+    if (!IsRangeListSource(*rule)) return DataValidationListItems(*rule);
+    const bool wasFrozen = contentRevisionFrozen_;
+    contentRevisionFrozen_ = true;
+    std::vector<std::string> items = RangeListItems(*this, rule->formula1);
+    contentRevisionFrozen_ = wasFrozen;
+    return items;
+}
+
+bool SpreadsheetSheet::ValidateCell(int row, int col, std::string* errorMessage) const {
+    const DataValidation* validation = GetEffectiveValidation(row, col);
+    if (!validation) return true;
+    const SpreadsheetCell* cell = GetCellIfExists(row, col);
+    const bool custom = validation->type == ValidationType::Custom;
+    // A formula in the rule is written for the rule's top-left cell (the
+    // cell itself for a cell's own rule) and moved to this one, as a copied
+    // formula is.
+    CellAddress anchor(row, col);
+    if (validation == GetValidation(row, col)) {
+        for (auto it = validations_.rbegin(); it != validations_.rend(); ++it) {
+            if (&it->second == validation) { anchor = it->first.start; break; }
+        }
+    }
+    if (!custom && !IsRangeListSource(*validation)) {
+        auto isFormula = [](const std::string& bound) {
+            const std::string t = TrimSpaces(bound);
+            return !t.empty() && t[0] == '=';
+        };
+        if (validation->type == ValidationType::List ||
+            (!isFormula(validation->formula1) && !isFormula(validation->formula2))) {
+            return CheckDataValidation(*validation, cell, errorMessage);
+        }
+        // A bound that is a formula ("=$B$1") is worked out first.
+        DataValidation resolved = *validation;
+        const bool wasFrozen = contentRevisionFrozen_;
+        contentRevisionFrozen_ = true;
+        for (std::string* bound : {&resolved.formula1, &resolved.formula2}) {
+            if (!isFormula(*bound)) continue;
+            const FormulaValue value = EvaluateSheetFormula(*this, *bound, row, col, anchor);
+            *bound = (value.IsNumber() || value.IsBoolean()) ? FormatFloatRoundTrip(value.GetNumber())
+                                                             : std::string();
+        }
+        contentRevisionFrozen_ = wasFrozen;
+        return CheckDataValidation(resolved, cell, errorMessage);
+    }
+
+    auto fail = [&](const std::string& fallback) {
+        if (errorMessage) {
+            *errorMessage = validation->errorMessage.empty() ? fallback : validation->errorMessage;
+        }
+        return false;
+    };
+    const bool isBlank = !cell || cell->IsEmpty() || cell->GetDisplayValue().empty();
+    if (isBlank) {
+        return validation->allowBlank ? true : fail(Tr("A value is required in this cell."));
+    }
+    const std::string invalid = Tr("The value does not match the rule for this cell.");
+
+    const bool wasFrozen = contentRevisionFrozen_;
+    contentRevisionFrozen_ = true;
+    bool valid = false;
+    if (custom) {
+        valid = FormulaValueIsTrue(EvaluateSheetFormula(*this, validation->formula1, row, col, anchor));
+    } else {
+        const std::string text = cell->GetDisplayValue();
+        for (const std::string& item : RangeListItems(*this, validation->formula1)) {
+            if (item == text) { valid = true; break; }
+        }
+    }
+    contentRevisionFrozen_ = wasFrozen;
+    return valid ? true : fail(invalid);
 }
 
 // ============================================================================
@@ -790,7 +1304,14 @@ std::vector<std::vector<SpreadsheetCell>> SpreadsheetSheet::CopyCells(const Cell
 
 void SpreadsheetSheet::PasteCells(const CellAddress& destination,
                                   const std::vector<std::vector<SpreadsheetCell>>& cells,
-                                  const PasteOptions& options) {
+                                  const PasteOptions& options,
+                                  std::optional<CellAddress> from) {
+    const int rowDelta = from ? destination.row - from->row : 0;
+    const int colDelta = from ? destination.col - from->col : 0;
+    auto movedFormula = [&](const SpreadsheetCell& source) {
+        return (rowDelta == 0 && colDelta == 0) ? source.GetFormulaText()
+                                                : ShiftFormulaReferences(source.GetFormulaText(), rowDelta, colDelta);
+    };
     for (size_t r = 0; r < cells.size(); ++r) {
         for (size_t c = 0; c < cells[r].size(); ++c) {
             int targetRow = destination.row + static_cast<int>(r);
@@ -822,17 +1343,29 @@ void SpreadsheetSheet::PasteCells(const CellAddress& destination,
             if (pasteValues) {
                 if (source.IsEmpty()) {
                     target.ClearContents();
-                } else if (pt == PasteType::Formulas ||
-                           pt == PasteType::FormulasAndNumberFormats) {
+                } else if (pt == PasteType::All || pt == PasteType::AllExceptBorders ||
+                           pt == PasteType::Formulas || pt == PasteType::FormulasAndNumberFormats) {
                     // Paste the formula text when present, otherwise the value.
                     if (source.HasFormula()) {
-                        target.SetFormula(source.GetFormulaText());
+                        target.SetFormula(movedFormula(source));
                     } else {
                         target.SetValue(source.GetRawValue(), source.GetValueType());
                     }
                 } else {
                     // Values paste: paste the computed value, not the formula.
-                    target.SetValue(source.GetRawValue(), source.GetValueType());
+                    // A formula cell holds its result under the Formula type;
+                    // the value pasted takes the type of what it is.
+                    CellValueType type = source.GetValueType();
+                    if (source.HasFormula() || type == CellValueType::Formula) {
+                        const CellValueVariant& v = source.GetRawValue();
+                        type = std::holds_alternative<std::string>(v)     ? CellValueType::Text
+                             : std::holds_alternative<double>(v)          ? CellValueType::Number
+                             : std::holds_alternative<bool>(v)            ? CellValueType::Boolean
+                             : std::holds_alternative<CellErrorType>(v)   ? CellValueType::Error
+                             : std::holds_alternative<CurrencyValue>(v)   ? CellValueType::Currency
+                                                                          : CellValueType::Empty;
+                    }
+                    target.SetValue(source.GetRawValue(), type);
                 }
             }
 
@@ -1054,8 +1587,8 @@ size_t ReferenceEnd(const std::string& formula, size_t i) {
         std::string name;
         size_t sep = 0;
         if (ReadSheetQualifier(formula, k, name, sep)) k = sep + 1;
-        const size_t far = addressEnd(k);
-        if (far > k) end = far;
+        const size_t spillEnd = addressEnd(k);
+        if (spillEnd > k) end = spillEnd;
     }
     return end;
 }
@@ -1125,6 +1658,185 @@ std::string RemoveSheetFromFormula(const std::string& formula, const std::string
         out += "#REF!";
         return ReferenceEnd(formula, sep + 1);
     });
+}
+
+namespace {
+
+// One A1 address in a formula: [$]LETTERS[$]DIGITS.
+struct FormulaAddress {
+    bool colAbs = false;
+    bool rowAbs = false;
+    int col = 0;   // 0-based
+    int row = 0;
+    size_t end = 0;   // one past it in the formula
+};
+
+bool ReadFormulaAddress(const std::string& f, size_t i, FormulaAddress& a) {
+    const size_t n = f.size();
+    size_t p = i;
+    a.colAbs = p < n && f[p] == '$';
+    if (a.colAbs) ++p;
+    const size_t letters = p;
+    while (p < n && std::isalpha(static_cast<unsigned char>(f[p])) && p - letters < 4) ++p;
+    const size_t letterCount = p - letters;
+    a.rowAbs = p < n && f[p] == '$';
+    if (a.rowAbs) ++p;
+    const size_t digits = p;
+    while (p < n && std::isdigit(static_cast<unsigned char>(f[p]))) ++p;
+    const size_t digitCount = p - digits;
+    if (letterCount < 1 || letterCount > 3 || digitCount < 1 || digitCount > 7) return false;
+    // Not the start of a longer name or a call (LOG10( ).
+    if (p < n && (IsSheetNameChar(f[p]) || f[p] == '(' || f[p] == '$' || f[p] == '.' || f[p] == '!')) return false;
+    std::string upper = f.substr(letters, letterCount);
+    for (auto& ch : upper) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    a.col = CellAddress::LetterToColumn(upper);
+    a.row = std::stoi(f.substr(digits, digitCount)) - 1;
+    a.end = p;
+    return true;
+}
+
+std::string WriteFormulaAddress(const FormulaAddress& a) {
+    std::string out;
+    if (a.colAbs) out += '$';
+    out += CellAddress::ColumnToLetter(a.col);
+    if (a.rowAbs) out += '$';
+    out += std::to_string(a.row + 1);
+    return out;
+}
+
+} // namespace
+
+std::string MoveFormulaReferencesForRowsColumns(const std::string& formula, const std::string& sheetName,
+                                                bool onThatSheet, bool columns, int at, int count) {
+    if (count == 0 || formula.empty()) return formula;
+    const int limit = columns ? SpreadsheetLimits::MaxColumns : SpreadsheetLimits::MaxRows;
+    const int deleted = count < 0 ? -count : 0;
+    auto indexOf = [columns](FormulaAddress& a) -> int& { return columns ? a.col : a.row; };
+
+    // One end of a reference: moved, or -1 when it falls in deleted rows.
+    // `isEnd` says which end of a range it is, which decides where it goes
+    // when its own row is deleted (a range shrinks to what is left).
+    auto moveIndex = [&](int index, bool inRange, bool isEnd) -> int {
+        if (count > 0) return index >= at ? index + count : index;
+        if (index < at) return index;
+        if (index >= at + deleted) return index - deleted;
+        if (!inRange) return -1;
+        return isEnd ? at - 1 : at;   // clipped to the rows that remain
+    };
+
+    // Rewrites one reference (cell or range) or answers false for #REF!.
+    auto moveReference = [&](FormulaAddress& first, FormulaAddress* last) -> bool {
+        if (!last) {
+            const int moved = moveIndex(indexOf(first), false, false);
+            if (moved < 0 || moved >= limit) return false;
+            indexOf(first) = moved;
+            return true;
+        }
+        int lo = indexOf(first), hi = indexOf(*last);
+        const bool swapped = lo > hi;
+        if (swapped) std::swap(lo, hi);
+        const int newLo = moveIndex(lo, true, false);
+        const int newHi = moveIndex(hi, true, true);
+        if (newHi < newLo || newLo < 0 || newHi >= limit) return false;   // all of it deleted
+        indexOf(swapped ? *last : first) = newLo;
+        indexOf(swapped ? first : *last) = newHi;
+        return true;
+    };
+
+    std::string out;
+    out.reserve(formula.size() + 8);
+    const size_t n = formula.size();
+    size_t i = 0;
+    while (i < n) {
+        const char c = formula[i];
+        if (c == '"') {   // a text literal is copied as it is
+            size_t close = formula.find('"', i + 1);
+            close = close == std::string::npos ? n : close + 1;
+            out.append(formula, i, close - i);
+            i = close;
+            continue;
+        }
+
+        // A reference starts here: qualified (Sales.A1) or not (A1), and may
+        // run on to a range (A1:B3, Sales.A1:Sales.B3).
+        std::string name;
+        size_t sep = 0;
+        size_t addressAt = i;
+        bool qualified = false;
+        if (ReadSheetQualifier(formula, i, name, sep)) {
+            qualified = true;
+            addressAt = sep + 1;
+        } else if (i > 0 && (IsSheetNameChar(formula[i - 1]) || formula[i - 1] == '.' || formula[i - 1] == '!')) {
+            out += c;
+            ++i;
+            continue;
+        }
+        FormulaAddress first;
+        if (!ReadFormulaAddress(formula, addressAt, first)) {
+            if (qualified) {   // a qualifier before something that is no address
+                out.append(formula, i, addressAt - i);
+                i = addressAt;
+                continue;
+            }
+            if (IsSheetNameChar(c) || c == '$') {   // a name or word: copied whole
+                size_t j = i + 1;
+                while (j < n && (IsSheetNameChar(formula[j]) || formula[j] == '.' || formula[j] == '$')) ++j;
+                out.append(formula, i, j - i);
+                i = j;
+            } else {
+                out += c;
+                ++i;
+            }
+            continue;
+        }
+
+        size_t end = first.end;
+        size_t lastAt = std::string::npos;   // where the far end's address starts
+        FormulaAddress last;
+        if (end < n && formula[end] == ':') {
+            size_t k = end + 1;
+            std::string farName;
+            size_t farSep = 0;
+            if (ReadSheetQualifier(formula, k, farName, farSep)) k = farSep + 1;
+            if (ReadFormulaAddress(formula, k, last)) {
+                lastAt = k;
+                end = last.end;
+            }
+        }
+
+        const bool applies = qualified ? SameNameIgnoringCase(name, sheetName) : onThatSheet;
+        if (!applies) {
+            out.append(formula, i, end - i);
+            i = end;
+            continue;
+        }
+        const bool isRange = lastAt != std::string::npos;
+        if (!moveReference(first, isRange ? &last : nullptr)) {
+            out += "#REF!";
+            i = end;
+            continue;
+        }
+        out.append(formula, i, addressAt - i);            // the qualifier, as written
+        out += WriteFormulaAddress(first);
+        if (isRange) {
+            out.append(formula, first.end, lastAt - first.end);   // ':' and any far qualifier
+            out += WriteFormulaAddress(last);
+        }
+        i = end;
+    }
+    return out;
+}
+
+void SpreadsheetSheet::MoveFormulaReferences(const std::string& changedSheet, bool columns, int at, int count) {
+    const bool own = SameNameIgnoringCase(changedSheet, name_);
+    for (auto& [coord, cell] : cells_) {
+        if (!cell || !cell->HasFormula()) continue;
+        const std::string& text = cell->GetFormulaText();
+        std::string moved = MoveFormulaReferencesForRowsColumns(text, changedSheet, own, columns, at, count);
+        if (moved != text) cell->SetFormula(moved);
+    }
+    // The charts' ranges on the changed sheet move with its cells.
+    MoveSpreadsheetChartRanges(charts_, changedSheet, columns, at, count);
 }
 
 int SpreadsheetSheet::GetAutoFillDownEnd(const CellRange& source) const {
@@ -1430,6 +2142,8 @@ std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::Clone(const std::string& new
     clone->scrollRow_ = scrollRow_;
     clone->scrollCol_ = scrollCol_;
     clone->zoomLevel_ = zoomLevel_;
+    clone->charts_ = charts_;
+    clone->pivots_ = pivots_;
 
     if (autoFilter_) {
         clone->autoFilter_ = std::make_unique<AutoFilter>(*autoFilter_);
@@ -1444,6 +2158,10 @@ std::unique_ptr<SpreadsheetSheet> SpreadsheetSheet::Clone(const std::string& new
 // ============================================================================
 
 void SpreadsheetSheet::ShiftCellReferences(int startRow, int startCol, int rowDelta, int colDelta) {
+    // The charts standing on the sheet move with the cells under them.
+    if (colDelta != 0) MoveSpreadsheetChartAnchors(charts_, true, colDelta < 0 ? startCol + colDelta : startCol, colDelta);
+    if (rowDelta != 0) MoveSpreadsheetChartAnchors(charts_, false, rowDelta < 0 ? startRow + rowDelta : startRow, rowDelta);
+
     // Adjust references stored in named ranges, merges, validations,
     // conditional formats and the print area when rows/columns shift.
 

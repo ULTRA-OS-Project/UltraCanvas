@@ -18,6 +18,36 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.25.0 - FontReport::namedFamilies: every family the document names, for a font list's
+//                   "in this document" section (UltraCanvasFontPicker)
+// Version: 1.24.0 - ZoomFit::WidthShare, ZoomToWidthShare: the page fills a share of the view's width,
+//                   centred, and keeps fitting as the element is resized
+// Version: 1.23.0 - page view: a white page on a grey desk in the light theme (FromTheme: the paper
+//                   the lighter of well and panel, the desk a shade darker; role "rich-text.desk")
+// Version: 1.22.1 - a paragraph's last line as tall as its others (its fonts' height times the line
+//                   spacing, line gap included); "at least" measured against the font's own line
+// Version: 1.22.0 - what a navigator needs (UltraCanvasDocumentNavigator.h): AddDocumentObserver /
+//                   RemoveDocumentObserver, more than one listener to edits and caret moves;
+//                   GoToPosition, GoToRange; MoveHeadingSection, MoveHeadingSectionUp / Down,
+//                   ChangeHeadingSectionLevel on the body, each one undo step
+// Version: 1.21.0 - what the document dialogs (UltraCanvasRichTextEditDialogs.h) set, each one undo
+//                   step: SetParagraphFormat, SetPageSetup, SetTableProperties,
+//                   SetSelectedImageWrap; InsertNote with its text; GoToPreviousChange,
+//                   GoToNextComment / GoToPreviousComment / GoToComment
+// Version: 1.20.0 - InsertChart; Paste takes a chart copied from a spreadsheet (UltraCanvasOfficeClipboard.h)
+// Version: 1.19.0 - RichTextEditStyle::adaptDocumentColors; AdaptDocumentColorToPage
+// Version: 1.18.0 - chartCache: a frame's chart drawn by the chart engine
+// Version: 1.17.1 - layoutStatedLines
+// Version: 1.17.0 - a frame standing in a line (a table nested in a cell) is edited in place
+//                   (InlineFrameRect, FurnitureEditState::frameHostBlock)
+// Version: 1.16.0 - tables nested in cells and drawings in a body line stand in the line; PlaceCellFloats
+//                   (headers and footers too); a print is on white paper
+// Version: 1.15.0 - a table cell floats what its text ignores (PlacedFloat::inCell, a turned picture's
+//                   rotationDeg) and keeps a frame or drawing in its line (InlineImage::frameContent)
+// Version: 1.14.0 - a section's own header, footer and page margins are laid out and edited
+//                   (PageFrame::furnitureSet)
+// Version: 1.13.1 - PlacedFloat::wordsOnly: a frame anchored in the frame being edited shows its words
+//                   (LayoutAnchoredFrameWords: its paragraphs and those in its drawing's shapes)
 // Version: 1.13.0 - EditFrame / IsEditingFrame: a text frame's words edited in place
 // Version: 1.12.0 - PlacedFloat::inFooter: a header's or footer's floats picked up while it is edited
 // Version: 1.11.0 - floating frames and drawings selected, moved and resized like pictures;
@@ -57,6 +87,13 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+class UltraCanvasChartEngineElement;      // Plugins/Charts/Engine: draws a document's charts
+
+// A colour a document states (for white paper) as it reads on `page` with
+// the view's `ink`: unchanged on a light page; on a dark one its lightness
+// is turned over and fitted between the page's and the ink's, its hue kept.
+Color AdaptDocumentColorToPage(const Color& color, const Color& page, const Color& ink);
 
 // ===== STYLE =====
 
@@ -117,6 +154,12 @@ struct RichTextEditStyle {
     float scrollbarWidth = 15.0f;
     float pageGap = 16.0f;            // page view: desk between and around pages
     bool drawBorder = true;
+    // A document states its colours for white paper. On a dark page (a dark
+    // theme) they are fitted to it: lightness turned over, hue kept - black
+    // text reads in the view's ink, a pale cell fill becomes a dark one.
+    // false = always the document's own colours. Pictures are never changed,
+    // and print and PDF export are on white paper with the document's colours.
+    bool adaptDocumentColors = true;
     // Comments: the text they are on, and the pane beside the text.
     Color commentHighlightColor = Color(255, 236, 160);
     Color commentPaneColor = Color(238, 238, 238);
@@ -133,8 +176,9 @@ struct RichTextEditStyle {
     Color fontNoticeTextColor = Color(110, 70, 0);
 
     // The theme's roles over a base's own typography and metrics: the well
-    // for the text and the page (the element role "rich-text.page" where a
-    // theme wants paper of another colour), the panel for the desk, ink and
+    // for the text; in page view the lighter of the well and the panel for the
+    // page and the panel a shade darker for the desk (the element roles
+    // "rich-text.page" and "rich-text.desk" where a theme wants others), ink and
     // the caret in ink, the soft accent for the selection, the accent for
     // links, muted ink for quotes and list markers, the panel with hairlines
     // for code, control-border rules and table grids, hairline guides; the
@@ -234,6 +278,10 @@ public:
     // typing; double-clicking a note (or its reference) edits it, Escape goes
     // back. The marks number themselves: footnotes 1, 2, 3, endnotes i, ii.
     bool InsertFootnote();
+    // A footnote or endnote at the caret holding `text`; with no text it
+    // opens for typing, as InsertFootnote does. Returns the note's index, or
+    // -1.
+    int InsertNote(RichNote::Kind kind, const std::string& text);
     bool InsertEndnote();
     bool EditNote(int noteIndex);
     bool IsEditingNote() const { return furnitureEdit && furnitureEdit->noteIndex >= 0; }
@@ -361,6 +409,31 @@ public:
     // Puts the caret at a bookmark and scrolls it into view. Ctrl+click on a
     // cross-reference, a table of contents entry or a link to "#name" does it.
     bool GoToBookmark(const std::string& name);
+    // Puts the caret at a body position (or selects a body range) and
+    // scrolls it into view - near the view's top when it was out of view -
+    // ending the editing of a header, footer, note or frame first. False
+    // when the position is not in the document.
+    bool GoToPosition(const RichDocPosition& position);
+    bool GoToRange(const RichDocRange& range);
+
+    // ===== HEADING SECTIONS =====
+    // A heading with the text and subheadings under it, moved or promoted
+    // in the body as a navigator does it (UCRichDocumentEditor, which
+    // defines the section): one undo step each, laid out again at once.
+    bool MoveHeadingSection(int headingBlock, int beforeBlock);
+    bool MoveHeadingSectionUp(int headingBlock);
+    bool MoveHeadingSectionDown(int headingBlock);
+    bool ChangeHeadingSectionLevel(int headingBlock, int delta);
+
+    // ===== OBSERVERS =====
+    // Besides onDocumentChanged and onSelectionChanged (the host's own), any
+    // number of listeners - a navigator, an outline, a word count - are told
+    // of every change: `documentChanged` true after an edit (undo, a new
+    // document, a header's text included), false after the caret or the
+    // selection moved. Returns an id for RemoveDocumentObserver. A listener
+    // that does not outlive the element removes itself when it goes.
+    int AddDocumentObserver(std::function<void(bool documentChanged)> observer);
+    void RemoveDocumentObserver(int id);
 
     // Structure.
     void InsertHorizontalRule();
@@ -380,6 +453,10 @@ public:
     void InsertInlineImageFromMemory(const std::string& name, const std::string& mimeType,
                                      const std::vector<uint8_t>& data,
                                      const std::string& altText = "");
+    // A chart in the line at the caret, `widthPt` x `heightPt`
+    // (UCRichDocumentEditor::InsertChart). Paste puts one there when the
+    // clipboard holds a chart copied from a spreadsheet.
+    bool InsertChart(const RichChart& chart, float widthPt, float heightPt);
 
     // ===== PICTURES =====
     // Clicking a picture selects it: a frame with eight handles is drawn round
@@ -397,6 +474,17 @@ public:
     bool SetSelectedImageSize(float widthPt, float heightPt);
     std::string GetSelectedImageAltText() const;
     bool SetSelectedImageAltText(const std::string& altText);
+    // How the text goes round the selected picture, and where a floating one
+    // sits (UCRichDocumentEditor::SetImageWrap). One undo step.
+    bool GetSelectedImageWrap(RichTextRun::ImageWrap& wrap, RichTextAlign& align) const;
+    bool SetSelectedImageWrap(RichTextRun::ImageWrap wrap, RichTextAlign align = RichTextAlign::Left);
+
+    // ===== PARAGRAPH LAYOUT =====
+    // The caret paragraph's indents, spacing, line spacing, alignment and tab
+    // stops, and the same given to every paragraph the selection touches (one
+    // undo step; see UCRichDocumentEditor::SetParagraphFormat).
+    RichParagraphFormat GetParagraphFormat() const { return editor.GetParagraphFormat(); }
+    bool SetParagraphFormat(const RichParagraphFormat& format);
 
     // ===== TABLES =====
     // Structural table editing, addressed from the caret: a menu item says
@@ -431,6 +519,10 @@ public:
     bool MergeSelectedCells();
         bool CanSplitCurrentCell() const;
     bool SplitCurrentCell();
+    // The caret's table's width, alignment, header row, borders and cell
+    // padding (RichTableProperties); false when the caret is not in a table.
+    bool GetTableProperties(RichTableProperties& out) const;
+    bool SetTableProperties(const RichTableProperties& properties);
 
     // ===== AUTOFORMAT AS YOU TYPE =====
     // On by default: typed quotes become “curly”, "--" a dash, "..." an
@@ -505,6 +597,9 @@ public:
     void EndPrintLayout();
     // The page the document is laid out on: its own, or A4 with 2 cm margins.
     RichPageSetup GetEffectivePageSetup() const { return EffectivePageSetup(); }
+    // Gives the document that page (size, margins, header and footer
+    // distance): one undo step, laid out again at once.
+    bool SetPageSetup(const RichPageSetup& page);
 
     // ===== ZOOM =====
     // 1 = 100%. Everything is drawn scaled - text, pictures, pages - and
@@ -519,12 +614,20 @@ public:
     void SetZoomRange(float minimum, float maximum);
     // Zoom that follows the element's size, as a word processor's "Page
     // width" and "Whole page": the page (with the desk either side) fills the
-    // width, or the whole page fits in the view. It is worked out again
+    // width, or the whole page fits in the view. WidthShare makes the page
+    // itself a share of the view's width (GetZoomWidthShare, 0.6 unless
+    // ZoomToWidthShare chose another), centred on the desk - a page of
+    // comfortable reading width on a wide screen. It is worked out again
     // whenever the element is resized; SetZoom, Ctrl+wheel and Off end it.
     // Only page view has a page to fit; outside it the zoom stays as it is.
-    enum class ZoomFit { Off, PageWidth, WholePage };
+    // The view's width is the element's less its padding, the vertical
+    // scrollbar and the comment pane while it is shown.
+    enum class ZoomFit { Off, PageWidth, WholePage, WidthShare };
     void SetZoomFit(ZoomFit fit);
     ZoomFit GetZoomFit() const { return zoomFit; }
+    // ZoomFit::WidthShare with `share` of the view's width (0.1 to 1).
+    void ZoomToWidthShare(float share);
+    float GetZoomWidthShare() const { return zoomWidthShare; }
     std::function<void(float zoom)> onZoomChanged;
 
     // ===== SCROLLING =====
@@ -560,6 +663,12 @@ public:
     struct FontReport {
         std::vector<std::string> missingFamilies;
         std::vector<MissingScriptFont> missingScripts;
+        // Every family the document's text names, installed or not, each
+        // once in the order it first appears - the "in this document"
+        // section of a font list (UltraCanvasFontPicker::SetDocumentFonts).
+        // Not part of IsEmpty: a document set in installed fonts has
+        // nothing to report.
+        std::vector<std::string> namedFamilies;
         bool IsEmpty() const { return missingFamilies.empty() && missingScripts.empty(); }
         bool operator==(const FontReport& other) const;
     };
@@ -621,6 +730,13 @@ public:
     bool RejectChangeAtCaret();
     // Selects the next tracked change after the caret (wrapping round).
     bool GoToNextChange();
+    // ...or the one before it.
+    bool GoToPreviousChange();
+    // Selects the text of the next / previous comment (wrapping round), or of
+    // comment `index`; false when there is none.
+    bool GoToNextComment();
+    bool GoToPreviousComment();
+    bool GoToComment(int index);
     // "2026-09-29T10:00:00Z": the time stamp comments and changes get.
     static std::string CurrentIsoTime();
     const std::string& GetCommentAuthor() const { return commentAuthor; }
@@ -635,6 +751,15 @@ public:
     // (x from the column's left edge, y in content pixels); empty if none.
     Rect2Df GetFloatRectForTest(size_t index) const {
         return index < placedFloats.size() ? placedFloats[index].rect : Rect2Df(0, 0, 0, 0);
+    }
+    // A colour the document states, as this view shows it (the fallback,
+    // (1, 1, 1), for one it cannot read).
+    Color DocumentColorForTest(const std::string& hex) const { return DocumentColor(hex, Color(1, 1, 1)); }
+    // The engine chart that drew frame `frameIndex`'s chart on the last
+    // paint; null when the frame has none or was not painted.
+    std::shared_ptr<UltraCanvasChartEngineElement> GetChartElementForTest(int frameIndex) const {
+        auto found = chartCache.find(frameIndex);
+        return found != chartCache.end() ? found->second : nullptr;
     }
     // ...and where it is on the element, for a pointer to press on.
     Rect2Df GetFloatElementRectForTest(size_t index) const {
@@ -667,6 +792,7 @@ private:
     // One entry per document block. Entries are built lazily and only for
     // blocks the viewport needs, so a long document does not pay for layouts
     // nobody sees; `bounds` is in content coordinates (before scrolling).
+    struct FurnitureLayout;                       // a frame's paragraphs laid out; defined with the pages
     struct BlockLayout {
         std::unique_ptr<ITextLayout> layout;      // null for image/rule/break/table
         Rect2Df bounds{0, 0, 0, 0};
@@ -698,8 +824,16 @@ private:
         // leaves the drawing to the caller, which is what these record.
         struct InlineImage {
             int byteOffset = 0;                   // the placeholder, in layout text
+            float rotationDeg = 0.0f;             // turned about its centre, clockwise
+            // A turned picture in the line: its own size (width and height
+            // are then those of the box round it).
+            float pictureWidth = 0.0f, pictureHeight = 0.0f;
             float width = 0.0f;
             float height = 0.0f;
+            // A picture on a line of its own, centred or at the right: how
+            // far from the placeholder's left it is drawn.
+            float lineOffsetX = 0.0f;
+            float lineOffsetY = 0.0f;             // and how far under its top (a drawing's outline)
             std::shared_ptr<UCImage> image;
             std::string altText;
             // A typeset formula (a math run) instead of a picture: drawn with
@@ -720,6 +854,9 @@ private:
             // A text frame (UCRichDocument::frames) instead of a picture:
             // `height` is its least height until its text is laid out.
             int frameIndex = -1;
+            // A frame or drawing standing in the line (a table cell's): its
+            // paragraphs, laid out with the cell.
+            std::shared_ptr<FurnitureLayout> frameContent;
         };
         std::vector<InlineImage> inlineImages;
         // A display formula (MathBlock) typeset whole, centred in the column;
@@ -804,7 +941,6 @@ private:
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
 
-    struct FurnitureLayout;                       // below, with the pages
     // ===== FLOATING PICTURES =====
     // A floating picture where the placement pass put it: x from the text
     // column's left edge, y in content coordinates.
@@ -818,6 +954,13 @@ private:
         // A text frame: its look and its laid-out paragraphs.
         int frameIndex = -1;
         std::shared_ptr<FurnitureLayout> frameContent;
+        // A frame anchored in the frame being edited: only its paragraphs are
+        // drawn, in the text of the frame around it (no box, no padding).
+        bool wordsOnly = false;
+        float rotationDeg = 0.0f;                 // a picture turned about its centre, clockwise
+        // Anchored in a table cell (blockIndex is the table's): drawn, but
+        // not picked up, moved or edited as a body float is.
+        bool inCell = false;
         // The corner its offsets count from (its paragraph, the page or the
         // page's text area), in the same coordinates as `rect`: a float
         // dragged elsewhere gets its offsets from it.
@@ -831,11 +974,18 @@ private:
     // With a page number, page fields in it show that page's.
     std::shared_ptr<FurnitureLayout> LayoutTextFrame(IRenderContext* ctx, int frameIndex, float width,
                                                      int pageNumber = 0, int pageCount = 0);
+    // Lays `layout.blocks` out `width` pixels wide, one under the other.
+    void LayoutFrameBlocks(IRenderContext* ctx, FurnitureLayout& layout, float width);
+    // The words a frame anchored in another frame adds to that frame's text
+    // (its paragraphs, then those in its drawing's shapes), laid out `width`
+    // wide: shown while the frame around it is edited. Null when it has none.
+    std::shared_ptr<FurnitureLayout> LayoutAnchoredFrameWords(IRenderContext* ctx, int frameIndex, float width);
     // The room a text frame's border and padding take on each side (pixels).
     float TextFrameInset(int frameIndex) const;
     void DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target);
     // A drawing's shapes (RichTextFrame::shapes), their boxes from (originX, originY).
     void DrawShape(IRenderContext* ctx, const RichShape& shape, double originX, double originY, int depth);
+    Color DocumentColor(const std::string& hex, const Color& fallback) const;
     static void TraceShape(IRenderContext* ctx, const RichShape& shape, double x, double y, double w, double h);
     std::map<std::pair<const void*, size_t>, std::shared_ptr<UCImage>> shapeImages;   // pictures in groups, by their bytes
     std::vector<PlacedFloat> placedFloats;
@@ -844,6 +994,10 @@ private:
     // beside a square one - relaying it out when that changes). Returns the
     // block's top.
     float FlowAroundFloats(IRenderContext* ctx, int index, float top, std::vector<PlacedFloat>& pageFloats);
+    struct PageFrame;
+    // Places what the cells of the table `bl` float (its top at `top`), each handed to `take`.
+    void PlaceCellFloats(IRenderContext* ctx, const BlockLayout& bl, float top, const PageFrame* page,
+                         int pageNumber, int pageCount, const std::function<void(PlacedFloat)>& take);
     void SplitBesideFloat(IRenderContext* ctx, const RichDocBlock& block, int blockIndex, BlockLayout& bl,
                           float fullIndent);
     void DrawFloats(IRenderContext* ctx, bool behindText);
@@ -853,10 +1007,14 @@ private:
     struct FurnitureEditState {
         bool footer = false;
         bool firstPage = false;               // the first page's own furniture
+        int furnitureSet = -1;                // a section's own (sectionFurniture), or the document's
         int pageIndex = 0;
         int noteIndex = -1;                   // >= 0: a note is edited, not a header
         int frameIndex = -1;                  // >= 0: a text frame's words are edited
         float frameInnerWidth = 0.0f;         // ...laid out this wide (pixels)
+        // The body block whose line the edited frame stands in (a table
+        // nested in a cell, a frame in a cell's line); -1: it floats.
+        int frameHostBlock = -1;
         UCRichDocumentEditor bodyEditor;
         float bodyContentHeight = 0.0f;
     };
@@ -864,6 +1022,13 @@ private:
     bool BeginFurnitureEditing(int pageIndex, bool footer);
     // The body's placed float of the frame being edited, or null.
     const PlacedFloat* EditedFramePlacement() const;
+    // Where the frame `frameIndex` stands in a line of `layouts` (a cell's
+    // or a paragraph's): x from the column's left edge, y in content
+    // pixels, and the block it is in. False when it stands in none.
+    bool InlineFrameRect(const std::vector<BlockLayout>& layouts, int frameIndex, Rect2Df& outRect, int* outBlock) const;
+    // The frame standing in a line under a point of the element, or -1.
+    int InlineFrameAt(const Point2Df& documentPoint) const;
+    PlacedFloat editedInlineFrame;                // the place of the frame edited in a line (frameHostBlock)
     // Parks the body and hands `editor` a document of `part`'s blocks.
     void StartEditingPart(std::shared_ptr<UCRichDocument> part, std::unique_ptr<FurnitureEditState> state);
     // Writes the furniture being edited into the document.
@@ -891,6 +1056,11 @@ private:
         float footerTop = 0.0f;
         std::shared_ptr<FurnitureLayout> header;
         std::shared_ptr<FurnitureLayout> footer;
+        // Whose header and footer they are: a section's own
+        // (UCRichDocument::sectionFurniture[furnitureSet]) or, -1, the
+        // document's; and whether its first page's.
+        int furnitureSet = -1;
+        bool firstPageFurniture = false;
         // The header's and footer's floating pictures and text frames on
         // this page (blockIndex -1), which the page's body wraps round.
         std::vector<PlacedFloat> furnitureFloats;
@@ -944,6 +1114,20 @@ private:
     std::vector<float> blockColumnWidths;
     bool hasColumns = false;
     mutable float columnWidthOverride = 0.0f;
+    // A line of a font, in pixels, by family and size (MakeRunsLayout), and
+    // that of the layout being made: the unit an empty line of a set height
+    // (RichTextRun::emptyLineHeightPt) is scaled from.
+    mutable std::map<std::string, float> lineUnitCache;
+    mutable float emptyLineUnitPx = 0.0f;
+    // The natural line of the paragraph being laid out "at least" so high
+    // (its largest font's, line gap included), in pixels; 0 = not measured.
+    mutable float layoutNaturalLinePx = 0.0f;
+    mutable bool layoutStatedLines = false;       // the layout being made is a cell's with set line heights
+    mutable bool layoutHasBox = false;            // the layout being made has a box standing in a line
+    // The paragraphs of the frames standing in a table cell's lines, by
+    // frame: laid out by the table's layout just before the cell's.
+    std::map<int, std::shared_ptr<FurnitureLayout>> cellFrameContent;
+    mutable bool layoutLineGap = true;            // the layout being made has the font's line gap
     bool placingParkedBody = false;           // PlaceFurnitureBeingEdited placing the body
     // Input method composition: the text being composed and its caret (a
     // byte offset in it), laid out in the caret's block but not in the model.
@@ -994,7 +1178,7 @@ private:
     void RenderBlock(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index,
                      const BlockLayout& bl, float originX, float originY, int blockIndex);
     void DrawInlineImages(IRenderContext* ctx, const BlockLayout& bl,
-                          float originX, float originY) const;
+                          float originX, float originY);
     void DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl, float originY);
     void DrawScrollbar(IRenderContext* ctx);
     void DrawHorizontalScrollbar(IRenderContext* ctx);
@@ -1088,10 +1272,13 @@ private:
     // scrolling does not re-lay them. Cleared with the block layouts.
     std::map<std::string, std::shared_ptr<FurnitureLayout>> furnitureCache;
     float furnitureCacheWidth = -1.0f;
+    // The engine chart drawing each chart frame (by frame index).
+    std::map<int, std::shared_ptr<UltraCanvasChartEngineElement>> chartCache;
     float scrollOffset = 0.0f;
     float hScrollOffset = 0.0f;       // document pixels, page view only
     float zoom = 1.0f;
     ZoomFit zoomFit = ZoomFit::Off;
+    float zoomWidthShare = 0.6f;      // ZoomFit::WidthShare's share of the view's width
     // The zoom zoomFit asks for at the element's present size (0 = none).
     float FitZoom() const;
     float minZoom = 0.25f;
@@ -1108,6 +1295,9 @@ private:
     bool layoutsDirty = true;
     bool visibleAreaDirty = true;
     bool caretMoved = false;
+    // GoToPosition / GoToRange: the place, when out of view, comes in at the
+    // view's top (as a navigator's jump does), not just inside its edge.
+    bool caretToTop = false;
 
     // ===== FONT REPORT AND NOTICE =====
     FontReport fontReport;
@@ -1146,6 +1336,13 @@ private:
     std::string commentAuthor;
     bool showComments = true;
     bool commentPaneShown = false;
+    // AddDocumentObserver's listeners, by id.
+    std::vector<std::pair<int, std::function<void(bool)>>> documentObservers;
+    int nextObserverId = 1;
+    void NotifyDocumentObservers(bool documentChanged);
+    // A body edit made through the editing core by one of the calls above:
+    // laid out again, the host told.
+    bool AfterBodyEdit(bool changed);
     struct CommentBox {
         int index = -1;
         Rect2Df rect{0, 0, 0, 0};             // element coordinates
@@ -1165,6 +1362,7 @@ private:
         Rect2Df visibleArea{0, 0, 0, 0};
     };
     OutputViewState savedOutputView;
+    RichTextEditStyle savedScreenStyle;           // the screen's style while a print or an export is laid out
     bool selecting = false;           // mouse drag in progress
     // Drag and drop of the selection: a press inside it arms a drag, which
     // starts once the pointer has moved a few pixels (a press and release

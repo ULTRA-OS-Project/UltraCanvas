@@ -1,0 +1,8 @@
+{
+  "@language": "ar",
+  "@translated-by": "machine draft 2026-11-25, reviewed by -",
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "تم مسح {0} من ملفات تعريف الارتباط؛ ونُسيت أذونات الأجهزة الخاصة بالتطبيقات",
+  "No cookies to clear; the apps' device permissions are forgotten": "لا توجد ملفات تعريف ارتباط لمسحها؛ ونُسيت أذونات الأجهزة الخاصة بالتطبيقات",
+  "{0} wants to use your camera": "يريد {0} استخدام الكاميرا الخاصة بك",
+  "{0} wants to use your microphone": "يريد {0} استخدام الميكروفون الخاص بك"
+}

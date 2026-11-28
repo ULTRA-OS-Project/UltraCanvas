@@ -105,7 +105,12 @@ scripts/android-package-apk.sh --abi x86_64 \
 The assets are the set the demo's WebAssembly page preloads (about 53 MB):
 the media its pages show, without the largest 3D samples and the audio and
 video ones, plus `Docs/` and the demo's own sources for its source viewer.
-The script lists them; another app would pass its own.
+The script lists them; another app passes its own with `--assets LIST` (a
+file of repository paths, one a line) and its own manifest with
+`--manifest XML`. ChatCube is the second app packaged this way
+(`Apps/ChatCube/android/`: its manifest, its asset list, and the
+`chatcube` job of the workflow, on a sysroot built with
+`--with-chatcube`).
 
 Install one with `adb install UltraCanvasDemo-x86_64.apk` on an x86_64
 emulator, or the `arm64-v8a` one on a phone. CI does the first on every run:
