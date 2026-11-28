@@ -103,6 +103,7 @@ adb shell am start -n org.ultraos.mobilepc/org.ultraos.ultracanvas.UltraCanvasAc
 | Argument | Does |
 |---|---|
 | `--launch <id>` | starts that application once the desktop is up: `ultrafiler`, `texter`, `ultraviewer`, `ultrapaint`, `artcreator`; give it again for another |
+| `--open <id> <file>` | the same, with a file to open in it; a relative path is taken from the app's home (`$HOME`, where the APK's media are unpacked under `share/`). ArtCreator logs whether it read the file and how many objects it has (`MobilePC: artcreator opened <file> (<n> objects)`) |
 | `--debug` | the framework's diagnostics to logcat |
 
 ## Not yet

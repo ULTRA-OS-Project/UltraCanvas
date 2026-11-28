@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Install MobilePC on a running emulator, give it a second display, and pass
 # only if the desktop is drawn on that display, two hosted applications start
-# on it (UltraPaint, and UltraFiler by its id), and the desktop moves back to the phone's screen when the display
+# on it (UltraPaint, and UltraFiler by its id), ArtCreator opens a drawing
+# there and reads its shapes (an SVG of the APK's own media: the Vector
+# plug-in on Android), and the desktop moves back to the phone's screen when the display
 # goes - with the process alive throughout.
 #
 # The second display is the emulator's simulated one (Settings > Developer
@@ -11,7 +13,8 @@
 # UltraCanvasActivity puts its Presentation there and the framework's desktop
 # mode draws the desktop into it (OS/Android/UltraCanvasAndroidDesktop.cpp).
 # That code logs (tag UltraCanvas) where the desktop is and its first frame
-# there; MobilePC logs each application its --launch argument started.
+# there; MobilePC logs each application its --launch and --open arguments
+# started, and how many objects ArtCreator read from the file it opened.
 #
 # Whatever happens it leaves the evidence in OUT_DIR: screenshots of the
 # phone and of the second display where screencap can reach it, the whole
@@ -78,21 +81,34 @@ adb shell setprop debug.ultracanvas.log 1
 # The second display first, so it is there when the desktop starts.
 adb shell settings put global overlay_display_devices "$display_spec"
 sleep 3
+# The drawing is one the APK carries - its assets are unpacked under the
+# app's home, which a relative --open path is taken from - so the test needs
+# no storage permission and no file pushed to the device.
+drawing="share/media/appicon/MobilePC.svg"
 # adb shell hands one string to the device's shell, which splits it again:
 # the value is quoted for that shell too, or "ultrapaint" becomes am's
 # package argument and the app gets "--launch" alone.
-adb shell am start -W -n "$package/$activity" -e ultracanvas.args "'--launch ultrapaint --launch ultrafiler'"
+adb shell am start -W -n "$package/$activity" -e ultracanvas.args \
+    "'--launch ultrapaint --launch ultrafiler --open artcreator $drawing'"
 
 wait_for 'desktop mode enabled' "$timeout"
 wait_for 'desktop output: the external display' 60
 wait_for 'desktop frame presented on external display' 60
-for app in ultrapaint ultrafiler; do
+for app in ultrapaint ultrafiler artcreator; do
     wait_for "MobilePC: ($app did not start|started $app)" 60
     if app_lines | grep -q "MobilePC: $app did not start"; then
         echo "::error::$app did not start on the desktop"
         exit 1
     fi
 done
+# ArtCreator must have read the drawing, shapes and all: a reader that
+# refused it leaves an empty tab and an error dialog, not a crash.
+wait_for "MobilePC: artcreator (opened|did not open) .*MobilePC.svg" 60
+opened="$(app_lines | grep -m1 -E 'MobilePC: artcreator (opened|did not open) ' || true)"
+if ! echo "$opened" | grep -qE 'opened .*\(([1-9][0-9]*) objects\)'; then
+    echo "::error::ArtCreator did not read $drawing: ${opened#*: }"
+    exit 1
+fi
 sleep 5   # the screenshots show the settled desktop
 adb exec-out screencap -p > "$out/screenshot-phone-control-pad.png" || true
 

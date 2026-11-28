@@ -14,12 +14,18 @@
 //   --launch <id>   start that application once the desktop is up (an id of
 //                   MobilePCHostedApps: ultrafiler, texter, ultraviewer,
 //                   ultrapaint, artcreator)
+//   --open <id> <file>
+//                   the same, with a file to open in it; a relative path is
+//                   taken from the app's home ($HOME, where the APK's media
+//                   are unpacked under share/), since an Android app has no
+//                   working folder of its own
 //   --debug         the framework's diagnostics, to logcat
 //
+// Version: 0.4.0 - --open <id> <file>
 // Version: 0.3.0 - the Vector plug-in registered: ArtCreator opens and saves drawings
 // Version: 0.2.0 - UltraFiler: its catalogue, its teardown after the loop
 // Version: 0.1.0
-// Last Modified: 2026-11-24
+// Last Modified: 2026-11-26
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "MobilePCControlPad.h"
@@ -43,6 +49,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <utility>
 #include <cstring>
 #include <exception>
 #include <string>
@@ -51,10 +58,18 @@
 using namespace UltraCanvas;
 
 extern "C" int ultracanvas_app_main(int argc, char** argv) {
-    std::vector<std::string> launch;
+    // What to start, in order: an application, and the files it opens.
+    std::vector<std::pair<std::string, std::vector<std::string>>> launch;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--debug") == 0) SetDebugOutputEnabled(true);
-        else if (std::strcmp(argv[i], "--launch") == 0 && i + 1 < argc) launch.push_back(argv[++i]);
+        else if (std::strcmp(argv[i], "--launch") == 0 && i + 1 < argc) launch.push_back({argv[++i], {}});
+        else if (std::strcmp(argv[i], "--open") == 0 && i + 2 < argc) {
+            const std::string id = argv[++i];
+            std::string file = argv[++i];
+            const char* home = std::getenv("HOME");
+            if (!file.empty() && file[0] != '/' && home && *home) file = std::string(home) + "/" + file;
+            launch.push_back({id, {file}});
+        }
     }
 
     // The texts of the desktop and of the applications it carries are in
@@ -108,9 +123,9 @@ extern "C" int ultracanvas_app_main(int argc, char** argv) {
             // (scripts/android-mobilepc-smoke.sh) waits for it.
             if (!launch.empty()) {
                 app.PostToUIThread([launch]() {
-                    for (const std::string& id : launch) {
+                    for (const auto& [id, files] : launch) {
                         std::string error;
-                        const bool ok = UltraCanvasHostedApps::Launch(id, {}, &error);
+                        const bool ok = UltraCanvasHostedApps::Launch(id, files, &error);
                         const std::string line = ok ? "MobilePC: started " + id
                                                     : "MobilePC: " + id + " did not start: " + error;
                         __android_log_write(ok ? ANDROID_LOG_INFO : ANDROID_LOG_WARN, "UltraCanvas", line.c_str());
