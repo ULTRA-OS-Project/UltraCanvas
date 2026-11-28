@@ -1,5 +1,7 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.2.1 - a failed step sets the connection state before it answers the caller (SetState, then
+//                  Finish), so the caller reads the new state at once
 // Version: 0.2.0 - the shared proxy setting reaches TDLib: told before its parameters (addProxy /
 //                  disableProxy), followed while the session is open, the proxies it no longer uses
 //                  taken out of its database; a proxy it cannot use fails the sign-in, or takes
@@ -325,8 +327,8 @@ void TelegramProvider::OnStepTimeout(const std::string& what) {
                             "): " + ConnectionText() + ". Check the connection and try again.";
     debugOutput << "[Telegram] " << why << (pending ? "" : " (nobody waiting)") << std::endl;
     if (!pending) return;
-    Finish(UltraIMResult::Error(UltraIMResultCode::Timeout, why));
     SetState(UltraIMConnectionState::Error, why);
+    Finish(UltraIMResult::Error(UltraIMResultCode::Timeout, why));
 }
 
 std::string TelegramProvider::DataPath(const std::string& name) const {
@@ -350,6 +352,10 @@ void TelegramProvider::SetState(UltraIMConnectionState state, const std::string&
     Emit(event);
 }
 
+// Where a failed step also changes the connection state, the state is set
+// first (SetState, then Finish): a caller woken by the result reads the new
+// state at once. The other way round, a sign-in refused for its proxy could
+// still read the old state on the caller's thread (seen on Windows CI).
 void TelegramProvider::Finish(const UltraIMResult& result) {
     DisarmStep();
     UltraIMResultCallback done;
@@ -456,8 +462,8 @@ bool TelegramProvider::StartProxy() {
     const ProxyChoice choice = ChooseProxy();
     if (choice.kind == ProxyChoice::Kind::Unusable) {
         debugOutput << "[Telegram] " << choice.text << std::endl;
-        Finish(UltraIMResult::Error(UltraIMResultCode::Unsupported, choice.text));
         SetState(UltraIMConnectionState::Error, choice.text);
+        Finish(UltraIMResult::Error(UltraIMResultCode::Unsupported, choice.text));
         return false;
     }
     {
@@ -558,8 +564,8 @@ void TelegramProvider::OnProxyAnswer(uint64_t serial, const TdObject& answer) {
         debugOutput << "[Telegram] off the network: " << trouble << std::endl;
         Client()->Send(Request::SetNetworkAvailable(false));
     }
-    Finish(UltraIMResult::Error(UltraIMResultCode::NetworkError, trouble));
     SetState(UltraIMConnectionState::Error, trouble);
+    Finish(UltraIMResult::Error(UltraIMResultCode::NetworkError, trouble));
 }
 
 void TelegramProvider::OnProxyList(uint64_t serial, int64_t keepId, const TdObject& list) {
@@ -811,8 +817,8 @@ void TelegramProvider::SignOut() {
         ready_ = false;
         myId_ = 0;
     }
-    Finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Signed out"));
     SetState(UltraIMConnectionState::Disconnected);
+    Finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Signed out"));
 }
 
 // The next step, asked for: the step is set, the SignIn waiting is answered
@@ -861,8 +867,8 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
         p.systemVersion = SystemName();
         p.applicationVersion = config_.appId;
         if (p.databaseKey.empty()) {
-            Finish(UltraIMResult::Error(UltraIMResultCode::PluginError, "The vault does not keep Telegram's key"));
             SetState(UltraIMConnectionState::Error, "The vault does not keep Telegram's key");
+            Finish(UltraIMResult::Error(UltraIMResultCode::PluginError, "The vault does not keep Telegram's key"));
             return;
         }
         // The proxy first: TDLib keeps it until the parameters are in and
@@ -873,8 +879,8 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
         ArmStep("setTdlibParameters");
         Client()->Send(Request::SetTdlibParameters(p), [this](const TdObject& answer) {
             if (!IsError(answer)) return;
-            Finish(UltraIMResult::Error(UltraIMResultCode::PluginError, ErrorText(answer)));
             SetState(UltraIMConnectionState::Error, ErrorText(answer));
+            Finish(UltraIMResult::Error(UltraIMResultCode::PluginError, ErrorText(answer)));
         });
     } else if (type == "authorizationStateWaitPhoneNumber") {
         std::string phone;
@@ -961,8 +967,8 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
     } else if (type == "authorizationStateWaitEmailAddress" || type == "authorizationStateWaitEmailCode" ||
                type == "authorizationStateWaitPremiumPurchase") {
         const std::string why = "Telegram asks for a sign-in step ChatCube cannot do yet (" + type.substr(18) + ")";
-        Finish(UltraIMResult::Error(UltraIMResultCode::Unsupported, why));
         SetState(UltraIMConnectionState::Error, why);
+        Finish(UltraIMResult::Error(UltraIMResultCode::Unsupported, why));
     } else if (type == "authorizationStateReady") {
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1016,8 +1022,8 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
             ready_ = false;
         }
         if (!ours) {
-            Finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Telegram closed the session"));
             SetState(UltraIMConnectionState::Disconnected);
+            Finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Telegram closed the session"));
         }
     }
 }
