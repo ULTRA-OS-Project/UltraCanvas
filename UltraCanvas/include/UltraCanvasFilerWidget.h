@@ -104,6 +104,7 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.63.0 - onClipboardSet: entries went to the clipboard (Copy / Cut), for a confirmation
 // Version: 1.62.0 - CountTree, CountPasteTotals, DropFromPasteTotals: a copy of several entries
 //                  counts them up front, so its window shows "done / total" and a time left
 // Version: 1.61.1 - DetailsColumnTitle: the Details headings in the language shown
@@ -2028,6 +2029,11 @@ namespace UltraCanvas {
         // confirmation on the host's status line; the widget shows nothing
         // of its own beyond the summary window for skipped entries.
         std::function<void(const FilerTransferResult&)> onTransferFinished;
+        // Entries have gone to the clipboard - Ctrl+C / Ctrl+X, the context or
+        // icon menu's Copy / Cut: the entries, and whether it was a cut. For a
+        // confirmation on the host's status line; the widget shows only the
+        // cut entries' ghosting.
+        std::function<void(const std::vector<FilerEntry>& entries, bool cut)> onClipboardSet;
         // A copy, move, delete, pack or unpack whose window the user sent to
         // the background: its progress, for the host's status bar (see
         // FilerBackgroundProgress). Without a handler the window offers no

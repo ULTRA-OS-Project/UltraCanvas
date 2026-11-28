@@ -7,3 +7,5 @@
 - **Filer widget: a copy of several entries shows its totals.** It counts the
   entries before the first is touched (`CountPasteTotals`), so the window's
   Items and Size read "done / total"; a skipped entry comes off them.
+- **Filer widget: `onClipboardSet(entries, cut)`** fires when Copy or Cut puts
+  entries on the clipboard, so a host can confirm it.

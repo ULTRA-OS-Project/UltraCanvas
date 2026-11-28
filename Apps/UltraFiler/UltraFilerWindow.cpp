@@ -65,6 +65,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.54.0 - the status line confirms Copy / Cut: what went to the clipboard (ClipboardNote)
 // Version: 1.53.0 - Edit in ArtCreator: a drawing's context menu starts ArtCreator with it
 // Version: 1.52.0 - Edit in UltraPaint: a picture's context menu starts UltraPaint with it
 //                  (BuildOpenMenuItems, on every folder display's openMenuProvider)
@@ -9595,6 +9596,22 @@ void UltraFilerWindow::WireTransferNotice(UltraCanvasFilerWidget* target) {
     target->onBackgroundProgress = [this, target](const FilerBackgroundProgress& progress) {
         ShowBackgroundProgress(target, progress);
     };
+    // Ctrl+C / Ctrl+X give no sign of their own beyond the cut ghosting: the
+    // status line says what is now on the clipboard.
+    target->onClipboardSet = [this](const std::vector<FilerEntry>& entries, bool cut) {
+        ShowTransferNote(ClipboardNote(entries, cut));
+    };
+}
+
+std::string UltraFilerWindow::ClipboardNote(const std::vector<FilerEntry>& entries, bool cut) {
+    if (entries.empty()) return {};
+    if (entries.size() == 1)
+        return cut ? TrF("\"{0}\" cut - paste it where it should go", entries.front().name)
+                   : TrF("\"{0}\" copied to the clipboard", entries.front().name);
+    const long long n = static_cast<long long>(entries.size());
+    return cut ? TrN("{n} item cut - paste them where they should go",
+                     "{n} items cut - paste them where they should go", n)
+               : TrN("{n} item copied to the clipboard", "{n} items copied to the clipboard", n);
 }
 
 void UltraFilerWindow::ShowBackgroundProgress(UltraCanvasFilerWidget* source,

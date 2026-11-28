@@ -81,6 +81,7 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.43.0 - ClipboardNote: the status line after Copy / Cut
 // Version: 1.42.0 - BuildOpenMenuItems: "Edit in ArtCreator" on a drawing's context menu too
 // Version: 1.41.0 - BuildOpenMenuItems: "Edit in UltraPaint" on a picture's context menu
 // Version: 1.40.0 - IsOpen: whether the window is still open (a host that
@@ -1108,6 +1109,9 @@ private:
                                 const FilerBackgroundProgress& progress);
     std::string DescribeBackgroundOperation() const;
     void ShowTransferNote(const std::string& message);
+    // What the status line says after Copy / Cut: "\"Report.pdf\" copied to
+    // the clipboard", "12 items cut - paste them where they should go".
+    static std::string ClipboardNote(const std::vector<FilerEntry>& entries, bool cut);
     void ClearTransferNote();
     // Whether a file on a remote drive is previewed: pictures, vector
     // drawings and 3D models only, because showing one means downloading

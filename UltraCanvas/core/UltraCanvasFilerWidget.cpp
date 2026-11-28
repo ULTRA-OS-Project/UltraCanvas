@@ -51,6 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.63.0 - onClipboardSet after Copy / Cut put entries on the clipboard
 // Version: 1.62.0 - a copy of several entries counts them before the first is touched: the
 //                  progress window's items and size read "done / total" (they had no total), and
 //                  an entry the paste skips comes off them
@@ -5096,6 +5097,7 @@ namespace UltraCanvas {
             }
         }
         RequestRedraw();   // reflect (or clear) the cut ghosting immediately
+        if (onClipboardSet && !targets.empty()) onClipboardSet(targets, clipboardCut);
     }
 
     void UltraCanvasFilerWidget::CopySelection() { SelectionToClipboard(false); }

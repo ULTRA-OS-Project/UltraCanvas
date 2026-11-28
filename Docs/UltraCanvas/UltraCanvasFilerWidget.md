@@ -3423,6 +3423,7 @@ reports what the system hides, not what the host asked for.
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
+| `onClipboardSet(entries, cut)` | Copy / Cut put entries on the clipboard (Ctrl+C, Ctrl+X, the menus) - for a confirmation on the host's status line |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
