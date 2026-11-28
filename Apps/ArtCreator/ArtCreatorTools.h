@@ -44,6 +44,23 @@ enum class ArtToolId {
     Count
 };
 
+// ===== A PICTURE =====
+// A picture as the drawing holds one: its bytes inline ("data:image/png;
+// base64,...") so a saved drawing carries it, and its size in pixels.
+struct ArtPicture {
+    std::string source;      // the data: URI
+    std::string mimeType;
+    int width = 0, height = 0;
+    std::string name;        // what it was called (a file's name), for the panel
+    bool Valid() const { return !source.empty() && width > 0 && height > 0; }
+};
+
+// Fills `element` with the picture, one copy covering its outline's box
+// (centred, the picture's shape kept), repeated beyond it.
+void ArtApplyBitmapFill(VectorStorage::VectorElement& element, const ArtPicture& picture);
+// The element's bitmap fill as a picture (empty when it has none).
+ArtPicture ArtBitmapFillPicture(const VectorStorage::VectorElement& element);
+
 // ===== USER-EDITABLE TOOL STATE =====
 struct ArtToolOptions {
     bool  shapeFill = true;
@@ -54,7 +71,8 @@ struct ArtToolOptions {
     bool  quickShapeStar = true;
     float quickShapeInner = 0.5f;      // star inner radius as a fraction
     float freehandSmoothing = 2.0f;    // simplification tolerance in screen pixels
-    int   fillKind = 1;                // 0 flat, 1 linear, 2 radial
+    int   fillKind = 1;                // 0 flat, 1 linear, 2 radial, 3 bitmap
+    ArtPicture fillPicture;            // what the bitmap fill paints (not kept between runs)
     float transparency = 0.0f;         // 0..100 %
     int   transparencyShape = 0;       // 0 flat, 1 linear, 2 radial, 3 conical (VectorStorage::TransparencyShape)
     int   transparencyMix = 0;         // VectorStorage::TransparencyMix
@@ -126,6 +144,9 @@ struct ArtToolContext {
     // to the shape editor).
     std::function<void(ArtToolId)> selectTool;
     std::function<void()> refreshOptions;
+    // Asks for a picture file and hands the picture back (not called when
+    // the dialog is cancelled or the file is no picture).
+    std::function<void(std::function<void(const ArtPicture&)>)> choosePicture;
     // Icon mode's pixel in document units (0: off): the arrow keys nudge by it.
     double iconPixel = 0;
     // The transform bar's ratio lock: the selector's handles scale width and

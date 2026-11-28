@@ -1,5 +1,6 @@
 // UltraCanvasVectorStorage.h
 // Internal Vector Graphics Storage System for UltraCanvas
+// Version: 2.3.0 - MakeBitmapFill / BitmapFillImage: a picture as a repeating pattern fill
 // Version: 2.2.0 - VectorStyle::ShapeFillRule: a shape filled even-odd
 // Version: 2.1.0 - VectorTextStyle::FillColor: a span of a text in its own colour
 // Version: 2.0.0
@@ -1009,5 +1010,39 @@ namespace UltraCanvas {
         Color ParseColorString(const std::string &colorStr);
         Matrix3x3 ParseTransformString(const std::string &transformStr);
         std::string SerializeTransform(const Matrix3x3 &transform);
+
+        // ===== BITMAP FILLS =====
+        // A bitmap fill is a PatternData whose Content is one VectorImage
+        // covering its ViewBox, the picture's pixels (0, 0, width, height):
+        // the SVG <pattern><image/></pattern>, so it writes and reads back as
+        // that. `tile` is where one copy of the picture lies, in the filled
+        // element's own (user) space; the pattern repeats it in every
+        // direction. `transform` turns or skews the tiles about that space's
+        // origin (patternTransform). `source` is the picture as the image
+        // element holds it - a "data:image/...;base64," URI or a path.
+        PatternData MakeBitmapFill(const std::string &source, const std::string &mimeType,
+                                   double pixelWidth, double pixelHeight, const Rect2Dd &tile,
+                                   const std::optional<Matrix3x3> &transform = std::nullopt);
+        // The same with the picture's tile as a parallelogram: where its
+        // top-left, top-right and bottom-left corners lie in the element's
+        // space (Xara's bitmap fill handles; turned, skewed or mirrored).
+        PatternData MakeBitmapFill(const std::string &source, const std::string &mimeType,
+                                   double pixelWidth, double pixelHeight, const Point2Dd &topLeft,
+                                   const Point2Dd &topRight, const Point2Dd &bottomLeft);
+        // Where any pattern's first tile lies, as those three corners, for a
+        // fill of an element whose outline spans `bounds` (what an
+        // ObjectBoundingBox pattern resolves against). False for a tile with
+        // no area.
+        bool PatternTileCorners(const PatternData &pattern, const Rect2Dd &bounds, Point2Dd &topLeft,
+                                Point2Dd &topRight, Point2Dd &bottomLeft);
+        // Moves a pattern's tile to those corners: user-space units, a unit
+        // tile and the parallelogram as its Transform.
+        void SetPatternTileCorners(PatternData &pattern, const Point2Dd &topLeft, const Point2Dd &topRight,
+                                   const Point2Dd &bottomLeft);
+        // The picture of a bitmap fill (a pattern that holds exactly one
+        // image), or nullptr for any other pattern.
+        const VectorImage *BitmapFillImage(const PatternData &pattern);
+        // The fill's pattern when it is one (inline, not a reference).
+        const PatternData *PatternOf(const std::optional<FillData> &fill);
     } // namespace VectorStorage
 } // namespace UltraCanvas

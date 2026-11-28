@@ -9,6 +9,7 @@
 //
 // The raster twin is UltraCanvasPaintSurface; the read-only viewer is
 // UltraCanvasVectorElement. This one edits.
+// Version: 1.4.0 - onFilesDroppedAt: dropped files with the document point they were dropped on
 // Version: 1.3.0 - Make/Register descriptor: "vector-canvas" in the element registry, bundled or as a runtime module
 // Version: 1.2.0 - ZoomToPageWidth: the page's width across the canvas area, the view's
 //                  vertical position kept
@@ -262,6 +263,9 @@ public:
     std::function<void()> onRotationCenterChanged;
     std::function<void()> onGuidesChanged;
     std::function<void(const std::vector<std::string>&)> onFilesDropped;
+    // The same with the document point under the drop; when set it is
+    // called instead of onFilesDropped.
+    std::function<void(const std::vector<std::string>&, const Point2Dd&)> onFilesDroppedAt;
 
     // Space-bar / middle-button panning is built in; a Push tool turns it
     // on permanently.

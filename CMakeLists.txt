@@ -2569,6 +2569,14 @@ if (BUILD_ARTCREATOR_APP)
         message(STATUS "  ArtCreator: no Vector plugin - build with -DULTRACANVAS_PLUGIN_VECTOR=ON for file formats")
     endif()
 
+    # Arrange > Trace Bitmap: the Vectorizer plugin (VTracer) turns a picture
+    # into shapes. Linking it defines ULTRACANVAS_HAS_VECTORIZER_PLUGIN; without
+    # it the two Trace commands stay greyed.
+    if(TARGET UltraCanvasVectorizerPlugin)
+        target_link_libraries(ArtCreator PRIVATE UltraCanvasVectorizerPlugin)
+        message(STATUS "  ArtCreator: Vectorizer plugin linked (Trace Bitmap available)")
+    endif()
+
     target_compile_features(ArtCreator PRIVATE cxx_std_20)
 
     target_compile_definitions(ArtCreator PRIVATE

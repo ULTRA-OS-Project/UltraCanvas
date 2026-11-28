@@ -93,7 +93,7 @@ Mould*, *View* (Zoom, Push).
 | E | Ellipse | Drag; shift for a circle, ctrl from the centre |
 | Q | Quick Shape | Drag from the centre. Options: Shape (Polygon — a regular n-gon, 8 corners for an octagon — or Star), Corners (3–24), Depth (how far a star's inner corners are pulled in). Shift stands it upright: a star's point up, an even polygon on a flat side |
 | T | Text | Click on the page and type there, in the text's font, size and colour at the canvas's zoom; click a text (or double-click it with the Selector) to edit it where it lies. Enter starts a new line. The **text bar** (the framework's `UltraCanvasTextFormatBar`) replaces the transform bar while the tool is active: Font (the framework's font list: the drawing's fonts under *In this document*, the ones chosen last under *Recent* - kept in ArtCreator's settings - then every installed family, each shown in itself with its format's icon; type to find one; a family with Light, Condensed or Black styles shows them beside it, and one chosen is the family with Bold and Italic), Size, Bold, Italic, Underline, Strikethrough, Align left / centre / right, Line spacing (%) and Letter spacing (pt). While typing, Font to Strikethrough apply to the selected words, or to the whole text with none selected; the rest always to the whole text. With no text being typed, the bar applies to the selected texts. Escape, Ctrl+Enter or a click outside finishes |
-| G | Fill | Drag across a shape for a linear (or radial) gradient from the fill colour; drag the gradient's ends to adjust; flat / no fill buttons |
+| G | Fill | Drag across a shape for a linear (or radial) gradient from the fill colour; drag the gradient's ends to adjust; flat / no fill buttons. *Bitmap* fills with a picture (*Choose picture...*): a click covers the shape with one copy, a drag lays the picture's top edge from press to release; the tile's square handle moves it, its two round ones stretch, turn and skew it (shift keeps the picture's shape); *Fit to shape*, *Actual size*. A picture dropped on a shape with this tool fills it |
 | Y | Transparency | Click a shape and drag right for a flat level, or drag across it for a linear / radial / conical ramp; the mix (stained glass, bleach, contrast, ...) and the level are in the options |
 | W | Shadow | Click a shape for a wall shadow and drag it into place; kind (wall / floor / glow), blur, darkness and colour in the options |
 | K | Feather | Click a shape to fade its edges, drag right for a wider fade; radius in the options |
@@ -164,7 +164,8 @@ tab's dot marks unsaved changes; its tooltip is the file's path.
 - **File**: New (Ctrl+N; page presets - opening on the one the page
   matches - width x height, mm / cm / in / pt / px, orientation),
   New Window (Ctrl+Alt+N), New Icon (16 to 256 px, see *Icon mode*), Open (Ctrl+O),
-  Close Tab (Ctrl+W), Save (Ctrl+S), Save As
+  Close Tab (Ctrl+W), Import (Ctrl+Shift+I: a picture or a drawing into
+  the drawing open now, in the middle of the page), Save (Ctrl+S), Save As
   (Ctrl+Shift+S), Export (Ctrl+E), Document Setup, Quit (Ctrl+Q).
 - **Edit**: Undo / Redo (Ctrl+Z / Ctrl+Y), Cut / Copy / Paste (in-app
   clipboard, pastes offset), Duplicate (Ctrl+D), Delete, Select All / None.
@@ -208,6 +209,14 @@ tab's dot marks unsaved changes; its tooltip is the file's path.
 - **Object**: No Fill, No Line, line widths in points (hairline to 8 pt)
   and in pixels (1 to 4 px: the icon's pixels in icon mode, 96 DPI pixels
   otherwise).
+- **Bitmap**: Import; Fill with Picture (the selected shapes, one copy
+  covering each), Replace Picture (keeps the width and place), Save Picture
+  As (the picture's own bytes); Trace Bitmap and Trace Bitmap in Black and
+  White (the Vectorizer plug-in turns the selected picture into shapes, a
+  group laid exactly over it; greyed in a build without the plug-in);
+  Convert to Bitmap (96 dpi) and at 300 dpi (the selection drawn into one
+  picture that takes its place). A selected picture's pixels and resolution
+  show in the status bar.
 - **Layer**: New (Ctrl+Shift+N), Delete, Move Up / Down, Show / Hide; the
   layers panel toggles visible / locked and picks the active layer.
 - **View**: zoom, rulers, grid, guides, snap to grid / guides / objects /
@@ -282,6 +291,13 @@ transparent; a JPEG is laid on white; an icon holds the page fitted into
 drop is reported in the status bar. Without
 the Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`) the editor draws but
 has no file formats.
+
+A picture file dropped on the page is placed where it was dropped, at a
+pixel a point (shrunk to the page when larger); several step down and to
+the right. PNG, JPEG, GIF and WebP are kept as they are, any other type
+this build reads becomes PNG, so the drawing carries the picture itself.
+A drawing file dropped opens in a tab of its own. Pictures and bitmap fills
+round trip through XAR and SVG.
 
 One ArtCreator runs per user. `ArtCreator a.svg b.xar` opens one window
 with a tab each; starting it again while it runs hands the drawings to the

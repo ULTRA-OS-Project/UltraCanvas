@@ -2520,5 +2520,69 @@ PathData CombinePaths(const PathData& path1, const PathData& path2, bool union_o
     return result;
 }
 
+// ===== BITMAP FILLS =====
+
+PatternData MakeBitmapFill(const std::string& source, const std::string& mimeType,
+                           double pixelWidth, double pixelHeight, const Rect2Dd& tile,
+                           const std::optional<Matrix3x3>& transform) {
+    PatternData p;
+    const double w = pixelWidth > 0 ? pixelWidth : 1.0, h = pixelHeight > 0 ? pixelHeight : 1.0;
+    auto image = std::make_shared<VectorImage>();
+    image->Bounds = Rect2Dd(0, 0, w, h);
+    image->Source = source;
+    image->MimeType = mimeType;
+    p.Content = std::make_shared<VectorGroup>();
+    p.Content->AddChild(image);
+    p.ViewBox = Rect2Dd(0, 0, w, h);
+    p.PatternRect = tile;
+    p.Units = GradientUnits::UserSpaceOnUse;
+    p.Transform = transform;
+    return p;
+}
+
+PatternData MakeBitmapFill(const std::string& source, const std::string& mimeType,
+                           double pixelWidth, double pixelHeight, const Point2Dd& topLeft,
+                           const Point2Dd& topRight, const Point2Dd& bottomLeft) {
+    PatternData p = MakeBitmapFill(source, mimeType, pixelWidth, pixelHeight, Rect2Dd(0, 0, 1, 1));
+    SetPatternTileCorners(p, topLeft, topRight, bottomLeft);
+    return p;
+}
+
+bool PatternTileCorners(const PatternData& p, const Rect2Dd& b, Point2Dd& topLeft,
+                        Point2Dd& topRight, Point2Dd& bottomLeft) {
+    Rect2Dd tile = p.PatternRect;
+    if (p.Units == GradientUnits::ObjectBoundingBox) {
+        tile = Rect2Dd(b.x + tile.x * b.width, b.y + tile.y * b.height, tile.width * b.width, tile.height * b.height);
+    }
+    const Matrix3x3 T = p.Transform ? *p.Transform : Matrix3x3::Identity();
+    topLeft = T.Transform(Point2Dd(tile.x, tile.y));
+    topRight = T.Transform(Point2Dd(tile.x + tile.width, tile.y));
+    bottomLeft = T.Transform(Point2Dd(tile.x, tile.y + tile.height));
+    const double area = (topRight.x - topLeft.x) * (bottomLeft.y - topLeft.y) -
+                        (topRight.y - topLeft.y) * (bottomLeft.x - topLeft.x);
+    return std::isfinite(area) && std::fabs(area) > 1e-12;
+}
+
+void SetPatternTileCorners(PatternData& p, const Point2Dd& topLeft, const Point2Dd& topRight,
+                           const Point2Dd& bottomLeft) {
+    p.Units = GradientUnits::UserSpaceOnUse;
+    p.PatternRect = Rect2Dd(0, 0, 1, 1);
+    p.Transform = Matrix3x3::FromValues(topRight.x - topLeft.x, bottomLeft.x - topLeft.x,
+                                        topRight.y - topLeft.y, bottomLeft.y - topLeft.y,
+                                        topLeft.x, topLeft.y);
+}
+
+const VectorImage* BitmapFillImage(const PatternData& pattern) {
+    if (!pattern.Content || pattern.Content->Children.size() != 1) return nullptr;
+    const auto& child = pattern.Content->Children.front();
+    if (!child || child->Type != VectorElementType::Image) return nullptr;
+    return static_cast<const VectorImage*>(child.get());
+}
+
+const PatternData* PatternOf(const std::optional<FillData>& fill) {
+    if (!fill.has_value()) return nullptr;
+    return std::get_if<PatternData>(&*fill);
+}
+
 } // namespace VectorStorage
 } // namespace UltraCanvas

@@ -9,6 +9,8 @@
 // importer parses with tinyxml2 and leans on the storage utilities
 // (ParsePathString, ParseColorString, ParseTransformString), and applies
 // <style> sheets through the HTMLReader's CSS parser.
+// Version: 1.8.0 - <pattern> fills read (tile, units, viewBox, patternTransform, href), so a
+//                 bitmap fill written as <pattern><image/></pattern> reads back as one
 // Version: 1.7.0 - fill-rule read (inherited) into VectorStyle::ShapeFillRule and written on shapes
 // Version: 1.6.0 - a <tspan>'s own fill colour: a span of a text in its own colour, both ways
 // Version: 1.5.1 - <style> sheets match through the HTMLReader's selector
@@ -298,6 +300,10 @@ private:
         if (p.ViewBox.width > 0 && p.ViewBox.height > 0) {
             d << " viewBox=\"" << Num(p.ViewBox.x) << " " << Num(p.ViewBox.y) << " "
               << Num(p.ViewBox.width) << " " << Num(p.ViewBox.height) << "\"";
+            // The model stretches the viewBox over the tile (a bitmap fill
+            // drawn wider than its picture's shape), which SVG does only
+            // when told.
+            d << " preserveAspectRatio=\"none\"";
         }
         if (p.Transform) {
             std::string t = SerializeTransform(*p.Transform);
@@ -924,6 +930,10 @@ public:
         // Definitions pre-pass: gradients and markers can be referenced
         // before (or after) their definition, so collect them document-wide
         // first.
+        patternNodes.clear();
+        patterns.clear();
+        patternsInProgress.clear();
+        parsingDocument = doc.get();
         CollectGradients(svg);
         markers.clear();
         markerClips.clear();
@@ -1054,12 +1064,20 @@ public:
                std::strcmp(n, "desc") == 0 || std::strcmp(n, "style") == 0 ||
                std::strcmp(n, "metadata") == 0 || std::strcmp(n, "marker") == 0 ||
                std::strcmp(n, "linearGradient") == 0 ||
-               std::strcmp(n, "radialGradient") == 0;
+               std::strcmp(n, "radialGradient") == 0 ||
+               std::strcmp(n, "pattern") == 0;
     }
 
 private:
     std::function<void(const std::string&)> warn;
     std::map<std::string, GradientData> gradients;
+    // <pattern> elements by id, read into PatternData on first use (their
+    // content is drawing, parsed like any other); a pattern referring to
+    // itself, directly or through href, is cut off.
+    std::map<std::string, const tinyxml2::XMLElement*> patternNodes;
+    std::map<std::string, PatternData> patterns;
+    std::set<std::string> patternsInProgress;
+    VectorDocument* parsingDocument = nullptr;
     // Every <style> in the document, and what it gives each element (worked
     // out on the element's first property read).
     HTML::StyleSheet styleSheet;
@@ -1262,6 +1280,8 @@ private:
         if (std::strcmp(name, "linearGradient") == 0 ||
             std::strcmp(name, "radialGradient") == 0) {
             if (const char* id = e->Attribute("id")) ParseGradient(e, id);
+        } else if (std::strcmp(name, "pattern") == 0) {
+            if (const char* id = e->Attribute("id")) patternNodes[id] = e;
         }
         for (const tinyxml2::XMLElement* child = e->FirstChildElement();
              child; child = child->NextSiblingElement()) {
@@ -1345,6 +1365,75 @@ private:
         }
     }
 
+    // ===== PATTERNS =====
+
+    // The <pattern> of that id as a PatternData: its tile, units, viewBox
+    // and patternTransform, and its children as the content. Attributes and
+    // children it lacks come from the pattern its href names, as SVG says.
+    const PatternData* ResolvePattern(const std::string& id) {
+        auto done = patterns.find(id);
+        if (done != patterns.end()) return &done->second;
+        auto node = patternNodes.find(id);
+        if (node == patternNodes.end() || !parsingDocument || patternsInProgress.count(id)) return nullptr;
+        patternsInProgress.insert(id);
+        // The href chain, nearest first.
+        std::vector<const tinyxml2::XMLElement*> chain;
+        for (const tinyxml2::XMLElement* e = node->second; e && chain.size() < 16;) {
+            chain.push_back(e);
+            const char* href = e->Attribute("href");
+            if (!href) href = e->Attribute("xlink:href");
+            if (!href || href[0] != '#') break;
+            auto next = patternNodes.find(href + 1);
+            e = next == patternNodes.end() ? nullptr : next->second;
+            if (e && std::find(chain.begin(), chain.end(), e) != chain.end()) break;
+        }
+        auto attr = [&chain](const char* name) -> const tinyxml2::XMLElement* {
+            for (const auto* e : chain) if (e->Attribute(name)) return e;
+            return nullptr;
+        };
+        PatternData p;
+        p.Units = GradientUnits::ObjectBoundingBox;
+        if (const auto* e = attr("patternUnits"))
+            if (std::strcmp(e->Attribute("patternUnits"), "userSpaceOnUse") == 0) p.Units = GradientUnits::UserSpaceOnUse;
+        auto len = [&](const char* name) {
+            const auto* e = attr(name);
+            return e ? LengthAttr(e, name, 0) : 0.0;
+        };
+        p.PatternRect = Rect2Dd(len("x"), len("y"), len("width"), len("height"));
+        if (const auto* e = attr("viewBox")) {
+            std::string list = e->Attribute("viewBox");
+            for (char& ch : list) if (ch == ',') ch = ' ';
+            std::istringstream iss(list);
+            iss.imbue(std::locale::classic());
+            double v[4] = {0, 0, 0, 0};
+            if (iss >> v[0] >> v[1] >> v[2] >> v[3]) p.ViewBox = Rect2Dd(v[0], v[1], v[2], v[3]);
+        }
+        if (const auto* e = attr("patternTransform")) p.Transform = ParseTransformString(e->Attribute("patternTransform"));
+        bool contentInBox = false;
+        if (const auto* e = attr("patternContentUnits"))
+            contentInBox = std::strcmp(e->Attribute("patternContentUnits"), "objectBoundingBox") == 0;
+        p.Content = std::make_shared<VectorGroup>();
+        for (const auto* e : chain) {
+            if (!e->FirstChildElement()) continue;
+            for (const tinyxml2::XMLElement* child = e->FirstChildElement(); child; child = child->NextSiblingElement()) {
+                if (IsNonDrawable(child)) continue;
+                if (auto el = ParseShape(child, *parsingDocument)) p.Content->AddChild(el);
+            }
+            break;
+        }
+        if (contentInBox && !(p.ViewBox.width > 0)) {
+            // Content in fractions of the box: the tile's own box, which is
+            // what it amounts to for the common whole-box pattern.
+            warn("SVG import: pattern '" + id + "' with patternContentUnits=objectBoundingBox read against its tile");
+            if (p.Units == GradientUnits::ObjectBoundingBox) p.ViewBox = Rect2Dd(0, 0, 1, 1);
+        }
+        patternsInProgress.erase(id);
+        if (p.Content->Children.empty() || !(p.PatternRect.width > 0) || !(p.PatternRect.height > 0)) {
+            return nullptr;
+        }
+        return &(patterns[id] = std::move(p));
+    }
+
     // ===== STYLE =====
 
     std::optional<FillData> ParsePaint(const std::string& v) {
@@ -1359,6 +1448,7 @@ private:
                                                                   : end - 5);
             auto it = gradients.find(id);
             if (it != gradients.end()) return FillData(it->second);
+            if (const PatternData* pattern = ResolvePattern(id)) return FillData(*pattern);
             return FillData(v);   // unresolved reference kept as a string
         }
         return FillData(ParseColorString(v));
@@ -2103,6 +2193,7 @@ private:
                 const char* childName = StripNs(child->Name());
                 if (std::strcmp(childName, "linearGradient") == 0 ||
                     std::strcmp(childName, "radialGradient") == 0 ||
+                    std::strcmp(childName, "pattern") == 0 ||
                     std::strcmp(childName, "style") == 0 ||
                     std::strcmp(childName, "marker") == 0) {
                     continue;   // collected in the pre-passes
@@ -2124,6 +2215,7 @@ private:
             std::strcmp(name, "marker") == 0 ||
             std::strcmp(name, "linearGradient") == 0 ||
             std::strcmp(name, "radialGradient") == 0 ||
+            std::strcmp(name, "pattern") == 0 ||
             std::strcmp(name, "metadata") == 0) {
             return;   // style sheets, markers and gradients were collected in the pre-passes
         }

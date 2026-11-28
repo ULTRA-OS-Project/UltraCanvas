@@ -272,7 +272,43 @@ private:
     bool PasteFromSystemClipboard();
     void PasteCopiedElements();
     bool PlacePicture(std::vector<uint8_t> bytes, std::string mimeType, const std::string& what);
-    bool PlaceDrawingFile(const std::string& path);
+    bool PlaceDrawingFile(const std::string& path, std::optional<Point2Dd> centre = std::nullopt);
+
+    // ----- pictures -----
+    // A picture's bytes as the drawing keeps them: PNG, JPEG, GIF and WebP
+    // as they are, anything else made PNG first (so a saved SVG carries a
+    // picture every reader shows); false when it does not decode.
+    bool PreparePicture(std::vector<uint8_t> bytes, std::string mimeType, const std::string& name, ArtPicture& out);
+    // A picture file read through the FileLoader; reports what went wrong
+    // unless `quiet`.
+    bool LoadPictureFile(const std::string& path, ArtPicture& out, bool quiet = false);
+    // The picture as an image object at a pixel a point (shrunk to the page
+    // when larger), centred on `centre` or the page.
+    bool PlacePictureAt(const ArtPicture& picture, std::optional<Point2Dd> centre, const std::string& label);
+    // Files dropped on the canvas: pictures go into the drawing where they
+    // were dropped (onto a shape with the Fill tool, they fill it), drawings
+    // open in tabs of their own.
+    void OnFilesDropped(const std::vector<std::string>& files, const Point2Dd& at);
+    // A picture file chosen in the open dialog.
+    void ChoosePicture(std::function<void(const ArtPicture&)> done);
+    // The one selected image object, or null.
+    std::shared_ptr<VectorStorage::VectorImage> SelectedPicture() const;
+    // The bytes and MIME type of an image object's picture.
+    static bool PictureBytesOf(const VectorStorage::VectorImage& image, std::vector<uint8_t>& bytes, std::string& mimeType);
+    static std::vector<std::string> PictureExtensions();
+    void CmdImport();
+    void CmdFillWithPicture();
+    void CmdReplacePicture();
+    void CmdSavePicture();
+    // Traces the selected picture into shapes (the Vectorizer plug-in), in
+    // colour or in black and white, placed over it.
+    void CmdTraceBitmap(bool blackAndWhite);
+    // The selection drawn into one picture at `dpi` (72 is a pixel a point),
+    // which takes its place.
+    void CmdConvertToBitmap(double dpi);
+    bool CanTraceBitmap() const;
+    // Picture sizes in pixels for the status bar, by image object.
+    std::map<const VectorStorage::VectorImage*, std::pair<size_t, Size2Di>> pictureSizes;
     void PlaceElement(const std::shared_ptr<VectorStorage::VectorElement>& element, const std::string& label,
                       const std::function<void()>& alongside = {});
     void CmdDuplicate();

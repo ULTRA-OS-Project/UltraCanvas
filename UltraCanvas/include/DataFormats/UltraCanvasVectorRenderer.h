@@ -1,5 +1,7 @@
 // UltraCanvasVectorRenderer.h
 // Vector Graphics Rendering for UltraCanvas
+// Version: 2.3.0 - pattern fills and strokes (PatternData, a VectorPattern reference): the tile
+//                 drawn at device resolution and repeated - bitmap fills among them
 // Version: 2.2.0 - FillCurrentPath: the fill under the style's fill rule
 // Version: 2.1.1
 // Last Modified: 2026-09-26
@@ -174,6 +176,17 @@ namespace UltraCanvas {
         void SetupGradient(const GradientData& gradient, const Rect2Dd& bounds, float opacity, bool forStroke);
         std::shared_ptr<IPaintPattern> MakeLinearGradient(const LinearGradientData& grad, const Rect2Dd& bounds, float opacity);
         std::shared_ptr<IPaintPattern> MakeRadialGradient(const RadialGradientData& grad, const Rect2Dd& bounds, float opacity);
+
+        // A pattern's paint: one tile of its content drawn offscreen at the
+        // device resolution it is painted at (at most 4096 pixels a side)
+        // and repeated; nullptr when the pattern has no tile to draw.
+        std::shared_ptr<IPaintPattern> MakePatternPaint(const VectorStorage::PatternData& pattern, const Rect2Dd& bounds, float opacity);
+        struct PatternTile {
+            std::shared_ptr<VectorStorage::VectorGroup> content;   // held, so its address is not reused while cached
+            std::shared_ptr<UCPixmap> pixmap;
+            size_t key = 0;
+        };
+        std::unordered_map<const VectorStorage::VectorGroup*, PatternTile> patternCache;
 
         void BuildPath(const PathData& pathData);
 

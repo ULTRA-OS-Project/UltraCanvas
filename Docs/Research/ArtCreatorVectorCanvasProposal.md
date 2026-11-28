@@ -87,7 +87,7 @@ element (C), application (A).
 | Freehand with smoothing slider, pressure | y | n (pressure exists in `UCEvent`) | A over E |
 | Rectangle / ellipse / QuickShape (polygon, star, live corner rounding) | y | model has `Rect` radius, `Polygon`; `Star` / `RegularPolygon` declared, never used | M + A |
 | Text: artistic text, text areas / columns, text on a curve, tracking / kerning, styles | y | `VectorText` spans, `TextPath` declared and dead; renderer sets font once; no text→curves | M + RC |
-| Fill tool: flat, linear, circular, elliptical, conical, diamond, three / four colour, bitmap, fractal cloud / plasma; multi-stage; fill profile; repeating | y | flat, linear, radial, elliptical: y. Conical, mesh: declared in model, no renderer / RC. Bitmap fill: file-path only. Fractal: n | RC + M |
+| Fill tool: flat, linear, circular, elliptical, conical, diamond, three / four colour, bitmap, fractal cloud / plasma; multi-stage; fill profile; repeating | y | flat, linear, radial, elliptical: y. Conical, mesh: declared in model, no renderer / RC. Bitmap fill: y (2026-11-28: `MakeBitmapFill`, drawn as a repeated tile, Fill tool *Bitmap* with tile handles, SVG and XAR both ways). Fractal: n | RC + M |
 | Transparency tool: same shapes as fills; 11 mix modes | y | element opacity only; no blend modes in RC, none in renderer | RC + M |
 | Shadow (wall / floor / glow, blur), feather | y | n in model; XAR plugin parses and approximates; no blur primitive in RC | RC + M |
 | Bevel, contour, blend (object-to-object), mould (envelope / perspective) | y | n in model; XAR plugin parses, does not render | M + E |
@@ -128,7 +128,7 @@ element (C), application (A).
 | CDR | import | write only (v7 RIFF); libcdr viewer renders |
 | DXF, DWG, EMF, WMF | import / export | read + write |
 | PSD, PNG, JPEG, WebP, GIF, TIFF … | import + export | PixelFX loads; `UltraCanvasVectorRaster` renders any vector to pixels |
-| Bitmap trace to vector | y | Vectorizer plugin (VTracer) returns an SVG string; `SVGConverter::ImportFromString` makes it a document |
+| Bitmap trace to vector | y | Done 2026-11-28: ArtCreator's *Bitmap > Trace Bitmap* runs the Vectorizer plugin (VTracer) on the selected picture and reads its SVG with `SVGConverter::ImportFromString`, laid over the picture |
 
 The converter matrix is the strongest asset here: an editor that speaks
 `VectorDocument` gets ten export formats and six import formats on day one.
@@ -175,7 +175,7 @@ Verified limits, in addition to §2.5–2.6 of the model survey:
 - **Renderer parity** (model survey step 3) landed with 0.8.51: arcs and
   smooth quadratics through `PathOps`, object-bounding-box gradients
   against the shape's own extents, fill / stroke opacity, per-span fonts
-  and text anchors, clip paths. Still not drawn: patterns, masks, filters,
+  and text anchors, clip paths, patterns (since 2026-11-28). Still not drawn: masks, filters,
   blend modes and true group opacity — all waiting on the render-context
   additions of §5.1.
 - **It is a plugin that is OFF by default.** `ULTRACANVAS_PLUGIN_VECTOR`
@@ -244,7 +244,7 @@ the `OS/<Platform>/` directories hand Cairo a native surface). What the
 | Stroke width / caps / joins / miter / dash + offset | y |
 | Solid, linear, radial, elliptical (arbitrary matrix) gradient | y — the elliptical form was added for XAR / SVG `gradientTransform` |
 | Conical and mesh gradients | n — `GradientType::Conic` declared, no `Create…` |
-| Pattern fill | file path only; `CAIRO_EXTEND_PAD` fixed; no pattern matrix on `IPaintPattern` |
+| Pattern fill | done: `CreatePixmapPattern` with an extend mode and `SetMatrix`; the renderer draws a pattern's tile offscreen and repeats it |
 | Full affine transforms, state stack | y; **no CTM readback**, so a hairline stroke or device-space handle size must track the view matrix by hand (what `PaintSurface` and `DiagramViewport` do) |
 | Clip to any path | y (`ClipPath()`) |
 | Group with opacity, soft mask | **n** — no `cairo_push_group` / `cairo_mask` exposure; `CompositeToSurface` is plain OVER with no alpha |

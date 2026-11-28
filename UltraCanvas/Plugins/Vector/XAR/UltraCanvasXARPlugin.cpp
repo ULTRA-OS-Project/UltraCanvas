@@ -9,6 +9,7 @@
 
 #include "UltraCanvasXARPlugin.h"
 #include "UltraCanvasFileError.h"
+#include "UltraCanvasClipboardDib.h"   // EncodePng: XARBitmapToPng
 #include <fstream>
 #include <cstring>
 #include <cmath>
@@ -362,6 +363,31 @@ namespace UltraCanvas {
         def->tintStart = fill.startColor;
         def->tintEnd = fill.endColor;
         return def->tintedPixmap.get();
+    }
+
+    bool XARBitmapToPng(const XARFillAttribute& fill, std::vector<uint8_t>& png) {
+        UCPixmap* pm = BitmapFillPixmap(fill);
+        if (!pm || !pm->IsValid()) return false;
+        pm->Flush();
+        ClipboardDib::RgbaImage image;
+        image.width = pm->GetWidth();
+        image.height = pm->GetHeight();
+        if (image.width <= 0 || image.height <= 0) return false;
+        image.pixels.resize(static_cast<size_t>(image.width) * image.height * 4);
+        uint8_t* out = image.pixels.data();
+        for (int y = 0; y < image.height; ++y) {
+            for (int x = 0; x < image.width; ++x, out += 4) {
+                const uint32_t p = pm->GetPixel(x, y);   // premultiplied ARGB
+                const uint32_t a = p >> 24;
+                out[3] = static_cast<uint8_t>(a);
+                if (a == 0) { out[0] = out[1] = out[2] = 0; continue; }
+                out[0] = static_cast<uint8_t>(std::min<uint32_t>(255, ((p >> 16) & 0xFF) * 255 / a));
+                out[1] = static_cast<uint8_t>(std::min<uint32_t>(255, ((p >> 8) & 0xFF) * 255 / a));
+                out[2] = static_cast<uint8_t>(std::min<uint32_t>(255, (p & 0xFF) * 255 / a));
+            }
+        }
+        png.clear();
+        return ClipboardDib::EncodePng(image, png) && !png.empty();
     }
 
     // Paint a bitmap / contone fill clipped to a path: emitPath builds the

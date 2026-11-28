@@ -1,5 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.h
 // Xara XAR vector graphics format plugin for UltraCanvas
+// Version: 2.4.0 - XARBitmapToPng: an embedded bitmap as a plain PNG (alpha the right way round,
+//                 a contone tint applied) for readers that hand it on
 // Version: 2.3.1 - the element draws at its own origin, not at its position in the parent
 // Version: 2.3.0
 // Last Modified: 2026-10-27
@@ -1135,6 +1137,13 @@ namespace UltraCanvas {
     }
 
 // ===== DOCUMENT =====
+
+    // The bitmap a bitmap / contone fill (or a bitmap object, given as a
+    // fill of that kind) shows, as an ordinary PNG with straight alpha: Xara
+    // stores transparency where PNG keeps opacity, and a contone bitmap is
+    // tinted from its start colour (dark) to its end colour (light). False
+    // when there is no bitmap or it does not decode.
+    bool XARBitmapToPng(const XARFillAttribute& fill, std::vector<uint8_t>& png);
 
     class XARDocument {
     public:

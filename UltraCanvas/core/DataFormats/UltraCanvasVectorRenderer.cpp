@@ -588,13 +588,23 @@ namespace UltraCanvas {
         if (silhouetteMode) { ctx->SetFillPaint(Colors::Black); return; }
         if (auto *c = std::get_if<Color>(&fill)) ctx->SetFillPaint(WithOpacity(*c, opacity));
         else if (auto *g = std::get_if<GradientData>(&fill)) SetupGradient(*g, bounds, opacity, false);
+        else if (auto *p = std::get_if<PatternData>(&fill)) {
+            if (auto paint = MakePatternPaint(*p, bounds, opacity)) ctx->SetFillPaint(paint);
+            else ctx->SetFillPaint(Color(0, 0, 0, 0));
+        }
         else if (auto *id = std::get_if<std::string>(&fill)) {
             if (currentDocument)
-                if (auto d = currentDocument->GetDefinition(*id))
+                if (auto d = currentDocument->GetDefinition(*id)) {
                     if (auto *gd = dynamic_cast<VectorGradient *>(d.get()))
                         SetupGradient(gd->Data, bounds, opacity, false);
+                    else if (auto *pd = dynamic_cast<VectorPattern *>(d.get())) {
+                        if (auto paint = MakePatternPaint(pd->Data, bounds, opacity)) ctx->SetFillPaint(paint);
+                        else ctx->SetFillPaint(Color(0, 0, 0, 0));
+                    }
+                }
         }
     }
+
 
     // The user-space width of options.MinStrokePixels device pixels under the
     // current transform (the geometric mean of its two scale factors).
@@ -617,6 +627,10 @@ namespace UltraCanvas {
         if (silhouetteMode) ctx->SetStrokePaint(Colors::Black);
         else if (auto *c = std::get_if<Color>(&stroke.Fill)) ctx->SetStrokePaint(WithOpacity(*c, strokeOpacity));
         else if (auto *g = std::get_if<GradientData>(&stroke.Fill)) SetupGradient(*g, bounds, strokeOpacity, true);
+        else if (auto *p = std::get_if<PatternData>(&stroke.Fill)) {
+            if (auto paint = MakePatternPaint(*p, bounds, strokeOpacity)) ctx->SetStrokePaint(paint);
+            else ctx->SetStrokePaint(Color(0, 0, 0, 0));
+        }
         else if (auto *id = std::get_if<std::string>(&stroke.Fill)) {
             if (currentDocument)
                 if (auto d = currentDocument->GetDefinition(*id))
@@ -1070,6 +1084,93 @@ namespace UltraCanvas {
                 default: return t;
             }
         }
+    }
+
+    std::shared_ptr<IPaintPattern> VectorRenderer::MakePatternPaint(const PatternData &p, const Rect2Dd &b,
+                                                                    float opacity) {
+        if (!ctx || !p.Content || p.Content->Children.empty()) return nullptr;
+        // The tile in user space (before the pattern's own Transform):
+        // fractions of the bounding box for ObjectBoundingBox units.
+        Rect2Dd tile = p.PatternRect;
+        if (p.Units == GradientUnits::ObjectBoundingBox) {
+            tile = Rect2Dd(b.x + p.PatternRect.x * b.width, b.y + p.PatternRect.y * b.height,
+                           p.PatternRect.width * b.width, p.PatternRect.height * b.height);
+        }
+        if (!(tile.width > 1e-9) || !(tile.height > 1e-9) || !std::isfinite(tile.width) || !std::isfinite(tile.height))
+            return nullptr;
+        const Matrix3x3 T = p.Transform ? *p.Transform : Matrix3x3::Identity();
+        if (!(std::fabs(T.Determinant()) > 1e-18)) return nullptr;
+
+        // The tile's edges on the device give its raster size.
+        auto dev = [&](double x, double y) { return ctx->UserToDevice(T.Transform(Point2Dd(x, y))); };
+        const Point2Dd o = dev(tile.x, tile.y);
+        const Point2Dd ex = dev(tile.x + tile.width, tile.y);
+        const Point2Dd ey = dev(tile.x, tile.y + tile.height);
+        constexpr double kMaxPixels = 4096.0;
+        double wpx = std::hypot(ex.x - o.x, ex.y - o.y), hpx = std::hypot(ey.x - o.x, ey.y - o.y);
+        if (!std::isfinite(wpx) || !std::isfinite(hpx)) return nullptr;
+        // A picture is not drawn finer than its own pixels need: one tile
+        // never holds more than twice the image's resolution.
+        if (const VectorImage *img = BitmapFillImage(p)) {
+            wpx = std::min(wpx, std::max(1.0, img->Bounds.width * 2.0));
+            hpx = std::min(hpx, std::max(1.0, img->Bounds.height * 2.0));
+        }
+        const int w = std::max(1, static_cast<int>(std::ceil(std::min(wpx, kMaxPixels))));
+        const int h = std::max(1, static_cast<int>(std::ceil(std::min(hpx, kMaxPixels))));
+
+        const Rect2Dd vb = p.ViewBox;
+        const bool hasViewBox = vb.width > 0 && vb.height > 0;
+        size_t key = 0;
+        HashDouble(key, w); HashDouble(key, h); HashDouble(key, opacity);
+        HashDouble(key, tile.width); HashDouble(key, tile.height);
+        if (hasViewBox) { HashDouble(key, vb.x); HashDouble(key, vb.y); HashDouble(key, vb.width); HashDouble(key, vb.height); }
+        HashDouble(key, OutlineMode() ? 1.0 : 0.0);
+
+        std::shared_ptr<UCPixmap> pm;
+        auto it = patternCache.find(p.Content.get());
+        if (it != patternCache.end() && it->second.key == key && it->second.pixmap) {
+            pm = it->second.pixmap;
+        } else {
+            std::unique_ptr<IRenderContext> off = CreateRenderContext(Size2Di(w, h), nullptr);
+            if (!off) return nullptr;
+            off->Clear(Color(0, 0, 0, 0));
+            off->Scale(w / tile.width, h / tile.height);
+            // The content's origin is the tile's corner (SVG), or its
+            // viewBox fills the tile.
+            if (hasViewBox) {
+                off->Scale(tile.width / vb.width, tile.height / vb.height);
+                off->Translate(-vb.x, -vb.y);
+            }
+            IRenderContext *savedCtx = ctx;
+            const float savedOpacity = currentOpacity;
+            const VectorRenderOptions savedOptions = options;
+            const Matrix3x3 savedCull = cullMatrix;
+            ctx = off.get();
+            currentOpacity = opacity;
+            options.EnableCulling = false;
+            options.ShowBoundingBoxes = false;
+            cullMatrix = Matrix3x3::Identity();
+            ctx->SetAlpha(opacity);
+            for (const auto &child: p.Content->Children) if (child) RenderElement(ctx, *child);
+            ctx = savedCtx;
+            currentOpacity = savedOpacity;
+            options = savedOptions;
+            cullMatrix = savedCull;
+
+            pm = std::make_shared<UCPixmap>();
+            if (!pm->Init(w, h)) return nullptr;
+            off->FlushToSurface(pm->GetSurface(), Point2Dd(0, 0));
+            pm->MarkDirty();
+            pm->Flush();
+            if (patternCache.size() > 64) patternCache.clear();
+            PatternTile &t = patternCache[p.Content.get()];
+            t.content = p.Content;
+            t.pixmap = pm;
+            t.key = key;
+        }
+        auto paint = ctx->CreatePixmapPattern(*pm, tile, PatternExtend::Repeat);
+        if (paint && p.Transform) Place(paint, T);
+        return paint;
     }
 
     void VectorRenderer::RenderWithEffects(const VectorElement &element) {
@@ -1843,7 +1944,7 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-    void VectorRenderer::ClearCaches() { effectCache.clear(); bevelCache.clear(); contourCache.clear(); inlineImageCache.clear(); }
+    void VectorRenderer::ClearCaches() { effectCache.clear(); bevelCache.clear(); contourCache.clear(); inlineImageCache.clear(); patternCache.clear(); }
 
     bool BuildVectorElementOutline(IRenderContext *context, const VectorElement &element) {
         if (!context) return false;

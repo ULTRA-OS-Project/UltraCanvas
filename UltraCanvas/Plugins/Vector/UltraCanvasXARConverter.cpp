@@ -1,5 +1,10 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasXARConverter.cpp
 // XAR (Xara) Vector Format Converter - Specification-Compliant Implementation
+// Version: 2.2.0 - pictures and bitmap fills written (TAG_DEFINEBITMAP_JPEG / _PNG, TAG_NODE_BITMAP,
+//                 TAG_BITMAPFILL) instead of dropped or filled black;
+//                 bitmap and contone fills read as bitmap fills (a pattern of the picture on the
+//                 fill's parallelogram), not flat grey; turned or skewed bitmaps keep their
+//                 turn as a Transform; contone bitmaps tinted, PNG transparency the right way round
 // Version: 2.1.0 - the winding rule both ways: read into ShapeFillRule; a non-zero shape
 //                  written by the subpaths that bound its fill (Xara fills even-odd)
 // Version: 2.0.0
@@ -13,6 +18,9 @@
 #include "UltraCanvasVectorFillRule.h"
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
 #include "XAR/UltraCanvasXARPlugin.h"
+#include "UltraCanvasImage.h"   // UCImage: a bitmap fill's picture size, pictures written as PNG
+#include "UltraCanvasClipboardDib.h"   // RgbaImage
+#include "UltraCanvasFileLoader.h"     // LoadFile: a picture kept as a path
 #endif
 #include <fstream>
 #include <cstdint>
@@ -282,6 +290,10 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                 constexpr uint32_t PathStroked = 102;
                 constexpr uint32_t PathFilledStroked = 103;
                 constexpr uint32_t Group = 104;
+                constexpr uint32_t DefineBitmapJpeg = 67;
+                constexpr uint32_t DefineBitmapPng = 68;
+                constexpr uint32_t BitmapFill = 157;
+                constexpr uint32_t NodeBitmap = 198;
                 constexpr uint32_t FlatFill = 150;
                 constexpr uint32_t LineColour = 151;
                 constexpr uint32_t LineWidth = 152;
@@ -1091,19 +1103,51 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                     const Point2Dd bl = Pt(n.bottomLeft), br = Pt(n.bottomRight), tl = Pt(n.topLeft);
                     const double w = std::hypot(br.x - bl.x, br.y - bl.y);
                     const double h = std::hypot(tl.x - bl.x, tl.y - bl.y);
-                    if (std::fabs(br.y - bl.y) > 1e-6 || std::fabs(tl.x - bl.x) > 1e-6) Skip("rotated or sheared bitmap (placed upright)");
-                    img->Bounds = Rect2Dd(std::min(bl.x, tl.x), std::min(bl.y, tl.y), w, h);
-                    if (auto* def = xd.GetBitmap(n.bitmapRef)) {
-                        img->EmbeddedData = def->data;
-                        switch (def->format) {
-                            case UltraCanvas::XARBitmapDefinition::Format::JPEG:
-                            case UltraCanvas::XARBitmapDefinition::Format::JPEG8BPP: img->MimeType = "image/jpeg"; break;
-                            case UltraCanvas::XARBitmapDefinition::Format::BMP: img->MimeType = "image/bmp"; break;
-                            case UltraCanvas::XARBitmapDefinition::Format::GIF: img->MimeType = "image/gif"; break;
-                            default: img->MimeType = "image/png"; break;
+                    if (std::fabs(br.y - bl.y) > 1e-6 || std::fabs(tl.x - bl.x) > 1e-6) {
+                        // Turned, skewed or mirrored: the picture upright in
+                        // its own space and the parallelogram as its Transform.
+                        img->Bounds = Rect2Dd(0, 0, w, h);
+                        if (w > 1e-9 && h > 1e-9) {
+                            img->Transform = Matrix3x3::FromValues((br.x - bl.x) / w, (bl.x - tl.x) / h,
+                                                                   (br.y - bl.y) / w, (bl.y - tl.y) / h, tl.x, tl.y);
                         }
+                    } else {
+                        img->Bounds = Rect2Dd(std::min(bl.x, tl.x), std::min(bl.y, tl.y), w, h);
                     }
-                    if (n.isContoned) Skip("contone bitmap tint");
+                    if (auto* def = xd.GetBitmap(n.bitmapRef)) {
+                        // A contone bitmap is tinted between its two colours,
+                        // and a PNG's transparency is stored the wrong way
+                        // round for every other reader: either way the
+                        // picture is handed on as a plain PNG.
+                        UltraCanvas::XARFillAttribute f;
+                        f.type = n.isContoned ? UltraCanvas::XARFillType::ContoneBitmap : UltraCanvas::XARFillType::Bitmap;
+                        f.bitmapDef = def;
+                        if (n.isContoned) {
+                            f.startColor = xd.ResolveColorRef(n.startColourRef);
+                            f.endColor = xd.ResolveColorRef(n.endColourRef);
+                        }
+                        const bool isJpeg = def->format == UltraCanvas::XARBitmapDefinition::Format::JPEG ||
+                                            def->format == UltraCanvas::XARBitmapDefinition::Format::JPEG8BPP;
+                        std::vector<uint8_t> png;
+                        if ((n.isContoned || !isJpeg) && UltraCanvas::XARBitmapToPng(f, png)) {
+                            img->EmbeddedData = std::move(png);
+                            img->MimeType = "image/png";
+                        } else {
+                            img->EmbeddedData = def->data;
+                            switch (def->format) {
+                                case UltraCanvas::XARBitmapDefinition::Format::JPEG:
+                                case UltraCanvas::XARBitmapDefinition::Format::JPEG8BPP: img->MimeType = "image/jpeg"; break;
+                                case UltraCanvas::XARBitmapDefinition::Format::BMP: img->MimeType = "image/bmp"; break;
+                                case UltraCanvas::XARBitmapDefinition::Format::GIF: img->MimeType = "image/gif"; break;
+                                default: img->MimeType = "image/png"; break;
+                            }
+                            if (n.isContoned) Skip("contone bitmap tint");
+                        }
+                        // The renderer draws an image from its Source; an
+                        // inline one carries the bytes as a data: URI.
+                        if (!img->EmbeddedData.empty())
+                            img->Source = "data:" + img->MimeType + ";base64," + Base64Encode(img->EmbeddedData, false);
+                    }
                     if (n.hasTransparency) ApplyTransparency(n.transparency, img->Style);
                     return img;
                 }
@@ -1171,9 +1215,26 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                             return GradientData{g};
                         }
                         case XARFillType::Bitmap:
-                        case XARFillType::ContoneBitmap:
-                            Skip("bitmap fill (read as flat grey)");
+                        case XARFillType::ContoneBitmap: {
+                            // The picture on the fill's parallelogram (start:
+                            // bottom-left, end: bottom-right, end2: top-left),
+                            // repeated as Xara tiles it.
+                            std::vector<uint8_t> png;
+                            const Point2Dd bl = Pt(f.startPoint), br = Pt(f.endPoint), tl = Pt(f.endPoint2);
+                            const Point2Dd tr(tl.x + (br.x - bl.x), tl.y + (br.y - bl.y));
+                            if (f.bitmapDef && UltraCanvas::XARBitmapToPng(f, png)) {
+                                int pw = f.bitmapDef->width, ph = f.bitmapDef->height;
+                                if (pw <= 0 || ph <= 0) {
+                                    if (auto image = UCImage::LoadFromMemory(png)) { pw = image->GetWidth(); ph = image->GetHeight(); }
+                                }
+                                if (pw > 0 && ph > 0) {
+                                    return MakeBitmapFill("data:image/png;base64," + Base64Encode(png, false), "image/png",
+                                                          pw, ph, tl, tr, bl);
+                                }
+                            }
+                            Skip("bitmap fill whose bitmap does not decode (read as flat grey)");
                             return Color(160, 160, 160, 255);
+                        }
                         default:
                             Skip("fractal / noise / diamond / multi-colour fill (read as its first colour)");
                             return f.startColor;
@@ -1351,6 +1412,44 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
 
         namespace {
             // Little-endian record body builder.
+            // A PNG of straight (not premultiplied) RGBA: Xara keeps a
+            // bitmap's transparency where PNG keeps opacity, so an opaque
+            // pixel is stored with 0 in that byte - which an encoder working
+            // on premultiplied pixels (cairo's) would turn black.
+            std::vector<uint8_t> EncodeStraightRgbaPng(const std::vector<uint8_t>& rgba, int w, int h) {
+                std::vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+                auto u32 = [](std::vector<uint8_t>& v, uint32_t x) {
+                    v.push_back(static_cast<uint8_t>(x >> 24)); v.push_back(static_cast<uint8_t>(x >> 16));
+                    v.push_back(static_cast<uint8_t>(x >> 8)); v.push_back(static_cast<uint8_t>(x));
+                };
+                auto chunk = [&](const char* type, const std::vector<uint8_t>& data) {
+                    u32(out, static_cast<uint32_t>(data.size()));
+                    std::vector<uint8_t> body(type, type + 4);
+                    body.insert(body.end(), data.begin(), data.end());
+                    out.insert(out.end(), body.begin(), body.end());
+                    u32(out, static_cast<uint32_t>(crc32(0L, body.data(), static_cast<uInt>(body.size()))));
+                };
+                std::vector<uint8_t> ihdr;
+                u32(ihdr, static_cast<uint32_t>(w));
+                u32(ihdr, static_cast<uint32_t>(h));
+                ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});   // 8 bits, RGBA, deflate, no filter, no interlace
+                chunk("IHDR", ihdr);
+                std::vector<uint8_t> raw;
+                raw.reserve(static_cast<size_t>(h) * (static_cast<size_t>(w) * 4 + 1));
+                for (int y = 0; y < h; ++y) {
+                    raw.push_back(0);   // filter: none
+                    const auto row = rgba.begin() + static_cast<ptrdiff_t>(y) * w * 4;
+                    raw.insert(raw.end(), row, row + static_cast<ptrdiff_t>(w) * 4);
+                }
+                uLongf size = compressBound(static_cast<uLong>(raw.size()));
+                std::vector<uint8_t> z(size);
+                if (compress2(z.data(), &size, raw.data(), static_cast<uLong>(raw.size()), 6) != Z_OK) return {};
+                z.resize(size);
+                chunk("IDAT", z);
+                chunk("IEND", {});
+                return out;
+            }
+
             struct XarBody {
                 std::vector<uint8_t> bytes;
 
@@ -1483,6 +1582,7 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                 std::map<uint32_t, uint32_t> colourRefs;     // 0xRRGGBB -> record seq
                 std::map<std::string, uint32_t> fontRefs;    // family -> record seq
                 std::map<std::string, uint32_t> dashRefs;    // pattern -> record seq
+                std::map<const std::string*, uint32_t> bitmapRefs;   // a picture's source -> record seq
                 bool effectsOn = true;                       // XARConversionOptions::PreserveEffects
                 const VectorEffects* activeEffects = nullptr; // the element whose attributes are being written
                 Rect2Dd attrBounds;                          // its untransformed bounds, for bbox gradients
@@ -1540,6 +1640,79 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                     uint32_t ref = Rec(XarOut::DefineRGBColour, b);
                     colourRefs[key] = ref;
                     return static_cast<int32_t>(ref);
+                }
+
+                // A picture as a bitmap definition: JPEG as it is, anything
+                // else as PNG - with its alpha stored as Xara stores it, as
+                // transparency (255 clear), so Xara and the reader agree.
+                // 0 when there are no bytes or they do not decode.
+                int32_t BitmapRef(const VectorImage& image) {
+                    auto it = bitmapRefs.find(&image.Source);
+                    if (it != bitmapRefs.end()) return static_cast<int32_t>(it->second);
+                    std::vector<uint8_t> bytes = image.EmbeddedData;
+                    std::string mime = image.MimeType;
+                    if (bytes.empty() && image.Source.compare(0, 5, "data:") == 0) {
+                        const size_t comma = image.Source.find(',');
+                        if (comma != std::string::npos && image.Source.find(";base64") < comma) {
+                            bytes = Base64Decode(image.Source.substr(comma + 1));
+                            if (mime.empty()) mime = image.Source.substr(5, image.Source.find_first_of(";,", 5) - 5);
+                        }
+                    } else if (bytes.empty() && !image.Source.empty()) {
+                        const auto r = UltraCanvasFileLoader::LoadFile(image.Source);
+                        if (r.success) bytes = r.bytes;
+                    }
+                    if (bytes.empty()) return 0;
+                    const bool jpeg = mime == "image/jpeg" ||
+                                      (bytes.size() > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF);
+                    XarBody b;
+                    b.Utf16("Picture " + std::to_string(bitmapRefs.size() + 1));
+                    uint32_t ref = 0;
+                    if (jpeg) {
+                        b.bytes.insert(b.bytes.end(), bytes.begin(), bytes.end());
+                        ref = Rec(XarOut::DefineBitmapJpeg, b);
+                    } else {
+                        auto decoded = UCImage::LoadFromMemory(bytes);
+                        auto pm = decoded ? decoded->GetPixmap() : nullptr;
+                        if (!pm || !pm->IsValid()) return 0;
+                        ClipboardDib::RgbaImage rgba;
+                        rgba.width = pm->GetWidth();
+                        rgba.height = pm->GetHeight();
+                        rgba.pixels.resize(static_cast<size_t>(rgba.width) * rgba.height * 4);
+                        uint8_t* o = rgba.pixels.data();
+                        for (int y = 0; y < rgba.height; ++y)
+                            for (int x = 0; x < rgba.width; ++x, o += 4) {
+                                const uint32_t px = pm->GetPixel(x, y);   // premultiplied ARGB
+                                const uint32_t a = px >> 24;
+                                o[3] = static_cast<uint8_t>(255 - a);
+                                if (a == 0) { o[0] = o[1] = o[2] = 0; continue; }
+                                o[0] = static_cast<uint8_t>(std::min<uint32_t>(255, ((px >> 16) & 0xFF) * 255 / a));
+                                o[1] = static_cast<uint8_t>(std::min<uint32_t>(255, ((px >> 8) & 0xFF) * 255 / a));
+                                o[2] = static_cast<uint8_t>(std::min<uint32_t>(255, (px & 0xFF) * 255 / a));
+                            }
+                        const std::vector<uint8_t> png = EncodeStraightRgbaPng(rgba.pixels, rgba.width, rgba.height);
+                        if (png.empty()) return 0;
+                        b.bytes.insert(b.bytes.end(), png.begin(), png.end());
+                        ref = Rec(XarOut::DefineBitmapPng, b);
+                    }
+                    bitmapRefs[&image.Source] = ref;
+                    return static_cast<int32_t>(ref);
+                }
+
+                // TAG_NODE_BITMAP: the picture on its parallelogram (bottom-
+                // left, bottom-right, top-left), turned with its transform.
+                void EmitImage(const VectorImage& im, const Matrix3x3& ctm) {
+                    const int32_t ref = BitmapRef(im);
+                    if (ref == 0) {
+                        warn("XAR export: a picture with no readable bytes, skipped");
+                        return;
+                    }
+                    const Rect2Dd r = im.Bounds;
+                    XarBody b;
+                    Coord(b, ctm.Transform(Point2Dd(r.x, r.y + r.height)));
+                    Coord(b, ctm.Transform(Point2Dd(r.x + r.width, r.y + r.height)));
+                    Coord(b, ctm.Transform(Point2Dd(r.x, r.y)));
+                    b.I32(ref);
+                    Rec(XarOut::NodeBitmap, b);
                 }
 
                 int32_t FontRef(const std::string& family) {
@@ -1728,6 +1901,9 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                         }
                         case VectorElementType::Text:
                             EmitText(static_cast<const VectorText&>(e), drawStyle, ctm);
+                            break;
+                        case VectorElementType::Image:
+                            EmitImage(static_cast<const VectorImage&>(e), ctm);
                             break;
                         default:
                             warn("XAR export: element type not supported, skipped (type " +
@@ -2288,6 +2464,9 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                             Rec(XarOut::FlatFill, b);
                         } else if (const GradientData* g = std::get_if<GradientData>(&fill)) {
                             EmitGradientFill(*g, ctm, attrBounds);
+                        } else if (const PatternData* pat = std::get_if<PatternData>(&fill);
+                                   pat && BitmapFillImage(*pat) && EmitBitmapFill(*pat, ctm)) {
+                            // TAG_BITMAPFILL written
                         } else {
                             warn("XAR export: pattern/reference fills are not supported, "
                                  "filling flat black");
@@ -2384,6 +2563,25 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                             b.I32(ColourRef(stops[i].color));
                         }
                     }
+                }
+
+                // TAG_BITMAPFILL: the picture's tile as Xara's three points
+                // (bottom-left, bottom-right, top-left) and the bitmap.
+                bool EmitBitmapFill(const PatternData& p, const Matrix3x3& ctm) {
+                    Point2Dd tl, tr, bl;
+                    if (!PatternTileCorners(p, attrBounds, tl, tr, bl)) return false;
+                    const int32_t ref = BitmapRef(*BitmapFillImage(p));
+                    if (ref == 0) return false;
+                    const Point2Dd br(bl.x + tr.x - tl.x, bl.y + tr.y - tl.y);
+                    XarBody b;
+                    Coord(b, ctm.Transform(bl));
+                    Coord(b, ctm.Transform(br));
+                    Coord(b, ctm.Transform(tl));
+                    b.I32(ref);
+                    b.F64(0.0);   // profile bias
+                    b.F64(0.0);   // profile gain
+                    Rec(XarOut::BitmapFill, b);
+                    return true;
                 }
 
                 void EmitGradientFill(const GradientData& g, const Matrix3x3& ctm, const Rect2Dd& bounds) {

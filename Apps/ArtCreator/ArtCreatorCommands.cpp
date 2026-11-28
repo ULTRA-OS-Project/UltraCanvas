@@ -184,6 +184,7 @@ void ArtCreatorWindow::RegisterCommands() {
     action("file.close-tab", "File", "Close Tab", "close-tab.svg", "Ctrl+W", [this]() { CmdCloseTab(); });
     action("file.save", "File", "Save", "save.svg", "Ctrl+S", [this]() { CmdSave(); });
     action("file.save-as", "File", "Save As...", "save-as.svg", "Ctrl+Shift+S", [this]() { CmdSaveAs(); });
+    action("file.import", "File", "Import...", "import.svg", "Ctrl+Shift+I", [this]() { CmdImport(); });
     action("file.export", "File", "Export...", "export.svg", "Ctrl+E", [this]() { CmdExport(); });
     action("file.document-setup", "File", "Document Setup...", "document-setup.svg", "", [this]() { CmdDocumentSetup(); });
     action("file.quit", "File", "Quit", "quit.svg", "Ctrl+Q", [this]() { CmdQuit(); });
@@ -248,6 +249,16 @@ void ArtCreatorWindow::RegisterCommands() {
     action("arrange.release", "Arrange", "Remove ClipView, Blend or Mould", "release.svg", "", [this]() { CmdRemoveContainer(); }, hasSelection);
     action("arrange.convert", "Arrange", "Convert to Editable Shapes", "shape-editor.svg", "Ctrl+Shift+C", [this]() { CmdConvertToPath(); }, hasSelection);
     action("arrange.snap-pixels", "Arrange", "Snap to Pixels", "snap-pixels.svg", "Ctrl+Shift+P", [this]() { CmdSnapToPixels(); }, hasSelection);
+    // ----- Bitmaps -----
+    const auto hasPicture = [this]() { return SelectedPicture() != nullptr; };
+    const auto canTrace = [this]() { return CanTraceBitmap(); };
+    action("bitmap.trace", "Bitmap", "Trace Bitmap", "trace-bitmap.svg", "", [this]() { CmdTraceBitmap(false); }, canTrace);
+    action("bitmap.trace-mono", "Bitmap", "Trace Bitmap in Black and White", "trace-bitmap.svg", "", [this]() { CmdTraceBitmap(true); }, canTrace);
+    action("bitmap.convert", "Bitmap", "Convert to Bitmap", "to-bitmap.svg", "", [this]() { CmdConvertToBitmap(96.0); }, hasSelection);
+    action("bitmap.convert-300", "Bitmap", "Convert to Bitmap at 300 dpi", "to-bitmap.svg", "", [this]() { CmdConvertToBitmap(300.0); }, hasSelection);
+    action("bitmap.fill", "Bitmap", "Fill with Picture...", "fill-picture.svg", "", [this]() { CmdFillWithPicture(); }, hasSelection);
+    action("bitmap.replace", "Bitmap", "Replace Picture...", "replace-picture.svg", "", [this]() { CmdReplacePicture(); }, hasPicture);
+    action("bitmap.save", "Bitmap", "Save Picture As...", "save-picture.svg", "", [this]() { CmdSavePicture(); }, hasPicture);
 
     // ----- Object -----
     action("object.no-fill", "Object", "No Fill", "no-fill.svg", "", [this]() { CmdRemoveFill(); }, hasSelection);
@@ -400,6 +411,7 @@ MenuLayoutSet ArtCreatorWindow::DefaultMenuLayout() {
     MenuLayout& bar = set.FindOrAdd("Menu bar");
     bar.topLevel = {
         Submenu("File", { Item("file.new"), Item("file.new-window"), Item("file.new-icon"), Item("file.open"), Item("file.close-tab"), Sep(),
+                       Item("file.import"), Sep(),
                        Item("file.save"), Item("file.save-as"), Item("file.export"), Sep(),
                        Item("file.document-setup"), Sep(), Item("file.quit") }),
         Submenu("Edit", { Item("edit.undo"), Item("edit.redo"), Sep(),
@@ -421,6 +433,10 @@ MenuLayoutSet ArtCreatorWindow::DefaultMenuLayout() {
                          Item("heading.line-points"), Item("line.pt-hairline"), Item("line.pt-05"), Item("line.pt-1"),
                          Item("line.pt-2"), Item("line.pt-4"), Item("line.pt-8"),
                          Item("heading.line-pixels"), Item("line.px-1"), Item("line.px-2"), Item("line.px-3"), Item("line.px-4") }),
+        Submenu("Bitmap", { Item("file.import"), Sep(),
+                         Item("bitmap.fill"), Item("bitmap.replace"), Item("bitmap.save"), Sep(),
+                         Item("bitmap.trace"), Item("bitmap.trace-mono"), Sep(),
+                         Item("bitmap.convert"), Item("bitmap.convert-300") }),
         Submenu("Layer", { Item("layer.new"), Item("layer.delete"), Sep(), Item("layer.up"), Item("layer.down"), Sep(),
                         Item("layer.show"), Item("layer.hide") }),
         Submenu("View", { Item("view.zoom-in"), Item("view.zoom-out"), Item("view.fit-page"), Item("view.fit-width"),

@@ -1,6 +1,6 @@
 # Tests/VectorFormatsTests.cmake
 # VectorFormatsPluginTest (every vector converter, and detailed.cdr through
-# the patched libcdr), ODGConverterTest, VectorFillRuleTest, EMFPlusTest, CDRWriterTest and
+# the patched libcdr), ODGConverterTest, VectorFillRuleTest, VectorBitmapFillTest, EMFPlusTest, CDRWriterTest and
 # CDRPluginRenderTest. Included by Tests/CMakeLists.txt
 # under BUILD_TESTS, and by the top-level CMakeLists.txt on its own under
 # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS - so platforms that build no full
@@ -101,6 +101,25 @@ if(TARGET UltraCanvasVectorPlugin)
     add_test(NAME VectorFillRuleTest COMMAND VectorFillRuleTest
              WORKING_DIRECTORY ${_VFT_BIN_DIR})
     message(STATUS "    Test registered: VectorFillRuleTest")
+endif()
+
+# VectorBitmapFillTest: a picture as a repeating pattern fill - upright and
+# turned tiles, the fill following its shape, stretched over the box, and the
+# SVG round trip.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorBitmapFillTest...")
+    add_executable(VectorBitmapFillTest
+        ${_VFT_DIR}/VectorBitmapFillTest.cpp
+    )
+    target_include_directories(VectorBitmapFillTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(VectorBitmapFillTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorBitmapFillTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorBitmapFillTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME VectorBitmapFillTest COMMAND VectorBitmapFillTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: VectorBitmapFillTest")
 endif()
 
 # EMFPlusTest: EMF+ records in the EMF reader (alpha kept, the GDI copy of a

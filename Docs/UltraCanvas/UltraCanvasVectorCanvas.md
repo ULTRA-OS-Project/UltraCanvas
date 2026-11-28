@@ -316,7 +316,9 @@ What the element does by itself:
   with a `VectorPointerEvent` (`doc`, `snapped`, `snap`, `view`, button,
   modifiers, pressure, `insidePage`), `onToolKey`, `onDrawOverlay` in view
   coordinates after the handles and before the rulers, `onViewChanged`,
-  `onFilesDropped`; `SetToolCursor`, `SetPanMode`.
+  `onFilesDropped`, and `onFilesDroppedAt(files, docPoint)` - the same with
+  the document point under the drop, called instead when set (a drawing
+  program places a dropped picture there); `SetToolCursor`, `SetPanMode`.
 - **Display quality** — `SetDisplayQuality(VectorDisplayQuality)`:
   `Outline` draws every shape's outline as a one-pixel line and fills
   nothing (no clips, effects or transparency either, so a shape hidden under

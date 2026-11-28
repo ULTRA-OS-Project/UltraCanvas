@@ -1087,7 +1087,12 @@ bool UltraCanvasVectorCanvas::OnEvent(const UCEvent& event) {
             return false;
 
         case UCEventType::Drop:
-            if (onFilesDropped && !event.droppedFiles.empty()) { onFilesDropped(event.droppedFiles); return true; }
+            if (event.droppedFiles.empty()) return false;
+            if (onFilesDroppedAt) {
+                onFilesDroppedAt(event.droppedFiles, view.ViewToDoc(Point2Dd(event.pointer.x, event.pointer.y)));
+                return true;
+            }
+            if (onFilesDropped) { onFilesDropped(event.droppedFiles); return true; }
             return false;
 
         case UCEventType::WindowResize:

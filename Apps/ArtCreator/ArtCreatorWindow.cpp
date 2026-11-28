@@ -78,6 +78,10 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 #include "UltraLocalisation/UltraLocalisation.h"
+#if defined(ULTRACANVAS_HAS_VECTORIZER_PLUGIN) && defined(ULTRACANVAS_HAS_VECTOR_PLUGIN)
+#include "UltraCanvasVectorizerPlugin.h"   // Trace Bitmap
+#include "UltraCanvasVectorConverter.h"    // SVGConverter: the trace read as shapes
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -301,6 +305,7 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     };
     toolContext.selectTool = [this](ArtToolId id) { SelectTool(id); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
+    toolContext.choosePicture = [this](std::function<void(const ArtPicture&)> done) { ChoosePicture(std::move(done)); };
     toolContext.lockAspectRatio = lockAspectRatio;
     toolContext.iconPath = [this](const std::string& file) { return IconPath(file); };
     toolContext.setRotationHandleStyle = [this](VectorRotationHandleStyle style) {
@@ -524,10 +529,9 @@ void ArtCreatorWindow::WireCanvas(UltraCanvasVectorCanvas* c) {
     c->onViewChanged = [this]() { UpdateStatus(); PlaceTextEditor(); };
     c->onHandleModeChanged = [this](VectorHandleMode) { ShowCentreGroup(); };
     c->onRotationCenterChanged = [this]() { RefreshTransformBar(); };
-    // Dropped drawings open in tabs of their own; nothing open is replaced.
-    c->onFilesDropped = [this](const std::vector<std::string>& files) {
-        for (const auto& f : files) OpenFile(f);
-    };
+    // Dropped drawings open in tabs of their own (nothing open is replaced);
+    // dropped pictures go into the drawing where they were dropped.
+    c->onFilesDroppedAt = [this](const std::vector<std::string>& files, const Point2Dd& at) { OnFilesDropped(files, at); };
 }
 
 void ArtCreatorWindow::AddDrawingTab() {
@@ -1374,7 +1378,7 @@ void ArtCreatorWindow::BuildStatusBar() {
     };
     statusPos = mk("ac-st-pos", 150, false);
     statusZoom = mk("ac-st-zoom", 70, false);
-    statusSelection = mk("ac-st-sel", 220, false);
+    statusSelection = mk("ac-st-sel", 330, false);   // room for a picture's pixels and dpi
     statusHint = mk("ac-st-hint", 0, true);
     window->AddChild(statusBar);
 }
@@ -1620,6 +1624,25 @@ void ArtCreatorWindow::UpdateStatus() {
     else if (selection->Count() == 1) {
         const Rect2Dd b = selection->Bounds();
         std::snprintf(buf, sizeof(buf), "1 %s  %.1f x %.1f %s", ElementKindName(*selection->First()), b.width / k, b.height / k, unit);
+        // A picture's pixels, and how finely it lies on the page.
+        if (auto image = SelectedPicture()) {
+            auto it = pictureSizes.find(image.get());
+            if (it == pictureSizes.end() || it->second.first != image->Source.size()) {
+                Size2Di px(0, 0);
+                std::vector<uint8_t> bytes;
+                std::string mime;
+                if (PictureBytesOf(*image, bytes, mime))
+                    if (auto decoded = UCImage::LoadFromMemory(bytes)) px = Size2Di(decoded->GetWidth(), decoded->GetHeight());
+                if (pictureSizes.size() > 64) pictureSizes.clear();
+                it = pictureSizes.insert_or_assign(image.get(), std::make_pair(image->Source.size(), px)).first;
+            }
+            const Size2Di px = it->second.second;
+            if (px.width > 0 && image->Bounds.width > 0) {
+                const size_t used = std::strlen(buf);
+                std::snprintf(buf + used, sizeof(buf) - used, "  (%d x %d px, %.0f dpi)", px.width, px.height,
+                              px.width / (image->Bounds.width / 72.0));
+            }
+        }
     } else std::snprintf(buf, sizeof(buf), "%zu objects selected", selection->Count());
     statusSelection->SetText(buf);
 }
@@ -1850,52 +1873,20 @@ bool ArtCreatorWindow::PasteFromSystemClipboard() {
     return false;
 }
 
-// A picture as an image object at a pixel a point - shrunk to the page when
-// it is larger - in the middle of the page. PNG, JPEG, GIF and WebP are
-// embedded as they are; anything else is turned into PNG first, so a saved
-// SVG carries a picture every reader shows.
+// A picture from the clipboard, in the middle of the page.
 bool ArtCreatorWindow::PlacePicture(std::vector<uint8_t> bytes, std::string mimeType, const std::string& what) {
-    if (!document || bytes.empty()) return false;
-    if (mimeType != "image/png" && mimeType != "image/jpeg" && mimeType != "image/gif" && mimeType != "image/webp") {
-#ifdef HAS_LIBVIPS
-        try {
-            std::vector<uint8_t> png = PixelFX::FileIO::SaveToBuffer(PixelFX::FileIO::LoadFromMemory(bytes, ""), ".png");
-            if (!png.empty()) {
-                bytes = std::move(png);
-                mimeType = "image/png";
-            }
-        } catch (...) {}
-#endif
-    }
-    auto picture = UCImage::LoadFromMemory(bytes);
-    if (!picture || picture->GetWidth() <= 0 || picture->GetHeight() <= 0) {
-        if (statusHint) statusHint->SetText("Could not read " + what + " on the clipboard");
+    ArtPicture picture;
+    if (!PreparePicture(std::move(bytes), std::move(mimeType), what, picture)) {
+        if (statusHint) statusHint->SetText(TrF("Could not read {0} on the clipboard", what));
         return false;
     }
-
-    double w = picture->GetWidth(), h = picture->GetHeight();
-    const Rect2Dd page = document->ViewBox;
-    if (page.width > 0 && page.height > 0 && (w > page.width || h > page.height)) {
-        const double k = std::min(page.width / w, page.height / h);
-        w *= k;
-        h *= k;
-    }
-    auto image = std::make_shared<VectorImage>();
-    image->Bounds = Rect2Dd(page.x + (page.width - w) / 2, page.y + (page.height - h) / 2, w, h);
-    image->MimeType = mimeType;
-    image->Source = "data:" + mimeType + ";base64," + Base64Encode(bytes, false);
-    PlaceElement(image, "Paste picture");
-    if (statusHint) {
-        statusHint->SetText("Pasted " + what + " (" + std::to_string(picture->GetWidth()) + " x " +
-                            std::to_string(picture->GetHeight()) + " pixels)");
-    }
-    return true;
+    return PlacePictureAt(picture, std::nullopt, "Paste picture");
 }
 
 // A drawing file copied in a file manager: its visible layers' objects, as
 // one group in the middle of the page. Gradients, clip paths and symbols it
 // defines come along unless the drawing already has one of that name.
-bool ArtCreatorWindow::PlaceDrawingFile(const std::string& path) {
+bool ArtCreatorWindow::PlaceDrawingFile(const std::string& path, std::optional<Point2Dd> centre) {
     std::string error;
     auto incoming = UltraCanvasFileLoader::LoadVectorDocument(path, error);
     if (!incoming) {
@@ -1912,12 +1903,12 @@ bool ArtCreatorWindow::PlaceDrawingFile(const std::string& path) {
         return true;
     }
     RenewIds(group);
-    // centre what it draws on the page
+    // centre what it draws on the page, or on the point given
     const Rect2Dd box = group->GetBoundingBox();
     const Rect2Dd page = document->ViewBox;
+    const Point2Dd c = centre ? *centre : Point2Dd(page.x + page.width / 2, page.y + page.height / 2);
     if (box.width >= 0 && box.height >= 0) {
-        TranslateElements({group}, page.x + (page.width - box.width) / 2 - box.x,
-                                   page.y + (page.height - box.height) / 2 - box.y);
+        TranslateElements({group}, c.x - box.width / 2 - box.x, c.y - box.height / 2 - box.y);
     }
     PlaceElement(group, "Paste drawing", [&]() {
         for (const auto& [id, definition] : incoming->Definitions) {
@@ -1939,6 +1930,370 @@ void ArtCreatorWindow::PlaceElement(const ElementPtr& element, const std::string
         layer->AddChild(element);
     });
     Reselect({element->Id});
+}
+
+// ===========================================================================
+// PICTURES: import, drop, bitmap fills, trace, convert to bitmap
+// ===========================================================================
+
+std::vector<std::string> ArtCreatorWindow::PictureExtensions() {
+    return UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+}
+
+bool ArtCreatorWindow::PreparePicture(std::vector<uint8_t> bytes, std::string mimeType, const std::string& name,
+                                      ArtPicture& out) {
+    if (bytes.empty()) return false;
+    if (mimeType != "image/png" && mimeType != "image/jpeg" && mimeType != "image/gif" && mimeType != "image/webp") {
+#ifdef HAS_LIBVIPS
+        try {
+            std::vector<uint8_t> png = PixelFX::FileIO::SaveToBuffer(PixelFX::FileIO::LoadFromMemory(bytes, ""), ".png");
+            if (!png.empty()) {
+                bytes = std::move(png);
+                mimeType = "image/png";
+            }
+        } catch (...) {}
+#endif
+    }
+    auto decoded = UCImage::LoadFromMemory(bytes);
+    if (!decoded || decoded->GetWidth() <= 0 || decoded->GetHeight() <= 0) return false;
+    out.width = decoded->GetWidth();
+    out.height = decoded->GetHeight();
+    out.mimeType = mimeType;
+    out.source = "data:" + mimeType + ";base64," + Base64Encode(bytes, false);
+    out.name = name;
+    return true;
+}
+
+bool ArtCreatorWindow::LoadPictureFile(const std::string& path, ArtPicture& out, bool quiet) {
+    const FileBytesResult r = UltraCanvasFileLoader::LoadFile(path);
+    if (!r.success || r.bytes.empty()) {
+        if (!quiet) UltraCanvasDialogManager::ShowError(TrF("Could not read {0}", path) + (r.error.empty() ? "" : "\n" + r.error),
+                                                        Tr("Picture"), nullptr, window.get());
+        return false;
+    }
+    if (!PreparePicture(r.bytes, PictureMimeOf(path), FileNameOf(path), out)) {
+        if (!quiet) UltraCanvasDialogManager::ShowError(TrF("{0} is not a picture this build can read", FileNameOf(path)),
+                                                        Tr("Picture"), nullptr, window.get());
+        return false;
+    }
+    return true;
+}
+
+// A picture as an image object at a pixel a point - shrunk to the page when
+// it is larger - centred where it was dropped, or in the middle of the page.
+bool ArtCreatorWindow::PlacePictureAt(const ArtPicture& picture, std::optional<Point2Dd> centre, const std::string& label) {
+    if (!document || !picture.Valid()) return false;
+    double w = picture.width, h = picture.height;
+    const Rect2Dd page = document->ViewBox;
+    if (page.width > 0 && page.height > 0 && (w > page.width || h > page.height)) {
+        const double k = std::min(page.width / w, page.height / h);
+        w *= k;
+        h *= k;
+    }
+    const Point2Dd c = centre ? *centre : Point2Dd(page.x + page.width / 2, page.y + page.height / 2);
+    auto image = std::make_shared<VectorImage>();
+    image->Bounds = Rect2Dd(c.x - w / 2, c.y - h / 2, w, h);
+    image->MimeType = picture.mimeType;
+    image->Source = picture.source;
+    PlaceElement(image, label);
+    if (statusHint) {
+        statusHint->SetText(TrF("Placed {0} ({1} x {2} pixels)", picture.name.empty() ? Tr("the picture") : picture.name,
+                                picture.width, picture.height));
+    }
+    return true;
+}
+
+void ArtCreatorWindow::OnFilesDropped(const std::vector<std::string>& files, const Point2Dd& at) {
+    CommitTextEdit();
+    // With the Fill tool, a picture dropped on a shape fills it (Xara's
+    // drop on an object).
+    ElementPtr fillTarget;
+    if (ActiveTool() && ActiveTool()->id == ArtToolId::Fill && canvas) {
+        auto hit = canvas->HitTest(at, 4.0);
+        if (hit && hit->element && !IsGroupType(hit->element->Type) && hit->element->Type != VectorElementType::Image)
+            fillTarget = hit->element;
+    }
+    Point2Dd place = at;
+    for (const auto& f : files) {
+        if (IsPictureFile(f) && document) {
+            ArtPicture picture;
+            if (!LoadPictureFile(f, picture)) continue;
+            if (fillTarget) {
+                history->Record("Bitmap fill", [&]() { ArtApplyBitmapFill(*fillTarget, picture); });
+                toolOptions.fillPicture = picture;
+                Reselect({fillTarget->Id});
+                RebuildToolOptions();
+                if (statusHint) statusHint->SetText(TrF("Filled with {0}", picture.name));
+                fillTarget = nullptr;   // one shape, one picture; the rest are placed
+                continue;
+            }
+            PlacePictureAt(picture, place, "Drop picture");
+            // the next picture of the same drop a little further on
+            place = Point2Dd(place.x + 20, place.y + 20);
+        } else {
+            OpenFile(f);   // a drawing: a tab of its own
+        }
+    }
+}
+
+void ArtCreatorWindow::ChoosePicture(std::function<void(const ArtPicture&)> done) {
+    const auto exts = PictureExtensions();
+    FileDialogOptions opts;
+    opts.SetTitle(Tr("Choose picture"))
+        .AddFilter(Tr("Pictures"), exts)
+        .AddFilter(Tr("All files"), std::vector<std::string>{ "*" })
+        .SetParentWindow(window.get());
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this, done](DialogResult r, const std::string& path) {
+        if (r != DialogResult::OK || path.empty()) return;
+        ArtPicture picture;
+        if (LoadPictureFile(path, picture) && done) done(picture);
+    });
+}
+
+void ArtCreatorWindow::CmdImport() {
+    if (!document) return;
+    std::vector<std::string> exts = PictureExtensions();
+    const auto drawings = OpenableExtensions();
+    exts.insert(exts.end(), drawings.begin(), drawings.end());
+    FileDialogOptions opts;
+    opts.SetTitle(Tr("Import into the drawing"))
+        .AddFilter(Tr("Pictures and drawings"), exts)
+        .AddFilter(Tr("Pictures"), PictureExtensions())
+        .AddFilter(Tr("Drawings"), drawings)
+        .AddFilter(Tr("All files"), std::vector<std::string>{ "*" })
+        .SetParentWindow(window.get());
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
+        if (r != DialogResult::OK || path.empty() || !document) return;
+        // Into this drawing, in the middle of the page - unlike Open, which
+        // gives a drawing a tab of its own.
+        if (IsPictureFile(path)) {
+            ArtPicture picture;
+            if (LoadPictureFile(path, picture)) PlacePictureAt(picture, std::nullopt, "Import picture");
+        } else if (UltraCanvasFileLoader::CanLoadVectorDocument(path)) {
+            PlaceDrawingFile(path);
+        } else {
+            UltraCanvasDialogManager::ShowError(TrF("{0} is neither a picture nor a drawing this build reads", FileNameOf(path)),
+                                                Tr("Import"), nullptr, window.get());
+        }
+    });
+}
+
+void ArtCreatorWindow::CmdFillWithPicture() {
+    if (!document || selection->Empty()) {
+        if (statusHint) statusHint->SetText(Tr("Select the shapes to fill with a picture"));
+        return;
+    }
+    std::vector<std::string> ids;
+    for (const auto& e : selection->Elements()) if (e) ids.push_back(e->Id);
+    ChoosePicture([this, ids](const ArtPicture& picture) {
+        if (!document) return;
+        std::vector<ElementPtr> targets;
+        for (const auto& id : ids) {
+            auto e = document->FindElementById(id);
+            if (e && !IsGroupType(e->Type) && e->Type != VectorElementType::Image) targets.push_back(e);
+        }
+        if (targets.empty()) {
+            if (statusHint) statusHint->SetText(Tr("Groups and pictures take no bitmap fill: select shapes"));
+            return;
+        }
+        history->Record("Fill with picture", [&]() { for (auto& e : targets) ArtApplyBitmapFill(*e, picture); });
+        toolOptions.fillPicture = picture;
+        Reselect(ids);
+        RebuildToolOptions();
+    });
+}
+
+std::shared_ptr<VectorImage> ArtCreatorWindow::SelectedPicture() const {
+    if (!selection || selection->Count() != 1) return nullptr;
+    auto e = selection->First();
+    if (!e || e->Type != VectorElementType::Image) return nullptr;
+    return std::static_pointer_cast<VectorImage>(e);
+}
+
+bool ArtCreatorWindow::PictureBytesOf(const VectorImage& image, std::vector<uint8_t>& bytes, std::string& mimeType) {
+    mimeType = image.MimeType;
+    if (!image.EmbeddedData.empty()) {
+        bytes = image.EmbeddedData;
+    } else if (image.Source.compare(0, 5, "data:") == 0) {
+        const size_t comma = image.Source.find(',');
+        if (comma == std::string::npos) return false;
+        const std::string header = image.Source.substr(5, comma - 5);
+        if (header.find(";base64") == std::string::npos) return false;
+        if (mimeType.empty()) mimeType = header.substr(0, header.find(';'));
+        bytes = Base64Decode(image.Source.substr(comma + 1));
+    } else if (!image.Source.empty()) {
+        const FileBytesResult r = UltraCanvasFileLoader::LoadFile(image.Source);
+        if (!r.success) return false;
+        bytes = r.bytes;
+        if (mimeType.empty()) mimeType = PictureMimeOf(image.Source);
+    }
+    if (mimeType.empty()) mimeType = "image/png";
+    return !bytes.empty();
+}
+
+void ArtCreatorWindow::CmdReplacePicture() {
+    auto image = SelectedPicture();
+    if (!image) { if (statusHint) statusHint->SetText(Tr("Select one picture to replace")); return; }
+    const std::string id = image->Id;
+    ChoosePicture([this, id](const ArtPicture& picture) {
+        if (!document) return;
+        auto e = document->FindElementById(id);
+        if (!e || e->Type != VectorElementType::Image) return;
+        auto* img = static_cast<VectorImage*>(e.get());
+        // The new picture keeps the old one's width and place; its height
+        // follows its own shape.
+        history->Record("Replace picture", [&]() {
+            const Rect2Dd b = img->Bounds;
+            const double h = b.width * picture.height / picture.width;
+            img->Bounds = Rect2Dd(b.x, b.y + (b.height - h) / 2, b.width, h);
+            img->Source = picture.source;
+            img->MimeType = picture.mimeType;
+            img->EmbeddedData.clear();
+        });
+        pictureSizes.clear();
+        Reselect({id});
+    });
+}
+
+void ArtCreatorWindow::CmdSavePicture() {
+    auto image = SelectedPicture();
+    std::vector<uint8_t> bytes;
+    std::string mime;
+    if (!image || !PictureBytesOf(*image, bytes, mime)) {
+        if (statusHint) statusHint->SetText(Tr("Select one picture to save"));
+        return;
+    }
+    std::string ext = mime.size() > 6 ? mime.substr(6) : "png";
+    if (ext == "jpeg") ext = "jpg";
+    if (ext == "svg+xml") ext = "svg";
+    FileDialogOptions opts;
+    opts.SetTitle(Tr("Save picture as"))
+        .AddFilter(TrF("{0} picture", ext), std::vector<std::string>{ ext })
+        .SetDefaultFileName("picture." + ext)
+        .SetParentWindow(window.get());
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, bytes](DialogResult r, const std::string& path) {
+        if (r != DialogResult::OK || path.empty()) return;
+        std::string error;
+        if (!UltraCanvasFileLoader::SaveFile(path, bytes, error)) {
+            UltraCanvasDialogManager::ShowError(error + "\n" + path, Tr("Save picture"), nullptr, window.get());
+            return;
+        }
+        if (statusHint) statusHint->SetText(TrF("Saved {0}", FileNameOf(path)));
+    });
+}
+
+bool ArtCreatorWindow::CanTraceBitmap() const {
+#if defined(ULTRACANVAS_HAS_VECTORIZER_PLUGIN) && defined(ULTRACANVAS_HAS_VECTOR_PLUGIN)
+    return SelectedPicture() != nullptr && UltraCanvasVectorizer::IsAvailable();
+#else
+    return false;
+#endif
+}
+
+void ArtCreatorWindow::CmdTraceBitmap(bool blackAndWhite) {
+#if defined(ULTRACANVAS_HAS_VECTORIZER_PLUGIN) && defined(ULTRACANVAS_HAS_VECTOR_PLUGIN)
+    auto image = SelectedPicture();
+    std::vector<uint8_t> bytes;
+    std::string mime;
+    if (!image || !PictureBytesOf(*image, bytes, mime)) {
+        if (statusHint) statusHint->SetText(Tr("Select one picture to trace"));
+        return;
+    }
+    VectorizerConfig cfg;
+    if (blackAndWhite) cfg.colorMode = VectorizerColorMode::Binary;
+    UltraCanvasVectorizer tracer(cfg);
+    if (statusHint) statusHint->SetText(Tr("Tracing..."));
+    const VectorizerResult traced = tracer.VectorizeBuffer(bytes.data(), bytes.size());
+    if (!traced.Ok() || traced.svg.empty()) {
+        UltraCanvasDialogManager::ShowError(TrF("The picture could not be traced: {0}", traced.error), Tr("Trace Bitmap"),
+                                            nullptr, window.get());
+        return;
+    }
+    VectorConverter::SVGConverter svg;
+    VectorConverter::ConversionOptions copts;
+    auto doc = svg.ImportFromString(traced.svg, copts);
+    auto group = std::make_shared<VectorGroup>();
+    if (doc)
+        for (const auto& layer : doc->Layers)
+            if (layer) for (const auto& c : layer->Children) if (c) group->AddChild(c);
+    if (group->Children.empty()) {
+        if (statusHint) statusHint->SetText(Tr("The trace found no shapes in the picture"));
+        return;
+    }
+    RenewIds(group);
+    // The trace is in the picture's pixels: laid over the picture's box,
+    // turned with it.
+    const Rect2Dd b = image->Bounds;
+    const double pw = traced.width > 0 ? traced.width : b.width, ph = traced.height > 0 ? traced.height : b.height;
+    Matrix3x3 m = Matrix3x3::Translate(b.x, b.y) * Matrix3x3::Scale(b.width / pw, b.height / ph);
+    if (image->Transform) m = *image->Transform * m;
+    group->Transform = m;
+    auto parent = ParentOf(image);
+    const int index = IndexInParent(image);
+    const std::string id = group->Id;
+    history->Record(blackAndWhite ? "Trace bitmap (black and white)" : "Trace bitmap", [&]() {
+        if (!parent) return;
+        parent->AddChild(group);
+        // just above the picture
+        auto& kids = parent->Children;
+        if (index >= 0 && index + 1 < static_cast<int>(kids.size()))
+            std::rotate(kids.begin() + index + 1, kids.end() - 1, kids.end());
+    });
+    Reselect({id});
+    if (statusHint) statusHint->SetText(TrF("Traced into {0} shapes, over the picture", group->Children.size()));
+#else
+    (void)blackAndWhite;
+    if (statusHint) statusHint->SetText(Tr("This build has no Vectorizer plug-in to trace pictures with"));
+#endif
+}
+
+void ArtCreatorWindow::CmdConvertToBitmap(double dpi) {
+    if (!document || selection->Empty()) {
+        if (statusHint) statusHint->SetText(Tr("Select what to convert to a bitmap"));
+        return;
+    }
+    const auto ordered = SortByDrawingOrder(selection->Elements());
+    std::string error;
+    Rect2Dd area;
+    auto layer = RasterizeVectorElements(*document, ordered, dpi / 72.0, error, &area);
+    if (!layer) {
+        UltraCanvasDialogManager::ShowError(error, Tr("Convert to Bitmap"), nullptr, window.get());
+        return;
+    }
+    ClipboardDib::RgbaImage rgba;
+    rgba.width = layer->GetWidth();
+    rgba.height = layer->GetHeight();
+    rgba.pixels.resize(static_cast<size_t>(rgba.width) * rgba.height * 4);
+    for (int y = 0; y < rgba.height; ++y)
+        std::copy_n(layer->Row(y), static_cast<size_t>(rgba.width) * 4, rgba.pixels.data() + static_cast<size_t>(y) * rgba.width * 4);
+    std::vector<uint8_t> png;
+    if (!ClipboardDib::EncodePng(rgba, png)) return;
+    auto image = std::make_shared<VectorImage>();
+    image->Id = GenerateId();
+    image->MimeType = "image/png";
+    image->Source = "data:image/png;base64," + Base64Encode(png, false);
+    // In document space: the picture goes where the topmost object was,
+    // in its parent, so any ancestor transform is undone first.
+    const ElementPtr top = ordered.back();
+    auto parent = ParentOf(top);
+    if (!parent) return;
+    const Matrix3x3 toParent = ParentToDocument(top).Inverse();
+    if (toParent.IsIdentity()) {
+        image->Bounds = area;
+    } else {
+        image->Bounds = Rect2Dd(0, 0, area.width, area.height);
+        image->Transform = toParent * Matrix3x3::Translate(area.x, area.y);
+    }
+    const int index = IndexInParent(top);
+    history->Record("Convert to bitmap", [&]() {
+        parent->AddChild(image);
+        auto& kids = parent->Children;
+        if (index >= 0 && index + 1 < static_cast<int>(kids.size()))
+            std::rotate(kids.begin() + index + 1, kids.end() - 1, kids.end());
+        DeleteElements(ordered);
+    });
+    Reselect({image->Id});
+    if (statusHint) statusHint->SetText(TrF("Converted to a {0} x {1} pixel bitmap", rgba.width, rgba.height));
 }
 
 void ArtCreatorWindow::PasteCopiedElements() {
@@ -2235,7 +2590,7 @@ void ArtCreatorWindow::UpdateToolCards() {
         if (card && card->IsVisible() != on) { card->SetVisible(on); changed = true; }
     };
     show(optionsPanel, hasOptions);
-    show(fillPanel, id == ArtToolId::Fill);
+    show(fillPanel, id == ArtToolId::Fill && toolOptions.fillKind != 3);   // no ramp for a bitmap fill
     show(linePanel, lineCard);
     if (changed) rightPanel->InvalidateLayout();
     rightPanel->RequestRedraw();

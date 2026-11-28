@@ -439,6 +439,32 @@ void ReadFromStroke(const StrokeData& stroke, ArtToolOptions& o) {
 
 } // namespace ArtLineGallery
 
+void ArtApplyBitmapFill(VectorElement& element, const ArtPicture& picture) {
+    if (!picture.Valid()) return;
+    const Rect2Dd b = element.GetBoundingBox();
+    const double pw = picture.width, ph = picture.height;
+    // One copy covers the box: the larger of the two scales, centred.
+    double k = 1.0;
+    if (b.width > 0 && b.height > 0) k = std::max(b.width / pw, b.height / ph);
+    const double w = pw * k, h = ph * k;
+    const double x = b.x + (b.width - w) / 2, y = b.y + (b.height - h) / 2;
+    element.Style.Fill = MakeBitmapFill(picture.source, picture.mimeType, pw, ph,
+                                        Point2Dd(x, y), Point2Dd(x + w, y), Point2Dd(x, y + h));
+}
+
+ArtPicture ArtBitmapFillPicture(const VectorElement& element) {
+    ArtPicture p;
+    const PatternData* pattern = PatternOf(element.Style.Fill);
+    const VectorImage* image = pattern ? BitmapFillImage(*pattern) : nullptr;
+    if (!image) return p;
+    p.source = image->Source;
+    p.mimeType = image->MimeType;
+    const Rect2Dd vb = pattern->ViewBox.width > 0 ? pattern->ViewBox : image->Bounds;
+    p.width = static_cast<int>(std::lround(vb.width));
+    p.height = static_cast<int>(std::lround(vb.height));
+    return p;
+}
+
 using namespace ArtOptionWidgets;
 using namespace ArtToolHelpers;
 
@@ -1480,27 +1506,62 @@ public:
 
 class FillTool : public ArtTool {
 public:
-    FillTool() : ArtTool(ArtToolId::Fill, "Fill", "fill.svg", 'G', "Drag across a shape for a gradient from the fill colour; drag its ends to adjust") {}
+    FillTool() : ArtTool(ArtToolId::Fill, "Fill", "fill.svg", 'G',
+                         "Drag across a shape for a gradient from the fill colour, or a bitmap fill with Bitmap; drag the handles to adjust") {}
 
     void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
         target = nullptr;
+        draggingEnd = -1;
+        draggingCorner = -1;
+        moved = false;
         const double tol = ctx.canvas->PixelsToDoc(7.0);
-        // The ends of the selected shape's gradient first.
+        // The handles of the selected shape's fill first.
         if (auto sel = SingleSelected(ctx)) {
             Point2Dd a, b;
             if (GradientEnds(*sel, a, b)) {
                 if (std::hypot(e.doc.x - b.x, e.doc.y - b.y) <= tol) { target = sel; draggingEnd = 1; ctx.history->BeginEdit("Fill"); return; }
                 if (std::hypot(e.doc.x - a.x, e.doc.y - a.y) <= tol) { target = sel; draggingEnd = 0; ctx.history->BeginEdit("Fill"); return; }
             }
+            Point2Dd c[3];
+            if (BitmapCorners(*sel, c[0], c[1], c[2])) {
+                for (int i : {1, 2, 0}) {
+                    if (std::hypot(e.doc.x - c[i].x, e.doc.y - c[i].y) <= tol) {
+                        target = sel;
+                        draggingCorner = i;
+                        for (int k = 0; k < 3; ++k) cornersAtPress[k] = c[k];
+                        startDoc = e.snapped;
+                        ctx.history->BeginEdit("Bitmap fill");
+                        return;
+                    }
+                }
+            }
         }
         auto hit = ctx.canvas->HitTest(e.doc, 4.0);
         if (!hit || !hit->element) return;
         ElementPtr el = hit->element;
-        if (IsGroupType(el->Type)) return;
+        if (IsGroupType(el->Type) || el->Type == VectorElementType::Image) return;
         ctx.selection->Set(el);
-        target = el;
-        draggingEnd = -1;
         startDoc = e.snapped;
+        if (ctx.options->fillKind == 3) {
+            if (!ctx.options->fillPicture.Valid()) {
+                if (ctx.setStatus) ctx.setStatus(Tr("Choose a picture for the bitmap fill first"));
+                if (ctx.choosePicture) {
+                    std::string id = el->Id;
+                    ArtToolContext* c = &ctx;
+                    ctx.choosePicture([c, id](const ArtPicture& picture) {
+                        c->options->fillPicture = picture;
+                        if (c->refreshOptions) c->refreshOptions();
+                    });
+                }
+                return;
+            }
+            target = el;
+            ctx.history->BeginEdit("Bitmap fill");
+            ArtApplyBitmapFill(*target, ctx.options->fillPicture);
+            ctx.canvas->Refresh();
+            return;
+        }
+        target = el;
         ctx.history->BeginEdit("Fill");
         if (ctx.options->fillKind == 0) {
             if (ctx.fillColor) target->Style.Fill = ctx.fillColor();
@@ -1511,11 +1572,49 @@ public:
     void OnDrag(ArtToolContext& ctx, const VectorPointerEvent& e) override {
         if (!target) return;
         moved = true;
-        if (draggingEnd >= 0) {
+        if (draggingCorner >= 0) {
+            Point2Dd c[3] = {cornersAtPress[0], cornersAtPress[1], cornersAtPress[2]};
+            const double dx = e.snapped.x - startDoc.x, dy = e.snapped.y - startDoc.y;
+            if (draggingCorner == 0) {
+                // The square moves the whole tile.
+                for (auto& p : c) { p.x += dx; p.y += dy; }
+            } else {
+                c[draggingCorner] = Point2Dd(cornersAtPress[draggingCorner].x + dx, cornersAtPress[draggingCorner].y + dy);
+                if (e.shift) {
+                    // Shift keeps the picture's shape: the other edge turns
+                    // and scales with this one.
+                    const int other = draggingCorner == 1 ? 2 : 1;
+                    const Point2Dd o0(cornersAtPress[1].x - c[0].x, cornersAtPress[1].y - c[0].y);
+                    const Point2Dd o1(c[draggingCorner].x - c[0].x, c[draggingCorner].y - c[0].y);
+                    const Point2Dd before = draggingCorner == 1 ? o0
+                        : Point2Dd(cornersAtPress[2].x - c[0].x, cornersAtPress[2].y - c[0].y);
+                    const double l0 = std::hypot(before.x, before.y), l1 = std::hypot(o1.x, o1.y);
+                    if (l0 > 1e-9) {
+                        const double k = l1 / l0;
+                        const double turn = std::atan2(o1.y, o1.x) - std::atan2(before.y, before.x);
+                        const Point2Dd v(cornersAtPress[other].x - c[0].x, cornersAtPress[other].y - c[0].y);
+                        const double cs = std::cos(turn), sn = std::sin(turn);
+                        c[other] = Point2Dd(c[0].x + k * (v.x * cs - v.y * sn), c[0].y + k * (v.x * sn + v.y * cs));
+                    }
+                }
+            }
+            SetBitmapCorners(*target, c[0], c[1], c[2]);
+        } else if (draggingEnd >= 0) {
             Point2Dd a, b;
             if (GradientEnds(*target, a, b)) {
                 if (draggingEnd == 0) a = e.snapped; else b = e.snapped;
                 SetGradientEnds(*target, a, b);
+            }
+        } else if (ctx.options->fillKind == 3) {
+            // A drag lays the picture's top edge from the press to here; its
+            // side follows at a right angle, the picture's shape kept.
+            const ArtPicture& pic = ctx.options->fillPicture;
+            const double dx = e.snapped.x - startDoc.x, dy = e.snapped.y - startDoc.y;
+            const double len = std::hypot(dx, dy);
+            if (len > ctx.canvas->PixelsToDoc(3.0) && pic.Valid()) {
+                const double k = static_cast<double>(pic.height) / pic.width;
+                const Point2Dd tl = startDoc, tr = e.snapped, bl(startDoc.x - dy * k, startDoc.y + dx * k);
+                SetBitmapCorners(*target, tl, tr, bl);
             }
         } else if (ctx.options->fillKind != 0) {
             ApplyGradient(ctx, *target, startDoc, e.snapped);
@@ -1526,41 +1625,150 @@ public:
     void OnRelease(ArtToolContext& ctx, const VectorPointerEvent&) override {
         if (!target) return;
         const std::string id = target->Id;
-        if (moved || ctx.options->fillKind == 0) ctx.history->EndEdit(); else ctx.history->CancelEdit();
+        const bool applied = ctx.options->fillKind == 0 || (ctx.options->fillKind == 3 && draggingCorner < 0 && draggingEnd < 0);
+        if (moved || applied) ctx.history->EndEdit(); else ctx.history->CancelEdit();
         moved = false;
         target = nullptr;
+        draggingCorner = -1;
         ReselectByIds(ctx, {id});
+    }
+
+    void Activate(ArtToolContext& ctx) override { OnSelectionChanged(ctx); }
+
+    void OnSelectionChanged(ArtToolContext& ctx) override {
+        // A bitmap-filled shape's picture becomes the one the tool paints
+        // with, as the colour picker shows a flat fill's colour.
+        if (auto sel = SingleSelected(ctx)) {
+            ArtPicture p = ArtBitmapFillPicture(*sel);
+            if (p.Valid() && p.source != ctx.options->fillPicture.source) {
+                ctx.options->fillPicture = p;
+                if (ctx.refreshOptions) ctx.refreshOptions();
+            }
+        }
     }
 
     void DrawOverlay(ArtToolContext& tctx, IRenderContext* ctx, const VectorViewTransform& v) override {
         auto sel = target ? target : SingleSelected(tctx);
         if (!sel) return;
         Point2Dd a, b;
-        if (!GradientEnds(*sel, a, b)) return;
-        const Point2Dd va = v.DocToView(a), vb = v.DocToView(b);
+        if (GradientEnds(*sel, a, b)) {
+            const Point2Dd va = v.DocToView(a), vb = v.DocToView(b);
+            ctx->SetStrokePaint(Color(30, 100, 220, 220));
+            ctx->SetStrokeWidth(1.0);
+            ctx->SetLineDash(UCDashPattern());
+            ctx->DrawLine(va, vb);
+            DrawViewSquare(ctx, va, 8.0, Colors::White, Color(30, 100, 220, 255));
+            ctx->SetFillPaint(Colors::White);
+            ctx->FillCircle(vb, 4.5);
+            ctx->DrawCircle(vb, 4.5);
+            return;
+        }
+        Point2Dd c[3];
+        if (!BitmapCorners(*sel, c[0], c[1], c[2])) return;
+        // The tile's frame, its corner square (moves it) and the two edge
+        // ends (stretch and turn it).
+        const Point2Dd tl = v.DocToView(c[0]), tr = v.DocToView(c[1]), bl = v.DocToView(c[2]);
+        const Point2Dd br(tr.x + bl.x - tl.x, tr.y + bl.y - tl.y);
         ctx->SetStrokePaint(Color(30, 100, 220, 220));
         ctx->SetStrokeWidth(1.0);
+        ctx->SetLineDash(UCDashPattern({4.0, 3.0}, 0.0));
+        ctx->DrawLine(tr, br);
+        ctx->DrawLine(br, bl);
         ctx->SetLineDash(UCDashPattern());
-        ctx->DrawLine(va, vb);
-        DrawViewSquare(ctx, va, 8.0, Colors::White, Color(30, 100, 220, 255));
+        ctx->DrawLine(tl, tr);
+        ctx->DrawLine(tl, bl);
+        DrawViewSquare(ctx, tl, 8.0, Colors::White, Color(30, 100, 220, 255));
         ctx->SetFillPaint(Colors::White);
-        ctx->FillCircle(vb, 4.5);
-        ctx->DrawCircle(vb, 4.5);
+        for (const Point2Dd& p : {tr, bl}) {
+            ctx->FillCircle(p, 4.5);
+            ctx->DrawCircle(p, 4.5);
+        }
     }
 
     void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         ArtToolOptions& o = *ctx.options;
-        AddDropdown(panel, "ac-fill-kind", "Fill type", { "Flat", "Linear", "Radial" }, o.fillKind, [&o](int i) { o.fillKind = i; });
-        AddCaption(panel, "ac-fill-cap", "Stops: the Gradient card below");
+        ArtToolContext* c = &ctx;
+        AddDropdown(panel, "ac-fill-kind", Tr("Fill type"), { Tr("Flat"), Tr("Linear"), Tr("Radial"), Tr("Bitmap") }, o.fillKind,
+                    [c](int i) {
+                        const bool rebuild = (i == 3) != (c->options->fillKind == 3);
+                        c->options->fillKind = i;
+                        if (rebuild && c->refreshOptions) c->refreshOptions();
+                    });
+        if (o.fillKind == 3) {
+            const ArtPicture& p = o.fillPicture;
+            AddCaption(panel, "ac-fill-pic", p.Valid()
+                ? TrF("Picture: {0} ({1} x {2})", p.name.empty() ? Tr("from the drawing") : p.name, std::to_string(p.width), std::to_string(p.height))
+                : Tr("No picture chosen"));
+            AddButtonRow(panel, "ac-fill-pick", {
+                {Tr("Choose picture..."), [c]() {
+                    if (!c->choosePicture) return;
+                    c->choosePicture([c](const ArtPicture& picture) {
+                        c->options->fillPicture = picture;
+                        // The selection takes it at once.
+                        if (c->selection && !c->selection->Empty()) {
+                            c->history->Record("Bitmap fill", [&]() {
+                                for (auto& e : c->selection->Elements())
+                                    if (e && !IsGroupType(e->Type) && e->Type != VectorElementType::Image) ArtApplyBitmapFill(*e, picture);
+                            });
+                        }
+                        if (c->refreshOptions) c->refreshOptions();
+                    });
+                }},
+            });
+            AddButtonRow(panel, "ac-fill-fit", {
+                {Tr("Fit to shape"), [c]() { RefitSelection(*c, false); }},
+                {Tr("Actual size"), [c]() { RefitSelection(*c, true); }},
+            });
+            AddCaption(panel, "ac-fill-hint", Tr("Drag across a shape to lay it"));
+        } else {
+            AddCaption(panel, "ac-fill-cap", Tr("Stops: the Gradient card below"));
+        }
         AddButtonRow(panel, "ac-fill-ops", {
-            {"No fill", [&ctx]() { if (ctx.selection->Empty()) return; ctx.history->Record("No Fill", [&]() { for (auto& e : ctx.selection->Elements()) e->Style.Fill.reset(); }); }},
-            {"Flat fill", [&ctx]() { if (ctx.selection->Empty()) return; ctx.history->Record("Flat Fill", [&]() { for (auto& e : ctx.selection->Elements()) e->Style.Fill = ctx.fillColor ? ctx.fillColor() : Colors::Black; }); }},
+            {Tr("No fill"), [&ctx]() { if (ctx.selection->Empty()) return; ctx.history->Record("No Fill", [&]() { for (auto& e : ctx.selection->Elements()) e->Style.Fill.reset(); }); }},
+            {Tr("Flat fill"), [&ctx]() { if (ctx.selection->Empty()) return; ctx.history->Record("Flat Fill", [&]() { for (auto& e : ctx.selection->Elements()) e->Style.Fill = ctx.fillColor ? ctx.fillColor() : Colors::Black; }); }},
         });
     }
 
 private:
     static ElementPtr SingleSelected(ArtToolContext& ctx) {
         return ctx.selection && ctx.selection->Count() == 1 ? ctx.selection->First() : nullptr;
+    }
+
+    // The selection's bitmap fills laid again: over each shape's box, or at
+    // a point a pixel from its corner.
+    static void RefitSelection(ArtToolContext& ctx, bool actualSize) {
+        if (!ctx.selection || ctx.selection->Empty()) return;
+        ctx.history->Record(actualSize ? "Bitmap fill actual size" : "Bitmap fill fit", [&]() {
+            for (auto& e : ctx.selection->Elements()) {
+                if (!e) continue;
+                ArtPicture p = ArtBitmapFillPicture(*e);
+                if (!p.Valid()) continue;
+                if (!actualSize) { ArtApplyBitmapFill(*e, p); continue; }
+                auto* pattern = std::get_if<PatternData>(&*e->Style.Fill);
+                const Rect2Dd b = e->GetBoundingBox();
+                SetPatternTileCorners(*pattern, Point2Dd(b.x, b.y), Point2Dd(b.x + p.width, b.y), Point2Dd(b.x, b.y + p.height));
+            }
+        });
+        ctx.canvas->Refresh();
+    }
+
+    // A bitmap fill's tile corners in document space.
+    static bool BitmapCorners(const VectorElement& e, Point2Dd& tl, Point2Dd& tr, Point2Dd& bl) {
+        const PatternData* p = PatternOf(e.Style.Fill);
+        if (!p || !BitmapFillImage(*p)) return false;
+        if (!PatternTileCorners(*p, e.GetBoundingBox(), tl, tr, bl)) return false;
+        tl = e.LocalToGlobal(tl); tr = e.LocalToGlobal(tr); bl = e.LocalToGlobal(bl);
+        return true;
+    }
+
+    static void SetBitmapCorners(VectorElement& e, const Point2Dd& tl, const Point2Dd& tr, const Point2Dd& bl) {
+        if (!e.Style.Fill.has_value()) return;
+        auto* p = std::get_if<PatternData>(&*e.Style.Fill);
+        if (!p) return;
+        const Point2Dd ltl = e.GlobalToLocal(tl), ltr = e.GlobalToLocal(tr), lbl = e.GlobalToLocal(bl);
+        const double area = (ltr.x - ltl.x) * (lbl.y - ltl.y) - (ltr.y - ltl.y) * (lbl.x - ltl.x);
+        if (!(std::fabs(area) > 1e-6)) return;   // a tile with no area draws nothing and cannot be dragged back
+        SetPatternTileCorners(*p, ltl, ltr, lbl);
     }
 
     // The gradient's start and end in document space (linear: start / end;
@@ -1626,6 +1834,8 @@ private:
 
     ElementPtr target;
     int draggingEnd = -1;
+    int draggingCorner = -1;   // 0 the tile's top-left (moves it), 1 top-right, 2 bottom-left
+    Point2Dd cornersAtPress[3];
     bool moved = false;
     Point2Dd startDoc;
 };
