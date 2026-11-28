@@ -1,5 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.19.0 - a menu opened at a point that fits the window moves up to fit it whole, rather
+//                  than taking a scrollbar when it fits neither below nor above the point
 // Version: 1.18.0 - a header row on a band darker than the panel (headerBackgroundColor), reaching the border
 //                  at the top; FromTheme: the header in the ink a shade lighter
 // Version: 1.17.2 - the scroll bar of a menu too long for the screen follows the theme (MenuStyle::FromTheme)
@@ -1548,6 +1550,15 @@ namespace UltraCanvas {
         } else if (fullHeight <= spaceAbove) {
             // Flip above
             finalBounds.y = aboveBottom - fullHeight;
+            needsScrollbar = false;
+            clampedMenuHeight = fullHeight;
+        } else if (anchorRect.width == 0 && anchorRect.height == 0 && fullHeight <= windowHeight) {
+            // Opened at a point (a context menu), not under a widget: it fits
+            // neither below nor above the point, but it fits the window - so
+            // it moves up just as far as it has to, whole, with no scrollbar.
+            // One entry more (a search's "Open path") used to tip it into a
+            // scrollbar while the window had the room.
+            finalBounds.y = windowHeight - fullHeight;
             needsScrollbar = false;
             clampedMenuHeight = fullHeight;
         } else {

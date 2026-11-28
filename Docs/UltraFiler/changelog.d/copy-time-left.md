@@ -4,3 +4,5 @@
   several files or folders shows Items and Size as "done / total".
 - **Ctrl+C and Ctrl+X are confirmed on the status line:** "6 items copied to
   the clipboard", "\"Archive\" cut - paste it where it should go".
+- **The right-click menu shows whole** when it fits the window, instead of a
+  scrollbar - in search results it has one entry more.

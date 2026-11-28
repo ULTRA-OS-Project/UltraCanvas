@@ -61,6 +61,7 @@
 // the menu is drawn into an offscreen surface read back pixel by pixel. The
 // fade is read off a second stand-in whose "screen" is an offscreen surface,
 // so UpdateAndRender() composites onto it exactly as onto a real window.
+// Version: 1.8.0 - a context menu with no room on either side of its point moves up to fit whole
 // Version: 1.7.0 - one Escape (press and release) closes one popup: the submenu, then the menu
 // Version: 1.6.0 - menu bar items measured in their own font
 // Version: 1.5.0 - a tall menu bar dropdown stays under its bar
@@ -774,6 +775,37 @@ void AnchoredMenuChecks() {
     TEST("OpenMenu at a point with no room below ends at the point, as before",
          b.y + b.height == 280);
     point->CloseMenu();
+
+    // ---- Too tall for either side of the point, not for the window ----
+    // Grown one entry at a time until it is taller than half the window (so
+    // it fits neither above nor below the middle) and still fits the window.
+    std::shared_ptr<UltraCanvasMenu> tall;
+    int tallHeight = 0;
+    for (int n = 2; n < 40; ++n) {
+        auto menu = std::make_shared<UltraCanvasMenu>("tall", 120, 0);
+        menu->SetMenuType(MenuType::PopupMenu);
+        menu->SetStyle(MenuStyle::Default());
+        for (int i = 0; i < n; ++i) menu->AddItem(MenuItemData::Action("Entry " + std::to_string(i), [] {}));
+        menu->OpenMenu(Point2Di(50, 0), win, PopupElementSettings());
+        win.Frame();
+        const int h = WindowBounds(*menu).height;
+        menu->CloseMenu();
+        win.Frame();
+        if (h > ScreenWindow::kHeight / 2 + 10) {
+            if (h <= ScreenWindow::kHeight) { tall = menu; tallHeight = h; }
+            break;
+        }
+    }
+    TEST("a menu taller than half the window and no taller than it can be made", tall != nullptr);
+    if (tall) {
+        tall->OpenMenu(Point2Di(50, ScreenWindow::kHeight / 2), win, PopupElementSettings());
+        win.Frame();
+        b = WindowBounds(*tall);
+        TEST("opened at a point with room on neither side, it moves up and shows whole (was: a scrollbar)",
+             b.height == tallHeight && b.y + b.height == ScreenWindow::kHeight && !tall->HasScrollbar());
+        tall->CloseMenu();
+        win.Frame();
+    }
 
     // ---- A menubar at the foot of the window opens upwards ----
     auto bar = std::make_shared<UltraCanvasMenu>("bar", 0, 266, 400, 34);
