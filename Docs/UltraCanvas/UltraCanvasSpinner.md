@@ -31,14 +31,17 @@ A value can be changed four ways:
 - **Typing** a value directly into the editable field (numeric modes)
 
 **File Location**: `include/UltraCanvasSpinner.h`
-**Version**: 1.1.0 - `SpinnerVisualStyle::FromTheme`, `ApplyTheme`: the spinner follows the theme
+**Version**: 1.8.0 - a Decimal value in the person's language's number format
 **Author**: UltraCanvas Framework
 
 ## Features
 
 ### Value Modes (`SpinnerValueType`)
 - ✅ **Integer** – whole-number stepping
-- ✅ **Decimal** – fixed-precision floating stepping (configurable decimal places)
+- ✅ **Decimal** – fixed-precision floating stepping (configurable decimal places),
+  shown with the person's language's decimal separator ("2,50" in German,
+  `UltraLocalisation::FormatNumber`); the "." and "," keys both type it, and
+  the typed text is read back with `UltraLocalisation::ParseNumber`
 - ✅ **List** – cycle through an ordered list of arbitrary string values
 
 ### Layouts (`SpinnerLayout`)
@@ -175,7 +178,7 @@ bool IsStepping() const;                         // a run of steps is open
 | `Down` / `Left` | Decrement by one step |
 | `PageUp` / `PageDown` | Step by the page amount |
 | `Home` / `End` | Jump to minimum / maximum |
-| digits / `.` / `-` | Begin typing a value (editable numeric modes) |
+| digits / `.` / `,` / `-` | Begin typing a value (editable numeric modes); `.` and `,` both type the language's decimal separator |
 | `Enter` | Commit the typed value |
 | `Esc` | Cancel the edit and revert |
 

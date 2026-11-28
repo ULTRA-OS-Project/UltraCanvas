@@ -17,6 +17,7 @@
 // ULTRACANVAS_SCREENSHOT_DIR=<dir> writes the window as PPM files: open,
 // closed, context panel, during a drag, rail, flyout. Skips without a
 // display (fails with ULTRACANVAS_TEST_DISPLAY_REQUIRED).
+// Version: 1.1.0 - a spinner's value in German: shown with a comma, typed with either key
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
@@ -25,6 +26,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasToolPanelStack.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasToolRows.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
@@ -600,6 +602,33 @@ int main() {
              styleList && styleList->GetSelectedIndex() == 1 && picker && picker->GetCurrentFamily() == "Ubuntu Mono" &&
              colour && colour->GetSelectedColor() == Color(196, 43, 28));
         TEST("and calls no setter", doc.setterCalls == callsBeforeSync);
+    }
+
+    // ===== A NUMBER AS THE LANGUAGE WRITES IT =====
+    {
+        UltraLocalisation::Load("de", "");
+        auto content = stack->GetPanelContent("paragraph");
+        UltraCanvasSpinner* spacing = dynamic_cast<UltraCanvasSpinner*>(content->FindChildById("spacing"));
+        TEST("in German a value shows a decimal comma", spacing && spacing->GetDisplayText().find("2,00") != std::string::npos);
+        auto type = [&](const std::string& keys) {
+            for (char c : keys) {
+                UCEvent e = KeyEvent(UCEventType::KeyDown, UCKeys::Unknown);
+                e.character = c;
+                spacing->OnEvent(e);
+            }
+            spacing->OnEvent(KeyEvent(UCEventType::KeyDown, UCKeys::Return));
+        };
+        if (spacing) {
+            spacing->SetFocus(true);
+            type("1,7");
+        }
+        TEST("\"1,7\" typed is one point seven", std::abs(doc.spacing - 1.7) < 1e-6);
+        if (spacing) type("2.5");
+        TEST("the dot key puts the comma in: \"2.5\" typed is two and a half",
+             std::abs(doc.spacing - 2.5) < 1e-6 && spacing && spacing->GetDisplayText().find("2,50") != std::string::npos);
+        UltraLocalisation::Load("en", "");
+        stack->Sync();
+        TEST("in English the point again", spacing && spacing->GetDisplayText().find("2.50") != std::string::npos);
     }
 
     // ===== RAIL MODE AND ITS FLYOUT =====

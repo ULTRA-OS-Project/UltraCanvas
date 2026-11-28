@@ -13,6 +13,7 @@
 // chosen and the share. A new document starts with the Settings window's
 // font, size and page.
 //
+// Version: 0.9.1 - the font sizes and "exactly 14,5 pt" with the language's decimal separator
 // Version: 0.9.0 - the panels show the values in effect (the paragraph's, its style's, the view's; the table's
 //                  grid line), "-" only for a selection that differs; the Page panel's orientation, page size,
 //                  margins (presets, Custom: Page setup) and columns; the Lists panel's list style; the Table
@@ -82,9 +83,7 @@ const std::vector<float> kSizes = OfficeSettings::FontSizeChoices();
 // "10.5", whatever the locale: the list reads the same as the size boxes
 // of the documents it came from.
 std::string SizeText(float size) {
-    char text[32];
-    const auto result = std::to_chars(text, text + sizeof text, size);
-    return std::string(text, result.ptr);
+    return UltraLocalisation::FormatNumber(size, -1, false);   // "10,5" in German
 }
 
 // What the window's settings keep of the navigator's width (whether it is

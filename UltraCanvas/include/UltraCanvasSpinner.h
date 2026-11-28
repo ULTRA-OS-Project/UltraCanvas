@@ -13,6 +13,8 @@
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
 //   * FieldOnly      - the field alone; the arrow keys and the wheel still step
 //
+// Version: 1.8.0 - a Decimal value in the person's language: "2,5" in German, shown, typed (the "." and
+//                  "," keys both put the decimal point in) and read back
 // Version: 1.7.0 - SpinnerVisualStyle::FromTheme, ApplyTheme: the spinner follows the theme;
 //                  a SetStyle by hand stops the following
 // Version: 1.6.0 - a held arrow button repeats its step (SetButtonRepeat)
@@ -21,7 +23,7 @@
 //                  released, the wheel at rest), not on every step
 // Version: 1.3.0 - SetSnapToStep: a Decimal value off the step grid
 // Version: 1.2.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-28
 // Author: UltraCanvas Framework
 #pragma once
 

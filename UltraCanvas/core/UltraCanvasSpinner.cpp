@@ -1,17 +1,20 @@
 // core/UltraCanvasSpinner.cpp
 // Platform-independent spinner / spin-button component implementation.
+// Version: 1.7.0 - a Decimal value as the person's language writes it ("2,5"): shown, typed (either key
+//                  is the decimal point) and read back (UltraLocalisation::FormatNumber / ParseNumber)
 // Version: 1.6.0 - SpinnerLayout::FieldOnly: the field takes the whole control, no buttons
 // Version: 1.5.0 - onStepsFinished: once per run of steps (held button or key, wheel)
 // Version: 1.4.0 - SetSnapToStep(false): a Decimal value keeps its own places off the step grid
 // Version: 1.3.0 - the value list opens anchored to the field: above it when there is
 //                  no room below, never over it
 // Version: 1.2.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasMenu.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <cstdio>
 #include <cmath>
 #include <sstream>
@@ -212,7 +215,9 @@ namespace UltraCanvas {
             std::snprintf(buffer, sizeof(buffer), "%lld",
                           static_cast<long long>(std::llround(v)));
         } else {
-            std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, v);
+            // As the person's language writes it ("2,5" in German), not grouped
+            // - the field is also where the number is typed.
+            return UltraLocalisation::FormatNumber(v, decimals, false);
         }
         return std::string(buffer);
     }
@@ -304,12 +309,9 @@ namespace UltraCanvas {
         editing = false;
         editBufferFresh = false;
         if (!editBuffer.empty()) {
-            try {
-                double parsed = std::stod(editBuffer);   // locale-ok: the user typed this into the spinner
-                ApplyValue(parsed, false);
-            } catch (...) {
-                // Unparseable input reverts to the previous value.
-            }
+            // Either "2,5" or "2.5"; unparseable input reverts to the previous value.
+            double parsed = 0.0;
+            if (UltraLocalisation::ParseNumber(editBuffer, parsed)) ApplyValue(parsed, false);
         }
         editBuffer.clear();
         if (onEditingFinished) onEditingFinished();
@@ -724,8 +726,9 @@ namespace UltraCanvas {
 
         char c = event.character;
         bool isDigit = (c >= '0' && c <= '9');
-        bool isDot   = (c == '.' && valueType == SpinnerValueType::Decimal &&
-                        editBuffer.find('.') == std::string::npos);
+        // Either key is the decimal point; the field shows the language's.
+        bool isDot   = ((c == '.' || c == ',') && valueType == SpinnerValueType::Decimal &&
+                        editBuffer.find_first_of(".,") == std::string::npos);
         bool isSign  = ((c == '-' || c == '+') && editBuffer.empty() && minValue < 0);
 
         if (!isDigit && !isDot && !isSign) return false;
@@ -738,7 +741,8 @@ namespace UltraCanvas {
             editBuffer.clear();
         }
         editBufferFresh = false;
-        editBuffer.push_back(c);
+        if (isDot) editBuffer += UltraLocalisation::DecimalSeparator();
+        else editBuffer.push_back(c);
         RequestRedraw();
         return true;
     }

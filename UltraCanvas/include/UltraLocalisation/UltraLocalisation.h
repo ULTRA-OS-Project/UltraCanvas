@@ -38,8 +38,11 @@
 //   std::string progress = UltraCanvas::TrF("Deleted {0} of {1}", done, count);      // "1 von 3 gelöscht"
 //   std::string language = UltraCanvas::UltraLocalisation::CurrentLanguage();        // "de"
 //
+// Version: 1.1.0 - DecimalSeparator, GroupSeparator, FormatNumber, ParseNumber: numbers as the language
+//                  writes them (CLDR's symbols); TrF's floating point argument with the language's
+//                  decimal separator
 // Version: 1.0.0 - phase L1: the three layers, the fallback walk, plurals, Language.conf
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -70,8 +73,9 @@ namespace UltraCanvas {
     namespace LocalisationDetail {
         std::string Substitute(std::string_view text, const std::vector<std::string>& args);
         // The text an argument becomes: strings as they are, integers as
-        // digits, floating point dot-decimal with the trailing zeros dropped
-        // (the locale's own formatting is phase L6 of the proposal).
+        // digits, floating point with the language's decimal separator and
+        // the trailing zeros dropped (UltraLocalisation::FormatNumber, not
+        // grouped).
         std::string ArgText(std::string_view value);
         inline std::string ArgText(const std::string& value) { return value; }
         inline std::string ArgText(const char* value) { return value ? std::string(value) : std::string(); }
@@ -214,6 +218,32 @@ namespace UltraCanvas {
         // The CLDR plural category of an integer count in a language:
         // "zero", "one", "two", "few", "many" or "other". Pure.
         static std::string PluralCategory(const std::string& language, long long count);
+
+        // ===== NUMBERS IN THE LANGUAGE (proposal §6, its first part) =====
+        // A number as the person's language writes it - "1.234,5" in German,
+        // "1 234,5" in French, "1,234.5" in English - for text a person
+        // reads. The symbols are CLDR's for the language (and its region:
+        // de-CH groups with an apostrophe, pt-PT with a space), not the
+        // platform's LC_NUMERIC; the platform backends of §6 are still to
+        // come. File formats stay dot-decimal (FormatFloatClassic /
+        // TryParseFloat). An empty `language` is the current one.
+
+        // "," or "." - what a numeric field shows and inserts for the
+        // decimal key.
+        static std::string DecimalSeparator(std::string_view language = {});
+        // ",", ".", a no-break space (U+00A0), a narrow one (U+202F) or "’".
+        static std::string GroupSeparator(std::string_view language = {});
+        // `decimals` places (rounded), or with a negative count up to six with
+        // the trailing zeros dropped ("2,5"); grouped as the language groups
+        // (Spanish and Polish not below 10 000, Hindi in lakhs).
+        static std::string FormatNumber(double value, int decimals = -1, bool grouped = true,
+                                        std::string_view language = {});
+        // What a person typed: the language's decimal separator, or the
+        // other of "." and "," on its own (either key works in a field), a
+        // grouping separator before three digits or repeated, spaces and
+        // apostrophes of grouping, a leading sign ("-" or U+2212). False,
+        // `out` untouched, for anything else.
+        static bool ParseNumber(std::string_view text, double& out, std::string_view language = {});
 
         // Reads one catalogue file as Load does; false when it is not there
         // or not a catalogue.

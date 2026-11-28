@@ -3,9 +3,10 @@
 // with the vendored yyjson engine directly, as UltraWin's QMP client does,
 // so the archive stands without the core; the format is the one
 // UltraCanvasLocalisationProposal.md §4 shows.
+// Version: 1.2.0 - DecimalSeparator, GroupSeparator, FormatNumber, ParseNumber (CLDR symbols); TrF's double in them
 // Version: 1.1.0 - the plural rules of Breton, Scottish Gaelic, Manx, Cornish, Tachelhit, Tamazight, Filipino, Colognian, the Sami languages, Hebrew's many, pt-PT
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-28
 // Author: UltraCanvas Framework
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -15,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -772,21 +774,179 @@ std::string ArgText(std::string_view value) { return std::string(value); }
 std::string ArgText(long long value) { return std::to_string(value); }
 std::string ArgText(unsigned long long value) { return std::to_string(value); }
 std::string ArgText(double value) {
-    // dot-decimal whatever LC_NUMERIC says: formatted in the classic locale,
-    // six significant decimals, trailing zeros dropped
-    std::ostringstream out;
-    out.imbue(std::locale::classic());
-    out.setf(std::ios::fixed);
-    out.precision(6);
-    out << value;
-    std::string s = out.str();
-    if (s.find('.') != std::string::npos) {
-        while (!s.empty() && s.back() == '0') s.pop_back();
-        if (!s.empty() && s.back() == '.') s.pop_back();
-    }
-    return s;
+    // the language's decimal separator, up to six places, not grouped
+    return UltraLocalisation::FormatNumber(value, -1, false);
 }
 
 }  // namespace LocalisationDetail
+
+// ===== NUMBERS IN THE LANGUAGE =====
+
+namespace {
+
+constexpr const char* kNoBreakSpace = "\xC2\xA0";         // U+00A0
+constexpr const char* kNarrowNoBreakSpace = "\xE2\x80\xAF";  // U+202F
+constexpr const char* kApostrophe = "\xE2\x80\x99";      // U+2019
+
+struct NumberSymbols {
+    const char* decimal = ".";
+    const char* group = ",";
+    int minimumGrouping = 1;   // CLDR minimumGroupingDigits: 2 leaves 1234 ungrouped
+    bool indian = false;       // 12,34,567: threes, then twos
+};
+
+std::string NormalisedTag(std::string_view language) {
+    std::string tag = language.empty() ? UltraLocalisation::CurrentLanguage() : std::string(language);
+    for (char& c : tag) {
+        if (c == '_') c = '-';
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    const size_t dot = tag.find_first_of(".@");   // "de_DE.UTF-8"
+    if (dot != std::string::npos) tag.resize(dot);
+    return tag;
+}
+
+// CLDR's latin-digit symbols for the languages UltraCanvas ships and their
+// neighbours; a language not listed writes as English does.
+NumberSymbols SymbolsFor(std::string_view language) {
+    const std::string tag = NormalisedTag(language);
+    const std::string base = tag.substr(0, tag.find('-'));
+    auto region = [&](std::initializer_list<const char*> tags) {
+        for (const char* t : tags) if (tag == t || tag.rfind(std::string(t) + "-", 0) == 0) return true;
+        return false;
+    };
+    if (region({"de-ch", "de-li", "it-ch"})) return {".", kApostrophe, 1, false};
+    if (region({"es-mx", "es-us", "es-419"})) return {".", ",", 1, false};
+    if (region({"pt-pt", "pt-ao", "pt-mz"})) return {",", kNoBreakSpace, 2, false};
+    if (region({"en-in"})) return {".", ",", 1, true};
+    static const std::unordered_map<std::string, NumberSymbols> table = {
+        // decimal comma, grouping dot
+        {"de", {",", ".", 1, false}}, {"nl", {",", ".", 1, false}}, {"it", {",", ".", 1, false}},
+        {"es", {",", ".", 2, false}}, {"pt", {",", ".", 1, false}}, {"id", {",", ".", 1, false}},
+        {"da", {",", ".", 1, false}}, {"tr", {",", ".", 1, false}}, {"el", {",", ".", 1, false}},
+        {"ro", {",", ".", 1, false}}, {"vi", {",", ".", 1, false}}, {"ca", {",", ".", 1, false}},
+        {"sl", {",", ".", 2, false}}, {"hr", {",", ".", 1, false}}, {"sr", {",", ".", 1, false}},
+        {"is", {",", ".", 1, false}}, {"gl", {",", ".", 1, false}}, {"eu", {",", ".", 1, false}},
+        // decimal comma, grouping space
+        {"fr", {",", kNarrowNoBreakSpace, 1, false}},
+        {"ru", {",", kNoBreakSpace, 1, false}}, {"uk", {",", kNoBreakSpace, 1, false}},
+        {"cs", {",", kNoBreakSpace, 1, false}}, {"sk", {",", kNoBreakSpace, 1, false}},
+        {"pl", {",", kNoBreakSpace, 2, false}}, {"fi", {",", kNoBreakSpace, 1, false}},
+        {"nb", {",", kNoBreakSpace, 1, false}}, {"nn", {",", kNoBreakSpace, 1, false}},
+        {"no", {",", kNoBreakSpace, 1, false}}, {"sv", {",", kNoBreakSpace, 1, false}},
+        {"hu", {",", kNoBreakSpace, 1, false}}, {"bg", {",", kNoBreakSpace, 2, false}},
+        {"lt", {",", kNoBreakSpace, 1, false}}, {"lv", {",", kNoBreakSpace, 1, false}},
+        {"et", {",", kNoBreakSpace, 2, false}},
+        // grouping in lakhs
+        {"hi", {".", ",", 1, true}}, {"bn", {".", ",", 1, true}}, {"mr", {".", ",", 1, true}},
+    };
+    const auto it = table.find(base);
+    return it != table.end() ? it->second : NumberSymbols{};
+}
+
+std::string GroupDigits(const std::string& digits, const NumberSymbols& symbols) {
+    const size_t n = digits.size();
+    if (n < static_cast<size_t>(3 + symbols.minimumGrouping)) return digits;
+    std::vector<size_t> cuts;   // where a separator goes, counted from the left
+    size_t at = n;
+    size_t width = 3;
+    while (at > width) {
+        at -= width;
+        cuts.push_back(at);
+        if (symbols.indian) width = 2;
+    }
+    std::string out;
+    size_t from = 0;
+    for (auto cut = cuts.rbegin(); cut != cuts.rend(); ++cut) {
+        out.append(digits, from, *cut - from);
+        out += symbols.group;
+        from = *cut;
+    }
+    out.append(digits, from, std::string::npos);
+    return out;
+}
+
+}  // namespace
+
+std::string UltraLocalisation::DecimalSeparator(std::string_view language) { return SymbolsFor(language).decimal; }
+std::string UltraLocalisation::GroupSeparator(std::string_view language) { return SymbolsFor(language).group; }
+
+std::string UltraLocalisation::FormatNumber(double value, int decimals, bool grouped, std::string_view language) {
+    if (std::isnan(value)) return "NaN";
+    if (std::isinf(value)) return value < 0 ? "-\xE2\x88\x9E" : "\xE2\x88\x9E";   // -∞, ∞
+    // The digits in the classic locale, whatever LC_NUMERIC says, then the
+    // language's symbols put in.
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+    text.setf(std::ios::fixed);
+    text.precision(decimals < 0 ? 6 : std::min(decimals, 17));
+    text << std::fabs(value);
+    std::string digits = text.str();
+    std::string fraction;
+    const size_t point = digits.find('.');
+    if (point != std::string::npos) {
+        fraction = digits.substr(point + 1);
+        digits.resize(point);
+        if (decimals < 0)
+            while (!fraction.empty() && fraction.back() == '0') fraction.pop_back();
+    }
+    const NumberSymbols symbols = SymbolsFor(language);
+    std::string out = grouped ? GroupDigits(digits, symbols) : digits;
+    if (!fraction.empty()) out += symbols.decimal + fraction;
+    const bool zero = std::all_of(digits.begin(), digits.end(), [](char c) { return c == '0'; }) &&
+                      std::all_of(fraction.begin(), fraction.end(), [](char c) { return c == '0'; });
+    if (value < 0 && !zero) out.insert(0, "-");   // never "-0"
+    return out;
+}
+
+bool UltraLocalisation::ParseNumber(std::string_view text, double& out, std::string_view language) {
+    const NumberSymbols symbols = SymbolsFor(language);
+    const char decimal = symbols.decimal[0];
+    const char groupChar = symbols.group[1] == '\0' ? symbols.group[0] : '\0';   // "." or "," when it is one
+    // Spaces and apostrophes of grouping out, U+2212 to "-".
+    std::string s;
+    for (size_t i = 0; i < text.size();) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c == ' ' || c == '\t' || c == '\'') { ++i; continue; }
+        if (text.compare(i, 2, kNoBreakSpace) == 0) { i += 2; continue; }
+        if (text.compare(i, 3, kNarrowNoBreakSpace) == 0 || text.compare(i, 3, kApostrophe) == 0 ||
+            text.compare(i, 3, "\xE2\x80\x89") == 0) { i += 3; continue; }   // and U+2009 thin space
+        if (text.compare(i, 3, "\xE2\x88\x92") == 0) { s += '-'; i += 3; continue; }
+        s += static_cast<char>(c);
+        ++i;
+    }
+    size_t start = (!s.empty() && (s[0] == '-' || s[0] == '+')) ? 1 : 0;
+    if (start == s.size()) return false;
+    for (size_t i = start; i < s.size(); ++i)
+        if (!(std::isdigit(static_cast<unsigned char>(s[i])) || s[i] == '.' || s[i] == ',')) return false;
+    // Which of "." and "," is the decimal point.
+    const size_t dots = static_cast<size_t>(std::count(s.begin(), s.end(), '.'));
+    const size_t commas = static_cast<size_t>(std::count(s.begin(), s.end(), ','));
+    char point = '\0';
+    if (dots && commas) {
+        point = s.find_last_of(".,") == s.rfind('.') ? '.' : ',';
+        if ((point == '.' ? dots : commas) > 1) return false;
+    } else if (dots + commas == 1) {
+        const char only = dots ? '.' : ',';
+        const size_t at = s.find(only);
+        const size_t after = s.size() - at - 1;
+        // "1.234" in German is a thousand and more; "1.5" is one and a half.
+        const bool grouping = only != decimal && only == groupChar && after == 3 && at > start;
+        point = grouping ? '\0' : only;
+    }
+    std::string plain;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '.' || s[i] == ',') { if (s[i] == point) plain += '.'; continue; }
+        plain += s[i];
+    }
+    if (plain.empty() || plain == "-" || plain == "+" || plain == ".") return false;
+    std::istringstream in(plain);
+    in.imbue(std::locale::classic());
+    double v = 0.0;
+    in >> v;
+    if (in.fail() || in.peek() != std::char_traits<char>::eof()) return false;
+    out = v;
+    return true;
+}
 
 }  // namespace UltraCanvas

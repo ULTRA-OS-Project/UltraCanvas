@@ -3,6 +3,7 @@
 // the framework's UltraCanvasSettingsPageKit; the controls are the
 // framework's elements (a text field, lists, checkboxes, buttons).
 //
+// Version: 0.3.1 - a font size with the language's decimal separator
 // Version: 0.3.0 - General: the tools (panels at the left, the default, or the toolbar at the top) and the icon rail
 // Version: 0.2.0 - a new document's font from every installed font (UltraCanvasFontPicker), the
 //                  recent fonts on top
@@ -50,9 +51,7 @@ const std::vector<int> kMinutes = {1, 2, 5, 10, 15, 30, 60};
 
 // "10.5", whatever the locale, as the toolbar's size list writes it.
 std::string SizeText(float size) {
-    char text[32];
-    const auto result = std::to_chars(text, text + sizeof text, size);
-    return std::string(text, result.ptr);
+    return UltraLocalisation::FormatNumber(size, -1, false);   // "10,5" in German
 }
 
 // The one open window: the kit's shell with this window's controls, each

@@ -5,6 +5,7 @@
 // the settings-folder override, the fallback walk, the base sets from a
 // catalogue and from code, Language.conf and the language choice, the
 // plural rules, the change handlers, and the catalogue's own round trip.
+// Version: 1.2.0 - numbers in the language: separators, grouping, FormatNumber, ParseNumber; TrF's double
 // Version: 1.1.0 - the added plural rules
 // Version: 1.0.0
 // Last Modified: 2026-11-02
@@ -145,8 +146,37 @@ int main() {
     // ===== PLACEHOLDERS, PLURALS =====
     Check(TrF("Deleted {0} of {1}", 1, 3) == "1 von 3 gelöscht", "TrF with integers");
     Check(TrF("Deleted {0} of {1}", std::string("a"), "b") == "a von b gelöscht", "TrF with strings");
-    Check(TrF("{0} and {1}", 2.5, true) == "2.5 and true", "TrF: a double dot-decimal, a bool");
+    Check(TrF("{0} and {1}", 2.5, true) == "2,5 and true", "TrF: a double with the language's decimal comma, a bool");
     Check(TrF("{0} {1}", 1) == "1 {1}", "a missing argument leaves its placeholder");
+    // ===== NUMBERS IN THE LANGUAGE =====
+    {
+        using L = UltraLocalisation;
+        const std::string nbsp = "\xC2\xA0", nnbsp = "\xE2\x80\xAF";
+        Check(L::DecimalSeparator() == "," && L::DecimalSeparator("en") == "." && L::DecimalSeparator("pt-BR") == ","
+              && L::DecimalSeparator("ja") == "." && L::DecimalSeparator("de_DE.UTF-8") == ",", "decimal separators");
+        Check(L::FormatNumber(1234.5, 1) == "1.234,5" && L::FormatNumber(1234.5, 1, true, "en") == "1,234.5"
+              && L::FormatNumber(1234.5, 1, true, "fr") == "1" + nnbsp + "234,5"
+              && L::FormatNumber(1234.5, 1, true, "ru") == "1" + nbsp + "234,5"
+              && L::FormatNumber(1234.5, 1, true, "de-CH") == "1\xE2\x80\x99" "234.5", "grouping per language");
+        Check(L::FormatNumber(1234, 0, true, "es") == "1234" && L::FormatNumber(12345, 0, true, "es") == "12.345"
+              && L::FormatNumber(1234567, 0, true, "hi") == "12,34,567", "Spanish from 10 000, Hindi in lakhs");
+        Check(L::FormatNumber(2.5) == "2,5" && L::FormatNumber(2.0) == "2" && L::FormatNumber(1.15, 2, false) == "1,15"
+              && L::FormatNumber(-0.001, 2) == "0,00" && L::FormatNumber(-3.26, 1, true, "en") == "-3.3"
+              && L::FormatNumber(1234567.0, -1, false) == "1234567", "places, trailing zeros, no minus zero, ungrouped");
+        double v = 0.0;
+        Check(L::ParseNumber("2,5", v) && v == 2.5 && L::ParseNumber("2.5", v) && v == 2.5, "German: either key is the point");
+        Check(L::ParseNumber("1.234", v) && v == 1234.0 && L::ParseNumber("1.234,5", v) && v == 1234.5
+              && L::ParseNumber("1.234.567", v) && v == 1234567.0, "German: the dot before three digits groups");
+        Check(L::ParseNumber("1,234", v, "en") && v == 1234.0 && L::ParseNumber("1,5", v, "en") && v == 1.5
+              && L::ParseNumber("1,234.5", v, "en") && v == 1234.5, "English likewise");
+        Check(L::ParseNumber("1" + nnbsp + "234,5", v, "fr") && v == 1234.5 && L::ParseNumber("1 234,5", v, "fr") && v == 1234.5
+              && L::ParseNumber("\xE2\x88\x92" "4,5", v) && v == -4.5 && L::ParseNumber("+7", v) && v == 7.0,
+              "French spaces, the minus sign, a plus");
+        v = 9.0;
+        Check(!L::ParseNumber("", v) && !L::ParseNumber("-", v) && !L::ParseNumber("1,2.3,4", v) && !L::ParseNumber("12a", v)
+              && !L::ParseNumber(",", v) && v == 9.0, "not a number: false, untouched");
+    }
+
     Check(TrN("{n} file", "{n} files", 1) == "1 Datei" && TrN("{n} file", "{n} files", 5) == "5 Dateien", "German plural");
     Check(TrN("{n} item", "{n} items", 0) == "0 items" && TrN("{n} item", "{n} items", 1) == "1 item", "untranslated plural falls back to English forms");
 
