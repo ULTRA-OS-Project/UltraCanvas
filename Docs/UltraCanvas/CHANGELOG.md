@@ -1,3 +1,63 @@
+#### 2026-11-28 *0.9.614*
+- **Hexagon cells in the heat map.** `HeatmapCellShape::Hexagon`
+  (`UltraCanvasHeatmapChartElement`) and `ChartHeatmapCellShape::Hexagon`
+  (`UltraCanvasEngineHeatmapChart`) draw a matrix as regular pointy-top
+  hexagons in an offset grid - odd rows shifted right by half a cell - as
+  large as fit the chart, so the hexagons keep their shape whatever its
+  proportions. Gaps, borders, values, row order, masks and the colour bar
+  apply as for the other shapes; the row and column labels are left out, and
+  the cell under the pointer is the hexagon drawn there. Demo: **Charts >
+  Heat map > Interactive Heatmap**, *Cell shape: Hexagon*. Test:
+  `HeatmapHexagonRenderTest`.
+- **Radial cluster map (Phase 1).** `UltraCanvasMindMap` gains the `Balloon`
+  structure: every topic carries its children on a ring around itself, so a
+  large tree grows as clusters of clusters. Fans opening away from the parent
+  (`balloonFanSweep`) or full rings (`MindMapBalloonRing`); ring radii from
+  the wedges the children's subtrees cover, so no two nodes of the map
+  overlap; main topics pushed out by `balloonTrunkLength`; a topic below the
+  centre can be laid out in another structure, a one-sided one mirrored to
+  grow away from the centre. New marks: the `Ring` connector (a thin ring
+  through a hub's children, an arc for a fan), `MindMapStyle::sizeByDepth`
+  and `connectorWidthByDepth`, and the `Triangle` node shape (also in the SVG
+  export). Labels in circles and triangles are centred, and a circle's label
+  no longer breaks a word. `ToJson` / `FromJson` carry the new options and
+  `depthLightenStep`. Demo: **Diagrams > Mind Map > Radial cluster**, an
+  invented family emergency plan of about 150 topics, and `Balloon` in the
+  gallery tab. Tests: `MindMapLayoutTest` (balloon geometry, overlaps,
+  determinism, overrides), the new `MindMapRenderTest`. Guide:
+  `UltraCanvasMindMapExamples.md`; design:
+  `UltraCanvasRadialClusterMapProposal.md`.
+- **Ridgeline chart, Phase 2.** Several series per row (`RidgelineRow::more`,
+  `model.series`) drawn over each other in their own colours, with a legend
+  that switches one off; a wrapping x axis (`model.period`, a circular
+  density, statistics on the wrapped values: a median bedtime of 00:40); a
+  tail cut (`density.tailCut`); binned curves, the histogram look
+  (`density.binned`, `bins`); marks at the mean, median or quartiles
+  (`SetMarks`) and the middle half shaded (`SetQuantileBands`); the other
+  rows fading while one is hovered (`SetHighlightOnHover`); `onRowClick`.
+  The model goes to and from JSON (`ExportRidgelineJson`,
+  `ImportRidgelineJson`) and its data to and from CSV (`ExportRidgelineCsv`,
+  `ImportRidgelineCsv`). The value column writes x values through the x
+  formatter. Demo: the Sleep sample (two series on a 24-hour axis from
+  18:00), marks, shading, tail trim, histogram, fading, a click readout,
+  Open / Save JSON and Import / Export CSV through `UltraCanvasFileLoader`.
+- **Spiral chart (Phase 1).** `UltraCanvasSpiralChart` (chart engine) winds a
+  time series along a spiral, one turn per period, so a daily, weekly or
+  yearly rhythm lines up from the centre outward: a ribbon coloured by value
+  (with a colour bar), a band whose width is the value, or a line; spokes and
+  labels for the parts of a period, a label at each turn's start, and a
+  tooltip per sample through a time formatter. `SetPeriod` rewinds the
+  spiral. The UI-free `UltraCanvasSpiralModel` holds the samples and the
+  period and maps a time to its place (`Position`), with the value range,
+  the samples' spans and gaps and the nearest sample. Demo: **Charts >
+  Spiral Chart** (temperatures, a year a turn; website visits, a week a
+  turn) with a period slider. Tests: `SpiralModelTest`,
+  `SpiralChartRenderTest`. Guide: `UltraCanvasSpiralChart.md`.
+- **Demo: Ternary Chart marked Fully Implemented.** With all three phases of
+  `UltraCanvasTernaryChart` in place, the component browser lists **Charts >
+  Ternary Chart** with the green *Fully Implemented* tick instead of
+  *Partially Implemented*.
+
 #### 2026-11-28 *0.9.613*
 - **The MobilePC emulator test opens a drawing.** Besides starting
   UltraPaint and UltraFiler on the second display, it now has ArtCreator
