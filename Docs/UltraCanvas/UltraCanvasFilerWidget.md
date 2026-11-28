@@ -743,7 +743,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$, odg, otg, fodg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, the OpenDocument drawings odg, otg and fodg, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on), the OpenDocument drawing packages (odg, otg - where no Vector plugin is registered) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$, odg, otg, fodg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; then a file that **carries a preview bitmap of its own** shows it — Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on), the OpenDocument drawing packages (odg, otg) and the PostScript formats (eps, epsf, ps), see [Embedded preview bitmaps](#embedded-preview-bitmaps): the authoring program's own picture, ahead of the Vector plugin's drawing of the file, which is only as faithful as its converter; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, fodg, an ai whose artwork is in its Illustrator private data, and a xar or odg saved without a preview) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
@@ -2265,10 +2265,13 @@ chips (*ULTRA OS → Projekte*, *Downloads → Trash*), the file being handled, 
 a strip of **speed, time left, items and size** (a delete: items only; packing
 and unpacking: bytes only), with **Pause / Resume** beside Cancel. The worker
 counts what is done as it goes - one atomic add per file - and the totals come
-only from the counting it does anyway: a copy or delete of one entry counts it
-before starting on it, so "26 731 / 37 650" shows; several entries show what is
-done alone, since knowing their total would mean walking every tree first;
-moving to the Trash knows its total from the start (one move per entry). Pause
+only from counting the work needs: a copy or delete of one entry counts it
+before starting on it, so "26 731 / 37 650" shows; a copy of several entries
+counts all of them before the first is touched (the copy would walk each tree
+anyway; it is walked once), and an entry it then skips comes off the totals; a
+move or delete of several entries shows what is done alone, since a move is
+mostly instant renames and knowing their total would mean walking every tree
+first; moving to the Trash knows its total from the start (one move per entry). Pause
 holds the worker between files and between the chunks of a big file, and an
 archive job between its blocks; Cancel still gets through while paused.
 
@@ -3420,6 +3423,7 @@ reports what the system hides, not what the host asked for.
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
+| `onClipboardSet(entries, cut)` | Copy / Cut put entries on the clipboard (Ctrl+C, Ctrl+X, the menus) - for a confirmation on the host's status line |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |

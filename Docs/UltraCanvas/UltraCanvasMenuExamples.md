@@ -66,7 +66,8 @@
 - **Icons & Shortcuts**: Support for item icons, keyboard shortcuts and tooltips
 - **Event System**: Callbacks for menu open/close, item selection and hover
 - **Submenu Management**: Automatic positioning and cascade control
-- **Long Menus**: A menu taller than the window gets a scrollbar
+- **Placement**: A menu opened at a point (a context menu) goes below it, else ends at it; with room on neither side it moves up as far as it must to show whole
+- **Long Menus**: Only a menu taller than the window gets a scrollbar (`HasScrollbar()`)
 
 ## Class Structure
 

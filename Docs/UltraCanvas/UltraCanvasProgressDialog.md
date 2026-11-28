@@ -39,6 +39,7 @@ dlg->Close();
 | `IsCancelled()` | True once the user asked to cancel. |
 | `IsPaused()` | True while Pause is pressed. |
 | `IsInBackground()` | True once "Run in background" closed the window. |
+| `CombinedProgress(figures, ringFraction)`, `EstimateSecondsLeft(seconds, fromProgress, progress)` | How far the work is (items and bytes half each), and the time left at the run's average so far - what the window shows as *Time left*. |
 | `FormatDuration(seconds)`, `FormatBytes(bytes)` | "9 s", "2 min", "1 h 5 min"; "742 MB", "1.2 GB" - as the window shows them. |
 | `Close()` | Takes the window down. Safe to call twice, and safe after the user closed it. |
 
@@ -81,11 +82,15 @@ dlg->SetProgress(job.fraction);
 ```
 
 Everything the window shows is fixed when it opens, so its height never changes
-while it is up. **Time left** is worked out from the bytes where their total is
-known, from the items where theirs is, else from how fast the ring moves;
-**speed** is bytes (or, without `bytes`, items) per second. Both are averaged
-over the last three seconds and appear after the first second ("—" until then);
-a pause starts the averaging over.
+while it is up. **Time left** is worked out from the whole run so far: how far
+the work is - the share of the items done and the share of the bytes, half each
+where both totals are known (`CombinedProgress`), else the one known, else the
+ring - and the time that took, paused time left out (`EstimateSecondsLeft`). It
+appears after two seconds of work. It is not taken from the last seconds' speed:
+over many small files that speed swings with each file's size, and the estimate
+jumped between seconds and hours. **Speed** is bytes (or, without `bytes`,
+items) per second over the last three seconds, shown after the first second
+("—" until then); a pause starts it over.
 
 It is built to cost the work nothing measurable. The ring follows every
 `SetProgress`; the texts change at most four times a second and are plain

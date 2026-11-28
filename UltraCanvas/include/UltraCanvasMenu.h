@@ -1,5 +1,6 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.21.0 - HasScrollbar: whether the open menu scrolls
 // Version: 1.20.0 - MenuStyle::headerBackgroundColor: a header row on a darker band; the header text dark grey
 // Version: 1.19.0 - FromTheme sets the entries' font at the body size; the SetStyle rule and the constructor tail
 // Version: 1.18.1 - the kept layout and width are one slot per entry, moved with the entries
@@ -473,6 +474,9 @@ namespace UltraCanvas {
                               const PopupElementSettings& settings, int gap = 2,
                               MenuAnchorAlign align = MenuAnchorAlign::Left);
         void CloseMenu();
+        // The open menu is taller than the window can hold and scrolls (a menu
+        // opened at a point first moves up to fit the window whole).
+        bool HasScrollbar() const { return needsScrollbar; }
 
         // Embedded mode: for composite components (e.g. AutoComplete) that
         // manage their own overlay lifecycle but use Menu for rendering/events.

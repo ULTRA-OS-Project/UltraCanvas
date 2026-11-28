@@ -2293,6 +2293,21 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TextRenderThreadsTest")
 endif()
 
+# ===== PROGRESS TIME LEFT TEST =====
+# The progress window's time left, from the whole run so far (items and bytes
+# done, the time it took) - a copy of 44 000 small files no longer reads
+# anything from seconds to hours. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ProgressTimeLeftTest...")
+    add_executable(ProgressTimeLeftTest ${CMAKE_CURRENT_SOURCE_DIR}/ProgressTimeLeftTest.cpp)
+    target_include_directories(ProgressTimeLeftTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ProgressTimeLeftTest PRIVATE cxx_std_20)
+    target_link_libraries(ProgressTimeLeftTest PRIVATE UltraCanvas)
+    set_target_properties(ProgressTimeLeftTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME ProgressTimeLeftTest COMMAND ProgressTimeLeftTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ProgressTimeLeftTest")
+endif()
+
 # ===== ELEMENT MODULES TEST =====
 # The selectable widgets (ULTRACANVAS_WIDGETS) and charts (ULTRACANVAS_CHARTS)
 # through the element registry, by type name: registered at startup when

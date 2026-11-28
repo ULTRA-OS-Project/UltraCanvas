@@ -50,6 +50,7 @@
 // a thumbnail already on disk - the vector previews drawn "at the fit
 // squared" before 2026-09-26 stayed specks in a corner for as long as the
 // tile kept being shown, at exactly the sizes cached back then.
+// Version: 1.4.0 - renderer generation 5: a vector document's own preview before the plugin's drawing
 // Version: 1.3.0 - renderer generation 4: a PDF's first page on white paper
 // Version: 1.2.0
 // Last Modified: 2026-11-17
@@ -94,7 +95,9 @@ namespace UltraCanvas {
         //   4  a PDF's first page on white paper: the paper the page left
         //      transparent showed the tile under it (a dark page on a dark
         //      tile)
-        constexpr uint32_t kRendererGeneration = 4;
+        //   5  a vector document with a preview of its own (Xara, CorelDRAW)
+        //      shows that preview, not the Vector plugin's rendering
+        constexpr uint32_t kRendererGeneration = 5;
 
         // The generation Load() and Store() use - kRendererGeneration unless
         // a test overrode it. Pass 0 to go back to the built-in one.

@@ -74,7 +74,9 @@
   ],
   "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.": "\"Show it in the preview\" keeps the file inside UltraFiler whenever it can show it - pictures, documents, spreadsheets, 3D models, e-books, fonts, video, audio and text - which is faster than starting a program for a look at a file.",
   "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.": "\"Start the registered program\" is what a double-click does in Explorer and the Finder: the file opens in the program its type is assigned to, and UltraFiler stays as it is.",
+  "\"{0}\" copied to the clipboard": "\"{0}\" copied to the clipboard",
   "\"{0}\" could not be fetched from the drive.": "\"{0}\" could not be fetched from the drive.",
+  "\"{0}\" cut - paste it where it should go": "\"{0}\" cut - paste it where it should go",
   "\"{0}\" is a program, a script or a launcher. UltraFiler does not start one straight from a drive: copy it to this computer first, and start it there if you trust it.": "\"{0}\" is a program, a script or a launcher. UltraFiler does not start one straight from a drive: copy it to this computer first, and start it there if you trust it.",
   "\"{0}\" is being downloaded from {1}.": "\"{0}\" is being downloaded from {1}.",
   "\"{0}\" is being uploaded to {1}.": "\"{0}\" is being uploaded to {1}.",
@@ -610,6 +612,14 @@
   "{n} icon": {
     "one": "{n} icon",
     "other": "{n} icons"
+  },
+  "{n} item copied to the clipboard": {
+    "one": "{n} item copied to the clipboard",
+    "other": "{n} items copied to the clipboard"
+  },
+  "{n} item cut - paste them where they should go": {
+    "one": "{n} item cut - paste them where they should go",
+    "other": "{n} items cut - paste them where they should go"
   },
   "{n} result": {
     "one": "{n} result",

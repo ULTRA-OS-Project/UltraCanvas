@@ -65,6 +65,9 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.55.0 - the Computer page is a step of Back / Forward; a drive's ring opens it from
+//                  anywhere on it (DriveRingChart); the RAM disc and network symbols half the size
+// Version: 1.54.0 - the status line confirms Copy / Cut: what went to the clipboard (ClipboardNote)
 // Version: 1.53.0 - Edit in ArtCreator: a drawing's context menu starts ArtCreator with it
 // Version: 1.52.0 - Edit in UltraPaint: a picture's context menu starts UltraPaint with it
 //                  (BuildOpenMenuItems, on every folder display's openMenuProvider)
@@ -8113,6 +8116,10 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
         // the toolbars describe while it is up - so that pane is the active
         // one from here on.
         ActivateSplitSide(SplitSide::Left);
+        // A step of Back / Forward, like a folder: Back from the page
+        // returns to the folder it was opened from, and Back to it from a
+        // folder opened on it shows it again.
+        RecordHistoryStep(ActiveTabState(), kComputerHistoryEntry);
         RefreshComputerPage();
         tabContentHost->SetVisible(false);
         computerPane->SetVisible(true);
@@ -8189,6 +8196,28 @@ std::vector<std::string> UltraFilerWindow::ComputerPageFolderPaths() const {
     }
     return paths;
 }
+
+
+namespace {
+// The ring on a drive's card in the Computer page. The pie chart answers a
+// press only on a slice (onSliceClick), and the drive's card wants every
+// press on it: a click on the "used" part of the ring was reported to do
+// nothing on Windows while the "free" part opened the drive. Any left press
+// on the chart is the drive's now; hovering still shows the slices' sizes.
+class DriveRingChart : public UltraCanvasPieChartElement {
+public:
+    using UltraCanvasPieChartElement::UltraCanvasPieChartElement;
+    std::function<void()> onPress;
+    bool OnEvent(const UCEvent& event) override {
+        if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left &&
+            IsVisible() && !IsDisabled() && onPress) {
+            onPress();
+            return true;
+        }
+        return UltraCanvasPieChartElement::OnEvent(event);
+    }
+};
+} // namespace
 
 void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume>& volumes) {
     if (!computerDriveRow) return;
@@ -8307,7 +8336,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         // The pie: used against free, as a ring with the percentage in its
         // hole. No slice labels - the lines under it say the numbers - and
         // the pie draws neither grid, axes nor a plot box of its own.
-        auto pie = std::make_shared<UltraCanvasPieChartElement>(
+        auto pie = std::make_shared<DriveRingChart>(
                 id + "-pie", 0, 0, kComputerPieSize, kComputerPieSize);
         pie->SetDonutMode(true);
         pie->SetInnerRadius(0.52f);
@@ -8324,16 +8353,29 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         pie->SetEnableZoom(false);
         pie->SetEnablePan(false);
         pie->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        // A click on the chart opens the drive, like the button under it.
-        pie->onSliceClick = [this, path](size_t) { NavigateTo(path); };
+        // A click anywhere on the chart opens the drive, like the button
+        // under it - the ring, its hole and the corners around it alike.
+        pie->onPress = [this, path]() { NavigateTo(path); };
         card->AddChild(pie);
 
         // In the ring's place when no size is known (ApplyVolumeSpaceToCard
         // swaps the two): what the drive is, drawn in the theme's muted ink
         // so the black line icons read on a dark page too. Hidden is
         // display: none, so the card keeps one picture's height.
-        auto symbol = CreateImageFromFile(id + "-symbol", 0, 0, kComputerPieSize, kComputerPieSize,
+        // The RAM chip and the network / cloud symbols are line drawings that
+        // fill their box: at the ring's size they outweighed the rings
+        // beside them, so they are drawn at half of it, centred in the
+        // ring's place (the margins keep the card's lines level with its
+        // neighbours').
+        const bool smallSymbol = source.symbol == "ram-chip.svg" || source.symbol == "ftp.svg" ||
+                                 source.symbol == "cloud.svg";
+        const int symbolSize = smallSymbol ? kComputerPieSize / 2 : kComputerPieSize;
+        auto symbol = CreateImageFromFile(id + "-symbol", 0, 0, symbolSize, symbolSize,
                                           IconPath(source.symbol));
+        if (smallSymbol) {
+            const float m = static_cast<float>(kComputerPieSize - symbolSize) / 2.0f;
+            symbol->SetMargin(m, 0.0f);
+        }
         symbol->SetFitMode(ImageFitMode::Contain);
         symbol->SetMaskColor(Look().inkMuted);
         symbol->SetClickable(true);
@@ -8689,12 +8731,19 @@ void UltraFilerWindow::FillComputerBreadcrumb(UltraCanvasBreadcrumb* crumb) {
 // ===== NAVIGATION =====
 
 void UltraFilerWindow::NavigateTo(const std::string& path) {
+    const bool wasComputer = computerShown;
     // Navigating shows a folder, so it always brings the folder display back.
     ShowBrowsingView();
     // A new folder ends whatever the last drop onto a drive had to report.
     remoteDropNote.clear();
     ClearTransferNote();
-    if (!filer || path.empty() || path == filer->GetPath()) return;
+    if (!filer || path.empty()) return;
+    if (path == filer->GetPath()) {
+        // Back from the Computer page to the folder still under it: no new
+        // path for the display, but a step for Back / Forward all the same.
+        if (wasComputer) RecordHistoryStep(ActiveTabState(), path);
+        return;
+    }
     // "\\NAS" typed or clicked: no folder to set, a computer to open.
     if (IsNetworkServerPath(path)) {
         OpenNetworkServer(path);
@@ -8704,23 +8753,48 @@ void UltraFilerWindow::NavigateTo(const std::string& path) {
 }
 
 void UltraFilerWindow::NavigateBack() {
-    ShowBrowsingView();
     FilerTabState* tab = ActiveTabState();
-    if (!tab || tab->historyIndex == 0 || tab->history.empty()) return;
-    tab->navigatingHistory = true;
-    --tab->historyIndex;
-    tab->filer->SetPath(tab->history[tab->historyIndex]);
-    tab->navigatingHistory = false;
+    if (!tab || tab->historyIndex == 0 || tab->history.empty()) {
+        ShowBrowsingView();
+        return;
+    }
+    GoToHistoryStep(tab, tab->historyIndex - 1);
 }
 
 void UltraFilerWindow::NavigateForward() {
-    ShowBrowsingView();
     FilerTabState* tab = ActiveTabState();
-    if (!tab || tab->history.empty() || tab->historyIndex + 1 >= tab->history.size()) return;
+    if (!tab || tab->history.empty() || tab->historyIndex + 1 >= tab->history.size()) {
+        ShowBrowsingView();
+        return;
+    }
+    GoToHistoryStep(tab, tab->historyIndex + 1);
+}
+
+void UltraFilerWindow::GoToHistoryStep(FilerTabState* tab, size_t index) {
+    if (!tab || index >= tab->history.size()) return;
     tab->navigatingHistory = true;
-    ++tab->historyIndex;
-    tab->filer->SetPath(tab->history[tab->historyIndex]);
+    tab->historyIndex = index;
+    const std::string& entry = tab->history[index];
+    if (entry == kComputerHistoryEntry) {
+        SetComputerPageVisible(true);
+    } else {
+        ShowBrowsingView();
+        tab->filer->SetPath(entry);
+    }
     tab->navigatingHistory = false;
+    UpdateNavButtons();
+}
+
+void UltraFilerWindow::RecordHistoryStep(FilerTabState* tab, const std::string& entry) {
+    if (!tab || tab->navigatingHistory || entry.empty()) return;
+    if (tab->historyIndex + 1 < tab->history.size())
+        tab->history.erase(tab->history.begin() + static_cast<std::ptrdiff_t>(tab->historyIndex) + 1,
+                           tab->history.end());
+    if (tab->history.empty() || tab->history.back() != entry) {
+        tab->history.push_back(entry);
+        tab->historyIndex = tab->history.size() - 1;
+    }
+    UpdateNavButtons();
 }
 
 void UltraFilerWindow::NavigateUp() {
@@ -8747,15 +8821,7 @@ void UltraFilerWindow::NavigateUp() {
 }
 
 void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& path) {
-    if (!tab->navigatingHistory) {
-        if (tab->historyIndex + 1 < tab->history.size())
-            tab->history.erase(tab->history.begin() + tab->historyIndex + 1,
-                               tab->history.end());
-        if (tab->history.empty() || tab->history.back() != path) {
-            tab->history.push_back(path);
-            tab->historyIndex = tab->history.size() - 1;
-        }
-    }
+    RecordHistoryStep(tab, path);
     const int index = TabIndexOf(tab);
     if (index >= 0) {
         tabbedContainer->SetTabTitle(index, TabTitleFor(path));
@@ -9595,6 +9661,22 @@ void UltraFilerWindow::WireTransferNotice(UltraCanvasFilerWidget* target) {
     target->onBackgroundProgress = [this, target](const FilerBackgroundProgress& progress) {
         ShowBackgroundProgress(target, progress);
     };
+    // Ctrl+C / Ctrl+X give no sign of their own beyond the cut ghosting: the
+    // status line says what is now on the clipboard.
+    target->onClipboardSet = [this](const std::vector<FilerEntry>& entries, bool cut) {
+        ShowTransferNote(ClipboardNote(entries, cut));
+    };
+}
+
+std::string UltraFilerWindow::ClipboardNote(const std::vector<FilerEntry>& entries, bool cut) {
+    if (entries.empty()) return {};
+    if (entries.size() == 1)
+        return cut ? TrF("\"{0}\" cut - paste it where it should go", entries.front().name)
+                   : TrF("\"{0}\" copied to the clipboard", entries.front().name);
+    const long long n = static_cast<long long>(entries.size());
+    return cut ? TrN("{n} item cut - paste them where they should go",
+                     "{n} items cut - paste them where they should go", n)
+               : TrN("{n} item copied to the clipboard", "{n} items copied to the clipboard", n);
 }
 
 void UltraFilerWindow::ShowBackgroundProgress(UltraCanvasFilerWidget* source,

@@ -104,6 +104,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.63.0 - onClipboardSet: entries went to the clipboard (Copy / Cut), for a confirmation
+// Version: 1.62.0 - CountTree, CountPasteTotals, DropFromPasteTotals: a copy of several entries
+//                  counts them up front, so its window shows "done / total" and a time left
 // Version: 1.61.1 - DetailsColumnTitle: the Details headings in the language shown
 // Version: 1.61.0 - openMenuProvider: a host's entries right after "Open with" in a file's
 //                  context menu (UltraFiler's "Edit in UltraPaint" / "Edit in ArtCreator")
@@ -2026,6 +2029,11 @@ namespace UltraCanvas {
         // confirmation on the host's status line; the widget shows nothing
         // of its own beyond the summary window for skipped entries.
         std::function<void(const FilerTransferResult&)> onTransferFinished;
+        // Entries have gone to the clipboard - Ctrl+C / Ctrl+X, the context or
+        // icon menu's Copy / Cut: the entries, and whether it was a cut. For a
+        // confirmation on the host's status line; the widget shows only the
+        // cut entries' ghosting.
+        std::function<void(const std::vector<FilerEntry>& entries, bool cut)> onClipboardSet;
         // A copy, move, delete, pack or unpack whose window the user sent to
         // the background: its progress, for the host's status bar (see
         // FilerBackgroundProgress). Without a handler the window offers no
@@ -4036,6 +4044,10 @@ namespace UltraCanvas {
         // give up when the operation `credit` belongs to is cancelled.
         static uint64_t CountTreeBytes(const std::string& path,
                                        const FileOpItemCredit& credit);
+        // The same walk, with the entries (the root among them) and the bytes
+        // apart; false when it was cancelled half way.
+        static bool CountTree(const std::string& path, const FileOpItemCredit& credit,
+                              uint64_t& entries, uint64_t& bytes);
         static uint64_t CountTreeEntries(const std::string& path,
                                          const FileOpItemCredit& credit);
 
@@ -4097,6 +4109,12 @@ namespace UltraCanvas {
             std::vector<ItemKind> itemKinds;
             size_t next = 0;
             bool cut = false;
+            // A copy of several entries: their sizes, counted once up front
+            // (CountPasteTotals) - entries + bytes per source, as CountTreeBytes
+            // gives them - and whether that was done.
+            struct Counted { uint64_t entries = 0; uint64_t bytes = 0; bool dropped = false; };
+            std::unordered_map<std::string, Counted> counted;
+            bool totalsCounted = false;
             PasteConflictAction action = PasteConflictAction::KeepBoth;
             bool applyToAll = false;   // reuse `action` for later file conflicts
             // What a Replace of a file asks of the pasted file first.
@@ -4159,6 +4177,12 @@ namespace UltraCanvas {
         // Runs off the UI thread and touches nothing but the queue, the
         // filesystem and the progress counters.
         void PasteWorkerLoop(PendingPaste* pp);
+        // A copy of several entries: each counted before the first is
+        // touched, their sums the window's totals (a copy of one counts it
+        // anyway, CountTreeBytes). Kept in `pp`, so no entry is walked twice.
+        static void CountPasteTotals(PendingPaste& pp, FileOperation* op);
+        // An entry the paste leaves out: its share comes off those totals.
+        static void DropFromPasteTotals(PendingPaste& pp, FileOperation* op, const std::string& src);
         // UI thread, once the worker handed the queue back: opens the dialog
         // the stop asks for, or finishes the paste.
         void AfterPasteStretch();

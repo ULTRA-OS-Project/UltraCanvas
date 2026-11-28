@@ -81,6 +81,8 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.44.0 - RecordHistoryStep, GoToHistoryStep: the Computer page is a step of Back / Forward
+// Version: 1.43.0 - ClipboardNote: the status line after Copy / Cut
 // Version: 1.42.0 - BuildOpenMenuItems: "Edit in ArtCreator" on a drawing's context menu too
 // Version: 1.41.0 - BuildOpenMenuItems: "Edit in UltraPaint" on a picture's context menu
 // Version: 1.40.0 - IsOpen: whether the window is still open (a host that
@@ -1017,6 +1019,14 @@ private:
     void NavigateForward();
     void NavigateUp();
     void HandlePathChanged(FilerTabState* tab, const std::string& path);
+    // A step of the tab's Back / Forward history: a folder, or the Computer
+    // page (kComputerHistoryEntry), which is a view over the folder display
+    // and no path of its own. A step after the current one is dropped, and
+    // the same step twice in a row is one.
+    void RecordHistoryStep(FilerTabState* tab, const std::string& entry);
+    // Goes to the tab's history step `index`: the Computer page, or a folder.
+    void GoToHistoryStep(FilerTabState* tab, size_t index);
+    static constexpr const char* kComputerHistoryEntry = "\x01computer";
     // Per-folder display state (UltraFilerFolderViews). Entering a folder puts
     // back the view type and sort order it was last looked at with; changing
     // either while a folder is shown records it against that folder.
@@ -1108,6 +1118,9 @@ private:
                                 const FilerBackgroundProgress& progress);
     std::string DescribeBackgroundOperation() const;
     void ShowTransferNote(const std::string& message);
+    // What the status line says after Copy / Cut: "\"Report.pdf\" copied to
+    // the clipboard", "12 items cut - paste them where they should go".
+    static std::string ClipboardNote(const std::vector<FilerEntry>& entries, bool cut);
     void ClearTransferNote();
     // Whether a file on a remote drive is previewed: pictures, vector
     // drawings and 3D models only, because showing one means downloading
