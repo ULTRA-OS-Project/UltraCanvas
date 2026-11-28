@@ -10,25 +10,31 @@
 // accumulate and bake into the emitted coordinates through the shared
 // PathOps normalisation, and the Y axis flips to PDF's Y-up page space.
 //
-// Export-only: reading PDF is the MuPDF-based PDF plugin's job, so
-// CanImport() is false and the Import methods return null. Gradients fall
+// Reading is the MuPDF-based PDF plugin's job: Import hands the file to
+// ImportPDFAsVectorDocument (UltraCanvasPDF.h), and a build without MuPDF
+// reads no PDF (CanImport() is false, Import warns). Gradients fall
 // back to the blend of their end stops (no shading dictionaries yet), and
 // centre/right text anchoring is approximated from an average glyph width
 // (exact metrics would need embedded font programs) - each warned.
+// Version: 1.3.0 - Import: through the PDF plugin (MuPDF), the page format kept
 // Version: 1.2.0 - an even-odd shape is filled with f* / B*
 // Version: 1.1.0
-// Last Modified: 2026-09-19
+// Last Modified: 2026-11-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #include "UltraCanvasTextUtils.h"   // FormatFixedClassic - dot-decimal, fixed point
+#ifdef ULTRACANVAS_PDF_MUPDF
+#include "Plugins/Documents/UltraCanvasPDF.h"   // ImportPDFAsVectorDocument
+#endif
 
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <functional>
 #include <locale>
 #include <map>
@@ -607,27 +613,55 @@ FormatCapabilities PDFVectorConverter::GetCapabilities() const {
     return caps;
 }
 
+namespace {
+#ifdef ULTRACANVAS_PDF_MUPDF
+std::shared_ptr<VectorStorage::VectorDocument> ImportPdfBytes(const std::string& data,
+                                                               const ConversionOptions& options) {
+    const std::vector<uint8_t> bytes(data.begin(), data.end());
+    auto doc = ImportPDFAsVectorDocument(bytes, options.WarningCallback);
+    if (doc && options.ProgressCallback) options.ProgressCallback(1.0f);
+    return doc;
+}
+#endif
+}   // namespace
+
 std::shared_ptr<VectorStorage::VectorDocument> PDFVectorConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    (void)filename;
-    if (options.WarningCallback) {
-        options.WarningCallback(
-                "PDFVectorConverter cannot import; render PDF files through the "
-                "PDF plugin (MuPDF) instead");
+#ifdef ULTRACANVAS_PDF_MUPDF
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
+    if (!file) {
+        if (options.WarningCallback) options.WarningCallback("The file could not be opened.");
+        return nullptr;
     }
+    const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return ImportPdfBytes(data, options);
+#else
+    (void)filename;
+    if (options.WarningCallback)
+        options.WarningCallback("This build reads no PDF (it was built without MuPDF).");
     return nullptr;
+#endif
 }
 
 std::shared_ptr<VectorStorage::VectorDocument> PDFVectorConverter::ImportFromString(
         const std::string& data, const ConversionOptions& options) {
+#ifdef ULTRACANVAS_PDF_MUPDF
+    return ImportPdfBytes(data, options);
+#else
     (void)data;
     return Import("", options);
+#endif
 }
 
 std::shared_ptr<VectorStorage::VectorDocument> PDFVectorConverter::ImportFromStream(
         std::istream& stream, const ConversionOptions& options) {
+#ifdef ULTRACANVAS_PDF_MUPDF
+    const std::string data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    return ImportPdfBytes(data, options);
+#else
     (void)stream;
     return Import("", options);
+#endif
 }
 
 bool PDFVectorConverter::Export(

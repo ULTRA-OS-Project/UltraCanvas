@@ -3,6 +3,8 @@
 // half every caller shares: a VectorDocument fitted into an offscreen render
 // context and read back as a pixmap.
 //
+// Version: 1.3.0 - CanImportVectorExtension, ImportableVectorExtensions: the
+//                 provider's ImportExtensions are opened, never previewed
 // Version: 1.2.0 - LoadVectorPreviewDocumentFromMemory
 // Version: 1.1.0
 // Last Modified: 2026-10-14
@@ -58,6 +60,15 @@ bool ProviderClaims(const VectorPreviewProvider& provider,
                     const std::string& extension) {
     if (!provider.Valid() || extension.empty()) return false;
     for (const std::string& claimed : provider.Extensions())
+        if (claimed == extension) return true;
+    return false;
+}
+
+// An extension the provider opens for editing only (ImportExtensions).
+bool ProviderImportsOnly(const VectorPreviewProvider& provider,
+                         const std::string& extension) {
+    if (!provider.Valid() || !provider.ImportExtensions || extension.empty()) return false;
+    for (const std::string& claimed : provider.ImportExtensions())
         if (claimed == extension) return true;
     return false;
 }
@@ -130,10 +141,31 @@ std::shared_ptr<VectorStorage::VectorDocument> LoadVectorPreviewDocumentFromMemo
     return provider.LoadFromMemory(ext, data, size);
 }
 
+bool CanImportVectorExtension(const std::string& extensionOrPath) {
+    if (CanPreviewVectorExtension(extensionOrPath)) return true;
+    return ProviderImportsOnly(CurrentProvider(), ExtensionOf(extensionOrPath));
+}
+
+std::vector<std::string> ImportableVectorExtensions() {
+    std::vector<std::string> extensions = PreviewableVectorExtensions();
+    const VectorPreviewProvider provider = CurrentProvider();
+    if (provider.Valid() && provider.ImportExtensions) {
+        for (std::string e : provider.ImportExtensions()) {
+            for (char& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (!e.empty()) extensions.push_back(std::move(e));
+        }
+    }
+    std::sort(extensions.begin(), extensions.end());
+    extensions.erase(std::unique(extensions.begin(), extensions.end()), extensions.end());
+    return extensions;
+}
+
 std::shared_ptr<VectorStorage::VectorDocument> ImportVectorDocument(
         const std::string& path, const VectorPreviewProvider::NoteFn& note) {
     const VectorPreviewProvider provider = CurrentProvider();
     if (!provider.Valid()) return nullptr;
+    if (ProviderImportsOnly(provider, ExtensionOf(path)))
+        return provider.Import ? provider.Import(path, note) : nullptr;
     if (!ProviderClaims(provider, ExtensionOf(path))) {
         if (!provider.ClaimsFile || !provider.ClaimsFile(path)) return nullptr;
     }

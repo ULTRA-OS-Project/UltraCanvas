@@ -1,10 +1,12 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasVectorFormatsPlugin.cpp
 // Implementation of the vector formats graphics plugin - see the header.
+// Version: 1.6.0 - PDF opens for editing (the preview provider's ImportExtensions)
+//                  and is nothing else here: not a previewed drawing, not a graphics file
 // Version: 1.5.0 - GetFileInfo reports the page (width / height, in points): read, not left at 0
 // Version: 1.4.0 - OpenDocument Drawing (.odg / .otg / .fodg) read and written
 // Version: 1.3.0 - the preview provider reads from memory too (ImportFromString)
 // Version: 1.2.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorFormatsPlugin.h"
@@ -72,17 +74,30 @@ std::string NormalizedExtension(std::string ext) {
     return ext;
 }
 
-std::vector<std::string> ExtensionsWhere(bool (IVectorFormatConverter::*can)() const) {
+// Read only when a drawing program opens one: a PDF is a document with pages
+// to the media viewer, the Filer and the image loader, which show it through
+// the PDF plugin, and a drawing only in ArtCreator's hands. So it is left out
+// of what the graphics registry and the preview seam are told this plugin
+// reads, and handed over as the provider's ImportExtensions instead.
+bool IsOpenOnlyExtension(const std::string& ext) { return ext == "pdf"; }
+
+std::vector<std::string> ExtensionsWhere(bool (IVectorFormatConverter::*can)() const, bool openOnly = false) {
     std::vector<std::string> out;
     for (const auto& converter : AllConverters()) {
         if (!((*converter).*can)()) continue;
         for (const std::string& e : converter->GetFileExtensions()) {
             std::string ext = NormalizedExtension(e);
-            if (!ext.empty() && std::find(out.begin(), out.end(), ext) == out.end())
-                out.push_back(ext);
+            if (ext.empty() || std::find(out.begin(), out.end(), ext) != out.end()) continue;
+            if (can == &IVectorFormatConverter::CanImport && IsOpenOnlyExtension(ext) != openOnly) continue;
+            out.push_back(ext);
         }
     }
     return out;
+}
+
+// A path or extension the previews and the graphics registry leave alone.
+bool IsOpenOnlyPath(const std::string& extensionOrPath) {
+    return IsOpenOnlyExtension(NormalizedExtension(ExtensionOf(extensionOrPath)));
 }
 
 }   // namespace
@@ -118,6 +133,7 @@ UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(
 
 std::shared_ptr<VectorStorage::VectorDocument>
 UltraCanvasVectorFormatsPlugin::LoadVectorDocument(const std::string& filePath) {
+    if (IsOpenOnlyPath(filePath)) return nullptr;
     auto converter = CreateConverterForExtension(filePath);
     if (!converter || !converter->CanImport()) return nullptr;
     return converter->Import(filePath, DebugLogOptions());
@@ -131,6 +147,7 @@ bool UltraCanvasVectorFormatsPlugin::SaveVectorDocument(
 }
 
 bool UltraCanvasVectorFormatsPlugin::CanHandle(const std::string& filePath) const {
+    if (IsOpenOnlyPath(filePath)) return false;
     auto converter = CreateConverterForExtension(filePath);
     return converter && converter->CanImport();
 }
@@ -222,6 +239,7 @@ void RegisterVectorFormatsPlugin() {
     // The formats whose suffix settles nothing: a .bak is a drawing only when
     // its header says so (UltraCanvasCADConverters.h).
     provider.ClaimsFile = [](const std::string& path) {
+        if (IsOpenOnlyPath(path)) return false;
         auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
         return converter && converter->CanImport();
     };
@@ -229,6 +247,7 @@ void RegisterVectorFormatsPlugin() {
     // without a file, in a build whose libvips cannot rasterize SVG.
     provider.LoadFromMemory = [](const std::string& extension, const uint8_t* data, size_t size)
             -> std::shared_ptr<VectorStorage::VectorDocument> {
+        if (IsOpenOnlyPath("." + NormalizedExtension(extension))) return nullptr;
         auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(extension);
         if (!converter || !converter->CanImport() || !data || size == 0) return nullptr;
         return converter->ImportFromString(std::string(reinterpret_cast<const char*>(data), size),
@@ -243,6 +262,10 @@ void RegisterVectorFormatsPlugin() {
         VectorConverter::ConversionOptions options;
         options.WarningCallback = note;
         return converter->Import(path, options);
+    };
+    // Opened, never previewed: PDF (see IsOpenOnlyExtension).
+    provider.ImportExtensions = []() {
+        return ExtensionsWhere(&IVectorFormatConverter::CanImport, true);
     };
     provider.SaveExtensions = []() {
         return UltraCanvasVectorFormatsPlugin().GetSaveExtensions();

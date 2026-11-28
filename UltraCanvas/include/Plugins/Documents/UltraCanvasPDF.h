@@ -1,6 +1,8 @@
 // include/Plugins/Documents/UltraCanvasPDF.h
 // PDF document interface — read, write, page operations, content editing.
 // Backed by MuPDF when ULTRACANVAS_PLUGIN_PDF is enabled.
+// Version: 1.4.0 - ImportPDFAsVectorDocument: a page as an editable drawing,
+//                  on the PDF's own page format
 // Version: 1.3.0 - PDFOpenError / GetLastOpenError: why an open failed - a
 //                  password-protected document opened without its password,
 //                  or with one that is not right, told apart from a damaged file
@@ -20,6 +22,8 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+namespace VectorStorage { class VectorDocument; }
 
 // ===== METADATA =====
 
@@ -249,6 +253,23 @@ public:
 // Returns nullptr on failure.
 std::unique_ptr<IPDFDocument> OpenPDF(const std::string& path,
                                       const std::string& password = "");
+
+// ===== A PAGE AS A DRAWING =====
+// One page of the PDF in `data` as an editable vector drawing, for a drawing
+// program's Open (UltraCanvasFileLoader::LoadVectorDocument reaches it through
+// the Vector plugin's PDF converter). The document takes over the page format:
+// its Size and ViewBox are the page as a viewer shows it - the crop box (the
+// media box when there is none), turned by /Rotate, scaled by /UserUnit - in
+// points. Paths, text (a line per text object, a span per word, at the PDF's
+// positions), pictures (JPEG and PNG streams as they are), clips, groups and
+// tiling patterns are carried over; shadings become pictures. What cannot be
+// ("soft masks are not kept", "the PDF has 4 pages; page 1 was opened") goes
+// to `note`, as does the reason for a null result. `pageNumber` is 1-based
+// and clamped to the pages there are. Defined only when the build has MuPDF
+// (ULTRACANVAS_PDF_MUPDF); callers test that macro.
+std::shared_ptr<VectorStorage::VectorDocument> ImportPDFAsVectorDocument(
+        const std::vector<uint8_t>& data, const std::function<void(const std::string&)>& note,
+        int pageNumber = 1, const std::string& password = std::string());
 
 } // namespace UltraCanvas
 

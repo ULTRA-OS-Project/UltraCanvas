@@ -261,7 +261,11 @@ drawing it so.
 ## Files
 
 Opens SVG, XAR (compressed too, through the XAR plugin's reader), EMF,
-WMF, DXF and DWG; saves XAR (the native format: shapes, fills with every
+WMF, DXF and DWG, and PDF in a build with MuPDF: a PDF opens on its own page
+format (its crop box, turned and scaled as a viewer shows it - an 80 x 200
+inch banner opens on a 2032 x 5080 mm page), with its shapes, text and
+pictures as objects to edit; a PDF of several pages opens its first, and the
+status bar says so. Saves XAR (the native format: shapes, fills with every
 stop, text, transparency ramps and mixes, shadows and feathers, clip
 views, contours, blends, moulds and bevels all round trip as Xara's own
 records; Xara's own arrowheads as Xara arrowheads, the rest of the line

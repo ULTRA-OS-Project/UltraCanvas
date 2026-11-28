@@ -23,6 +23,8 @@
 // detail pane, and the caller picks the size. RenderVectorPreviewPixmap()
 // below is the drawing half, shared by every caller that wants an image.
 //
+// Version: 1.3.0 - ImportExtensions: formats opened for editing but never
+//                 previewed as drawings (PDF, which has viewers of its own)
 // Version: 1.2.0 - LoadFromMemory: a drawing from bytes, for an SVG that arrived
 //                 without a file (UCImage::LoadFromMemory)
 // Version: 1.1.0
@@ -81,6 +83,13 @@ struct VectorPreviewProvider {
     std::function<std::shared_ptr<VectorStorage::VectorDocument>(
             const std::string& path, const NoteFn& note)> Import;
 
+    // Optional: extensions Import() reads although Extensions() leaves them
+    // out - a format a drawing program opens, but that the media viewer, the
+    // Filer and the image loader show some other way. A PDF is a drawing to
+    // ArtCreator, and a document with pages to everything that previews: it
+    // must not become a "vector file" there. Lowercase, without a dot.
+    std::function<std::vector<std::string>()> ImportExtensions;
+
     // Every extension Save() writes, lowercase and without a dot.
     std::function<std::vector<std::string>()> SaveExtensions;
 
@@ -121,6 +130,15 @@ std::shared_ptr<VectorStorage::VectorDocument> LoadVectorPreviewDocumentFromMemo
 // ===== WHAT AN EDITOR ASKS =====
 // The same provider's full read and its write, for UltraCanvasFileLoader's
 // LoadVectorDocument / SaveVectorDocument. Applications call those, not these.
+
+// True when ImportVectorDocument() reads the extension or path: what
+// CanPreviewVectorExtension() says yes to, and the provider's
+// ImportExtensions() besides.
+bool CanImportVectorExtension(const std::string& extensionOrPath);
+
+// Every extension CanImportVectorExtension() answers true for, sorted,
+// lowercase, undotted.
+std::vector<std::string> ImportableVectorExtensions();
 
 // Reads a drawing with the reader's notes; null when nothing reads it.
 std::shared_ptr<VectorStorage::VectorDocument> ImportVectorDocument(

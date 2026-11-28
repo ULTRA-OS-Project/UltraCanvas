@@ -213,6 +213,18 @@ UltraCanvasFileLoader::SaveVectorDocument(*doc, "drawing.xar", error);   // form
 opts.AddFilter("Drawings", UltraCanvasFileLoader::GetVectorLoadExtensions());
 ```
 
+A PDF opens the same way when the build has MuPDF: `LoadVectorDocument("poster.pdf", ...)`
+gives its first page as a drawing whose `Size` and `ViewBox` are the page as a
+viewer shows it - the crop box, turned by `/Rotate`, scaled by `/UserUnit` - so
+a drawing program opens it on the PDF's own page format, not on a default
+sheet. Paths, text (a line per text object, a word per span, at the PDF's
+positions), pictures (JPEG and PNG streams embedded unchanged), clips, groups
+and tiling patterns carry over; shadings become pictures, and what cannot
+(soft masks, the pages after the first) is reported in `notes`. `pdf` is in
+`GetVectorLoadExtensions()` and `CanLoadVectorDocument()`, but not among the
+vector *previews* (`CanPreviewVectorExtension`): the media viewer and the
+Filer keep showing a PDF as the document it is.
+
 `UCImage` also opens `.svg` (through librsvg), but as pixels — right for a
 viewer, useless to an editor. Use `LoadVectorDocument` whenever the drawing
 is to be changed or written back.
