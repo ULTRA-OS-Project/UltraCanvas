@@ -1,3 +1,29 @@
+#### 2026-11-28 *0.9.616*
+- **A context menu no longer takes a scrollbar while the window has room for
+  it.** A menu opened at a point went below the point or ended at it, and with
+  room on neither side it was cut short with a scrollbar - one entry more
+  (UltraFiler's "Open path" in search results) was enough. It now moves up as
+  far as it must and shows whole; only a menu taller than the window scrolls.
+  `UltraCanvasMenu::HasScrollbar()` tells which.
+- **Progress window: the time left no longer jumps between seconds and
+  hours.** It came from the last three seconds' byte speed, which over many
+  small files swings with each file's size. It is now the whole run's average:
+  how far the work is - the share of items and of bytes done, half each - and
+  the active time that took (`CombinedProgress`, `EstimateSecondsLeft`).
+  `Tests/ProgressTimeLeftTest` replays a copy of 44 000 files.
+- **Filer widget: a copy of several entries shows its totals.** It counts the
+  entries before the first is touched (`CountPasteTotals`), so the window's
+  Items and Size read "done / total"; a skipped entry comes off them.
+- **Filer widget: `onClipboardSet(entries, cut)`** fires when Copy or Cut puts
+  entries on the clipboard, so a host can confirm it.
+- **Filer widget: a vector document's thumbnail is the preview it carries.**
+  Xara, CorelDRAW, OpenDocument drawings and PostScript files show the picture
+  their authoring program stored in them; the Vector plugin draws the file only
+  when it has none. It used to draw first, and showed what its converter makes
+  of the file - a Xara drawing without its text and shading, a CorelDRAW line
+  drawing as a black block. Thumbnail cache generation 5, so a cached tile is
+  made again.
+
 #### 2026-11-28 *0.9.615*
 - **A PDF opens as an editable drawing, on its own page format.**
   `UltraCanvasFileLoader::LoadVectorDocument` read no PDF at all - the Vector
