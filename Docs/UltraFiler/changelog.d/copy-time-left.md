@@ -6,3 +6,5 @@
   the clipboard", "\"Archive\" cut - paste it where it should go".
 - **The right-click menu shows whole** when it fits the window, instead of a
   scrollbar - in search results it has one entry more.
+- **Xara and CorelDRAW thumbnails show the file's own preview** - the picture
+  Xara or CorelDRAW stored in it - instead of our own drawing of the file.

@@ -51,6 +51,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.64.0 - a vector document's thumbnail is the preview it carries (Xara, CorelDRAW, ...)
+//                  where it has one; the Vector plugin's rendering only where it has none
 // Version: 1.63.0 - onClipboardSet after Copy / Cut put entries on the clipboard
 // Version: 1.62.0 - a copy of several entries counts them before the first is touched: the
 //                  progress window's items and size read "done / total" (they had no total), and
@@ -1944,17 +1946,24 @@ namespace UltraCanvas {
                         if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
                             pm = img->GetPixmap(w, h, fit, scale);
                     }
-                    // The drawing itself, where a registered Vector plugin
-                    // reads the format: rendered from the document at the
-                    // tile's size rather than scaled from whatever bitmap
-                    // the authoring program happened to store.
-                    if (!pm && CanPreviewVectorExtension(path)) {
-                        pm = RenderVectorDrawingPixmap(path, w, h,
-                                                       scale);
-                    }
+                    // The preview the document carries (Xara, CorelDRAW,
+                    // OpenDocument drawings, PostScript): the authoring
+                    // program's own picture of the drawing, which is what the
+                    // drawing really looks like. Xara's is a JPEG of about
+                    // 512 px, enough for any tile.
                     if (!pm && FormatCarriesEmbeddedPreview(ext)) {
                         pm = RenderEmbeddedPreviewPixmap(path, w, h,
                                                          fit, scale);
+                    }
+                    // The drawing itself, where a registered Vector plugin
+                    // reads the format and the file has no preview of its
+                    // own (DXF, DWG, EMF, WMF, a document saved without one).
+                    // It came first once, and drew what the converter makes
+                    // of the file: a Xara drawing lost its text and shading,
+                    // a CorelDRAW line drawing came out as a black block.
+                    if (!pm && CanPreviewVectorExtension(path)) {
+                        pm = RenderVectorDrawingPixmap(path, w, h,
+                                                       scale);
                     }
                     // PDF-compatible Illustrator files (CS2 and newer) carry
                     // no EPS preview but are a PDF from the first byte, so
