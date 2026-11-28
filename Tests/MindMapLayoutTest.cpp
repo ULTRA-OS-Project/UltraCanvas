@@ -965,16 +965,16 @@ static void TestBalloonLayout() {
 
     // ---- Ring radius from the discs (L3) ----
     // Bigger children push their ring out.
-    MindMapModel small;
-    std::string sroot = small.SetCentralTopic("C");
-    std::string shub = small.AddTopic(sroot, "Hub");
-    for (int i = 0; i < 10; ++i) small.AddTopic(shub, "x");
-    MindMapModel wide = small;
+    MindMapModel tenSmall;
+    std::string sroot = tenSmall.SetCentralTopic("C");
+    std::string shub = tenSmall.AddTopic(sroot, "Hub");
+    for (int i = 0; i < 10; ++i) tenSmall.AddTopic(shub, "x");
+    MindMapModel wide = tenSmall;
     for (auto& [id, topic] : wide.Topics()) if (topic.parentId == shub) topic.text = "A much longer label";
     double smallRing = 0.0, wideRing = 0.0;
     {
-        MindMapLayoutResult r = Run(small, options);
-        smallRing = DistanceBetween(CentreOf(r.Get(shub)), CentreOf(r.Get(small.GetTopic(shub)->childIds[0])));
+        MindMapLayoutResult r = Run(tenSmall, options);
+        smallRing = DistanceBetween(CentreOf(r.Get(shub)), CentreOf(r.Get(tenSmall.GetTopic(shub)->childIds[0])));
         MindMapLayoutResult w = Run(wide, options);
         wideRing = DistanceBetween(CentreOf(w.Get(shub)), CentreOf(w.Get(wide.GetTopic(shub)->childIds[0])));
         CHECK(CountOverlaps(w) == 0, "balloon: ten wide labels on one ring do not overlap");
