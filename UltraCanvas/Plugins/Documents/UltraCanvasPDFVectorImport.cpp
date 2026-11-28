@@ -24,6 +24,7 @@
 // (ULTRACANVAS_PDF_MUPDF); MuPDF stays private to this library, so the
 // Vector plugin reaches it through this function and never includes fitz.h.
 //
+// Version: 1.0.1 - builds against MuPDF after 1.23 too (end_mask, begin_tile)
 // Version: 1.0.0
 // Last Modified: 2026-11-28
 // Author: UltraCanvas Framework
@@ -807,6 +808,20 @@ struct VectorDevice {
 
 PageBuilder& B(fz_device* dev) { return *reinterpret_cast<VectorDevice*>(dev)->builder; }
 
+// Two callbacks whose signature MuPDF changed after 1.23: end_mask gained the
+// mask's transfer function, begin_tile the document id. The parameters after
+// the ones read here are deduced from the slot the function is assigned to,
+// so one source builds against the 1.23 of the Linux distributions and the
+// newer MuPDF vcpkg gives macOS and Windows.
+template <typename... Rest>
+void EndMaskCallback(fz_context*, fz_device* d, Rest...) { B(d).EndMask(); }
+
+template <typename... Rest>
+int BeginTileCallback(fz_context*, fz_device* d, fz_rect area, fz_rect view, float xs, float ys, fz_matrix m,
+                      Rest...) {
+    return B(d).BeginTile(area, view, xs, ys, m);
+}
+
 fz_device* NewVectorDevice(fz_context* ctx, PageBuilder& builder) {
     auto* dev = fz_new_derived_device(ctx, VectorDevice);
     dev->builder = &builder;
@@ -848,13 +863,12 @@ fz_device* NewVectorDevice(fz_context* ctx, PageBuilder& builder) {
     dev->super.pop_clip = [](fz_context*, fz_device* d) { B(d).PopClip(); };
     dev->super.begin_mask = [](fz_context*, fz_device* d, fz_rect, int, fz_colorspace*, const float*,
                                fz_color_params) { B(d).BeginMask(); };
-    dev->super.end_mask = [](fz_context*, fz_device* d) { B(d).EndMask(); };
+    dev->super.end_mask = EndMaskCallback;
     dev->super.begin_group = [](fz_context*, fz_device* d, fz_rect, fz_colorspace*, int, int, int blend, float a) {
         B(d).BeginGroup(blend, a);
     };
     dev->super.end_group = [](fz_context*, fz_device* d) { B(d).EndGroup(); };
-    dev->super.begin_tile = [](fz_context*, fz_device* d, fz_rect area, fz_rect view, float xs, float ys,
-                               fz_matrix m, int) { return B(d).BeginTile(area, view, xs, ys, m); };
+    dev->super.begin_tile = BeginTileCallback;
     dev->super.end_tile = [](fz_context*, fz_device* d) { B(d).EndTile(); };
     return &dev->super;
 }
