@@ -1,6 +1,8 @@
 // core/UltraCanvasProgressDialog.cpp
 // Implementation of the modal progress window.
 // See UltraCanvasProgressDialog.h for the contract.
+// Version: 2.2.0 - time left from the whole run so far (EstimateSecondsLeft, CombinedProgress)
+//                  rather than from the last three seconds' speed
 // Version: 2.1.0 - Run in background (ProgressDialogOptions::onBackground)
 // Version: 2.0.0 - the transfer layout: route chips, the strip of figures, the percentage alone in
 //                  the ring, Pause / Resume; plain labels refreshed at most four times a second
@@ -34,6 +36,8 @@ namespace UltraCanvas {
         constexpr float kStripHeight = 52.0f;
         constexpr double kRateWindowSeconds = 3.0;   // speed is averaged over this
         constexpr double kRateMinSeconds = 1.0;      // and shown once this much is in
+        constexpr double kEstimateMinSeconds = 2.0;  // time left: shown after this much work
+        constexpr double kEstimateMinProgress = 0.002;   // ... and this much progress
 
         // The centre reading. A negative fraction means the total is unknown,
         // so there is no honest percentage to show.
@@ -320,6 +324,13 @@ namespace UltraCanvas {
     void UltraCanvasProgressDialog::SetProgress(double value) {
         const double clamped = value < 0.0 ? -1.0 : std::clamp(value, 0.0, 1.0);
         const auto now = std::chrono::steady_clock::now();
+        if (!paused && !runStarted &&
+            (figures.doneItems > 0 || figures.doneBytes > 0 || clamped > 0.0)) {
+            runStarted = true;
+            runStart = now;
+            pausedFor = {};
+            runStartProgress = std::max(0.0, CombinedProgress(figures, clamped));
+        }
         if (!paused) {
             samples.push_back({now, clamped, figures.doneBytes, figures.doneItems});
             while (samples.size() > 2 &&
@@ -373,18 +384,16 @@ namespace UltraCanvas {
 
         const double byteRate = RecentRate(1);
         const double itemRate = RecentRate(2);
-        const double fractionRate = RecentRate(0);
 
-        // Time left: from the bytes where their total is known (the truest),
-        // from the items where theirs is, else from how fast the ring moves.
+        // Time left: from everything done since the work began and the time
+        // it took (pauses left out) - not from the last seconds' speed, which
+        // over many small files swings with each file's size and made the
+        // estimate jump between seconds and hours.
         double secondsLeft = -1.0;
-        if (!paused) {
-            if (figures.totalBytes > 0 && byteRate > 0.0 && figures.doneBytes <= figures.totalBytes)
-                secondsLeft = static_cast<double>(figures.totalBytes - figures.doneBytes) / byteRate;
-            else if (figures.totalItems > 0 && itemRate > 0.0 && figures.doneItems <= figures.totalItems)
-                secondsLeft = static_cast<double>(figures.totalItems - figures.doneItems) / itemRate;
-            else if (fraction > 0.0 && fraction < 1.0 && fractionRate > 0.0)
-                secondsLeft = (1.0 - fraction) / fractionRate;
+        if (!paused && runStarted) {
+            const double worked = std::chrono::duration<double>(now - runStart - pausedFor).count();
+            secondsLeft = EstimateSecondsLeft(worked, runStartProgress,
+                                              CombinedProgress(figures, fraction));
         }
         const std::string dash = "\xE2\x80\x94";   // —
         const std::string left = paused ? Tr("Paused")
@@ -437,11 +446,36 @@ namespace UltraCanvas {
     void UltraCanvasProgressDialog::TogglePause() {
         if (closed || !options.onPause) return;
         paused = !paused;
-        // A pause is no measurement of speed: start over when it ends.
+        // A pause is no measurement of speed: start over when it ends; and
+        // its time is no work, so the time left leaves it out.
         samples.clear();
+        const auto now = std::chrono::steady_clock::now();
+        if (paused) pausedAt = now;
+        else if (runStarted) pausedFor += now - pausedAt;
         if (pauseButton) pauseButton->SetText(paused ? Tr("Resume") : Tr("Pause"));
         options.onPause(paused);
         RefreshTexts(true);
+    }
+
+    double UltraCanvasProgressDialog::CombinedProgress(const ProgressFigures& f, double ringFraction) {
+        auto share = [](uint64_t done, uint64_t total) {
+            return std::min(1.0, static_cast<double>(done) / static_cast<double>(total));
+        };
+        const bool items = f.totalItems > 0;
+        const bool bytes = f.totalBytes > 0;
+        if (items && bytes) return 0.5 * share(f.doneItems, f.totalItems) + 0.5 * share(f.doneBytes, f.totalBytes);
+        if (items) return share(f.doneItems, f.totalItems);
+        if (bytes) return share(f.doneBytes, f.totalBytes);
+        return ringFraction >= 0.0 ? std::min(1.0, ringFraction) : -1.0;
+    }
+
+    double UltraCanvasProgressDialog::EstimateSecondsLeft(double seconds, double fromProgress,
+                                                          double progress) {
+        if (progress < 0.0 || seconds < kEstimateMinSeconds) return -1.0;
+        if (progress >= 1.0) return 0.0;
+        const double gained = progress - std::max(0.0, fromProgress);
+        if (gained < kEstimateMinProgress) return -1.0;
+        return seconds * (1.0 - progress) / gained;
     }
 
     std::string UltraCanvasProgressDialog::FormatDuration(double seconds) {

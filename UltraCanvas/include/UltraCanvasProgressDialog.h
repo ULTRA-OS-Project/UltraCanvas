@@ -28,6 +28,9 @@
 // graphic, and an icon column to its left would push it off centre. Pass
 // showIcon = true to get the classic Information badge back.
 //
+// Version: 2.2.0 - time left from the whole run so far (EstimateSecondsLeft over CombinedProgress:
+//                  the share of items and of bytes done, the active time spent), not from the
+//                  last seconds' speed, which jumped from seconds to hours over many small files
 // Version: 2.1.0 - ProgressDialogOptions::onBackground: a "Run in background" button that closes the
 //                  window without cancelling (IsInBackground); startPaused, for a window opened again
 //                  on paused work
@@ -148,6 +151,15 @@ namespace UltraCanvas {
 
         // "9 s", "2 min", "1 h 5 min" - a span of time as the window shows it.
         static std::string FormatDuration(double seconds);
+        // How far the work is, 0..1: the share of the items done and the share
+        // of the bytes, each counting half where both totals are known (many
+        // small files are paced by their number, one big file by its bytes);
+        // the one known, or the ring's own reading; -1 when nothing tells.
+        static double CombinedProgress(const ProgressFigures& figures, double ringFraction);
+        // Time left from the run so far: `seconds` of work (pauses left out)
+        // took the progress from `fromProgress` to `progress`, so the rest
+        // goes at that average. -1 until there is enough to go by.
+        static double EstimateSecondsLeft(double seconds, double fromProgress, double progress);
         // "742 MB", "1.2 GB" - a byte count as the window shows it.
         static std::string FormatBytes(uint64_t bytes);
 
@@ -202,6 +214,13 @@ namespace UltraCanvas {
             uint64_t items;
         };
         std::deque<Sample> samples;
+        // The run the time left is worked out from: when the first work was
+        // seen, how far it was then, and the time spent paused since.
+        bool runStarted = false;
+        std::chrono::steady_clock::time_point runStart{};
+        double runStartProgress = 0.0;
+        std::chrono::steady_clock::duration pausedFor{};
+        std::chrono::steady_clock::time_point pausedAt{};
         std::chrono::steady_clock::time_point lastTextRefresh{};
         static constexpr int kTextRefreshMs = 250;
     };

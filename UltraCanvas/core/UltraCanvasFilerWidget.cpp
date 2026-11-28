@@ -51,6 +51,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.62.0 - a copy of several entries counts them before the first is touched: the
+//                  progress window's items and size read "done / total" (they had no total), and
+//                  an entry the paste skips comes off them
 // Version: 1.61.1 - the Details headings and the type names go through Tr
 // Version: 1.61.0 - openMenuProvider: the host's entries after "Open with"
 // Version: 1.60.0 - a favorite can stand out by a solid fill, a border or a shade in a colour of the
@@ -6897,6 +6900,7 @@ namespace UltraCanvas {
             pp->currentRetried = false;
             pp->currentDecided = false;
         };
+        CountPasteTotals(*pp, op);
         while (pp->next < pp->sources.size()) {
             if (op && op->cancelled.load()) {
                 pp->stop = FileOpStop::Cancelled;
@@ -7015,6 +7019,7 @@ namespace UltraCanvas {
                 if (action == PasteConflictAction::Skip)
                     pp->skipped.push_back({src, whySkipped, folder, true});
             }
+            if (action == PasteConflictAction::Skip) DropFromPasteTotals(*pp, op, src);
             pp->currentAction = action;
             for (;;) {
                 FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
@@ -7372,7 +7377,10 @@ namespace UltraCanvas {
                 ec.clear();
             }
         } else {
-            credit.total = CountTreeBytes(src, credit);
+            const auto counted = credit.topLevel ? pp.counted.find(src) : pp.counted.end();
+            credit.total = counted != pp.counted.end()
+                    ? counted->second.entries + counted->second.bytes   // counted up front
+                    : CountTreeBytes(src, credit);
             if (!CopyTreeWithProgress(src, dest, credit, ec)) {
                 // Half a copy is not a paste: it goes, whether the copy was
                 // cancelled or failed. Left there, it would also make the
@@ -9403,39 +9411,26 @@ namespace UltraCanvas {
         done = 0;
     }
 
-    uint64_t UltraCanvasFilerWidget::CountTreeBytes(const std::string& path,
-                                                    const FileOpItemCredit& credit) {
-        // One unit per entry on top of its bytes: a folder of ten thousand
-        // empty files is real work, and a ring that stands at 0 % all through
-        // it is a ring that says the operation is stuck.
-        // The window's totals come from this count, which the copy makes
-        // anyway: the operation's own, when it is this one entry.
-        auto noteTotals = [&credit](uint64_t entries, uint64_t bytes) {
-            FileOperation* op = credit.op;
-            if (!op || !credit.topLevel || !op->singleEntry || op->totalsKnown.load()) return;
-            op->totalItems.store(entries);
-            op->totalBytes.store(bytes);
-            op->totalsKnown.store(true);
-        };
+    bool UltraCanvasFilerWidget::CountTree(const std::string& path, const FileOpItemCredit& credit,
+                                           uint64_t& entries, uint64_t& bytes) {
+        entries = 1;
+        bytes = 0;
         std::error_code ec;
         const fs::path root(UltraCanvas::PathFromUtf8(path));
-        const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(root), ec);   // follows links, as
-        if (ec) return 1;                                  // the copy does
+        const fs::file_status st = fs::status(root, ec);   // follows links, as the copy does
+        if (ec) return true;
         if (!fs::is_directory(st)) {
-            if (!fs::is_regular_file(st)) { noteTotals(1, 0); return 1; }
-            const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(root), ec);
-            noteTotals(1, ec ? 0 : static_cast<uint64_t>(size));
-            return ec ? 1 : 1 + static_cast<uint64_t>(size);
+            if (!fs::is_regular_file(st)) return true;
+            const uintmax_t size = fs::file_size(root, ec);
+            if (!ec) bytes = static_cast<uint64_t>(size);
+            return true;
         }
-        uint64_t entries = 1;
-        uint64_t bytes = 0;
         std::error_code iterEc;
-        fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(root), iterEc), end;
-        if (iterEc) { noteTotals(entries, bytes); return entries; }
-        bool cancelled = false;
+        fs::recursive_directory_iterator it(root, iterEc), end;
+        if (iterEc) return true;
         for (; it != end; it.increment(iterEc)) {
             if (iterEc) break;
-            if (credit.Cancelled()) { cancelled = true; break; }
+            if (credit.Cancelled()) return false;
             ++entries;
             std::error_code fec;
             // symlink_status, because a link's target is counted where the
@@ -9444,8 +9439,68 @@ namespace UltraCanvas {
             const uintmax_t size = it->file_size(fec);
             if (!fec) bytes += static_cast<uint64_t>(size);
         }
-        if (!cancelled) noteTotals(entries, bytes);
+        return true;
+    }
+
+    uint64_t UltraCanvasFilerWidget::CountTreeBytes(const std::string& path,
+                                                    const FileOpItemCredit& credit) {
+        // One unit per entry on top of its bytes: a folder of ten thousand
+        // empty files is real work, and a ring that stands at 0 % all through
+        // it is a ring that says the operation is stuck.
+        // The window's totals come from this count, which the copy makes
+        // anyway: the operation's own, when it is this one entry.
+        uint64_t entries = 0, bytes = 0;
+        const bool whole = CountTree(path, credit, entries, bytes);
+        FileOperation* op = credit.op;
+        if (whole && op && credit.topLevel && op->singleEntry && !op->totalsKnown.load()) {
+            op->totalItems.store(entries);
+            op->totalBytes.store(bytes);
+            op->totalsKnown.store(true);
+        }
         return entries + bytes;
+    }
+
+    void UltraCanvasFilerWidget::CountPasteTotals(PendingPaste& pp, FileOperation* op) {
+        // A move is mostly renames, each instant: walking every tree first
+        // would take longer than the move. A copy of one entry counts it
+        // where it copies it (CountTreeBytes).
+        if (pp.totalsCounted || pp.cut || !op || op->singleEntry || op->totalsKnown.load()) return;
+        pp.totalsCounted = true;
+        using ItemKind = PendingPaste::ItemKind;
+        uint64_t entries = 0, bytes = 0;
+        FileOpItemCredit credit{.op = op};
+        for (size_t i = pp.next; i < pp.sources.size(); ++i) {
+            if (pp.itemKinds[i] != ItemKind::Entry) continue;
+            credit.SetFile(PathToUtf8(PathFromUtf8(pp.sources[i]).filename()));
+            PendingPaste::Counted c;
+            if (!CountTree(pp.sources[i], credit, c.entries, c.bytes)) return;   // cancelled
+            pp.counted[pp.sources[i]] = c;
+            entries += c.entries;
+            bytes += c.bytes;
+        }
+        // What is done already (a paste resumed after a dialog) is in too.
+        op->totalItems.store(entries + op->doneItems.load());
+        op->totalBytes.store(bytes + op->doneBytes.load());
+        op->totalsKnown.store(true);
+    }
+
+    void UltraCanvasFilerWidget::DropFromPasteTotals(PendingPaste& pp, FileOperation* op,
+                                                     const std::string& src) {
+        if (!pp.totalsCounted || !op || !op->totalsKnown.load()) return;
+        // Once per entry: the paste comes back to it after a dialog.
+        PendingPaste::Counted& c = pp.counted[src];
+        if (c.dropped) return;
+        if (c.entries == 0) {   // an entry of a merged folder: not counted up front
+            FileOpItemCredit credit{.op = op, .heedCancel = false};
+            CountTree(src, credit, c.entries, c.bytes);
+        }
+        c.dropped = true;
+        auto drop = [](std::atomic<uint64_t>& total, uint64_t n) {
+            const uint64_t t = total.load();
+            total.store(t > n ? t - n : 0);
+        };
+        drop(op->totalItems, c.entries);
+        drop(op->totalBytes, c.bytes);
     }
 
     uint64_t UltraCanvasFilerWidget::CountTreeEntries(const std::string& path,

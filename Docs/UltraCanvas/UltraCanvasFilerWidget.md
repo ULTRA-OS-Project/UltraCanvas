@@ -2265,10 +2265,13 @@ chips (*ULTRA OS → Projekte*, *Downloads → Trash*), the file being handled, 
 a strip of **speed, time left, items and size** (a delete: items only; packing
 and unpacking: bytes only), with **Pause / Resume** beside Cancel. The worker
 counts what is done as it goes - one atomic add per file - and the totals come
-only from the counting it does anyway: a copy or delete of one entry counts it
-before starting on it, so "26 731 / 37 650" shows; several entries show what is
-done alone, since knowing their total would mean walking every tree first;
-moving to the Trash knows its total from the start (one move per entry). Pause
+only from counting the work needs: a copy or delete of one entry counts it
+before starting on it, so "26 731 / 37 650" shows; a copy of several entries
+counts all of them before the first is touched (the copy would walk each tree
+anyway; it is walked once), and an entry it then skips comes off the totals; a
+move or delete of several entries shows what is done alone, since a move is
+mostly instant renames and knowing their total would mean walking every tree
+first; moving to the Trash knows its total from the start (one move per entry). Pause
 holds the worker between files and between the chunks of a big file, and an
 archive job between its blocks; Cancel still gets through while paused.
 
