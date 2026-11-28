@@ -329,9 +329,15 @@ public:
     std::string GetMimeType() const override { return "application/pdf"; }
     
     FormatCapabilities GetCapabilities() const override;
-    // Reading PDF is the MuPDF-based PDF plugin's job; this converter only
-    // writes. The Import methods warn and return null.
+    // Reading goes through the MuPDF-based PDF plugin
+    // (ImportPDFAsVectorDocument: the first page, on its own page format), so
+    // only a build with MuPDF reads PDF; without it the Import methods warn
+    // and return null.
+#ifdef ULTRACANVAS_PDF_MUPDF
+    bool CanImport() const override { return true; }
+#else
     bool CanImport() const override { return false; }
+#endif
     bool CanExport() const override { return true; }
 
     std::shared_ptr<VectorStorage::VectorDocument> Import(

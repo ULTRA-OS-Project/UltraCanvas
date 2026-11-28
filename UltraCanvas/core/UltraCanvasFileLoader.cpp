@@ -1,6 +1,8 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.15.1 - LoadVectorDocument / CanLoadVectorDocument / GetVectorLoadExtensions: the formats
+//                  opened for editing only (ImportableVectorExtensions - PDF) as well
 // Version: 1.15.0 - LoadPresentation (.pptx, .odp, and PowerPoint 97-2003 .ppt by content);
 //                  LoadTextDocument and DetectOfficeDocumentKind take a .ppt; a .pot is a template
 // Version: 1.14.0 - templates: IsOfficeTemplate, IsOfficeTemplateExtension, AddOfficeTemplateSaveTypes,
@@ -600,11 +602,11 @@ namespace UltraCanvas {
     std::shared_ptr<VectorStorage::VectorDocument> UltraCanvasFileLoader::LoadVectorDocument(
             const std::string& filePath, std::string& outError, std::vector<std::string>* notes) {
         outError.clear();
-        if (PreviewableVectorExtensions().empty()) {
+        if (ImportableVectorExtensions().empty()) {
             outError = "No vector file readers are installed (RegisterVectorFormatsPlugin was not called).";
             return nullptr;
         }
-        if (!CanPreviewVectorExtension(filePath)) {
+        if (!CanImportVectorExtension(filePath)) {
             outError = "No reader for this file type.";
             return nullptr;
         }
@@ -735,7 +737,7 @@ namespace UltraCanvas {
     }
 
     std::vector<std::string> UltraCanvasFileLoader::GetVectorLoadExtensions() {
-        return PreviewableVectorExtensions();
+        return ImportableVectorExtensions();
     }
 
     std::vector<std::string> UltraCanvasFileLoader::GetVectorSaveExtensions() {
@@ -743,7 +745,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasFileLoader::CanLoadVectorDocument(const std::string& extensionOrPath) {
-        return CanPreviewVectorExtension(extensionOrPath);
+        return CanImportVectorExtension(extensionOrPath);
     }
 
     // ===== VIDEO SAVED =====

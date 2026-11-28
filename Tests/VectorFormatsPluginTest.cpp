@@ -8,9 +8,10 @@
 //
 // Usage: VectorFormatsPluginTest [basename]
 // Exit code is the number of failed checks.
+// Version: 1.2.0 - a PDF opens as a drawing on its own page format, and is not previewed
 // Version: 1.1.1 - XAR reading is expected only when the XAR plugin is built
 // Version: 1.1.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorFormatsPlugin.h"
@@ -25,6 +26,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
@@ -201,7 +203,10 @@ int main(int argc, char** argv) {
                                        "wmf", "ai", "dxf", "dwg", "dwt", "dws", "sv$"}) {
             auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(ext);
             if (!converter) { consistent = false; std::printf("    no converter for %s\n", ext.c_str()); continue; }
-            if (has(readable, ext) != converter->CanImport() || has(writable, ext) != converter->CanExport()) {
+            // A PDF is read only for editing (CanImport with MuPDF), never
+            // advertised as a graphics file the viewers would take over.
+            const bool listed = converter->CanImport() && ext != "pdf";
+            if (has(readable, ext) != listed || has(writable, ext) != converter->CanExport()) {
                 consistent = false;
                 std::printf("    list and converter disagree on %s\n", ext.c_str());
             }
@@ -320,6 +325,14 @@ int main(int argc, char** argv) {
               "preview seam does not claim xar without the XAR plugin");
 #endif
         Check(!CanPreviewVectorExtension("png"), "preview seam declines png");
+        // A PDF has viewers of its own: it is opened as a drawing, never
+        // previewed as one.
+        Check(!CanPreviewVectorExtension("pdf"), "preview seam does not claim pdf");
+#ifdef ULTRACANVAS_PDF_MUPDF
+        Check(CanImportVectorExtension("pdf"), "pdf opens for editing (MuPDF build)");
+#else
+        Check(!CanImportVectorExtension("pdf"), "pdf does not open without MuPDF");
+#endif
         auto seamExts = PreviewableVectorExtensions();
         Check(std::find(seamExts.begin(), seamExts.end(), "dwg") != seamExts.end(),
               "preview seam lists dwg");
@@ -417,6 +430,52 @@ int main(int argc, char** argv) {
                   ext + ": font size survives");
         }
     }
+#ifdef ULTRACANVAS_PDF_MUPDF
+    // ===== A PDF opens as a drawing on its own page format =====
+    // The PDF the writer produced, read back through the editing half of the
+    // seam (what UltraCanvasFileLoader::LoadVectorDocument and ArtCreator's
+    // Open take): the page is 400 x 300 points, not a default sheet, and the
+    // shapes and the words are where the writer put them.
+    {
+        const std::string path = base + ".pdf";
+        Check(!CanHandleGraphicsFile(path), "pdf is not a graphics file for the viewers");
+        std::vector<std::string> notes;
+        auto back = ImportVectorDocument(path, [&notes](const std::string& n) { notes.push_back(n); });
+        Check(back != nullptr, "pdf imports" + (notes.empty() ? std::string() : " (" + notes.front() + ")"));
+        if (back) {
+            Check(std::fabs(back->Size.width - 400) < 0.5 && std::fabs(back->Size.height - 300) < 0.5,
+                  "pdf: the page format is taken over (" + std::to_string(back->Size.width) + " x " +
+                          std::to_string(back->Size.height) + ")");
+            Check(std::fabs(back->ViewBox.width - 400) < 0.5 && std::fabs(back->ViewBox.height - 300) < 0.5,
+                  "pdf: the view box is the page");
+            Check(HasFillColor(*back, Color(255, 0, 0, 255), 4), "pdf: red fill survives");
+            Check(HasFillColor(*back, Color(90, 40, 160, 255), 4), "pdf: purple bezier fill survives");
+            Check(HasDash(*back), "pdf: dash pattern survives");
+            const VectorText* text = FindText(*back);
+            Check(text != nullptr, "pdf: text survives as text");
+            if (text) {
+                std::string content;
+                for (const auto& span : text->Spans) content += span.Text;
+                Check(content == "Hello Plugin", "pdf: text content intact (\"" + content + "\")");
+                Check(std::fabs(text->Position.x - 40) < 2 && std::fabs(text->Position.y - 250) < 6,
+                      "pdf: text baseline position survives");
+                Check(std::fabs(text->BaseStyle.FontSize - 18) < 1.5, "pdf: font size survives");
+            }
+        }
+        // From memory too (a PDF on the clipboard), and garbage is refused.
+        std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
+        const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        VectorConverter::PDFVectorConverter pdf;
+        auto fromMemory = pdf.ImportFromString(bytes);
+        Check(fromMemory && std::fabs(fromMemory->Size.width - 400) < 0.5, "pdf imports from memory");
+        std::vector<std::string> refusal;
+        VectorConverter::ConversionOptions options;
+        options.WarningCallback = [&refusal](const std::string& n) { refusal.push_back(n); };
+        Check(pdf.ImportFromString("%PDF-1.4 not really", options) == nullptr && !refusal.empty(),
+              "a damaged pdf is refused with a reason");
+    }
+#endif
+
     if (!haveDwgTool) {
         std::printf("  note: LibreDWG tools not found; DWG round trip skipped\n");
     }

@@ -122,7 +122,7 @@ the Vector plugin's drawing reader.
 
 | Format | Extension(s) | Load | Save | Provider |
 |--------|--------------|:----:|:----:|----------|
-| PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
+| PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF; also as an editable `VectorDocument` through `LoadVectorDocument` (a page on its own page format, with the Vector plugin) |
 | Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
 | Word template (OOXML) | `.dotx` | ✅ ¶ | ✅ ¶ | built-in: a `.docx` package whose main part is a template |
 | Word macro-enabled template | `.dotm` | ✅ | — | built-in: read as a template; macros neither run nor kept |
