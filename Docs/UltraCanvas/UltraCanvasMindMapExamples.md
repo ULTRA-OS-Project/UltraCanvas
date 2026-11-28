@@ -11,6 +11,7 @@
   - [Per-branch structure](#per-branch-structure)
   - [Animated re-layout](#animated-re-layout)
   - [Manual placement](#manual-placement)
+  - [Radial cluster map (Balloon)](#radial-cluster-map-balloon)
 - [Styling](#styling)
   - [Style by level](#style-by-level)
   - [Branch colour cascade](#branch-colour-cascade)
@@ -119,6 +120,7 @@ map->SetStructure(MindMapStructure::Balanced);
 | `LogicRight` / `LogicLeft` | The whole tree grows to one side |
 | `OrgChartDown` / `OrgChartUp` | Top-down / bottom-up hierarchy |
 | `Radial` | Branches distributed over a full circle, one ring per generation |
+| `Balloon` | Every topic's children in a ring around it: clusters of clusters (see [Radial cluster map](#radial-cluster-map-balloon)) |
 | `Manual` | Authored positions honoured; anything unset is auto-placed |
 
 In `Balanced`, which side an `Auto` main topic lands on is decided by the balance
@@ -177,7 +179,8 @@ map->GetTopic(branchId)->structureOverride = MindMapStructure::OrgChartDown;
 The overridden branch is laid out locally first, and the main pass then reserves
 exactly the space its bounding box needs, so an overridden branch never collides
 with its siblings. Overrides apply to **depth-1 branches**; a nested override is
-ignored.
+ignored — except in a `Balloon` map, where any topic below the centre can be
+laid out in another structure (see below).
 
 ### Animated re-layout
 
@@ -203,6 +206,75 @@ Authored positions are stored on the topic and ignored by every other
 structure, so a map can be switched back and forth without losing them. In
 `Manual`, topics without an authored position keep the position the base pass
 computed.
+
+### Radial cluster map (Balloon)
+
+The `Balloon` structure draws a large tree around one centre as clusters of
+clusters: every topic carries its children on a ring around **itself**, not
+around the centre, so a deep branch simply makes a bigger cluster instead of
+crowding one ring per generation.
+
+```cpp
+MindMapLayoutOptions options = map->GetLayoutOptions();
+options.structure = MindMapStructure::Balloon;
+options.balloonRing = MindMapBalloonRing::Fan;   // or Full
+options.balloonFanSweep = 300.0;                 // degrees, Fan only
+options.balloonGap = 8.0;                        // between neighbouring subtrees
+options.balloonTrunkLength = 60.0;               // main topics pushed out from the centre
+map->SetLayoutOptions(options);
+
+MindMapStyle& look = map->Style();
+look.connectorStyle = MindMapConnectorStyle::Ring;     // a ring through each hub's children
+look.sizeByDepth = {130.0, 84.0, 54.0, 36.0};           // node diameters by depth
+look.connectorWidthByDepth = {11.0, 4.0, 2.0};          // thick trunks, thin twigs
+look.depthLightenStep = 0.2;                            // paler with depth
+```
+
+- **The rings.** A topic's children sit at one distance from it. The distance
+  is the smallest at which no child's subtree comes near the topic and the
+  wedges the children's subtrees cover, seen from the topic, fit in the ring's
+  sweep — so **siblings never overlap, at any depth** (`MindMapLayoutTest`
+  checks a tree of ragged clusters for overlaps in both ring kinds).
+- **Fan or full ring.** A `Fan` (the default) opens away from the parent over
+  `balloonFanSweep` degrees and keeps the side the trunk comes in from clear;
+  a `Full` ring uses the whole circle, the parent's direction falling between
+  its last and first child. The centre always uses a full ring, starting at
+  `radialStartAngle` and spanning `radialSweep`.
+- **Order.** Children keep their order, clockwise; the layout is
+  deterministic.
+- **Trunks.** `balloonTrunkLength` pushes every main topic further out from the
+  centre; each cluster moves with its topic, unchanged.
+- **A list inside a balloon.** A topic below the centre with a
+  `structureOverride` (say `LogicRight`) is laid out in that structure and
+  takes the room of the circle around it. A one-sided structure is mirrored to
+  grow away from the centre, so a list never runs back over its own trunk.
+- **Sizes by depth.** `MindMapStyle::sizeByDepth` makes a topic at depth *d*
+  at least `sizeByDepth[d]` wide and high (deeper topics take the last entry).
+  A circle's label wraps inside it — never narrower than its longest word —
+  and a longer label grows the circle. A per-topic style override is left as
+  set. Labels in circles and triangles are centred.
+- **Widths by depth.** `MindMapStyle::connectorWidthByDepth[d]` is the width
+  of a connector from depth *d* to *d + 1*; a `TaperedBranch` runs from entry
+  *d* to entry *d + 1*. Empty means `connectorWidth` (and the taper widths).
+- **Rings.** `MindMapConnectorStyle::Ring` draws a thin circle through each
+  balloon topic's children — an arc for a fan, open towards the parent — and
+  a straight spoke to each child. The centre's trunks, and any part laid out
+  in another structure, stay straight.
+- **Conditions.** `MindMapNodeShape::Triangle` (point up, label in its lower
+  part) marks small conditions such as "needs fuel"; dashed
+  [relationships](#relationships) make cross-references.
+- **Files.** `ToJson` / `FromJson` carry the Balloon options, the start angle
+  and sweep, `sizeByDepth`, `connectorWidthByDepth` and `depthLightenStep`;
+  the SVG export draws triangles (rings in SVG come with Phase 2 of the
+  [proposal](UltraCanvasRadialClusterMapProposal.md)).
+
+A map of a few hundred topics is poster-sized: fit it to show the whole, and
+let the reader zoom in. Set the viewport's lower zoom limit if the default
+(0.1) is not low enough for the first fit:
+
+```cpp
+map->Viewport().SetZoomRange(0.04, map->Viewport().GetMaxZoom());
+```
 
 ---
 
@@ -249,7 +321,8 @@ map->ClearTopicStyle(topicId);          // back to the cascade
 ### Shapes
 
 `RoundedRect`, `Rect`, `Pill`, `Circle`, `Ellipse`, `Diamond`, `Hexagon`,
-`Cloud`, `Bang`, `Underline` and `NoShape` (text only).
+`Cloud`, `Bang`, `Underline`, `NoShape` (text only) and `Triangle` (point up,
+the label centred in its lower part, the box grown so the label fits).
 
 > `NoShape` is spelled that way rather than `None` because X11's `Xlib.h`
 > defines `None` as a macro. The same applies to
@@ -296,6 +369,7 @@ map->SetConnectorStyle(MindMapConnectorStyle::TaperedBranch);
 | `Elbow` | Orthogonal, sharp corners |
 | `RoundedElbow` | Orthogonal with rounded corners |
 | `TaperedBranch` | Organic branch, thick at the parent and thin at the child |
+| `Ring` | A thin ring through each balloon topic's children, straight spokes (see [Radial cluster map](#radial-cluster-map-balloon)) |
 
 Connectors always terminate on the node's **perimeter**, computed per shape
 (ellipse, diamond and rectangle each have their own intersection), so a line
@@ -306,6 +380,7 @@ map->Style().connectorColorMode = MindMapConnectorColorMode::InheritFromBranch;
 map->Style().endDecoration = MindMapEndDecoration::Dot;   // or Arrow, Square
 map->Style().taperStartWidth = 7.0;
 map->Style().taperEndWidth = 1.5;
+map->Style().connectorWidthByDepth = {8.0, 3.0, 1.5};   // by the parent's depth
 ```
 
 ### Attachment and labels
@@ -617,8 +692,12 @@ and often span the visible region.
 
 ## Demo
 
-`Apps/DemoApp/UltraCanvasMindMapExamples.cpp` — six tabs: an editable map, a
-logic chart with ordinal badges, a radial map, cross-branch relationships, a
+`Apps/DemoApp/UltraCanvasMindMapExamples.cpp` — seven tabs: an editable map, a
+logic chart with ordinal badges, a radial map, a radial cluster map (an
+invented family emergency plan of about 150 topics in the `Balloon` structure,
+with rings, sizes and widths by depth, triangles for conditions, a dashed
+cross-reference, one branch kept as a list, and buttons for fans or full rings
+and the connector), cross-branch relationships, a
 presentation layout (aligned columns and rows, connector badges, shadows,
 background layer, callout cards, connector labels, note/link/marker
 indicators), and a gallery for switching theme, structure and connector style at

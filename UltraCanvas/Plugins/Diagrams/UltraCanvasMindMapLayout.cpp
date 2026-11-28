@@ -1,7 +1,7 @@
 // Plugins/Diagrams/UltraCanvasMindMapLayout.cpp
 // Mind map topic model and layout engine
-// Version: 1.0.0
-// Last Modified: 2026-07-30
+// Version: 1.1.0
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMindMapLayout.h"
@@ -452,6 +452,16 @@ Size2Dd UltraCanvasMindMapLayout::MeasureTopic(const MindMapTopic& topic,
     } else if (style.shape == MindMapNodeShape::Diamond) {
         width *= 1.45;
         height *= 1.45;
+    } else if (style.shape == MindMapNodeShape::Triangle) {
+        // The label sits centred 0.62 of the way down; the triangle is just
+        // wide enough at the label's top edge, and 0.8 as high as wide (or
+        // taller for a label of several lines).
+        const double w = width, h = height;
+        double triangleWidth = (w + 0.65 * h) / 0.6;
+        double triangleHeight = std::max(triangleWidth * 0.8, h * 1.4);
+        triangleWidth = std::max(triangleWidth, w / (0.62 - h / (2.0 * triangleHeight)));
+        width = triangleWidth;
+        height = std::max(triangleHeight, triangleWidth * 0.8);
     }
 
     width  = std::max(width, style.minWidth);
@@ -1067,6 +1077,315 @@ void UltraCanvasMindMapLayout::LayoutRadial(MindMapModel& model,
 }
 
 // =============================================================================
+// LAYOUT - BALLOON (radial cluster map)
+// =============================================================================
+//
+// Bottom-up, every subtree is kept as the circles of its nodes in its topic's
+// own frame (the topic at the origin, the direction away from its parent
+// along +x). A topic's children sit on one ring around it: the ring radius is
+// the smallest at which no child's circles come near the topic and the
+// wedges the children's subtrees cover, seen from the topic, fit in the
+// ring's sweep - found by bisection. Wedges that do not overlap mean
+// subtrees that do not overlap, so siblings never collide at any depth.
+// Top-down, each child takes the middle of its share of the sweep, centred
+// on the direction away from its parent (Lin and Yen's balloon drawing with
+// subtree wedges instead of enclosing discs, which keeps chains of hubs from
+// doubling in size at every level). A subtree with a structureOverride is
+// laid out in that structure and treated as one disc around its topic; a
+// one-sided structure (Logic, OrgChart) is mirrored to grow away from the
+// centre.
+
+namespace {
+
+constexpr double kBalloonPi = 3.14159265358979323846;
+
+// The radius of the circle a node needs: a circle's own radius, otherwise
+// half the box's diagonal.
+double NodeRadius(const Size2Dd& size, MindMapNodeShape shape) {
+    if (shape == MindMapNodeShape::Circle) return std::max(size.width, size.height) * 0.5;
+    return 0.5 * std::sqrt(size.width * size.width + size.height * size.height);
+}
+
+// A node's circle in a subtree's own frame (see LayoutBalloon).
+struct BalloonCircle {
+    double x, y, r;
+};
+
+// The smallest ring radius at which no circle of a child's subtree comes
+// within `gap` of the hub (radius `own`), and every circle's centre is in
+// front of the hub, so the subtree's wedge is well defined.
+double BalloonMinimumRing(const std::vector<BalloonCircle>& shape, double own, double gap) {
+    double minimum = 0.0;
+    for (const BalloonCircle& c : shape) {
+        double clear = own + c.r + gap;
+        double need = -c.x + 1e-6;
+        if (std::abs(c.y) < clear) need = std::max(need, -c.x + std::sqrt(clear * clear - c.y * c.y));
+        minimum = std::max(minimum, need);
+    }
+    return minimum;
+}
+
+// The angles a child's subtree covers either side of the child's direction,
+// seen from the hub with the child at `ring`, each circle widened by half
+// the gap.
+std::pair<double, double> BalloonWedge(const std::vector<BalloonCircle>& shape, double ring, double gap) {
+    double before = 0.0, after = 0.0;
+    for (const BalloonCircle& c : shape) {
+        double x = ring + c.x;
+        double d = std::hypot(x, c.y);
+        double centre = std::atan2(c.y, x);
+        double half = (c.r + gap * 0.5 >= d) ? kBalloonPi * 0.5 : std::asin((c.r + gap * 0.5) / d);
+        before = std::max(before, half - centre);
+        after = std::max(after, centre + half);
+    }
+    return {before, after};
+}
+
+// The smallest ring radius, at least `minimum`, at which the children's
+// wedges fit in `sweep` radians. The wedges narrow as the ring grows.
+double BalloonRingRadius(const std::vector<const std::vector<BalloonCircle>*>& children,
+                         double gap, double sweep, double minimum) {
+    auto needed = [&](double ring) {
+        double total = 0.0;
+        for (const auto* shape : children) {
+            auto wedge = BalloonWedge(*shape, ring, gap);
+            total += wedge.first + wedge.second;
+        }
+        return total;
+    };
+    if (needed(minimum) <= sweep) return minimum;
+    double lo = minimum;
+    double hi = std::max(minimum * 2.0, 1.0);
+    while (needed(hi) > sweep && hi < 1e9) {
+        lo = hi;
+        hi *= 2.0;
+    }
+    for (int i = 0; i < 60; ++i) {
+        double mid = 0.5 * (lo + hi);
+        if (needed(mid) > sweep) lo = mid;
+        else hi = mid;
+    }
+    return hi;
+}
+
+} // namespace
+
+void UltraCanvasMindMapLayout::LayoutBalloon(MindMapModel& model,
+                                             const MindMapLayoutOptions& options,
+                                             const MindMapMeasureFn& measure,
+                                             const MindMapStyleFn& styleOf,
+                                             MindMapLayoutResult& out) {
+    MindMapTopic* root = model.GetTopic(model.GetRootId());
+    if (!root) return;
+
+    const double gap = std::max(0.0, options.balloonGap);
+    const double fanSweep = std::clamp(options.balloonFanSweep, 30.0, 360.0) * kBalloonPi / 180.0;
+    const bool fan = options.balloonRing == MindMapBalloonRing::Fan;
+    double rootSweep = std::abs(options.radialSweep);
+    if (!(rootSweep > 0.0)) rootSweep = 2.0 * kBalloonPi;
+    rootSweep = std::min(rootSweep, 2.0 * kBalloonPi);
+
+    // ---- Pass 1: depth, branch, size ----
+    // Depth and branch first, so a style that depends on them (level styles,
+    // sizes by depth, branch hues) sees the right values when measured.
+    std::function<void(const std::string&, int, int)> tag =
+        [&](const std::string& id, int depth, int branch) {
+            MindMapTopic* topic = model.GetTopic(id);
+            if (!topic) return;
+            topic->depth = depth;
+            topic->branchIndex = branch;
+            for (size_t i = 0; i < topic->childIds.size(); ++i) {
+                tag(topic->childIds[i], depth + 1, depth == 0 ? static_cast<int>(i) : branch);
+            }
+        };
+    tag(root->id, 0, -1);
+
+    // A subtree with its own structure is laid out first, as one block. Its
+    // scratch copy sees depths from 0, so styles are resolved from the real
+    // topic instead.
+    MindMapStyleFn realStyle = [&model, &styleOf](const MindMapTopic& t) {
+        const MindMapTopic* real = model.GetTopic(t.id);
+        return styleOf(real ? *real : t);
+    };
+    struct OverrideBlock {
+        MindMapLayoutResult result;
+        Point2Dd centre;   // The topic's centre in the block's own space
+    };
+    std::unordered_map<std::string, OverrideBlock> overrides;
+
+    std::unordered_map<std::string, Size2Dd> sizes;
+    std::unordered_map<std::string, double> nodeRadius;
+    std::function<void(const std::string&)> measureWalk = [&](const std::string& id) {
+        MindMapTopic* topic = model.GetTopic(id);
+        if (!topic) return;
+        MindMapTopicStyle topicStyle = styleOf(*topic);
+        sizes[id] = MeasureTopic(*topic, topicStyle, options, measure);
+        nodeRadius[id] = NodeRadius(sizes[id], topicStyle.shape);
+        if (topic->collapsed) return;
+        if (topic->depth > 0 && topic->structureOverride.has_value() &&
+            topic->structureOverride.value() != MindMapStructure::Balloon &&
+            !topic->childIds.empty()) {
+            // Laid out through a scratch model whose root is this topic.
+            MindMapModel scratch;
+            for (const auto& subId : model.GetSubtreeIds(id)) {
+                if (const MindMapTopic* t = model.GetTopic(subId)) scratch.Topics()[subId] = *t;
+            }
+            MindMapTopic& scratchRoot = scratch.Topics()[id];
+            scratchRoot.parentId.clear();
+            scratchRoot.structureOverride.reset();
+            scratch.RestoreStructure(id);
+            MindMapLayoutOptions subOptions = options;
+            subOptions.structure = topic->structureOverride.value();
+            subOptions.alignLevelColumns = false;
+            subOptions.alignSideRows = false;
+            OverrideBlock block;
+            ComputeLayout(scratch, subOptions, measure, realStyle, block.result);
+            if (block.result.Has(id)) {
+                Rect2Dd box = block.result.Get(id);
+                block.centre = Point2Dd(box.x + box.width * 0.5, box.y + box.height * 0.5);
+                overrides[id] = std::move(block);
+                return;
+            }
+        }
+        for (const auto& childId : topic->childIds) measureWalk(childId);
+    };
+    measureWalk(root->id);
+
+    // ---- Pass 2: bottom-up shapes ----
+    // Each subtree is kept as the circles of its nodes in the topic's own
+    // frame: the topic at the origin, the direction away from its parent
+    // along +x. A child's place is (ring radius, angle from +x).
+    std::unordered_map<std::string, std::vector<BalloonCircle>> shapes;
+    std::unordered_map<std::string, double> ring;      // Ring radius of a topic's children
+    std::unordered_map<std::string, double> angleOf;   // A child's angle in its parent's frame
+
+    std::function<void(const std::string&)> computeShape = [&](const std::string& id) {
+        MindMapTopic* topic = model.GetTopic(id);
+        if (!topic) return;
+        const double own = nodeRadius[id];
+        std::vector<BalloonCircle>& shape = shapes[id];
+        shape.clear();
+        auto overrideIt = overrides.find(id);
+        if (overrideIt != overrides.end()) {
+            // A block in another structure keeps its own orientation, so it
+            // is one disc around the topic whatever way the topic faces.
+            double farthest = own;
+            const Point2Dd c = overrideIt->second.centre;
+            for (const auto& [subId, box] : overrideIt->second.result.bounds) {
+                for (double x : {box.x, box.x + box.width}) {
+                    for (double y : {box.y, box.y + box.height}) {
+                        farthest = std::max(farthest, std::hypot(x - c.x, y - c.y));
+                    }
+                }
+            }
+            shape.push_back({0.0, 0.0, farthest});
+            return;
+        }
+        shape.push_back({0.0, 0.0, own});
+        if (topic->collapsed || topic->childIds.empty()) return;
+
+        std::vector<const std::vector<BalloonCircle>*> children;
+        for (const auto& childId : topic->childIds) {
+            computeShape(childId);
+            children.push_back(&shapes[childId]);
+        }
+        const bool isRoot = topic->depth == 0;
+        const double sweep = isRoot ? rootSweep : (fan ? fanSweep : 2.0 * kBalloonPi);
+        double minimum = 0.0;
+        for (const auto* child : children) {
+            minimum = std::max(minimum, BalloonMinimumRing(*child, own, gap));
+        }
+        const double r = BalloonRingRadius(children, gap, sweep, minimum);
+        ring[id] = r;
+
+        // Each child's wedge, in order from -sweep / 2 (from the start angle
+        // for the centre), the slack shared evenly.
+        std::vector<std::pair<double, double>> wedges;
+        double total = 0.0;
+        for (const auto* child : children) {
+            wedges.push_back(BalloonWedge(*child, r, gap));
+            total += wedges.back().first + wedges.back().second;
+        }
+        const double slack = std::max(0.0, sweep - total) / static_cast<double>(children.size());
+        double cursor = isRoot ? 0.0 : -sweep * 0.5;
+        for (size_t i = 0; i < children.size(); ++i) {
+            const double angle = cursor + slack * 0.5 + wedges[i].first;
+            angleOf[topic->childIds[i]] = angle;
+            cursor += wedges[i].first + wedges[i].second + slack;
+            if (isRoot) continue;   // The centre's shape is never asked for
+            const double ca = std::cos(angle), sa = std::sin(angle);
+            for (const BalloonCircle& c : *children[i]) {
+                shape.push_back({r * ca + c.x * ca - c.y * sa, r * sa + c.x * sa + c.y * ca, c.r});
+            }
+        }
+    };
+    computeShape(root->id);
+
+    // ---- Pass 3: top-down placement ----
+    auto placeBox = [&](MindMapTopic& topic, double cx, double cy) {
+        Size2Dd size = sizes[topic.id];
+        Rect2Dd box(cx - size.width * 0.5, cy - size.height * 0.5, size.width, size.height);
+        topic.bounds = box;
+        out.bounds[topic.id] = box;
+        out.contentBounds.Include(box);
+    };
+
+    std::function<void(const std::string&, double, double, double)> place =
+        [&](const std::string& id, double cx, double cy, double away) {
+            MindMapTopic* topic = model.GetTopic(id);
+            if (!topic) return;
+            topic->resolvedSide = (std::cos(away) < -1e-9) ? MindMapTopicSide::Left
+                                                           : MindMapTopicSide::Right;
+            auto overrideIt = overrides.find(id);
+            if (overrideIt != overrides.end()) {
+                const OverrideBlock& block = overrideIt->second;
+                // A one-sided block grows away from the centre: a list facing
+                // back would run over the trunk coming in. The block's disc is
+                // symmetric, so mirroring it changes nothing around it.
+                const MindMapStructure kind = topic->structureOverride.value();
+                const bool flipX = (kind == MindMapStructure::LogicRight && std::cos(away) < -1e-9) ||
+                                   (kind == MindMapStructure::LogicLeft && std::cos(away) > 1e-9);
+                const bool flipY = (kind == MindMapStructure::OrgChartDown && std::sin(away) < -1e-9) ||
+                                   (kind == MindMapStructure::OrgChartUp && std::sin(away) > 1e-9);
+                for (const auto& [subId, local] : block.result.bounds) {
+                    Rect2Dd box = local;
+                    if (flipX) box.x = 2.0 * block.centre.x - box.x - box.width;
+                    if (flipY) box.y = 2.0 * block.centre.y - box.y - box.height;
+                    Rect2Dd moved(box.x + cx - block.centre.x, box.y + cy - block.centre.y,
+                                  box.width, box.height);
+                    out.bounds[subId] = moved;
+                    out.contentBounds.Include(moved);
+                    if (MindMapTopic* sub = model.GetTopic(subId)) {
+                        sub->bounds = moved;
+                        if (sub->id != id) sub->resolvedSide = topic->resolvedSide;
+                    }
+                }
+                return;
+            }
+            placeBox(*topic, cx, cy);
+            if (topic->collapsed || topic->childIds.empty()) return;
+            const double r = ring[id];
+            for (const auto& childId : topic->childIds) {
+                const double angle = away + angleOf[childId];
+                place(childId, cx + std::cos(angle) * r, cy + std::sin(angle) * r, angle);
+            }
+        };
+
+    root->resolvedSide = MindMapTopicSide::Right;
+    placeBox(*root, 0.0, 0.0);
+    if (root->collapsed || root->childIds.empty()) return;
+
+    // The main topics: a ring around the centre from the start angle, pushed
+    // out by the trunk length. Pushing out only narrows each wedge, so the
+    // angles found at the inner radius stay clear of one another.
+    const double rootRing = ring[root->id] + std::max(0.0, options.balloonTrunkLength);
+    for (const auto& childId : root->childIds) {
+        const double angle = options.radialStartAngle + angleOf[childId];
+        place(childId, std::cos(angle) * rootRing, std::sin(angle) * rootRing, angle);
+    }
+}
+
+// =============================================================================
 // LAYOUT - ENTRY POINT
 // =============================================================================
 
@@ -1096,6 +1415,9 @@ void UltraCanvasMindMapLayout::ComputeLayout(MindMapModel& model,
                 break;
             case MindMapStructure::Radial:
                 LayoutRadial(model, options, measure, resolveStyle, outResult);
+                break;
+            case MindMapStructure::Balloon:
+                LayoutBalloon(model, options, measure, resolveStyle, outResult);
                 break;
             case MindMapStructure::Balanced:
             case MindMapStructure::LogicRight:

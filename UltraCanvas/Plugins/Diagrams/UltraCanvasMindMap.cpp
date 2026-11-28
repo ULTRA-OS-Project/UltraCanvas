@@ -482,6 +482,33 @@ MindMapTopicStyle UltraCanvasMindMap::ResolveTopicStyle(const MindMapTopic& topi
 
     MindMapTopicStyle resolved = GetLevelStyle(topic.depth);
 
+    // Sizes by depth (S1): the node is at least this wide and tall; a
+    // circle's label wraps inside it.
+    if (!style.sizeByDepth.empty()) {
+        size_t index = std::min(static_cast<size_t>(std::max(0, topic.depth)),
+                                style.sizeByDepth.size() - 1);
+        double diameter = style.sizeByDepth[index];
+        if (diameter > 0.0) {
+            resolved.minWidth = std::max(resolved.minWidth, diameter);
+            resolved.minHeight = std::max(resolved.minHeight, diameter);
+            if (resolved.shape == MindMapNodeShape::Circle) {
+                // Not so narrow that a word breaks: at least the longest
+                // word's estimated width.
+                size_t longest = 0, run = 0;
+                for (unsigned char ch : topic.text) {
+                    if (ch == ' ' || ch == '\n' || ch == '\t') { run = 0; continue; }
+                    if ((ch & 0xC0) != 0x80) longest = std::max(longest, ++run);   // count code points
+                }
+                double wordWidth = static_cast<double>(longest) * resolved.fontSize *
+                                   (resolved.bold ? 0.76 : 0.66) + 2.0;
+                double inside = std::max(diameter * 0.8 - resolved.paddingX * 2.0, wordWidth);
+                if (inside > 0.0 && (resolved.maxWidth <= 0.0 || inside < resolved.maxWidth)) {
+                    resolved.maxWidth = inside;
+                }
+            }
+        }
+    }
+
     // Branch hue cascade: everything under a main topic takes its colour.
     if (topic.depth >= 1 && topic.branchIndex >= 0 && !branchPalette.empty()) {
         Color hue = GetBranchColor(topic.branchIndex);
@@ -865,6 +892,27 @@ Point2Dd UltraCanvasMindMap::PerimeterPoint(const MindMapTopic& topic,
             if (denom < 1e-9) return center;
             return Point2Dd(center.x + dx / denom, center.y + dy / denom);
         }
+        case MindMapNodeShape::Triangle: {
+            // The nearest crossing of the ray from the centre with the edges.
+            const Point2Dd corners[3] = {
+                {center.x, center.y - halfH},
+                {center.x + halfW, center.y + halfH},
+                {center.x - halfW, center.y + halfH},
+            };
+            double best = 1e18;
+            for (int i = 0; i < 3; ++i) {
+                const Point2Dd& a = corners[i];
+                const Point2Dd& b = corners[(i + 1) % 3];
+                double ex = b.x - a.x, ey = b.y - a.y;
+                double denom = dx * ey - dy * ex;
+                if (std::abs(denom) < 1e-12) continue;
+                double t = ((a.x - center.x) * ey - (a.y - center.y) * ex) / denom;
+                double u = ((a.x - center.x) * dy - (a.y - center.y) * dx) / denom;
+                if (t > 0.0 && u >= -1e-9 && u <= 1.0 + 1e-9) best = std::min(best, t);
+            }
+            if (best >= 1e17) return center;
+            return Point2Dd(center.x + dx * best, center.y + dy * best);
+        }
         case MindMapNodeShape::Diamond: {
             // |x|/halfW + |y|/halfH = 1
             double denom = std::abs(dx) / halfW + std::abs(dy) / halfH;
@@ -1048,7 +1096,91 @@ void UltraCanvasMindMap::RenderGrid(IRenderContext* ctx) {
     }
 }
 
+double UltraCanvasMindMap::ConnectorWidthFor(int parentDepth, double fallback) const {
+    if (style.connectorWidthByDepth.empty()) return fallback;
+    size_t index = std::min(static_cast<size_t>(std::max(0, parentDepth)),
+                            style.connectorWidthByDepth.size() - 1);
+    return style.connectorWidthByDepth[index];
+}
+
+void UltraCanvasMindMap::RenderChildRing(IRenderContext* ctx, const MindMapTopic& parent) {
+    std::vector<Point2Dd> children;
+    for (const auto& childId : parent.childIds) {
+        if (!layoutResult.Has(childId)) continue;
+        if (const MindMapTopic* child = model.GetTopic(childId)) children.push_back(TopicCenter(*child));
+    }
+    if (children.size() < 2) return;
+
+    const Point2Dd centre = TopicCenter(parent);
+    double radius = 0.0;
+    std::vector<double> angles;
+    for (const Point2Dd& c : children) {
+        radius += std::hypot(c.x - centre.x, c.y - centre.y);
+        angles.push_back(std::atan2(c.y - centre.y, c.x - centre.x));
+    }
+    radius /= static_cast<double>(children.size());
+    if (radius < 1.0) return;
+    std::sort(angles.begin(), angles.end());
+
+    // A fan leaves a wide gap towards the parent: the ring is drawn as an arc
+    // through the children, without that gap. Otherwise a whole circle.
+    double parentAngle = 0.0;
+    bool hasParent = false;
+    if (const MindMapTopic* grand = model.GetTopic(parent.parentId)) {
+        if (layoutResult.Has(grand->id)) {
+            Point2Dd g = TopicCenter(*grand);
+            parentAngle = std::atan2(g.y - centre.y, g.x - centre.x);
+            hasParent = true;
+        }
+    }
+    const size_t n = angles.size();
+    size_t parentGap = n;              // Gap i runs from angles[i] to angles[i + 1]
+    double parentGapSize = 0.0, otherLargest = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        double from = angles[i];
+        double to = (i + 1 < n) ? angles[i + 1] : angles[0] + 2.0 * kPi;
+        double size = to - from;
+        double p = parentAngle;
+        while (p < from) p += 2.0 * kPi;
+        if (hasParent && p < to && parentGap == n) {
+            parentGap = i;
+            parentGapSize = size;
+        } else {
+            otherLargest = std::max(otherLargest, size);
+        }
+    }
+
+    Color color = (parent.branchIndex >= 0 && !branchPalette.empty())
+        ? GetBranchColor(parent.branchIndex) : style.connectorColor;
+    ctx->SetStrokePaint(color);
+    ctx->SetStrokeWidth(std::max(1.0, ConnectorWidthFor(parent.depth, style.connectorWidth) * 0.6));
+    if (parentGap < n && parentGapSize > otherLargest * 1.25) {
+        double end = angles[parentGap];
+        double start = (parentGap + 1 < n) ? angles[parentGap + 1] : angles[0];
+        while (end <= start) end += 2.0 * kPi;
+        ctx->DrawArc(centre.x, centre.y, radius, start, end);
+    } else {
+        ctx->DrawCircle(centre, radius);
+    }
+}
+
 void UltraCanvasMindMap::RenderConnectors(IRenderContext* ctx) {
+    if (style.connectorStyle == MindMapConnectorStyle::Ring) {
+        for (const auto& [id, box] : layoutResult.bounds) {
+            const MindMapTopic* topic = model.GetTopic(id);
+            if (!topic || topic->depth < 1 || topic->collapsed) continue;
+            // Only a topic laid out as a balloon has its children on a ring:
+            // the nearest structure set on it or an ancestor decides.
+            MindMapStructure structure = layoutOptions.structure;
+            for (const MindMapTopic* t = topic; t; t = model.GetTopic(t->parentId)) {
+                if (t->depth > 0 && t->structureOverride.has_value()) {
+                    structure = t->structureOverride.value();
+                    break;
+                }
+            }
+            if (structure == MindMapStructure::Balloon) RenderChildRing(ctx, *topic);
+        }
+    }
     for (const auto& [id, box] : layoutResult.bounds) {
         const MindMapTopic* topic = model.GetTopic(id);
         if (!topic || topic->parentId.empty()) continue;
@@ -1098,13 +1230,14 @@ void UltraCanvasMindMap::RenderConnector(IRenderContext* ctx, const MindMapTopic
     }
 
     ctx->SetStrokePaint(color);
-    ctx->SetStrokeWidth(style.connectorWidth);
+    ctx->SetStrokeWidth(ConnectorWidthFor(parent.depth, style.connectorWidth));
 
     const bool horizontal = (layoutOptions.structure != MindMapStructure::OrgChartDown &&
                              layoutOptions.structure != MindMapStructure::OrgChartUp);
 
     switch (style.connectorStyle) {
         case MindMapConnectorStyle::Straight:
+        case MindMapConnectorStyle::Ring:     // A spoke; the ring is drawn first
             ctx->DrawLine(from, to);
             break;
 
@@ -1170,6 +1303,8 @@ void UltraCanvasMindMap::RenderConnector(IRenderContext* ctx, const MindMapTopic
             Point2Dd c2 = horizontal ? Point2Dd(to.x - dx * 0.5, to.y)
                                      : Point2Dd(to.x, to.y - dy * 0.5);
 
+            const double taperStart = ConnectorWidthFor(parent.depth, style.taperStartWidth);
+            const double taperEnd = ConnectorWidthFor(parent.depth + 1, style.taperEndWidth);
             const int samples = 18;
             std::vector<Point2Dd> upper, lower;
             upper.reserve(samples + 1);
@@ -1188,8 +1323,7 @@ void UltraCanvasMindMap::RenderConnector(IRenderContext* ctx, const MindMapTopic
                 double nx = -ty / len;
                 double ny = tx / len;
 
-                double halfWidth = (style.taperStartWidth * (1.0 - t) +
-                                    style.taperEndWidth * t) * 0.5;
+                double halfWidth = (taperStart * (1.0 - t) + taperEnd * t) * 0.5;
                 upper.push_back({px + nx * halfWidth, py + ny * halfWidth});
                 lower.push_back({px - nx * halfWidth, py - ny * halfWidth});
             }
@@ -1401,6 +1535,11 @@ void UltraCanvasMindMap::RenderTopicShape(IRenderContext* ctx, const MindMapTopi
             case MindMapNodeShape::Rect:
                 ctx->FillRectangle(shadowBox);
                 break;
+            case MindMapNodeShape::Triangle:
+                ctx->FillLinePath({{shadowBox.x + shadowBox.width * 0.5, shadowBox.y},
+                                   {shadowBox.x + shadowBox.width, shadowBox.y + shadowBox.height},
+                                   {shadowBox.x, shadowBox.y + shadowBox.height}});
+                break;
             default:
                 ctx->FillRoundedRectangle(shadowBox, topicStyle.cornerRadius);
                 break;
@@ -1443,6 +1582,17 @@ void UltraCanvasMindMap::RenderTopicShape(IRenderContext* ctx, const MindMapTopi
                 {box.x + box.width, box.y + box.height * 0.5},
                 {box.x + box.width * 0.5, box.y + box.height},
                 {box.x, box.y + box.height * 0.5},
+            };
+            if (fill.a > 0) ctx->FillLinePath(points);
+            ctx->DrawLinePath(points, true);
+            break;
+        }
+
+        case MindMapNodeShape::Triangle: {
+            std::vector<Point2Dd> points = {
+                {box.x + box.width * 0.5, box.y},
+                {box.x + box.width, box.y + box.height},
+                {box.x, box.y + box.height},
             };
             if (fill.a > 0) ctx->FillLinePath(points);
             ctx->DrawLinePath(points, true);
@@ -1609,7 +1759,29 @@ void UltraCanvasMindMap::RenderTopicContent(IRenderContext* ctx, const MindMapTo
     Rect2Dd textRect(textLeft, box.y + topicStyle.paddingY,
                      std::max(1.0, availableWidth),
                      box.height - topicStyle.paddingY * 2.0);
+    // In a circle (which a size by depth can make larger than its label) and
+    // a triangle the label is centred where the shape has room for it. The
+    // rect is a little wider than the measured label: text drawn zoomed out
+    // can run wider than it measured, and must not break a word.
+    const bool centred = topic.iconPath.empty() && topic.imagePath.empty() &&
+                         (topicStyle.shape == MindMapNodeShape::Circle ||
+                          topicStyle.shape == MindMapNodeShape::Triangle);
+    if (centred) {
+        Size2Dd ink = MeasureText(ctx, label, topicStyle.fontSize, topicStyle.bold,
+                                  topicStyle.maxWidth);
+        double centreY = box.y + box.height *
+            (topicStyle.shape == MindMapNodeShape::Triangle ? 0.62 : 0.5);
+        double width = std::min(box.width, std::max(box.width * 0.8, ink.width * 1.12 + 4.0));
+        textRect = Rect2Dd(box.x + (box.width - width) * 0.5, centreY - ink.height * 0.75,
+                           width, ink.height * 1.5);
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+    }
     ctx->DrawTextInRect(label, textRect);
+    if (centred) {
+        ctx->SetTextAlignment(TextAlignment::Left);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
+    }
 }
 
 void UltraCanvasMindMap::RenderCollapseHandle(IRenderContext* ctx, const MindMapTopic& topic) {
@@ -2459,12 +2631,28 @@ std::string UltraCanvasMindMap::ToJson() const {
     layout.Set("rootGap", JSONValue(layoutOptions.rootGap));
     layout.Set("radialRingGap", JSONValue(layoutOptions.radialRingGap));
     layout.Set("sizeFromWeight", JSONValue(layoutOptions.sizeFromWeight));
+    layout.Set("radialStartAngle", JSONValue(layoutOptions.radialStartAngle));
+    layout.Set("radialSweep", JSONValue(layoutOptions.radialSweep));
+    layout.Set("balloonRing", JSONValue(static_cast<int>(layoutOptions.balloonRing)));
+    layout.Set("balloonFanSweep", JSONValue(layoutOptions.balloonFanSweep));
+    layout.Set("balloonGap", JSONValue(layoutOptions.balloonGap));
+    layout.Set("balloonTrunkLength", JSONValue(layoutOptions.balloonTrunkLength));
     root.Set("layout", layout);
 
     JSONValue view = JSONValue::MakeObject();
     view.Set("theme", JSONValue(static_cast<int>(theme)));
     view.Set("connectorStyle", JSONValue(static_cast<int>(style.connectorStyle)));
     view.Set("numbering", JSONValue(static_cast<int>(style.numbering)));
+    view.Set("depthLightenStep", JSONValue(style.depthLightenStep));
+    auto numbers = [](const std::vector<double>& values) {
+        JSONValue array = JSONValue::MakeArray();
+        for (double v : values) array.Append(JSONValue(v));
+        return array;
+    };
+    if (!style.sizeByDepth.empty()) view.Set("sizeByDepth", numbers(style.sizeByDepth));
+    if (!style.connectorWidthByDepth.empty()) {
+        view.Set("connectorWidthByDepth", numbers(style.connectorWidthByDepth));
+    }
     view.Set("zoom", JSONValue(viewport.GetZoomLevel()));
     view.Set("panX", JSONValue(viewport.GetPanOffset().x));
     view.Set("panY", JSONValue(viewport.GetPanOffset().y));
@@ -2585,6 +2773,16 @@ bool UltraCanvasMindMap::FromJson(const std::string& json) {
             layout.Get("radialRingGap").GetNumber(layoutOptions.radialRingGap);
         layoutOptions.sizeFromWeight =
             layout.Get("sizeFromWeight").GetBoolean(layoutOptions.sizeFromWeight);
+        layoutOptions.radialStartAngle =
+            layout.Get("radialStartAngle").GetNumber(layoutOptions.radialStartAngle);
+        layoutOptions.radialSweep = layout.Get("radialSweep").GetNumber(layoutOptions.radialSweep);
+        layoutOptions.balloonRing = static_cast<MindMapBalloonRing>(
+            layout.Get("balloonRing").GetInteger(static_cast<int64_t>(layoutOptions.balloonRing)));
+        layoutOptions.balloonFanSweep =
+            layout.Get("balloonFanSweep").GetNumber(layoutOptions.balloonFanSweep);
+        layoutOptions.balloonGap = layout.Get("balloonGap").GetNumber(layoutOptions.balloonGap);
+        layoutOptions.balloonTrunkLength =
+            layout.Get("balloonTrunkLength").GetNumber(layoutOptions.balloonTrunkLength);
     }
 
     const JSONValue& view = root.Get("view");
@@ -2596,6 +2794,15 @@ bool UltraCanvasMindMap::FromJson(const std::string& json) {
             view.Get("connectorStyle").GetInteger(static_cast<int64_t>(style.connectorStyle)));
         style.numbering = static_cast<MindMapNumbering>(
             view.Get("numbering").GetInteger(static_cast<int64_t>(style.numbering)));
+        style.depthLightenStep = view.Get("depthLightenStep").GetNumber(style.depthLightenStep);
+        auto readNumbers = [&view](const char* key) {
+            std::vector<double> values;
+            const JSONValue& array = view.Get(key);
+            for (size_t i = 0; i < array.GetSize(); ++i) values.push_back(array.At(i).GetNumber(0.0));
+            return values;
+        };
+        style.sizeByDepth = readNumbers("sizeByDepth");
+        style.connectorWidthByDepth = readNumbers("connectorWidthByDepth");
         viewport.SetZoomLevel(view.Get("zoom").GetNumber(1.0));
         viewport.SetPanOffset(view.Get("panX").GetNumber(0.0),
                               view.Get("panY").GetNumber(0.0));

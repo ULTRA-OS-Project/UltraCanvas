@@ -4,8 +4,9 @@
 // configurable colour map. Designed as a reusable building block: feed it any
 // 2D matrix (correlation matrices, confusion matrices, density grids, audio
 // spectrograms produced by an STFT layer, ...).
+// Version: 1.1.0 - HeatmapCellShape::Hexagon
 // Version: 1.0.0
-// Last Modified: 2026-06-18
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,7 +56,11 @@ namespace UltraCanvas {
     enum class HeatmapCellShape {
         Rectangle,
         RoundedRectangle,
-        Circle           // dot heatmap
+        Circle,          // dot heatmap
+        Hexagon          // regular pointy-top hexagons in an offset grid (odd
+                         // rows shifted right by half a cell), as large as fit
+                         // the plot; always drawn as cells, row and column
+                         // labels left out (they do not line up with a hex grid)
     };
 
 // Show only part of a (square) matrix, e.g. for correlation matrices.
@@ -239,6 +244,7 @@ namespace UltraCanvas {
         bool EffectiveUseImageMode() const;
         void BuildPixmap();
         void RenderCells(IRenderContext* ctx);
+        void RenderHexCells(IRenderContext* ctx);   // HeatmapCellShape::Hexagon
         void RenderImage(IRenderContext* ctx);
         bool CellAtScreen(const Point2Di& pos, int& outCol, int& outRow) const;
 

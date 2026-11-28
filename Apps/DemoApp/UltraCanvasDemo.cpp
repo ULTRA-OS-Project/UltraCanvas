@@ -1,5 +1,8 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.33 - Charts > Ternary Chart: status Fully Implemented (Phases 1-3 done)
+// Version: 1.0.32 - Charts > Spiral Chart (UltraCanvasSpiralChart)
+// Version: 1.0.31 - Charts > Ridgeline Chart: the Sleep variant (Phase 2)
 // Version: 1.0.30 - the category tree's item icons drawn in the row's text colour (white when selected)
 // Version: 1.0.29 - Widgets > Profile Picture (UltraCanvasProfilePicture)
 // Version: 1.0.28 - the shell follows the theme: header, legend, page area and scrollbars take a
@@ -1543,7 +1546,7 @@ namespace UltraCanvas {
         chartBuilder.AddItem("ternarychart", Tr("Ternary Chart"),
                              Tr("Three-part compositions in a triangle: vote shares, soil texture, "
                              "alloys - every point's three shares add up to 100%"),
-                             ImplementationStatus::PartiallyImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTernaryChartExamples(); },
                              "DemoApp/UltraCanvasTernaryChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasTernaryChart.md")
@@ -1572,7 +1575,18 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasRidgelineChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasRidgelineChart.md")
                 .AddVariant("ridgelinechart", Tr("Word ratings (densities of the answers)"))
-                .AddVariant("ridgelinechart", Tr("Times of day (curves, each to its own peak)"));
+                .AddVariant("ridgelinechart", Tr("Times of day (curves, each to its own peak)"))
+                .AddVariant("ridgelinechart", Tr("Sleep (two series, a 24-hour axis that wraps)"));
+
+        chartBuilder.AddItem("spiralchart", Tr("Spiral Chart"),
+                             Tr("A time series wound along a spiral, one turn per period, so a daily, weekly "
+                                "or yearly rhythm lines up from the centre outward"),
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateSpiralChartExamples(); },
+                             "DemoApp/UltraCanvasSpiralChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSpiralChart.md")
+                .AddVariant("spiralchart", Tr("Temperatures (a year a turn, ribbon)"))
+                .AddVariant("spiralchart", Tr("Website visits (a week a turn, band)"));
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);

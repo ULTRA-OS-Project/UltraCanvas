@@ -2,13 +2,16 @@
 // Unit tests for the ridgeline model: quantiles, the bandwidth rules, the
 // kernel density (its area, reflection at bounds, binning of large rows), the
 // x range, the three scales, statistics from values and from curves, sorting,
-// validation and the two samples. UI-free.
+// validation and the samples; several series per row, the wrapping axis,
+// the tail cut, binned curves and the JSON and CSV round trips. UI-free.
 //
+// Version: 1.1.0 - Phase 2: series, period, tail cut, binned, JSON / CSV, Sleep
 // Version: 1.0.0
 // Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasRidgelineModel.h"
+#include "DataFormats/UltraCanvasJSON.h"
 
 #include <cmath>
 #include <cstdio>
@@ -284,6 +287,199 @@ static void TestSamples() {
     CHECK(Near(day.XRange().first, 3.0, 1e-12) && Near(day.XRange().second, 27.0, 1e-12), "from 03:00 to 03:00");
 }
 
+static void TestSeries() {
+    std::printf("\n[Several series per row]\n");
+    UltraCanvasRidgelineModel m;
+    m.series = {{"before", Color(0, 0, 0, 0)}, {"after", Color(0, 0, 0, 0)}};
+    RidgelineRow r;
+    r.name = "a";
+    r.SetValues(0, {1, 2, 2, 3, 3, 3, 4});
+    r.SetValues(1, {6, 7, 7, 8});
+    m.rows.push_back(r);
+    CHECK(m.SeriesCount() == 2 && m.rows[0].HasValuesOf(1) && !m.rows[0].HasDataOf(2), "two series in a row");
+    CHECK(Near(m.Statistics(0, 1).mean, 7.0, 1e-12) && m.Statistics(0, 1).count == 4, "each series has its own statistics");
+    RidgelineRow tall, low;
+    tall.name = "tall";
+    tall.SetCurve(0, {{0, 0}, {1, 4}, {2, 0}});
+    tall.SetCurve(1, {{0, 0}, {1, 2}, {2, 0}});
+    UltraCanvasRidgelineModel c;
+    c.series = m.series;
+    c.rows.push_back(tall);
+    c.scale = RidgelineScale::RowPeak;
+    const auto all = c.AllCurves();
+    CHECK(Near(PeakOf(all[0][0]), 1.0, 1e-12) && Near(PeakOf(all[0][1]), 0.5, 1e-12),
+          "RowPeak: a row's series keep their ratio to the row's tallest");
+    CHECK(Near(PeakOf(c.Curves(1)[0]), 0.5, 1e-12), "Curves(series) is that series of AllCurves()");
+    m.series.resize(1);
+    CHECK(HasProblem(m.Validate(), "more series than the model names"), "a row with more series than named");
+}
+
+static void TestWrap() {
+    std::printf("\n[A wrapping axis]\n");
+    UltraCanvasRidgelineModel m;
+    m.xMin = 18.0;
+    m.period = 24.0;
+    CHECK(Near(m.Wrap(0.5), 24.5, 1e-12) && Near(m.Wrap(18.0), 18.0, 1e-12) && Near(m.Wrap(42.0), 18.0, 1e-12) &&
+              Near(m.Wrap(-1.0), 23.0, 1e-12),
+          "values move by whole periods into 18..42");
+    m.rows.push_back({"night", {23.5, 23.9, 0.2, 0.4, 0.5, 1.0, 17.9, 18.1}, {}, Color(0, 0, 0, 0), ""});
+    CHECK(Near(m.XRange().first, 18.0, 1e-12) && Near(m.XRange().second, 42.0, 1e-12), "the range is one period");
+    const RidgelineRowStatistics s = m.Statistics(0);
+    CHECK(s.minimum >= 18.0 && s.maximum < 42.0 && s.median > 24.0 && s.median < 25.0,
+          "statistics on the wrapped values: the median just after midnight");
+    m.density.rule = RidgelineBandwidth::Fixed;
+    m.density.bandwidth = 1.0;
+    const auto curve = m.RawCurve(0);
+    std::vector<double> xs, ys;
+    for (const auto& p : curve) { xs.push_back(p.x); ys.push_back(p.y); }
+    CHECK(Near(Area(xs, ys), 1.0, 1e-3), "the circular density has area 1 over the period");
+    CHECK(Near(curve.front().y, curve.back().y, 1e-9) && curve.front().y > 0.01,
+          "and meets itself at the ends: 17:59 and 18:01 are neighbours");
+    UltraCanvasRidgelineModel c;
+    c.xMin = 0.0;
+    c.period = 10.0;
+    c.rows.push_back({"c", {}, {{8, 1}, {9, 2}, {11, 3}, {12, 1}}, Color(0, 0, 0, 0), ""});
+    const auto wrapped = c.RawCurve(0);
+    CHECK(wrapped.size() == 4 && Near(wrapped[0].x, 1.0, 1e-12) && Near(wrapped[3].x, 9.0, 1e-12),
+          "a supplied curve is wrapped and put back in order");
+}
+
+static void TestTailsAndBins() {
+    std::printf("\n[Tail cut and binned curves]\n");
+    UltraCanvasRidgelineModel m;
+    m.rows.push_back({"t", {4, 5, 5, 5, 6}, {}, Color(0, 0, 0, 0), ""});
+    m.xMin = 0.0;
+    m.xMax = 10.0;
+    const auto full = m.RawCurve(0);
+    m.density.tailCut = 0.05;
+    const auto cut = m.RawCurve(0);
+    double peak = 0.0;
+    for (const auto& p : cut) peak = std::max(peak, p.y);
+    bool interiorAbove = true;
+    for (size_t i = 1; i + 1 < cut.size(); ++i) if (cut[i].y < 0.05 * peak) interiorAbove = false;
+    CHECK(cut.size() < full.size() && cut.front().x > 0.0 && cut.back().x < 10.0, "the tails below 5 % are dropped");
+    CHECK(interiorAbove && cut.front().y < 0.05 * peak, "keeping one point each side, so the curve meets its baseline");
+
+    UltraCanvasRidgelineModel b;
+    b.rows.push_back({"b", {0.5, 1.5, 1.6, 1.7, 9.9}, {}, Color(0, 0, 0, 0), ""});
+    b.xMin = 0.0;
+    b.xMax = 10.0;
+    b.density.binned = true;
+    b.density.bins = 10;
+    const auto steps = b.RawCurve(0);
+    CHECK(steps.size() == 20 && Near(steps[2].x, 1.0, 1e-12) && Near(steps[3].x, 2.0, 1e-12) &&
+              Near(steps[2].y, 3.0 / 5.0, 1e-12),
+          "binned: ten flat tops, three of five values in 1..2 (height 0.6)");
+    std::vector<double> sx, sy;
+    for (const auto& p : steps) { sx.push_back(p.x); sy.push_back(p.y); }
+    CHECK(Near(Area(sx, sy), 1.0, 1e-12), "with area 1, as the density");
+    CHECK(Near(b.Statistics(0).peakAt, 1.5, 1e-12), "the peak is the tallest bin's middle");
+    b.density.bins = 0;
+    CHECK(HasProblem(b.Validate(), "Bins must be"), "bins of 0 are refused");
+}
+
+static bool SameRows(const UltraCanvasRidgelineModel& a, const UltraCanvasRidgelineModel& b, double tol) {
+    if (a.rows.size() != b.rows.size()) return false;
+    for (size_t i = 0; i < a.rows.size(); ++i) {
+        if (a.rows[i].name != b.rows[i].name) return false;
+        for (size_t s = 0; s < a.SeriesCount(); ++s) {
+            const auto& va = a.rows[i].ValuesOf(s);
+            const auto& vb = b.rows[i].ValuesOf(s);
+            if (va.size() != vb.size()) return false;
+            for (size_t k = 0; k < va.size(); ++k) if (!Near(va[k], vb[k], tol)) return false;
+            const auto& ca = a.rows[i].CurveOf(s);
+            const auto& cb = b.rows[i].CurveOf(s);
+            if (ca.size() != cb.size()) return false;
+            for (size_t k = 0; k < ca.size(); ++k) {
+                if (!Near(ca[k].x, cb[k].x, tol) || !Near(ca[k].y, cb[k].y, tol)) return false;
+            }
+        }
+    }
+    return true;
+}
+
+static void TestInterchange() {
+    std::printf("\n[JSON and CSV]\n");
+    UltraCanvasRidgelineModel sleep = UltraCanvasRidgelineModel::Sleep();
+    sleep.density.tailCut = 0.02;
+    sleep.rows[0].note = "teenagers";
+    sleep.series[1].color = Color(230, 120, 30, 255);
+    const std::string json = ExportRidgelineJson(sleep);
+    UltraCanvasRidgelineModel back;
+    std::string error;
+    CHECK(ImportRidgelineJson(json, back, &error), "the Sleep sample survives a JSON round trip");
+    CHECK(SameRows(sleep, back, 0.0) && back.rows[0].note == "teenagers", "rows, values and notes alike");
+    CHECK(back.series.size() == 2 && back.series[1].name == "Wakes up" && back.series[1].color.r == 230,
+          "series names and colours");
+    CHECK(back.period && *back.period == 24.0 && back.xMin && *back.xMin == 18.0 && back.density.tailCut == 0.02 &&
+              back.title == sleep.title,
+          "period, start, tail cut and titles");
+    const UltraCanvasRidgelineModel day = UltraCanvasRidgelineModel::DailyActivities();
+    UltraCanvasRidgelineModel dayBack;
+    CHECK(ImportRidgelineJson(ExportRidgelineJson(day, false), dayBack, &error) && SameRows(day, dayBack, 0.0) &&
+              dayBack.scale == RidgelineScale::RowPeak,
+          "curves and the scale too");
+
+    UltraCanvasRidgelineModel untouched = UltraCanvasRidgelineModel::WordRatings();
+    const size_t before = untouched.rows.size();
+    CHECK(!ImportRidgelineJson("{\"format\": \"ultracanvas-ternary\", \"version\": 1}", untouched, &error) &&
+              error.find("not a ridgeline chart") != std::string::npos && untouched.rows.size() == before,
+          "another format is refused, the model untouched");
+    CHECK(!ImportRidgelineJson("{\"format\": \"ultracanvas-ridgeline\", \"version\": 9}", untouched, &error) &&
+              error.find("version 9") != std::string::npos,
+          "a newer version is refused");
+    CHECK(!ImportRidgelineJson("{\"format\": \"ultracanvas-ridgeline\", \"version\": 1, \"scale\": \"wide\", "
+                               "\"rows\": [{\"name\": \"a\", \"values\": [1, 2]}]}",
+                               untouched, &error) &&
+              error.find("unknown scale") != std::string::npos,
+          "an unknown scale is refused");
+    CHECK(!ImportRidgelineJson("{\"format\": \"ultracanvas-ridgeline\", \"version\": 1, "
+                               "\"rows\": [{\"name\": \"a\", \"values\": [1, \"x\"]}]}",
+                               untouched, &error) &&
+              error.find("not a list of numbers") != std::string::npos,
+          "a value that is not a number is refused");
+
+    // CSV: the data only; the other settings stay as the model has them.
+    const std::string csv = ExportRidgelineCsv(sleep);
+    CHECK(csv.rfind("row,series,value\r\n", 0) == 0 || csv.rfind("row,series,value\n", 0) == 0,
+          "values with two series: row, series, value");
+    UltraCanvasRidgelineModel fromCsv;
+    fromCsv.period = 24.0;
+    fromCsv.series = {{"Goes to bed", Color(10, 20, 30, 255)}};
+    CHECK(ImportRidgelineCsv(csv, fromCsv, &error), "the CSV reads back");
+    CHECK(SameRows(sleep, fromCsv, 1e-9) && fromCsv.series.size() == 2 && fromCsv.series[0].color.r == 10 &&
+              fromCsv.period && *fromCsv.period == 24.0,
+          "rows and series alike; a known series keeps its colour; the period stays");
+    UltraCanvasRidgelineModel dayCsv;
+    CHECK(ImportRidgelineCsv(ExportRidgelineCsv(day), dayCsv, &error) && SameRows(day, dayCsv, 1e-9) &&
+              dayCsv.series.empty(),
+          "curves: row, x, y, and one series stays unnamed");
+    CHECK(ImportRidgelineCsv("group,value\nA,1\nA,2.5\nB,3\n", dayCsv, &error) && dayCsv.rows.size() == 2 &&
+              dayCsv.rows[0].values.size() == 2 && Near(dayCsv.rows[0].values[1], 2.5, 1e-12),
+          "the row column may be called group");
+
+    UltraCanvasRidgelineModel keep = UltraCanvasRidgelineModel::WordRatings();
+    CHECK(!ImportRidgelineCsv("label,value\nA,1\n", keep, &error) && error.find("no row column") != std::string::npos,
+          "no row column: refused");
+    CHECK(!ImportRidgelineCsv("row,amount\nA,1\n", keep, &error) && error.find("neither a value") != std::string::npos,
+          "no value column and no x, y: refused");
+    CHECK(!ImportRidgelineCsv("row,value\nA,1\nB,one\n", keep, &error) && error.find("line 3") != std::string::npos,
+          "a word where a number goes: refused, naming the line");
+    CHECK(!ImportRidgelineCsv("row,value\nA,1,2\n", keep, &error) && error.find("fields") != std::string::npos &&
+              keep.rows.size() == 33,
+          "a line with too many fields: refused, the model untouched");
+}
+
+static void TestSleepSample() {
+    std::printf("\n[The Sleep sample]\n");
+    const UltraCanvasRidgelineModel m = UltraCanvasRidgelineModel::Sleep();
+    CHECK(m.rows.size() == 7 && m.SeriesCount() == 2 && m.Validate().empty(), "seven age groups, two series, valid");
+    const RidgelineRowStatistics bed = m.Statistics(1, 0), wake = m.Statistics(1, 1);
+    CHECK(bed.median > 24.0 && bed.median < 25.5, "18-24: bedtime after midnight, on the axis past 24:00");
+    CHECK(wake.median > 32.0 && wake.median < 33.5, "and waking about half past eight the next morning");
+    CHECK(m.Statistics(6, 0).median < m.Statistics(1, 0).median, "the oldest go to bed earlier than the young");
+}
+
 int main() {
     std::printf("====================================\n");
     std::printf("  UltraCanvas Ridgeline Model\n");
@@ -295,6 +491,11 @@ int main() {
     TestStatistics();
     TestSortAndValidate();
     TestSamples();
+    TestSeries();
+    TestWrap();
+    TestTailsAndBins();
+    TestInterchange();
+    TestSleepSample();
     std::printf("\n====================================\n");
     if (g_failures == 0) {
         std::printf("All tests passed.\n");

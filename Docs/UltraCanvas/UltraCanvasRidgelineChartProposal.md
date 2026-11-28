@@ -6,9 +6,14 @@ for the guide. It delivered R1, R2, R4-R6, D1-D4 and the statistics in the
 model, A1-A7, N2 and I1 in the chart, the `WordRatings` and
 `DailyActivities` samples, the demo page (**Charts → Ridgeline Chart**),
 `Tests/RidgelineModelTest.cpp` and `Tests/RidgelineChartRenderTest.cpp`.
-Phases 2 and 3 and the Follow-up are still to come.
+Phase 2 (2026-11-16) delivered R3 (several series per row, with a
+legend), R7 (the wrapping axis), D5 and D6 (tail cut, binned curves), N1 and
+N3 (marks, quantile bands), I2 and I3 (fading on hover, `onRowClick`), X1
+and X2 (CSV and JSON, with the demo's Open / Save JSON and Import / Export
+CSV through `UltraCanvasFileLoader`), and the `Sleep` sample with the demo's
+third variant. Phase 3 and the Follow-up are still to come.
 
-How Phase 1 departs from the plan below, and why:
+How Phase 1 and Phase 2 depart from the plan below, and why:
 
 * **A row holds `values` and `curve` itself, not `entries` per series, and
   the model has no `series` yet.** Several series per row are Phase 2 (R3);
@@ -34,6 +39,25 @@ How Phase 1 departs from the plan below, and why:
 * **Hover works in strips:** each row's area is cut into 64 vertical strips,
   so the tooltip can give the x under the pointer and the curve's height
   there.
+* **Series (Phase 2):** a row keeps its first series in `values` / `curve`
+  and the others in `more` (`SetValues(s, ...)`, `ValuesOf(s)`), so a
+  one-series row is written as before; the model's `entries` sketch was
+  dropped. With two or more series every curve takes its series' colour and
+  the row colourings apply to one series only: rows and series cannot both
+  be told apart by colour. The legend sits right of the plot, because the
+  title and subtitle hold the top and the x axis the bottom.
+* **The wrap (Phase 2)** applies to supplied curves as well as values, and a
+  wrapped density is circular (each value also one period either side), so
+  it meets itself at the ends instead of being cut. Statistics are taken on
+  the wrapped values: a median bedtime is 00:40, not noon.
+* **Binned curves (Phase 2)** have area 1, like a density, so the scales
+  treat both alike; a bin's peak is its middle.
+* **CSV (Phase 2)** lines may mix values and curve points, and numbers are
+  written with 17 significant digits, so a file reads back exactly.
+* **The value column (Phase 2)** writes mean, median and peak through the
+  x formatter when there is one: a bedtime reads 23:15, not 23.25.
+* **A click (Phase 2)** is a press and release on the same row, so a drag
+  across rows does not click one.
 
 A ridgeline chart (also called a joyplot) stacks one distribution per row.
 Every row has its own baseline. Its curve is a smooth, filled outline, and
@@ -529,7 +553,7 @@ other charts.
 | Phase | Delivers | Retires |
 |---|---|---|
 | **1** *(done)* | The model with R1, R2, R4-R6, D1-D4 and the statistics; the chart with A1-A7, N2 and I1; the `WordRatings` and `DailyActivities` samples; the demo page (**Charts → Ridgeline Chart**) with an overlap slider and choices of scale, sort and colouring; the guide; model and render tests | Reference shapes 2 and 3; shape 1 without the wrap and side notes |
-| **2** | Several series per row with a legend (R3); the wrapping axis (R7); tail cut and binned curves (D5, D6); marks and quantile bands (N1, N3); highlight and row callbacks (I2, I3); CSV and JSON (X1, X2) with demo Open / Save through `UltraCanvasFileLoader` | Reference shape 1 in full |
+| **2** *(done)* | Several series per row with a legend (R3); the wrapping axis (R7); tail cut and binned curves (D5, D6); marks and quantile bands (N1, N3); highlight and row callbacks (I2, I3); CSV and JSON (X1, X2) with demo Open / Save through `UltraCanvasFileLoader` | Reference shape 1 in full |
 | **3** | The oblique view and floor grid (O1, O2); row groups (R8); side notes (N4); the pointer rule across rows (I4) | Reference shape 4 |
 | **Follow-up** | A change of its own, after Phase 1: `UltraCanvasJitterPlotElement`'s private `CalculateKernelDensity` (its violin and raincloud modes) moves onto `RidgelineKernelDensity` and the bandwidth rules, so the framework has one 1D density. The violins should look the same; the jitter plot's tests and demo page confirm it | The second copy of the density |
 

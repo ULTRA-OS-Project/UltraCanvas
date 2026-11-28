@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasHeatmapChart.h"
 #include "UltraCanvasTooltipManager.h"
+#include "Plugins/Charts/UltraCanvasHexLayout.h"
 
 #include <algorithm>
 #include <cmath>
@@ -416,6 +417,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasHeatmapChartElement::EffectiveUseImageMode() const {
+        if (cellShape == HeatmapCellShape::Hexagon) return false;   // hexagons are cells
         if (renderMode == HeatmapRenderMode::Image) return true;
         if (renderMode == HeatmapRenderMode::Cells) return false;
         if (cols <= 0 || rows <= 0) return false;
@@ -466,16 +468,22 @@ namespace UltraCanvas {
             RenderCells(ctx);
         }
 
-        // Plot-area border
-        ctx->SetStrokePaint(frameColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawRectangle(heatmapArea.ToRect2D());
-
-        RenderGridLabels(ctx);
+        // A hex grid has no rectangle to frame and no rows or columns for
+        // labels to line up with.
+        if (cellShape != HeatmapCellShape::Hexagon) {
+            ctx->SetStrokePaint(frameColor);
+            ctx->SetStrokeWidth(1.0);
+            ctx->DrawRectangle(heatmapArea.ToRect2D());
+            RenderGridLabels(ctx);
+        }
         RenderColorBar(ctx);
     }
 
     void UltraCanvasHeatmapChartElement::RenderCells(IRenderContext* ctx) {
+        if (cellShape == HeatmapCellShape::Hexagon) {
+            RenderHexCells(ctx);
+            return;
+        }
         double cellW = heatmapArea.width / cols;
         double cellH = heatmapArea.height / rows;
 
@@ -537,6 +545,53 @@ namespace UltraCanvas {
                     ctx->SetTextPaint(cellValueColor);
                     ctx->DrawText(text, Point2Dd(innerX + (innerW - sz.width) / 2.0,
                                                  innerY + (innerH - sz.height) / 2.0));
+                }
+            }
+        }
+    }
+
+    void UltraCanvasHeatmapChartElement::RenderHexCells(IRenderContext* ctx) {
+        const HexLayout layout = MakeHexLayout(heatmapArea.x, heatmapArea.y, heatmapArea.width,
+                                               heatmapArea.height, cols, rows);
+        if (layout.size <= 0.0) return;
+        const double size = layout.size * (1.0 - cellGap);
+        const double hexW = std::sqrt(3.0) * size;
+        ctx->SetFontSize(cellValueFontSize);
+        for (int r = 0; r < rows; ++r) {
+            const int displayRow = (rowOrder == HeatmapRowOrder::TopDown) ? r : (rows - 1 - r);
+            for (int c = 0; c < cols; ++c) {
+                if (!IsCellVisible(c, r)) continue;
+                const double v = values[static_cast<size_t>(r) * cols + c];
+                const Color color = MapValueToColor(v);
+                double cx = 0.0, cy = 0.0;
+                HexCenter(layout, c, displayRow, cx, cy);
+                std::vector<Point2Dd> hex;
+                hex.reserve(6);
+                for (int k = 0; k < 6; ++k) {
+                    const double angle = (60.0 * k - 90.0) * 3.14159265358979323846 / 180.0;
+                    hex.emplace_back(cx + size * std::cos(angle), cy + size * std::sin(angle));
+                }
+                if (color.a > 0) {
+                    ctx->SetFillPaint(color);
+                    ctx->FillLinePath(hex);
+                    if (!showCellBorders && cellGap <= 0.0) {
+                        ctx->SetStrokePaint(color);      // hide hairline seams
+                        ctx->SetStrokeWidth(1.0);
+                        ctx->DrawLinePath(hex, true);
+                    }
+                }
+                if (showCellBorders && cellBorderWidth > 0.0f) {
+                    ctx->SetStrokePaint(cellBorderColor);
+                    ctx->SetStrokeWidth(cellBorderWidth);
+                    ctx->DrawLinePath(hex, true);
+                }
+                if (showCellValues && !std::isnan(v) && hexW > 14.0 && size > 8.0) {
+                    std::string text = FormatValue(v);
+                    Size2Di sz = ctx->GetTextLineDimensions(text);
+                    if (sz.width <= hexW - 2.0) {
+                        ctx->SetTextPaint(cellValueColor);
+                        ctx->DrawText(text, Point2Dd(cx - sz.width / 2.0, cy - sz.height / 2.0));
+                    }
                 }
             }
         }
@@ -682,6 +737,16 @@ namespace UltraCanvas {
     bool UltraCanvasHeatmapChartElement::CellAtScreen(const Point2Di& pos, int& outCol, int& outRow) const {
         if (cols <= 0 || rows <= 0) return false;
         if (!heatmapArea.Contains(pos.x, pos.y)) return false;
+
+        if (cellShape == HeatmapCellShape::Hexagon) {
+            const HexLayout layout = MakeHexLayout(heatmapArea.x, heatmapArea.y, heatmapArea.width,
+                                                   heatmapArea.height, cols, rows);
+            int c = 0, displayRow = 0;
+            if (!HexNearestCell(layout, pos.x, pos.y, c, displayRow)) return false;
+            outCol = c;
+            outRow = (rowOrder == HeatmapRowOrder::TopDown) ? displayRow : (rows - 1 - displayRow);
+            return true;
+        }
 
         double cellW = heatmapArea.width / cols;
         double cellH = heatmapArea.height / rows;
